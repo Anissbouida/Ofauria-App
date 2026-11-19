@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { uuid, optUuid, optDate, dateLike, optText, optNumber } from './common.validator.js';
+import { uuid, optUuid, optDate, dateLike, optText, optNumber, optNonNegQty, optPositiveMoney, positiveMoney } from './common.validator.js';
 
 /**
  * Plan pilote — étape 2, lot paiements / règlements / rapprochement (G0-07 ciblé).
@@ -20,6 +20,14 @@ const rawNum = z.union([
 ]).optional();
 const rawId = z.union([uuid, z.literal(''), z.null()]).optional();
 const rawDate = z.union([dateLike, z.literal(''), z.null()]).optional();
+/** Montant ≥ 0, facultatif (vide/null = absent) : 0 admis (ligne vide ignorée), négatif refusé. */
+const optNonNegAmount = (label: string) => z.preprocess(v => (v === '' || v === null ? undefined : v),
+  z.coerce.number({ invalid_type_error: `${label} invalide` }).finite(`${label} invalide`)
+    .min(0, `${label} négatif`).max(1e9, `${label} trop élevé`).optional());
+/** Prix ≥ 0, facultatif (vide/null = absent). */
+const optNonNegPrice = optNonNegAmount('Prix unitaire');
+/** rawNum (valeur brute conservée) mais strictement positif quand il est renseigné. */
+const rawPositive = (message: string) => rawNum.refine(v => v == null || v === '' || Number(v) > 0, message);
 const str = (max: number) => z.string().max(max, `Texte trop long (${max} caractères au plus)`);
 
 /* ─── Factures : catégorie, lignes, conditions, statut ───────────────────── */
@@ -47,14 +55,22 @@ export const invoiceStatusSchema = z.object({ status: str(30).optional() }).pass
 
 /* ─── Factures : litiges, créances douteuses ─────────────────────────────── */
 // invoiceController.openDispute : motif requis (message du contrôleur) ; le dépôt borne le montant
-// au reste dû et refuse ≤ 0. null accepté : le client envoie Number('') ou NaN sérialisé en null.
+// au reste dû. Règle pilote 2026-11 n° 10 : montant contesté requis et > 0, refusé ici en 400
+// explicite (avant : ramené à 0 puis refusé par le dépôt). Le client envoie Number('') ou NaN
+// sérialisé en null quand le champ est vide : c'est un montant manquant.
 export const openDisputeSchema = z.object({
-  reason: str(2000).optional(), disputedAmount: rawNum, responsibleUserId: rawId, targetDate: rawDate,
+  reason: str(2000).optional(),
+  disputedAmount: positiveMoney('Le montant contesté'),
+  responsibleUserId: rawId, targetDate: rawDate,
 }).passthrough();
 export const resolveDisputeSchema = z.object({ resolution: str(2000).nullish(), creditNoteId: rawId }).passthrough();
 export const rejectDisputeSchema = z.object({ resolution: str(2000).nullish() }).passthrough();
-// classifyBadDebt : statut contrôlé par le contrôleur ; montant borné au reste par le dépôt.
-export const classifyBadDebtSchema = z.object({ status: str(30).optional(), reason: str(2000).nullish(), amount: rawNum }).passthrough();
+// classifyBadDebt : statut contrôlé par le contrôleur ; montant borné au reste par le dépôt ;
+// absent / vide / null = tout le reste dû. Règle pilote 2026-11 n° 10 : renseigné, il doit être > 0.
+export const classifyBadDebtSchema = z.object({
+  status: str(30).optional(), reason: str(2000).nullish(),
+  amount: rawPositive('Le montant de la créance douteuse doit être supérieur à 0'),
+}).passthrough();
 
 /* ─── Factures : échéancier, annulation, avoirs ──────────────────────────── */
 // paymentScheduleController.createInvoiceSchedule : nombre d'échéances 1-120 et date de première
@@ -72,27 +88,35 @@ export const createCreditNoteSchema = z.object({
   date: optDate, note: str(1000).nullish(),
 }).passthrough();
 // applyCredit : avoir requis (message du contrôleur) ; montant facultatif = tout ce qui reste.
-export const applyCreditSchema = z.object({ creditNoteId: optUuid, amount: optNumber }).passthrough();
+// Règle pilote 2026-11 n° 9 : renseigné, il doit être > 0 (400 explicite).
+export const applyCreditSchema = z.object({ creditNoteId: optUuid, amount: optPositiveMoney('Le montant à imputer') }).passthrough();
 
 /* ─── Paiements : chèques, encaissements clients ─────────────────────────── */
 // paymentController.markCashed : date de débit facultative (aujourd'hui par défaut), note libre.
 export const markCashedSchema = z.object({ cashedAt: optDate, note: optText(1000) }).passthrough();
-// createCustomerReceipt : client, mode et date exigés par le contrôleur ; montant > 0, affectations
-// sans doublon et ≤ règlement, n° de chèque/effet : contrôlés par le dépôt.
+// createCustomerReceipt : client, mode et date exigés par le contrôleur ; affectations sans doublon
+// et ≤ règlement, n° de chèque/effet : contrôlés par le dépôt. Règle pilote 2026-11 n° 9 : montant
+// du règlement requis et > 0 (400 explicite) ; affectation à 0 ignorée (ligne vide), négative refusée.
 export const customerReceiptSchema = z.object({
-  customerId: optUuid, amount: optNumber, paymentMethod: str(50).optional(), paymentDate: optDate,
+  customerId: optUuid, amount: positiveMoney('Le montant du règlement'), paymentMethod: str(50).optional(), paymentDate: optDate,
   reference: optText(100), checkNumber: optText(100), checkDate: optDate, treasuryAccountId: optUuid,
   description: optText(1000),
-  allocations: z.array(z.object({ invoiceId: uuid, amount: optNumber }).passthrough()).max(500).optional(),
+  allocations: z.array(z.object({ invoiceId: uuid, amount: optNonNegAmount('Montant affecté') }).passthrough()).max(500).optional(),
 }).passthrough();
-// allocateCustomerReceipt : facture requise (message du contrôleur) ; montant facultatif.
-export const allocateReceiptSchema = z.object({ invoiceId: optUuid, amount: optNumber }).passthrough();
+// allocateCustomerReceipt : facture requise (message du contrôleur) ; montant facultatif (= ce qui
+// reste). Règle pilote 2026-11 n° 9 : renseigné, il doit être > 0.
+export const allocateReceiptSchema = z.object({ invoiceId: optUuid, amount: optPositiveMoney('Le montant à affecter') }).passthrough();
 
 /* ─── Échéancier, dettes, charges fixes ──────────────────────────────────── */
 // paymentScheduleController.update : amountDue null/'' = montant variable non renseigné.
+// Règle pilote 2026-11 n° 16 : statut limité aux valeurs du CHECK scheduled_payments.status
+// (mig 258) ; l'écran n'envoie que pending / cancelled, partial et paid sont recalculés par la base.
+// partial et paid sont recalculés par la base (fn_recompute_scheduled_payment) : jamais posés à la main.
+export const SCHEDULED_PAYMENT_STATUSES = ['pending', 'cancelled'] as const;
 export const scheduledPaymentUpdateSchema = z.object({
   amountDue: rawNum, dueDate: dateLike.optional(), notes: str(2000).nullish(),
-  expectedPaymentMode: str(50).nullish(), status: str(20).optional(),
+  expectedPaymentMode: str(50).nullish(),
+  status: z.enum(SCHEDULED_PAYMENT_STATUSES, { errorMap: () => ({ message: 'Statut d\'échéance invalide (pending ou cancelled)' }) }).optional(),
 }).passthrough();
 // createDebt : libellé, montant > 0, 1-120 échéances et première date contrôlés par le contrôleur.
 export const createDebtSchema = z.object({
@@ -125,13 +149,18 @@ export const withholdingRemitSchema = z.object({
 
 /* ─── Rapprochement bancaire ─────────────────────────────────────────────── */
 // bankReconciliationController.createStatement : libellé, compte, date et tableau de lignes exigés
-// par le contrôleur ; les lignes de montant ≤ 0 sont ignorées par le dépôt ; sens 'out' ou 'in'.
+// par le contrôleur ; les lignes à 0 (ou vides) sont ignorées par le dépôt.
 // Date d'opération : texte seulement (Postgres l'interprète, format non imposé par le code).
+// Règle pilote 2026-11 n° 12 : soldes négatifs admis (découvert) ; montant de ligne négatif refusé
+// (le sens est porté par `direction`) ; direction limitée à 'in' | 'out', 'in' par défaut.
 export const bankStatementSchema = z.object({
   label: str(200).optional(), accountCode: str(20).optional(), statementDate: optDate,
   openingBalance: optNumber, closingBalance: optNumber,
   lines: z.array(z.object({
-    operationDate: str(40), label: optText(500), reference: optText(200), amount: optNumber, direction: str(10).optional(),
+    operationDate: str(40), label: optText(500), reference: optText(200),
+    amount: optNonNegAmount('Montant de la ligne'),
+    direction: z.preprocess(v => (v === '' || v === null ? undefined : v),
+      z.enum(['in', 'out'], { errorMap: () => ({ message: 'Sens de la ligne invalide (in ou out)' }) }).optional()),
   }).passthrough()).max(10000, 'Trop de lignes').optional(),
 }).passthrough();
 // matchLine : ligne d'écriture exigée par le contrôleur (message clair).
@@ -143,20 +172,21 @@ export const bankMatchSchema = z.object({ entryLineId: optUuid }).passthrough();
 export const reconOpenDaySchema = z.object({ date: str(10).optional() }).passthrough();
 export const reconCloseSchema = z.object({ force: z.boolean().optional() }).passthrough();
 const reconText = (max: number) => str(max).nullish();
+// Règle pilote 2026-11 n° 11 : quantités et prix unitaire négatifs refusés (0 admis).
 export const reconUpsertLineSchema = z.object({
   productName: str(300).optional(), sku: reconText(100), category: reconText(200),
-  approQty: optNumber, recuQty: optNumber, invenduQty: optNumber, unitPrice: optNumber,
+  approQty: optNonNegQty, recuQty: optNonNegQty, invenduQty: optNonNegQty, unitPrice: optNonNegPrice,
 }).passthrough();
 export const reconUpdateLineSchema = z.object({
-  approQty: optNumber, recuQty: optNumber, venduQty: optNumber, invenduQty: optNumber, unitPrice: optNumber,
+  approQty: optNonNegQty, recuQty: optNonNegQty, venduQty: optNonNegQty, invenduQty: optNonNegQty, unitPrice: optNonNegPrice,
 }).passthrough();
-// Lots : le dépôt ignore les lignes sans nom produit (et, à l'import des ventes, quantité ≤ 0).
-const reconRow = { sku: reconText(100), productName: reconText(300), category: reconText(200), unitPrice: optNumber };
+// Lots : le dépôt ignore les lignes sans nom produit (et, à l'import des ventes, quantité 0).
+const reconRow = { sku: reconText(100), productName: reconText(300), category: reconText(200), unitPrice: optNonNegPrice };
 export const reconBulkApproSchema = z.object({
-  rows: z.array(z.object({ ...reconRow, approQty: optNumber }).passthrough()).max(5000, 'Trop de lignes').optional(),
+  rows: z.array(z.object({ ...reconRow, approQty: optNonNegQty }).passthrough()).max(5000, 'Trop de lignes').optional(),
 }).passthrough();
 export const reconImportSalesSchema = z.object({
-  items: z.array(z.object({ ...reconRow, quantity: optNumber, netSales: optNumber }).passthrough()).max(5000, 'Trop de lignes').optional(),
+  items: z.array(z.object({ ...reconRow, quantity: optNonNegQty, netSales: optNumber }).passthrough()).max(5000, 'Trop de lignes').optional(),
 }).passthrough();
 export const reconSlotSchema = z.object({
   id: optUuid, category: str(200).optional(), label: str(200).optional(), targetTime: reconText(10),
@@ -164,7 +194,7 @@ export const reconSlotSchema = z.object({
 }).passthrough();
 export const reconCarryOverSchema = z.object({ category: str(200).optional(), enabled: z.boolean().optional() }).passthrough();
 export const reconProductSchema = z.object({
-  id: optUuid, productName: str(300).optional(), sku: reconText(100), category: reconText(200), unitPrice: optNumber,
+  id: optUuid, productName: str(300).optional(), sku: reconText(100), category: reconText(200), unitPrice: optNonNegPrice,
 }).passthrough();
 export const reconBulkProductsSchema = z.object({
   rows: z.array(z.object(reconRow).passthrough()).max(5000, 'Trop de lignes').optional(),
@@ -173,8 +203,9 @@ export const reconDarijaSchema = z.object({ productKey: str(300).optional(), dar
 export const reconFicheSchema = z.object({
   date: str(10).optional(),
   lines: z.array(z.object({
-    ...reconRow, totalQty: optNumber, removed: z.boolean().optional(),
-    slotQty: z.record(z.string(), z.union([z.number(), z.string(), z.null()])).nullish(),
+    ...reconRow, totalQty: optNonNegQty, removed: z.boolean().optional(),
+    slotQty: z.record(z.string(), z.union([z.number(), z.string(), z.null()])
+      .refine(v => v == null || v === '' || !(Number(v) < 0), 'Quantité négative')).nullish(),
   }).passthrough()).max(5000, 'Trop de lignes').optional(),
 }).passthrough();
 

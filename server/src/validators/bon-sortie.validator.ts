@@ -5,9 +5,11 @@ export const derogationDlcSchema = z.object({
   motif: z.string().trim().min(5, 'Motif de derogation DLC requis (5 caracteres minimum)').max(500),
 });
 
+// storeId facultatif (règle pilote 2026-11 n° 15) : le contrôleur prend toujours le magasin du
+// PLAN ; un storeId envoyé par un ancien client reste accepté mais n'est pas lu.
 export const generateBonSchema = z.object({
   planId: z.string().uuid(),
-  storeId: z.string().uuid(),
+  storeId: z.string().uuid().optional(),
   derogationDlc: derogationDlcSchema.optional(),
 });
 

@@ -57,7 +57,8 @@ export const packagingController = {
       res.status(400).json({ success: false, error: { message: 'Aucun magasin associe' } });
       return;
     }
-    const newStock = await packagingItemRepository.adjustStock(db, {
+    // Règle pilote 2026-11 : diminution > stock disponible refusée (400), plus de plancher à 0.
+    const newStock = await packagingItemRepository.adjustStockManual({
       packagingId: req.params.id,
       storeId,
       change: parseFloat(quantity),

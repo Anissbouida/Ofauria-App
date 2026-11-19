@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { uuid, optUuid, optDate, dateLike, optText, optNumber } from './common.validator.js';
+import { uuid, optUuid, optDate, dateLike, optText, optNumber, optNonNegQty } from './common.validator.js';
 
 /**
  * Plan pilote — étape 2, lot achats / réceptions / réapprovisionnement (G0-07 ciblé).
@@ -15,6 +15,12 @@ const num = (label: string) => z.coerce.number({ invalid_type_error: `${label} i
 /** Nombre fini ou null ; chaîne vide = null. */
 const nullableNum = (label: string) =>
   z.preprocess(v => (v === '' ? null : v), z.union([z.null(), z.coerce.number({ invalid_type_error: `${label} invalide` }).finite(`${label} invalide`)]).optional());
+/** Quantité ≥ 0, requise (règle pilote 2026-11 : un négatif est refusé, plus ignoré ni reporté). */
+const nonNegNum = (label: string) => num(label).min(0, `${label} négative : saisissez une quantité positive ou 0`);
+/** Prix ≥ 0 ou null (règle pilote 2026-11 : 0 = gratuité admise, négatif refusé). */
+const nullablePrice = (label: string) =>
+  z.preprocess(v => (v === '' ? null : v), z.union([z.null(), z.coerce.number({ invalid_type_error: `${label} invalide` }).finite(`${label} invalide`)
+    .min(0, `${label} négatif : un prix d'achat ne peut pas être inférieur à 0`)]).optional());
 /** Identifiant facultatif qui garde null (le contrôleur distingue null et absent, ou fait `?? null`). */
 const nullableUuid = z.preprocess(v => (v === '' ? null : v), uuid.nullable().optional());
 /** Date facultative, null conservé (null = effacer la date). */
@@ -30,12 +36,12 @@ export const sendPurchaseOrderSchema = z.preprocess(v => v ?? {}, z.object({
 
 /* ─── Bon de commande : confirmation de livraison (réception) ─────────────── */
 // controller.confirmDelivery → repository.confirmDelivery → receptionVoucherRepository.create.
-// Une ligne à quantité 0 (ou moins) est ignorée par le dépôt (filtre > 0) : aucune borne ici.
-// unitPrice absent/null = prix du BC. Lot, DLC, fabrication : chaîne vide = absent (`|| null`).
+// Règles pilote 2026-11 : une ligne à quantité 0 reste ignorée par le dépôt (filtre > 0), une
+// quantité négative est refusée (400) ; prix négatif refusé, 0 admis. unitPrice absent/null = prix du BC. Lot, DLC, fabrication : chaîne vide = absent (`|| null`).
 const deliveryLine = z.object({
   itemId: uuid,
-  quantityDelivered: num('Quantité livrée'),
-  unitPrice: nullableNum('Prix unitaire'),
+  quantityDelivered: nonNegNum('Quantité livrée'),
+  unitPrice: nullablePrice('Prix unitaire'),
   supplierLotNumber: z.string().max(200).nullish(),
   expirationDate: optDate,
   manufacturedDate: optDate,
@@ -44,9 +50,11 @@ const deliveryLine = z.object({
   netWeight: nullableNum('Poids net'),
 }).passthrough();
 // Frais annexes : le contrôleur filtre lui-même (libellé non vide, montant fini ≠ 0, Number(amount)).
+// Règle pilote 2026-11 : un montant négatif est refusé (un avoir passe par une facture d'avoir).
 const extraFee = z.object({
   label: z.string().max(300).nullish(),
-  amount: z.union([z.number(), z.string()]).nullish(),
+  amount: z.union([z.number(), z.string()]).nullish()
+    .refine(v => v == null || v === '' || !(Number(v) < 0), 'Frais annexe négatif : un avoir fournisseur passe par une facture d\'avoir'),
   categoryId: nullableUuid,
 }).passthrough();
 export const confirmDeliverySchema = z.object({
@@ -62,7 +70,7 @@ export const confirmDeliverySchema = z.object({
 // repository.updateItemPrices : UPDATE unit_price = $1 par ligne (itemId). Le contrôleur répond
 // « Articles avec prix requis » si la liste est vide.
 export const updatePoPricesSchema = z.object({
-  items: z.array(z.object({ itemId: uuid, unitPrice: nullableNum('Prix unitaire') }).passthrough()).max(1000).optional(),
+  items: z.array(z.object({ itemId: uuid, unitPrice: nullablePrice('Prix unitaire') }).passthrough()).max(1000).optional(),
 }).passthrough();
 
 /* ─── Bon de commande : en-tête (PUT /:id) ────────────────────────────────── */
@@ -76,6 +84,7 @@ export const updatePoHeaderSchema = z.object({
 /* ─── Bon de commande : remplacement des lignes (PUT /:id/items) ──────────── */
 // controller.replaceItems : refuse lui-même une ligne sans article (ou désignation + catégorie)
 // ou à quantité ≤ 0 ; prix vide/null = sans prix. quantityDelivered absent = inchangé.
+// Règles pilote 2026-11 : quantityDelivered < 0 et prix < 0 refusés (400).
 const replaceLine = z.object({
   id: optUuid,
   ingredientId: nullableUuid,
@@ -85,8 +94,8 @@ const replaceLine = z.object({
   categoryId: nullableUuid,
   unit: z.string().max(20).nullish(),
   quantityOrdered: num('Quantité commandée'),
-  quantityDelivered: optNumber,
-  unitPrice: nullableNum('Prix unitaire'),
+  quantityDelivered: optNonNegQty,
+  unitPrice: nullablePrice('Prix unitaire'),
 }).passthrough();
 export const replacePoItemsSchema = z.object({
   // Le contrôleur répond « Champ "items" requis (tableau) » s'il manque.
@@ -94,14 +103,15 @@ export const replacePoItemsSchema = z.object({
 }).passthrough();
 
 /* ─── Bon de réception direct (POST /reception-vouchers) ──────────────────── */
-// controller.create → receptionVoucherRepository.create : lignes à quantité ≤ 0 ignorées.
+// controller.create → receptionVoucherRepository.create : lignes à quantité 0 ignorées ; règles
+// pilote 2026-11 : quantité négative et prix négatif refusés (400).
 // Le contrôleur répond « Bon de commande et articles requis » si l'un manque.
 const receptionLine = z.object({
   poItemId: uuid,
   ingredientId: nullableUuid,
   packagingId: nullableUuid,
-  quantityReceived: num('Quantité reçue'),
-  unitPrice: nullableNum('Prix unitaire'),
+  quantityReceived: nonNegNum('Quantité reçue'),
+  unitPrice: nullablePrice('Prix unitaire'),
   notes: z.string().max(2000).nullish(),
   supplierLotNumber: z.string().max(200).nullish(),
   expirationDate: optDate,

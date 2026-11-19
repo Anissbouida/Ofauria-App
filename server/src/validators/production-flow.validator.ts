@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { optNumber } from './common.validator.js';
 import {
   generateBonSchema, regenerateBonSchema, updateLigneSchema, weighLignesSchema, markReadySchema,
   chefRejectSchema, cancelBonSchema, transferLineSchema,
@@ -74,12 +73,19 @@ export const assignEtapeSchema = z.object({
 }).passthrough();
 
 // production.controller.updateSettings : num() = Number(v), vide / null = inchangé ; bool() =
-// Boolean(v). Aucune borne dans le code (pourcentages libres) : seuls les types sont repris.
+// Boolean(v). Règle pilote 2026-11 n° 13 : charges fixes et surproduction entre 0 et 100 %,
+// marge entre 0 et 1000 %. ATTENTION : chargesFixesPct est une FRACTION (0,40 = 40 %, colonne
+// NUMERIC(5,4), l'écran divise par 100) : sa borne est donc 0..1 ; les deux autres sont en %.
+const settingPct = (label: string, max: number, range = `entre 0 et ${max}`) => z.preprocess(v => (v === '' || v === null ? undefined : v),
+  z.coerce.number({ invalid_type_error: `${label} invalide` }).finite(`${label} invalide`)
+    .min(0, `${label} : valeur ${range}`).max(max, `${label} : valeur ${range}`).optional());
 const settingFlag = z.boolean({ invalid_type_error: 'Valeur oui / non attendue' }).nullish();
 export const productionSettingsSchema = z.object({
-  chargesFixesPct: optNumber,
-  overproductionPct: optNumber,
-  markupPercent: optNumber,
+  chargesFixesPct: settingPct('Charges fixes', 1, 'entre 0 et 100 %'),
+  overproductionPct: settingPct('Surproduction (%)', 100),
+  // Décision : 0..1000 % ; la colonne production_markup_percent est DECIMAL(5,2) (mig 142), d'où
+  // 999,99 au plus (1000 ferait échouer l'écriture en 500).
+  markupPercent: settingPct('Marge (%)', 999.99, 'entre 0 et 999,99'),
   stepsEnabled: settingFlag,
   stepsBlocking: settingFlag,
   yieldEnabled: settingFlag,
@@ -115,8 +121,9 @@ export const receiveProductionTransferSchema = z.object({
   items: z.array(z.object({
     itemId: z.string().uuid('Ligne de transfert invalide'),
     // Le client envoie un nombre, ou la quantité transférée telle que lue en base (numeric = texte).
-    // Aucun plancher dans le code (0 = rien reçu ; négatif non refusé) : seul le type est repris.
-    qtyReceived: z.union([z.null(), z.coerce.number({ invalid_type_error: 'Quantité reçue invalide' }).finite('Quantité reçue invalide')]),
+    // 0 = rien reçu (écart tracé) ; règle pilote 2026-11 n° 7 : un négatif est refusé.
+    qtyReceived: z.union([z.null(), z.coerce.number({ invalid_type_error: 'Quantité reçue invalide' }).finite('Quantité reçue invalide')
+      .min(0, 'Quantité reçue négative : saisissez 0 si rien n\'a été reçu')]),
     notes: z.string().max(2000).nullish(),
   }).passthrough()).max(1000).optional(),
 }).passthrough();

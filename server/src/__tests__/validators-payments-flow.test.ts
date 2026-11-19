@@ -39,7 +39,8 @@ describe('Schémas paiements et rapprochement (plan pilote, étape 2)', () => {
 
   it('factures : litiges, créances douteuses, échéancier, annulation', () => {
     ok(S.openDisputeSchema, { reason: 'Livraison incomplète', disputedAmount: 120 });
-    ok(S.openDisputeSchema, { reason: 'x', disputedAmount: null });
+    // Règle pilote 2026-11 n° 10 : montant contesté requis et > 0 (null = champ vide, refusé).
+    ko(S.openDisputeSchema, { reason: 'x', disputedAmount: null });
     ko(S.openDisputeSchema, { reason: 'x', disputedAmount: 'trop' });
     ok(S.resolveDisputeSchema, { resolution: 'Avoir émis', creditNoteId: undefined });
     ok(S.resolveDisputeSchema, { resolution: 'Avoir émis', creditNoteId: ID });

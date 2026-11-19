@@ -8,6 +8,7 @@ import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/C
 import { notify } from '../../components/ui/InlineNotification';
 import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { currencySymbol } from '../../utils/money';
+import { apiErrorMessage } from '../../api/errors';
 
 /** Situation d'un consommable (exclusive) : mêmes cartes que le stock des ingrédients. */
 const PKG_SITUATIONS: StageDef[] = [
@@ -470,7 +471,8 @@ function StockAdjustModal({ item, onClose, onSaved }: { item: PackagingItem; onC
       notify.success('Mouvement enregistre');
       onSaved();
     },
-    onError: () => notify.error('Erreur'),
+    // Stock insuffisant (diminution > disponible) : message du serveur affiché tel quel.
+    onError: (e: unknown) => notify.error(apiErrorMessage(e, 'Erreur')),
   });
 
   return (

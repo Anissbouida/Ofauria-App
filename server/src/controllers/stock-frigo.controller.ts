@@ -58,7 +58,7 @@ export const stockFrigoController = {
     const data = await stockFrigoRepository.addSurplus({
       ...parsed.data,
       storeId,
-      performedBy: (req as any).user.id,
+      performedBy: (req as any).user.userId,
     });
     res.status(201).json({ data });
   },
@@ -70,7 +70,7 @@ export const stockFrigoController = {
     if (!storeId) return res.status(400).json({ error: 'storeId requis' });
     const result = await stockFrigoRepository.consumeFEFO(
       parsed.data.productId, storeId, parsed.data.quantity,
-      (req as any).user.id, parsed.data.referenceId, parsed.data.referenceType
+      (req as any).user.userId, parsed.data.referenceId, parsed.data.referenceType
     );
     res.json({ data: result });
   },
@@ -79,7 +79,7 @@ export const stockFrigoController = {
     const id = req.params.id as string;
     const parsed = recordLossSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join(', ') });
-    await stockFrigoRepository.recordLoss(id, parsed.data.quantity, parsed.data.type, (req as any).user.id, parsed.data.notes);
+    await stockFrigoRepository.recordLoss(id, parsed.data.quantity, parsed.data.type, (req as any).user.userId, parsed.data.notes);
     res.json({ message: 'Perte enregistree' });
   },
 
@@ -87,7 +87,7 @@ export const stockFrigoController = {
     const id = req.params.id as string;
     const parsed = adjustSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join(', ') });
-    await stockFrigoRepository.adjust(id, parsed.data.quantity, (req as any).user.id, parsed.data.notes);
+    await stockFrigoRepository.adjust(id, parsed.data.quantity, (req as any).user.userId, parsed.data.notes);
     res.json({ message: 'Quantite ajustee' });
   },
 

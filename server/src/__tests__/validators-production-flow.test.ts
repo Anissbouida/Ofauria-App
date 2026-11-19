@@ -98,7 +98,8 @@ describe('Schémas production (plan pilote, étape 2)', () => {
   });
 
   it('production : paramètres, ateliers, calcul des besoins, réception de transfert', () => {
-    ok(S.productionSettingsSchema, { chargesFixesPct: 15, overproductionPct: '5', markupPercent: 30, stepsEnabled: true, costEnabled: false });
+    // chargesFixesPct est une fraction (0,15 = 15 %), bornée 0..1 (règle pilote 2026-11 n° 13).
+    ok(S.productionSettingsSchema, { chargesFixesPct: 0.15, overproductionPct: '5', markupPercent: 30, stepsEnabled: true, costEnabled: false });
     ok(S.productionSettingsSchema, { chargesFixesPct: '' });
     ko(S.productionSettingsSchema, { markupPercent: 'trente' });
 

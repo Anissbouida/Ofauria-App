@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { openingCheckSchema, openingCheckValidateSchema } from '../validators/stock-flow.validator.js';
+import { openingCheckRulesSchema } from '../validators/stock-rules.validator.js';
 
 const router = Router();
 
@@ -19,6 +20,7 @@ router.post(
   authenticate,
   can('pos.inventory_checks.opening'),
   validate(openingCheckSchema),
+  validate(openingCheckRulesSchema),
   openingInventoryCheckController.create
 );
 

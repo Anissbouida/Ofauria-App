@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { capitalizeFirst } from '../utils/text.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
 
@@ -28,6 +28,17 @@ export interface PackagingItem {
   is_active: boolean;
   notes: string | null;
 }
+
+/** Mouvement de stock d'emballage (adjustStock). */
+export type PackagingAdjustInput = {
+  packagingId: string; storeId: string;
+  change: number;  // positif = reception, negatif = consommation
+  type: 'reception' | 'consumption' | 'adjustment' | 'waste' | 'restock';
+  referenceId?: string | null; referenceType?: string | null;
+  unitCost?: number | null;
+  note?: string;
+  performedBy?: string;
+};
 
 export const packagingItemRepository = {
 
@@ -141,18 +152,32 @@ export const packagingItemRepository = {
     return parseFloat(result.rows[0]?.stock_quantity ?? 0);
   },
 
+  /**
+   * Ajustement MANUEL (POST /packaging-items/:id/adjust-stock) — règle pilote 2026-11 n° 6 :
+   * une diminution supérieure au stock disponible est refusée (400, « Stock insuffisant : X
+   * disponibles ») au lieu d'être ramenée silencieusement à 0. La ligne de stock est verrouillée
+   * pendant la vérification et l'écriture (même transaction).
+   */
+  async adjustStockManual(data: PackagingAdjustInput): Promise<number> {
+    return withTransaction(async () => {
+      if (data.change < 0) {
+        const r = await db.query(
+          `SELECT stock_quantity FROM packaging_store_stock WHERE packaging_id = $1 AND store_id = $2 FOR UPDATE`,
+          [data.packagingId, data.storeId]);
+        const available = parseFloat(r.rows[0]?.stock_quantity ?? 0);
+        if (-data.change > available + 1e-9) {
+          const shown = Number.isInteger(available) ? String(available) : available.toFixed(3).replace(/\.?0+$/, '').replace('.', ',');
+          throw Object.assign(new Error(`Stock insuffisant : ${shown} disponibles`), { statusCode: 400 });
+        }
+      }
+      return packagingItemRepository.adjustStock(db, data);
+    });
+  },
+
   /** Ajuste le stock + cree une transaction. Use case generique. */
   async adjustStock(
     client: PoolClient | typeof db,
-    data: {
-      packagingId: string; storeId: string;
-      change: number;  // positif = reception, negatif = consommation
-      type: 'reception' | 'consumption' | 'adjustment' | 'waste' | 'restock';
-      referenceId?: string | null; referenceType?: string | null;
-      unitCost?: number | null;
-      note?: string;
-      performedBy?: string;
-    }
+    data: PackagingAdjustInput
   ): Promise<number> {
     // Upsert + decrement avec lock implicite (ON CONFLICT pour atomique)
     const result = await client.query(
