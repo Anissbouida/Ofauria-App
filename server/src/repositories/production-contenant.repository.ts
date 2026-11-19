@@ -1,5 +1,9 @@
 import { policyNumber } from '../services/policies.js';
 import { db } from '../config/database.js';
+import { pickQtyUnit, unitCodeSql, unitIdSql, type WeightUnit } from '../utils/qty-unit.js';
+
+// M3-04 : code de l'unité saisie du poids, à côté de poids_qty.
+const POIDS_UNIT = `${unitCodeSql('poids_unit_id')} AS poids_unit`;
 
 export const productionContenantRepository = {
   // ───────── CONTENANTS CRUD ─────────
@@ -7,14 +11,14 @@ export const productionContenantRepository = {
   async findAllContenants(includeInactive = false) {
     const where = includeInactive ? '' : 'WHERE is_active = true';
     const result = await db.query(
-      `SELECT *, quantite_nette_cible FROM production_contenants ${where} ORDER BY type_production, nom`
+      `SELECT *, quantite_nette_cible, ${POIDS_UNIT} FROM production_contenants ${where} ORDER BY type_production, nom`
     );
     return result.rows;
   },
 
   async findContenantById(id: string) {
     const result = await db.query(
-      `SELECT *, quantite_nette_cible FROM production_contenants WHERE id = $1`,
+      `SELECT *, quantite_nette_cible, ${POIDS_UNIT} FROM production_contenants WHERE id = $1`,
       [id]
     );
     return result.rows[0] || null;
@@ -27,6 +31,8 @@ export const productionContenantRepository = {
     quantite_theorique: number;
     pertes_fixes: number;
     poids_kg?: number | null;
+    poids_qty?: number | null;
+    poids_unit?: WeightUnit;
     seuil_rendement_defaut?: number;
     etapes_defaut: unknown[];
     categories_pertes: string[];
@@ -37,18 +43,20 @@ export const productionContenantRepository = {
     type_decoupe?: string | null;
     nb_pieces_decoupe?: number | null;
   }) {
+    // Quantité + unité saisie ; poids_kg est tenu par le déclencheur (mig 557).
+    const poids = pickQtyUnit(data.poids_qty, data.poids_unit, data.poids_kg, 'kg') ?? { qty: null, unit: 'kg' as WeightUnit };
     const result = await db.query(
       `INSERT INTO production_contenants
-        (nom, type_production, unite_lancement, quantite_theorique, pertes_fixes, poids_kg, seuil_rendement_defaut, etapes_defaut, categories_pertes,
-         longueur_cm, largeur_cm, profondeur_cm, diametre_cm, type_decoupe, nb_pieces_decoupe)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-       RETURNING *, quantite_nette_cible`,
+        (nom, type_production, unite_lancement, quantite_theorique, pertes_fixes, poids_qty, seuil_rendement_defaut, etapes_defaut, categories_pertes,
+         longueur_cm, largeur_cm, profondeur_cm, diametre_cm, type_decoupe, nb_pieces_decoupe, poids_unit_id)
+       VALUES ($1, $2, $3, $4, $5, $6::numeric, $7, $8, $9, $10, $11, $12, $13, $14, $15, CASE WHEN $6::numeric IS NULL THEN NULL ELSE ${unitIdSql('$16')} END)
+       RETURNING *, quantite_nette_cible, ${POIDS_UNIT}`,
       [data.nom, data.type_production, data.unite_lancement, data.quantite_theorique,
-       data.pertes_fixes, data.poids_kg ?? null,
+       data.pertes_fixes, poids.qty,
        data.seuil_rendement_defaut ?? await policyNumber('production.yield_target', 'pct'),
        JSON.stringify(data.etapes_defaut), JSON.stringify(data.categories_pertes),
        data.longueur_cm ?? null, data.largeur_cm ?? null, data.profondeur_cm ?? null,
-       data.diametre_cm ?? null, data.type_decoupe ?? null, data.nb_pieces_decoupe ?? null]
+       data.diametre_cm ?? null, data.type_decoupe ?? null, data.nb_pieces_decoupe ?? null, poids.unit]
     );
     return result.rows[0];
   },
@@ -60,7 +68,6 @@ export const productionContenantRepository = {
       unite_lancement: 'unite_lancement',
       quantite_theorique: 'quantite_theorique',
       pertes_fixes: 'pertes_fixes',
-      poids_kg: 'poids_kg',
       seuil_rendement_defaut: 'seuil_rendement_defaut',
       etapes_defaut: 'etapes_defaut',
       categories_pertes: 'categories_pertes',
@@ -88,13 +95,24 @@ export const productionContenantRepository = {
       }
     }
 
+    // M3-04 : poids écrit en quantité + unité saisie (poids_kg suit par déclencheur).
+    const poids = pickQtyUnit(data.poids_qty as number | null | undefined, data.poids_unit as WeightUnit | undefined,
+      data.poids_kg as number | null | undefined, 'kg');
+    if (poids) {
+      const qtyParam = i++;
+      const unitParam = i++;
+      fields.push(`poids_qty = $${qtyParam}::numeric`);
+      fields.push(`poids_unit_id = CASE WHEN $${qtyParam}::numeric IS NULL THEN NULL ELSE ${unitIdSql(`$${unitParam}`)} END`);
+      values.push(poids.qty, poids.unit);
+    }
+
     if (fields.length === 0) return this.findContenantById(id);
 
     fields.push(`updated_at = NOW()`);
     values.push(id);
 
     const result = await db.query(
-      `UPDATE production_contenants SET ${fields.join(', ')} WHERE id = $${i} RETURNING *, quantite_nette_cible`,
+      `UPDATE production_contenants SET ${fields.join(', ')} WHERE id = $${i} RETURNING *, quantite_nette_cible, ${POIDS_UNIT}`,
       values
     );
     return result.rows[0];

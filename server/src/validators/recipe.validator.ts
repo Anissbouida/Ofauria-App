@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { weightUnitSchema } from '../utils/qty-unit.js';
 
 /** Type d'étape : code du référentiel production_step_types (mig 513, éditable dans
  *  Paramètres › Référentiels). La forme est vérifiée ici, l'existence du code par
@@ -60,6 +61,9 @@ export const createRecipeSchema = z.object({
   // Poids unitaire d'une piece, en kg. Requis quand yield_unit != products.sale_unit
   // (la validation finale est faite dans le repository via ensureYieldUnitCompatible).
   pieceWeightKg: z.number().positive('Le poids unitaire doit être positif').nullable().optional(),
+  // M3-04 : le même poids en quantité + unité saisie (g ou kg), prioritaire sur pieceWeightKg.
+  pieceWeightQty: z.number().positive('Le poids unitaire doit être positif').nullable().optional(),
+  pieceWeightUnit: weightUnitSchema.optional(),
   // Parametres de pate (mig 342) : T° de pate en fin de petrissage, hydratation en % boulanger.
   temperaturePateCibleC: z.number().min(-10).max(60, 'Température de pâte invalide').nullable().optional(),
   hydratationPct: z.number().min(0).max(200, 'Hydratation invalide (0-200 %)').nullable().optional(),

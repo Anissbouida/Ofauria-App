@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { weightUnitSchema } from '../utils/qty-unit.js';
 
 // Un composant de nomenclature pointe vers UNE recette de base OU UN ingrédient (exclusif).
 const componentSchema = z
@@ -26,6 +27,11 @@ export const replaceComponentsSchema = z.object({
   nbParts: z.number().int().positive().nullable().optional(),
   poidsCruG: z.number().nonnegative().nullable().optional(),
   poidsCuitG: z.number().nonnegative().nullable().optional(),
+  // M3-04 : poids cru / cuit en quantité + unité saisie (g ou kg), prioritaires.
+  poidsCruQty: z.number().nonnegative().nullable().optional(),
+  poidsCruUnit: weightUnitSchema.optional(),
+  poidsCuitQty: z.number().nonnegative().nullable().optional(),
+  poidsCuitUnit: weightUnitSchema.optional(),
 });
 
 // PATCH leviers financiers saisissables (frais indirects + multiplicateur de vente).

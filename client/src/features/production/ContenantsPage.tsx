@@ -6,6 +6,8 @@ import { contenantsApi, type BulkResult } from '../../api/contenants.api';
 import { recipesApi } from '../../api/recipes.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
+import WeightQtyInput from '../../components/ui/WeightQtyInput';
+import { readWeight, type WeightUnit } from '../../utils/weight-unit';
 import {
   Plus, Pencil, Trash2, Search, X, Check, ChevronDown, ChevronUp,
   Layers, Package, Weight, Ban,
@@ -26,6 +28,9 @@ interface Contenant {
   quantite_theorique: string;
   pertes_fixes: string;
   poids_kg: string | null;
+  // M3-04 : poids dans l'unité saisie (g ou kg).
+  poids_qty?: string | null;
+  poids_unit?: string | null;
   quantite_nette_cible: string;
   seuil_rendement_defaut: string;
   etapes_defaut: unknown[];
@@ -593,6 +598,9 @@ function ContenantForm({ contenant, onClose, onSaved }: {
   const [diametreCm, setDiametreCm] = useState(contenant?.diametre_cm || '');
   const [typeDecoupe, setTypeDecoupe] = useState(contenant?.type_decoupe || '');
   const [nbPiecesDecoupe, setNbPiecesDecoupe] = useState(contenant?.nb_pieces_decoupe?.toString() || '');
+  // M3-04 : poids du format en quantité + unité saisie (420 g reste 420 g).
+  const [poids, setPoids] = useState<{ qty: number; unit: WeightUnit }>(
+    () => readWeight(contenant?.poids_qty, contenant?.poids_unit, contenant?.poids_kg, 'kg') ?? { qty: 0, unit: 'kg' });
 
   const mode = getModeCalcul(uniteLancement);
   const modeLabels = MODE_LABELS[mode];
@@ -631,6 +639,8 @@ function ContenantForm({ contenant, onClose, onSaved }: {
       diametre_cm: diametreCm ? parseFloat(diametreCm) : null,
       type_decoupe: typeDecoupe || null,
       nb_pieces_decoupe: nbPiecesDecoupe ? parseInt(nbPiecesDecoupe, 10) : null,
+      poids_qty: poids.qty > 0 ? poids.qty : null,
+      poids_unit: poids.unit,
     });
   };
 
@@ -690,7 +700,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
           </div>
 
           {/* Row 2: Quantities */}
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-5 gap-3">
             <div>
               <label className={LABEL}>{modeLabels.quantiteTheorique} *</label>
               <input type="number" step="0.01" min="0" required
@@ -711,6 +721,10 @@ function ContenantForm({ contenant, onClose, onSaved }: {
                 {netCible.toFixed(2)}
                 <span className="text-[11px] font-normal ml-1 opacity-70">{modeLabels.uniteRendement}</span>
               </div>
+            </div>
+            <div>
+              <label className={LABEL}>Poids du format</label>
+              <WeightQtyInput size="sm" value={poids} onChange={v => setPoids(p => ({ ...p, ...v }))} />
             </div>
             <div>
               <label className={LABEL}>Seuil rendement %</label>

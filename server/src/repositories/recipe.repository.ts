@@ -1,6 +1,7 @@
 import { policyNumber } from '../services/policies.js';
 import { db, withTransaction } from '../config/database.js';
 import { snapshotRecipeVersion } from './recipe-version.helper.js';
+import { convertWeight, pickQtyUnit, unitIdSql, type WeightUnit } from '../utils/qty-unit.js';
 import {
   yieldInSellingUnit,
   requiresPieceWeight,
@@ -48,6 +49,7 @@ export const recipeRepository = {
     const result = await db.query(
       `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.piece_weight_qty, (SELECT code FROM ref_entries WHERE id = r.piece_weight_unit_id) AS piece_weight_unit,
               r.temperature_pate_cible_c, r.hydratation_pct,
               r.category_id, r.mode_cout, r.compo_par_piece, r.perte_standard_pct,
               rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
@@ -122,6 +124,7 @@ export const recipeRepository = {
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.piece_weight_qty, (SELECT code FROM ref_entries WHERE id = r.piece_weight_unit_id) AS piece_weight_unit,
               r.temperature_pate_cible_c, r.hydratation_pct,
               r.category_id,
               rc.code AS category_code, rc.label AS category_label, rc.color AS category_color,
@@ -290,6 +293,7 @@ export const recipeRepository = {
     const recipeResult = await db.query(
       `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
+              r.piece_weight_qty, (SELECT code FROM ref_entries WHERE id = r.piece_weight_unit_id) AS piece_weight_unit,
               r.temperature_pate_cible_c, r.hydratation_pct,
               r.created_at, r.updated_at,
               vtc.total_cost,
@@ -393,6 +397,8 @@ export const recipeRepository = {
   async create(data: {
     productId?: string; name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string;
     pieceWeightKg?: number | null; isBase?: boolean;
+    /** M3-04 : poids de pièce dans l'unité saisie, prioritaire sur pieceWeightKg. */
+    pieceWeightQty?: number | null; pieceWeightUnit?: WeightUnit;
     temperaturePateCibleC?: number | null; hydratationPct?: number | null;
     categoryId?: string | null;
     // Auteur de la creation (audit BOM : recipe_formats.updated_by).
@@ -409,6 +415,9 @@ export const recipeRepository = {
     packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
     formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number; prixVenteUnitaireOverride?: number | null; marginMultiplierOverride?: number | null }[];
   }) {
+    // M3-04 : le poids de pièce s'écrit en quantité + unité saisie ; le kg sert aux calculs.
+    const pieceWeight = pickQtyUnit(data.pieceWeightQty, data.pieceWeightUnit, data.pieceWeightKg, 'kg');
+    data = { ...data, pieceWeightKg: pieceWeight ? convertWeight(pieceWeight.qty, pieceWeight.unit, 'kg') : data.pieceWeightKg };
     return withTransaction(async () => {
       const client = await db.getClient();
 
@@ -473,15 +482,16 @@ export const recipeRepository = {
       const coutEnergie = data.coutEnergieFournee ?? 0;
       const tauxStruct = data.tauxFraisStructurePct ?? parseFloat(csDefaults.taux_frais_structure_defaut_pct || '0');
       const recipeResult = await client.query(
-        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, piece_weight_kg, total_cost, is_base, contenant_id, etapes, margin_multiplier,
+        `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, piece_weight_qty, total_cost, is_base, contenant_id, etapes, margin_multiplier,
                               taux_main_oeuvre_dh_h, cout_energie_fournee, taux_frais_structure_pct, category_id,
-                              temperature_pate_cible_c, hydratation_pct, compo_par_piece)
-         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *`,
+                              temperature_pate_cible_c, hydratation_pct, compo_par_piece, piece_weight_unit_id)
+         VALUES ($1, $2, $3, $4, $5, $6::numeric, 0, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+                 CASE WHEN $6::numeric IS NULL THEN NULL ELSE ${unitIdSql('$18')} END) RETURNING *`,
         [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit',
-         data.pieceWeightKg ?? null,
+         pieceWeight?.qty ?? null,
          data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
          tauxMo, coutEnergie, tauxStruct, data.categoryId ?? null,
-         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null, data.compoParPiece ?? false]
+         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null, data.compoParPiece ?? false, pieceWeight?.unit ?? 'kg']
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -676,6 +686,8 @@ export const recipeRepository = {
   async update(id: string, data: {
     name: string; instructions?: string; yieldQuantity?: number; yieldUnit?: string;
     pieceWeightKg?: number | null; isBase?: boolean;
+    /** M3-04 : poids de pièce dans l'unité saisie, prioritaire sur pieceWeightKg. */
+    pieceWeightQty?: number | null; pieceWeightUnit?: WeightUnit;
     temperaturePateCibleC?: number | null; hydratationPct?: number | null;
     categoryId?: string | null;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
@@ -687,6 +699,9 @@ export const recipeRepository = {
     formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number; prixVenteUnitaireOverride?: number | null; marginMultiplierOverride?: number | null }[];
     changedBy?: string; changeNote?: string;
   }) {
+    // M3-04 : voir create().
+    const pieceWeight = pickQtyUnit(data.pieceWeightQty, data.pieceWeightUnit, data.pieceWeightKg, 'kg');
+    data = { ...data, pieceWeightKg: pieceWeight ? convertWeight(pieceWeight.qty, pieceWeight.unit, 'kg') : data.pieceWeightKg };
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -757,7 +772,8 @@ export const recipeRepository = {
            instructions = COALESCE($2, instructions),
            yield_quantity = COALESCE($3, yield_quantity),
            yield_unit = COALESCE($4, yield_unit),
-           piece_weight_kg = COALESCE($5, piece_weight_kg),
+           piece_weight_unit_id = CASE WHEN $5::numeric IS NULL THEN piece_weight_unit_id ELSE ${unitIdSql('$18')} END,
+           piece_weight_qty = COALESCE($5::numeric, piece_weight_qty),
            total_cost = 0,
            is_base = COALESCE($6, is_base),
            contenant_id = COALESCE($7, contenant_id),
@@ -772,12 +788,12 @@ export const recipeRepository = {
            hydratation_pct = COALESCE($17, hydratation_pct),
            updated_at = NOW()
          WHERE id = $15`,
-        [data.name ?? null, data.instructions ?? null, data.yieldQuantity ?? null, data.yieldUnit ?? null, data.pieceWeightKg ?? null,
+        [data.name ?? null, data.instructions ?? null, data.yieldQuantity ?? null, data.yieldUnit ?? null, pieceWeight?.qty ?? null,
          data.isBase ?? null, data.contenantId ?? null,
          data.etapes === undefined ? null : JSON.stringify(data.etapes), margin,
          data.tauxMainOeuvreDhH ?? null, data.coutEnergieFournee ?? null, data.tauxFraisStructurePct ?? null,
          data.categoryId ?? null, data.perteStandardPct ?? null, id,
-         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null]
+         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null, pieceWeight?.unit ?? 'kg']
       );
 
       // Re-insert ingredients — UNIQUEMENT si fournis (édition unifiée : le formulaire

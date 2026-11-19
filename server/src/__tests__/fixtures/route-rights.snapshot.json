@@ -1330,6 +1330,10 @@
   "admin",
   "manager"
  ],
+ "GET /payment-runs/transfer-format/:treasuryAccountId": [
+  "admin",
+  "manager"
+ ],
  "GET /payment-schedules": [
   "admin",
   "manager"
@@ -1434,6 +1438,7 @@
  ],
  "GET /product-losses": null,
  "GET /product-losses/stats": null,
+ "GET /product-lots/:id/locations": null,
  "GET /product-lots/expired-active": null,
  "GET /product-lots/vitrine-reconciliation": [
   "admin",
@@ -2257,6 +2262,10 @@
   "cashier",
   "manager",
   "saleswoman"
+ ],
+ "GET /sales/offline-abandoned": [
+  "admin",
+  "manager"
  ],
  "GET /sales/pos-rules": [
   "admin",
@@ -3525,6 +3534,15 @@
   "saleswoman",
   "viennoiserie"
  ],
+ "POST /product-lots/:id/move-location": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "POST /product-lots/:id/send-to-losses": [
   "admin",
   "manager"
@@ -4355,6 +4373,12 @@
   "admin",
   "manager"
  ],
+ "POST /sales/offline-abandoned": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
  "POST /sales/special": null,
  "POST /schedules": null,
  "POST /schedules/week": null,
@@ -4771,6 +4795,10 @@
  "PUT /params/:tableName/:id": null,
  "PUT /params/:tableName/:id/reactivate": null,
  "PUT /params/:tableName/reorder": null,
+ "PUT /payment-runs/transfer-format/:treasuryAccountId": [
+  "admin",
+  "manager"
+ ],
  "PUT /payments/:id": [
   "admin",
   "manager"

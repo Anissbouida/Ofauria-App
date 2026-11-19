@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { stepTypeCode } from './recipe.validator.js';
+import { weightUnitSchema } from '../utils/qty-unit.js';
 
 const etapeSchema = z.object({
   ordre: z.number().int().min(1),
@@ -30,6 +31,9 @@ export const createContenantSchema = z.object({
   quantite_theorique: z.number().positive('La quantite doit etre positive'),
   pertes_fixes: z.number().min(0).default(0),
   poids_kg: z.number().positive().nullable().optional(),
+  // M3-04 : poids en quantité + unité saisie (g ou kg), prioritaire sur poids_kg.
+  poids_qty: z.number().positive().nullable().optional(),
+  poids_unit: weightUnitSchema.optional(),
   // Absent : le dépôt applique la politique « Rendement cible » (M1-03), plus 90 en dur.
   seuil_rendement_defaut: z.number().min(0).max(100).optional(),
   etapes_defaut: z.array(etapeSchema).default([]),

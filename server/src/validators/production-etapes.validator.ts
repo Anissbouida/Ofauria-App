@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { weightUnitSchema } from '../utils/qty-unit.js';
 
 export const updateEtapeStatusSchema = z.object({
   status: z.enum(['in_progress', 'completed', 'skipped']),
@@ -51,4 +52,15 @@ export const recordRendementSchema = z.object({
   patons_nombre: z.number().int().min(0).nullable().optional(),
   patons_poids_unitaire_g: z.number().min(0).nullable().optional(),
   masse_cuite_kg: z.number().min(0).nullable().optional(),
+  // M3-04 : les mêmes pesées en quantité + unité saisie (g ou kg) ; prioritaires sur
+  // les champs _kg / _g ci-dessus, gardés pour les appels anciens.
+  masse_petrie_qty: z.number().min(0).nullable().optional(),
+  masse_petrie_unit: weightUnitSchema.optional(),
+  patons_poids_unitaire_qty: z.number().min(0).nullable().optional(),
+  patons_poids_unitaire_unit: weightUnitSchema.optional(),
+  masse_cuite_qty: z.number().min(0).nullable().optional(),
+  masse_cuite_unit: weightUnitSchema.optional(),
+  // M6-02 : emplacement de destination choisi ; absent = emplacement de code MAGASIN / FRIGO.
+  vers_magasin_location_id: z.string().uuid('Emplacement invalide').nullable().optional(),
+  vers_frigo_location_id: z.string().uuid('Emplacement invalide').nullable().optional(),
 });

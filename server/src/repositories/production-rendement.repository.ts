@@ -1,5 +1,6 @@
 import { policyNumber } from '../services/policies.js';
 import { db } from '../config/database.js';
+import { convertWeight, unitCodeSql, unitIdSql, type QtyUnit } from '../utils/qty-unit.js';
 
 // Freinte STANDARD (épic labo L3) : résolue depuis le format par défaut actif de
 // l'article (poids_cru_g → poids_cuit_g, mig 199), pour comparer à la freinte
@@ -21,6 +22,11 @@ const FREINTE_STD_JOIN = `
 const FREINTE_STD_EXPR = `CASE WHEN fmt.poids_cru_g > 0 AND fmt.poids_cuit_g IS NOT NULL
   THEN ROUND((fmt.poids_cru_g - fmt.poids_cuit_g) / fmt.poids_cru_g * 100, 2) END`;
 
+// M3-04 : codes des unités saisies des pesées (g ou kg), à côté des quantités.
+const UNIT_CODES = (a: string) => `${unitCodeSql(`${a}.masse_petrie_unit_id`)} AS masse_petrie_unit,
+  ${unitCodeSql(`${a}.patons_poids_unitaire_unit_id`)} AS patons_poids_unitaire_unit,
+  ${unitCodeSql(`${a}.masse_cuite_unit_id`)} AS masse_cuite_unit`;
+
 export const productionRendementRepository = {
 
   // ─── Record yield for a plan item ───
@@ -41,7 +47,16 @@ export const productionRendementRepository = {
     patonsNombre?: number | null;
     patonsPoidsUnitaireG?: number | null;
     masseCuiteKg?: number | null;
+    // M3-04 : pesées dans l'unité saisie, prioritaires sur les champs _kg / _g.
+    massePetrie?: QtyUnit;
+    patonsPoidsUnitaire?: QtyUnit;
+    masseCuite?: QtyUnit;
   }) {
+    // Quantité + unité écrites (l'unité saisie est conservée) ; les colonnes _kg / _g
+    // sont tenues par le déclencheur trg_qty_unit_sync (mig 557).
+    const petrieQU: QtyUnit = data.massePetrie ?? { qty: data.massePetrieKg ?? null, unit: 'kg' };
+    const patonQU: QtyUnit = data.patonsPoidsUnitaire ?? { qty: data.patonsPoidsUnitaireG ?? null, unit: 'g' };
+    const cuiteQU: QtyUnit = data.masseCuite ?? { qty: data.masseCuiteKg ?? null, unit: 'kg' };
     const pertesTotal = data.pertesDetail.reduce((sum, p) => sum + p.quantite, 0);
     const rendementReel = data.quantiteBrute > 0
       ? Math.round((data.quantiteNetteReelle / data.quantiteBrute) * 10000) / 100
@@ -49,8 +64,8 @@ export const productionRendementRepository = {
 
     // Freinte réelle (%) = (masse pétrie − masse cuite) / masse pétrie × 100,
     // seulement si les deux masses sont fournies et cohérentes.
-    const petrie = data.massePetrieKg ?? null;
-    const cuite = data.masseCuiteKg ?? null;
+    const petrie = convertWeight(petrieQU.qty, petrieQU.unit, 'kg');
+    const cuite = convertWeight(cuiteQU.qty, cuiteQU.unit, 'kg');
     const freinteReelle = (petrie != null && cuite != null && petrie > 0)
       ? Math.round(((petrie - cuite) / petrie) * 10000) / 100
       : null;
@@ -60,8 +75,11 @@ export const productionRendementRepository = {
        (plan_item_id, plan_id, quantite_brute, quantite_nette_cible, seuil_rendement,
         quantite_nette_reelle, rendement_reel, vers_magasin, vers_frigo,
         pertes_total, pertes_detail, recorded_by, notes,
-        masse_petrie_kg, patons_nombre, patons_poids_unitaire_g, masse_cuite_kg, freinte_reelle_pct)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        masse_petrie_qty, masse_petrie_unit_id, patons_nombre,
+        patons_poids_unitaire_qty, patons_poids_unitaire_unit_id,
+        masse_cuite_qty, masse_cuite_unit_id, freinte_reelle_pct)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+               $14::numeric, ${unitIdSql('$19')}, $15, $16::numeric, ${unitIdSql('$20')}, $17::numeric, ${unitIdSql('$21')}, $18)
        ON CONFLICT (plan_item_id)
        DO UPDATE SET
          quantite_brute = EXCLUDED.quantite_brute,
@@ -75,18 +93,22 @@ export const productionRendementRepository = {
          pertes_detail = EXCLUDED.pertes_detail,
          recorded_by = EXCLUDED.recorded_by,
          notes = EXCLUDED.notes,
-         masse_petrie_kg = EXCLUDED.masse_petrie_kg,
+         masse_petrie_qty = EXCLUDED.masse_petrie_qty,
+         masse_petrie_unit_id = EXCLUDED.masse_petrie_unit_id,
          patons_nombre = EXCLUDED.patons_nombre,
-         patons_poids_unitaire_g = EXCLUDED.patons_poids_unitaire_g,
-         masse_cuite_kg = EXCLUDED.masse_cuite_kg,
+         patons_poids_unitaire_qty = EXCLUDED.patons_poids_unitaire_qty,
+         patons_poids_unitaire_unit_id = EXCLUDED.patons_poids_unitaire_unit_id,
+         masse_cuite_qty = EXCLUDED.masse_cuite_qty,
+         masse_cuite_unit_id = EXCLUDED.masse_cuite_unit_id,
          freinte_reelle_pct = EXCLUDED.freinte_reelle_pct,
          updated_at = NOW()
-       RETURNING *`,
+       RETURNING *, ${UNIT_CODES('production_rendement')}`,
       [data.planItemId, data.planId, data.quantiteBrute, data.quantiteNetteCible || null,
        data.seuilRendement || null, data.quantiteNetteReelle, rendementReel,
        data.versMagasin, data.versFrigo, pertesTotal,
        JSON.stringify(data.pertesDetail), data.recordedBy, data.notes || null,
-       petrie, data.patonsNombre ?? null, data.patonsPoidsUnitaireG ?? null, cuite, freinteReelle]
+       petrieQU.qty, data.patonsNombre ?? null, patonQU.qty, cuiteQU.qty, freinteReelle,
+       petrieQU.unit, patonQU.unit, cuiteQU.unit]
     );
     return result.rows[0];
   },
@@ -94,7 +116,7 @@ export const productionRendementRepository = {
   // ─── Get rendement for a plan item ───
   async findByPlanItem(planItemId: string) {
     const result = await db.query(
-      `SELECT pr.*, u.first_name as recorded_by_name,
+      `SELECT pr.*, ${UNIT_CODES('pr')}, u.first_name as recorded_by_name,
               fmt.poids_cru_g, fmt.poids_cuit_g, fmt.freinte_par_etape,
               ${FREINTE_STD_EXPR} AS freinte_standard_pct
        FROM production_rendement pr
@@ -110,7 +132,7 @@ export const productionRendementRepository = {
   // ─── Get all rendements for a plan ───
   async findByPlan(planId: string) {
     const result = await db.query(
-      `SELECT pr.*,
+      `SELECT pr.*, ${UNIT_CODES('pr')},
               COALESCE(p.name, r.name) as product_name,
               ppi.planned_quantity, ppi.actual_quantity,
               pc.nom as contenant_nom,

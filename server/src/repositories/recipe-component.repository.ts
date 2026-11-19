@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { snapshotRecipeVersion } from './recipe-version.helper.js';
+import { pickQtyUnit, unitCodeSql, unitIdSql, type WeightUnit } from '../utils/qty-unit.js';
 
 export interface ComponentInput {
   role?: string | null;
@@ -18,6 +19,9 @@ export interface ReplacePayload {
   nbParts?: number | null;
   poidsCruG?: number | null;
   poidsCuitG?: number | null;
+  /** M3-04 : poids dans l'unité saisie, prioritaires sur poidsCruG / poidsCuitG. */
+  poidsCruQty?: number | null; poidsCruUnit?: WeightUnit;
+  poidsCuitQty?: number | null; poidsCuitUnit?: WeightUnit;
 }
 
 export interface FinanceInput {
@@ -136,6 +140,9 @@ export const recipeComponentRepository = {
       `SELECT f.id, f.recipe_id, f.contenant_id, f.nb_par_defaut, f.nb_parts,
               f.poids_cru_g, f.poids_cuit_g, f.cout_emballage_unitaire, f.is_default,
               f.densite_kg_l,
+              -- M3-04 : poids dans l'unité saisie.
+              f.poids_cru_qty, ${unitCodeSql('f.poids_cru_unit_id')} AS poids_cru_unit,
+              f.poids_cuit_qty, ${unitCodeSql('f.poids_cuit_unit_id')} AS poids_cuit_unit,
               pc.nom AS contenant_nom,
               r.name AS recipe_name, r.mode_cout, r.compo_par_piece,
               r.margin_multiplier, r.taux_main_oeuvre_dh_h, r.main_oeuvre_min,
@@ -282,17 +289,24 @@ export const recipeComponentRepository = {
         );
       }
 
-      // Champs format : rendement (nb_par_defaut), parts, poids cru/cuit.
+      // Champs format : rendement (nb_par_defaut), parts, poids cru/cuit. M3-04 : les poids
+      // s'écrivent en quantité + unité saisie (absent = inchangé) ; les colonnes _g suivent
+      // par déclencheur (mig 557).
+      const cru = pickQtyUnit(data.poidsCruQty, data.poidsCruUnit, data.poidsCruG, 'g');
+      const cuit = pickQtyUnit(data.poidsCuitQty, data.poidsCuitUnit, data.poidsCuitG, 'g');
       await client.query(
         `UPDATE recipe_formats
          SET nb_par_defaut = COALESCE($2, nb_par_defaut),
              nb_parts      = COALESCE($3, nb_parts),
-             poids_cru_g   = COALESCE($4, poids_cru_g),
-             poids_cuit_g  = COALESCE($5, poids_cuit_g),
+             poids_cru_unit_id  = CASE WHEN $4::numeric IS NULL THEN poids_cru_unit_id ELSE ${unitIdSql('$7')} END,
+             poids_cru_qty      = COALESCE($4::numeric, poids_cru_qty),
+             poids_cuit_unit_id = CASE WHEN $5::numeric IS NULL THEN poids_cuit_unit_id ELSE ${unitIdSql('$8')} END,
+             poids_cuit_qty     = COALESCE($5::numeric, poids_cuit_qty),
              updated_by    = COALESCE($6, updated_by),
              updated_at    = NOW()
          WHERE id = $1`,
-        [formatId, data.nbParDefaut ?? null, data.nbParts ?? null, data.poidsCruG ?? null, data.poidsCuitG ?? null, userId ?? null]
+        [formatId, data.nbParDefaut ?? null, data.nbParts ?? null, cru?.qty ?? null, cuit?.qty ?? null, userId ?? null,
+         cru?.unit ?? 'g', cuit?.unit ?? 'g']
       );
 
       // Le miroir recipe_components (lu par v_recipe_total_cost_v2) est désormais

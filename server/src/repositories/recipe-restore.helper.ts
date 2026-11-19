@@ -88,6 +88,13 @@ export async function restoreRecipeVersion(recipeId: string, versionNumber: numb
        r.temperature_pate_cible_c ?? null, r.hydratation_pct ?? null,
        JSON.stringify(snapshot.etapes ?? [])]
     );
+    // M3-04 : version récente = poids de pièce dans l'unité saisie (420 g reste 420 g).
+    if (r.piece_weight_qty != null && r.piece_weight_unit) {
+      await client.query(
+        `UPDATE recipes SET piece_weight_qty = $2::numeric,
+           piece_weight_unit_id = (SELECT id FROM ref_entries WHERE table_id = 'units' AND code = $3) WHERE id = $1`,
+        [recipeId, r.piece_weight_qty, r.piece_weight_unit]);
+    }
 
     // 3. Legacy : ingredients et sous-recettes.
     await client.query(`DELETE FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId]);
@@ -163,6 +170,15 @@ export async function restoreRecipeVersion(recipeId: string, versionNumber: numb
         );
         formatId = created.rows[0].id;
         warnings.push(`Format recree (l'original avait ete supprime)`);
+      }
+      // M3-04 : poids cru / cuit dans l'unité saisie, si la version les porte.
+      for (const k of ['poids_cru', 'poids_cuit'] as const) {
+        if (f[`${k}_qty`] != null && f[`${k}_unit`]) {
+          await client.query(
+            `UPDATE recipe_formats SET ${k}_qty = $2::numeric,
+               ${k}_unit_id = (SELECT id FROM ref_entries WHERE table_id = 'units' AND code = $3) WHERE id = $1`,
+            [formatId, f[`${k}_qty`], f[`${k}_unit`]]);
+        }
       }
       keepIds.push(formatId);
       await client.query(`DELETE FROM recipe_format_components WHERE format_id = $1`, [formatId]);

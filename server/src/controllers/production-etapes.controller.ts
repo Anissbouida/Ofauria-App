@@ -5,6 +5,8 @@ import { productionEtapesRepository } from '../repositories/production-etapes.re
 import { productionRendementRepository } from '../repositories/production-rendement.repository.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { stockFrigoRepository } from '../repositories/stock-frigo.repository.js';
+import { productLotLocationRepository } from '../repositories/product-lot-location.repository.js';
+import { pickQtyUnit } from '../utils/qty-unit.js';
 import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema, retroPlanningSchema } from '../validators/production-etapes.validator.js';
 import { ccpStepTypes, unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
@@ -176,6 +178,7 @@ export const productionEtapesController = {
     // au frigo que le DELTA (une re-saisie ne doit pas doubler le stock frigo).
     const previous = await productionRendementRepository.findByPlanItem(itemId);
     const previousVersFrigo = previous?.vers_frigo != null ? parseFloat(String(previous.vers_frigo)) : 0;
+    const previousVersMagasin = previous?.vers_magasin != null ? parseFloat(String(previous.vers_magasin)) : 0;
 
     const rendement = await productionRendementRepository.record({
       planItemId: itemId,
@@ -194,6 +197,10 @@ export const productionEtapesController = {
       patonsNombre: parsed.data.patons_nombre,
       patonsPoidsUnitaireG: parsed.data.patons_poids_unitaire_g,
       masseCuiteKg: parsed.data.masse_cuite_kg,
+      // M3-04 : quantité + unité saisie, prioritaires.
+      massePetrie: pickQtyUnit(parsed.data.masse_petrie_qty, parsed.data.masse_petrie_unit, parsed.data.masse_petrie_kg, 'kg'),
+      patonsPoidsUnitaire: pickQtyUnit(parsed.data.patons_poids_unitaire_qty, parsed.data.patons_poids_unitaire_unit, parsed.data.patons_poids_unitaire_g, 'g'),
+      masseCuite: pickQtyUnit(parsed.data.masse_cuite_qty, parsed.data.masse_cuite_unit, parsed.data.masse_cuite_kg, 'kg'),
     });
 
     // Surplus -> frigo AUTOMATIQUE (audit 2026-10-23 §4.2) : jusqu'ici vers_frigo
@@ -243,7 +250,18 @@ export const productionEtapesController = {
       frigo.warning = `vers_frigo reduit de ${-delta} : ajustez le stock frigo a la main (Stock > Frigo), le retrait n'est pas automatique.`;
     }
 
-    res.json({ success: true, data: rendement, frigo });
+    // M6-02 (mig 605) : la quantité envoyée au magasin / au frigo est rangée dans
+    // l'emplacement du même nom (ou celui choisi), tracée en mouvement entre emplacements.
+    const emplacements = await productLotLocationRepository.applyRendementDestinations({
+      planId, planItemId: itemId, productId: planResult.rows[0].product_id ?? null, storeId: storeId ?? null,
+      userId: req.user!.userId,
+      deltas: [
+        { dest: 'magasin', delta: (parsed.data.vers_magasin || 0) - previousVersMagasin, locationId: parsed.data.vers_magasin_location_id },
+        { dest: 'frigo', delta: (parsed.data.vers_frigo || 0) - previousVersFrigo, locationId: parsed.data.vers_frigo_location_id },
+      ],
+    });
+
+    res.json({ success: true, data: rendement, frigo, emplacements });
   },
 
   // ─── Get rendement for a plan ───

@@ -1,4 +1,5 @@
 import api from './client';
+import type { WeightUnit } from '../utils/weight-unit';
 
 export const productionEtapesApi = {
   // Étapes
@@ -53,12 +54,23 @@ export const productionEtapesApi = {
     vers_magasin: number; vers_frigo?: number;
     pertes_detail?: { categorie: string; quantite: number; notes?: string }[];
     notes?: string;
+    /** M3-04 : pesées en quantité + unité saisie (g ou kg). */
+    masse_petrie_qty?: number | null; masse_petrie_unit?: WeightUnit;
+    patons_nombre?: number | null;
+    patons_poids_unitaire_qty?: number | null; patons_poids_unitaire_unit?: WeightUnit;
+    masse_cuite_qty?: number | null; masse_cuite_unit?: WeightUnit;
+    /** M6-02 : emplacement de destination ; absent = emplacement de code MAGASIN / FRIGO. */
+    vers_magasin_location_id?: string | null; vers_frigo_location_id?: string | null;
   }) =>
     // Le serveur renvoie aussi `frigo` : surplus pousse automatiquement au stock frigo
     // (quantite ajoutee, lot) ou avertissement si ce n'etait pas possible.
     api.post(`/production-etapes/items/${itemId}/rendement`, data).then(r => ({
       rendement: r.data.data as Record<string, unknown>,
       frigo: (r.data.frigo ?? {}) as { added?: number; lot_number?: string | null; warning?: string },
+      // M6-02 : quantités rangées dans les emplacements Magasin / Frigo, ou pourquoi pas.
+      emplacements: (r.data.emplacements ?? { moved: [], warnings: [] }) as {
+        moved: { dest: 'magasin' | 'frigo'; location: string; quantity: number }[]; warnings: string[];
+      },
     })),
   getRendementTarget: (itemId: string) =>
     api.get(`/production-etapes/items/${itemId}/rendement/target`).then(r => r.data.data),

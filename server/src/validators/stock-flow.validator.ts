@@ -29,6 +29,14 @@ const nonBlankName = (max: number) => z.string().max(max, 'Nom trop long').refin
 export const lotQuarantineSchema = z.preprocess(v => v ?? {}, z.object({ reason: slicedText }).passthrough());
 // moveLocation : « Emplacement de destination requis » renvoyé par le contrôleur ; motif tronqué à 30.
 export const lotMoveLocationSchema = z.object({ toLocationId: optUuid, motif: slicedText }).passthrough();
+// M6-02 (mig 605) : lot produit fini vers un emplacement. Origine absente = part non rangée
+// (sortie de production) ; destination absente = retrait de l'emplacement (correction).
+export const productLotMoveLocationSchema = z.object({
+  fromLocationId: z.string().uuid('Emplacement d\'origine invalide').nullable().optional(),
+  toLocationId: z.string().uuid('Emplacement de destination invalide').nullable().optional(),
+  quantity: z.number().finite().positive('La quantité doit être positive').max(1_000_000),
+  motif: z.string().trim().max(30).optional(),
+}).refine(v => v.fromLocationId || v.toLocationId, { message: 'Origine ou destination requise' });
 // saveQualityCheck : critères vrai / faux / sans objet (null), température DECIMAL(5,1) (négative possible).
 const nullableBool = z.boolean().nullish();
 export const receptionQualityCheckSchema = z.object({

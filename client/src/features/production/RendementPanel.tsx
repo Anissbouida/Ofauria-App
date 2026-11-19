@@ -6,6 +6,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionEtapesApi } from '../../api/production-etapes.api';
 import { usePlanSummary, planSummaryKey } from '../../api/production.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { stockLocationsApi, type StockLocation } from '../../api/stock-locations.api';
+import { convertWeight, readWeight, formatWeight, type WeightUnit } from '../../utils/weight-unit';
+import WeightQtyInput from '../../components/ui/WeightQtyInput';
 import {
   TrendingUp, TrendingDown, Package, Flame, AlertTriangle, Loader2,
   ChevronDown, ChevronRight, Scale, PieChart
@@ -44,6 +47,10 @@ interface Rendement {
   patons_nombre: number | null;
   patons_poids_unitaire_g: number | string | null;
   masse_cuite_kg: number | string | null;
+  // M3-04 : les mêmes pesées dans l'unité saisie.
+  masse_petrie_qty?: number | string | null; masse_petrie_unit?: string | null;
+  patons_poids_unitaire_qty?: number | string | null; patons_poids_unitaire_unit?: string | null;
+  masse_cuite_qty?: number | string | null; masse_cuite_unit?: string | null;
   freinte_reelle_pct: number | string | null;
   freinte_standard_pct: number | string | null;
 }
@@ -68,14 +75,32 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
   const avgGood = policies.num('production.yield_display', 'good');
   const avgAlert = policies.num('production.yield_display', 'alert');
   const [recordingItem, setRecordingItem] = useState<string | null>(null);
+  type Weighing = { qty: number; unit: WeightUnit };
+  const emptyMass = { masse_petrie: { qty: 0, unit: 'kg' as WeightUnit }, patons_nombre: 0,
+    patons_poids_unitaire: { qty: 0, unit: 'g' as WeightUnit }, masse_cuite: { qty: 0, unit: 'kg' as WeightUnit } };
   const [formData, setFormData] = useState<{
     quantite_brute: number; quantite_nette_reelle: number;
     vers_magasin: number; vers_frigo: number;
     pertes: { categorie: string; quantite: number }[];
-    // Bilan massique (épic labo L3) — 0 = non pesé.
-    masse_petrie_kg: number; patons_nombre: number; patons_poids_unitaire_g: number; masse_cuite_kg: number;
-  }>({ quantite_brute: 0, quantite_nette_reelle: 0, vers_magasin: 0, vers_frigo: 0, pertes: [],
-       masse_petrie_kg: 0, patons_nombre: 0, patons_poids_unitaire_g: 0, masse_cuite_kg: 0 });
+    // Bilan massique (épic labo L3) — 0 = non pesé. M3-04 : quantité + unité saisie (g ou kg).
+    masse_petrie: Weighing; patons_nombre: number; patons_poids_unitaire: Weighing; masse_cuite: Weighing;
+    // M6-02 : emplacement de destination ; '' = emplacement de code MAGASIN / FRIGO.
+    magasin_location_id: string; frigo_location_id: string;
+  }>({ quantite_brute: 0, quantite_nette_reelle: 0, vers_magasin: 0, vers_frigo: 0, pertes: [], ...emptyMass,
+       magasin_location_id: '', frigo_location_id: '' });
+  const setWeighing = (key: 'masse_petrie' | 'patons_poids_unitaire' | 'masse_cuite', patch: Partial<Weighing>) =>
+    setFormData(f => ({ ...f, [key]: { ...f[key], ...patch } }));
+  const petrieKg = convertWeight(formData.masse_petrie.qty, formData.masse_petrie.unit, 'kg');
+  const cuiteKg = convertWeight(formData.masse_cuite.qty, formData.masse_cuite.unit, 'kg');
+
+  // M6-02 : emplacements de l'établissement, destinations « vers magasin » / « vers frigo ».
+  const { data: locations = [] } = useQuery<StockLocation[]>({
+    queryKey: ['stock-locations', storeId ?? null],
+    queryFn: () => stockLocationsApi.list(storeId ?? undefined),
+    enabled: !!recordingItem,
+  });
+  const destinations = locations.filter(l => l.is_active && l.type !== 'pesage');
+  const hasCode = (code: string) => destinations.some(l => l.code === code);
 
   const { data: rendements = [], isLoading } = useQuery<Rendement[]>({
     queryKey: ['production-rendement', planId],
@@ -107,6 +132,10 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
       if (frigo.warning) {
         notify(frigo.warning, { icon: '⚠️', duration: 8000 });
       }
+      // M6-02 : rangement du lot dans les emplacements Magasin / Frigo.
+      const placed = (result?.emplacements?.moved ?? []).filter(m => m.quantity > 0);
+      if (placed.length) notify.success(`Lot rangé : ${placed.map(m => `${m.quantity} → ${m.location}`).join(', ')}`);
+      for (const w of result?.emplacements?.warnings ?? []) notify(w, { icon: '⚠️', duration: 8000 });
     },
     onError: (e: any) => notify.error(apiErrorMessage(e, 'Erreur')),
   });
@@ -123,7 +152,8 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
       vers_magasin: (item.actual_quantity as number) || 0,
       vers_frigo: 0,
       pertes: [],
-      masse_petrie_kg: 0, patons_nombre: 0, patons_poids_unitaire_g: 0, masse_cuite_kg: 0,
+      ...emptyMass,
+      magasin_location_id: '', frigo_location_id: '',
     });
   };
 
@@ -137,11 +167,16 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
         vers_magasin: formData.vers_magasin,
         vers_frigo: formData.vers_frigo,
         pertes_detail: formData.pertes.filter(p => p.quantite > 0),
-        // Bilan massique (épic labo L3) : 0 = non pesé → null.
-        masse_petrie_kg: formData.masse_petrie_kg > 0 ? formData.masse_petrie_kg : null,
+        // Bilan massique (épic labo L3) : 0 = non pesé → null. M3-04 : unité saisie conservée.
+        masse_petrie_qty: formData.masse_petrie.qty > 0 ? formData.masse_petrie.qty : null,
+        masse_petrie_unit: formData.masse_petrie.unit,
         patons_nombre: formData.patons_nombre > 0 ? formData.patons_nombre : null,
-        patons_poids_unitaire_g: formData.patons_poids_unitaire_g > 0 ? formData.patons_poids_unitaire_g : null,
-        masse_cuite_kg: formData.masse_cuite_kg > 0 ? formData.masse_cuite_kg : null,
+        patons_poids_unitaire_qty: formData.patons_poids_unitaire.qty > 0 ? formData.patons_poids_unitaire.qty : null,
+        patons_poids_unitaire_unit: formData.patons_poids_unitaire.unit,
+        masse_cuite_qty: formData.masse_cuite.qty > 0 ? formData.masse_cuite.qty : null,
+        masse_cuite_unit: formData.masse_cuite.unit,
+        vers_magasin_location_id: formData.magasin_location_id || null,
+        vers_frigo_location_id: formData.frigo_location_id || null,
       },
     });
   };
@@ -252,6 +287,30 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                     </div>
                   </div>
 
+                  {/* M6-02 : emplacements de destination (le lot y est rangé, mouvement tracé). */}
+                  {destinations.length === 0 ? (
+                    <div className="text-[11px] text-amber-700">
+                      Aucun emplacement de stock pour cet établissement : le lot ne sera pas rangé. Créez « Magasin » (code MAGASIN) et « Frigo » (code FRIGO) dans Stock › Emplacements.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {([['magasin_location_id', 'Emplacement magasin', 'MAGASIN', formData.vers_magasin],
+                         ['frigo_location_id', 'Emplacement frigo', 'FRIGO', formData.vers_frigo]] as const).map(([key, label, code, qty]) => (
+                        <div key={key}>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">{label}</label>
+                          <select value={formData[key]} onChange={e => setFormData(f => ({ ...f, [key]: e.target.value }))}
+                            className="w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white">
+                            <option value="">{hasCode(code) ? `Par défaut (${code})` : `— Aucun emplacement ${code} —`}</option>
+                            {destinations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.code})</option>)}
+                          </select>
+                          {qty > 0 && !formData[key] && !hasCode(code) && (
+                            <div className="text-[10px] text-amber-700 mt-0.5">Choisissez un emplacement, sinon ces {qty} ne seront pas rangés.</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Loss categories from target */}
                   {target && target.categoriesPertes.length > 0 && (
                     <div>
@@ -288,10 +347,8 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                     <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Bilan massique (optionnel)</label>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <div>
-                        <label className="text-[10px] text-gray-500">{batchMode ? 'Masse pétrie' : 'Masse mise en œuvre'} (kg)</label>
-                        <input type="number" min={0} step="0.001" value={formData.masse_petrie_kg || ''} placeholder="0"
-                          onChange={e => setFormData(f => ({ ...f, masse_petrie_kg: parseFloat(e.target.value) || 0 }))}
-                          className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-xs" />
+                        <label className="text-[10px] text-gray-500">{batchMode ? 'Masse pétrie' : 'Masse mise en œuvre'}</label>
+                        <WeightQtyInput className="mt-0.5" value={formData.masse_petrie} onChange={v => setWeighing('masse_petrie', v)} />
                       </div>
                       {batchMode && <div>
                         <label className="text-[10px] text-gray-500">Pâtons (nb)</label>
@@ -300,21 +357,17 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                           className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-xs" />
                       </div>}
                       {batchMode && <div>
-                        <label className="text-[10px] text-gray-500">Poids/pâton (g)</label>
-                        <input type="number" min={0} value={formData.patons_poids_unitaire_g || ''} placeholder="0"
-                          onChange={e => setFormData(f => ({ ...f, patons_poids_unitaire_g: parseFloat(e.target.value) || 0 }))}
-                          className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-xs" />
+                        <label className="text-[10px] text-gray-500">Poids/pâton</label>
+                        <WeightQtyInput className="mt-0.5" value={formData.patons_poids_unitaire} onChange={v => setWeighing('patons_poids_unitaire', v)} />
                       </div>}
                       <div>
-                        <label className="text-[10px] text-gray-500">{batchMode ? 'Masse cuite' : 'Masse obtenue'} (kg)</label>
-                        <input type="number" min={0} step="0.001" value={formData.masse_cuite_kg || ''} placeholder="0"
-                          onChange={e => setFormData(f => ({ ...f, masse_cuite_kg: parseFloat(e.target.value) || 0 }))}
-                          className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-xs" />
+                        <label className="text-[10px] text-gray-500">{batchMode ? 'Masse cuite' : 'Masse obtenue'}</label>
+                        <WeightQtyInput className="mt-0.5" value={formData.masse_cuite} onChange={v => setWeighing('masse_cuite', v)} />
                       </div>
                     </div>
-                    {formData.masse_petrie_kg > 0 && formData.masse_cuite_kg > 0 && (
+                    {petrieKg > 0 && cuiteKg > 0 && (
                       <div className="text-xs text-gray-500 mt-1">
-                        {batchMode ? 'Freinte réelle' : 'Perte de masse'} : <span className="font-bold text-gray-800">{((formData.masse_petrie_kg - formData.masse_cuite_kg) / formData.masse_petrie_kg * 100).toFixed(2)} %</span>
+                        {batchMode ? 'Freinte réelle' : 'Perte de masse'} : <span className="font-bold text-gray-800">{((petrieKg - cuiteKg) / petrieKg * 100).toFixed(2)} %</span>
                       </div>
                     )}
                   </div>
@@ -356,15 +409,18 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
 
               {/* Bilan massique enregistré (épic labo L3) */}
               {existing && existing.masse_petrie_kg != null && (() => {
+                // M3-04 : pesées affichées dans l'unité saisie.
+                const petrie = readWeight(existing.masse_petrie_qty, existing.masse_petrie_unit, existing.masse_petrie_kg, 'kg');
+                const cuite = readWeight(existing.masse_cuite_qty, existing.masse_cuite_unit, existing.masse_cuite_kg, 'kg');
                 const reelle = existing.freinte_reelle_pct != null ? parseFloat(String(existing.freinte_reelle_pct)) : null;
                 const std = existing.freinte_standard_pct != null ? parseFloat(String(existing.freinte_standard_pct)) : null;
                 const ecart = reelle != null && std != null ? reelle - std : null;
                 return (
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100">
-                      <Scale size={10} /> {parseFloat(String(existing.masse_petrie_kg))} kg {batchMode ? 'pétrie' : 'mise en œuvre'}
+                      <Scale size={10} /> {petrie ? formatWeight(petrie) : ''} {batchMode ? 'pétrie' : 'mise en œuvre'}
                       {batchMode && existing.patons_nombre ? ` · ${existing.patons_nombre} pâtons` : ''}
-                      {existing.masse_cuite_kg != null ? ` → ${parseFloat(String(existing.masse_cuite_kg))} kg ${batchMode ? 'cuit' : 'obtenue'}` : ''}
+                      {cuite ? ` → ${formatWeight(cuite)} ${batchMode ? 'cuit' : 'obtenue'}` : ''}
                     </span>
                     {reelle != null && (
                       <span className="inline-flex items-center gap-1">
@@ -387,3 +443,4 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
     </div>
   );
 }
+

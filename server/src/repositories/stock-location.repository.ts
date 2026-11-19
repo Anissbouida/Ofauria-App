@@ -86,7 +86,9 @@ export const stockLocationRepository = {
   // Désactivation douce : refusée s'il reste des lots actifs sur l'emplacement.
   async deactivate(id: string) {
     const used = await db.query(
-      `SELECT COUNT(*)::int AS n FROM ingredient_lots WHERE location_id = $1 AND status = 'active'`,
+      // M6-02 (mig 605) : les lots produits finis rangés comptent aussi.
+      `SELECT ((SELECT COUNT(*) FROM ingredient_lots WHERE location_id = $1 AND status = 'active')
+             + (SELECT COUNT(*) FROM product_lot_locations WHERE location_id = $1 AND quantity > 0))::int AS n`,
       [id]
     );
     if (used.rows[0].n > 0) {
