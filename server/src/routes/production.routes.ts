@@ -26,6 +26,8 @@ import {
   completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
   createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, subcontractSetupSchema, subcontractShipSchema, disassemblySchema, screenSettingSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
 } from '../validators/production.validator.js';
+import { emptyBody } from '../validators/common.validator.js';
+import { productionSettingsSchema, saveWorkshopSchema, mrpGenerateSchema, receiveProductionTransferSchema } from '../validators/production-flow.validator.js';
 
 const id = validateUuidParams('id');
 
@@ -35,7 +37,7 @@ router.get('/', authenticate, validateQuery(listQuerySchema), asyncHandler(produ
 // Ateliers (mig 511) : lecture pour tout utilisateur connecté (libellés des plans, caisse),
 // création / modification par le paramétrage Production. Avant /:id.
 router.get('/workshops', authenticate, asyncHandler(productionController.workshops));
-router.put('/workshops/:code', authenticate, authorizeSettings('production', 'edit'), asyncHandler(productionController.saveWorkshop));
+router.put('/workshops/:code', authenticate, authorizeSettings('production', 'edit'), validate(saveWorkshopSchema), asyncHandler(productionController.saveWorkshop));
 // Référentiels du procédé (types d'étape, d'équipement, paramètres de relevé — mig 513).
 router.get('/process-referentials', authenticate, asyncHandler(productionController.processReferentials));
 // Static routes BEFORE /:id to avoid capture
@@ -49,10 +51,10 @@ router.get('/mrp/phased', authenticate, can('production.view'), asyncHandler(pro
 router.post('/mrp/phased/validate', authenticate, can('production.generate'), validate(mrpPhasedValidateSchema), asyncHandler(productionController.mrpPhasedValidate));
 router.get('/mrp/horizon', authenticate, can('production.view'), asyncHandler(productionController.mrpHorizon));
 router.get('/mrp/semi-finished', authenticate, can('production.view'), asyncHandler(productionController.mrpSemiFinished));
-router.post('/mrp/generate', authenticate, can('production.generate'), asyncHandler(productionController.mrpGenerate));
+router.post('/mrp/generate', authenticate, can('production.generate'), validate(mrpGenerateSchema), asyncHandler(productionController.mrpGenerate));
 // MRP — besoins matière (achats) & génération des demandes d'achat — roadmap lot 8
 router.get('/mrp/material-requirements', authenticate, can('production.view'), asyncHandler(productionController.mrpMaterialRequirements));
-router.post('/mrp/generate-purchase-requests', authenticate, can('production.generate_purchase_requests'), asyncHandler(productionController.mrpGeneratePurchaseRequests));
+router.post('/mrp/generate-purchase-requests', authenticate, can('production.generate_purchase_requests'), validate(mrpGenerateSchema), asyncHandler(productionController.mrpGeneratePurchaseRequests));
 // Réglages de production centralisés — roadmap lot 9. Avant /:id.
 router.get('/settings', authenticate, can('production.view'), asyncHandler(productionController.getSettings));
 // M1-04 — politiques de production (lecture : production ; écriture : droit Paramètres › Production).
@@ -110,8 +112,8 @@ router.get('/policies/impact', authenticate, can('production.view'), asyncHandle
 }));
 router.get('/policies', authenticate, can('production.view'), asyncHandler(productionController.listPolicies));
 router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), validate(setPolicySchema), asyncHandler(productionController.setPolicy));
-router.put('/settings', authenticate, can('production.edit'), asyncHandler(productionController.updateSettings));
-router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), can('production.receive'), asyncHandler(productionController.confirmProductionTransfer));
+router.put('/settings', authenticate, can('production.edit'), validate(productionSettingsSchema), asyncHandler(productionController.updateSettings));
+router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), can('production.receive'), validate(receiveProductionTransferSchema), asyncHandler(productionController.confirmProductionTransfer));
 
 // M9 — sous-traitance : suivi, sous-traitant et façon, bon d'envoi des composants.
 const subcontractError = (res: import('express').Response, e: unknown) => {
@@ -157,10 +159,10 @@ router.get('/:id/consumption-variance', authenticate, validateUuidParams('id'), 
   res.json({ success: true, data: await productionConsumptionRepository.variance(req.params.id as string) });
 }));
 router.put('/:id/items', authenticate, id, can('production.items'), validate(updateItemsSchema), asyncHandler(productionController.updateItems));
-router.post('/:id/confirm', authenticate, id, can('production.confirm'), asyncHandler(productionController.confirm));
-router.post('/:id/revert-to-draft', authenticate, id, can('production.revert_to_draft'), asyncHandler(productionController.revertToDraft));
+router.post('/:id/confirm', authenticate, id, can('production.confirm'), validate(emptyBody), asyncHandler(productionController.confirm));
+router.post('/:id/revert-to-draft', authenticate, id, can('production.revert_to_draft'), validate(emptyBody), asyncHandler(productionController.revertToDraft));
 router.post('/:id/relaunch', authenticate, id, can('production.relaunch'), validate(relaunchSchema), asyncHandler(productionController.relaunch));
-router.post('/:id/start', authenticate, id, can('production.start'), asyncHandler(productionController.start));
+router.post('/:id/start', authenticate, id, can('production.start'), validate(emptyBody), asyncHandler(productionController.start));
 router.post('/:id/start-items', authenticate, id, can('production.start_items'), validate(startItemsSchema), asyncHandler(productionController.startItems));
 router.post('/:id/produce-items', authenticate, id, can('production.produce_items'), validate(produceItemsSchema), asyncHandler(productionController.produceItems));
 router.post('/:id/transfer-items', authenticate, id, can('production.transfer_items'), validate(itemIdsSchema), asyncHandler(productionController.transferItems));
@@ -168,7 +170,7 @@ router.post('/:id/restore-items', authenticate, id, can('production.restore_item
 router.post('/:id/needs/:ingredientId/request-verification', authenticate, validateUuidParams('id', 'ingredientId'), can('production.request_verification'), validate(requestStockVerificationSchema), asyncHandler(productionController.requestStockVerification));
 router.post('/:id/cancel-items', authenticate, id, can('production.cancel_items'), validate(cancelItemsSchema), asyncHandler(productionController.cancelItems));
 router.post('/:id/complete', authenticate, id, can('production.complete'), validate(completeSchema), asyncHandler(productionController.complete));
-router.post('/:id/detect-semi-finished', authenticate, id, can('production.detect_semi_finished'), asyncHandler(productionController.detectSemiFinished));
+router.post('/:id/detect-semi-finished', authenticate, id, can('production.detect_semi_finished'), validate(emptyBody), asyncHandler(productionController.detectSemiFinished));
 router.get('/:id/dependencies', authenticate, id, asyncHandler(productionController.getPlanDependencies));
 router.get('/:id/activities', authenticate, id, asyncHandler(productionController.getActivities));
 // Journal des transitions (plan + bons) — mig 299
