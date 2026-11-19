@@ -4,6 +4,7 @@ import { leaveBalanceRepository } from './leave.repository.js';
 import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip } from './payroll-config.repository.js';
 import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Solde de tout compte (lot 6, mig 323).
@@ -156,7 +157,7 @@ export const finalSettlementRepository = {
         if (paymentId) await cancelPayrollPayment(paymentId, userId, 'Échec de la validation du solde de tout compte');
       } catch (cleanupErr) {
         // eslint-disable-next-line no-console
-        console.error('[final-settlement.validate] remise en etat incomplete', cleanupErr);
+        logger.error({ err: cleanupErr }, '[final-settlement.validate] remise en etat incomplete');
       }
       throw err;
     } finally {

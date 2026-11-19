@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { packagingItemRepository } from '../repositories/packaging-item.repository.js';
 import { recipeRepository } from '../repositories/recipe.repository.js';
 import { db } from '../config/database.js';
+import { logger } from '../utils/logger.js';
 
 export const packagingController = {
   async list(req: AuthRequest, res: Response) {
@@ -37,7 +38,7 @@ export const packagingController = {
       try {
         await recipeRepository.recalcOnPackagingChange(req.params.id);
       } catch (err) {
-        console.error('[recalcOnPackagingChange] erreur :', err);
+        logger.error({ err: err }, '[recalcOnPackagingChange] erreur :');
       }
     }
     res.json({ success: true, data: updated });

@@ -7,6 +7,7 @@ import {
   type ApprovalCondition, type ApprovalDocType,
 } from '@ofauria/shared';
 import { currencySymbol } from './currency.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Moteur d'approbation (lot 8 Paramètres, mig 350).
@@ -157,7 +158,7 @@ async function applyDecision(request: ApprovalRequestRow, actorId: string, decis
     return null;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[approvals] effet non appliqué sur ${request.doc_type}/${request.doc_id}:`, message);
+    logger.error({ err: message }, `[approvals] effet non appliqué sur ${request.doc_type}/${request.doc_id}:`);
     await db.query(`UPDATE approval_requests SET apply_error = $2 WHERE id = $1`, [request.id, message.slice(0, 500)]);
     return message;
   }

@@ -9,6 +9,7 @@ import {
   INGREDIENT_CATEGORIES,
   type ParsedIngredientRow,
 } from '../services/ingredient-excel.service.js';
+import { logger } from '../utils/logger.js';
 
 type IngredientPlanRow = {
   sourceRow: number;
@@ -300,11 +301,11 @@ export const ingredientImportController = {
             await recipeRepository.syncProductPrice(db, recipe.product_id || null, totalCost, yieldQty, yieldUnit, pieceWeightKg, margin);
             await recipeRepository.recalcParents(recipeId);
           } catch (e) {
-            console.error('Cascade prix recette echouee', recipeId, e);
+            logger.error({ details: [recipeId, e] }, 'Cascade prix recette echouee');
           }
         }
       } catch (e) {
-        console.error('Cascade prix recettes import ingredients :', e);
+        logger.error({ err: e }, 'Cascade prix recettes import ingredients :');
       }
     }
 

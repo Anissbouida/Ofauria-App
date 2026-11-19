@@ -2,18 +2,19 @@ import { env } from './config/env.js';
 import app from './app.js';
 import { startScheduler } from './services/scheduler.js';
 import { loadCompanyCurrency } from './services/currency.js';
+import { logger } from './utils/logger.js';
 
 // Prevent server crash on unhandled async errors
 process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
+  logger.error({ err: err }, 'Uncaught Exception:');
 });
 process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled Rejection:', reason);
+  logger.error({ err: reason }, 'Unhandled Rejection:');
 });
 
 app.listen(env.PORT, () => {
-  console.log(`🥐 Kalum API running on http://localhost:${env.PORT}`);
-  console.log(`   Environment: ${env.NODE_ENV}`);
+  logger.info(`🥐 Kalum API running on http://localhost:${env.PORT}`);
+  logger.info(`   Environment: ${env.NODE_ENV}`);
   startScheduler();
   void loadCompanyCurrency(); // devise de la société pour documents et messages (G6-06)
 });

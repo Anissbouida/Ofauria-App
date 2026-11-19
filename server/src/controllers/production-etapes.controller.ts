@@ -10,6 +10,7 @@ import { pickQtyUnit } from '../utils/qty-unit.js';
 import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema, retroPlanningSchema } from '../validators/production-etapes.validator.js';
 import { ccpStepTypes, unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
+import { logger } from '../utils/logger.js';
 
 export const productionEtapesController = {
 
@@ -242,7 +243,7 @@ export const productionEtapesController = {
           frigo.added = delta;
           frigo.lot_number = entry?.lot_number ?? null;
         } catch (err) {
-          console.error('[rendement] surplus -> frigo echoue:', err);
+          logger.error({ err: err }, '[rendement] surplus -> frigo echoue:');
           frigo.warning = `Surplus non pousse au frigo : ${err instanceof Error ? err.message : String(err)}`;
         }
       }

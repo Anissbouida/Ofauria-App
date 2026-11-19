@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { env } from './env.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Fuseau METIER de la base. Les DLC des lots (product_lots.expires_at) sont des
@@ -19,12 +20,12 @@ const pool = new pg.Pool({
 
 pool.on('connect', (client) => {
   client.query(`SET TIME ZONE '${DB_TIMEZONE}'`).catch((err) => {
-    console.error('[db] impossible de fixer le fuseau de session', err);
+    logger.error({ err: err }, '[db] impossible de fixer le fuseau de session');
   });
 });
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
+  logger.error({ err: err }, 'Unexpected error on idle client');
   process.exit(-1);
 });
 
@@ -138,19 +139,25 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
 /** Vrai si l'appel courant s'exécute dans une transaction ambiante. */
 export const inTransaction = () => txContext.getStore() !== undefined;
 
-export const db = {
-  query: async (text: string, params?: unknown[]) => {
-    const tx = txContext.getStore();
-    if (tx) return tx.client.query(text, params);
-    const scope = storeScope.getStore();
-    if (!scope) return pool.query(text, params);
-    const client = await scopedClient(scope.storeId);
-    try {
-      return await client.query(text, params);
-    } finally {
-      client.release();
+/**
+ * G3-03 — requêtes lentes : au-delà de SLOW_QUERY_MS (500 ms par défaut), une ligne de journal
+ * structurée avec la durée et le début du SQL. Jamais les paramètres (données personnelles).
+ */
+const SLOW_QUERY_MS = Number(process.env.SLOW_QUERY_MS || 500);
+async function timed<T>(text: string, run: () => Promise<T>): Promise<T> {
+  const t0 = performance.now();
+  try {
+    return await run();
+  } finally {
+    const ms = performance.now() - t0;
+    if (ms >= SLOW_QUERY_MS) {
+      logger.warn({ slowQueryMs: Math.round(ms), sql: text.replace(/\s+/g, ' ').trim().slice(0, 300) }, 'requête SQL lente');
     }
-  },
+  }
+}
+
+export const db = {
+  query: async (text: string, params?: unknown[]) => timed(text, () => runQuery(text, params)),
   getClient: (): Promise<pg.PoolClient> => {
     const tx = txContext.getStore();
     if (tx) return Promise.resolve(borrowedClient(tx));
@@ -159,3 +166,16 @@ export const db = {
   },
   pool,
 };
+
+async function runQuery(text: string, params?: unknown[]) {
+  const tx = txContext.getStore();
+  if (tx) return tx.client.query(text, params);
+  const scope = storeScope.getStore();
+  if (!scope) return pool.query(text, params);
+  const client = await scopedClient(scope.storeId);
+  try {
+    return await client.query(text, params);
+  } finally {
+    client.release();
+  }
+}

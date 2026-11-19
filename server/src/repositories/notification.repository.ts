@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { currencySymbol } from '../services/currency.js';
+import { logger } from '../utils/logger.js';
 
 const toArray = (role: string | string[]) => [...new Set(Array.isArray(role) ? role : [role])];
 
@@ -174,7 +175,7 @@ export const notificationRepository = {
 
       return plans.rows.length;
     } catch (err) {
-      console.error('[notify] syncProductionNotifications failed:', err);
+      logger.error({ err: err }, '[notify] syncProductionNotifications failed:');
       return 0;
     }
   },
@@ -232,7 +233,7 @@ export const notificationRepository = {
 
       return orders.rows.length;
     } catch (err) {
-      console.error('[notify] syncOrderNotifications failed:', err);
+      logger.error({ err: err }, '[notify] syncOrderNotifications failed:');
       return 0;
     }
   },

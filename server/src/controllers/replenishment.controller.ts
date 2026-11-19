@@ -4,6 +4,7 @@ import { replenishmentRepository } from '../repositories/replenishment.repositor
 import { createNotification } from '../utils/notify.js';
 import { db } from '../config/database.js';
 import { listWorkshops, workshopLabel, workshopsOf } from '../services/workshops.js';
+import { logger } from '../utils/logger.js';
 
 const STORE_ROLES = ['cashier', 'saleswoman'];
 
@@ -265,7 +266,7 @@ export const replenishmentController = {
 
       res.json({ success: true, data: result });
     } catch (err) {
-      console.error('confirmReception error:', err);
+      logger.error({ err: err }, 'confirmReception error:');
       const isBusinessError = err instanceof Error && (err.message.includes('stock') || err.message.includes('demande') || err.message.includes('statut'));
       const msg = isBusinessError ? (err as Error).message : 'Cette demande ne peut pas etre confirmee';
       res.status(409).json({ success: false, error: { message: msg } });

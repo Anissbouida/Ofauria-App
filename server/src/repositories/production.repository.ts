@@ -16,6 +16,7 @@ import { cutProducedQuantity } from '@ofauria/shared';
 import { sectorRepository } from './sector.repository.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
 import { bomVersionRepository } from './bom-version.repository.js';
+import { logger } from '../utils/logger.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
@@ -435,7 +436,7 @@ export const productionRepository = {
           await productionRepository.detectAndCreateSemiFinishedPlans(planId, userId);
         }
       } catch (detErr) {
-        console.error('[production.confirm] detection semi-finis (modele B) echouee:', detErr);
+        logger.error({ err: detErr }, '[production.confirm] detection semi-finis (modele B) echouee:');
       }
     }
 
@@ -692,7 +693,7 @@ export const productionRepository = {
                 createdBy: userId,
               });
             } catch (notifErr) {
-              console.error('[production.confirm] notification BSI non emise:', notifErr);
+              logger.error({ err: notifErr }, '[production.confirm] notification BSI non emise:');
             }
           }
         }
@@ -703,7 +704,7 @@ export const productionRepository = {
         if (msg.startsWith('Aucun besoin') || msg.startsWith('Bon deja') || msg.startsWith('Ce bon')) {
           warnings.push('Aucun bon de sortie a generer (plan sans ingredient a prelever).');
         } else {
-          console.error('[production.confirm] BSI auto-gen echoue:', bsiErr);
+          logger.error({ err: bsiErr }, '[production.confirm] BSI auto-gen echoue:');
           warnings.push('Le bon de sortie n\'a pas pu etre genere automatiquement. Regenerez-le manuellement.');
         }
       }
@@ -1044,7 +1045,7 @@ export const productionRepository = {
         try {
           await productionRepository.detectAndCreateSemiFinishedPlans(planId, userId);
         } catch (err) {
-          console.error('[production.relaunch] detection semi-finis echouee:', err);
+          logger.error({ err: err }, '[production.relaunch] detection semi-finis echouee:');
           warnings.push('La detection des semi-finis a echoue — verifiez les dependances du plan.');
         }
       }
@@ -1246,7 +1247,7 @@ export const productionRepository = {
             } catch (fefoErr) {
               await client.query('ROLLBACK TO SAVEPOINT fefo_consume');
               const ingNameFEFO = await client.query('SELECT name FROM ingredients WHERE id = $1', [ingredientId]);
-              console.error(`[consumeFEFO] Erreur pour ${ingNameFEFO.rows[0]?.name || ingredientId}:`, fefoErr);
+              logger.error({ err: fefoErr }, `[consumeFEFO] Erreur pour ${ingNameFEFO.rows[0]?.name || ingredientId}:`);
               warnings.push(`Traçabilité lots: erreur FEFO pour ${ingNameFEFO.rows[0]?.name || ingredientId}`);
             }
           }
@@ -1282,7 +1283,7 @@ export const productionRepository = {
               await client.query('RELEASE SAVEPOINT pk_consume');
             } catch (pkErr) {
               await client.query('ROLLBACK TO SAVEPOINT pk_consume');
-              console.error(`[packaging consumption] erreur pour ${pk.name}:`, pkErr);
+              logger.error({ err: pkErr }, `[packaging consumption] erreur pour ${pk.name}:`);
               warnings.push(`Stock emballage insuffisant: ${pk.name} (besoin ${pkConsumption.toFixed(2)})`);
             }
           }
@@ -1693,7 +1694,7 @@ export const productionRepository = {
                 await client.query('RELEASE SAVEPOINT fefo_consume');
               } catch (fefoErr) {
                 await client.query('ROLLBACK TO SAVEPOINT fefo_consume');
-                console.error('[consumeFEFO] produceItems:', fefoErr);
+                logger.error({ err: fefoErr }, '[consumeFEFO] produceItems:');
                 warnings.push(`Traçabilité lots : erreur FEFO pour l'ingrédient ${ingredientId}`);
               }
             }
@@ -1726,7 +1727,7 @@ export const productionRepository = {
                 await client.query('RELEASE SAVEPOINT pk_consume');
               } catch (pkErr) {
                 await client.query('ROLLBACK TO SAVEPOINT pk_consume');
-                console.error(`[packaging consumption] erreur pour ${pk.name}:`, pkErr);
+                logger.error({ err: pkErr }, `[packaging consumption] erreur pour ${pk.name}:`);
                 warnings.push(`Stock emballage : ${pk.name} non consomme (besoin ${pkConsumption.toFixed(2)})`);
               }
             }

@@ -5,6 +5,7 @@ import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
 import { persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 import { getLocalISODate } from '../utils/timezone.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Avances sur salaire.
@@ -127,7 +128,7 @@ export const salaryAdvanceRepository = {
       try { await db.query('DELETE FROM salary_advances WHERE id = $1', [advance.id]); }
       catch (cleanupErr) {
         // eslint-disable-next-line no-console
-        console.error('[salaryAdvance.create] cleanup avance orpheline echoue', advance.id, cleanupErr);
+        logger.error({ details: [advance.id, cleanupErr] }, '[salaryAdvance.create] cleanup avance orpheline echoue');
       }
       throw err;
     }

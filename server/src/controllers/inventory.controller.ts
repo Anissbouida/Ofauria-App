@@ -12,6 +12,7 @@ import { allergensSchema } from '../validators/allergens.js';
 import { stockValuationRepository } from '../repositories/stock-valuation.repository.js';
 import { reorderPointRepository } from '../repositories/reorder-point.repository.js';
 import { localIsoDate } from '../utils/local-date.js';
+import { logger } from '../utils/logger.js';
 
 export const inventoryController = {
   async list(req: AuthRequest, res: Response) {
@@ -368,7 +369,7 @@ export const ingredientController = {
       });
       res.status(201).json({ success: true, data: ingredient });
     } catch (err) {
-      console.error('Error creating ingredient:', err);
+      logger.error({ err: err }, 'Error creating ingredient:');
       res.status(400).json({ success: false, error: { message: 'Erreur lors de la création' } });
     }
   },
@@ -385,7 +386,7 @@ export const ingredientController = {
       });
       res.json({ success: true, data: ingredient });
     } catch (err) {
-      console.error('Error updating ingredient:', err);
+      logger.error({ err: err }, 'Error updating ingredient:');
       res.status(400).json({ success: false, error: { message: 'Erreur lors de la mise à jour' } });
     }
   },
@@ -401,7 +402,7 @@ export const ingredientController = {
       }
       res.json({ success: true, data: { packagingId: result.packagingId, transferredQty: result.transferredQty } });
     } catch (err) {
-      console.error('Error converting ingredient to consumable:', err);
+      logger.error({ err: err }, 'Error converting ingredient to consumable:');
       const msg = err instanceof Error ? err.message : 'Erreur lors de la conversion';
       res.status(500).json({ success: false, error: { message: msg } });
     }
@@ -424,7 +425,7 @@ export const ingredientController = {
       }
       res.json({ success: true, data: { wastedQty: result.wastedQty ?? 0 } });
     } catch (err) {
-      console.error('Error deleting ingredient:', err);
+      logger.error({ err: err }, 'Error deleting ingredient:');
       const msg = err instanceof Error ? err.message : 'Erreur lors de la suppression';
       res.status(500).json({ success: false, error: { message: msg } });
     }

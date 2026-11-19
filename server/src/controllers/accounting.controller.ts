@@ -18,6 +18,7 @@ import { loadCompanyLegal } from '../utils/company-legal.js';
 import { storeFile, FileRejectedError, DOCUMENT_MIMES } from '../services/storage.service.js';
 import { tvaRatesOf } from '../validators/invoice.validator.js';
 import { currencySymbol } from '../services/currency.js';
+import { logger } from '../utils/logger.js';
 
 // Valide un code de mode de reglement contre le referentiel payment_methods
 // (table de reference) plutot que contre une liste figee en dur.
@@ -654,7 +655,7 @@ export const invoiceController = {
       res.setHeader('Content-Length', built.buffer.length);
       res.send(built.buffer);
     } catch (err) {
-      console.error('Error generating invoice PDF:', err);
+      logger.error({ err: err }, 'Error generating invoice PDF:');
       res.status(500).json({ success: false, error: { message: 'Erreur lors de la generation du document' } });
     }
   },

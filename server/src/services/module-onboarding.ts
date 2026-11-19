@@ -2,6 +2,7 @@ import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
 import { db } from '../config/database.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { sectorStarterDemoSlug } from './sector-starter.service.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Mise en route guidée par module (plan Production générique, lot P9).
@@ -119,7 +120,7 @@ export async function onboardingReport(): Promise<{ modules: ModuleOnboarding[];
         const r = await db.query(t.sql, t.params ? t.params(ctx) : []);
         return { key: `${m}.${t.key}`, label: t.label, to: t.to, done: Number(r.rows[0].count) > 0 };
       } catch (err) {
-        console.warn(`[onboarding] tâche ${m}.${t.key} ignorée :`, (err as Error).message);
+        logger.warn({ err: (err as Error).message }, `[onboarding] tâche ${m}.${t.key} ignorée :`);
         return null;
       }
     }));

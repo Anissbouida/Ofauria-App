@@ -14,6 +14,7 @@ import { roleRepository } from '../repositories/role.repository.js';
 import { effectiveRights } from '../services/access-rights.js';
 import { normalizePermissions, permissionView } from '../services/permission-input.js';
 import { sodEnforcementMode, evaluateRoleCodesSod } from '../services/governance.js';
+import { logger } from '../utils/logger.js';
 
 export const userController = {
   async list(_req: AuthRequest, res: Response) {
@@ -197,7 +198,7 @@ export const userController = {
       try {
         await permissionRepository.clearByUserId(user.id, req.user?.userId);
       } catch (err) {
-        console.error('[user.update] clearPermissions echec (non-bloquant):', err);
+        logger.error({ err: err }, '[user.update] clearPermissions echec (non-bloquant):');
       }
     }
 

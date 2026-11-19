@@ -1,6 +1,7 @@
 import { MODULE_LABELS, dependentModules, type AppModule } from '@ofauria/shared';
 import { db } from '../config/database.js';
 import { sectorRepository, type Activation, type AdjustmentChanges } from '../repositories/sector.repository.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Bilan de santé de la configuration (plan Production générique, lot P8).
@@ -278,7 +279,7 @@ export async function healthReport(): Promise<{ recommendations: Recommendation[
       const r = await c.run({ act, count });
       return r ? { key: c.key, ...r } : null;
     } catch (err) {
-      console.warn(`[config-health] contrôle ${c.key} ignoré :`, (err as Error).message);
+      logger.warn({ err: (err as Error).message }, `[config-health] contrôle ${c.key} ignoré :`);
       return null;
     }
   }));

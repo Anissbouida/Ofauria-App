@@ -7,6 +7,7 @@ import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { loginRoleContext } from '../services/access-rights.js';
 import { generateToken } from '../utils/jwt.js';
 import { setAuthCookie, signMfaToken } from './auth.controller.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Connexion d'entreprise (G6-02). La tentative (state, nonce, vérificateur PKCE) est gardée
@@ -42,7 +43,7 @@ export const oidcController = {
     if (a.p !== cfg.provider || req.query.state !== a.state || typeof req.query.code !== 'string') { fail(res, 'etat_invalide'); return; }
     let identity: { subject: string; email: string };
     try { identity = await completeLogin(cfg, req.query.code, a); }
-    catch (err) { console.error('[oidc]', err instanceof Error ? err.message : err); fail(res, 'verification'); return; }
+    catch (err) { logger.error({ err: err instanceof Error ? err.message : err }, '[oidc]'); fail(res, 'verification'); return; }
     const user = await userIdentityRepository.resolve(cfg.provider, identity.subject, identity.email);
     await authEventRepository.recordFromRequest(req as never, {
       eventType: user ? 'login_success' : 'login_failed', userId: user?.id, email: identity.email, success: !!user,

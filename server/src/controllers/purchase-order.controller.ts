@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 import { checkApprovalLimit } from '../services/governance.js';
 import { effectiveScopeFor, scopeStoreFilter } from '../services/access-rights.js';
+import { logger } from '../utils/logger.js';
 
 // Admin global : voit tous les BC, peu importe le store_id. Sinon, restreint au store de l'utilisateur.
 function effectiveStoreFilter(req: AuthRequest): string | undefined {
@@ -185,7 +186,7 @@ export const purchaseOrderController = {
         res.status(400).json({ success: false, error: { message: 'Données du bon de commande invalides.' } });
         return;
       }
-      console.error('[purchaseOrder.create] Error:', err);
+      logger.error({ err: err }, '[purchaseOrder.create] Error:');
       const message = err instanceof Error ? err.message : 'Erreur lors de la creation du bon de commande';
       res.status(500).json({ success: false, error: { message } });
     }
@@ -241,7 +242,7 @@ export const purchaseOrderController = {
           [req.params.id, urgency.slice(0, 500), req.user!.userId]);
         await purchaseOrderActionsRepository.log(req.params.id, 'changed', req.user!.userId, { note: `Dispense de DA (urgence) : ${urgency.slice(0, 200)}` });
       } else {
-        console.warn(`[po-requires-request][warn] BC ${req.params.id} envoyé sans demande d'achat`);
+        logger.warn(`[po-requires-request][warn] BC ${req.params.id} envoyé sans demande d'achat`);
       }
     }
 
@@ -363,7 +364,7 @@ export const purchaseOrderController = {
       }
       res.json({ success: true, data: { ...result, landedCost, landedCostError } });
     } catch (err: unknown) {
-      console.error('[confirmDelivery] Error:', err);
+      logger.error({ err: err }, '[confirmDelivery] Error:');
       const message = err instanceof Error ? err.message : 'Erreur lors de la confirmation de livraison';
       const statusCode = (err as { statusCode?: number })?.statusCode ?? 400;
       res.status(statusCode).json({ success: false, error: { message } });
@@ -483,7 +484,7 @@ export const purchaseOrderController = {
       });
       res.json({ success: true, data: result });
     } catch (err) {
-      console.error('[cancelReception] Error:', err);
+      logger.error({ err: err }, '[cancelReception] Error:');
       const message = err instanceof Error ? err.message : 'Erreur lors de l\'annulation de la reception';
       const statusCode = (err as { statusCode?: number })?.statusCode ?? 500;
       res.status(statusCode).json({ success: false, error: { message } });
@@ -666,7 +667,7 @@ export const purchaseOrderController = {
           return;
       }
     } catch (err) {
-      console.error('[generateInvoice] Error:', err);
+      logger.error({ err: err }, '[generateInvoice] Error:');
       const message = err instanceof Error ? err.message : 'Erreur lors de la generation de la facture';
       res.status(500).json({ success: false, error: { message } });
     }
@@ -787,7 +788,7 @@ export const purchaseOrderController = {
       res.setHeader('Content-Length', buffer.length);
       res.send(buffer);
     } catch (err) {
-      console.error('Error generating PO PDF:', err);
+      logger.error({ err: err }, 'Error generating PO PDF:');
       res.status(500).json({ success: false, error: { message: 'Erreur lors de la génération du PDF' } });
     }
   },

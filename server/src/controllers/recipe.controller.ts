@@ -13,6 +13,7 @@ import { db } from '../config/database.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { printTemplateRepository } from '../repositories/print-template.repository.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { logger } from '../utils/logger.js';
 
 /** Gabarit « Fiche technique » (M8-04) : titre et mention paramétrables, raison sociale de la fiche société. */
 async function ficheTemplate() {
@@ -356,7 +357,7 @@ export const recipeController = {
       res.setHeader('Content-Length', buffer.length);
       res.send(buffer);
     } catch (err) {
-      console.error('Erreur génération fiche technique PDF:', err);
+      logger.error({ err: err }, 'Erreur génération fiche technique PDF:');
       res.status(500).json({ success: false, error: { message: 'Erreur lors de la génération de la fiche' } });
     }
   },

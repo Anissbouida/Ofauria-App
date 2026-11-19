@@ -1,4 +1,5 @@
 import { notificationRepository } from '../repositories/notification.repository.js';
+import { logger } from './logger.js';
 
 /**
  * Create a notification without throwing — notifications should never
@@ -18,6 +19,6 @@ export async function createNotification(data: {
   try {
     await notificationRepository.create(data);
   } catch (err) {
-    console.error('[notify] Failed to create notification:', err);
+    logger.error({ err: err }, '[notify] Failed to create notification:');
   }
 }

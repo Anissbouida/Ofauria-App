@@ -3,6 +3,7 @@ import { db, withTransaction } from '../config/database.js';
 import { strictContainerQty } from '../services/container-rule.js';
 import type { PoolClient } from 'pg';
 import { currencySymbol } from '../services/currency.js';
+import { logger } from '../utils/logger.js';
 
 export const ingredientLotRepository = {
   /** List lots with filters */
@@ -512,7 +513,7 @@ export const ingredientLotRepository = {
       if (stillNeedToOpen > 0) {
         // Pesage + Economat reunis insuffisants — on continue quand meme,
         // le warning sera traite cote production.repository.
-        console.warn(`[consumeFEFO] Stock total insuffisant pour ${ingredientName}: manque ${stillNeedToOpen.toFixed(2)}`);
+        logger.warn(`[consumeFEFO] Stock total insuffisant pour ${ingredientName}: manque ${stillNeedToOpen.toFixed(2)}`);
       }
     }
 

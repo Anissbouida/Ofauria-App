@@ -20,6 +20,7 @@ import { db } from '../config/database.js';
 import { workshopsOf, workshopForCategorySlug, workshopLabel, listWorkshops, saveWorkshop } from '../services/workshops.js';
 import { processRefs } from '../services/process-referentials.js';
 import { declareProduction, listPlanObservations } from '../services/production-declaration.js';
+import { logger } from '../utils/logger.js';
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
  *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
@@ -416,7 +417,7 @@ export const productionController = {
           });
         }
       } catch (err) {
-        console.error('Auto-detection semi-finis echouee:', err);
+        logger.error({ err: err }, 'Auto-detection semi-finis echouee:');
       }
     }
 
@@ -767,7 +768,7 @@ export const productionController = {
           await orderRepository.updateStatus(updated.order_id, 'ready');
         }
       } catch (err) {
-        console.error('Failed to update linked order status:', err);
+        logger.error({ err: err }, 'Failed to update linked order status:');
       }
 
       // Notify cashier/saleswoman that order is ready for pickup
@@ -824,7 +825,7 @@ export const productionController = {
     try {
       await productionCoutRepository.calculateAndSave(req.params.id, req.user!.userId);
     } catch (err) {
-      console.error('Auto-calculate cost failed (non-blocking):', err);
+      logger.error({ err: err }, 'Auto-calculate cost failed (non-blocking):');
     }
 
     res.json({ success: true, data: updated, warnings });

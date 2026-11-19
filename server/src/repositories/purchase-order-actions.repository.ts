@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { recordAction, withActor, assertReasonCode } from '../services/document-actions.service.js';
 import { createInvoiceFromPo } from './reception-voucher.repository.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Actions motivées sur le bon de commande (refonte Achats D3, lot 1 — mig 306).
@@ -266,14 +267,14 @@ export const purchaseOrderActionsRepository = {
       : `${l.item} ${l.unitPrice.toFixed(2)} sans tarif contractuel`).join(' ; ')).slice(0, 1000);
 
     if (mode !== 'block') {
-      console.warn(`[off-contract][warn] BC ${id} : ${note}`);
+      logger.warn(`[off-contract][warn] BC ${id} : ${note}`);
       return { held: false, mode, lines: offending };
     }
 
     // block : hold OFF_CONTRACT avec le motif dédié (mig 453). N'écrase pas un hold en place.
     const reason = (await client.query(
       `SELECT id FROM ref_entries WHERE table_id = 'purchase_reason_codes' AND code = 'off_contract_price' AND is_active`)).rows[0]?.id as string | undefined;
-    if (!reason) { console.warn(`[off-contract] motif off_contract_price absent (mig 453 non appliquée) : BC ${id}`); return { held: false, mode, lines: offending }; }
+    if (!reason) { logger.warn(`[off-contract] motif off_contract_price absent (mig 453 non appliquée) : BC ${id}`); return { held: false, mode, lines: offending }; }
     const upd = await client.query(
       `UPDATE purchase_orders
           SET on_hold = true, hold_reason_code_id = $2, hold_note = $3, held_by = $4, held_at = now(), updated_at = now()

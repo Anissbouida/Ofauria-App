@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 /**
  * Feature flags du noyau comptable.
  *
@@ -65,10 +66,9 @@ export const FLAGS = {
 // Log au demarrage pour visibilite
 if (FLAGS.LEDGER_AUTOGEN || FLAGS.LEDGER_BACKED_DEBTS || FLAGS.LEDGER_SHADOW_MODE || FLAGS.POS_ALLOW_NEGATIVE_STOCK) {
   // eslint-disable-next-line no-console
-  console.log('[feature-flags] LEDGER_AUTOGEN=%s LEDGER_BACKED_DEBTS=%s LEDGER_SHADOW_MODE=%s POS_ALLOW_NEGATIVE_STOCK=%s',
-    FLAGS.LEDGER_AUTOGEN, FLAGS.LEDGER_BACKED_DEBTS, FLAGS.LEDGER_SHADOW_MODE, FLAGS.POS_ALLOW_NEGATIVE_STOCK);
+  logger.info('[feature-flags] LEDGER_AUTOGEN=%s LEDGER_BACKED_DEBTS=%s LEDGER_SHADOW_MODE=%s POS_ALLOW_NEGATIVE_STOCK=%s', FLAGS.LEDGER_AUTOGEN, FLAGS.LEDGER_BACKED_DEBTS, FLAGS.LEDGER_SHADOW_MODE, FLAGS.POS_ALLOW_NEGATIVE_STOCK);
 }
 if (FLAGS.POS_ALLOW_NEGATIVE_STOCK) {
   // eslint-disable-next-line no-console
-  console.warn('[feature-flags] ⚠ POS_ALLOW_NEGATIVE_STOCK actif — ventes en rupture autorisees (mode test uniquement).');
+  logger.warn('[feature-flags] ⚠ POS_ALLOW_NEGATIVE_STOCK actif — ventes en rupture autorisees (mode test uniquement).');
 }

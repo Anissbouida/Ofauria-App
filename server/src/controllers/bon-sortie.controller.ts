@@ -9,6 +9,7 @@ import {
   generateBonSchema, regenerateBonSchema, updateLigneSchema, weighLignesSchema, markReadySchema,
   chefRejectSchema, cancelBonSchema, transferLineSchema,
 } from '../validators/bon-sortie.validator.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Emet une notification de maniere non-bloquante : si la creation echoue (ex. table
@@ -19,7 +20,7 @@ async function notifySafe(data: Parameters<typeof notificationRepository.create>
   try {
     await notificationRepository.create(data);
   } catch (err) {
-    console.error('[bon-sortie] notification non emise:', err);
+    logger.error({ err: err }, '[bon-sortie] notification non emise:');
   }
 }
 
@@ -31,7 +32,7 @@ const BUSINESS_PREFIXES = [
   'Le lot', 'Lot ', 'Quantite', 'Les lignes', 'Statut invalide',
 ];
 function safeErrorMessage(err: unknown, fallback: string): string {
-  console.error(`[bon-sortie] ${fallback}:`, err);
+  logger.error({ err: err }, `[bon-sortie] ${fallback}:`);
   if (err instanceof Error) {
     const msg = err.message;
     if (BUSINESS_PREFIXES.some(p => msg.startsWith(p))) return msg;

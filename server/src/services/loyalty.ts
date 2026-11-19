@@ -3,6 +3,7 @@ import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { persistEntry, postingAccount } from './journal-generator.service.js';
 import { currencySymbol } from './currency.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Fidélité (mig 372). Les points sont des mouvements (loyalty_transactions) ; le solde de
@@ -73,7 +74,7 @@ async function post(client: PoolClient, tx: { id: string; amount: number; up: bo
   } catch (e) {
     await client.query('ROLLBACK TO SAVEPOINT loyalty_post');
     // eslint-disable-next-line no-console
-    console.error('[ledger] fidélité : écriture non générée', tx.id, e instanceof Error ? e.message : e);
+    logger.error({ details: [tx.id, e instanceof Error ? e.message : e] }, '[ledger] fidélité : écriture non générée');
   }
 }
 

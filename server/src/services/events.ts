@@ -1,6 +1,7 @@
 import { WEBHOOK_EVENTS_LIST, type WebhookEvent } from '@ofauria/shared';
 import { db } from '../config/database.js';
 import { webhookRepository } from '../repositories/webhook.repository.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Émission d'un événement métier vers les webhooks abonnés (G6-08). Met une livraison en
@@ -30,7 +31,7 @@ export async function emitEvent(event: WebhookEvent, data: Record<string, unknow
       await tx!.query('ROLLBACK TO SAVEPOINT kalum_emit_event').catch(() => undefined);
       await tx!.query('RELEASE SAVEPOINT kalum_emit_event').catch(() => undefined);
     }
-    console.error(`[webhook] émission ${event} impossible :`, err instanceof Error ? err.message : err);
+    logger.error({ err: err instanceof Error ? err.message : err }, `[webhook] émission ${event} impossible :`);
   }
 }
 

@@ -9,6 +9,7 @@ import {
   convertQuantity,
   type SellingUnit,
 } from '../utils/units.js';
+import { logger } from '../utils/logger.js';
 
 // Unit conversion factors to a common base (kg for weight, l for volume)
 const UNIT_TO_BASE: Record<string, { base: string; factor: number }> = {
@@ -647,7 +648,7 @@ export const recipeRepository = {
       yieldInSU = yieldInSellingUnit(yieldQuantity, yieldUnit, sellingUnit, pieceWeightKg);
     } catch (err) {
       if (err instanceof YieldConversionError) {
-        console.warn(`syncProductPrice skip product=${productId}: ${err.message}`);
+        logger.warn(`syncProductPrice skip product=${productId}: ${err.message}`);
         return;
       }
       throw err;

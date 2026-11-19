@@ -1,6 +1,7 @@
 import { policyNumber, resolvePolicy } from '../services/policies.js';
 import { subcontractingRepository } from './subcontracting.repository.js';
 import { db, withTransaction } from '../config/database.js';
+import { logger } from '../utils/logger.js';
 
 
 /**
@@ -624,7 +625,7 @@ export const productionCoutRepository = {
         await this.calculateAndSave(row.id, userId);
         calculated++;
       } catch (err) {
-        console.error(`Batch calculate failed for plan ${row.id}:`, err);
+        logger.error({ err: err }, `Batch calculate failed for plan ${row.id}:`);
       }
     }
     return { total: result.rows.length, calculated };

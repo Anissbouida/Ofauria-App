@@ -4,6 +4,7 @@ import { resolve, join } from 'path';
 import { loadDocumentTemplate, legalFooterLines, formatRib } from '../utils/document-template.js';
 import { arabicFontPath, containsArabic, drawArabicLineRight, numberToWordsAR } from '../utils/arabic-pdf.js';
 import { baseCurrencyCode, currencySymbol } from './currency.js';
+import { logger } from '../utils/logger.js';
 
 // Resolve logo — try multiple possible locations
 function findDefaultLogo(): string {
@@ -288,7 +289,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
       doc.image(resolvedLogo, M, y, { width: 220, height: 88 });
       y += 96;
     } catch (err) {
-      console.error('[Invoice PDF] Logo render error:', err);
+      logger.error({ err: err }, '[Invoice PDF] Logo render error:');
       doc.font('Helvetica-Bold').fontSize(20).fillColor(BROWN);
       txt(doc, '\u00D4FAURIA', M, y);
       doc.font('Helvetica').fontSize(7).fillColor(GOLD);
