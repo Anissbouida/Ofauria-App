@@ -9,6 +9,8 @@ import { requireVerb } from '../middleware/module.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateUuidParams } from '../middleware/validate.middleware.js';
 import { countryParamSync } from '../services/country-pack.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { createFixedAssetSchema, runDepreciationSchema } from '../validators/fixed-asset.validator.js';
 
 // Immobilisations : reserve a l'admin (comme le reste du noyau comptable).
 const router = Router();
@@ -21,8 +23,8 @@ router.get('/table', authenticate, can('accounting.fixed_assets.view'), asyncHan
   res.json({ success: true, data: await fixedAssetDisposal.table(year, req.user!.storeId ?? null) });
 }));
 router.get('/:id/schedule', authenticate, can('accounting.fixed_assets.view'), fixedAssetController.schedule);
-router.post('/', authenticate, can('accounting.fixed_assets.create'), fixedAssetController.create);
-router.post('/run-depreciation', authenticate, can('accounting.fixed_assets.run_depreciation'), fixedAssetController.runDepreciation);
+router.post('/', authenticate, can('accounting.fixed_assets.create'), validate(createFixedAssetSchema), fixedAssetController.create);
+router.post('/run-depreciation', authenticate, can('accounting.fixed_assets.run_depreciation'), validate(runDepreciationSchema), fixedAssetController.runDepreciation);
 router.delete('/:id', authenticate, can('accounting.fixed_assets.delete'), fixedAssetController.remove);
 
 // Cession / mise au rebut (mig 427) : aperçu libre, sortie et annulation avec le droit « post ».
