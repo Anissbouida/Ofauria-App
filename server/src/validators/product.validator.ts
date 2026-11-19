@@ -234,6 +234,28 @@ export const importProductsSchema = z.object({
 });
 
 /** G2-09 — mentions d'étiquette du produit. Chaîne vide ou null : la mention est effacée. */
+/* ─── G0-07 : routes produit restantes (product.controller) — types seulement. ─── */
+const numOrText = z.union([z.number().finite(), z.string().max(40)]).nullish();
+/** Bascule de disponibilité et envoi d'image (multipart) : aucun champ lu. */
+export const productNoBodySchema = z.preprocess(v => v ?? {}, z.object({}).passthrough());
+/** Ajustement manuel du stock : quantité requise (contrôlée par le contrôleur), lot facultatif. */
+export const adjustProductStockSchema = z.object({
+  quantity: numOrText, type: z.string().max(40).optional(), note: z.string().max(1000).nullish(),
+  lotNumber: z.string().max(120).nullish(), expiresAt: z.string().max(40).nullish(), unitCost: numOrText,
+}).passthrough();
+/** Paliers de prix au poids : le contrôleur écarte les paliers incohérents (min ≥ 0, prix > 0). */
+export const pricingTiersSchema = z.object({
+  tiers: z.array(z.object({
+    min_grammes: numOrText, max_grammes: numOrText, prix_per_kg: numOrText, display_order: numOrText,
+  }).passthrough()).max(200).optional(),
+}).passthrough();
+/** Prix par canal : le contrôleur écarte les lignes vides ou sans canal. */
+export const channelPricingSchema = z.object({
+  items: z.array(z.object({
+    channel_id: z.string().max(60).nullish(), price_override: numOrText, price_per_kg_override: numOrText,
+  }).passthrough()).max(200).optional(),
+}).passthrough();
+
 export const productLabelFieldsSchema = z.object({
   legalName: z.string().max(200).nullable().optional(),
   storageConditions: z.string().max(300).nullable().optional(),

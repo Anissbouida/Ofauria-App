@@ -14,6 +14,7 @@ import {
   replaceRecycleDestinationsSchema,
   bulkDeleteProductsSchema,
   importProductsSchema,
+  adjustProductStockSchema, channelPricingSchema, pricingTiersSchema, productNoBodySchema,
 } from '../validators/product.validator.js';
 
 // G0-04 : image reçue en mémoire puis écrite dans le stockage objet (table files).
@@ -48,17 +49,17 @@ router.post('/import', batchJsonParser, authenticate, can('products.import'), va
 router.post('/bulk-delete', batchJsonParser, authenticate, can('products.bulk_delete'), validate(bulkDeleteProductsSchema), productController.bulkDelete);
 router.put('/:id', authenticate, can('products.edit'), validate(updateProductSchema), productController.update);
 router.delete('/:id', authenticate, can('products.delete'), productController.remove);
-router.patch('/:id/toggle-availability', authenticate, can('products.toggle_availability'), productController.toggleAvailability);
+router.patch('/:id/toggle-availability', authenticate, can('products.toggle_availability'), validate(productNoBodySchema), productController.toggleAvailability);
 // G0-08 (V5) : même droit que la modification d'un article.
-router.post('/:id/image', authenticate, can('products.image'), upload.single('image'), productController.uploadImage);
-router.post('/:id/stock', authenticate, can('products.stock'), productController.adjustStock);
+router.post('/:id/image', authenticate, can('products.image'), upload.single('image'), validate(productNoBodySchema), productController.uploadImage);
+router.post('/:id/stock', authenticate, can('products.stock'), validate(adjustProductStockSchema), productController.adjustStock);
 router.get('/:id/stock-history', authenticate, productController.stockHistory);
 // Paliers tarifaires (mig 171)
 router.get('/:id/pricing-tiers', authenticate, productController.listPricingTiers);
-router.put('/:id/pricing-tiers', authenticate, can('products.pricing_tiers'), productController.replacePricingTiers);
+router.put('/:id/pricing-tiers', authenticate, can('products.pricing_tiers'), validate(pricingTiersSchema), productController.replacePricingTiers);
 // Overrides prix par canal (mig 173)
 router.get('/:id/channel-pricing', authenticate, productController.listChannelPricing);
-router.put('/:id/channel-pricing', authenticate, can('products.channel_pricing'), productController.replaceChannelPricing);
+router.put('/:id/channel-pricing', authenticate, can('products.channel_pricing'), validate(channelPricingSchema), productController.replaceChannelPricing);
 // Destinations de recyclage (audit P1.3, mig 106)
 router.get('/:id/recycle-destinations', authenticate, productController.listRecycleDestinations);
 router.put('/:id/recycle-destinations', authenticate, can('products.recycle_destinations'), validate(replaceRecycleDestinationsSchema), productController.replaceRecycleDestinations);
