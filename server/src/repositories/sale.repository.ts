@@ -830,14 +830,49 @@ export const saleRepository = {
       // Extourne de l'écriture comptable.
       await reverseEntriesForSource(client, { sourceId: saleId, sourceKinds: ['sale', 'backfill'] });
       // Restitution du stock vitrine vendu.
-      const items = (await client.query(`SELECT product_id, quantity FROM sale_items WHERE sale_id = $1`, [saleId])).rows;
+      const items = (await client.query(`SELECT id, product_id, quantity FROM sale_items WHERE sale_id = $1`, [saleId])).rows;
       for (const it of items) {
         if (!s.store_id) continue;
-        const after = await adjustVitrineStock(client, it.product_id, s.store_id, Number(it.quantity));
+        // Plan pilote : le(s) lot(s) d'où l'article est sorti sont recrédités, comme pour un retour
+        // (return.repository) — sinon le stock par lot diverge du stock magasin (FEFO, rappel, DLC).
+        // Le lien ticket ↔ lot passe en « rendu » (returned_qty) : le rappel ne compte plus l'article
+        // comme vendu et les numéros de série reviennent en stock (déclencheur mig 587).
+        const soldLots = (await client.query(
+          `SELECT sil.product_lot_id, sil.quantity, sil.returned_qty, pl.status,
+                  CASE WHEN pl.dlc_effective IS NOT NULL THEN pl.dlc_effective > now()
+                       ELSE pl.expires_at IS NULL OR pl.expires_at > CURRENT_DATE END AS in_date
+             FROM sale_item_lots sil JOIN product_lots pl ON pl.id = sil.product_lot_id
+            WHERE sil.sale_item_id = $1
+            ORDER BY pl.produced_at DESC
+            FOR UPDATE OF pl`, [it.id])).rows;
+        let wasted = 0;
+        for (const l of soldLots) {
+          const give = Number(l.quantity) - Number(l.returned_qty ?? 0);
+          if (!(give > 0)) continue;
+          await client.query(
+            `UPDATE sale_item_lots SET returned_qty = returned_qty + $3 WHERE sale_item_id = $1 AND product_lot_id = $2`,
+            [it.id, l.product_lot_id, give]);
+          // Lot périmé ou retiré entre-temps : l'article n'est pas remis en rayon, il passe en perte sur son lot.
+          const back = l.status === 'active' || (l.status === 'depleted' && l.in_date);
+          if (!back) wasted += give;
+          await client.query(
+            back
+              ? `UPDATE product_lots SET vitrine_qty = vitrine_qty + $2, sold_qty = GREATEST(0, sold_qty - $2), updated_at = NOW() WHERE id = $1`
+              : `UPDATE product_lots SET sold_qty = GREATEST(0, sold_qty - $2), wasted_qty = wasted_qty + $2, updated_at = NOW() WHERE id = $1`,
+            [l.product_lot_id, give]);
+          await client.query(
+            `INSERT INTO product_lot_movements (product_lot_id, store_id, kind, quantity, ref_type, ref_id)
+             SELECT id, store_id, $3, $2, 'sale_cancel', $4 FROM product_lots WHERE id = $1`,
+            [l.product_lot_id, give, back ? 'return' : 'waste', saleId]);
+        }
+        // Vitrine du magasin : seulement ce qui retrouve un lot en rayon (même règle que le retour).
+        const backQty = Number(it.quantity) - wasted;
+        if (!(backQty > 0)) continue;
+        const after = await adjustVitrineStock(client, it.product_id, s.store_id, backQty);
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
            VALUES ($1,'return',$2,$3,'Annulation ticket',$4,$5,$6)`,
-          [it.product_id, Number(it.quantity), after, saleId, opts.userId, s.store_id]);
+          [it.product_id, backQty, after, saleId, opts.userId, s.store_id]);
       }
       const row = (await client.query(
         `UPDATE sales SET cancelled_at = now(), cancelled_by = $2, cancel_reason = $3, cancel_approved_by = $4

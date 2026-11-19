@@ -12,7 +12,8 @@
  *   5. Paie → Bulletin mensuel (brut, cotisations, IR, net ; aucune écriture)
  *
  * Les écarts au comportement métier attendu ne sont PAS masqués : l'assertion
- * attendue est écrite et marquée `it.fails` avec un commentaire « CONSTAT ».
+ * attendue est écrite et marquée `it.fails` avec un commentaire « CONSTAT » (les deux défauts de caisse
+ * trouvés ainsi ont été corrigés et leurs tests repassés en `it`).
  *
  * POS_ALLOW_NEGATIVE_STOCK forcé OFF (comportement de production), posé avant tout
  * import dynamique. DLC à J+5 au moins (piège du fuseau en soirée, cf. scenarios-ventes).
@@ -335,21 +336,21 @@ describe.skipIf(!hasTestDb)('Parcours pilote — chiffres de bout en bout', () =
       expect(await vitrineOf(productId)).toBeCloseTo(8, 3);
     });
 
-    // CONSTAT : saleRepository.cancel (sale.repository.ts:840-847) restitue
-    // product_store_stock.vitrine_quantity mais ne recrédite PAS le lot (product_lots.vitrine_qty /
-    // sold_qty) ni les liens sale_item_lots. Le lot affiche encore 5 vendus et 5 en vitrine alors
-    // que la vitrine magasin dit 8 : stock par lot et stock magasin divergent (FEFO, rappel de lot).
-    it.fails('annulation : le lot d\'origine est recrédité (vitrine 8, vendus 2) [CONSTAT]', async () => {
+    // Défaut trouvé par ce parcours puis corrigé : l'annulation ne recréditait que la vitrine du
+    // magasin, pas le lot ni les liens ticket ↔ lot (stock par lot et stock magasin divergeaient).
+    it('annulation : le lot d\'origine est recrédité (vitrine 8, vendus 2)', async () => {
       const lot = await p().query(`SELECT vitrine_qty, sold_qty FROM product_lots WHERE id = $1`, [lotId]);
       // Attendu : vitrine lot = 10 − 2 = 8 ; vendus = 2 (la vente B annulée ne compte plus)
       expect([num(lot.rows[0].vitrine_qty), num(lot.rows[0].sold_qty)]).toEqual([8, 2]);
+      // Le lien ticket ↔ lot de la vente annulée est marqué rendu : le rappel ne la compte plus.
+      const links = await p().query(
+        `SELECT COALESCE(SUM(sil.quantity - sil.returned_qty), 0) AS q FROM sale_item_lots sil WHERE sil.product_lot_id = $1`, [lotId]);
+      expect(num(links.rows[0].q)).toBeCloseTo(2, 3);
     });
 
-    // CONSTAT : cashRegisterRepository.close (cash-register.repository.ts:250-272) agrège
-    // `FROM sales WHERE session_id = $1 AND payment_status IS DISTINCT FROM 'unpaid'` sans filtrer
-    // `cancelled_at IS NULL` : le ticket annulé (30 DH) est compté dans le CA, le cash et le
-    // tiroir attendu. Conséquence : un faux manquant de 30 DH au comptage (et son écriture 658).
-    it.fails('clôture : le total exclut la vente annulée (1 vente, 20 DH, tiroir attendu 120) [CONSTAT]', async () => {
+    // Défaut trouvé par ce parcours puis corrigé : la clôture comptait le ticket annulé (30 DH) dans
+    // le CA, les espèces et le tiroir attendu → faux manquant de 30 DH au comptage.
+    it('clôture : le total exclut la vente annulée (1 vente, 20 DH, tiroir attendu 120)', async () => {
       await cashRepo.close(session1);
       const s = (await p().query(`SELECT total_sales, total_revenue, cash_revenue, expected_cash FROM cash_register_sessions WHERE id = $1`, [session1])).rows[0];
       // 1 vente valide (A) ; CA = 20 ; espèces = 20 ; tiroir attendu = fond 100 + 20 = 120
