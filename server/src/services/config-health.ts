@@ -1,6 +1,8 @@
 import { MODULE_LABELS, dependentModules, type AppModule } from '@ofauria/shared';
 import { db } from '../config/database.js';
 import { sectorRepository, type Activation, type AdjustmentChanges } from '../repositories/sector.repository.js';
+import { configHealthRepository, ITEM_LIMIT, QUALITY_RELEASE_PERMISSION, type HealthFinding, type HealthItem } from '../repositories/config-health.repository.js';
+import { seedPermissions } from './permissions.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -23,10 +25,16 @@ export type HealthAction =
 export type Recommendation = {
   key: string;
   tone: 'suggestion' | 'warning';
+  /** Gravité des contrôles de cohérence (C-04) : « blocking » = un ordre ou un lot restera bloqué. */
+  severity?: 'blocking' | 'warning';
   module: string;
   title: string;
   detail: string;
   action: HealthAction;
+  /** Nombre total d'éléments en cause (la liste en porte au plus 200). */
+  count?: number;
+  /** Éléments en cause, chacun avec un lien vers sa fiche (200 au plus). */
+  items?: HealthItem[];
 };
 
 type Ctx = { act: Activation; count: (sql: string, params?: unknown[]) => Promise<number> };
@@ -93,21 +101,24 @@ const usageChecks: Check[] = USAGE.map(u => ({
  */
 const profileChecks: Check[] = [
   {
+    // Étape exigée par un type d'ordre alors que le module qui la porte est masqué.
     key: 'profile.order_type.module_off',
     run: async ({ act }) => {
       if (!act.modules.has('production')) return null;
-      const { rows } = await db.query(
-        `SELECT label, requires_bon_sortie, requires_weighing, requires_quality_check FROM production_order_types WHERE is_active`);
-      const issues: string[] = [];
-      for (const t of rows) {
-        if ((t.requires_bon_sortie || t.requires_weighing) && !act.modules.has('stock')) issues.push(`« ${t.label} » exige un bon de sortie mais le module Stock est masqué`);
-        if (t.requires_quality_check && !act.modules.has('controle')) issues.push(`« ${t.label} » exige un contrôle mais le module Contrôle est masqué`);
+      const items: HealthItem[] = [];
+      for (const t of await configHealthRepository.activeOrderTypeRequirements()) {
+        const missing: string[] = [];
+        if (t.needsStock && !act.modules.has('stock')) missing.push(`bon de sortie → ${label('stock')}`);
+        if (t.needsQuality && !act.modules.has('controle')) missing.push(`contrôle → ${label('controle')}`);
+        if (t.needsSubcontracting && !act.modules.has('purchasing')) missing.push(`sous-traitance → ${label('purchasing')}`);
+        if (missing.length) items.push({ id: t.id, label: `${t.label} (${missing.join(', ')} masqué)`, to: '/production/settings' });
       }
-      if (!issues.length) return null;
+      if (!items.length) return null;
       return {
-        tone: 'warning', module: 'production', title: 'Type d\'ordre incompatible avec les modules actifs',
-        detail: `${issues.join(' ; ')}. Les ordres de ce type resteront bloqués à cette étape.`,
+        tone: 'warning', severity: 'blocking', module: 'production', title: 'Type d\'ordre incompatible avec les modules actifs',
+        detail: `${items.length} type(s) d'ordre exigent une étape dont le module est masqué. Les ordres de ce type resteront bloqués à cette étape.`,
         action: { kind: 'link', label: 'Voir les types d\'ordre', to: '/production/settings' },
+        count: items.length, items: items.slice(0, ITEM_LIMIT),
       };
     },
   },
@@ -154,7 +165,96 @@ const profileChecks: Check[] = [
       };
     },
   },
+  ...consistencyChecks(),
 ];
+
+/**
+ * Contrôles de cohérence avec liste (C-04) : chacun rend un compteur et les éléments en
+ * cause (200 au plus, lien vers la fiche). `module` = module dont l'activation conditionne
+ * l'affichage : un contrôle d'un module masqué ne s'affiche pas.
+ */
+function consistencyChecks(): Check[] {
+  type Spec = {
+    key: string; modules: AppModule[]; severity: 'blocking' | 'warning';
+    find: () => Promise<HealthFinding>;
+    title: (n: number) => string; detail: string; action: { label: string; to: string };
+  };
+  const specs: Spec[] = [
+    {
+      key: 'profile.order_type.no_sequence', modules: ['production'], severity: 'blocking',
+      find: () => configHealthRepository.orderTypesWithoutSequence(),
+      title: n => `${n} type(s) d'ordre sans série de numérotation`,
+      detail: 'La série de numérotation désignée par ces types d\'ordre n\'existe pas : la création d\'un ordre de ce type échoue.',
+      action: { label: 'Voir les séries', to: '/settings?page=numbering' },
+    },
+    {
+      key: 'profile.order_type.no_workshop', modules: ['production'], severity: 'warning',
+      find: () => configHealthRepository.orderTypesWithoutWorkshop(),
+      title: n => `${n} type(s) d'ordre sans atelier`,
+      detail: 'Sans atelier par défaut (ou avec un atelier inactif), un ordre créé sans atelier choisi n\'est adressé à personne.',
+      action: { label: 'Voir les types d\'ordre', to: '/production/settings' },
+    },
+    {
+      key: 'profile.unit.not_convertible', modules: ['production'], severity: 'blocking',
+      find: () => configHealthRepository.unconvertibleItemUnits(),
+      title: n => `${n} article(s) dont l'unité de fabrication ne se convertit pas en unité de stock`,
+      detail: 'Une ligne de nomenclature est saisie dans une unité que rien ne relie à l\'unité de stock de l\'article (ni même dimension, ni conversion sur la fiche) : besoins, sorties et coûts sont faux. Ajoutez la conversion sur la fiche de l\'article.',
+      action: { label: 'Voir les unités', to: '/settings?page=units' },
+    },
+    {
+      key: 'profile.bom.no_active_version', modules: ['production'], severity: 'warning',
+      find: () => configHealthRepository.recipesWithoutActiveVersion(),
+      title: n => `${n} nomenclature(s) sans version active`,
+      detail: 'Aucune version n\'est active : les ordres ne figent aucune version de la nomenclature et le coût n\'est pas traçable. Activez une version depuis la fiche.',
+      action: { label: 'Voir les fiches', to: '/recipes' },
+    },
+    {
+      key: 'profile.routing.no_work_center', modules: ['production'], severity: 'warning',
+      find: () => configHealthRepository.routingsWithoutWorkCenter(),
+      title: n => `${n} gamme(s) sans poste de charge`,
+      detail: 'Une gamme sans opération, ou dont une opération n\'a pas de poste de charge actif, ne peut être ni planifiée ni chiffrée.',
+      action: { label: 'Voir les postes et gammes', to: '/production/work-centers' },
+    },
+    {
+      key: 'profile.work_center.no_calendar', modules: ['production'], severity: 'warning',
+      find: () => configHealthRepository.workCentersWithoutCalendar(),
+      title: n => `${n} poste(s) de charge sans calendrier`,
+      detail: 'Sans créneau d\'ouverture, la capacité du poste n\'est pas connue jour par jour : la planification ne peut pas le charger correctement.',
+      action: { label: 'Voir les postes', to: '/production/work-centers' },
+    },
+  ];
+  const checks: Check[] = specs.map(s => ({
+    key: s.key,
+    run: async ({ act }) => {
+      if (!s.modules.every(m => act.modules.has(m))) return null;
+      const f = await s.find();
+      if (!f.total) return null;
+      return {
+        tone: 'warning', severity: s.severity, module: s.modules[0], title: s.title(f.total), detail: s.detail,
+        action: { kind: 'link', ...s.action }, count: f.total, items: f.items,
+      };
+    },
+  }));
+  checks.push({
+    // Contrôle bloquant au plan de contrôle, mais personne ne peut clore l'inspection ni libérer le lot.
+    key: 'profile.quality.no_releaser',
+    run: async ({ act }) => {
+      if (!act.modules.has('controle')) return null;
+      const lines = await configHealthRepository.blockingQualityLines();
+      if (!lines.total) return null;
+      await seedPermissions();
+      if (await configHealthRepository.activeUsersWithPermission(QUALITY_RELEASE_PERMISSION) > 0) return null;
+      return {
+        tone: 'warning', severity: 'blocking', module: 'controle',
+        title: `${lines.total} contrôle(s) bloquant(s) sans personne habilitée à libérer`,
+        detail: 'Le plan de contrôle comporte des contrôles bloquants, mais aucun utilisateur actif ne détient le droit « inspections qualité » : les lots resteront en attente de libération.',
+        action: { kind: 'link', label: 'Attribuer le droit', to: '/users' },
+        count: lines.total, items: lines.items,
+      };
+    },
+  });
+  return checks;
+}
 
 const CHECKS: Check[] = [
   {
