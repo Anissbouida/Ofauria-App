@@ -7,6 +7,8 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { db } from '../config/database.js';
 import { dunningRepository, dunningSettings } from '../repositories/dunning.repository.js';
 import { generateDunningPdf } from '../services/dunning-pdf.service.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { dunningLevelSchema, dunningNoBodySchema } from '../validators/dunning.validator.js';
 
 /**
  * Relances clients et blocage de crédit (mig 366). Direction uniquement : c'est elle qui
@@ -36,7 +38,7 @@ dunningRouter.get('/levels', authenticate, can('sales.dunning.view'), asyncHandl
   res.json({ success: true, data: await dunningRepository.allLevels() });
 }));
 
-dunningRouter.put('/levels/:level', authenticate, can('sales.dunning.levels'), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.put('/levels/:level', authenticate, can('sales.dunning.levels'), validate(dunningLevelSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const level = Number(req.params.level);
   const b = z.object({
     label: z.string().trim().min(2).max(80).optional(), daysAfterDue: z.coerce.number().int().min(0).max(3650).optional(),
@@ -82,7 +84,7 @@ dunningRouter.post('/:id/send', authenticate, can('sales.dunning.send'), asyncHa
   res.json({ success: true, data: r.data });
 }));
 
-dunningRouter.post('/:id/cancel', authenticate, can('sales.dunning.cancel'), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.post('/:id/cancel', authenticate, can('sales.dunning.cancel'), validate(dunningNoBodySchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await dunningRepository.cancel(req.params.id);
   if ('error' in r) { bad(res, r.error, 409); return; }
   res.json({ success: true, data: r.data });
@@ -111,7 +113,7 @@ dunningRouter.post('/customers/:customerId/hold', authenticate, can('sales.dunni
   await dunningRepository.hold(req.params.customerId, { reason: b.data.reason, userId: req.user!.userId, storeId: req.user!.storeId ?? null });
   res.json({ success: true });
 }));
-dunningRouter.post('/customers/:customerId/release', authenticate, can('sales.dunning.release'), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.post('/customers/:customerId/release', authenticate, can('sales.dunning.release'), validate(dunningNoBodySchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   await dunningRepository.release(req.params.customerId);
   res.json({ success: true });
 }));
