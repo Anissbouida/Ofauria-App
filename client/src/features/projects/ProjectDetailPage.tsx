@@ -8,14 +8,14 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  projectsApi, TASK_STATUS_LABELS, BILLING_LABELS, PRIORITY_LABELS, type ProjectStatus, type Task, type TaskStatus, type ProjectInvoice,
+  projectsApi, TASK_STATUS_LABELS, BILLING_LABELS, PROJECT_STATUS_LABELS, PRIORITY_LABELS, type ProjectStatus, type Task, type TaskStatus, type ProjectInvoice,
 } from '../../api/projects.api';
 import { apiErrorMessage } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { StatusTag } from '../../components/ui/StatusTag';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import {
   ProjectFormModal, TaskFormModal, TimeEntryForm, TaskBoard, n2, n0, h1, PRIORITY_TAG, projectRevenue, consumption, usageTone,
@@ -28,6 +28,7 @@ import {
  */
 type Tab = 'tasks' | 'time' | 'purchases' | 'notes';
 const TASK_LAYOUT_KEY = 'kalum.projects.taskLayout';
+const STATUS_TONE: Record<ProjectStatus, StatusTone> = { draft: 'draft', active: 'progress', on_hold: 'blocked', completed: 'done', cancelled: 'cancelled' };
 const fmtDay = (d: string | null | undefined) => (d ? format(new Date(d), 'd MMM yyyy', { locale: fr }) : null);
 
 export default function ProjectDetailPage() {
@@ -122,8 +123,12 @@ export default function ProjectDetailPage() {
           <div className="prj-hero-top">
             <div className="prj-hero-icon"><FolderKanban size={24} /></div>
             <div style={{ flex: 1, minWidth: 240 }}>
-              <h1>{p.name}</h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h1>{p.name}</h1>
+                <StatusTag tone={STATUS_TONE[p.status] ?? 'draft'} icon={p.status === 'on_hold' ? PauseCircle : undefined} label={PROJECT_STATUS_LABELS[p.status] ?? p.status} />
+              </div>
               <div className="prj-hero-meta">
+                <span className="font-mono">{p.number}</span>
                 <span>{p.customer_label || 'Interne'}</span>
                 {p.order_number && <span>Commande {p.order_number}</span>}
                 {p.manager_name && <span>Responsable : {p.manager_name}</span>}
@@ -209,7 +214,7 @@ export default function ProjectDetailPage() {
                         </td>
                         <td>{t.assignee_name || '—'}</td>
                         <td><span className={`odoo-tag ${PRIORITY_TAG[t.priority]}`}>{PRIORITY_LABELS[t.priority]}</span></td>
-                        <td style={{ color: t.is_overdue ? '#dc3545' : undefined, fontWeight: t.is_overdue ? 600 : 400 }}>{t.due_date ? format(new Date(t.due_date), 'dd/MM/yyyy') : '—'}</td>
+                        <td style={{ color: t.is_overdue ? 'var(--prj-red)' : undefined, fontWeight: t.is_overdue ? 600 : 400 }}>{t.due_date ? format(new Date(t.due_date), 'dd/MM/yyyy') : '—'}</td>
                         <td style={{ textAlign: 'right' }}>{h1(t.hours_spent)}{t.estimated_hours ? ` / ${h1(t.estimated_hours)}` : ''}</td>
                         <td>
                           <select className="odoo-filter-dropdown" aria-label="Statut" value={t.status} disabled={!editable} onChange={e => setTaskStatus.mutate({ taskId: t.id, status: e.target.value as TaskStatus })}>

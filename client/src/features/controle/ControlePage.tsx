@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ShoppingCart, Truck, Factory, Trash2, AlertTriangle, CheckCircle2, Loader2, Search, X, Filter,
+  ShoppingCart, Truck, Factory, Trash2, AlertTriangle, CheckCircle2, Loader2, X, Filter,
   Camera, Package, Recycle, Clock, Store, Boxes, Plus, ArrowRight, LayoutDashboard, Thermometer, Siren,
   ClipboardCheck, Settings, MessageSquareWarning,
   ListChecks,
@@ -12,13 +12,16 @@ import { fr } from 'date-fns/locale';
 import { controleApi, type ControlIndicator, type LossFamily } from '../../api/controle.api';
 import { serverUrl } from '../../api/client';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useApprovalsCount } from '../../api/approvals.api';
 import {
-  StagePipeline, PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel,
+  PeriodFilter, SelectFilter, PAGE_SIZE, periodParams, periodLabel,
   type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
+import { ListToolbar, ListEmpty } from '../sales/ListTemplate';
+import { StageChips, Segmented, Panel, PagerFoot, PageLoading } from './KlUi';
 import GoodsEntryRegisterTab from '../stock/GoodsEntryRegisterTab';
 import PurchasingPilotageTab from '../purchasing/PurchasingPilotageTab';
 import ProductionControl from './ProductionControl';
@@ -43,7 +46,7 @@ import { money, currencySymbol } from '../../utils/money';
 type Tab = 'overview' | 'achats' | 'production' | 'pertes' | 'haccp' | 'tracabilite' | 'sav' | 'qualite';
 
 const n = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const DOT = { danger: '#dc3545', warning: '#d9822b', ok: '#28a745', unknown: '#adb5bd' } as const;
+const DOT = { danger: 'var(--prj-red)', warning: 'var(--prj-orange)', ok: 'var(--prj-green)', unknown: 'var(--theme-text-muted)' } as const;
 
 function Dot({ color }: { color: string }) {
   return <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: color, flexShrink: 0, display: 'inline-block' }} />;
@@ -74,26 +77,48 @@ export default function ControlePage() {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const range = useMemo(() => periodParams(period, customFrom, customTo), [period, customFrom, customTo]);
+  // Boutons de l'écran posés dans la barre (fil d'Ariane) : déclarer une perte, nouvelle réclamation.
+  const [declaring, setDeclaring] = useState(false);
+  const [creatingComplaint, setCreatingComplaint] = useState(false);
+  const actions = tab === 'pertes' ? (
+    <button type="button" onClick={() => setDeclaring(true)} className="odoo-btn-primary"
+      title="Perte de produit fini ou de matière première"
+      style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <Plus size={13} /> Déclarer une perte
+    </button>
+  ) : tab === 'sav' ? (
+    <button type="button" className="odoo-btn-primary" onClick={() => setCreatingComplaint(true)}
+      style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <Plus size={14} /> Nouvelle réclamation
+    </button>
+  ) : tab === 'haccp' ? (
+    <Link to="/haccp" className="odoo-btn-secondary" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <Thermometer size={13} /> Feuille du jour
+    </Link>
+  ) : undefined;
 
   return (
-    <ModuleShell title="Contrôle & Qualité" views={views} current={current} onSelect={select}>
-      {(tab === 'overview' || tab === 'production' || tab === 'pertes' || tab === 'sav') && (
-        <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
-          <PeriodFilter label="Période" title="Période analysée"
-            period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-          <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-            <strong style={{ color: 'var(--odoo-text)' }}>{periodLabel(period, customFrom, customTo)}</strong>
-          </span>
-        </div>
-      )}
-      {tab === 'overview' && <Overview range={range} onTab={select} />}
-      {tab === 'achats' && <AchatsTab />}
-      {tab === 'production' && <ProductionTab range={range} periodText={periodLabel(period, customFrom, customTo)} />}
-      {tab === 'pertes' && <LossRegister range={range} periodText={periodLabel(period, customFrom, customTo)} />}
-      {tab === 'haccp' && <><DomainIndicators range={range} domain="haccp" /><HaccpManagerTab /></>}
-      {tab === 'tracabilite' && <TraceabilityTab />}
-      {tab === 'sav' && <ComplaintsTab range={range} periodText={periodLabel(period, customFrom, customTo)} />}
-      {tab === 'qualite' && <QualityTab />}
+    <ModuleShell title="Contrôle & Qualité" views={views} current={current} onSelect={select} flush actions={actions}>
+      <ModulePage title={current?.label}>
+        {(tab === 'overview' || tab === 'production' || tab === 'pertes' || tab === 'sav') && (
+          <div className="prj-toolbar">
+            <PeriodFilter label="Période" title="Période analysée"
+              period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+            <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+              <strong style={{ color: 'var(--odoo-text)' }}>{periodLabel(period, customFrom, customTo)}</strong>
+            </span>
+          </div>
+        )}
+        {tab === 'overview' && <Overview range={range} onTab={select} />}
+        {tab === 'achats' && <AchatsTab />}
+        {tab === 'production' && <ProductionTab range={range} periodText={periodLabel(period, customFrom, customTo)} />}
+        {tab === 'pertes' && <LossRegister range={range} periodText={periodLabel(period, customFrom, customTo)} />}
+        {tab === 'haccp' && <><DomainIndicators range={range} domain="haccp" /><HaccpManagerTab /></>}
+        {tab === 'tracabilite' && <TraceabilityTab />}
+        {tab === 'sav' && <ComplaintsTab range={range} periodText={periodLabel(period, customFrom, customTo)} creating={creatingComplaint} onCreatingChange={setCreatingComplaint} />}
+        {tab === 'qualite' && <QualityTab />}
+      </ModulePage>
+      {declaring && <LossDeclare onClose={() => setDeclaring(false)} />}
     </ModuleShell>
   );
 }
@@ -126,80 +151,83 @@ function Overview({ range, onTab }: { range: Record<string, string>; onTab: (t: 
     else onTab(i.target);
   };
 
-  if (isLoading) return <Loading />;
+  if (isLoading) return <PageLoading />;
   return (
     <>
-      <StagePipeline
-        title="Où en sont mes contrôles"
-        summary={alerts.length ? `${alerts.length} contrôle${alerts.length > 1 ? 's' : ''} demandent une action` : 'Aucune anomalie sur la période'}
-        stages={DOMAINS}
-        stats={Object.fromEntries(DOMAINS.map(d => {
-          const items = byDomain(d.key);
-          const value = items.reduce((s, i) => s + Math.abs(i.value ?? 0), 0);
-          const danger = items.filter(i => i.severity === 'danger').length;
-          return [d.key, { count: items.length, sub: value > 0 ? `${money(value)}` : '', late: danger, alertLabel: 'urgent' }];
-        }))}
-        isActive={() => false}
-        onPick={k => (k === 'ventes' ? navigate('/boutique') : onTab(k as Tab))}
-      />
+      {/* Où en sont mes contrôles : une tuile par domaine (tableau de bord au design Ventes). */}
+      <section aria-label="Où en sont mes contrôles">
+        <div className="kl-sec">
+          <h2>Où en sont mes contrôles</h2>
+          <small>{alerts.length ? `${alerts.length} contrôle${alerts.length > 1 ? 's' : ''} demandent une action` : 'Aucune anomalie sur la période'}</small>
+        </div>
+        <div className="kl-hero" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 16 }}>
+          {DOMAINS.map(d => {
+            const items = byDomain(d.key);
+            const value = items.reduce((s, i) => s + Math.abs(i.value ?? 0), 0);
+            const danger = items.filter(i => i.severity === 'danger').length;
+            const Icon = d.icon;
+            return (
+              <button key={d.key} type="button" className="kl-widget" title={d.hint}
+                onClick={() => (d.key === 'ventes' ? navigate('/boutique') : onTab(d.key as Tab))}
+                style={{ textAlign: 'left', border: 0, cursor: 'pointer', font: 'inherit', color: 'inherit' }}>
+                <div className="kl-wlabel"><span className="kl-sq"><Icon size={13} /></span>{d.label}</div>
+                <div className="kl-big" style={{ fontSize: 34, color: items.length ? undefined : 'var(--theme-text-muted)' }}>{items.length}</div>
+                <div className="kl-sub" style={{ fontSize: 13 }}>
+                  {danger > 0 && <span style={{ color: 'var(--prj-red)', fontWeight: 600 }}>{danger} urgent{danger > 1 ? 's' : ''} · </span>}
+                  {value > 0 ? `${money(value)} · ` : ''}{d.hint}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {alerts.length === 0 ? (
         <StatusBanner tone="success" icon={CheckCircle2} title="Tous les contrôles sont au vert">
           Aucun écart, blocage ni perte sur la période choisie.
         </StatusBanner>
       ) : (
-        <div style={{ overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
-          <table className="odoo-table" style={{ margin: 0 }}>
-            <thead>
-              <tr>
-                <th>Contrôle</th>
-                <th style={{ textAlign: 'right' }}>Nombre</th>
-                <th style={{ textAlign: 'right' }}>Valeur</th>
-                <th style={{ textAlign: 'right' }}>Prochaine action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DOMAINS.map(d => {
-                const items = data.filter(i => i.domain === d.key);
-                if (items.length === 0) return null;
-                return [
-                  <tr key={`h-${d.key}`}>
-                    <td colSpan={4} style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem', color: 'var(--odoo-text)' }}>{d.label}</td>
-                  </tr>,
-                  ...items.map(i => (
-                    <tr key={i.key} style={{ opacity: i.severity === 'ok' ? 0.7 : 1 }}>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                          <Dot color={DOT[i.severity]} />
-                          <span style={{ fontWeight: i.severity === 'ok' ? 400 : 600 }}>{i.label}</span>
-                        </span>
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginLeft: 16 }}>
+        <section aria-label="Contrôles par domaine" style={{ display: 'grid', gap: 20 }}>
+          {DOMAINS.map(d => {
+            const items = data.filter(i => i.domain === d.key);
+            if (items.length === 0) return null;
+            const Icon = d.icon;
+            return (
+              <div key={d.key}>
+                <div className="kl-sec"><h2 style={{ fontSize: 17 }}>{d.label}</h2><small>{d.hint}</small></div>
+                <div className="kl-group">
+                  {items.map(i => (
+                    <div key={i.key} className="kl-cell ico" style={{ cursor: 'default', opacity: i.severity === 'ok' ? 0.75 : 1 }}>
+                      <span className={`kl-ic ${i.severity === 'danger' ? 'r' : i.severity === 'warning' ? 'o' : i.severity === 'ok' ? 'g' : 'x'}`}><Icon size={16} /></span>
+                      <span className="tx">
+                        <span className="t1" style={{ fontWeight: i.severity === 'ok' ? 400 : 600 }}>{i.label}</span>
+                        <span className="t2">
                           {i.hint}
                           {i.key === 'recu_non_facture' && (i.aged ?? 0) > 0 && ` · ${i.aged} de plus de 30 j`}
                           {i.key === 'pertes' && (i.missing ?? 0) > 0 && ` · ${i.missing} sans coût de revient`}
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{i.count === null ? '—' : i.count}</td>
-                      <td style={{ textAlign: 'right', color: (i.value ?? 0) < 0 ? '#dc3545' : 'var(--odoo-text)' }}>
+                        </span>
+                      </span>
+                      <span className="tr" title="Nombre">{i.count === null ? '—' : i.count}</span>
+                      <span className={`tr${(i.value ?? 0) < 0 ? ' red' : ''}`} style={{ minWidth: 96, textAlign: 'right' }}>
                         {i.value === null || i.value === 0 ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span> : <>{n(i.value)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}</span></>}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
+                      </span>
+                      <span style={{ minWidth: 92, textAlign: 'right' }}>
                         {i.severity !== 'ok' && i.severity !== 'unknown' && (
                           <button type="button" onClick={() => go(i)} className={i.severity === 'danger' ? 'odoo-btn-danger' : 'odoo-btn-secondary'}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             Traiter <ArrowRight size={12} />
                           </button>
                         )}
-                      </td>
-                    </tr>
-                  )),
-                ];
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </section>
       )}
-      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p className="klc-note">
         Conventions : un écart négatif est un manque. Les manquants de ventes sont valorisés au prix de vente (manque à gagner) ; les pertes au coût de revient.
       </p>
     </>
@@ -210,17 +238,15 @@ function Overview({ range, onTab }: { range: Record<string, string>; onTab: (t: 
 
 function DomainIndicators({ range, domain }: { range: Record<string, string>; domain: ControlIndicator['domain'] }) {
   const { data = [], isLoading } = useIndicators(range);
-  if (isLoading) return <Loading />;
+  if (isLoading) return <PageLoading />;
   const items = data.filter(i => i.domain === domain);
   return (
-    <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
+    <div className="prj-kpis">
       {items.map(i => (
-        <div key={i.key} className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Dot color={DOT[i.severity]} /> {i.label}
-          </div>
-          <div className="odoo-stat-card-value">{i.count ?? '—'}</div>
-          <div className="odoo-stat-card-sub">{i.value ? `${money(i.value)} · ` : ''}{i.hint}</div>
+        <div key={i.key} className="prj-kpi">
+          <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Dot color={DOT[i.severity]} /> {i.label}</span></div>
+          <div className="prj-kpi-value">{i.count ?? '—'}</div>
+          <div className="prj-kpi-sub">{i.value ? `${money(i.value)} · ` : ''}{i.hint}</div>
         </div>
       ))}
     </div>
@@ -241,23 +267,10 @@ function AchatsTab() {
   const [view, setView] = useState<AchatsView>('controles');
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <div className="odoo-view-switcher" role="tablist" aria-label="Contrôle achats">
-          {ACHATS_VIEWS.map(([key, label]) => (
-            <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setView(key)}
-              style={{
-                padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
-                background: view === key ? 'var(--odoo-purple-light)' : 'transparent',
-                color: view === key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
-                fontWeight: view === key ? 600 : 400,
-              }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <Segmented label="Contrôle achats" value={view} onChange={setView} options={ACHATS_VIEWS} />
       {view === 'controles' && <ReceptionChecks />}
-      {view === 'registre' && <div style={{ margin: '0 -1rem' }}><GoodsEntryRegisterTab /></div>}
+      {/* Registre sans sa marge historique (prop bare) : aligné sur la page. */}
+      {view === 'registre' && <GoodsEntryRegisterTab bare />}
       {view === 'rapprochement' && <PurchasingPilotageTab onOpenInvoice={() => navigate('/purchasing?tab=invoices')} />}
     </>
   );
@@ -286,7 +299,7 @@ const FAMILIES: Array<StageDef & { key: 'all' | LossFamily }> = [
   { key: 'matiere', label: 'Matières premières', hint: 'périmées, casse, fond', icon: Boxes },
 ];
 const FAMILY_DOT: Record<LossFamily, string> = {
-  production: '#d9822b', invendu: '#c99a06', vitrine: '#3b82f6', perime: '#dc3545', recyclage: '#28a745', matiere: '#6f42c1',
+  production: 'var(--prj-orange)', invendu: '#c99a06', vitrine: '#3b82f6', perime: 'var(--prj-red)', recyclage: 'var(--prj-green)', matiere: '#6f42c1',
 };
 
 function LossRegister({ range, periodText }: { range: Record<string, string>; periodText: string }) {
@@ -298,7 +311,6 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [declaring, setDeclaring] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
 
   useEffect(() => {
@@ -336,7 +348,7 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
 
   return (
     <>
-      <StagePipeline
+      <StageChips
         title="Registre des pertes"
         summary={`${money(total)} au coût de revient${delta !== null ? ` · ${delta > 0 ? '+' : ''}${delta} % vs période précédente` : ''}`}
         stages={FAMILIES}
@@ -356,8 +368,8 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
       )}
 
       {(summary?.top?.length ?? 0) > 0 && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '10px 14px', background: 'var(--odoo-bg)' }}>
-          <div style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--odoo-text-muted)', marginBottom: 6 }}>
+        <section className="prj-panel klc-body">
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 6 }}>
             Ce qui coûte le plus · {periodText}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 20px', fontSize: '0.8125rem' }}>
@@ -369,13 +381,10 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
               </span>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)} aria-label="Rechercher une perte"
-          placeholder="Rechercher un article, un motif, un déclarant..." className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher un article, un motif, un déclarant...">
         {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
         <SelectFilter label="Origine" icon={Filter} value={source} onChange={setSource}
           options={[{ key: 'produit', label: 'Produits finis' }, { key: 'matiere', label: 'Matières premières' }]} allLabel="Toutes" />
@@ -385,20 +394,13 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
             <X size={12} /> Effacer les filtres
           </button>
         )}
-        <button type="button" onClick={() => setDeclaring(true)} className="odoo-btn-primary"
-          title="Perte de produit fini ou de matière première"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Déclarer une perte
-        </button>
-      </div>
+      </ListToolbar>
 
-      {isLoading ? <Loading /> : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Trash2 size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{hasFilters ? 'Aucune perte pour ces filtres.' : 'Aucune perte enregistrée sur la période.'}</p>
-        </div>
+      {isLoading ? <PageLoading /> : rows.length === 0 ? (
+        <ListEmpty icon={Trash2} title={hasFilters ? 'Aucune perte pour ces filtres.' : 'Aucune perte enregistrée sur la période.'} />
       ) : (
-        <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+        <Panel style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}
+          footer={<PagerFoot page={page} total={data?.total ?? 0} onPage={setPage} note={`Pertes · ${periodText}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -434,7 +436,7 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
                   <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{r.unit_cost ? n(Number(r.unit_cost)) : '—'}</td>
                   <td style={{ textAlign: 'right' }}>
                     {r.cost_missing
-                      ? <span style={{ color: '#b85d1a', fontSize: '0.75rem', fontWeight: 600 }}>coût manquant</span>
+                      ? <StatusTag tone="todo" label="coût manquant" />
                       : <strong>{n(Number(r.value))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></strong>}
                   </td>
                   <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{r.declared_by_name ?? '—'}</td>
@@ -456,24 +458,14 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
               </tr>
             </tfoot>
           </table>
-          <Pager page={page} total={data?.total ?? 0} onPage={setPage} note={`Pertes · ${periodText}`} />
-        </div>
+        </Panel>
       )}
 
-      {declaring && <LossDeclare onClose={() => setDeclaring(false)} />}
       {photo && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setPhoto(null)}>
           <img src={photo} alt="Photo de la perte" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 4 }} />
         </div>
       )}
     </>
-  );
-}
-
-function Loading() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-      <Loader2 size={22} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-    </div>
   );
 }

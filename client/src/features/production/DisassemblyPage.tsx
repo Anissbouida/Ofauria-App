@@ -4,7 +4,8 @@ import { Loader2, Recycle, Undo2 } from 'lucide-react';
 import api from '../../api/client';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
-import { StatusBanner } from '../../components/ui/StatusBanner';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListPanel, ListEmpty } from '../sales/ListTemplate';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
@@ -58,13 +59,10 @@ export default function DisassemblyPage() {
   };
 
   return (
-    <div className="odoo-scope" style={{ padding: '1rem', display: 'grid', gap: 14 }}>
-      <StatusBanner tone="info" icon={Recycle} title="Désassemblage">
-        Défaire des produits finis (retour client, défaut, reconditionnement) : les pièces sortent du lot en arrière-boutique
-        et les matières de leur nomenclature reviennent en stock, au taux de récupération indiqué.
-      </StatusBanner>
+    <SalesPageShell icon={Recycle} parent="Production" title="Désassemblage"
+      summary="Défaire des produits finis (retour client, défaut, reconditionnement) : les pièces sortent du lot en arrière-boutique et les matières de leur nomenclature reviennent en stock, au taux de récupération indiqué.">
 
-      <section className="odoo-card" style={{ padding: '1rem', display: 'grid', gap: 12 }} aria-label="Nouveau désassemblage">
+      <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-label="Nouveau désassemblage">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
           <label className="block text-xs font-medium text-gray-500">Lot de produit fini
             <SearchSelect value={lotId} onChange={setLotId} width={340} size="md" ariaLabel="Lot de produit fini" placeholder="Choisir un lot"
@@ -88,12 +86,12 @@ export default function DisassemblyPage() {
       </section>
 
       <section aria-label="Historique">
-        <div className="odoo-section-header">Historique</div>
-        {isLoading ? <Loader2 className="animate-spin" size={16} /> : history.length === 0 ? (
-          <p className="text-xs text-gray-500" style={{ padding: '0.75rem 0' }}>Aucun désassemblage.</p>
+        <div className="kl-sec"><h2>Historique</h2>{history.length > 0 && <small>{history.length}</small>}</div>
+        {isLoading ? <section className="prj-panel sal-empty"><Loader2 className="animate-spin" size={16} /></section> : history.length === 0 ? (
+          <ListEmpty icon={Recycle} title="Aucun désassemblage." />
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="odoo-table">
+          <ListPanel>
+            <table className="odoo-table" style={{ margin: 0 }}>
               <thead><tr><th>Pièce</th><th>Date</th><th>Produit</th><th>Lot</th><th style={{ textAlign: 'right' }}>Pièces</th><th style={{ textAlign: 'right' }}>Récup.</th><th>Matières remises</th><th>Par</th></tr></thead>
               <tbody>
                 {history.map(d => (
@@ -110,9 +108,9 @@ export default function DisassemblyPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ListPanel>
         )}
       </section>
-    </div>
+    </SalesPageShell>
   );
 }

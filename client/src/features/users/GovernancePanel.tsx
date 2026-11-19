@@ -78,7 +78,7 @@ function SodSection() {
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <h2 style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.02em', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
         <Scale size={16} style={{ color: 'var(--theme-accent)' }} /> Séparation des tâches
       </h2>
       <StatusBanner
@@ -88,7 +88,7 @@ function SodSection() {
           : m === 'log' ? 'Observation : les cumuls interdits sont journalisés, pas bloqués'
           : 'Contrôle de séparation des tâches désactivé'}
         actions={
-          <div className="odoo-view-switcher">
+          <div className="prj-views">
             {(['log', 'enforce', 'off'] as const).map(k => (
               <button key={k} className={m === k ? 'active' : ''} disabled={setMode.isPending} onClick={() => m !== k && changeMode(k)}>
                 {k === 'log' ? 'Observer' : k === 'enforce' ? 'Bloquer' : 'Désactiver'}
@@ -100,8 +100,8 @@ function SodSection() {
       </StatusBanner>
 
       {violations.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <div style={{ fontSize: '0.8125rem', fontWeight: 600, marginBottom: 4 }}>Utilisateurs en conflit ({violations.length})</div>
+        <div className="prj-panel hr-plain prj-scroll">
+          <div className="prj-panel-head">Utilisateurs en conflit ({violations.length})</div>
           <table className="odoo-table">
             <thead><tr><th>Utilisateur</th><th>Rôle principal</th><th>Conflits</th></tr></thead>
             <tbody>
@@ -112,7 +112,7 @@ function SodSection() {
                   <td>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                       {v.violations.map(c => (
-                        <span key={c.code} className={`odoo-tag ${c.severity === 'critical' ? 'odoo-tag-red' : 'odoo-tag-orange'}`}>{c.label}</span>
+                        <StatusTag key={c.code} tone={c.severity === 'critical' ? 'blocked' : 'todo'} label={c.label} />
                       ))}
                     </div>
                   </td>
@@ -130,7 +130,7 @@ function SodSection() {
         </button>
       </div>
       {creating && <SodRuleForm onDone={() => setCreating(false)} />}
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-panel hr-plain"><div className="prj-scroll">
         <table className="odoo-table">
           <thead><tr><th>Règle</th><th>Capacité A</th><th>Capacité B</th><th>Sévérité</th><th>Statut</th><th style={{ width: 1 }}></th></tr></thead>
           <tbody>
@@ -139,7 +139,7 @@ function SodSection() {
                 <td style={{ fontWeight: 600 }}>{r.label}</td>
                 <td>{moduleLabel(r.a_module)} · {CAPABILITY_LABELS[r.a_right as Capability] ?? r.a_right}</td>
                 <td>{moduleLabel(r.b_module)} · {CAPABILITY_LABELS[r.b_right as Capability] ?? r.b_right}</td>
-                <td><span className={`odoo-tag ${r.severity === 'critical' ? 'odoo-tag-red' : 'odoo-tag-orange'}`}>{r.severity === 'critical' ? 'Critique' : 'Avertissement'}</span></td>
+                <td><StatusTag tone={r.severity === 'critical' ? 'blocked' : 'todo'} label={r.severity === 'critical' ? 'Critique' : 'Avertissement'} /></td>
                 <td>
                   <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => toggleActive.mutate(r)}>
                     {r.is_active ? 'Active' : 'Inactive'}
@@ -156,7 +156,7 @@ function SodSection() {
             {!rules.length && <tr><td colSpan={6} style={{ color: 'var(--odoo-text-muted)' }}>Aucune règle de séparation des tâches.</td></tr>}
           </tbody>
         </table>
-      </div>
+      </div></div>
     </div>
   );
 }
@@ -226,13 +226,13 @@ function ApprovalLimitsSection() {
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <h2 style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.02em', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
         <ShieldCheck size={16} style={{ color: 'var(--theme-accent)' }} /> Plafonds d'approbation
       </h2>
       <StatusBanner tone="info" icon={ShieldCheck} title="Plafond d'approbation par rôle et type de document">
         Un utilisateur ne peut approuver un document que dans la limite du plus élevé de ses rôles. Tant qu'aucun plafond n'est défini pour un type de document, aucune limite ne s'applique (bon de commande : contrôlé à l'envoi).
       </StatusBanner>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, background: 'var(--odoo-bg-alt)' }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', borderRadius: 16, padding: '14px 16px', background: 'var(--kl-card, var(--theme-bg-card))', boxShadow: 'var(--kl-shadow)' }}>
         <label style={{ ...lab, width: 200 }}>Rôle
           <select style={field} value={f.roleCode} onChange={e => setF(s => ({ ...s, roleCode: e.target.value }))}>
             <option value="">— choisir —</option>
@@ -249,7 +249,7 @@ function ApprovalLimitsSection() {
         </label>
         <button className="odoo-btn-primary" disabled={!f.roleCode || f.maxAmount === '' || save.isPending} onClick={() => save.mutate()}>Enregistrer</button>
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-panel hr-plain"><div className="prj-scroll">
         <table className="odoo-table">
           <thead><tr><th>Rôle</th><th>Type de document</th><th style={{ textAlign: 'right' }}>Plafond</th><th style={{ width: 1 }}></th></tr></thead>
           <tbody>
@@ -269,7 +269,7 @@ function ApprovalLimitsSection() {
             {!limits.length && <tr><td colSpan={4} style={{ color: 'var(--odoo-text-muted)' }}>Aucun plafond défini (aucune limite d'approbation active).</td></tr>}
           </tbody>
         </table>
-      </div>
+      </div></div>
     </div>
   );
 }
@@ -300,13 +300,13 @@ function DelegationsSection() {
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <h2 style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.02em', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
         <GitBranch size={16} style={{ color: 'var(--theme-accent)' }} /> Délégations temporaires
       </h2>
       <StatusBanner tone="info" icon={UserCog} title="Déléguer un rôle à un autre utilisateur sur une période">
         Le délégataire cumule le rôle délégué dans ses droits effectifs tant que la délégation est active (remplacement pendant un congé). L'effet complet est pris en compte à sa prochaine connexion.
       </StatusBanner>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, background: 'var(--odoo-bg-alt)' }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', borderRadius: 16, padding: '14px 16px', background: 'var(--kl-card, var(--theme-bg-card))', boxShadow: 'var(--kl-shadow)' }}>
         <label style={{ ...lab, width: 180 }}>Délégant (titulaire)
           <SearchSelect value={f.fromUserId} onChange={v => set('fromUserId', v)}
             placeholder="— choisir —" width={180} size="md" ariaLabel="Délégant"
@@ -331,7 +331,7 @@ function DelegationsSection() {
         </label>
         <button className="odoo-btn-primary" disabled={!f.fromUserId || !f.toUserId || !f.roleCode || !f.endsAt || create.isPending} onClick={() => create.mutate()}>Déléguer</button>
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-panel hr-plain"><div className="prj-scroll">
         <table className="odoo-table">
           <thead><tr><th>De → vers</th><th>Rôle</th><th>Période</th><th>Statut</th><th style={{ width: 1 }}></th></tr></thead>
           <tbody>
@@ -352,7 +352,7 @@ function DelegationsSection() {
             {!delegations.length && <tr><td colSpan={5} style={{ color: 'var(--odoo-text-muted)' }}>Aucune délégation.</td></tr>}
           </tbody>
         </table>
-      </div>
+      </div></div>
     </div>
   );
 }

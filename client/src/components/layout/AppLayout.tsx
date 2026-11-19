@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import MfaSetup from '../../features/auth/MfaSetup';
 import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import './apple-look.css';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import Header from './Header';
@@ -179,7 +180,9 @@ export default function AppLayout() {
       )}
 
       {/* Main content — pas de padding sur les pages Stock (style Odoo full-width) */}
-      <main className={`flex-1 overflow-auto ${(location.pathname.startsWith('/stock') || location.pathname.startsWith('/recipes') || location.pathname.startsWith('/products') || location.pathname.startsWith('/production') || location.pathname.startsWith('/replenishment') || location.pathname.startsWith('/accounting') || location.pathname.startsWith('/sales') || location.pathname.startsWith('/purchasing') || location.pathname.startsWith('/orders') || location.pathname === '/quotes' || location.pathname === '/crm' || location.pathname === '/dunning' || location.pathname === '/promotions' || location.pathname === '/rebates' || location.pathname === '/employees' || location.pathname === '/forecast' || location.pathname === '/haccp' || location.pathname.startsWith('/customers') || location.pathname === '/controle' || location.pathname === '/boutique' || location.pathname === '/reports' || location.pathname.startsWith('/projects') || location.pathname === '/maintenance' || location.pathname.startsWith('/settings') || location.pathname === '/product-transfers' || location.pathname === '/pro-returns' || location.pathname === '/price-lists' || location.pathname === '/delivery-notes') ? '' : 'p-6'}`}>
+      {/* Design Ventes partout (2026-11-18) : chaque page pose sa barre et ses marges (zone .kl-apple) ;
+          seule la Caisse garde la marge historique. Remplace l'ancienne liste blanche de routes pleine largeur. */}
+      <main className={`flex-1 overflow-auto ${location.pathname === '/pos' ? 'p-6' : 'kl-apple'}`}>
         <Outlet />
       </main>
 

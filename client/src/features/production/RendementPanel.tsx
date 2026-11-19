@@ -262,25 +262,25 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                 <div className="mt-3 p-4 bg-violet-50 border border-violet-200 rounded-xl space-y-3">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase">Qte brute</label>
+                      <label className="text-[10px] font-bold text-gray-500">Qte brute</label>
                       <input type="number" value={formData.quantite_brute}
                         onChange={e => setFormData(f => ({ ...f, quantite_brute: parseFloat(e.target.value) || 0 }))}
                         className="w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase">Qte nette reelle</label>
+                      <label className="text-[10px] font-bold text-gray-500">Qte nette reelle</label>
                       <input type="number" value={formData.quantite_nette_reelle}
                         onChange={e => setFormData(f => ({ ...f, quantite_nette_reelle: parseFloat(e.target.value) || 0 }))}
                         className="w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase">Vers magasin</label>
+                      <label className="text-[10px] font-bold text-gray-500">Vers magasin</label>
                       <input type="number" value={formData.vers_magasin}
                         onChange={e => setFormData(f => ({ ...f, vers_magasin: parseInt(e.target.value) || 0 }))}
                         className="w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase">Vers frigo</label>
+                      <label className="text-[10px] font-bold text-gray-500">Vers frigo</label>
                       <input type="number" value={formData.vers_frigo}
                         onChange={e => setFormData(f => ({ ...f, vers_frigo: parseInt(e.target.value) || 0 }))}
                         className="w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm" />
@@ -314,7 +314,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                   {/* Loss categories from target */}
                   {target && target.categoriesPertes.length > 0 && (
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Pertes par categorie</label>
+                      <label className="text-[10px] font-bold text-gray-500 mb-1 block">Pertes par categorie</label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {target.categoriesPertes.map((cat, i) => {
                           const existing = formData.pertes.find(p => p.categorie === cat);
@@ -344,7 +344,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
 
                   {/* Bilan massique (épic labo L3) ; pâtons réservés à l'option « saisie par fournée » (M8-06). */}
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Bilan massique (optionnel)</label>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block">Bilan massique (optionnel)</label>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <div>
                         <label className="text-[10px] text-gray-500">{batchMode ? 'Masse pétrie' : 'Masse mise en œuvre'}</label>

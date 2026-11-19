@@ -1,10 +1,11 @@
 import { money } from '../../utils/money';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, History, Search, RotateCcw, SlidersHorizontal, HelpCircle } from 'lucide-react';
+import { Loader2, History, Search, RotateCcw, SlidersHorizontal, HelpCircle, Lock } from 'lucide-react';
 import { settingsApi, type BusinessParameter, type ParamField } from '../../api/settings.api';
 import { useSettings } from '../../context/SettingsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useDirtyForm, useDraft } from './DirtyForms';
 import { OdooToggle, settingAnchor } from './SettingsPrimitives';
 
@@ -140,11 +141,13 @@ export default function ParametersPanel({ keys, domains, searchable = !keys && !
   return (
     <div className="odoo-scope odoo-params">
       {searchable && (
-        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', maxWidth: 360 }}>
-          <Search size={13} style={{ position: 'absolute', left: 8, color: 'var(--odoo-text-muted)' }} />
-          <input id="parameters-search" className="odoo-search-input" style={{ paddingLeft: 26, width: '100%' }}
-            placeholder="Rechercher un paramètre…" value={q} onChange={e => setQ(e.target.value)} aria-label="Rechercher un paramètre" />
-        </span>
+        <div className="prj-toolbar">
+          <label className="prj-search" style={{ maxWidth: 420 }}>
+            <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+            <input id="parameters-search" type="search"
+              placeholder="Rechercher un paramètre…" value={q} onChange={e => setQ(e.target.value)} aria-label="Rechercher un paramètre" />
+          </label>
+        </div>
       )}
       {!shown.length && !extras && <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.875rem' }}>Aucun paramètre {q ? 'ne correspond à la recherche' : 'accessible'}.</p>}
       {groups.map(([theme, params], i) => (
@@ -245,8 +248,8 @@ function ParameterRow({ param }: { param: BusinessParameter }) {
           )}
           {changes > 0 && <span className="odoo-setting-changed">Modifié</span>}
           {changes > 0 && <button type="button" className="odoo-setting-revert" onClick={reset}>Rétablir</button>}
-          {!param.available && <span className="odoo-tag odoo-tag-grey">Non disponible sur cette base</span>}
-          {param.available && !param.editable && <span className="odoo-tag odoo-tag-grey">Lecture seule</span>}
+          {!param.available && <StatusTag tone="cancelled" label="Non disponible sur cette base" />}
+          {param.available && !param.editable && <StatusTag tone="draft" icon={Lock} label="Lecture seule" />}
         </div>
         <p className="odoo-params-help">{helpShort}</p>
       </div>
@@ -387,7 +390,7 @@ function SupplierScore({ param, draft, disabled, onChange }: {
   const f = (n: string) => param.fields.find(x => x.name === n)!;
   const weights = ['on_time', 'fill_rate', 'quality', 'price', 'disputes'].filter(has);
   const total = weights.reduce((s, n) => s + (Number(draft[n]) || 0), 0);
-  const shades = ['#3b5bdb', '#6c8cf0', '#9db3f6', '#c7d4fb', '#e4e9fd'];
+  const shades = [100, 75, 52, 32, 16].map(p => `color-mix(in srgb, var(--theme-accent) ${p}%, var(--theme-bg-card))`);
   const num = (n: string) => (
     <input id={`param-${param.key}-${n}`} type="number" className="odoo-input" min={0} max={100} step={1} disabled={disabled}
       value={draft[n] === undefined || draft[n] === null ? '' : String(draft[n])}

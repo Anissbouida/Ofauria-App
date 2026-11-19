@@ -54,7 +54,7 @@ export default function EmployeeDocuments({ employeeId }: { employeeId: string }
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <section className="prj-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px' }}>
       <SectionTitle icon={FolderOpen} actions={!draft && (
         <button type="button" className="odoo-btn-secondary" style={smallBtn}
           onClick={() => setDraft({ docType: 'contrat', title: '', expiresOn: '' })}><Upload size={11} /> Ajouter</button>
@@ -92,14 +92,14 @@ export default function EmployeeDocuments({ employeeId }: { employeeId: string }
                 <tr key={d.id}>
                   <td>{DOC_TYPES[d.doc_type] ?? d.doc_type}</td>
                   <td>{d.title}</td>
-                  <td style={{ color: expired ? '#dc3545' : undefined, fontSize: '0.75rem' }}>
+                  <td style={{ color: expired ? 'var(--prj-red)' : undefined, fontSize: '0.75rem' }}>
                     {d.expires_on ? `${d.expires_on.slice(8, 10)}/${d.expires_on.slice(5, 7)}/${d.expires_on.slice(0, 4)}${expired ? ' (expiré)' : ''}` : '—'}
                   </td>
                   <td style={{ textAlign: 'right', fontSize: '0.75rem' }}>{Math.max(1, Math.round(d.size_bytes / 1024))} Ko</td>
                   <td>
                     <div style={{ display: 'inline-flex', gap: 2 }}>
                       <button className="odoo-pager-btn" title="Télécharger" onClick={() => download(d)}><Download size={12} /></button>
-                      <button className="odoo-pager-btn" title="Supprimer" style={{ color: '#dc3545' }}
+                      <button className="odoo-pager-btn" title="Supprimer" style={{ color: 'var(--prj-red)' }}
                         onClick={async () => {
                           if (!(await confirm(`Supprimer « ${d.title} » ?`, { title: 'Supprimer le document', confirmLabel: 'Supprimer', danger: true }))) return;
                           remove.mutate(d.id);
@@ -112,6 +112,6 @@ export default function EmployeeDocuments({ employeeId }: { employeeId: string }
           </tbody>
         </table>
       )}
-    </div>
+    </section>
   );
 }

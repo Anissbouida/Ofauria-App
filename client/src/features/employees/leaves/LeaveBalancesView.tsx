@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Download, Plus, Trash2, Loader2, CalendarCheck, Info, History, SlidersHorizontal } from 'lucide-react';
+import { Download, Plus, Trash2, CalendarCheck, Info, History, SlidersHorizontal } from 'lucide-react';
 import { leavesApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage, downloadCsv } from '../shared';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
-import { HrModal, Field, SectionTitle, EmptyState, inputCls, panel, smallBtn } from '../ui';
+import { StatusTag } from '../../../components/ui/StatusTag';
+import { HrModal, Field, SectionTitle, EmptyPanel, LoadingPanel, inputCls, panel, smallBtn } from '../ui';
 
 const d2 = (v: number) => (Math.round(v * 100) / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
 
@@ -16,7 +17,7 @@ const d2 = (v: number) => (Math.round(v * 100) / 100).toLocaleString('fr-FR', { 
  * reliquat reporté, pris, en attente, disponible, et jours qui expirent au
  * 31/12. Détail par année et ajustements (admin) par employé.
  */
-export default function LeaveBalancesView() {
+export default function LeaveBalancesView({ switcher }: { switcher?: ReactNode } = {}) {
   const { data: rows = [], isLoading } = useQuery<Record<string, any>[]>({
     queryKey: ['leave-balances'],
     queryFn: () => leavesApi.balances(),
@@ -30,21 +31,22 @@ export default function LeaveBalancesView() {
 
   return (
     <>
-      <StatusBanner tone="neutral" icon={Info} title="Acquisition des congés payés"
-        actions={<button className="odoo-btn-secondary" onClick={exportCsv} disabled={!rows.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <div className="prj-toolbar">
+        {switcher}
+        <span className="hr-spacer" />
+        <button className="odoo-btn-secondary" onClick={exportCsv} disabled={!rows.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Download size={12} /> CSV
-        </button>}>
+        </button>
+      </div>
+      <StatusBanner tone="neutral" icon={Info} title="Acquisition des congés payés">
         1,5 jour ouvrable par mois de service, +1,5 jour par 5 ans d'ancienneté (plafond 30 j/an). Un reliquat se cumule sur deux années consécutives.
       </StatusBanner>
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-          <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
-        </div>
+        <LoadingPanel />
       ) : rows.length === 0 ? (
-        <EmptyState icon={CalendarCheck}>Aucun solde de congés à afficher</EmptyState>
+        <EmptyPanel icon={CalendarCheck}>Aucun solde de congés à afficher</EmptyPanel>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel sal-panel"><div className="prj-scroll">
           <table className="odoo-table">
             <thead><tr>
               <th>Employé</th>
@@ -55,18 +57,18 @@ export default function LeaveBalancesView() {
             <tbody>
               {rows.map(r => (
                 <tr key={r.employeeId} onClick={() => setDetail(r)} style={{ cursor: 'pointer' }}>
-                  <td style={{ fontWeight: 500 }}>{r.name}{!r.hireDate && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }}>Sans date d'embauche</span>}</td>
+                  <td style={{ fontWeight: 500 }}>{r.name}{!r.hireDate && <span style={{ marginLeft: 6 }}><StatusTag tone="todo" label="Sans date d'embauche" /></span>}</td>
                   <td style={{ textAlign: 'right' }}>{d2(r.acquiredThisYear)}{r.seniorityBonus > 0 && <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }} title="Majoration d'ancienneté annuelle"> (+{d2(r.seniorityBonus)})</span>}</td>
                   <td style={{ textAlign: 'right' }}>{d2(r.carriedOver)}</td>
                   <td style={{ textAlign: 'right' }}>{d2(r.takenThisYear)}</td>
-                  <td style={{ textAlign: 'right', color: r.pending > 0 ? '#b08504' : undefined }}>{d2(r.pending)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: r.available < 0 ? '#dc3545' : '#155724' }}>{d2(r.available)}</td>
-                  <td style={{ textAlign: 'right', color: r.expiringThisYear > 0 ? '#b85d1a' : 'var(--odoo-text-light)' }}>{r.expiringThisYear > 0 ? d2(r.expiringThisYear) : '—'}</td>
+                  <td style={{ textAlign: 'right', color: r.pending > 0 ? 'var(--prj-orange)' : undefined }}>{d2(r.pending)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: r.available < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }}>{d2(r.available)}</td>
+                  <td style={{ textAlign: 'right', color: r.expiringThisYear > 0 ? 'var(--prj-orange)' : 'var(--odoo-text-light)' }}>{r.expiringThisYear > 0 ? d2(r.expiringThisYear) : '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </div></div>
       )}
       {detail && <BalanceDetail employee={detail} onClose={() => setDetail(null)} />}
     </>
@@ -105,7 +107,7 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
 
   return (
     <HrModal icon={CalendarCheck} crumb="Solde de congés" title={employee.name} width={760} onClose={onClose}
-      tag={<span className={`odoo-tag ${balance && balance.available < 0 ? 'odoo-tag-red' : 'odoo-tag-green'}`}>Disponible {balance ? d2(balance.available) : '…'} j</span>}
+      tag={<StatusTag tone={balance && balance.available < 0 ? 'blocked' : 'done'} label={`Disponible ${balance ? d2(balance.available) : '…'} j`} />}
       footer={<button type="button" onClick={onClose} className="odoo-btn-secondary">Fermer</button>}>
         <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>
           Embauché le {employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('fr-FR') : '—'} · disponible {balance ? d2(balance.available) : '…'} j
@@ -123,7 +125,7 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
                 <td>{y.year}</td><td style={{ textAlign: 'center' }}>{y.months}</td><td style={{ textAlign: 'right' }}>{d2(y.annualEntitlement)}</td>
                 <td style={{ textAlign: 'right' }}>{d2(y.acquired)}</td><td style={{ textAlign: 'right' }}>{y.adjustments ? d2(y.adjustments) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{d2(y.taken)}</td>
-                <td style={{ textAlign: 'right', color: y.expired > 0 ? '#b85d1a' : undefined }}>{y.expired > 0 ? d2(y.expired) : '—'}</td>
+                <td style={{ textAlign: 'right', color: y.expired > 0 ? 'var(--prj-orange)' : undefined }}>{y.expired > 0 ? d2(y.expired) : '—'}</td>
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{d2(y.balance)}</td>
               </tr>
             ))}
@@ -151,7 +153,7 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
                 <tr key={a.id}>
                   <td>{a.year}</td><td style={{ textAlign: 'right' }}>{parseFloat(a.days) > 0 ? '+' : ''}{d2(parseFloat(a.days))}</td>
                   <td>{a.reason}</td><td style={{ color: 'var(--odoo-text-muted)' }}>{a.created_by_first_name ?? '—'}</td>
-                  {isAdmin && <td><button className="odoo-pager-btn" style={{ color: '#dc3545' }} onClick={async () => { if (!(await confirm('Supprimer cet ajustement ?', { title: 'Supprimer l\'ajustement', confirmLabel: 'Supprimer', danger: true }))) return; remove.mutate(a.id); }}><Trash2 size={12} /></button></td>}
+                  {isAdmin && <td><button className="odoo-pager-btn" style={{ color: 'var(--prj-red)' }} onClick={async () => { if (!(await confirm('Supprimer cet ajustement ?', { title: 'Supprimer l\'ajustement', confirmLabel: 'Supprimer', danger: true }))) return; remove.mutate(a.id); }}><Trash2 size={12} /></button></td>}
                 </tr>
               ))}
             </tbody>

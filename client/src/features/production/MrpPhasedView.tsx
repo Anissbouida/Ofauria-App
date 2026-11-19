@@ -63,21 +63,23 @@ export default function MrpPhasedView({ from }: { from: string }) {
         </StatusBanner>
       )}
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <strong>Propositions ({data.proposals.length})</strong>
-        {(['all', 'product', 'base', 'ingredient'] as const).map(k => (
-          <button key={k} type="button" className={kind === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setKind(k)}>
-            {k === 'all' ? 'Toutes' : KIND[k]}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="kl-sec" style={{ margin: 0 }}><h2>Propositions</h2><small>{data.proposals.length}</small></div>
+        <div className="prj-chips" role="group" aria-label="Type de proposition">
+          {(['all', 'product', 'base', 'ingredient'] as const).map(k => (
+            <button key={k} type="button" aria-pressed={kind === k} className={`prj-chip${kind === k ? ' active' : ''}`} onClick={() => setKind(k)}>
+              {k === 'all' ? 'Toutes' : KIND[k]}
+            </button>
+          ))}
+        </div>
         <div style={{ flex: 1 }} />
         <button type="button" className="odoo-btn-primary" disabled={!picked.size || validate.isPending}
           onClick={async () => { if (await confirm(`Créer les ordres de fabrication et demandes d'achat des ${picked.size} proposition(s) choisie(s) ?`, { confirmLabel: 'Créer' })) validate.mutate(); }}>
           {validate.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Valider ({picked.size})
         </button>
       </div>
-      <div style={{ overflowX: 'auto', maxHeight: 360 }}>
-        <table className="odoo-table">
+      <section className="prj-panel sal-panel"><div className="prj-scroll" style={{ maxHeight: 360 }}>
+        <table className="odoo-table" style={{ margin: 0 }}>
           <thead><tr><th style={{ width: 28 }} /><th>Type</th><th>Article</th><th style={{ textAlign: 'right' }}>Quantité</th><th>Lancer le</th><th>Pour le</th><th /></tr></thead>
           <tbody>{proposals.map(p => (
             <tr key={key(p)}>
@@ -94,13 +96,13 @@ export default function MrpPhasedView({ from }: { from: string }) {
             </tr>
           ))}</tbody>
         </table>
-      </div>
+      </div></section>
 
       {data.messages.length > 0 && (
         <>
-          <strong>Messages d'action ({data.messages.length})</strong>
-          <div style={{ overflowX: 'auto', maxHeight: 260 }}>
-            <table className="odoo-table">
+          <div className="kl-sec" style={{ margin: '6px 4px 0' }}><h2>Messages d'action</h2><small>{data.messages.length}</small></div>
+          <section className="prj-panel sal-panel"><div className="prj-scroll" style={{ maxHeight: 260 }}>
+            <table className="odoo-table" style={{ margin: 0 }}>
               <thead><tr><th>Pièce</th><th>Article</th><th style={{ textAlign: 'right' }}>Quantité</th><th>Prévu le</th><th>Action</th><th>Nouvelle date</th></tr></thead>
               <tbody>{data.messages.map((m, i) => (
                 <tr key={`${m.ref}|${m.key}|${i}`}>
@@ -110,18 +112,18 @@ export default function MrpPhasedView({ from }: { from: string }) {
                 </tr>
               ))}</tbody>
             </table>
-          </div>
+          </div></section>
         </>
       )}
 
       {item && (
-        <section aria-label={`Projection de ${item.name}`} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-            <strong>{item.name} — stock {nf(item.onHand)} {item.unit}, sécurité {nf(item.safety)}, délai {item.leadDays} j</strong>
+        <section className="prj-panel" aria-label={`Projection de ${item.name}`}>
+          <div className="prj-panel-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <span>{item.name} <small style={{ fontWeight: 500, color: 'var(--theme-text-muted)' }}>— stock {nf(item.onHand)} {item.unit}, sécurité {nf(item.safety)}, délai {item.leadDays} j</small></span>
             <button type="button" className="odoo-btn-secondary" onClick={() => setItemKey('')}>Fermer</button>
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="odoo-table">
+          <div className="prj-scroll">
+            <table className="odoo-table" style={{ margin: 0 }}>
               <thead><tr><th /> {item.days.map(d => <th key={d.date} style={{ textAlign: 'right' }}>{day(d.date)}</th>)}</tr></thead>
               <tbody>
                 {([['gross', 'Besoin brut'], ['receipts', 'Réceptions prévues'], ['planned', 'Ordres proposés'], ['projected', 'Disponible projeté']] as const).map(([f, l]) => (

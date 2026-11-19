@@ -1,0 +1,11 @@
+/* Accueil (/) au design Ventes (2026-11-18). La barre de fil d'Ariane est à ras
+   (AppLayout ne pose plus de marge hors Caisse). */
+.kl-apple .home-page { min-height: 100%; }
+.kl-apple .home-page .sal-page { max-width: 1240px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+
+
+/* Modules : listes groupées sur deux colonnes ou plus */
+.kl-apple .home-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 28px; align-items: start; }
+.kl-apple .home-groups .kl-cell .t2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Icône du module : couleur de l'entrée du menu (navigation.ts), pictogramme blanc. */
+.kl-apple .home-ic { color: #fff; }

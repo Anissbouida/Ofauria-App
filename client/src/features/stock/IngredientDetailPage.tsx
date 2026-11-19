@@ -27,6 +27,9 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { planStatusTag } from '../production/status';
 import { money, currencySymbol } from '../../utils/money';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { ModulePage } from '../../components/layout/ModuleShell';
+import { SubViews } from './StockUi';
 
 const CATEGORY_COLORS: Record<string, string> = {
   farines: 'bg-amber-100 text-amber-700',
@@ -305,11 +308,11 @@ export default function IngredientDetailPage() {
 
   if (!item && !ingredient) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-400">
-        <div className="text-center">
-          <Package size={48} className="mx-auto mb-3 opacity-30" />
-          <p>Ingrédient introuvable</p>
-          <button onClick={() => navigate('/stock')} className="mt-3 text-violet-600 text-sm font-medium hover:underline">Retour à l'inventaire</button>
+      <div className="prj sal-page">
+        <div className="prj-panel sal-empty">
+          <Package size={28} style={{ opacity: 0.4 }} />
+          <strong>Ingrédient introuvable</strong>
+          <button onClick={() => navigate('/stock')} className="odoo-btn-secondary">Retour au stock</button>
         </div>
       </div>
     );
@@ -336,38 +339,28 @@ export default function IngredientDetailPage() {
   // Lots bloqués par un contrôle réception non conforme (épic labo L5, mig 428).
   const blockedLots = lots.filter(l => l.status === 'blocked');
 
+  const kpiTile = (label: string, value: string, icon: typeof Package, opts: { color?: string; title?: string; onClick?: () => void; sub?: string } = {}) => {
+    const Icon = icon;
+    return (
+      <button type="button" className="prj-kpi" onClick={opts.onClick} disabled={!opts.onClick} title={opts.title}>
+        <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon size={13} /> {label}</span></div>
+        <div className="prj-kpi-value" style={{ color: opts.color }}>{value}</div>
+        {opts.sub && <div className="prj-kpi-sub">{opts.sub}</div>}
+      </button>
+    );
+  };
+
   return (
     <div className="odoo-scope">
-      {/* ══════ CONTROL BAR (breadcrumb + actions + pager) ══════ */}
+      {/* ══════ BARRE : retour + fil d'Ariane (design Ventes, 2026-11-18) ══════ */}
       <div className="odoo-control-bar">
-        <button onClick={() => navigate('/stock')} className="odoo-pager-btn" title="Retour à la liste">
-          <ArrowLeft size={14} />
-        </button>
         <div className="odoo-breadcrumb">
-          <Warehouse size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/stock')}>Stock</span>
+          <button type="button" className="sal-link" style={{ marginLeft: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => navigate('/stock')} title="Retour à la liste">
+            <ArrowLeft size={14} /> Stock
+          </button>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">{ingredientName || '—'}</span>
         </div>
-        {canManage && (
-          <button onClick={() => setShowEdit(true)} className="odoo-btn-secondary">
-            <Edit3 size={13} /> Modifier
-          </button>
-        )}
-        {canManage && (
-          <button onClick={() => setShowAdjust(true)} className="odoo-btn-secondary">
-            <TrendingDown size={13} /> Ajuster
-          </button>
-        )}
-        <button onClick={() => setShowOrderRequest(true)} className="odoo-btn-primary">
-          <ShoppingCart size={13} /> Commander
-        </button>
-        {canManage && (
-          <button onClick={() => { setConvertCategoryId(''); setShowConvert(true); }} className="odoo-btn-secondary"
-            title="Cet article n'est pas un ingrédient ? Le déplacer vers Consommables">
-            <Boxes size={13} /> Convertir en consommable
-          </button>
-        )}
         <div style={{ flex: 1 }} />
         {canManage && (
           <button onClick={() => setShowDelete(true)} className="odoo-btn-danger" title="Supprimer">
@@ -376,85 +369,78 @@ export default function IngredientDetailPage() {
         )}
       </div>
 
-      {/* ══════ STATUS ALERTS (sober) ══════ */}
-      {isLow && (
-        <div className="odoo-alert warning">
-          <AlertTriangle size={14} style={{ color: '#856404', marginTop: 2, flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <span className="odoo-alert-title">Stock bas</span> — {qty.toFixed(1)} {unit} restant(s), seuil minimum {threshold.toFixed(0)} {unit}
+      <ModulePage>
+      {/* ══════ EN-TÊTE DE FICHE : nom, catégorie, fournisseur, actions ══════ */}
+      <section className="prj-panel prj-hero">
+        <div className="prj-hero-top">
+          <span className="prj-hero-icon"><Warehouse size={22} /></span>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h1>{ingredientName}</h1>
+              {isLow && <StatusTag tone="todo" label="Stock bas" />}
+              {expiredCount > 0 && <StatusTag tone="late" label="Lot expiré" />}
+            </div>
+            <div className="prj-hero-meta">
+              <span className={`odoo-tag ${categoryTagClass(categoryId)}`}>
+                {resolveCategory(categoryId)?.typeName || 'Non classé'}
+              </span>
+              {supplier && <span>{supplier}</span>}
+              <span>Unité : {unit || '—'}</span>
+            </div>
           </div>
-          <button onClick={() => setShowOrderRequest(true)} className="odoo-btn-secondary" style={{ padding: '2px 8px', fontSize: '0.75rem' }}>
-            <ShoppingCart size={11} /> Demander
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {canManage && (
+              <button onClick={() => setShowEdit(true)} className="odoo-btn-secondary">
+                <Edit3 size={13} /> Modifier
+              </button>
+            )}
+            {canManage && (
+              <button onClick={() => setShowAdjust(true)} className="odoo-btn-secondary">
+                <TrendingDown size={13} /> Ajuster
+              </button>
+            )}
+            {canManage && (
+              <button onClick={() => { setConvertCategoryId(''); setShowConvert(true); }} className="odoo-btn-secondary"
+                title="Cet article n'est pas un ingrédient ? Le déplacer vers Consommables">
+                <Boxes size={13} /> Convertir en consommable
+              </button>
+            )}
+            <button onClick={() => setShowOrderRequest(true)} className="odoo-btn-primary">
+              <ShoppingCart size={13} /> Commander
+            </button>
+          </div>
         </div>
+      </section>
+
+      {/* ══════ ALERTES ══════ */}
+      {isLow && (
+        <StatusBanner tone="warning" icon={AlertTriangle} title="Stock bas"
+          actions={<button onClick={() => setShowOrderRequest(true)} className="odoo-btn-secondary"><ShoppingCart size={12} /> Demander</button>}>
+          {qty.toFixed(1)} {unit} restant(s), seuil minimum {threshold.toFixed(0)} {unit}
+        </StatusBanner>
       )}
       {expiredCount > 0 && (
-        <div className="odoo-alert danger">
-          <CalendarClock size={14} style={{ color: '#721c24', marginTop: 2, flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <span className="odoo-alert-title">{expiredCount} lot(s) expiré(s)</span> — des lots actifs ont dépassé leur date limite de consommation.
-          </div>
-        </div>
+        <StatusBanner tone="danger" icon={CalendarClock} title={`${expiredCount} lot(s) expiré(s)`}>
+          Des lots actifs ont dépassé leur date limite de consommation.
+        </StatusBanner>
       )}
 
-      {/* ══════ SMART BUTTONS ROW ══════ */}
-      <div className="odoo-smart-button-row">
-        <div className="odoo-smart-button" onClick={() => setActiveTab('lots')}>
-          <div className="odoo-smart-button-value" style={{ color: isOut ? '#dc3545' : isLow ? '#b85d1a' : 'var(--theme-accent)' }}>
-            {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
-          </div>
-          <div className="odoo-smart-button-label"><Package size={11} /> Total ({unit})</div>
-        </div>
-        <div className="odoo-smart-button" onClick={() => setActiveTab('lots')} title="Contenants intacts (ex-Économat)">
-          <div className="odoo-smart-button-value">{fmtQty(scelleQty)}</div>
-          <div className="odoo-smart-button-label"><Package size={11} /> En réserve</div>
-        </div>
-        <div className="odoo-smart-button" onClick={() => setActiveTab('lots')} title="Contenants ouverts (ex-Pesage)">
-          <div className="odoo-smart-button-value" style={{ color: entameQty > 0 ? '#6f42c1' : undefined }}>{fmtQty(entameQty)}</div>
-          <div className="odoo-smart-button-label"><PackageOpen size={11} /> Au pesage</div>
-        </div>
-        <div className="odoo-smart-button" onClick={() => canManage && setShowEdit(true)}>
-          <div className="odoo-smart-button-value">{threshold.toFixed(0)}</div>
-          <div className="odoo-smart-button-label"><AlertTriangle size={11} /> Seuil min</div>
-        </div>
-        <div className="odoo-smart-button" onClick={() => setActiveTab('lots')}>
-          <div className="odoo-smart-button-value">{lotsCount}</div>
-          <div className="odoo-smart-button-label"><Boxes size={11} /> Lots actifs</div>
-        </div>
-        <div className="odoo-smart-button">
-          <div className="odoo-smart-button-value">{unitCost.toFixed(2)}</div>
-          <div className="odoo-smart-button-label">{currencySymbol()} / {unit}</div>
-        </div>
-      </div>
+      {/* ══════ CHIFFRES CLÉS (clic = onglet Lots ou modification) ══════ */}
+      <section className="prj-kpis stk-kpis" aria-label="Chiffres clés">
+        {kpiTile(`Total (${unit})`, qty.toFixed(qty % 1 === 0 ? 0 : 1), Package, { color: isOut ? 'var(--prj-red)' : isLow ? 'var(--prj-orange)' : undefined, onClick: () => setActiveTab('lots') })}
+        {kpiTile('En réserve', fmtQty(scelleQty), Package, { title: 'Contenants intacts (ex-Économat)', onClick: () => setActiveTab('lots') })}
+        {kpiTile('Au pesage', fmtQty(entameQty), PackageOpen, { title: 'Contenants ouverts (ex-Pesage)', onClick: () => setActiveTab('lots') })}
+        {kpiTile('Seuil min', threshold.toFixed(0), AlertTriangle, { onClick: canManage ? () => setShowEdit(true) : undefined })}
+        {kpiTile('Lots actifs', String(lotsCount), Boxes, { onClick: () => setActiveTab('lots') })}
+        {kpiTile(`${currencySymbol()} / ${unit}`, unitCost.toFixed(2), Package)}
+      </section>
 
-      {/* ══════ FORM HEADER (title + category + supplier) ══════ */}
-      <div className="odoo-form-header">
-        <h1 className="odoo-form-title">{ingredientName}</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 6 }}>
-          <span className={`odoo-tag ${categoryTagClass(categoryId)}`}>
-            {resolveCategory(categoryId)?.typeName || 'Non classé'}
-          </span>
-          {supplier && <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{supplier}</span>}
-          {isLow && <StatusTag tone="todo" label="STOCK BAS" />}
-          {expiredCount > 0 && <StatusTag tone="late" label="LOT EXPIRÉ" />}
-        </div>
-      </div>
-
-      {/* ══════ TABS Odoo (notebook) ══════ */}
-      <div className="odoo-tabs">
-        <button onClick={() => setActiveTab('lots')}
-          className={`odoo-tab ${activeTab === 'lots' ? 'active' : ''}`}>
-          <ShieldCheck size={13} /> Lots &amp; Traçabilité
-        </button>
-        <button onClick={() => setActiveTab('suppliers')}
-          className={`odoo-tab ${activeTab === 'suppliers' ? 'active' : ''}`}>
-          <Truck size={13} /> Fournisseurs
-        </button>
-        <button onClick={() => setActiveTab('history')}
-          className={`odoo-tab ${activeTab === 'history' ? 'active' : ''}`}>
-          <Clock size={13} /> Historique
-        </button>
-      </div>
+      {/* ══════ ONGLETS (contrôle segmenté) ══════ */}
+      <SubViews label="Contenu de la fiche" value={activeTab} onChange={setActiveTab} views={[
+        { key: 'lots', label: 'Lots & Traçabilité', icon: ShieldCheck },
+        { key: 'suppliers', label: 'Fournisseurs', icon: Truck },
+        { key: 'history', label: 'Historique', icon: Clock },
+      ]} />
 
       {/* ══════ FOURNISSEURS TAB (mig 404 — Achats lot prix P1) ══════ */}
       {activeTab === 'suppliers' && id && (
@@ -465,11 +451,11 @@ export default function IngredientDetailPage() {
 
       {/* ══════ LOTS TAB ══════ */}
       {activeTab === 'lots' && (
-        <div>
+        <div className="stk-stack">
           {activeLots.length > 0 && (
             <div className="odoo-section">
-              <div className="odoo-section-header" style={{ color: '#28a745' }}>
-                <Boxes size={12} /> Lots actifs ({activeLots.length})
+              <div className="odoo-section-header">
+                <Boxes size={14} style={{ color: 'var(--prj-green)' }} /> Lots actifs ({activeLots.length})
               </div>
               {activeLots.map((lot, i) => (
                 <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
@@ -491,8 +477,8 @@ export default function IngredientDetailPage() {
 
           {blockedLots.length > 0 && (
             <div className="odoo-section">
-              <div className="odoo-section-header" style={{ color: '#dc3545' }}>
-                <Ban size={12} /> Bloqués — contrôle réception non conforme ({blockedLots.length})
+              <div className="odoo-section-header">
+                <Ban size={14} style={{ color: 'var(--prj-red)' }} /> Bloqués — contrôle réception non conforme ({blockedLots.length})
               </div>
               {blockedLots.map((lot, i) => (
                 <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
@@ -509,8 +495,8 @@ export default function IngredientDetailPage() {
 
           {quarantinedLots.length > 0 && (
             <div className="odoo-section">
-              <div className="odoo-section-header" style={{ color: '#b85d1a' }}>
-                <Shield size={12} /> Quarantaine ({quarantinedLots.length})
+              <div className="odoo-section-header">
+                <Shield size={14} style={{ color: 'var(--prj-orange)' }} /> Quarantaine ({quarantinedLots.length})
               </div>
               {quarantinedLots.map((lot, i) => (
                 <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
@@ -620,7 +606,7 @@ export default function IngredientDetailPage() {
                       </div>
                       {tx.note && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontStyle: 'italic', marginTop: 2 }}>{tx.note}</div>}
                     </div>
-                    <span style={{ fontWeight: 600, color: isPositive ? '#28a745' : '#dc3545', flexShrink: 0 }}>
+                    <span style={{ fontWeight: 600, color: isPositive ? 'var(--prj-green)' : 'var(--prj-red)', flexShrink: 0 }}>
                       {isPositive ? '+' : ''}{parseFloat(tx.quantity_change).toFixed(1)} {unit}
                     </span>
                   </div>
@@ -630,6 +616,8 @@ export default function IngredientDetailPage() {
           )}
         </div>
       )}
+
+      </ModulePage>
 
       {/* ══════ MODALS ══════ */}
       {showEdit && ingredient && (

@@ -1,0 +1,45 @@
+/*
+ * Module Production — design Ventes (2026-11-18).
+ * Fiches pleine page (plan /production/:id, bon de sortie /stock/bsi/:id) : barre de fil
+ * d'Ariane en haut, puis corps à marges standard (.pd-page) où les panneaux s'empilent avec
+ * un espacement régulier au lieu des marges fixes de 1rem des anciennes sections.
+ * Toutes les règles sont préfixées .kl-apple (zone posée par AppLayout).
+ */
+
+/* Corps de fiche : mêmes marges que .sal-page / .kl-page. */
+.kl-apple .pd-page { display: flex; flex-direction: column; gap: 16px; padding: 24px 32px 56px; min-width: 0; }
+@media (max-width: 768px) { .kl-apple .pd-page { padding: 18px 16px 40px; } }
+.kl-apple .pd-page > * { min-width: 0; }
+
+/* Les anciennes sections (.odoo-section) portaient margin: 1rem : la pile gère l'espacement. */
+.kl-apple .pd-page .odoo-section { margin: 0 !important; }
+
+/* En-tête de fiche : la frise d'étapes est intégrée au panneau, sous un filet. */
+.kl-apple .pd-hero .ui-timeline { background: transparent; border-bottom: 0; border-top: 1px solid var(--kl-hair); padding: 14px 0 0; margin: 0; }
+.kl-apple .pd-hero .ui-timeline-dot { background: var(--kl-card); }
+.kl-apple .pd-hero .plan-header-main { flex: 1 1 auto; }
+.kl-apple .pd-hero .plan-header-actions { padding-top: 4px; }
+
+/* Onglets de la fiche plan : contrôle segmenté + indication de l'étape suivante. */
+.kl-apple .pd-tabs { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 0; background: transparent; }
+.kl-apple .pd-tabs .prj-views { display: inline-flex; flex-wrap: wrap; }
+.kl-apple .pd-tabs .prj-views button { height: auto; min-height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; }
+.kl-apple .pd-tabs .plan-tabs-hint { margin-left: 0; font-size: 13px; color: var(--kl-muted); display: inline-flex; align-items: center; gap: 6px; }
+
+/* Corps à deux colonnes (contenu + volet notes/journal) : espacement régulier. */
+.kl-apple .pd-page .plan-body { gap: 20px; }
+.kl-apple .pd-page .plan-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.kl-apple .pd-page .plan-main > *:empty { display: none; }
+.kl-apple .pd-page .plan-side { display: flex; flex-direction: column; gap: 16px; top: 64px; }
+.kl-apple .pd-page .plan-synth { padding: 0; gap: 16px; }
+.kl-apple .pd-page .plan-synth-grid { gap: 16px; }
+.kl-apple .pd-page [data-panel] { display: flex; flex-direction: column; gap: 16px; }
+.kl-apple .pd-page [data-panel]:empty { display: none; }
+
+/* Bon de sortie (en ligne ou en page) : pile de panneaux. */
+.kl-apple .bsi-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.kl-apple .bsi-stack > .odoo-section { margin: 0 !important; }
+.kl-apple .bsi-lines-toolbar { padding: 12px 16px; background: transparent; border-bottom-color: var(--kl-hair); }
+
+/* Fiche nomenclature : les indicateurs du format restent visibles pendant l'édition. */
+.kl-apple .pd-sticky-kpis { position: sticky; top: 52px; z-index: 9; background: var(--kl-bg); padding: 8px 0; margin: -8px 0; }

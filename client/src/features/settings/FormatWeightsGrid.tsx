@@ -1,3 +1,4 @@
+import { FilterChips } from '../sales/ListTemplate';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Scale, Check } from 'lucide-react';
@@ -86,15 +87,15 @@ export default function FormatWeightsGrid() {
           : `${missing} format${missing > 1 ? 's' : ''} sur ${rows.length} n'${missing > 1 ? 'ont' : 'a'} pas de poids cuit. Saisissez les poids (g ou kg) ; chaque ligne s'enregistre en quittant le champ.`}
       </StatusBanner>
 
-      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
-        <input type="checkbox" checked={onlyMissing} onChange={e => setOnlyMissing(e.target.checked)} />
-        N'afficher que les formats sans poids cuit
-      </label>
+      <FilterChips label="Formats affichés" value={onlyMissing ? 'missing' : 'all'} onChange={k => setOnlyMissing(k === 'missing')} chips={[
+        { key: 'missing', label: 'Sans poids cuit', count: missing },
+        { key: 'all', label: 'Tous les formats', count: rows.length },
+      ]} />
 
       {shown.length === 0 && <div style={{ padding: 16, color: 'var(--theme-text-muted)' }}>Aucun format à afficher.</div>}
 
       {shown.length > 0 && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', overflowX: 'auto' }}>
+        <div className="prj-panel" style={{ overflowX: 'auto' }}>
           <table className="odoo-table" style={{ width: '100%' }}>
             <thead><tr>
               <th style={{ textAlign: 'left' }}>Fiche</th>

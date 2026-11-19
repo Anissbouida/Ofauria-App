@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Search, X, TrendingDown, ClipboardCheck, Scale, Undo2, CheckCircle2 } from 'lucide-react';
+import { Loader2, X, TrendingDown, ClipboardCheck, Scale, Undo2, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { controleApi, type ProductionIssue } from '../../api/controle.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { ListToolbar, ListEmpty } from '../sales/ListTemplate';
+import { StageChips, Panel, PagerFoot, PageLoading } from './KlUi';
 import { money } from '../../utils/money';
 
 /**
@@ -23,7 +25,7 @@ const KINDS: Array<StageDef & { key: Kind }> = [
   { key: 'pesee', label: 'Pesées hors tolérance', hint: 'écart de pesée motivé', icon: Scale },
   { key: 'refus', label: 'Refus du chef', hint: 'préparation à reprendre', icon: Undo2 },
 ];
-const KIND_DOT: Record<Kind, string> = { qc: '#dc3545', rendement: '#d9822b', pesee: '#c99a06', refus: '#3b82f6' };
+const KIND_DOT: Record<Kind, string> = { qc: 'var(--prj-red)', rendement: 'var(--prj-orange)', pesee: '#c99a06', refus: '#3b82f6' };
 const ACTION: Record<Kind, string> = {
   qc: 'Voir le contrôle', rendement: 'Analyser le plan', pesee: 'Voir le plan', refus: 'Voir le bon',
 };
@@ -56,7 +58,7 @@ export default function ProductionControl({ range, periodText }: { range: Record
 
   return (
     <>
-      <StagePipeline
+      <StageChips
         title="Anomalies de production"
         summary={totalIssues ? `${totalIssues} anomalie${totalIssues > 1 ? 's' : ''} · ${periodText}` : `Aucune anomalie · ${periodText}`}
         stages={KINDS}
@@ -73,10 +75,7 @@ export default function ProductionControl({ range, periodText }: { range: Record
         </StatusBanner>
       )}
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)} aria-label="Rechercher une anomalie"
-          placeholder="Rechercher un produit, un ingrédient, un bon, un motif..." className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher un produit, un ingrédient, un bon, un motif...">
         {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
         {(kind || search) && (
           <button type="button" onClick={() => { setKind(''); setSearchInput(''); setSearch(''); }} className="odoo-btn-secondary"
@@ -84,17 +83,13 @@ export default function ProductionControl({ range, periodText }: { range: Record
             <X size={12} /> Effacer les filtres
           </button>
         )}
-      </div>
+      </ListToolbar>
 
-      {isLoading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={22} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>
-      ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <CheckCircle2 size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{kind || search ? 'Aucune anomalie pour ces filtres.' : 'Aucune anomalie de production sur la période.'}</p>
-        </div>
+      {isLoading ? <PageLoading /> : rows.length === 0 ? (
+        <ListEmpty icon={CheckCircle2} title={kind || search ? 'Aucune anomalie pour ces filtres.' : 'Aucune anomalie de production sur la période.'} />
       ) : (
-        <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+        <Panel style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}
+          footer={<PagerFoot page={page} total={data?.total ?? 0} onPage={setPage} note={`Anomalies de production · ${periodText}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -122,7 +117,7 @@ export default function ProductionControl({ range, periodText }: { range: Record
                     <span style={{ fontWeight: 500 }}>{r.label}</span>
                     {r.plan_date && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Plan du {format(new Date(r.plan_date), 'dd MMM yyyy', { locale: fr })}</div>}
                   </td>
-                  <td style={{ fontSize: '0.8125rem', color: r.kind === 'qc' ? '#b71c1c' : 'var(--odoo-text)', maxWidth: 380 }}>
+                  <td style={{ fontSize: '0.8125rem', color: r.kind === 'qc' ? 'var(--prj-red)' : 'var(--odoo-text)', maxWidth: 380 }}>
                     {r.detail ?? '—'}
                     {r.value && Number(r.value) !== 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>écart de coût estimé {money(Number(r.value))}</div>}
                   </td>
@@ -139,8 +134,7 @@ export default function ProductionControl({ range, periodText }: { range: Record
               ))}
             </tbody>
           </table>
-          <Pager page={page} total={data?.total ?? 0} onPage={setPage} note={`Anomalies de production · ${periodText}`} />
-        </div>
+        </Panel>
       )}
     </>
   );

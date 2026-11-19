@@ -8,7 +8,7 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 import { openingInventoryCheckApi, type OpeningCheckPendingResponse } from '../../api/opening-inventory-check.api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { EmptyRow, Loading, inputStyle, muted, sectionTitle, tableWrap, toNum } from './shared';
+import { EmptyRow, Loading, inputStyle, muted, sectionTitle, tableCard, toNum } from './shared';
 
 /**
  * Ouverture (ex-écran /inventory-check/validation) : la caissière compte la
@@ -26,7 +26,7 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 const signed = (v: number) => `${v > 0 ? '+' : ''}${v.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}`;
-const ecartColor = (v: number) => (v < 0 ? '#dc3545' : v > 0 ? '#d9822b' : 'var(--odoo-text)');
+const ecartColor = (v: number) => (v < 0 ? 'var(--prj-red)' : v > 0 ? 'var(--prj-orange)' : 'var(--odoo-text)');
 
 type Existing = OpeningCheckPendingResponse['existingCheck'];
 
@@ -131,7 +131,7 @@ function ValidationQueue() {
         <StatusBanner tone={msg.type === 'error' ? 'danger' : 'success'} icon={msg.type === 'error' ? AlertTriangle : CheckCircle2}
           title={msg.type === 'error' ? 'Action impossible' : 'Enregistré'}>{msg.text}</StatusBanner>
       )}
-      <div style={tableWrap}>
+      <div className={tableCard}>
         <table className="odoo-table" style={{ margin: 0 }}>
           <thead>
             <tr>
@@ -175,7 +175,7 @@ function ValidationQueue() {
           </div>
           {detailLoading ? <Loading /> : (
             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={tableWrap}>
+              <div className={tableCard}>
                 <table className="odoo-table" style={{ margin: 0 }}>
                   <thead>
                     <tr>
@@ -219,7 +219,7 @@ function ValidationQueue() {
           )}
         </div>
       )}
-      <p style={{ ...muted, margin: 0, fontSize: '0.75rem' }}>Convention : un écart négatif est un manque.</p>
+      <p className="klc-note">Convention : un écart négatif est un manque.</p>
     </>
   );
 }

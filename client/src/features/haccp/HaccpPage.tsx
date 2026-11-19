@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Thermometer, SprayCan, AlertTriangle, CheckCircle2, Loader2, Plus, Clock, Info } from 'lucide-react';
+import { Thermometer, SprayCan, AlertTriangle, CheckCircle2, Plus, Clock, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -10,6 +10,8 @@ import {
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
+import SalesPageShell from '../sales/SalesPageShell';
+import { Panel, SectionTitle, PageLoading } from '../controle/KlUi';
 
 /**
  * Relevés HACCP (mig 315) — écran de saisie des chefs : la feuille du jour.
@@ -22,20 +24,24 @@ const t = (v: number | null) => (v == null ? '—' : `${v.toLocaleString('fr-FR'
 const time = (iso: string | null) => (iso ? format(new Date(iso), 'HH:mm') : '');
 const day = (iso: string | null) => (iso ? format(new Date(iso), 'd MMM', { locale: fr }) : 'jamais');
 
+/** Date du jour en tête de page (« Mercredi 18 novembre »). */
+const todayLabel = () => { const s = format(new Date(), 'EEEE d MMMM', { locale: fr }); return s.charAt(0).toUpperCase() + s.slice(1); };
+
 export default function HaccpPage() {
   const { data, isLoading, error } = useQuery({ queryKey: ['haccp-today'], queryFn: haccpApi.today, refetchInterval: 120_000, retry: false });
 
+  // Coquille Production en bar={false} : la page pose sa barre puis son grand titre (design Ventes).
   if (error) {
     return (
-      <div style={{ padding: '16px 20px' }}>
+      <SalesPageShell icon={Thermometer} parent="Production" title="Relevés HACCP" summary={todayLabel()}>
         <StatusBanner tone="danger" icon={AlertTriangle} title="Relevés HACCP indisponibles">
           {String((error as any)?.response?.data?.error?.message ?? error)} — écran réservé aux chefs et au gérant.
         </StatusBanner>
-      </div>
+      </SalesPageShell>
     );
   }
   if (isLoading || !data) {
-    return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={22} className="animate-spin" /></div>;
+    return <SalesPageShell icon={Thermometer} parent="Production" title="Relevés HACCP" summary={todayLabel()}><PageLoading /></SalesPageShell>;
   }
   const toRead = data.equipment.filter(e => e.readings_today < e.readings_per_day).length;
   const tasksDue = data.tasks.filter(k => k.due).length;
@@ -43,16 +49,8 @@ export default function HaccpPage() {
   const allGood = toRead === 0 && tasksDue === 0 && actionsOpen === 0;
 
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <Thermometer size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Relevés HACCP</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current" style={{ textTransform: 'capitalize' }}>{format(new Date(), 'EEEE d MMMM', { locale: fr })}</span>
-        </div>
-      </div>
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1100 }}>
+    <SalesPageShell icon={Thermometer} parent="Production" title="Relevés HACCP" summary={todayLabel()}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1100 }}>
         {allGood ? (
           <StatusBanner tone="success" icon={CheckCircle2} title="Feuille du jour à jour">
             Tous les relevés et nettoyages prévus sont faits, aucune action corrective en attente.
@@ -84,17 +82,16 @@ export default function HaccpPage() {
             : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{data.actions.map(a => <ActionCard key={a.id} a={a} />)}</div>}
         </Section>
       </div>
-    </div>
+    </SalesPageShell>
   );
 }
 
-function Section({ icon: Icon, title, extra, children }: { icon: typeof Thermometer; title: string; extra?: React.ReactNode; children: React.ReactNode }) {
+function Section({ icon, title, extra, children }: { icon: typeof Thermometer; title: string; extra?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <section className="klc-stack">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Icon size={16} style={{ color: 'var(--theme-accent)' }} />
-        <h2 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600 }}>{title}</h2>
-        <div style={{ marginLeft: 'auto', position: 'relative' }}>{extra}</div>
+        <SectionTitle icon={icon}>{title}</SectionTitle>
+        {extra && <div style={{ marginLeft: 'auto', position: 'relative' }}>{extra}</div>}
       </div>
       {children}
     </section>
@@ -126,14 +123,14 @@ function ReadingCard({ e }: { e: TodayEquipment }) {
   });
 
   return (
-    <div style={{ border: `1px solid ${e.last_in_range === false ? '#dc3545' : 'var(--odoo-border)'}`, borderRadius: 6, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--odoo-bg)' }}>
+    <div className={`klc-card${e.last_in_range === false ? ' alert' : ''}`}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         <strong style={{ fontSize: '0.875rem' }}>{e.nom}</strong>
         <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{t(e.temp_min)} à {t(e.temp_max)}</span>
         <span style={{ marginLeft: 'auto' }}><StatusTag tone={done ? 'done' : 'todo'} icon={Thermometer} label={`${e.readings_today}/${e.readings_per_day}`} title="Relevés du jour" /></span>
       </div>
       <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-        {e.last_value == null ? 'Aucun relevé aujourd\'hui' : <>Dernier : <strong style={{ color: e.last_in_range ? 'var(--odoo-text)' : '#dc3545' }}>{t(e.last_value)}</strong> à {time(e.last_at)}</>}
+        {e.last_value == null ? 'Aucun relevé aujourd\'hui' : <>Dernier : <strong style={{ color: e.last_in_range ? 'var(--odoo-text)' : 'var(--prj-red)' }}>{t(e.last_value)}</strong> à {time(e.last_at)}</>}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <input type="text" inputMode="decimal" value={value} onChange={ev => setValue(ev.target.value)} placeholder="°C"
@@ -143,7 +140,7 @@ function ReadingCard({ e }: { e: TodayEquipment }) {
       </div>
       {outOfRange && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ color: '#dc3545', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ color: 'var(--prj-red)', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <AlertTriangle size={12} /> Hors plage : le gérant sera prévenu
           </span>
           <textarea value={action} onChange={ev => setAction(ev.target.value)} style={textareaStyle}
@@ -174,8 +171,8 @@ function CleaningTable({ tasks }: { tasks: TodayTask[] }) {
   if (tasks.length === 0) return <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune tâche au plan de nettoyage.</p>;
 
   return (
-    <div style={{ overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
-      <table className="odoo-table" style={{ margin: 0 }}>
+    <Panel>
+      <table className="odoo-table">
         <thead><tr><th>Tâche</th><th>Fréquence</th><th>Dernier passage</th><th style={{ textAlign: 'right' }}></th></tr></thead>
         <tbody>
           {sorted.map(k => [
@@ -186,7 +183,7 @@ function CleaningTable({ tasks }: { tasks: TodayTask[] }) {
               </td>
               <td>{FREQUENCY_LABELS[k.frequency]}</td>
               <td style={{ fontSize: '0.75rem' }}>
-                {k.last_done_at ? <>{day(k.last_done_at)} {time(k.last_done_at)}{k.last_done_by ? ` · ${k.last_done_by}` : ''}{k.last_conforme === false && <span style={{ color: '#dc3545', fontWeight: 600 }}> · non conforme</span>}</> : <span style={{ color: 'var(--theme-text-muted)' }}>jamais</span>}
+                {k.last_done_at ? <>{day(k.last_done_at)} {time(k.last_done_at)}{k.last_done_by ? ` · ${k.last_done_by}` : ''}{k.last_conforme === false && <span style={{ color: 'var(--prj-red)', fontWeight: 600 }}> · non conforme</span>}</> : <span style={{ color: 'var(--theme-text-muted)' }}>jamais</span>}
               </td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                 {k.due ? (
@@ -199,7 +196,7 @@ function CleaningTable({ tasks }: { tasks: TodayTask[] }) {
             </tr>,
             failing === k.id && (
               <tr key={`${k.id}-nc`}>
-                <td colSpan={4} style={{ background: '#fdf0ed' }}>
+                <td colSpan={4} style={{ background: 'color-mix(in srgb, var(--prj-red) 7%, transparent)' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end' }}>
                     <textarea value={note} onChange={ev => setNote(ev.target.value)} style={textareaStyle} placeholder="Ce qui n'est pas conforme (obligatoire)" />
                     <textarea value={action} onChange={ev => setAction(ev.target.value)} style={textareaStyle} placeholder="Action réalisée (facultatif)" />
@@ -211,7 +208,7 @@ function CleaningTable({ tasks }: { tasks: TodayTask[] }) {
           ])}
         </tbody>
       </table>
-    </div>
+    </Panel>
   );
 }
 
@@ -226,14 +223,14 @@ function ActionCard({ a }: { a: CorrectiveAction }) {
     onError: (err) => notify.error(err),
   });
   return (
-    <div style={{ border: `1px solid ${a.status === 'open' ? '#dc3545' : 'var(--odoo-border)'}`, borderRadius: 6, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div className={`klc-card${a.status === 'open' ? ' alert' : ''}`} style={{ gap: 6 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className="odoo-tag odoo-tag-grey">{ACTION_SOURCE_LABELS[a.source_kind]}</span>
         <strong style={{ fontSize: '0.8125rem' }}>{a.problem}</strong>
         <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{day(a.created_at)} {time(a.created_at)}{a.created_by_name ? ` · ${a.created_by_name}` : ''}</span>
       </div>
       {a.validation_note && a.status === 'open' && (
-        <div style={{ fontSize: '0.75rem', color: '#b85d1a' }}>Renvoyée par le gérant : {a.validation_note}</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--prj-orange)' }}>Renvoyée par le gérant : {a.validation_note}</div>
       )}
       {a.status === 'done' ? (
         <div style={{ fontSize: '0.75rem' }}>
@@ -263,7 +260,7 @@ function NewActionButton() {
     return <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setOpen(true)}><Plus size={13} /> Signaler un problème</button>;
   }
   return (
-    <div style={{ position: 'absolute', right: 0, top: 0, zIndex: 10, width: 'min(420px, 90vw)', background: 'var(--odoo-bg, #fff)', border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ position: 'absolute', right: 0, top: 0, zIndex: 10, width: 'min(420px, 90vw)', background: 'var(--theme-bg-card, #fff)', borderRadius: 14, padding: 12, boxShadow: '0 12px 32px rgba(15,23,42,0.16), 0 0 0 .5px rgba(15,23,42,.08)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.875rem', fontWeight: 400, letterSpacing: 0 }}>
       <textarea autoFocus value={problem} onChange={ev => setProblem(ev.target.value)} style={textareaStyle} placeholder="Problème constaté (nuisible, produit suspect, panne…)" />
       <textarea value={action} onChange={ev => setAction(ev.target.value)} style={textareaStyle} placeholder="Action réalisée (facultatif)" />
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>

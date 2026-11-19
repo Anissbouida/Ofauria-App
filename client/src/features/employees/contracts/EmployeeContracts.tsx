@@ -99,7 +99,7 @@ export default function EmployeeContracts({ employeeId, onChanged }: { employeeI
   const trialLeft = active?.trial_end_date ? Math.round((Date.parse(isoDate(active.trial_end_date)) - Date.parse(today)) / 86400000) : null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <section className="prj-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px' }}>
       <SectionTitle icon={FileSignature} actions={<>
         {!active && <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => open('create')}><Plus size={11} /> Contrat</button>}
         {active && <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => open('avenant')}><FilePlus2 size={11} /> Avenant</button>}
@@ -180,7 +180,7 @@ export default function EmployeeContracts({ employeeId, onChanged }: { employeeI
           </tbody>
         </table>
       )}
-    </div>
+    </section>
   );
 }
 

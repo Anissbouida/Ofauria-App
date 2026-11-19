@@ -29,16 +29,16 @@ export default function ProfileStatusPanel() {
   const todo = data.layers.filter(l => l.state === 'todo').length;
 
   return (
-    <section className="odoo-card" style={{ padding: '1rem', display: 'grid', gap: 12 }} aria-label="Configuration du profil">
+    <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-label="Configuration du profil">
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 600 }}>Configuration du profil « {data.sector.label} »</div>
+          <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Configuration du profil « {data.sector.label} »</div>
           <div className="text-xs text-gray-500">
             {data.configured} couche(s) réglée(s) sur {data.total}{todo ? ` · ${todo} à compléter` : ''}. « Par défaut » : la valeur du profil s'applique.
           </div>
         </div>
         <div style={{ minWidth: 160 }} aria-label={`Avancement ${pct} %`}>
-          <div style={{ height: 6, background: 'var(--odoo-border, #e5e7eb)', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: 6, background: 'var(--kl-fill, var(--odoo-border, #e5e7eb))', borderRadius: 99, overflow: 'hidden' }}>
             <div style={{ width: `${pct}%`, height: '100%', background: 'var(--theme-accent, #714b67)' }} />
           </div>
           <div className="text-xs text-gray-500" style={{ textAlign: 'right', marginTop: 2 }}>{pct} %</div>
@@ -50,7 +50,7 @@ export default function ProfileStatusPanel() {
           const Icon = st.icon;
           return (
             <button key={l.key} type="button" onClick={() => navigate(l.to)}
-              style={{ textAlign: 'left', border: '1px solid var(--odoo-border, #e5e7eb)', borderRadius: 6, padding: '8px 10px',
+              style={{ textAlign: 'left', border: '1px solid var(--theme-bg-separator, var(--odoo-border, #e5e7eb))', borderRadius: 12, padding: '9px 12px',
                 background: 'var(--odoo-bg, #fff)', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
               aria-label={`${l.label} : ${st.label}. ${l.detail}`}>
               <Icon size={16} style={{ color: st.color, flexShrink: 0 }} />

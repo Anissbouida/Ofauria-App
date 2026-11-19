@@ -8,14 +8,17 @@ import GovernancePanel from './GovernancePanel';
 import AccessReviewTab, { AccessReviewModal } from './AccessReviewPanel';
 import { storesApi } from '../../api/stores.api';
 import {
-  Plus, Pencil, Shield, ShieldOff, KeyRound, Settings2, Check, MapPin, Lock, Search, Users, UserCheck, UserX,
+  Plus, Pencil, Shield, ShieldOff, KeyRound, Settings2, Check, MapPin, Lock, Users, UserCheck, UserX,
   ShieldCheck, Loader2, RotateCcw, Scale, ScanSearch,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { HrModal, Field, SubmitButton, EmptyState } from '../employees/ui';
+import { HrModal, Field, SubmitButton, LoadingPanel, Segmented } from '../employees/ui';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import '../employees/employees.css';
 import * as shared from '@ofauria/shared';
 import {
   ROLE_LABELS, MODULE_LABELS, APP_MODULES, DEFAULT_ROLE_MODULES, SETTINGS_SECTION_LABELS,
@@ -26,8 +29,8 @@ import '../settings/settings.css';
 
 /**
  * Utilisateurs : comptes (connexion, PIN, rôle, établissement, droits propres) et
- * rôles. Même présentation que les autres modules : barre de contrôle, onglets,
- * indicateurs, recherche, odoo-table, fenêtres au format Odoo, ConfirmDialog.
+ * rôles. Design Ventes : barre fil d'Ariane, grand titre, contrôle segmenté des vues,
+ * tuiles, recherche et pastilles, tableau en carte, fenêtres en feuille, ConfirmDialog.
  */
 
 type UserRow = Record<string, any>;
@@ -57,42 +60,27 @@ export default function UsersPage() {
   const current = tabs.find(t => t.key === tab)!;
 
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <Lock size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Utilisateurs</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{current.label}</span>
-        </div>
-        <div style={{ flex: 1 }} />
-        {tab === 'users' && (
-          <button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}>
+    <>
+      {/* Design Ventes (2026-11-18) : barre fil d'Ariane + action, grand titre de la rubrique,
+          contrôle segmenté des quatre vues, puis contenu au gabarit Liste. */}
+      <SalesPageShell icon={Lock} parent="Utilisateurs" title={current.label} list
+        actions={tab === 'users' ? (
+          <button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Plus size={13} /> Nouvel utilisateur
           </button>
-        )}
-      </div>
-
-      <div className="odoo-tabs">
-        {tabs.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
-              <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        ) : undefined}>
+        <div className="prj-toolbar">
+          <Segmented label="Vues des utilisateurs" value={tab} onChange={setTab}
+            options={tabs.map(t => ({ key: t.key, label: t.label, icon: t.icon }))} />
+        </div>
         {tab === 'users' && <AccountsTab onEdit={setEditing} />}
         {tab === 'roles' && <RolesPanel />}
         {tab === 'governance' && <GovernancePanel />}
         {tab === 'review' && <AccessReviewTab />}
-      </div>
+      </SalesPageShell>
 
       {editing && <UserFormModal user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
-    </div>
+    </>
   );
 }
 
@@ -157,50 +145,42 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
 
   return (
     <>
-      <div className="odoo-stat-grid">
-        <button type="button" className="odoo-stat-card" onClick={() => setStatus('active')} style={{ textAlign: 'left' }}>
-          <div className="odoo-stat-card-label"><UserCheck size={11} style={{ display: 'inline', marginRight: 4 }} />Comptes actifs</div>
-          <div className="odoo-stat-card-value">{activeCount}</div>
-          <div className="odoo-stat-card-sub">sur {users.length} comptes</div>
+      <div className="prj-kpis">
+        <button type="button" className="prj-kpi" onClick={() => setStatus('active')} style={{ textAlign: 'left' }}>
+          <div className="prj-kpi-head"><span>Comptes actifs</span><UserCheck size={14} /></div>
+          <div className="prj-kpi-value">{activeCount}</div>
+          <div className="prj-kpi-sub">sur {users.length} comptes</div>
         </button>
-        <button type="button" className="odoo-stat-card" onClick={() => setStatus('inactive')} style={{ textAlign: 'left' }}>
-          <div className="odoo-stat-card-label"><UserX size={11} style={{ display: 'inline', marginRight: 4 }} />Désactivés</div>
-          <div className="odoo-stat-card-value">{inactiveCount}</div>
-          <div className="odoo-stat-card-sub">connexion impossible</div>
+        <button type="button" className="prj-kpi" onClick={() => setStatus('inactive')} style={{ textAlign: 'left' }}>
+          <div className="prj-kpi-head"><span>Désactivés</span><UserX size={14} /></div>
+          <div className="prj-kpi-value">{inactiveCount}</div>
+          <div className="prj-kpi-sub">connexion impossible</div>
         </button>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><KeyRound size={11} style={{ display: 'inline', marginRight: 4 }} />Sans code PIN</div>
-          <div className="odoo-stat-card-value" style={{ color: noPinCount ? '#b45309' : undefined }}>{noPinCount}</div>
-          <div className="odoo-stat-card-sub">pas de connexion rapide en caisse</div>
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span>Sans code PIN</span><KeyRound size={14} /></div>
+          <div className="prj-kpi-value" style={{ color: noPinCount ? 'var(--prj-orange)' : undefined }}>{noPinCount}</div>
+          <div className="prj-kpi-sub">pas de connexion rapide en caisse</div>
         </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><MapPin size={11} style={{ display: 'inline', marginRight: 4 }} />Sans établissement</div>
-          <div className="odoo-stat-card-value" style={{ color: noStoreCount ? '#b45309' : undefined }}>{noStoreCount}</div>
-          <div className="odoo-stat-card-sub">hors administrateurs</div>
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span>Sans établissement</span><MapPin size={14} /></div>
+          <div className="prj-kpi-value" style={{ color: noStoreCount ? 'var(--prj-orange)' : undefined }}>{noStoreCount}</div>
+          <div className="prj-kpi-sub">hors administrateurs</div>
         </div>
       </div>
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, borderRadius: 4, border: '1px solid var(--odoo-border)' }}>
-        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flex: '1 1 240px' }}>
-          <Search size={13} style={{ position: 'absolute', left: 8, color: 'var(--odoo-text-muted)' }} />
-          <input id="users-search" className="odoo-search-input" style={{ paddingLeft: 26, width: '100%' }}
-            placeholder="Rechercher un nom, un e-mail, un rôle…" value={q} onChange={e => setQ(e.target.value)} aria-label="Rechercher un utilisateur" />
-        </span>
-        <select id="users-role-filter" className="odoo-input" style={{ width: 'auto' }} value={roleFilter} onChange={e => setRoleFilter(e.target.value)} aria-label="Filtrer par rôle">
+      <ListToolbar search={q} onSearch={setQ} placeholder="Rechercher un nom, un e-mail, un rôle…">
+        <select id="users-role-filter" className="odoo-filter-dropdown" style={{ width: 'auto' }} value={roleFilter} onChange={e => setRoleFilter(e.target.value)} aria-label="Filtrer par rôle">
           <option value="">Tous les rôles</option>
           {roleOptions.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
         </select>
-        <div className="odoo-view-switcher" role="group" aria-label="Statut">
-          {([['active', 'Actifs'], ['inactive', 'Désactivés'], ['all', 'Tous']] as const).map(([k, l]) => (
-            <button key={k} type="button" className={status === k ? 'active' : ''} onClick={() => setStatus(k)}>{l}</button>
-          ))}
-        </div>
-      </div>
+      </ListToolbar>
+      <FilterChips label="Statut" value={status} onChange={k => setStatus(k as typeof status)}
+        chips={[{ key: 'active', label: 'Actifs', count: activeCount }, { key: 'inactive', label: 'Désactivés', count: inactiveCount }, { key: 'all', label: 'Tous', count: users.length }]} />
 
-      {isLoading ? <Loader2 className="animate-spin" size={18} /> : !shown.length ? (
-        <EmptyState icon={Users}>{users.length ? 'Aucun compte ne correspond aux filtres.' : 'Aucun utilisateur.'}</EmptyState>
+      {isLoading ? <LoadingPanel /> : !shown.length ? (
+        <ListEmpty icon={Users} title={users.length ? 'Aucun compte ne correspond aux filtres.' : 'Aucun utilisateur.'} />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <ListPanel footer={<div className="hr-panel-foot">{shown.length} compte{shown.length > 1 ? 's' : ''}</div>}>
           <table className="odoo-table">
             <thead>
               <tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Établissement</th><th>Code PIN</th><th>Statut</th><th style={{ width: 1 }}></th></tr>
@@ -225,9 +205,9 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
                         : <span style={{ color: 'var(--odoo-text-light)' }}>{u.role === 'admin' ? 'Tous' : 'Non assigné'}</span>}
                     </td>
                     <td>
-                      {!u.hasPin ? <span className="odoo-tag odoo-tag-grey">Non défini</span>
-                        : u.pinWeak ? <span className="odoo-tag odoo-tag-orange" title="PIN de moins de 6 chiffres ou antérieur à la règle : à renouveler">À renouveler</span>
-                        : <span className="odoo-tag odoo-tag-green">Défini</span>}
+                      {!u.hasPin ? <StatusTag tone="draft" label="Non défini" />
+                        : u.pinWeak ? <StatusTag tone="todo" label="À renouveler" title="PIN de moins de 6 chiffres ou antérieur à la règle : à renouveler" />
+                        : <StatusTag tone="done" label="Défini" />}
                     </td>
                     <td><StatusTag tone={u.isActive ? 'done' : 'cancelled'} label={u.isActive ? 'Actif' : 'Désactivé'} /></td>
                     <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
@@ -262,7 +242,7 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
               })}
             </tbody>
           </table>
-        </div>
+        </ListPanel>
       )}
 
       {permUser && <PermissionsModal user={permUser} roleLabel={roleLabel(permUser.role)} onClose={() => setPermUser(null)} />}

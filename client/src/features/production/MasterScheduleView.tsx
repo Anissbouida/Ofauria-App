@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { CalendarDays, Loader2, Save, Search } from 'lucide-react';
 import { productionApi } from '../../api/production.api';
+import { ListToolbar, ListPanel } from '../sales/ListTemplate';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -50,12 +51,7 @@ export default function MasterScheduleView({ canEdit }: { canEdit: boolean }) {
         Saisissez ce que vous prévoyez de produire chaque semaine. En gris, la prévision de vente : laissez la case vide pour la garder.
         Le calcul des besoins phasé lit ce plan à la place de la prévision.
       </StatusBanner>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '4px 8px' }}>
-          <Search size={13} aria-hidden />
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher un article" aria-label="Rechercher un article"
-            style={{ border: 0, outline: 'none', background: 'transparent', fontSize: '0.875rem' }} />
-        </label>
+      <ListToolbar search={query} onSearch={setQuery} placeholder="Rechercher un article">
         <div style={{ flex: 1 }} />
         {canEdit && (
           <>
@@ -65,9 +61,9 @@ export default function MasterScheduleView({ canEdit }: { canEdit: boolean }) {
             </button>
           </>
         )}
-      </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
+      </ListToolbar>
+      <ListPanel>
+        <table className="odoo-table" style={{ margin: 0 }}>
           <thead><tr><th>Article</th>{data.weeks.map(w => <th key={w} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{wk(w)}</th>)}</tr></thead>
           <tbody>{rows.map(r => (
             <tr key={r.product_id}>
@@ -97,7 +93,7 @@ export default function MasterScheduleView({ canEdit }: { canEdit: boolean }) {
             </tr>
           ))}</tbody>
         </table>
-      </div>
+      </ListPanel>
     </div>
   );
 }

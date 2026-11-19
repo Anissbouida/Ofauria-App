@@ -13,9 +13,10 @@ import { apiErrorMessage } from '../../api/errors';
 import { PRODUCTION_STATUS_LABELS } from '@ofauria/shared';
 import {
   TrendingUp, TrendingDown, DollarSign, Scale, Package, Users, Zap,
-  AlertTriangle, Calendar, BarChart3, PieChart, Loader2, RotateCcw
+  AlertTriangle, BarChart3, Loader2, RotateCcw
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
+import SalesPageShell from '../sales/SalesPageShell';
 
 export default function ProductionDashboardPage() {
   const { user } = useAuth();
@@ -97,245 +98,209 @@ export default function ProductionDashboardPage() {
 
   const isLoading = loadingRendement || loadingCout;
 
+  const avgRend = rendementStats?.avg_rendement ? parseFloat(rendementStats.avg_rendement) : null;
+  const avgEcart = coutStats?.avg_ecart_pct ? parseFloat(coutStats.avg_ecart_pct) : null;
+  const totalCout = parseFloat(coutStats?.total_cout || '1');
+  const costParts: Array<{ label: string; icon: React.ReactNode; value: number; color: string }> = coutStats ? [
+    { label: 'Matieres', icon: <Package size={12} />, value: parseFloat(coutStats.total_matieres || '0'), color: 'var(--prj-orange)' },
+    { label: 'Emballages', icon: <Package size={12} />, value: parseFloat(coutStats.total_emballages || '0'), color: '#C2410C' },
+    { label: "Main d'oeuvre", icon: <Users size={12} />, value: parseFloat(coutStats.total_main_oeuvre || '0'), color: 'var(--kl-accent)' },
+    { label: 'Energie', icon: <Zap size={12} />, value: parseFloat(coutStats.total_energie || '0'), color: '#7C3AED' },
+    { label: 'Charges', icon: <DollarSign size={12} />, value: parseFloat(coutStats.total_charges || '0'), color: 'var(--prj-green)' },
+    { label: 'Pertes', icon: <AlertTriangle size={12} />, value: parseFloat(coutStats.total_pertes || '0'), color: 'var(--prj-red)' },
+  ] : [];
+
   return (
-    <div className="odoo-scope">
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <BarChart3 size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Production</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">Dashboard</span>
-        </div>
-        <div style={{ flex: 1 }} />
-        <div className="odoo-view-switcher">
+    <SalesPageShell icon={BarChart3} parent="Production" title="Tableau de bord" list
+      summary={<>{period === '7d' ? '7 derniers jours' : period === '30d' ? '30 derniers jours' : '90 derniers jours'}{blockedPlans.length ? <> · <b>{blockedPlans.length} plan{blockedPlans.length > 1 ? 's' : ''}</b> à relancer</> : null}</>}
+      actions={
+        <div className="prj-views" role="group" aria-label="Période">
           {(['7d', '30d', '90d'] as const).map(p => (
-            <button key={p} onClick={() => setPeriod(p)} className={period === p ? 'active' : ''}>
+            <button key={p} type="button" onClick={() => setPeriod(p)} className={period === p ? 'active' : ''} aria-pressed={period === p}>
               {p === '7d' ? '7j' : p === '30d' ? '30j' : '90j'}
             </button>
           ))}
         </div>
-      </div>
-      <div style={{ padding: '1rem' }}>
+      }>
 
       {isLoading && (
-        <div className="flex items-center justify-center py-12 text-gray-400">
-          <Loader2 size={20} className="animate-spin mr-2" /> Chargement...
-        </div>
+        <section className="prj-panel sal-empty"><Loader2 size={20} className="animate-spin" /><span>Chargement...</span></section>
       )}
 
       {!isLoading && (
         <>
-          {/* ═══ Summary Cards ═══ */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard icon={<Scale size={18} className="text-violet-500" />} label="Rendement moyen"
-              value={rendementStats?.avg_rendement ? `${parseFloat(rendementStats.avg_rendement).toFixed(1)}%` : '—'}
-              color={yieldLevel(parseFloat(rendementStats?.avg_rendement || '0'), avgGood) === 'warn' ? 'amber' : 'emerald'}
+          {/* ═══ Chiffres de la période ═══ */}
+          <section className="kl-stats" aria-label="Chiffres de la période">
+            <StatCard icon={<Scale size={13} />} label="Rendement moyen"
+              value={avgRend != null ? `${avgRend.toFixed(1)}%` : '—'}
+              tone={yieldLevel(parseFloat(rendementStats?.avg_rendement || '0'), avgGood) === 'warn' ? 'orange' : 'green'}
               sub={`${rendementStats?.total_items || 0} items`} />
-            <StatCard icon={<AlertTriangle size={18} className="text-red-500" />} label="Total pertes"
+            <StatCard icon={<AlertTriangle size={13} />} label="Total pertes"
               value={rendementStats?.total_pertes ? parseFloat(rendementStats.total_pertes).toFixed(0) : '0'}
-              color="red"
+              tone="red"
               sub={`Brut: ${parseFloat(rendementStats?.total_brute || '0').toFixed(0)} → Net: ${parseFloat(rendementStats?.total_nette || '0').toFixed(0)}`} />
-            <StatCard icon={<DollarSign size={18} className="text-amber-500" />} label="Cout total"
+            <StatCard icon={<DollarSign size={13} />} label="Cout total"
               value={fmtMoney(coutStats?.total_cout)}
-              color="amber"
               sub={`${coutStats?.total_plans || 0} plans`} />
-            <StatCard icon={<TrendingUp size={18} className="text-emerald-500" />} label="Ecart moyen"
-              value={coutStats?.avg_ecart_pct ? `${parseFloat(coutStats.avg_ecart_pct) > 0 ? '+' : ''}${parseFloat(coutStats.avg_ecart_pct).toFixed(1)}%` : '—'}
-              color={parseFloat(coutStats?.avg_ecart_pct || '0') <= 5 ? 'emerald' : 'red'}
+            <StatCard icon={<TrendingUp size={13} />} label="Ecart moyen"
+              value={avgEcart != null ? `${avgEcart > 0 ? '+' : ''}${avgEcart.toFixed(1)}%` : '—'}
+              tone={parseFloat(coutStats?.avg_ecart_pct || '0') <= 5 ? 'green' : 'red'}
               sub="Prevu vs Reel" />
-          </div>
+          </section>
 
           {/* ═══ Plans a relancer ═══ */}
           {blockedPlans.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
-                <RotateCcw size={16} className="text-blue-500" />
-                <h2 className="font-semibold text-gray-900 text-sm">Plans a relancer</h2>
-                <span className="text-[11px] text-gray-400">
-                  articles annules / en attente, ou plan confirme sur un referentiel incomplet
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      <th className="text-left px-5 py-2.5">Plan</th>
-                      <th className="text-left px-3 py-2.5">Date</th>
-                      <th className="text-left px-3 py-2.5">Statut</th>
-                      <th className="text-center px-3 py-2.5">A relancer</th>
-                      <th className="text-right px-5 py-2.5">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {blockedPlans.map((p) => (
-                      <tr key={p.id as string} className="border-b border-gray-50 hover:bg-gray-50/60">
-                        <td className="px-5 py-2.5 font-mono font-semibold text-gray-900 cursor-pointer"
-                          onClick={() => navigate(`/production/${p.id}`)}>
-                          {(p.id as string).slice(0, 8).toUpperCase()}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-600">
-                          {format(new Date(p.plan_date as string), 'dd/MM/yyyy')}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-600">
+            <section>
+              <div className="kl-sec"><h2>Plans a relancer</h2><small>articles annules / en attente, ou plan confirme sur un referentiel incomplet</small></div>
+              <div className="kl-group">
+                {blockedPlans.map((p) => {
+                  const nb = Number(p.relaunchable_count) || 0;
+                  return (
+                    <div key={p.id as string} className="kl-cell ico" role="button" tabIndex={0}
+                      onClick={() => navigate(`/production/${p.id}`)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/production/${p.id}`); }}>
+                      <span className={`kl-ic ${nb > 0 ? 'o' : 'b'}`}><RotateCcw size={16} /></span>
+                      <span className="tx">
+                        <span className="t1"><span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{(p.id as string).slice(0, 8).toUpperCase()}</span> · {format(new Date(p.plan_date as string), 'dd/MM/yyyy')}</span>
+                        <span className="t2">
                           {PRODUCTION_STATUS_LABELS[p.status as keyof typeof PRODUCTION_STATUS_LABELS] || (p.status as string)}
-                        </td>
-                        <td className="px-3 py-2.5 text-center">
-                          {Number(p.relaunchable_count) > 0 ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700">
-                              {p.relaunchable_count as number} article(s)
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
-                              title={((p.warnings as string[] | null) || []).join('\n')}>
-                              besoins a recalculer
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-5 py-2.5 text-right">
-                          <button
-                            onClick={async () => {
-                              const nb = Number(p.relaunchable_count) || 0;
-                              const detail = nb > 0
-                                ? `${nb} article(s) annule(s) ou en attente repassent en production, et les besoins seront recalcules.`
-                                : 'Les besoins en ingredients et le bon de sortie seront recalcules depuis les recettes actuelles.';
-                              if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
-                                relaunchMutation.mutate(p.id as string);
-                              }
-                            }}
-                            disabled={relaunchMutation.isPending}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50"
-                          >
-                            <RotateCcw size={12} /> Relancer
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          {' · '}
+                          {nb > 0
+                            ? <span style={{ color: 'var(--prj-orange)', fontWeight: 600 }}>{p.relaunchable_count as number} article(s)</span>
+                            : <span title={((p.warnings as string[] | null) || []).join('\n')}>besoins a recalculer</span>}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const detail = nb > 0
+                            ? `${nb} article(s) annule(s) ou en attente repassent en production, et les besoins seront recalcules.`
+                            : 'Les besoins en ingredients et le bon de sortie seront recalcules depuis les recettes actuelles.';
+                          if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
+                            relaunchMutation.mutate(p.id as string);
+                          }
+                        }}
+                        disabled={relaunchMutation.isPending}
+                        className="sal-next"
+                      >
+                        <RotateCcw size={12} /> Relancer
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            </section>
           )}
 
-          {/* ═══ Cost breakdown cards ═══ */}
+          {/* ═══ Repartition des couts ═══ */}
           {coutStats && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-              <h2 className="font-semibold text-gray-900 text-sm mb-4 flex items-center gap-2">
-                <PieChart size={16} className="text-amber-500" /> Repartition des couts
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                <CostBar label="Matieres" icon={<Package size={12} />} value={parseFloat(coutStats.total_matieres || '0')}
-                  total={parseFloat(coutStats.total_cout || '1')} color="amber" />
-                <CostBar label="Emballages" icon={<Package size={12} />} value={parseFloat(coutStats.total_emballages || '0')}
-                  total={parseFloat(coutStats.total_cout || '1')} color="orange" />
-                <CostBar label="Main d'oeuvre" icon={<Users size={12} />} value={parseFloat(coutStats.total_main_oeuvre || '0')}
-                  total={parseFloat(coutStats.total_cout || '1')} color="blue" />
-                <CostBar label="Energie" icon={<Zap size={12} />} value={parseFloat(coutStats.total_energie || '0')}
-                  total={parseFloat(coutStats.total_cout || '1')} color="violet" />
-                <CostBar label="Charges" icon={<DollarSign size={12} />} value={parseFloat(coutStats.total_charges || '0')}
-                  total={parseFloat(coutStats.total_cout || '1')} color="green" />
-                <CostBar label="Pertes" icon={<AlertTriangle size={12} />} value={parseFloat(coutStats.total_pertes || '0')}
-                  total={parseFloat(coutStats.total_cout || '1')} color="red" />
+            <section>
+              <div className="kl-sec"><h2>Repartition des couts</h2><small><b style={{ color: 'var(--kl-ink)' }}>{fmtMoney(coutStats.total_cout)}</b> sur la période</small></div>
+              <div className="kl-widget">
+                <div className="kl-store" aria-hidden="true">
+                  {costParts.filter(c => c.value > 0).map(c => (
+                    <span key={c.label} style={{ flex: c.value, background: c.color }} />
+                  ))}
+                </div>
+                <div className="kl-legend">
+                  {costParts.map(c => <CostBar key={c.label} label={c.label} icon={c.icon} value={c.value} total={totalCout} color={c.color} />)}
+                </div>
               </div>
-            </div>
+            </section>
           )}
 
           {/* ═══ Rendement by product ═══ */}
           {rendementByProduct.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
-                <BarChart3 size={16} className="text-violet-500" />
-                <h2 className="font-semibold text-gray-900 text-sm">Rendement par produit</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      <th className="text-left px-5 py-2.5">Produit</th>
-                      <th className="text-center px-3 py-2.5">Productions</th>
-                      <th className="text-center px-3 py-2.5">Rendement moy.</th>
-                      <th className="text-center px-3 py-2.5">Pertes</th>
-                      <th className="text-center px-3 py-2.5">Vers magasin</th>
-                      <th className="text-center px-3 py-2.5">Vers frigo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rendementByProduct.map((r: any, i: number) => {
-                      const avgR = parseFloat(r.avg_rendement);
-                      return (
-                        <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/60">
-                          <td className="px-5 py-2.5 font-medium text-gray-900">{r.product_name}</td>
-                          <td className="px-3 py-2.5 text-center text-gray-600">{r.nb_productions}</td>
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${YIELD_PILL[yieldLevel(avgR, avgGood, avgAlert)]}`}>
-                              {yieldLevel(avgR, avgGood, avgAlert) === 'good' ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                              {avgR.toFixed(1)}%
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-center text-red-600">{parseFloat(r.total_pertes).toFixed(0)}</td>
-                          <td className="px-3 py-2.5 text-center text-gray-600">{parseFloat(r.total_vers_magasin).toFixed(0)}</td>
-                          <td className="px-3 py-2.5 text-center text-cyan-600">{parseFloat(r.total_vers_frigo).toFixed(0)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <section>
+              <div className="kl-sec"><h2>Rendement par produit</h2><small>{rendementByProduct.length} produit(s)</small></div>
+              <section className="prj-panel sal-panel">
+                <div className="prj-scroll">
+                  <table className="odoo-table" style={{ margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th>Produit</th>
+                        <th style={{ textAlign: 'center' }}>Productions</th>
+                        <th style={{ textAlign: 'center' }}>Rendement moy.</th>
+                        <th style={{ textAlign: 'center' }}>Pertes</th>
+                        <th style={{ textAlign: 'center' }}>Vers magasin</th>
+                        <th style={{ textAlign: 'center' }}>Vers frigo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rendementByProduct.map((r: any, i: number) => {
+                        const avgR = parseFloat(r.avg_rendement);
+                        return (
+                          <tr key={i}>
+                            <td style={{ fontWeight: 500 }}>{r.product_name}</td>
+                            <td style={{ textAlign: 'center' }}>{r.nb_productions}</td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${YIELD_PILL[yieldLevel(avgR, avgGood, avgAlert)]}`}>
+                                {yieldLevel(avgR, avgGood, avgAlert) === 'good' ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                                {avgR.toFixed(1)}%
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center', color: 'var(--prj-red)' }}>{parseFloat(r.total_pertes).toFixed(0)}</td>
+                            <td style={{ textAlign: 'center' }}>{parseFloat(r.total_vers_magasin).toFixed(0)}</td>
+                            <td style={{ textAlign: 'center' }}>{parseFloat(r.total_vers_frigo).toFixed(0)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </section>
           )}
 
           {/* ═══ Cost by day ═══ */}
           {coutByDay.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
-                <Calendar size={16} className="text-amber-500" />
-                <h2 className="font-semibold text-gray-900 text-sm">Couts par jour</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      <th className="text-left px-5 py-2.5">Date</th>
-                      <th className="text-right px-3 py-2.5">Matieres</th>
-                      <th className="text-right px-3 py-2.5">M.O.</th>
-                      <th className="text-right px-3 py-2.5">Energie</th>
-                      <th className="text-right px-3 py-2.5">Pertes</th>
-                      <th className="text-right px-5 py-2.5 font-bold">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {coutByDay.map((d: any, i: number) => (
-                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/60">
-                        <td className="px-5 py-2.5 text-gray-900">{format(new Date(d.plan_date), 'dd/MM/yyyy')}</td>
-                        <td className="px-3 py-2.5 text-right text-amber-600">{fmtMoney(d.matieres)}</td>
-                        <td className="px-3 py-2.5 text-right text-blue-600">{fmtMoney(d.main_oeuvre)}</td>
-                        <td className="px-3 py-2.5 text-right text-violet-600">{fmtMoney(d.energie)}</td>
-                        <td className="px-3 py-2.5 text-right text-red-600">{fmtMoney(d.pertes)}</td>
-                        <td className="px-5 py-2.5 text-right font-bold text-gray-900">{fmtMoney(d.total)}</td>
+            <section>
+              <div className="kl-sec"><h2>Couts par jour</h2><small>{coutByDay.length} jour(s)</small></div>
+              <section className="prj-panel sal-panel">
+                <div className="prj-scroll">
+                  <table className="odoo-table" style={{ margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th style={{ textAlign: 'right' }}>Matieres</th>
+                        <th style={{ textAlign: 'right' }}>M.O.</th>
+                        <th style={{ textAlign: 'right' }}>Energie</th>
+                        <th style={{ textAlign: 'right' }}>Pertes</th>
+                        <th style={{ textAlign: 'right' }}>Total</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                    </thead>
+                    <tbody>
+                      {coutByDay.map((d: any, i: number) => (
+                        <tr key={i}>
+                          <td>{format(new Date(d.plan_date), 'dd/MM/yyyy')}</td>
+                          <td style={{ textAlign: 'right' }}>{fmtMoney(d.matieres)}</td>
+                          <td style={{ textAlign: 'right' }}>{fmtMoney(d.main_oeuvre)}</td>
+                          <td style={{ textAlign: 'right' }}>{fmtMoney(d.energie)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--prj-red)' }}>{fmtMoney(d.pertes)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtMoney(d.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </section>
           )}
         </>
       )}
-      </div>
-    </div>
+    </SalesPageShell>
   );
 }
 
-function StatCard({ icon, label, value, color, sub }: {
-  icon: React.ReactNode; label: string; value: string; color: string; sub?: string;
+function StatCard({ icon, label, value, tone, sub }: {
+  icon: React.ReactNode; label: string; value: string; tone?: 'red' | 'green' | 'orange'; sub?: string;
 }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
-      <div className="flex items-center gap-2 mb-2">
-        {icon}
-        <span className="text-xs font-medium text-gray-500 uppercase">{label}</span>
-      </div>
-      <div className={`text-2xl font-bold text-${color}-600`}>{value}</div>
-      {sub && <div className="text-[10px] text-gray-400 mt-1">{sub}</div>}
+    <div className="kl-widget">
+      <div className="kl-wlabel"><span className="kl-sq">{icon}</span>{label}</div>
+      <div className="kl-big" style={{ fontSize: 32, color: tone ? `var(--prj-${tone})` : undefined }}>{value}</div>
+      {sub && <div className="kl-sub">{sub}</div>}
     </div>
   );
 }
@@ -345,15 +310,10 @@ function CostBar({ label, icon, value, total, color }: {
 }) {
   const pct = total > 0 ? (value / total) * 100 : 0;
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-gray-600 flex items-center gap-1">{icon} {label}</span>
-        <span className="text-xs font-bold text-gray-700">{pct.toFixed(0)}%</span>
-      </div>
-      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full bg-${color}-500 rounded-full transition-all`} style={{ width: `${pct}%` }} />
-      </div>
-      <div className="text-[10px] text-gray-400 mt-0.5">{money(value)}</div>
+    <div style={{ padding: '8px 10px' }}>
+      <span className="l"><i style={{ background: color }} />{icon} {label}</span>
+      <b>{pct.toFixed(0)}%</b>
+      <small>{money(value)}</small>
     </div>
   );
 }

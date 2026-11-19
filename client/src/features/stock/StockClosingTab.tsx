@@ -10,6 +10,8 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { money } from '../../utils/money';
+import '../sales/ListTemplate';
+import './stock.css';
 
 /**
  * Clôture de stock par période (mig 381) : fige la valorisation du stock matière
@@ -40,20 +42,23 @@ export default function StockClosingTab() {
   };
 
   return (
-    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="stk-stack">
       <StatusBanner tone="info" icon={Lock} title="Clôture de stock par période">
         Fige la valeur du stock matière (quantités restantes × coût) à une date de fin de période. Sert de valeur de stock pour le bilan et de référence historique. L'instantané photographie l'état courant au moment de la clôture.
       </StatusBanner>
 
       <StockAtDatePanel />
 
-      <div>
-        <button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}>
-          <Lock size={14} /> Clôturer une période
-        </button>
-      </div>
-
-      <div style={{ overflowX: 'auto' }}>
+      <section className="prj-panel sal-panel" aria-label="Clôtures enregistrées">
+        <div className="prj-panel-head">
+          <Archive size={16} style={{ color: 'var(--theme-accent)' }} /> Clôtures enregistrées
+          <small>{closings.length}</small>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}>
+            <Lock size={14} /> Clôturer une période
+          </button>
+        </div>
+        <div className="prj-scroll">
         <table className="odoo-table">
           <thead>
             <tr>
@@ -87,7 +92,8 @@ export default function StockClosingTab() {
             ))}
           </tbody>
         </table>
-      </div>
+        </div>
+      </section>
 
       {showForm && <ClosingForm onClose={() => setShowForm(false)} onSaved={() => { qc.invalidateQueries({ queryKey: ['stock-closings'] }); setShowForm(false); }} />}
       {detailId && <ClosingDetail id={detailId} onClose={() => setDetailId(null)} />}
@@ -216,10 +222,10 @@ function StockAtDatePanel() {
     } catch (e) { notify.error(apiErrorMessage(e)); }
   };
   return (
-    <section style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'grid', gap: 10 }} aria-label="Stock valorisé à une date">
+    <section className="prj-panel" style={{ padding: '14px 18px 16px', display: 'grid', gap: 12 }} aria-label="Stock valorisé à une date">
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <CalendarClock size={16} aria-hidden />
-        <strong>Stock valorisé au</strong>
+        <CalendarClock size={16} aria-hidden style={{ color: 'var(--theme-accent)' }} />
+        <strong className="stk-section-title" style={{ fontSize: 17 }}>Stock valorisé au</strong>
         <input type="date" className="input" value={date} max={today} onChange={e => setDate(e.target.value)} aria-label="Date du stock" style={{ width: 'auto' }} />
         {data && <span>{data.lines.length} article(s) · <strong>{money(data.total)}</strong></span>}
         <div style={{ flex: 1 }} />

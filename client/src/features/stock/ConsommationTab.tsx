@@ -3,12 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Download, Loader2, ChevronDown, ChevronRight, Factory, Trash2, Sliders,
-  ShoppingCart, FileText, PackagePlus, ArrowDownToLine, ArrowUpFromLine,
+  Download, Loader2, ChevronDown, ChevronRight,
+  ArrowDownToLine, ArrowUpFromLine, Info, BarChart3,
 } from 'lucide-react';
 import { inventoryApi } from '../../api/inventory.api';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { money } from '../../utils/money';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { ListKpi, ListEmpty } from '../sales/ListTemplate';
+import { SubViews } from './StockUi';
 
 /**
  * Deux vues complementaires sur les matieres, basculables :
@@ -285,33 +288,15 @@ export default function ConsommationTab() {
   const rowCount = view === 'entrees' ? purchData.length : consData.length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="stk-stack">
       {/* Bascule Sorties / Entrees */}
-      <div style={{ display: 'inline-flex', gap: 0, border: '1px solid var(--theme-bg-separator)', borderRadius: 6, overflow: 'hidden', width: 'fit-content' }}>
-        <button
-          onClick={() => setView('entrees')}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', border: 'none', cursor: 'pointer',
-            fontSize: '0.8125rem', fontWeight: 600,
-            background: view === 'entrees' ? 'var(--theme-accent)' : 'var(--theme-bg-card)',
-            color: view === 'entrees' ? '#fff' : 'var(--theme-text)',
-          }}>
-          <ArrowDownToLine size={14} /> Entrées (achats)
-        </button>
-        <button
-          onClick={() => setView('sorties')}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', border: 'none', cursor: 'pointer',
-            fontSize: '0.8125rem', fontWeight: 600, borderLeft: '1px solid var(--theme-bg-separator)',
-            background: view === 'sorties' ? 'var(--theme-accent)' : 'var(--theme-bg-card)',
-            color: view === 'sorties' ? '#fff' : 'var(--theme-text)',
-          }}>
-          <ArrowUpFromLine size={14} /> Sorties (consommation)
-        </button>
-      </div>
+      <SubViews label="Sens des mouvements" value={view} onChange={setView} views={[
+        { key: 'entrees', label: 'Entrées (achats)', icon: ArrowDownToLine },
+        { key: 'sorties', label: 'Sorties (consommation)', icon: ArrowUpFromLine },
+      ]} />
 
       {/* Header : selecteur periode + export */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="prj-toolbar">
         <SearchSelect
           options={[{ id: 'mois', label: 'Par mois' }, { id: 'custom', label: 'Période personnalisée' }]}
           value={periodMode}
@@ -360,107 +345,58 @@ export default function ConsommationTab() {
 
       {/* Bandeau totaux */}
       {view === 'entrees' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
-            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <ShoppingCart size={11} /> Total acheté
-            </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--theme-accent)', marginTop: 4 }}>{money(purchTotals.total)}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{purchData.length} ligne{purchData.length > 1 ? 's' : ''}</div>
-          </div>
-          <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #cfe2ff', background: '#f0f6ff' }}>
-            <div style={{ fontSize: '0.6875rem', color: '#0a58ca', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <FileText size={11} /> Via bons de commande
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0a58ca', marginTop: 4 }}>{money(purchTotals.bon_commande)}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              {purchTotals.total > 0 ? Math.round((purchTotals.bon_commande / purchTotals.total) * 100) : 0}% du total
-            </div>
-          </div>
-          <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #ffe5b4', background: '#fff8ec' }}>
-            <div style={{ fontSize: '0.6875rem', color: '#b26a00', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <PackagePlus size={11} /> Achat direct
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b26a00', marginTop: 4 }}>{money(purchTotals.achat_direct)}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              {purchTotals.total > 0 ? Math.round((purchTotals.achat_direct / purchTotals.total) * 100) : 0}% du total
-            </div>
-          </div>
-        </div>
+        <section className="prj-kpis" aria-label="Totaux des achats">
+          <ListKpi label="Total acheté" value={money(purchTotals.total)} sub={`${purchData.length} ligne${purchData.length > 1 ? 's' : ''}`} />
+          <ListKpi label="Via bons de commande" value={money(purchTotals.bon_commande)}
+            sub={`${purchTotals.total > 0 ? Math.round((purchTotals.bon_commande / purchTotals.total) * 100) : 0}% du total`} />
+          <ListKpi label="Achat direct" value={money(purchTotals.achat_direct)}
+            sub={`${purchTotals.total > 0 ? Math.round((purchTotals.achat_direct / purchTotals.total) * 100) : 0}% du total`} />
+        </section>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-          <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
-            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total consommé</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--theme-accent)', marginTop: 4 }}>{money(consTotalAll)}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{consData.length} mouvements</div>
-          </div>
-          <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
-            <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Factory size={11} /> Production
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0e7c3a', marginTop: 4 }}>{money(totalsByType.production.cost)}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              {consTotalAll > 0 ? Math.round((totalsByType.production.cost / consTotalAll) * 100) : 0}% du total
-            </div>
-          </div>
-          <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #f5c6cb', background: '#fff5f5' }}>
-            <div style={{ fontSize: '0.6875rem', color: '#b71c1c', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Trash2 size={11} /> Pertes
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b71c1c', marginTop: 4 }}>{money(totalsByType.waste.cost)}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              {consTotalAll > 0 ? Math.round((totalsByType.waste.cost / consTotalAll) * 100) : 0}% du total
-            </div>
-          </div>
-          <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #e9ecef', background: '#f8f9fa' }}>
-            <div style={{ fontSize: '0.6875rem', color: '#6c757d', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Sliders size={11} /> Ajustements
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#6c757d', marginTop: 4 }}>{money(totalsByType.adjustment.cost)}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              {consTotalAll > 0 ? Math.round((totalsByType.adjustment.cost / consTotalAll) * 100) : 0}% du total
-            </div>
-          </div>
-        </div>
+        <section className="prj-kpis" aria-label="Totaux de la consommation">
+          <ListKpi label="Total consommé" value={money(consTotalAll)} sub={`${consData.length} mouvements`} />
+          <ListKpi label="Production" value={money(totalsByType.production.cost)}
+            sub={`${consTotalAll > 0 ? Math.round((totalsByType.production.cost / consTotalAll) * 100) : 0}% du total`} />
+          <ListKpi label="Pertes" value={money(totalsByType.waste.cost)} tone={totalsByType.waste.cost > 0 ? 'red' : undefined}
+            sub={`${consTotalAll > 0 ? Math.round((totalsByType.waste.cost / consTotalAll) * 100) : 0}% du total`} />
+          <ListKpi label="Ajustements" value={money(totalsByType.adjustment.cost)}
+            sub={`${consTotalAll > 0 ? Math.round((totalsByType.adjustment.cost / consTotalAll) * 100) : 0}% du total`} />
+        </section>
       )}
 
       {/* Note explicative */}
       {view === 'entrees' ? (
-        <div className="odoo-alert" style={{ fontSize: '0.75rem' }}>
-          <strong>Vue achats (entrées de stock) :</strong> matière première <strong>achetée et réceptionnée</strong> sur
+        <StatusBanner tone="info" icon={Info} title="Vue achats (entrées de stock)">
+          Matière première <strong>achetée et réceptionnée</strong> sur
           la période, via <strong>bon de commande</strong> ou <strong>achat direct</strong>, valorisée au <strong>prix de
           réception</strong>. Permet de connaître le montant réellement dépensé en matières par mois ou période.
           Les emballages n'apparaissent que pour les mouvements de stock saisis (la réception automatique d'emballages
           par bon de commande n'est pas encore branchée).
-        </div>
+        </StatusBanner>
       ) : (
-        <div className="odoo-alert" style={{ fontSize: '0.75rem' }}>
-          <strong>Vue stock (pas trésorerie) :</strong> cette vue montre les matières <strong>physiquement consommées</strong>
+        <StatusBanner tone="info" icon={Info} title="Vue stock (pas trésorerie)">
+          Cette vue montre les matières <strong>physiquement consommées</strong>
           (sorties de stock). Indépendante du paiement des fournisseurs. Utile pour comprendre où va ton budget
           matières, repérer tes pertes, optimiser tes achats. Le coût est calculé avec le prix unitaire courant de
           chaque ingrédient.
-        </div>
+        </StatusBanner>
       )}
 
       {/* Detail par categorie -> article */}
       {isLoading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={20} className="animate-spin" style={{ display: 'inline-block', marginRight: 8 }} /> Chargement...
-        </div>
+        <ListEmpty icon={Loader2} title="Chargement…" />
       ) : byCategory.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
-          {view === 'entrees'
-            ? `Aucun achat de matière première enregistré pour ${periodLabel}.`
-            : `Aucune consommation enregistrée pour ${periodLabel}.`}
-        </div>
+        <ListEmpty icon={BarChart3} title={view === 'entrees'
+          ? `Aucun achat de matière première enregistré pour ${periodLabel}.`
+          : `Aucune consommation enregistrée pour ${periodLabel}.`} />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {byCategory.map(cat => {
             const isOpen = expandedCats[cat.name] !== false;
             return (
-              <div key={cat.name} style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'hidden' }}>
-                <button onClick={() => setExpandedCats(s => ({ ...s, [cat.name]: !isOpen }))}
-                  style={{ width: '100%', padding: '10px 14px', background: 'var(--theme-bg-page)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem' }}>
+              <div key={cat.name} className="prj-panel" style={{ overflow: 'hidden' }}>
+                <button onClick={() => setExpandedCats(s => ({ ...s, [cat.name]: !isOpen }))} aria-expanded={isOpen}
+                  style={{ width: '100%', padding: '14px 18px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9375rem' }}>
                   {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   <strong style={{ textTransform: 'capitalize' }}>{cat.name}</strong>
                   <span style={{ color: 'var(--theme-text-muted)' }}>({cat.ingredients.length} article{cat.ingredients.length > 1 ? 's' : ''})</span>
@@ -471,7 +407,7 @@ export default function ConsommationTab() {
                   </span>
                 </button>
                 {isOpen && (view === 'entrees' ? (
-                  <table className="odoo-table" style={{ margin: 0, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                  <table className="odoo-table" style={{ margin: 0, borderTop: '1px solid var(--theme-bg-separator)', boxShadow: 'none', borderRadius: 0 }}>
                     <thead>
                       <tr>
                         <th style={{ width: '30%' }}>Article</th>
@@ -510,7 +446,7 @@ export default function ConsommationTab() {
                     </tbody>
                   </table>
                 ) : (
-                  <table className="odoo-table" style={{ margin: 0, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                  <table className="odoo-table" style={{ margin: 0, borderTop: '1px solid var(--theme-bg-separator)', boxShadow: 'none', borderRadius: 0 }}>
                     <thead>
                       <tr>
                         <th style={{ width: '30%' }}>Ingrédient</th>

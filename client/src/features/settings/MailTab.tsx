@@ -5,6 +5,7 @@ import { automationApi, type OutboxMessage } from '../../api/automation.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { ListKpi, FilterChips, ListEmpty } from '../sales/ListTemplate';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -74,17 +75,14 @@ export default function MailTab() {
         </StatusBanner>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        {[['En attente', st.counts.queued, '#b85d1a'], ['En échec', st.counts.failed, st.counts.failed ? '#c0392b' : undefined], ['Envoyés (30 j)', st.counts.sent_30d, undefined]].map(([l, v, c]) => (
-          <div key={String(l)} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '10px 12px' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{l}</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: (c as string) || 'var(--odoo-text)' }}>{v}</div>
-          </div>
-        ))}
-      </div>
+      <section className="prj-kpis" aria-label="File d'envoi">
+        <ListKpi label="En attente" value={String(st.counts.queued)} tone={st.counts.queued ? 'orange' : undefined} />
+        <ListKpi label="En échec" value={String(st.counts.failed)} tone={st.counts.failed ? 'red' : undefined} />
+        <ListKpi label="Envoyés (30 j)" value={String(st.counts.sent_30d)} />
+      </section>
 
-      <section style={{ display: 'grid', gap: 10 }}>
-        <h3 style={{ margin: 0, fontSize: '0.875rem' }}>Expéditeur</h3>
+      <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
+        <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em' }}>Expéditeur</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
           <label style={lab}>Nom affiché<input style={field} maxLength={120} disabled={!editable} value={form.fromName} onChange={e => setForm({ ...form, fromName: e.target.value })} placeholder="Ex. : Ofauria — Gestion" /></label>
           <label style={lab}>Adresse de réponse<input style={field} type="email" maxLength={255} disabled={!editable} value={form.replyTo} onChange={e => setForm({ ...form, replyTo: e.target.value })} placeholder="Laisser vide : réponse à l'expéditeur" /></label>
@@ -102,7 +100,7 @@ export default function MailTab() {
       </section>
 
       {editable && (
-        <section style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <section className="prj-panel" style={{ padding: '16px 18px', display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <label style={{ ...lab, flex: '1 1 260px', maxWidth: 360 }}>Envoyer un e-mail de test à<input style={field} type="email" value={testTo} onChange={e => setTestTo(e.target.value)} /></label>
           <button className="odoo-btn-secondary" disabled={!st.configured || !/\S+@\S+\.\S+/.test(testTo) || test.isPending} onClick={() => test.mutate()}
             title={st.configured ? undefined : 'Aucun serveur d\'envoi configuré'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -112,21 +110,23 @@ export default function MailTab() {
       )}
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <h3 style={{ margin: 0, fontSize: '0.875rem', flex: 1 }}>File d'envoi</h3>
-          <select style={{ ...field, width: 'auto' }} value={filter} onChange={e => setFilter(e.target.value)} aria-label="Filtrer par statut">
-            <option value="">Tous</option><option value="queued">En attente</option><option value="failed">En échec</option><option value="sent">Envoyés</option><option value="cancelled">Annulés</option>
-          </select>
-        </div>
-        {outbox.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>Aucun message.</p> : (
-          <div style={{ overflowX: 'auto' }}>
+        <div className="kl-sec" style={{ margin: '4px 4px 0' }}><h2 style={{ fontSize: 19 }}>File d'envoi</h2></div>
+        <FilterChips label="Filtrer par statut" value={filter} onChange={setFilter} chips={[
+          { key: '', label: 'Tous' },
+          { key: 'queued', label: 'En attente', count: st.counts.queued },
+          { key: 'failed', label: 'En échec', count: st.counts.failed, tone: st.counts.failed ? 'late' : undefined },
+          { key: 'sent', label: 'Envoyés' },
+          { key: 'cancelled', label: 'Annulés' },
+        ]} />
+        {outbox.length === 0 ? <ListEmpty icon={Mail} title="Aucun message." /> : (
+          <div className="prj-panel prj-scroll">
             <table className="odoo-table">
               <thead><tr><th>Créé le</th><th>Destinataire</th><th>Objet</th><th>Événement</th><th>Statut</th><th></th></tr></thead>
               <tbody>{outbox.map(m => (
                 <tr key={m.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{dt(m.created_at)}</td>
                   <td>{m.to_name ? <>{m.to_name}<div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{m.to_email}</div></> : m.to_email}</td>
-                  <td>{m.subject}{m.last_error && <div style={{ fontSize: '0.75rem', color: '#c0392b' }} title={m.last_error}>{m.last_error.slice(0, 120)}</div>}</td>
+                  <td>{m.subject}{m.last_error && <div style={{ fontSize: '0.75rem', color: 'var(--prj-red)' }} title={m.last_error}>{m.last_error.slice(0, 120)}</div>}</td>
                   <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{m.type_label ?? (m.type === 'manual' ? 'Envoi manuel' : m.type)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <StatusTag tone={STATUS[m.status].tone} label={STATUS[m.status].label} />

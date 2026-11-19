@@ -10,8 +10,8 @@ import {
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../../components/ui/StatusTag';
-import { ViewSwitch } from '../../../components/purchasing/ProcessBoard';
-import { HrModal, Field, EmptyState, inputCls } from '../ui';
+import { ListEmpty } from '../../sales/ListTemplate';
+import { HrModal, Field, LoadingPanel, Segmented, inputCls } from '../ui';
 import { notify } from '../../../components/ui/InlineNotification';
 import SearchSelect from '../../../components/ui/SearchSelect';
 import { useAuth } from '../../../context/AuthContext';
@@ -122,49 +122,47 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
   return (
     <>
       <AdvanceRequestsPanel />
-      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
-        <ViewSwitch view={statusFilter === 'open' ? 'open' : 'history'} onChange={v => setStatusFilter(v === 'open' ? 'open' : 'all')}
-          openLabel="En cours" historyLabel="Toutes" ariaLabel="Filtre des avances" />
+      <div className="prj-toolbar" style={{ justifyContent: 'space-between' }}>
+        <Segmented label="Filtre des avances" value={statusFilter} onChange={setStatusFilter}
+          options={[{ key: 'open', label: 'En cours' }, { key: 'all', label: 'Toutes' }]} />
         <button onClick={() => { setFormAmount(''); setFormMonthly(''); setFormEmployeeId(''); setShowForm(true); }} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Accorder une avance
         </button>
       </div>
 
-      {/* Stat tiles */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><HandCoins size={11} style={{ display: 'inline', marginRight: 4 }} />Avances en cours</div>
-          <div className="odoo-stat-card-value" style={{ color: totalOutstanding > 0 ? '#b85d1a' : undefined }}>
-            {totalOutstanding.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
+      {/* Tuiles d'indicateurs */}
+      <div className="prj-kpis">
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span>Avances en cours</span><HandCoins size={14} /></div>
+          <div className="prj-kpi-value" style={{ color: totalOutstanding > 0 ? 'var(--prj-orange)' : undefined }}>
+            {totalOutstanding.toFixed(2)} <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{currencySymbol()}</span>
           </div>
-          <div className="odoo-stat-card-sub">à récupérer sur les paies</div>
+          <div className="prj-kpi-sub">à récupérer sur les paies</div>
         </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Employés concernés</div>
-          <div className="odoo-stat-card-value">{employeesConcerned}</div>
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span>Employés concernés</span><Users size={14} /></div>
+          <div className="prj-kpi-value">{employeesConcerned}</div>
         </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Total accordé{statusFilter === 'open' ? ' (en cours)' : ''}</div>
-          <div className="odoo-stat-card-value">{totalGranted.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span>Total accordé{statusFilter === 'open' ? ' (en cours)' : ''}</span></div>
+          <div className="prj-kpi-value">{totalGranted.toFixed(2)} <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{currencySymbol()}</span></div>
         </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Déjà remboursé</div>
-          <div className="odoo-stat-card-value" style={{ color: totalRepaid > 0 ? '#28a745' : undefined }}>
-            {totalRepaid.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span>Déjà remboursé</span></div>
+          <div className="prj-kpi-value" style={{ color: totalRepaid > 0 ? 'var(--prj-green)' : undefined }}>
+            {totalRepaid.toFixed(2)} <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{currencySymbol()}</span>
           </div>
         </div>
       </div>
 
       {isLoading ? (
-        <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
+        <LoadingPanel />
       ) : rows.length === 0 ? (
-        <EmptyState icon={HandCoins}>
-          {statusFilter === 'open' ? 'Aucune avance en cours.' : 'Aucune avance enregistrée.'}
-          <div style={{ fontSize: '0.75rem', marginTop: 4 }}>La retenue se fait automatiquement au moment de payer le salaire (onglet Paie).</div>
-        </EmptyState>
+        <ListEmpty icon={HandCoins} title={statusFilter === 'open' ? 'Aucune avance en cours.' : 'Aucune avance enregistrée.'}
+          text="La retenue se fait automatiquement au moment de payer le salaire (onglet Paie)." />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel hr-plain"><div className="prj-scroll">
           <table className="odoo-table">
             <thead>
               <tr>
@@ -198,8 +196,8 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                       </td>
                       <td style={{ color: 'var(--odoo-text-muted)' }}>{isoDate(a.advance_date) ? format(new Date(isoDate(a.advance_date)), 'dd/MM/yyyy') : ''}</td>
                       <td style={{ textAlign: 'right', fontWeight: 500 }}>{pn(a.amount).toFixed(2)}</td>
-                      <td style={{ textAlign: 'right', color: '#28a745' }}>{(pn(a.amount) - pn(a.remaining_amount)).toFixed(2)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#b85d1a' }}>{pn(a.remaining_amount).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--prj-green)' }}>{(pn(a.amount) - pn(a.remaining_amount)).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--prj-orange)' }}>{pn(a.remaining_amount).toFixed(2)}</td>
                       <td style={{ textAlign: 'right' }}>
                         {pn(a.monthly_deduction) > 0 ? (
                           <span title={pn(a.remaining_amount) > 0 ? `≈ ${Math.ceil(pn(a.remaining_amount) / pn(a.monthly_deduction))} paie(s) restante(s)` : 'Plan soldé'}>
@@ -232,7 +230,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                                 if (!(await confirm(`Supprimer l'avance de ${money(pn(a.amount))} pour ${a.first_name} ${a.last_name} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`,
                                   { title: 'Supprimer l\'avance', confirmLabel: 'Supprimer', danger: true }))) return;
                                 deleteMutation.mutate(a.id as string);
-                              }} className="odoo-pager-btn" title="Supprimer (aucun remboursement)" style={{ color: '#dc3545' }}>
+                              }} className="odoo-pager-btn" title="Supprimer (aucun remboursement)" style={{ color: 'var(--prj-red)' }}>
                                 <Trash2 size={12} />
                               </button>
                             )}
@@ -241,13 +239,13 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                       </td>
                     </tr>
                     {isExpanded && reps.map(r => (
-                      <tr key={r.id as string} style={{ background: 'var(--odoo-bg-alt)' }}>
+                      <tr key={r.id as string} style={{ background: 'color-mix(in srgb, var(--kl-bg, var(--theme-bg-page)) 60%, transparent)' }}>
                         <td></td>
                         <td colSpan={3} style={{ paddingLeft: 28, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
                           <RotateCcw size={10} style={{ display: 'inline', marginRight: 4 }} />
                           {repaymentLabel(r)}
                         </td>
-                        <td style={{ textAlign: 'right', fontSize: '0.75rem', color: '#28a745' }}>+ {pn(r.amount).toFixed(2)}</td>
+                        <td style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--prj-green)' }}>+ {pn(r.amount).toFixed(2)}</td>
                         <td colSpan={5} style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-light)' }}>{r.repaymentDate as string}</td>
                       </tr>
                     ))}
@@ -257,12 +255,12 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
             </tbody>
           </table>
         </div>
+        <p className="hr-panel-foot" style={{ margin: 0 }}>
+          L'avance sort de la caisse au moment de l'octroi (visible dans Caisse et la trésorerie) mais n'est pas une charge :
+          c'est une créance sur l'employé (compte 3431). La charge salaire est reconnue au fil des retenues, proposées automatiquement au paiement de la paie.
+        </p>
+        </div>
       )}
-
-      <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
-        L'avance sort de la caisse au moment de l'octroi (visible dans Caisse et la trésorerie) mais n'est pas une charge :
-        c'est une créance sur l'employé (compte 3431). La charge salaire est reconnue au fil des retenues, proposées automatiquement au paiement de la paie.
-      </div>
 
       {/* ─── Grant advance modal ─── */}
       {showForm && (
@@ -324,7 +322,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                   <p style={HINT}>Le système proposera ce montant à chaque paie jusqu'au solde de l'avance (modifiable au moment du paiement).</p>
                 );
                 if (monthlyNum > amountNum) return (
-                  <p style={{ ...HINT, color: '#dc3545' }}>La retenue par mois dépasse le montant de l'avance.</p>
+                  <p style={{ ...HINT, color: 'var(--prj-red)' }}>La retenue par mois dépasse le montant de l'avance.</p>
                 );
                 const nbMonths = Math.ceil(amountNum / monthlyNum);
                 const lastAmount = Math.round((amountNum - monthlyNum * (nbMonths - 1)) * 100) / 100;
@@ -412,7 +410,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                   );
                   const refAmount = hasReps ? pn(editingAdvance.amount) : (parseFloat(editAmount) || 0);
                   if (monthlyNum > refAmount) return (
-                    <p style={{ ...HINT, color: '#dc3545' }}>La retenue par mois dépasse le montant de l'avance.</p>
+                    <p style={{ ...HINT, color: 'var(--prj-red)' }}>La retenue par mois dépasse le montant de l'avance.</p>
                   );
                   if (remaining <= 0) return null;
                   const nbLeft = Math.ceil(remaining / monthlyNum);

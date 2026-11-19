@@ -115,7 +115,7 @@ export default function WorkshopsCard() {
                     onChange={e => setDraft({ ...draft, code: e.target.value })} />
                 </label>
               </div>
-              {!codeValid && <p className="odoo-setting-help" style={{ color: '#c0392b' }}>Code : minuscules, chiffres et « _ », 2 à 30 caractères, commence par une lettre.</p>}
+              {!codeValid && <p className="odoo-setting-help" style={{ color: 'var(--prj-red)' }}>Code : minuscules, chiffres et « _ », 2 à 30 caractères, commence par une lettre.</p>}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <label style={box}><input type="checkbox" checked={draft.isActive} onChange={e => setDraft({ ...draft, isActive: e.target.checked })} /> Actif</label>
                 <label style={box}><input type="checkbox" checked={draft.isDefault} onChange={e => setDraft({ ...draft, isDefault: e.target.checked })} />

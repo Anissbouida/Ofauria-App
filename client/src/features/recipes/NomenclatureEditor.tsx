@@ -93,14 +93,14 @@ function SourcePicker({ options, value, onPick }: {
                 className="w-full bg-transparent text-sm outline-none" />
             </div>
           </div>
-          {recipes.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] uppercase text-gray-400">Recettes de base</div>}
+          {recipes.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] text-gray-400">Recettes de base</div>}
           {recipes.map((o) => (
             <button key={`recipe:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
               <span>{o.name}</span><span className="text-gray-400 shrink-0">{money(o.cost)}/{o.unit}</span>
             </button>
           ))}
-          {ingredients.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] uppercase text-gray-400">Ingrédients</div>}
+          {ingredients.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] text-gray-400">Ingrédients</div>}
           {ingredients.map((o) => (
             <button key={`ingredient:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
@@ -864,7 +864,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 minWidth sur les rangées garde la grille lisible et le conteneur
                 défile horizontalement. Sans effet sur desktop (910 < largeur). */}
             <div className="rounded-lg border border-gray-200" style={{ overflowX: 'auto' }}>
-              <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-lg text-[11px] font-medium uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: COLS, minWidth: 910 }}>
+              <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-lg text-[11px] font-medium text-gray-500" style={{ gridTemplateColumns: COLS, minWidth: 910 }}>
                 <span /><span>Rôle</span><span>Composant</span>
                 <span className="text-right">{compoParPiece ? 'Qté / pièce' : `Qté / ${bLc}`}</span><span>Unité</span>
                 <span className="text-right" title="Perte sur la ligne (%) : majore la matière et le coût">Perte</span>
@@ -940,7 +940,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   somme, multiplicateur, prix. Les chiffres de décision sont aussi
                   rappelés dans le bandeau KPI du haut de page. */}
               <div className="mt-3 flex items-center gap-x-2 gap-y-1 flex-wrap px-3 py-2 rounded-md border border-gray-200 bg-gray-50 text-[13px] tabular-nums text-gray-600">
-                <span className="text-[11px] uppercase tracking-wide text-gray-400">Par pièce</span>
+                <span className="text-[11px] text-gray-400">Par pièce</span>
                 <span>Matière <strong>{dh(fin.matierePiece)}</strong></span>
                 <span className="text-gray-400">+</span>
                 <span>MO + énergie <strong>{dh(fin.moPiece + fin.energiePiece)}</strong></span>

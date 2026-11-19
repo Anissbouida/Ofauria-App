@@ -28,18 +28,19 @@ export default function EquipmentLinksPanel({ workCenters }: { workCenters: { id
   const centers = workCenters.filter(w => w.is_active).map(w => ({ id: w.id, label: w.name }));
 
   return (
-    <div className="odoo-section" style={{ marginTop: '1rem' }}>
-      <div className="odoo-section-header flex items-center gap-2"><Wrench size={13} /> Équipements</div>
-      <table className="w-full text-xs">
-        <thead><tr className="text-gray-500"><th className="text-left px-3 py-1">Équipement</th><th className="text-left px-2">Poste de travail</th><th className="text-left px-2">Immobilisation</th></tr></thead>
+    <section className="prj-panel" style={{ marginTop: '1rem' }}>
+      <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Wrench size={14} /> Équipements</div>
+      <div className="prj-scroll">
+      <table className="odoo-table" style={{ margin: 0 }}>
+        <thead><tr><th>Équipement</th><th>Poste de travail</th><th>Immobilisation</th></tr></thead>
         <tbody>{data.map(e => (
-          <tr key={e.id} className="border-t border-gray-100">
-            <td className="px-3 py-1.5">{e.nom}<div className="text-gray-500">{e.type}</div></td>
-            <td className="px-2">
+          <tr key={e.id}>
+            <td>{e.nom}<div style={{ fontSize: 12, color: 'var(--theme-text-muted)' }}>{e.type}</div></td>
+            <td>
               <SearchSelect options={centers} value={e.work_center_id ?? ''} onChange={v => link.mutate({ id: e.id, workCenterId: v || null })}
                 placeholder="— Aucun poste —" width={200} ariaLabel={`Poste de ${e.nom}`} />
             </td>
-            <td className="px-2">
+            <td>
               {e.fixed_asset_id ? (
                 <span>{e.fixed_asset_label} <button type="button" className="bsi-link-btn" onClick={() => link.mutate({ id: e.id, fixedAssetId: null })}>Détacher</button></span>
               ) : e.asset_proposals.length ? (
@@ -51,11 +52,12 @@ export default function EquipmentLinksPanel({ workCenters }: { workCenters: { id
                     </button>
                   ))}
                 </span>
-              ) : <span className="text-gray-500">Aucune proposition</span>}
+              ) : <span style={{ color: 'var(--theme-text-muted)' }}>Aucune proposition</span>}
             </td>
           </tr>
         ))}</tbody>
       </table>
-    </div>
+      </div>
+    </section>
   );
 }

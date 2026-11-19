@@ -69,7 +69,7 @@ export default function PayslipLinesEditor({ payrollId, locked, lockReason, onRe
               <span style={{ color: 'var(--odoo-text)' }}>{l.label} <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 4 }}>fixe</span>
                 {parseFloat(l.exempt_amount || '0') > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}> · dont {fmt(l.exempt_amount!)} exonérés</span>}
               </span>
-              <span style={l.kind === 'retenue' ? { color: '#dc3545' } : undefined}>{l.kind === 'retenue' ? '−' : '+'} {money(l.amount)}</span>
+              <span style={l.kind === 'retenue' ? { color: 'var(--prj-red)' } : undefined}>{l.kind === 'retenue' ? '−' : '+'} {money(l.amount)}</span>
             </div>
           ))}
           {drafts.map((d, i) => (
@@ -81,7 +81,7 @@ export default function PayslipLinesEditor({ payrollId, locked, lockReason, onRe
               <input type="number" min="0" step="0.01" value={d.amount} disabled={locked} className={inputCls} style={{ width: 110 }}
                 onChange={e => { const n = [...drafts]; n[i] = { ...d, amount: e.target.value }; setDrafts(n); setDirty(true); }} />
               {!locked && (
-                <button type="button" className="odoo-pager-btn" title="Retirer" style={{ color: '#dc3545' }}
+                <button type="button" className="odoo-pager-btn" title="Retirer" style={{ color: 'var(--prj-red)' }}
                   onClick={() => { setDrafts(drafts.filter((_, j) => j !== i)); setDirty(true); }}>
                   <Trash2 size={13} />
                 </button>

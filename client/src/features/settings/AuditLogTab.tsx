@@ -1,11 +1,12 @@
 import { Fragment, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { History, LogIn, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { History, LogIn, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, Plus, Pencil, Trash2, type LucideIcon } from 'lucide-react';
 import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type AuditLogEntry, type AuthEventEntry } from '../../api/settings.api';
 import { usersApi } from '../../api/users.api';
 import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 
 /**
@@ -51,10 +52,10 @@ const FIELD_LABELS: Record<string, string> = {
 };
 const fieldLabel = (k: string) => FIELD_LABELS[k] ?? k;
 
-const OP_TAG: Record<AuditLogEntry['operation'], { cls: string; label: string }> = {
-  INSERT: { cls: 'odoo-tag odoo-tag-green', label: 'Création' },
-  UPDATE: { cls: 'odoo-tag odoo-tag-blue', label: 'Modification' },
-  DELETE: { cls: 'odoo-tag odoo-tag-red', label: 'Suppression' },
+const OP_TAG: Record<AuditLogEntry['operation'], { tone: StatusTone; icon: LucideIcon; label: string }> = {
+  INSERT: { tone: 'done', icon: Plus, label: 'Création' },
+  UPDATE: { tone: 'progress', icon: Pencil, label: 'Modification' },
+  DELETE: { tone: 'blocked', icon: Trash2, label: 'Suppression' },
 };
 
 const EVENT_LABELS: Record<string, string> = {
@@ -128,7 +129,7 @@ export default function AuditLogTab() {
       <PageNote help="Paramètres, points de vente, utilisateurs, droits, imprimantes, paie et référentiel : chaque modification est enregistrée avec son auteur et l'ancienne valeur. Personne, administrateur compris, ne peut modifier ou effacer ce journal depuis l'application.">
         Toutes les modifications, avec leur auteur. Le journal ne s'efface pas.
       </PageNote>
-      <div className="odoo-view-switcher" style={{ alignSelf: 'start', justifySelf: 'start' }}>
+      <div className="prj-views" role="group" aria-label="Journal" style={{ alignSelf: 'start', justifySelf: 'start' }}>
         <button className={view === 'changes' ? 'active' : ''} onClick={() => setView('changes')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <History size={14} /> Modifications
         </button>
@@ -163,12 +164,12 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-          <Search size={13} style={{ position: 'absolute', left: 8, color: 'var(--odoo-text-muted)' }} />
-          <input className="odoo-search-input" style={{ paddingLeft: 26, minWidth: 200 }} placeholder="Rechercher (libellé, valeur)…"
+      <div className="prj-toolbar">
+        <label className="prj-search" style={{ maxWidth: 360 }}>
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+          <input type="search" placeholder="Rechercher (libellé, valeur)…"
             value={q} onChange={e => reset(setQ)(e.target.value)} aria-label="Rechercher" />
-        </span>
+        </label>
         <SearchSelect value={table} onChange={reset(setTable)} ariaLabel="Objet" placeholder="Tous les objets" width={200}
           options={[...tables.map((t: string) => ({ id: t, label: tableLabel(t) })), { id: 'referentiel', label: 'Référentiel' }]} />
         {users.length > 0 && (
@@ -195,11 +196,9 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
           Le journal n'a pas pu être chargé. Vérifiez que la migration 328 est appliquée et que vous avez accès à la section « Journal ».
         </StatusBanner>
       ) : !data?.rows.length ? (
-        <p style={{ padding: '2rem', textAlign: 'center', color: 'var(--odoo-text-muted)', fontSize: '0.875rem' }}>
-          Aucune modification pour ces filtres.
-        </p>
+        <section className="prj-panel sal-empty"><History size={28} style={{ opacity: 0.4 }} /><strong>Aucune modification pour ces filtres.</strong></section>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead>
               <tr>
@@ -217,7 +216,7 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
                       <td>{e.changed_by_name || <span style={{ color: 'var(--odoo-text-muted)' }}>Système</span>}</td>
                       <td>{tableLabel(e.table_name)}</td>
                       <td>{rowTitle(e)}</td>
-                      <td><span className={OP_TAG[e.operation].cls}>{OP_TAG[e.operation].label}</span></td>
+                      <td><StatusTag tone={OP_TAG[e.operation].tone} icon={OP_TAG[e.operation].icon} label={OP_TAG[e.operation].label} /></td>
                       <td style={{ color: 'var(--odoo-text-muted)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary(e)}</td>
                     </tr>
                     {isOpen && (
@@ -283,7 +282,7 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+      <div className="prj-toolbar">
         <select style={filterInput} value={eventType} onChange={e => reset(setEventType)(e.target.value)} aria-label="Événement">
           <option value="">Tous les événements</option>
           {Object.entries(EVENT_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
@@ -311,16 +310,16 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
           <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
         </div>
       ) : !data?.rows.length ? (
-        <p style={{ padding: '2rem', textAlign: 'center', color: 'var(--odoo-text-muted)', fontSize: '0.875rem' }}>Aucun événement pour ces filtres.</p>
+        <section className="prj-panel sal-empty"><LogIn size={28} style={{ opacity: 0.4 }} /><strong>Aucun événement pour ces filtres.</strong></section>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Date</th><th>Événement</th><th>Utilisateur</th><th>Compte visé</th><th>Adresse IP</th><th>Détail</th></tr></thead>
             <tbody>
               {data.rows.map((e: AuthEventEntry) => (
                 <tr key={e.id}>
                   <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtDate(e.created_at)}</td>
-                  <td><span className={`odoo-tag ${e.success ? 'odoo-tag-green' : 'odoo-tag-red'}`}>{EVENT_LABELS[e.event_type] ?? e.event_type}</span></td>
+                  <td><StatusTag tone={e.success ? 'done' : 'blocked'} label={EVENT_LABELS[e.event_type] ?? e.event_type} /></td>
                   <td>{e.user_name || e.email || '—'}</td>
                   <td>{e.target_name || ''}</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>{e.ip || ''}</td>

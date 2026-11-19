@@ -34,21 +34,21 @@ export default function QualityPanel({ filter, links, title, canInspect = true }
         {canInspect && <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setForm({ title })}><Plus size={12} /> Inspection</button>}
       </div>
       <div style={{ padding: '0.5rem 1rem' }}>
-        {data.length === 0 ? <span className="text-xs text-gray-500">Aucune inspection rattachée.</span> : (
-          <table className="w-full text-xs">
-            <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Date</th><th className="text-left px-2">Inspection</th><th className="text-left px-2">Par</th><th className="text-left px-2">Résultat</th><th /></tr></thead>
+        {data.length === 0 ? <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune inspection rattachée.</span> : (
+          <table className="odoo-table" style={{ margin: 0 }}>
+            <thead><tr><th>Date</th><th>Inspection</th><th>Par</th><th>Résultat</th><th /></tr></thead>
             <tbody>{data.map(r => (
-              <tr key={r.id} className="border-t border-gray-100">
-                <td className="px-2 py-1">{day(r.inspected_on)}</td>
-                <td className="px-2">{r.title}<div className="text-gray-500">{r.template_name}</div></td>
-                <td className="px-2">{r.inspected_by_name ?? '—'}</td>
-                <td className="px-2">
+              <tr key={r.id}>
+                <td style={{ whiteSpace: 'nowrap' }}>{day(r.inspected_on)}</td>
+                <td style={{ fontWeight: 500 }}>{r.title}<div style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>{r.template_name}</div></td>
+                <td>{r.inspected_by_name ?? '—'}</td>
+                <td>
                   {r.status === 'a_faire' ? <StatusTag tone="todo" label="À faire" />
                     : r.conformity ? <StatusTag tone="done" label="Conforme" /> : <StatusTag tone="blocked" label={`Non conforme (${r.failed})`} />}
                 </td>
-                <td className="px-2 text-right">
+                <td style={{ textAlign: 'right' }}>
                   {r.status === 'a_faire' && canInspect && (
-                    <button type="button" className="odoo-btn-secondary" style={{ padding: '0.15rem 0.5rem' }}
+                    <button type="button" className="odoo-btn-secondary"
                       onClick={() => setForm({ pendingId: r.id, items: r.pending_items ?? null, title: r.title })}>Réaliser</button>
                   )}
                 </td>
@@ -57,15 +57,15 @@ export default function QualityPanel({ filter, links, title, canInspect = true }
           </table>
         )}
         {readings.length > 0 && (
-          <table className="w-full text-xs" style={{ marginTop: 10 }}>
-            <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Relevé</th><th className="text-left px-2">Étape</th><th className="text-right px-2">Mesure</th><th className="text-right px-2">Consigne</th><th className="text-left px-2">Résultat</th></tr></thead>
+          <table className="odoo-table" style={{ margin: '10px 0 0', boxShadow: 'none' }}>
+            <thead><tr><th>Relevé</th><th>Étape</th><th style={{ textAlign: 'right' }}>Mesure</th><th style={{ textAlign: 'right' }}>Consigne</th><th>Résultat</th></tr></thead>
             <tbody>{readings.map(r => (
-              <tr key={r.id} className="border-t border-gray-100">
-                <td className="px-2 py-1">{r.parametre}{r.est_ccp ? ' · CCP' : ''}<div className="text-gray-500">{new Date(r.at).toLocaleString('fr-FR')}{r.by_name ? ` · ${r.by_name}` : ''}</div></td>
-                <td className="px-2">{r.step}</td>
-                <td className="text-right px-2">{r.mesure}</td>
-                <td className="text-right px-2">{r.consigne != null ? `${r.consigne}${r.tolerance != null ? ` ± ${r.tolerance}` : ''}` : '—'}</td>
-                <td className="px-2">{r.conforme == null ? '—' : r.conforme ? <StatusTag tone="done" label="Conforme" /> : <StatusTag tone="blocked" label="Hors tolérance" />}</td>
+              <tr key={r.id}>
+                <td style={{ fontWeight: 500 }}>{r.parametre}{r.est_ccp ? ' · CCP' : ''}<div style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>{new Date(r.at).toLocaleString('fr-FR')}{r.by_name ? ` · ${r.by_name}` : ''}</div></td>
+                <td>{r.step}</td>
+                <td style={{ textAlign: 'right' }}>{r.mesure}</td>
+                <td style={{ textAlign: 'right' }}>{r.consigne != null ? `${r.consigne}${r.tolerance != null ? ` ± ${r.tolerance}` : ''}` : '—'}</td>
+                <td>{r.conforme == null ? '—' : r.conforme ? <StatusTag tone="done" label="Conforme" /> : <StatusTag tone="blocked" label="Hors tolérance" />}</td>
               </tr>
             ))}</tbody>
           </table>

@@ -19,6 +19,9 @@ import AlternativeOfPanel from './AlternativeOfPanel';
 import SubstitutesPanel from './SubstitutesPanel';
 import RecipeOutputsPanel from './RecipeOutputsPanel';
 import RecipeRoutingPanel from './RecipeRoutingPanel';
+import '../production/production.css';
+import '../projects/projects.css';
+import '../sales/sales.css';
 
 const dh = (v: number) => money(v);
 
@@ -35,27 +38,32 @@ export default function NomenclaturePage() {
   const { data: etapesStatus } = useQuery({ queryKey: ['recipe-etapes-status', id], queryFn: () => recipesApi.etapesStatus(id!), enabled: !!id });
 
   if (isLoading) {
-    return <div className="odoo-scope"><div style={{ padding: '1.5rem' }} className="text-sm text-gray-400">Chargement…</div></div>;
+    return <div className="odoo-scope pd"><div className="pd-page"><section className="prj-panel sal-empty"><span>Chargement…</span></section></div></div>;
   }
   if (!recipe) {
     return (
-      <div className="odoo-scope">
-        <div style={{ padding: '1.5rem' }} className="text-sm">
-          {T.recipe} introuvable. <button onClick={() => navigate('/recipes?tab=product')} className="text-amber-600 hover:underline">Retour aux {T.recipesLc}</button>
+      <div className="odoo-scope pd">
+        <div className="pd-page">
+          <section className="prj-panel sal-empty">
+            <ChefHat size={28} style={{ opacity: 0.4 }} />
+            <strong>{T.recipe} introuvable.</strong>
+            <button onClick={() => navigate('/recipes?tab=product')} className="odoo-btn-secondary">Retour aux {T.recipesLc}</button>
+          </section>
         </div>
       </div>
     );
   }
 
-  const margeColor = kpi && kpi.margePct >= 50 ? '#28a745' : kpi && kpi.margePct >= 30 ? '#b85d1a' : '#dc3545';
+  const margeColor = kpi && kpi.margePct >= 50 ? 'var(--prj-green)' : kpi && kpi.margePct >= 30 ? 'var(--prj-orange)' : 'var(--prj-red)';
 
   return (
-    <div className="odoo-scope">
+    <div className="odoo-scope pd">
+      {/* Barre : retour + fil d'Ariane (design Ventes). */}
       <div className="odoo-control-bar">
-        <button onClick={() => navigate('/recipes?tab=product')} className="odoo-btn-secondary inline-flex items-center gap-1.5" title={`Retour aux ${T.recipesLc}`}>
-          <ArrowLeft size={15} /> Retour aux {T.recipesLc}
+        <button onClick={() => navigate('/recipes?tab=product')} className="odoo-pager-btn" title={`Retour aux ${T.recipesLc}`} aria-label={`Retour aux ${T.recipesLc}`}>
+          <ArrowLeft size={14} />
         </button>
-        <div className="odoo-breadcrumb" style={{ marginLeft: '0.75rem' }}>
+        <div className="odoo-breadcrumb">
           <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />
           <span style={{ cursor: 'pointer' }} onClick={() => navigate('/recipes?tab=product')}>{sectorLabel('recipes', 'Fiches techniques')}</span>
           <span className="odoo-breadcrumb-separator">›</span>
@@ -63,42 +71,31 @@ export default function NomenclaturePage() {
         </div>
       </div>
 
-      {/* Bandeau KPI du format affiché. Les quatre tuiles doivent se recouper :
-          marge = (prix − coût de production) / prix. La tuile coût affiche donc le
-          coût de PRODUCTION (matière + MO + énergie + structure), avec le coût
-          matière en second plan — auparavant elle montrait la matière seule, ce qui
-          rendait la marge inexplicable pour qui refaisait le calcul. */}
-      <div className="odoo-smart-button-row" style={{ position: 'sticky', top: 46, zIndex: 9 }}>
-        <div className="odoo-smart-button">
-          <div className="odoo-smart-button-value">{kpi ? kpi.rendement : '—'}</div>
-          <div className="odoo-smart-button-label"><Layers size={11} /> Rendement {kpi?.contenantNom ? `(${kpi.contenantNom})` : `(pièces/${T.batch.toLowerCase()})`}</div>
-        </div>
-        <div className="odoo-smart-button" title="Matière + main d'œuvre + énergie + frais de structure, ramenés à une pièce.">
-          <div className="odoo-smart-button-value">{kpi ? dh(kpi.coutProd) : '—'}</div>
-          <div className="odoo-smart-button-label">
-            Coût prod. / pièce
-            {kpi && <span style={{ marginLeft: 4, opacity: 0.7 }}>· matière {dh(kpi.coutMatiere)}</span>}
+      <div className="pd-page">
+        {/* En-tête de fiche : nom, produit lié, modification de l'identité. */}
+        <section className="prj-panel prj-hero">
+          <div className="prj-hero-top">
+            <span className="prj-hero-icon"><Layers size={22} /></span>
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h1>{recipe.name}</h1>
+                <button type="button" onClick={() => setEditIdentity(true)} className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
+                  <Pencil size={13} />
+                </button>
+              </div>
+              <div className="prj-hero-meta">
+                {recipe.product_name && <span>{recipe.product_name}</span>}
+                {Array.isArray((recipe as { used_by?: { name?: string }[] }).used_by) && (recipe as { used_by?: { name?: string }[] }).used_by!.length > 0 && (
+                  <span><span style={{ fontWeight: 500 }}>Utilisée par :</span>{' '}
+                    {[...new Set((recipe as { used_by: { name?: string }[] }).used_by.map((u) => u.name).filter(Boolean))].join(' · ')}</span>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="odoo-smart-button">
-          <div className="odoo-smart-button-value">{kpi ? dh(kpi.prix) : '—'}</div>
-          <div className="odoo-smart-button-label">Prix / pièce</div>
-        </div>
-        <div className="odoo-smart-button" title="(Prix − coût de production) / prix">
-          <div className="odoo-smart-button-value" style={{ color: kpi ? margeColor : undefined }}>{kpi ? `${kpi.margePct.toFixed(1)}%` : '—'}</div>
-          <div className="odoo-smart-button-label">Marge</div>
-        </div>
-      </div>
-
-      <div style={{ padding: '1.25rem', maxWidth: 1320, margin: '0 auto' }}>
-        <div className="flex items-center gap-2 mb-1">
-          <Layers size={20} style={{ color: 'var(--theme-accent)' }} />
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--theme-text-strong)' }}>{recipe.name}</h1>
-          {recipe.product_name && <span className="text-sm text-gray-500">· {recipe.product_name}</span>}
-          <button type="button" onClick={() => setEditIdentity(true)} className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
-            <Pencil size={13} />
-          </button>
-        </div>
+          <p className="prj-note" style={{ margin: 0 }}>
+            La composition est définie <strong>par format (contenant)</strong> : chaque contenant a sa propre liste de quantités. Sélectionne ou ajoute un format ci-dessous.
+          </p>
+        </section>
         {editIdentity && (
           <RecipeCreateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null,
             is_base: (recipe as { is_base?: boolean }).is_base ?? false,
@@ -108,19 +105,32 @@ export default function NomenclaturePage() {
             hydratation_pct: (recipe as { hydratation_pct?: number | null }).hydratation_pct ?? null }}
             onClose={() => setEditIdentity(false)} />
         )}
-        <p className="text-sm text-gray-500 mb-4">
-          La composition est définie <strong>par format (contenant)</strong> : chaque contenant a sa propre liste de quantités. Sélectionne ou ajoute un format ci-dessous.
-        </p>
 
-        {/* « Utilisée par » (surtout utile pour une préparation de base, consommée par
-            d'autres recettes) — repris de l'ancien écran PreparationPage lors de
-            l'unification du modèle (L2). */}
-        {Array.isArray((recipe as { used_by?: { name?: string }[] }).used_by) && (recipe as { used_by?: { name?: string }[] }).used_by!.length > 0 && (
-          <div className="text-sm mb-4" style={{ color: 'var(--theme-text)' }}>
-            <span className="font-medium">Utilisée par :</span>{' '}
-            {[...new Set((recipe as { used_by: { name?: string }[] }).used_by.map((u) => u.name).filter(Boolean))].join(' · ')}
+        {/* Indicateurs du format affiché. Les quatre tuiles doivent se recouper :
+            marge = (prix − coût de production) / prix. La tuile coût affiche donc le
+            coût de PRODUCTION (matière + MO + énergie + structure), avec le coût
+            matière en second plan — auparavant elle montrait la matière seule, ce qui
+            rendait la marge inexplicable pour qui refaisait le calcul.
+            Restent visibles en haut pendant l'édition de la composition. */}
+        <div className="prj-kpis pd-sticky-kpis">
+          <div className="prj-kpi">
+            <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Layers size={13} /> Rendement {kpi?.contenantNom ? `(${kpi.contenantNom})` : `(pièces/${T.batch.toLowerCase()})`}</span></div>
+            <div className="prj-kpi-value">{kpi ? kpi.rendement : '—'}</div>
           </div>
-        )}
+          <div className="prj-kpi" title="Matière + main d'œuvre + énergie + frais de structure, ramenés à une pièce.">
+            <div className="prj-kpi-head"><span>Coût prod. / pièce</span></div>
+            <div className="prj-kpi-value">{kpi ? dh(kpi.coutProd) : '—'}</div>
+            {kpi && <div className="prj-kpi-sub">matière {dh(kpi.coutMatiere)}</div>}
+          </div>
+          <div className="prj-kpi">
+            <div className="prj-kpi-head"><span>Prix / pièce</span></div>
+            <div className="prj-kpi-value">{kpi ? dh(kpi.prix) : '—'}</div>
+          </div>
+          <div className="prj-kpi" title="(Prix − coût de production) / prix">
+            <div className="prj-kpi-head"><span>Marge</span></div>
+            <div className="prj-kpi-value" style={{ color: kpi ? margeColor : undefined }}>{kpi ? `${kpi.margePct.toFixed(1)}%` : '—'}</div>
+          </div>
+        </div>
 
         {/* Allergènes — agrégés sur toute la nomenclature (v_recipe_allergens, mig 343),
             resynchronisés à chaque sauvegarde de composition. Mention réglementaire
@@ -129,23 +139,23 @@ export default function NomenclaturePage() {
         {(() => {
           const allergens = (recipe as { allergens?: string[] | null }).allergens || [];
           return (
-            <div className="odoo-section" style={{ marginBottom: '1rem' }}>
-              <div className="odoo-section-header flex items-center gap-2">
-                <AlertTriangle size={13} /> Allergènes
+            <section className="prj-panel">
+              <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertTriangle size={15} /> Allergènes
                 {allergens.length > 0 && (
-                  <span style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 600, color: '#dc3545' }}>{allergens.length}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: 'var(--prj-red)' }}>{allergens.length}</span>
                 )}
               </div>
-              <div style={{ padding: '0.625rem 1rem', display: 'flex', gap: '0.375rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ padding: '12px 18px', display: 'flex', gap: '0.375rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 {allergens.length > 0 ? (
                   allergens.map((a) => <span key={a} className="odoo-tag odoo-tag-red">{allergenLabel(a)}</span>)
                 ) : (
-                  <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                  <span style={{ fontSize: 13, color: 'var(--theme-text-muted)' }}>
                     Aucun allergène déclaré sur les ingrédients de cette nomenclature. Vérifiez que les fiches ingrédients sont renseignées.
                   </span>
                 )}
               </div>
-            </div>
+            </section>
           );
         })()}
 

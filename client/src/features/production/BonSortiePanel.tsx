@@ -14,6 +14,10 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity } from '../../utils/units';
+import { bonStatusTag } from './status';
+import './production.css';
+import '../projects/projects.css';
+import '../sales/sales.css';
 
 /**
  * Panneau du bon de sortie (demande d'ingredients d'un plan de production).
@@ -343,22 +347,24 @@ export function BonSortiePanel({
   };
 
   if (isLoading) return (
-    <div className="flex items-center justify-center h-40">
-      <Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-    </div>
+    <section className="prj-panel sal-empty">
+      <Loader2 size={24} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
+    </section>
   );
 
   if (!bon) return (
-    <div className="flex flex-col items-center justify-center h-40 gap-2">
-      <Package size={32} className="text-gray-300" />
-      <p className="text-sm text-gray-500">Aucun bon de sortie pour ce plan</p>
-    </div>
+    <section className="prj-panel sal-empty">
+      <Package size={28} style={{ opacity: 0.4 }} />
+      <strong>Aucun bon de sortie pour ce plan</strong>
+    </section>
   );
 
   const isClosed = bon.status === 'cloture';
   const isDelivered = ['prelevement', 'verifie', 'cloture'].includes(bon.status as string);
   const inPreparation = ['preparation', 'preparation_partielle'].includes(bon.status as string);
-  const containerClass = variant === 'inline' ? 'space-y-3' : 'space-y-4 max-w-5xl mx-auto';
+  // Pile de panneaux (design Ventes) : même espacement en ligne (fiche plan) et en page autonome.
+  const containerClass = 'bsi-stack';
+  const bonTag = bonStatusTag(bon.status as string);
   const fmtQty = (q: number, unit: string) => {
     const f = smartFormatQuantity(q, unit);
     const d = f.unit === 'g' || f.unit === 'ml' ? 0 : 3;
@@ -378,15 +384,33 @@ export function BonSortiePanel({
   return (
     <div className={containerClass}>
       {variant === 'inline' && (
-        <div className="odoo-section-header" style={{ borderRadius: 4, border: '1px solid var(--theme-bg-separator)' }}>
-          <Truck size={12} /> Bon de sortie
-          <span style={{ marginLeft: 4, fontFamily: 'monospace', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{bon.numero as string}</span>
-          {isClosed && (
-            <span style={{ marginLeft: 'auto' }}>
-              <StatusTag tone="done" icon={Truck} label="Livré" />
-            </span>
-          )}
+        <div className="kl-sec" style={{ margin: '0 4px', alignItems: 'center' }}>
+          <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Truck size={18} /> Bon de sortie
+            <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 15, fontWeight: 500, color: 'var(--theme-text-muted)' }}>{bon.numero as string}</span>
+          </h2>
+          {isClosed && <StatusTag tone="done" icon={Truck} label="Livré" />}
         </div>
+      )}
+
+      {/* En-tête de fiche (page autonome /stock/bsi/:id) : numéro, statut, demandeur. */}
+      {variant === 'page' && (
+        <section className="prj-panel prj-hero">
+          <div className="prj-hero-top">
+            <span className="prj-hero-icon"><Truck size={22} /></span>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h1 style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{bon.numero as string}</h1>
+                <StatusTag tone={bonTag.tone} icon={bonTag.icon} label={bonTag.label} />
+              </div>
+              <div className="prj-hero-meta">
+                <span>Bon de sortie</span>
+                {bon.generated_at && <span>Demandé le {format(new Date(bon.generated_at as string), 'dd/MM/yyyy à HH:mm')}{bon.generated_by_name ? ` par ${bon.generated_by_name as string}` : ''}</span>}
+                <span>{totalLines} ingrédient{totalLines > 1 ? 's' : ''}</span>
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* ─── Bandeau d'etape ─── */}
@@ -460,7 +484,7 @@ export function BonSortiePanel({
       )}
 
       {/* ─── Tableau des lignes ─── */}
-      <div className="odoo-section bsi-lines" style={{ margin: 0 }}>
+      <div className="odoo-section bsi-lines">
         {!isDelivered && isMagasinier && (
           <div className="bsi-lines-toolbar">
             <div className="bsi-lines-progress">
@@ -726,7 +750,7 @@ export function BonSortiePanel({
       </div>
 
       {/* Historique du bon (repliable) */}
-      <div className="odoo-section" style={{ margin: 0 }}>
+      <div className="odoo-section">
         <button onClick={() => setShowDetails(!showDetails)} className="odoo-section-header"
           style={{ width: '100%', borderBottom: showDetails ? undefined : 'none', cursor: 'pointer' }}>
           {showDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}

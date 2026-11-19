@@ -13,8 +13,9 @@ import {
 } from '../reconciliation/ReconciliationPage';
 import OuvertureTab, { useOpeningToday, openingStatus } from './OuvertureTab';
 import InvendusTab, { InvendusDashboard } from './InvendusTab';
-import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, ModulePage, type ModuleView } from '../../components/layout/ModuleShell';
 import VentesIndicators from './VentesIndicators';
+import '../controle/KlUi';
 
 /**
  * Journée boutique : un seul module pour le cycle quotidien de la vitrine,
@@ -106,15 +107,16 @@ export default function JourneeBoutiquePage() {
     if (v) go(v.tab, v.vue);
   };
   const current = views.find(v => v.key === vue?.key);
+  const dayLabel = (() => { const d = format(new Date(), 'EEEE d MMMM yyyy', { locale: fr }); return d.charAt(0).toUpperCase() + d.slice(1); })();
 
   return (
     <ModuleShell title="Journée boutique" views={views} current={current} onSelect={select} flush
       actions={
-        <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: 'var(--theme-text-muted)', textTransform: 'capitalize' }}>
-          {format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}
-        </span>
+        <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{dayLabel}</span>
       }>
-      <ol className="ui-timeline" aria-label="Avancement de la journée">
+      {/* Design Ventes : grand titre de l'écran, frise de la journée en carte, marges standard. */}
+      <ModulePage title={current?.label}>
+      <ol className="ui-timeline klc-frise" aria-label="Avancement de la journée">
         {steps.map((s, i) => (
           <li key={s.key} className={`ui-timeline-step ${s.done ? 'is-done' : ''} ${i === currentIdx ? 'is-current' : ''}`}>
             <button type="button" onClick={() => go(s.tab)} aria-current={i === currentIdx ? 'step' : undefined}
@@ -127,7 +129,6 @@ export default function JourneeBoutiquePage() {
         ))}
       </ol>
 
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {isManager && tab !== 'parametres' && (
           <VentesIndicators onManquants={() => go('rapports', 'ventes')} />
         )}
@@ -145,7 +146,7 @@ export default function JourneeBoutiquePage() {
             <DarijaSettingsView />
           </div>
         )}
-      </div>
+      </ModulePage>
     </ModuleShell>
   );
 }

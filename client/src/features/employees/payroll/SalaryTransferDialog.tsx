@@ -34,12 +34,13 @@ export default function SalaryTransferDialog({ month, year, onClose }: { month: 
   const issues: Array<{ name: string; problem: string }> = data?.issues ?? [];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}
-        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ background: 'rgba(15,23,42,0.32)' }} onClick={onClose}>
+      {/* Feuille au design Ventes (.kl-sheet), corps défilant sur fond de carte. */}
+      <div className="odoo-scope kl-sheet w-full max-w-3xl" role="dialog" aria-label="Virement des salaires" onClick={e => e.stopPropagation()}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '90vh', overflowY: 'auto', padding: 24, background: 'var(--kl-card)' }}>
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">Virement des salaires — {MONTH_NAMES[month - 1]} {year}</h2>
-          <button onClick={onClose} className="odoo-pager-btn"><X size={16} /></button>
+          <h2 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: '-.02em' }}>Virement des salaires — {MONTH_NAMES[month - 1]} {year}</h2>
+          <button onClick={onClose} className="kl-sheet-close" aria-label="Fermer"><X size={16} /></button>
         </div>
         <label className="text-sm flex items-center gap-2">
           <input type="checkbox" checked={includeUnpaid} onChange={e => setIncludeUnpaid(e.target.checked)} />

@@ -6,6 +6,8 @@ import { ingredientsApi } from '../../api/inventory.api';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { Panel } from './KlUi';
 
 /**
  * Plan de contrôle par article (M7-02) : quoi contrôler (caractéristique, bornes), quand
@@ -53,8 +55,8 @@ export default function ControlPlanSection() {
     && (f.frequency === 'chaque_lot' || (num(f.frequencyN) ?? 0) > 0);
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
-      <div className="odoo-section" style={{ padding: '0.75rem 1rem', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.8125rem' }}>
+    <>
+      <section className="prj-panel klc-body" aria-label="Ajouter un contrôle au plan" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.8125rem' }}>
         <select className="input" style={{ width: 'auto' }} value={f.stage} aria-label="Étape" onChange={e => setF({ ...f, stage: e.target.value, targetId: '' })}>
           {Object.entries(STAGE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
@@ -76,22 +78,22 @@ export default function ControlPlanSection() {
         <label>Échantillon <input className="input" style={{ width: 54 }} value={f.sampleSize} onChange={e => setF({ ...f, sampleSize: e.target.value.replace(/\D/g, '') })} /></label>
         <label><input type="checkbox" checked={f.isBlocking} onChange={e => setF({ ...f, isBlocking: e.target.checked })} /> Bloquant</label>
         <button type="button" className="odoo-btn-primary" disabled={!valid || save.isPending} onClick={() => save.mutate()}><Plus size={12} /> Ajouter</button>
-      </div>
-      <div className="odoo-section">
-        <table className="w-full text-xs">
-          <thead><tr className="text-gray-500"><th className="text-left px-3 py-1">Étape</th><th className="text-left px-2">Article / matière</th><th className="text-left px-2">Caractéristique</th><th className="text-left px-2">Fréquence</th><th className="text-left px-2">Échantillon</th><th /></tr></thead>
-          <tbody>{lines.length === 0 ? <tr><td colSpan={6} className="px-3 py-2 text-gray-500">Aucun contrôle planifié : aucune inspection n'est générée automatiquement.</td></tr> : lines.map(l => (
-            <tr key={l.id} className="border-t border-gray-100">
-              <td className="px-3 py-1.5">{STAGE[l.stage]}</td>
-              <td className="px-2">{l.product_name ?? l.ingredient_name ?? 'Famille'}</td>
-              <td className="px-2">{l.characteristic} <span className="text-gray-500">({TYPE[l.char_type]}{l.char_type === 'mesure' ? ` ${l.min_value ?? '−∞'} à ${l.max_value ?? '+∞'}${l.unit ? ' ' + l.unit : ''}` : ''})</span>{l.is_blocking ? ' · bloquant' : ''}</td>
-              <td className="px-2">{FREQ[l.frequency]}{l.frequency_n ? ` (N = ${l.frequency_n})` : ''}</td>
-              <td className="px-2">{l.sample_size}</td>
-              <td className="px-2 text-right"><button type="button" className="bsi-link-btn" aria-label={`Retirer ${l.characteristic}`} onClick={() => remove.mutate(l.id)}><Trash2 size={12} /></button></td>
+      </section>
+      <Panel>
+        <table className="odoo-table">
+          <thead><tr><th>Étape</th><th>Article / matière</th><th>Caractéristique</th><th>Fréquence</th><th style={{ textAlign: 'right' }}>Échantillon</th><th /></tr></thead>
+          <tbody>{lines.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun contrôle planifié : aucune inspection n'est générée automatiquement.</td></tr> : lines.map(l => (
+            <tr key={l.id}>
+              <td>{STAGE[l.stage]}</td>
+              <td style={{ fontWeight: 500 }}>{l.product_name ?? l.ingredient_name ?? 'Famille'}</td>
+              <td>{l.characteristic} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>({TYPE[l.char_type]}{l.char_type === 'mesure' ? ` ${l.min_value ?? '−∞'} à ${l.max_value ?? '+∞'}${l.unit ? ' ' + l.unit : ''}` : ''})</span>{l.is_blocking && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="bloquant" /></span>}</td>
+              <td>{FREQ[l.frequency]}{l.frequency_n ? ` (N = ${l.frequency_n})` : ''}</td>
+              <td style={{ textAlign: 'right' }}>{l.sample_size}</td>
+              <td style={{ textAlign: 'right' }}><button type="button" className="odoo-btn-secondary" aria-label={`Retirer ${l.characteristic}`} title="Retirer" onClick={() => remove.mutate(l.id)}><Trash2 size={12} /></button></td>
             </tr>
           ))}</tbody>
         </table>
-      </div>
-    </div>
+      </Panel>
+    </>
   );
 }

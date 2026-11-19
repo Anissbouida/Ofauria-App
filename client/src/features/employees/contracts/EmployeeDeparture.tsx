@@ -65,9 +65,9 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <section className="prj-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px' }}>
       <SectionTitle icon={LogOut} actions={!current && !form && employee.is_active && (
-        <button type="button" className="odoo-btn-secondary" style={{ ...smallBtn, color: '#b85d1a' }}
+        <button type="button" className="odoo-btn-secondary" style={{ ...smallBtn, color: 'var(--prj-orange)' }}
           onClick={() => setForm({ exitDate: new Date().toISOString().slice(0, 10), reason: 'demission', noticeWorked: true })}>
           <LogOut size={11} /> Départ du salarié
         </button>
@@ -80,7 +80,7 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
             <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => pdf('receipt', current.id)}><FileText size={11} /> Reçu pour solde de tout compte</button>
             <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => pdf('certificate', current.id)}><Award size={11} /> Certificat de travail</button>
             {isAdmin && !current.payroll_paid && (
-              <button type="button" className="odoo-btn-secondary" style={{ ...smallBtn, color: '#dc3545' }} disabled={cancel.isPending}
+              <button type="button" className="odoo-btn-secondary" style={{ ...smallBtn, color: 'var(--prj-red)' }} disabled={cancel.isPending}
                 onClick={async () => {
                   if (!(await confirm('Annuler ce solde de tout compte ? Le contrat est rouvert et le salarié réintégré.', { title: 'Annuler le solde de tout compte', confirmLabel: 'Annuler le solde', cancelLabel: 'Retour', danger: true }))) return;
                   cancel.mutate(current.id);
@@ -138,7 +138,7 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
                   {preview.lines.map((l: Record<string, any>) => (
                     <tr key={l.code}>
                       <td>{l.label}</td><td style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{l.detail}</td>
-                      <td style={{ textAlign: 'right', color: l.kind === 'retenue' ? '#dc3545' : undefined }}>{l.kind === 'retenue' ? '− ' : ''}{fmt(l.amount)}</td>
+                      <td style={{ textAlign: 'right', color: l.kind === 'retenue' ? 'var(--prj-red)' : undefined }}>{l.kind === 'retenue' ? '− ' : ''}{fmt(l.amount)}</td>
                     </tr>
                   ))}
                   {!preview.lines.length && <tr><td colSpan={3} style={{ color: 'var(--odoo-text-muted)' }}>Aucune indemnité due.</td></tr>}
@@ -167,7 +167,7 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
       )}
 
       {!current && !form && settlements.length === 0 && <p style={muted}>Aucun départ enregistré.</p>}
-    </div>
+    </section>
   );
 }
 

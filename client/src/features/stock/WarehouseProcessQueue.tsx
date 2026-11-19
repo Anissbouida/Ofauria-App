@@ -8,9 +8,11 @@ import { notify } from '../../components/ui/InlineNotification';
 import { BonSortiePanel } from '../production/BonSortiePanel';
 import { bonStatusTag } from '../production/status';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { ListToolbar, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import './stock.css';
 import {
   Truck, Loader2, Scale, CheckCircle, Inbox, Handshake, ChevronLeft, ChevronRight,
-  ArrowLeft, AlertTriangle, Check, ArrowRight, Search, X as XIcon,
+  ArrowLeft, AlertTriangle, Check, ArrowRight,
 } from 'lucide-react';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -82,7 +84,7 @@ export function BonsPipeline({ bons, step, onStep, historyTotal, historyActive, 
   }
   const open = counts.recue + counts.preparation + counts.pret;
   return (
-    <div style={{ padding: '0 1rem 0.75rem' }}>
+    <div>
       <StagePipeline
         title="Où en sont les bons de sortie"
         summary={`${open} demande${open > 1 ? 's' : ''} en cours`}
@@ -132,30 +134,14 @@ export function WarehouseQueueList({
     <>
       <BonsPipeline bons={bons} step={step} onStep={onStep} historyTotal={historyTotal} onHistory={onHistory} />
 
-      <div className="odoo-search-panel" style={{ margin: '0 1rem 0.75rem', flexWrap: 'wrap', rowGap: 8 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par N° de bon, demandeur ou préparateur..." aria-label="Rechercher un bon"
-          value={search} onChange={e => setSearch(e.target.value)} className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
-        {step !== 'all' && (
-          <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            Étape : {STEPS.find(s => s.key === step)?.label}
-            <button type="button" onClick={() => onStep('all')} aria-label="Retirer le filtre d'étape" style={{ display: 'inline-flex' }}>
-              <XIcon size={11} />
-            </button>
-          </span>
-        )}
-      </div>
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher par N° de bon, demandeur ou préparateur…" />
 
       {rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Inbox size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
-            {bons.length === 0 ? 'Aucune demande en cours — la file est vide.' : 'Aucune demande à cette étape.'}
-          </p>
-        </div>
+        <ListEmpty icon={Inbox} title={bons.length === 0 ? 'Aucune demande en cours — la file est vide.' : 'Aucune demande à cette étape.'}
+          action={step !== 'all' ? <button type="button" className="odoo-btn-secondary" onClick={() => onStep('all')}>Toutes les étapes</button> : undefined} />
       ) : (
-        <div style={{ overflowX: 'auto', padding: '0 1rem 1rem' }}>
-          <table className="odoo-table" style={{ border: '1px solid var(--theme-bg-separator)' }}>
+        <ListPanel>
+          <table className="odoo-table">
             <thead>
               <tr>
                 <th style={{ width: 24 }}></th>
@@ -185,11 +171,11 @@ export function WarehouseQueueList({
                         : status === 'genere' ? 'neutral'
                         : 'warning'}`} />
                     </td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{bon.numero as string}</td>
+                    <td><span className="sal-num">{bon.numero as string}</span></td>
                     <td>
                       <strong>Plan du {fmtDate(bon.plan_date, 'dd MMM yyyy') ?? '—'}</strong>
                       {bon.chef_reject_reason && (
-                        <div style={{ fontSize: '0.6875rem', color: '#721c24', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--prj-red)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                           <AlertTriangle size={10} /> Refusé par le chef : {bon.chef_reject_reason as string}
                         </div>
                       )}
@@ -220,7 +206,7 @@ export function WarehouseQueueList({
               })}
             </tbody>
           </table>
-        </div>
+        </ListPanel>
       )}
     </>
   );
@@ -331,7 +317,7 @@ export function WarehouseBonWorkspace({
   ];
 
   return (
-    <div>
+    <div className="stk-stack">
       {/* En-tete de la demande + navigation dans la file */}
       <div className="wh-ws-header">
         <button type="button" className="odoo-btn-secondary" onClick={onBack}>
@@ -339,7 +325,7 @@ export function WarehouseBonWorkspace({
         </button>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span className="odoo-form-title" style={{ fontSize: '1.125rem' }}>
+            <span className="stk-section-title">
               Plan du {fmtDate(bon.plan_date, 'EEEE dd MMMM yyyy') ?? '—'}
             </span>
             <StatusTag tone={tag.tone} icon={tag.icon} label={tag.label} />
@@ -367,7 +353,7 @@ export function WarehouseBonWorkspace({
       </div>
 
       {/* Processus de la demande */}
-      <ol className="ui-timeline">
+      <ol className="ui-timeline stk-timeline">
         {timeline.map((t, i) => (
           <li key={t.label} className={`ui-timeline-step ${t.done ? 'is-done' : ''} ${t.current ? 'is-current' : ''}`}>
             <span className="ui-timeline-dot">{t.done ? <Check size={12} /> : i + 1}</span>
@@ -378,15 +364,13 @@ export function WarehouseBonWorkspace({
       </ol>
 
       {bon.chef_reject_reason && (
-        <div style={{ padding: '0.75rem 1rem 0' }}>
-          <StatusBanner tone="danger" icon={AlertTriangle} title="Refusé par le chef">
-            {bon.chef_reject_reason as string} — corrigez la préparation puis remettez le bon.
-          </StatusBanner>
-        </div>
+        <StatusBanner tone="danger" icon={AlertTriangle} title="Refusé par le chef">
+          {bon.chef_reject_reason as string} — corrigez la préparation puis remettez le bon.
+        </StatusBanner>
       )}
 
       {/* Lignes de la demande, pesee et actions de l'etape */}
-      <div style={{ padding: '1rem', maxWidth: 1100 }}>
+      <div style={{ maxWidth: 1100 }}>
         {planId
           // Vue magasinier : isChef=false quel que soit le role (admin/manager compris).
           // L'acceptation de la reception reste une action du chef, depuis son plan —
@@ -396,7 +380,7 @@ export function WarehouseBonWorkspace({
       </div>
 
       {rank >= 3 && next && (
-        <div style={{ padding: '0 1rem 1.5rem' }}>
+        <div>
           <button type="button" className="odoo-btn-primary" onClick={() => onOpen(next.id as string)}>
             Demande suivante : {next.numero as string} <ChevronRight size={13} />
           </button>

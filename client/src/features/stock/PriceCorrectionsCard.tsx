@@ -7,6 +7,8 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { currencySymbol } from '../../utils/money';
+import { ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { SectionTitle } from './StockUi';
 
 /**
  * Prix à revoir (G2-04) : ingrédients sans prix, ou dont le prix s'écarte fortement de la
@@ -42,17 +44,17 @@ export default function PriceCorrectionsCard() {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="stk-stack">
       <StatusBanner tone={suspects.length > 0 ? 'warning' : 'info'} icon={Tag} title="Prix à revoir">
         Ingrédients sans prix, ou dont le prix est plus de cinq fois au-dessus ou au-dessous de la médiane de leur catégorie.
         La correction proposée est le prix moyen des trois dernières réceptions ; elle est enregistrée avec son motif.
       </StatusBanner>
 
-      {isLoading && <div style={{ padding: 16, color: 'var(--theme-text-muted)' }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /> Chargement…</div>}
-      {!isLoading && suspects.length === 0 && <div style={{ padding: 16, color: 'var(--theme-text-muted)' }}>Aucun prix à revoir.</div>}
+      {isLoading && <ListEmpty icon={Loader2} title="Chargement…" />}
+      {!isLoading && suspects.length === 0 && <ListEmpty icon={Tag} title="Aucun prix à revoir." />}
 
       {suspects.length > 0 && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, overflowX: 'auto' }}>
+        <ListPanel>
           <table className="odoo-table" style={{ margin: 0, width: '100%' }}>
             <thead><tr>
               <th style={{ textAlign: 'left' }}>Ingrédient</th>
@@ -113,13 +115,13 @@ export default function PriceCorrectionsCard() {
               })}
             </tbody>
           </table>
-        </div>
+        </ListPanel>
       )}
 
       {history.length > 0 && (
-        <div>
-          <h4 style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--theme-text-muted)', margin: '4px 0' }}>Dernières corrections</h4>
-          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, overflowX: 'auto' }}>
+        <div className="stk-stack">
+          <SectionTitle>Dernières corrections</SectionTitle>
+          <ListPanel>
             <table className="odoo-table" style={{ margin: 0, width: '100%' }}>
               <thead><tr><th style={{ textAlign: 'left' }}>Date</th><th style={{ textAlign: 'left' }}>Ingrédient</th><th style={{ textAlign: 'right' }}>Avant</th><th style={{ textAlign: 'right' }}>Après</th><th style={{ textAlign: 'left' }}>Motif</th><th style={{ textAlign: 'left' }}>Par</th></tr></thead>
               <tbody>
@@ -135,7 +137,7 @@ export default function PriceCorrectionsCard() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ListPanel>
         </div>
       )}
     </div>

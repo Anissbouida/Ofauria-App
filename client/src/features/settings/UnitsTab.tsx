@@ -35,7 +35,7 @@ export default function UnitsTab() {
         Chaque unité appartient à une dimension et se convertit vers l'unité de base de sa dimension par un facteur
         (1 kg = 1 000 g). Les unités système servent aux coûts et ne se modifient pas ; ajoutez une unité dans Référentiels › Unités de mesure.
       </StatusBanner>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-panel prj-scroll">
         <table className="odoo-table">
           <thead><tr><th>Code</th><th>Libellé</th><th>Dimension</th><th style={{ textAlign: 'right' }}>Facteur</th><th style={{ textAlign: 'right' }}>Décimales</th>
             <th style={{ textAlign: 'right' }}>Articles</th><th style={{ textAlign: 'right' }}>Lignes de fiche</th><th>État</th></tr></thead>

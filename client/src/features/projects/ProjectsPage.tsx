@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, FolderKanban, ListChecks, Timer, BarChart3, Database, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, Trash2, LayoutGrid, List, GanttChartSquare, Columns3, PauseCircle,
+  ChevronRight, Receipt, Wallet,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -15,7 +16,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import { PeriodFilter, Pager, periodParams, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { useAuth } from '../../context/AuthContext';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -47,16 +48,18 @@ export default function ProjectsPage() {
   const navigate = useNavigate();
 
   return (
-    <ModuleShell title="Projets" views={views} current={current} onSelect={select}
+    <ModuleShell title="Projets" views={views} current={current} onSelect={select} flush
       actions={(current?.key === 'projects' || current?.key === 'overview') ? (
         <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouveau projet</button>
       ) : undefined}>
-      {current?.key === 'overview' && <Overview />}
-      {current?.key === 'projects' && <ProjectList onPlanning={() => select('planning')} />}
-      {current?.key === 'planning' && <ProjectsPlanning />}
-      {current?.key === 'tasks' && <OpenTasks />}
-      {current?.key === 'time' && <TimeSheet />}
-      {current?.key === 'profitability' && <Profitability />}
+      <ModulePage title={current?.label}>
+        {current?.key === 'overview' && <Overview />}
+        {current?.key === 'projects' && <ProjectList onPlanning={() => select('planning')} />}
+        {current?.key === 'planning' && <ProjectsPlanning />}
+        {current?.key === 'tasks' && <OpenTasks />}
+        {current?.key === 'time' && <TimeSheet />}
+        {current?.key === 'profitability' && <Profitability />}
+      </ModulePage>
       {creating && <ProjectFormModal onClose={() => setCreating(false)} onSaved={p => navigate(`/projects/${p.id}`)} />}
     </ModuleShell>
   );
@@ -72,7 +75,7 @@ function Progress({ p }: { p: Project }) {
   return (
     <div title={`${p.task_done}/${p.task_count} tâches`} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 110 }}>
       <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--odoo-border)' }}>
-        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: pct === 100 ? '#28a745' : 'var(--odoo-purple)' }} />
+        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: pct === 100 ? 'var(--prj-green)' : 'var(--theme-accent)' }} />
       </div>
       <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{pct}%</span>
     </div>
@@ -202,12 +205,12 @@ function ProjectList({ onPlanning }: { onPlanning: () => void }) {
       ) : layout === 'cards' ? (
         <div className="prj-cards">{rows.map(p => <ProjectCard key={p.id} p={p} />)}</div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <section className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>N°</th><th>Projet</th><th>Client</th><th>Statut</th><th>Santé</th><th>Échéance</th><th>Avancement</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coûts</th><th style={{ textAlign: 'right' }}>Recette</th><th>Responsable</th></tr></thead>
             <tbody>{rows.map(p => <ProjectRow key={p.id} p={p} />)}</tbody>
           </table>
-        </div>
+        </section>
       )}
       {data && data.total > all.length && <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{all.length} projets affichés sur {data.total} : affinez la recherche.</p>}
     </div>
@@ -223,44 +226,68 @@ function Overview() {
   const { data: tasks = [] } = useQuery({ queryKey: ['project-tasks', 'open', 'overview'], queryFn: () => projectsApi.openTasks({ limit: '8' }) });
   if (isLoading || !data) return <Loading />;
   const margin = Number(data.time.amount) - Number(data.time.cost);
+  const inProgress = data.projects.active + data.projects.on_hold;
   return (
     <div className="prj">
       <div className="prj-toolbar">
         <PeriodFilter label="Temps passé" title="Période des heures" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
       </div>
-      <section className="prj-kpis" aria-label="Indicateurs">
-        <Kpi label="Projets en cours" value={String(data.projects.active + data.projects.on_hold)} sub={`${data.projects.draft} brouillon${data.projects.draft > 1 ? 's' : ''} à lancer`} />
-        <Kpi label="Projets en retard" value={String(data.projects.overdue)} sub="échéance dépassée" tone={data.projects.overdue > 0 ? 'red' : undefined} />
-        <Kpi label="Tâches ouvertes" value={String(data.tasks.open)} sub={`${data.tasks.overdue} en retard`} tone={data.tasks.overdue > 0 ? 'red' : undefined} />
-        <Kpi label="Heures sur la période" value={`${h1(data.time.hours)} h`} sub={`coût ${money(data.time.cost, { decimals: 0 })}`} />
-        <Kpi label="Facturable sur la période" value={money(data.time.amount, { decimals: 0 })} sub={`marge ${money(margin, { decimals: 0 })}`} tone={margin < 0 ? 'red' : undefined} />
-        <Kpi label="Reste à facturer" value={money(data.time.unbilled, { decimals: 0 })} sub="temps facturable non facturé" />
+      <section className="kl-hero" aria-label="Indicateurs">
+        <div className="kl-widget">
+          <div className="kl-wlabel"><span className="kl-sq"><FolderKanban size={13} /></span>Projets en cours</div>
+          <div className="kl-big">{inProgress}</div>
+          <div className="kl-sub">{data.projects.draft} brouillon{data.projects.draft > 1 ? 's' : ''} à lancer · <span style={{ color: data.projects.overdue > 0 ? 'var(--prj-red)' : undefined }}>{data.projects.overdue} en retard</span></div>
+        </div>
+        <div className="kl-widget">
+          <div className="kl-wlabel"><span className="kl-sq"><ListChecks size={13} /></span>Tâches ouvertes</div>
+          <div className="kl-big">{data.tasks.open}</div>
+          <div className="kl-sub" style={{ color: data.tasks.overdue > 0 ? 'var(--prj-red)' : undefined }}>{data.tasks.overdue} en retard</div>
+        </div>
+        <div className="kl-widget">
+          <div className="kl-wlabel"><span className="kl-sq"><Timer size={13} /></span>Heures sur la période</div>
+          <div className="kl-big">{h1(data.time.hours)}<small>h</small></div>
+          <div className="kl-sub">coût {money(data.time.cost, { decimals: 0 })}</div>
+        </div>
       </section>
-      <div className="prj-columns">
-        <section className="prj-main" style={{ display: 'grid', gap: 12 }} aria-label="Projets en cours">
-          <div className="prj-panel-head" style={{ padding: 0, border: 0 }}>Projets en cours <small>{data.active.length}</small></div>
-          {data.active.length === 0
-            ? <p className="prj-note">Aucun projet en cours.</p>
-            : <div className="prj-cards">{data.active.map(p => <ProjectCard key={p.id} p={p} />)}</div>}
+      <section className="kl-stats" aria-label="Facturation du temps">
+        <div className="kl-widget">
+          <div className="kl-wlabel"><span className="kl-sq"><Receipt size={13} /></span>Facturable sur la période</div>
+          <div className="kl-big" style={{ fontSize: 30 }}>{money(data.time.amount, { decimals: 0 })}</div>
+          <div className="kl-sub" style={{ color: margin < 0 ? 'var(--prj-red)' : undefined }}>marge {money(margin, { decimals: 0 })}</div>
+        </div>
+        <div className="kl-widget">
+          <div className="kl-wlabel"><span className="kl-sq"><Wallet size={13} /></span>Reste à facturer</div>
+          <div className="kl-big" style={{ fontSize: 30 }}>{money(data.time.unbilled, { decimals: 0 })}</div>
+          <div className="kl-sub">temps facturable non facturé</div>
+        </div>
+      </section>
+      <div className="kl-two">
+        <section className="a" aria-label="Projets en cours">
+          <div>
+            <div className="kl-sec"><h2>Projets en cours</h2><small>{data.active.length}</small></div>
+            {data.active.length === 0
+              ? <div className="kl-group kl-empty">Aucun projet en cours.</div>
+              : <div className="prj-cards">{data.active.map(p => <ProjectCard key={p.id} p={p} />)}</div>}
+          </div>
         </section>
-        <aside className="prj-aside">
-          <section className="prj-panel">
-            <h2>Prochaines tâches</h2>
-            {tasks.length === 0 ? <p className="prj-note">Aucune tâche ouverte.</p> : (
-              <ul className="prj-feed">
+        <section className="b" aria-label="Prochaines tâches">
+          <div>
+            <div className="kl-sec"><h2>Prochaines tâches</h2><small>{tasks.length ? 'retards d’abord' : ''}</small></div>
+            {tasks.length === 0 ? <div className="kl-group kl-empty">Aucune tâche ouverte.</div> : (
+              <div className="kl-group">
                 {tasks.map(t => (
-                  <li key={t.id}>
-                    {t.is_overdue ? <AlertTriangle size={14} style={{ color: 'var(--prj-red)', flex: 'none', marginTop: 2 }} /> : <Clock size={14} style={{ color: 'var(--theme-text-muted)', flex: 'none', marginTop: 2 }} />}
-                    <button type="button" onClick={() => navigate(`/projects/${t.project_id}`)} style={{ flex: 1, minWidth: 0, background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
-                      <strong style={{ fontWeight: 500 }}>{t.title}</strong>
-                      <small>{t.project_name}{t.assignee_name ? ` · ${t.assignee_name}` : ''}{t.due_date ? ` · ${format(new Date(t.due_date), 'd MMM', { locale: fr })}` : ''}</small>
-                    </button>
-                  </li>
+                  <button key={t.id} type="button" className="kl-cell ico" onClick={() => navigate(`/projects/${t.project_id}`)}>
+                    <span className={`kl-ic ${t.is_overdue ? 'r' : 'x'}`}>{t.is_overdue ? <AlertTriangle size={16} /> : <Clock size={16} />}</span>
+                    <span className="tx"><span className="t1">{t.title}</span>
+                      <span className="t2">{t.project_name}{t.assignee_name ? ` · ${t.assignee_name}` : ''}</span></span>
+                    {t.due_date && <span className={`tr${t.is_overdue ? ' red' : ''}`}>{format(new Date(t.due_date), 'd MMM', { locale: fr })}</span>}
+                    <ChevronRight size={15} className="chev" />
+                  </button>
                 ))}
-              </ul>
+              </div>
             )}
-          </section>
-        </aside>
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -312,7 +339,7 @@ function OpenTasks() {
             <tbody>{tasks.map(t => (
               <tr key={t.id}>
                 <td><strong>{t.title}</strong></td>
-                <td><button type="button" onClick={() => navigate(`/projects/${t.project_id}`)} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--odoo-purple)', cursor: 'pointer' }}>{t.project_name}</button></td>
+                <td><button type="button" onClick={() => navigate(`/projects/${t.project_id}`)} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--theme-accent-hover)', cursor: 'pointer' }}>{t.project_name}</button></td>
                 <td>{t.assignee_name || '—'}</td>
                 <td><span className={`prj-prio ${t.priority}`}>{PRIORITY_LABELS[t.priority]}</span></td>
                 <td style={{ color: t.is_overdue ? 'var(--prj-red)' : undefined, fontWeight: t.is_overdue ? 600 : 400 }}>{t.due_date ? format(new Date(t.due_date), 'dd/MM/yyyy') : '—'}</td>

@@ -56,7 +56,7 @@ export default function CompanyBankAccounts() {
     <div id={settingAnchor('Comptes bancaires')} data-toc="Comptes bancaires" className="odoo-scope" style={{ display: 'grid', gap: 10, scrollMarginTop: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <div>
-          <div style={{ fontWeight: 600 }}>Comptes bancaires</div>
+          <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Comptes bancaires</div>
           <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Le compte par défaut figure sur les factures et sert aux virements.</div>
         </div>
         {!editing && !isError && (
@@ -92,7 +92,7 @@ export default function CompanyBankAccounts() {
       )}
 
       {editing && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg-alt)' }}>
+        <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <label style={{ ...lab, flex: '1 1 180px' }}>Libellé
               <input id="bank-label" style={field} value={editing.draft.label} onChange={e => set('label', e.target.value)} placeholder="Compte courant" maxLength={80} />

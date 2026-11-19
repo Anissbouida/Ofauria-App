@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, AlertTriangle, Archive, ChevronRight, Search, Filter, X } from 'lucide-react';
+import { Loader2, AlertTriangle, Archive, ChevronRight, Filter, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { bonSortieApi } from '../../api/bon-sortie.api';
 import { bonStatusTag } from '../production/status';
 import { StatusTag } from '../../components/ui/StatusTag';
 import {
-  PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey,
+  PeriodFilter, SelectFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey,
 } from '../../components/purchasing/ProcessBoard';
+import { ListToolbar, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { PagerFoot } from './StockUi';
 
 const HISTORY_STATUSES = [
   { key: 'prelevement', label: 'Remis au chef' },
@@ -57,11 +59,8 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par N° de bon, demandeur, préparateur..." aria-label="Rechercher dans l'historique"
-          value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
+    <div className="stk-stack">
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher par N° de bon, demandeur, préparateur…">
         {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
         <SelectFilter label="Statut" icon={Filter} value={status} onChange={setStatus} options={HISTORY_STATUSES} />
         <PeriodFilter label="Terminé" title="Filtre sur la date de remise / clôture"
@@ -71,23 +70,18 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
             <X size={12} /> Effacer les filtres
           </button>
         )}
-      </div>
+      </ListToolbar>
 
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-        </div>
+        <ListEmpty icon={Loader2} title="Chargement de l'historique…" />
       ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Archive size={32} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{hasFilters ? 'Aucun bon pour ces filtres.' : 'Aucun bon dans l\'historique pour le moment.'}</p>
-          {hasFilters && (
-            <button type="button" onClick={resetFilters} style={{ fontSize: '0.6875rem', textDecoration: 'underline', color: 'inherit' }}>Effacer les filtres</button>
-          )}
-        </div>
+        <ListEmpty icon={Archive} title={hasFilters ? 'Aucun bon pour ces filtres.' : 'Aucun bon dans l\'historique pour le moment.'}
+          action={hasFilters ? <button type="button" className="odoo-btn-secondary" onClick={resetFilters}>Effacer les filtres</button> : undefined} />
       ) : (
-        <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
-          <table className="odoo-table" style={{ border: '1px solid var(--theme-bg-separator)' }}>
+        <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+        <ListPanel footer={<PagerFoot page={page} total={total} onPage={setPage}
+            note={`Bons remis, vérifiés, clôturés ou annulés · ${periodLabel(period, customFrom, customTo)}`} />}>
+          <table className="odoo-table">
             <thead>
               <tr>
                 <th>N° bon</th>
@@ -111,16 +105,16 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
                 const prevMonth = prevDate ? format(new Date(prevDate), 'MMMM yyyy', { locale: fr }) : null;
                 return [
                   month !== prevMonth && (
-                    <tr key={`m-${bon.id}`}>
-                      <td colSpan={9} style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize', color: 'var(--odoo-text)' }}>{month}</td>
+                    <tr key={`m-${bon.id}`} className="stk-month">
+                      <td colSpan={9}>{month}</td>
                     </tr>
                   ),
                   <tr key={bon.id as string} onClick={() => onOpen(bon.plan_id as string)} style={{ cursor: 'pointer' }} title="Ouvrir le bon">
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{bon.numero as string}</td>
+                    <td><span className="sal-num">{bon.numero as string}</span></td>
                     <td>
                       <strong>Plan du {bon.plan_date ? format(new Date(bon.plan_date as string), 'dd MMM yyyy', { locale: fr }) : '—'}</strong>
                       {bon.chef_reject_reason && (
-                        <div style={{ fontSize: '0.6875rem', color: '#721c24', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--prj-red)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                           <AlertTriangle size={10} /> Refus préc. : {bon.chef_reject_reason as string}
                         </div>
                       )}
@@ -139,8 +133,7 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
               })}
             </tbody>
           </table>
-          <Pager page={page} total={total} onPage={setPage}
-            note={`Bons remis, vérifiés, clôturés ou annulés · ${periodLabel(period, customFrom, customTo)}`} />
+        </ListPanel>
         </div>
       )}
     </div>

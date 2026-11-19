@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Snowflake, Sun, Package, AlertTriangle, type LucideIcon } from 'lucide-react';
+import { Snowflake, Sun, Package, AlertTriangle, Loader2, type LucideIcon } from 'lucide-react';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { lotThermalApi, type FreezableLot } from '../../api/lot-thermal.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
+import { FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { ChipsRow } from './StockUi';
 
 /** État thermique en étiquette commune (StatusTag) : décongelé = à consommer, action attendue. */
 const ETAT_BADGE: Record<string, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
@@ -54,25 +56,18 @@ export default function LotsThermalTab() {
   };
 
   return (
-    <div style={{ padding: '1rem' }}>
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="flex items-center gap-2 text-gray-700">
-          <Snowflake size={16} className="text-sky-600" />
-          <span className="font-semibold">Lots surgelables</span>
-          <span className="text-xs text-gray-400">{lots.length}</span>
-        </div>
-        <div className="odoo-view-switcher">
-          {FILTERS.map(f => (
-            <button key={f.label} onClick={() => setEtat(f.key)} className={etat === f.key ? 'active' : ''}>{f.label}</button>
-          ))}
-        </div>
-      </div>
+    <div className="stk-stack">
+      <ChipsRow summary={`${lots.length} lot${lots.length > 1 ? 's' : ''}`}>
+        <FilterChips label="État thermique" value={etat ?? ''} onChange={k => setEtat(k || null)}
+          chips={FILTERS.map(f => ({ key: f.key ?? '', label: f.label }))} />
+      </ChipsRow>
 
       {isLoading ? (
-        <div className="text-center py-10 text-gray-400">Chargement…</div>
+        <ListEmpty icon={Loader2} title="Chargement…" />
       ) : lots.length === 0 ? (
-        <div className="text-center py-10 text-gray-400">Aucun lot dans cet état.</div>
+        <ListEmpty icon={Snowflake} title="Aucun lot dans cet état." />
       ) : (
+        <ListPanel>
         <table className="odoo-table">
           <thead>
             <tr>
@@ -86,7 +81,7 @@ export default function LotsThermalTab() {
               const expired = isExpired(l.dlc_affichee);
               return (
                 <tr key={`${l.kind}-${l.id}`}>
-                  <td className="font-mono">{l.lot_number}</td>
+                  <td><span className="sal-num">{l.lot_number}</span></td>
                   <td>
                     <span className="odoo-tag" style={{ marginRight: 6 }}>{l.item_kind}</span>
                     {l.item_name}
@@ -125,8 +120,9 @@ export default function LotsThermalTab() {
             })}
           </tbody>
         </table>
+        </ListPanel>
       )}
-      <p className="text-[11px] text-gray-400 mt-3 flex items-center gap-1">
+      <p className="prj-note" style={{ display: 'flex', alignItems: 'center', gap: 4, margin: 0, color: 'var(--theme-text-muted)' }}>
         <Package size={11} /> La DLC d'un lot décongelé est recalculée ({DEFAULT_THAW_HOURS} h) et prime au FEFO. La recongélation est interdite.
       </p>
     </div>

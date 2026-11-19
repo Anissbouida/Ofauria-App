@@ -9,6 +9,7 @@ import { reconciliationApi, type ReconLine, type ReconShift, type ReconProduct, 
 import { parseLoyverseFiles, parseLoyverseCatalogFiles, parseLoyverseReceiptFiles, type ParsedReceiptItem } from './loyverseParser';
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusBanner } from '../../components/ui/StatusBanner';
 import { currencySymbol } from '../../utils/money';
 import { useAuth } from '../../context/AuthContext';
 
@@ -1230,14 +1231,11 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
-        <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-        <div>
-          <strong>Fiche de besoin d'approvisionnement par créneau.</strong> Le système propose la demande prévue
+      <StatusBanner tone="info" icon={Info} title="Fiche de besoin d'approvisionnement par créneau">
+        Le système propose la demande prévue
           (historique des mêmes jours, tendance, événements du calendrier ; à défaut le vendu J-7)
           répartie selon les créneaux configurés dans <strong>Paramètres</strong>. Ajustez par créneau, puis validez.
-        </div>
-      </div>
+      </StatusBanner>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1448,7 +1446,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
           // La recherche deplie tout ; sinon on respecte l'etat replie/deplie.
           const isCollapsed = !q && collapsed.has(cat);
           return (
-            <div key={cat} style={{ marginBottom: 16 }}>
+            <div key={cat} className="prj-panel" style={{ overflow: 'hidden' }}>
               <div
                 onClick={() => setCollapsed(prev => {
                   const next = new Set(prev);
@@ -1456,11 +1454,9 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                   return next;
                 })}
                 style={{
-                  fontWeight: 700, padding: '6px 10px',
-                  background: 'var(--theme-bg-sidebar, #f5f5f5)',
-                  color: 'var(--theme-accent)', fontSize: '0.8125rem',
-                  textTransform: 'uppercase', letterSpacing: 0.5,
-                  borderRadius: isCollapsed ? 4 : '4px 4px 0 0', border: '1px solid var(--theme-bg-separator)',
+                  fontWeight: 700, padding: '12px 16px',
+                  color: 'var(--theme-text-strong)', fontSize: '0.9375rem',
+                  borderBottom: isCollapsed ? 0 : '1px solid var(--theme-bg-separator)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   cursor: 'pointer', userSelect: 'none',
                 }}>
@@ -1513,7 +1509,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
               </div>
               {!isCollapsed && (
               <div style={{ overflowX: 'auto' }}>
-                <table className="odoo-table" style={{ borderTop: 'none' }}>
+                <table className="odoo-table" style={{ borderTop: 'none', margin: 0 }}>
                   <thead>
                     <tr>
                       <th>Produit</th>
@@ -2137,10 +2133,8 @@ export function DayView() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Bandeau explicatif */}
-      <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
-        <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-        <div>
-          <strong>Écart d'un shift = Vendu + Reste fin − (Ouverture + Reçu).</strong> Négatif = manque à expliquer
+      <StatusBanner tone="info" icon={Info} title="Écart d'un shift = Vendu + Reste fin − (Ouverture + Reçu)">
+        Négatif = manque à expliquer
           (perte / vol / erreur), positif = surplus. L'appro n'entre pas dans le calcul.
           L'<strong>ouverture</strong> ne se saisit jamais : reste du soir de J-1 pour le <strong>Matin</strong>
           (catégories à report, Paramètres), <strong>comptage de passation</strong> (reste compté à 14h) pour le <strong>Soir</strong>.
@@ -2148,8 +2142,7 @@ export function DayView() {
           « Reçus par article », horodaté → ventilé automatiquement Matin/Soir en un seul import) → saisir le reste compté (passation à 14h, ou reste du soir).
           La somme des écarts Matin + Soir = l'écart de la journée : le découpage sert à localiser le manque.
           Module isolé et temporaire — aucune donnée n'est écrite dans le système de production.
-        </div>
-      </div>
+      </StatusBanner>
 
       {/* Barre d'action */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2368,8 +2361,7 @@ export function DayView() {
                     style={{ cursor: 'pointer', userSelect: 'none' }}>
                     <td style={{
                       background: catBg, fontWeight: 700,
-                      color: 'var(--theme-accent)', fontSize: '0.75rem',
-                      textTransform: 'uppercase', letterSpacing: 0.5,
+                      color: 'var(--theme-accent)', fontSize: '0.8125rem',
                       borderLeft: `3px solid ${ecartTone(catEcartVal) === 'ok' ? 'transparent' : catTheme.border}`,
                     }}>
                       {isCollapsed ? '▸' : '▾'} {cat} ({items.length})
@@ -2551,7 +2543,7 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
 
   const box = (label: string, s: { net: number; qty: number }, color: string) => (
     <div style={{ flex: 1, border: '1px solid var(--theme-bg-separator)', borderRadius: 6, padding: '10px 14px' }}>
-      <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--theme-text-muted)' }}>{label}</div>
+      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>{label}</div>
       <div style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace', color }}>{nf(s.net)} <span style={{ fontSize: '0.8rem' }}>{currencySymbol()}</span></div>
       <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{qf(s.qty)} article{s.qty > 1 ? 's' : ''}</div>
     </div>
@@ -2863,18 +2855,15 @@ export function CarryOverSettingsView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
-        <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-        <div>
-          <strong>Report du reste de la veille.</strong> Pour les catégories cochées, le reste du soir
+      <StatusBanner tone="info" icon={Info} title="Report du reste de la veille">
+        Pour les catégories cochées, le reste du soir
           devient le <strong>stock d'ouverture</strong> du lendemain : il s'ajoute au reçu pour le calcul
           de l'écart (<em>Écart = Vendu + Reste soir − (Reste veille + Reçu)</em>), tout en restant affiché
           dans sa propre colonne. À réserver aux produits qui ne sont pas jetés le soir — cocher
           viennoiseries ou baguettes ferait apparaître des manques fictifs le lendemain.
           Le report est recalculé à chaque ouverture de la journée : corriger le reste du soir de J-1
           met à jour le stock d'ouverture d'aujourd'hui tant que la journée n'est pas clôturée.
-        </div>
-      </div>
+      </StatusBanner>
 
       {isLoading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
@@ -2885,17 +2874,11 @@ export function CarryOverSettingsView() {
           Aucune catégorie au catalogue. Importe d'abord le catalogue Loyverse.
         </div>
       ) : (
-        <>
-          <div style={{
-            fontWeight: 700, padding: '6px 10px',
-            background: 'var(--theme-bg-sidebar, #f5f5f5)',
-            color: 'var(--theme-accent)', fontSize: '0.8125rem',
-            textTransform: 'uppercase', letterSpacing: 0.5,
-            borderRadius: '4px 4px 0 0', border: '1px solid var(--theme-bg-separator)',
-          }}>
-            Report du reste ({enabledCount} catégorie{enabledCount > 1 ? 's' : ''} sur {cats.length})
+        <section className="prj-panel" style={{ overflow: 'hidden' }}>
+          <div className="prj-panel-head">
+            Report du reste <small>{enabledCount} catégorie{enabledCount > 1 ? 's' : ''} sur {cats.length}</small>
           </div>
-          <table className="odoo-table" style={{ borderTop: 'none', marginTop: -14 }}>
+          <table className="odoo-table" style={{ borderTop: 'none', margin: 0 }}>
             <thead>
               <tr>
                 <th style={{ width: 70, textAlign: 'center' }}>Report</th>
@@ -2917,7 +2900,7 @@ export function CarryOverSettingsView() {
               ))}
             </tbody>
           </table>
-        </>
+        </section>
       )}
     </div>
   );
@@ -2954,14 +2937,11 @@ export function SlotsSettingsView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
-        <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-        <div>
-          <strong>Créneaux d'approvisionnement.</strong> Configurez les périodes de livraison par section.
+      <StatusBanner tone="info" icon={Info} title="Créneaux d'approvisionnement">
+        Configurez les périodes de livraison par section.
           Le pourcentage indique la répartition par défaut des quantités suggérées (J-7).
           Les catégories doivent correspondre exactement aux catégories Loyverse (majuscules).
-        </div>
-      </div>
+      </StatusBanner>
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button className="odoo-btn-primary" onClick={() => setEditing({ category: '', slot_number: 1, label: '', target_time: '', default_pct: 0, sort_order: 0 })}>
@@ -2979,17 +2959,11 @@ export function SlotsSettingsView() {
         </div>
       ) : (
         categories.map(cat => (
-          <div key={cat}>
-            <div style={{
-              fontWeight: 700, padding: '6px 10px',
-              background: 'var(--theme-bg-sidebar, #f5f5f5)',
-              color: 'var(--theme-accent)', fontSize: '0.8125rem',
-              textTransform: 'uppercase', letterSpacing: 0.5,
-              borderRadius: '4px 4px 0 0', border: '1px solid var(--theme-bg-separator)',
-            }}>
+          <section key={cat} className="prj-panel" style={{ overflow: 'hidden' }}>
+            <div className="prj-panel-head">
               {cat} ({byCategory[cat].length} créneau{byCategory[cat].length > 1 ? 'x' : ''})
             </div>
-            <table className="odoo-table" style={{ borderTop: 'none' }}>
+            <table className="odoo-table" style={{ borderTop: 'none', margin: 0 }}>
               <thead>
                 <tr>
                   <th style={{ width: 50 }}>N°</th>
@@ -3032,7 +3006,7 @@ export function SlotsSettingsView() {
                 </tr>
               </tbody>
             </table>
-          </div>
+          </section>
         ))
       )}
 
@@ -3182,14 +3156,11 @@ export function DarijaSettingsView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
-        <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-        <div>
-          <strong>Traductions darija.</strong> Les produits sans traduction apparaissent en premier.
+      <StatusBanner tone="info" icon={Info} title="Traductions darija">
+        Les produits sans traduction apparaissent en premier.
           Une traduction saisie ici a priorité sur le dictionnaire intégré et apparaît immédiatement
           sur les bons de transfert. Vider le champ et enregistrer supprime la traduction personnalisée.
-        </div>
-      </div>
+      </StatusBanner>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <input className="odoo-input" placeholder="Rechercher un produit…" value={filter}
@@ -3321,14 +3292,11 @@ export function CatalogView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'flex', gap: 8 }}>
-        <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-        <div>
-          <strong>Catalogue produits.</strong> Source de la fiche de besoin. Les imports Loyverse
+      <StatusBanner tone="info" icon={Info} title="Catalogue produits">
+        Source de la fiche de besoin. Les imports Loyverse
           enregistrent automatiquement les nouveaux produits ; un produit supprimé ici ne reviendra
           que s'il réapparaît dans un import.
-        </div>
-      </div>
+      </StatusBanner>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <input className="odoo-input" placeholder="Rechercher (nom, SKU, catégorie)…" value={filter}
@@ -3367,17 +3335,11 @@ export function CatalogView() {
         </div>
       ) : (
         Object.entries(grouped).map(([cat, prods]) => (
-          <div key={cat}>
-            <div style={{
-              fontWeight: 700, padding: '6px 10px',
-              background: 'var(--theme-bg-sidebar, #f5f5f5)',
-              color: 'var(--theme-accent)', fontSize: '0.8125rem',
-              textTransform: 'uppercase', letterSpacing: 0.5,
-              borderRadius: '4px 4px 0 0', border: '1px solid var(--theme-bg-separator)',
-            }}>
+          <section key={cat} className="prj-panel" style={{ overflow: 'hidden' }}>
+            <div className="prj-panel-head">
               {cat} ({prods.length})
             </div>
-            <table className="odoo-table" style={{ borderTop: 'none' }}>
+            <table className="odoo-table" style={{ borderTop: 'none', margin: 0 }}>
               <thead>
                 <tr>
                   <th>Produit</th>
@@ -3410,7 +3372,7 @@ export function CatalogView() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </section>
         ))
       )}
 
@@ -3521,14 +3483,14 @@ export function ReportView() {
       </div>
 
       {rows.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        <div className="prj-kpis">
           {([
             ['Appro (u)', qf(totals.appro)], ['Vendu (u)', qf(totals.vendu)],
             ['Reste (u)', qf(totals.invendu)], [`Écart total (${currencySymbol()})`, nf(totals.ecartVal)],
           ] as [string, string][]).map(([lbl, val], i) => (
-            <div key={lbl} style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
-              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{lbl}</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, marginTop: 4, color: i === 3 ? ecartColor(totals.ecartVal) : 'var(--theme-accent)' }}>{val}</div>
+            <div key={lbl} className="prj-kpi">
+              <div className="prj-kpi-head"><span>{lbl}</span></div>
+              <div className="prj-kpi-value" style={{ color: i === 3 ? ecartColor(totals.ecartVal) : undefined }}>{val}</div>
             </div>
           ))}
         </div>

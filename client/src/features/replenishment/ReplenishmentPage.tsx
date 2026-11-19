@@ -9,6 +9,8 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty, type FilterChip } from '../sales/ListTemplate';
 import {
   Plus, Package, ArrowRight, Clock, AlertTriangle, CheckCircle,
   Send, ShoppingBag, Trash2, Calendar, Search, X, Lightbulb, Truck,
@@ -121,106 +123,33 @@ export default function ReplenishmentPage() {
     return num.toLowerCase().includes(q) || name.toLowerCase().includes(q);
   });
 
+  const chips: FilterChip[] = tabs.map(t => ({ key: t.key, label: t.label, count: t.count }));
+
   return (
-    <div className="odoo-scope">
-      {/* ══════ CONTROL BAR ══════ */}
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Production</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">Demandes boutique</span>
-        </div>
-        {(isStoreStaff || isAdmin) && (
-          <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
-            <Plus size={14} /> Nouveau
-          </button>
-        )}
-        <div style={{ flex: 1 }} />
-        <span className="odoo-pager">
-          <strong>{filtered.length}</strong> / {allRequests.length}
-        </span>
-      </div>
+    <SalesPageShell icon={ShoppingBag} parent="Production" title="Demandes boutique" list
+      summary={<><b>{filtered.length}</b> / {allRequests.length} demande(s){statCounts.submitted > 0 ? <> · <b>{statCounts.submitted}</b> en attente</> : null}</>}
+      actions={(isStoreStaff || isAdmin) ? (
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
+          <Plus size={14} /> Nouveau
+        </button>
+      ) : undefined}>
 
-      {/* ══════ STAT TILES sobres ══════ */}
-      <div className="odoo-stat-grid">
-        <button onClick={() => setStatusFilter(statusFilter === 'submitted' ? '' : 'submitted')}
-          className={`odoo-stat-card ${statusFilter === 'submitted' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <Clock size={11} style={{ display: 'inline', marginRight: 4, color: '#856404' }} />En attente
-          </div>
-          <div className="odoo-stat-card-value" style={{ color: statCounts.submitted > 0 ? '#856404' : undefined }}>{statCounts.submitted}</div>
-        </button>
-        <button onClick={() => setStatusFilter(statusFilter === 'acknowledged' ? '' : 'acknowledged')}
-          className={`odoo-stat-card ${(statusFilter === 'acknowledged' || statusFilter === 'preparing') ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <PackageCheck size={11} style={{ display: 'inline', marginRight: 4, color: '#1f6391' }} />En cours
-          </div>
-          <div className="odoo-stat-card-value">{statCounts.acknowledged + statCounts.preparing}</div>
-        </button>
-        <button onClick={() => setStatusFilter(statusFilter === 'transferred' ? '' : 'transferred')}
-          className={`odoo-stat-card ${statusFilter === 'transferred' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <Truck size={11} style={{ display: 'inline', marginRight: 4 }} />Transférées
-          </div>
-          <div className="odoo-stat-card-value">{statCounts.transferred}</div>
-        </button>
-        <button onClick={() => setStatusFilter(statusFilter === 'closed' ? '' : 'closed')}
-          className={`odoo-stat-card ${statusFilter === 'closed' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <CheckCircle size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Clôturées
-          </div>
-          <div className="odoo-stat-card-value" style={{ color: statCounts.closed > 0 ? '#28a745' : undefined }}>{statCounts.closed}</div>
-        </button>
-      </div>
+      {/* ══════ BARRE D'OUTILS ══════ */}
+      <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="Rechercher par numéro ou demandeur..." />
 
-      {/* ══════ SEARCH PANEL ══════ */}
-      <div className="odoo-search-panel">
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-          placeholder="Rechercher par numéro ou demandeur..."
-          className="odoo-search-input" />
-        {searchQuery && (
-          <span className="odoo-filter-chip">
-            Recherche: {searchQuery}
-            <span className="odoo-filter-chip-remove" onClick={() => setSearchQuery('')}>×</span>
-          </span>
-        )}
-        {statusFilter && (
-          <span className="odoo-filter-chip">
-            {tabs.find(t => t.key === statusFilter)?.label}
-            <span className="odoo-filter-chip-remove" onClick={() => setStatusFilter('')}>×</span>
-          </span>
-        )}
-      </div>
-
-      {/* ══════ TABS Odoo (statut) ══════ */}
-      <div className="odoo-tabs">
-        {tabs.map(tab => (
-          <button key={tab.key} type="button" onClick={() => setStatusFilter(tab.key)}
-            className={`odoo-tab ${statusFilter === tab.key ? 'active' : ''}`}>
-            {tab.label}
-            {tab.count > 0 && (
-              <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{tab.count}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* ══════ STATUTS en pastilles avec compteurs ══════ */}
+      <FilterChips chips={chips} value={statusFilter} onChange={setStatusFilter} label="Filtrer par statut" />
 
       {/* ══════ REQUEST TABLE (.odoo-table) ══════ */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        </div>
+        <section className="prj-panel sal-empty">
+          <Loader2 size={20} className="animate-spin" /><span>Chargement…</span>
+        </section>
       ) : filtered.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <PackageOpen size={40} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.875rem', fontWeight: 500 }}>Aucune demande d'approvisionnement</p>
-          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Les demandes apparaîtront ici</p>
-        </div>
+        <ListEmpty icon={PackageOpen} title="Aucune demande d'approvisionnement" text="Les demandes apparaîtront ici" />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table">
+        <ListPanel>
+          <table className="odoo-table" style={{ margin: 0 }}>
             <thead>
               <tr>
                 <th style={{ width: 24 }}></th>
@@ -309,7 +238,7 @@ export default function ReplenishmentPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ListPanel>
       )}
 
       {showForm && (
@@ -321,7 +250,7 @@ export default function ReplenishmentPage() {
           }}
         />
       )}
-    </div>
+    </SalesPageShell>
   );
 }
 

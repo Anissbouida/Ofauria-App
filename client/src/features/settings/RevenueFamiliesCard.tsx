@@ -42,10 +42,10 @@ export default function RevenueFamiliesCard() {
   });
 
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '12px 16px', background: 'var(--odoo-bg)', display: 'grid', gap: 10 }}>
+    <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <BookOpen size={16} style={{ color: 'var(--theme-accent)' }} />
-        <div style={{ fontWeight: 600 }}>Comptes de produits par famille</div>
+        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Comptes de produits par famille</div>
       </div>
       <PageNote help="À la comptabilisation d'une vente (ticket ou facture), le chiffre d'affaires est ventilé par famille de catégorie sur le compte choisi ici.">
         Sans compte choisi, une famille reste sur <strong>{DEFAULT_ACCOUNT}</strong>.

@@ -1,0 +1,3 @@
+/* Approbations (/approvals) au design Ventes (2026-11-18). La barre de fil d'Ariane est à ras
+   (AppLayout ne pose plus de marge hors Caisse). */
+.kl-apple .approvals-page { min-height: 100%; }

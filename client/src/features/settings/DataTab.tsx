@@ -50,7 +50,7 @@ export default function DataTab() {
   });
 
   if (isLoading || !status) return <Loader2 className="animate-spin" size={18} />;
-  const card: React.CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg)' };
+  const card: React.CSSProperties = { padding: '16px 18px', display: 'grid', gap: 12 };
 
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
@@ -58,8 +58,8 @@ export default function DataTab() {
       <ImportSection status={status} onTemplate={entity => save(`import/${entity}/template`)} />
 
       {/* ── Exports ── */}
-      <section style={card}>
-        <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Download size={15} /> Exporter</div>
+      <section className="prj-panel" style={card}>
+        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}><Download size={15} /> Exporter</div>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 260px', display: 'grid', gap: 6, alignContent: 'start' }}>
             <div style={{ fontSize: '0.875rem' }}><strong>Configuration</strong> (fichier JSON)</div>
@@ -83,8 +83,8 @@ export default function DataTab() {
       </section>
 
       {/* ── État de la base ── */}
-      <section style={card}>
-        <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Database size={15} /> État de la base</div>
+      <section className="prj-panel" style={card}>
+        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}><Database size={15} /> État de la base</div>
         <PageNote help="Les sauvegardes automatiques de la base sont faites par l'hébergeur et ne sont pas visibles ici. Gardez en plus un export mensuel des données et de la configuration.">
           Sauvegardes assurées par l'hébergeur ; exportez aussi chaque mois.
         </PageNote>

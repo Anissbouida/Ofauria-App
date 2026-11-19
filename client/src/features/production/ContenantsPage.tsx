@@ -1,6 +1,7 @@
 import { useProductionPolicies } from './usePolicies';
 import { useState, useMemo } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { ListToolbar, FilterChips, ListPanel } from '../sales/ListTemplate';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { contenantsApi, type BulkResult } from '../../api/contenants.api';
 import { recipesApi } from '../../api/recipes.api';
@@ -267,62 +268,35 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
 
   return (
     <>
-      {/* ══════ SEARCH PANEL — même bandeau que les deux autres onglets ══════ */}
-      <div className="odoo-search-panel">
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher un format..."
-          className="odoo-search-input"
-          value={search} onChange={e => setSearch(e.target.value)} />
-        <div style={{ marginLeft: 8 }}>
-          <SearchSelect
-            options={Object.entries(TYPE_LABELS).map(([k, v]) => ({ id: k, label: `${TYPE_ICONS[Number(k)]} ${v}` }))}
-            value={typeFilter ? String(typeFilter) : ''}
-            onChange={id => setTypeFilter(id ? Number(id) : 0)}
-            placeholder="Tous les types"
-          />
-        </div>
-        {search && (
-          <span className="odoo-filter-chip">
-            Recherche: {search}
-            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
-          </span>
-        )}
-        {typeFilter > 0 && (
-          <span className="odoo-filter-chip">
-            {TYPE_LABELS[typeFilter]}
-            <span className="odoo-filter-chip-remove" onClick={() => setTypeFilter(0)}>×</span>
-          </span>
-        )}
-        <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer" style={{ marginLeft: 8 }}>
+      {/* ══════ BARRE D'OUTILS — même gabarit que les deux autres onglets ══════ */}
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un format...">
+        <SearchSelect
+          options={Object.entries(TYPE_LABELS).map(([k, v]) => ({ id: k, label: `${TYPE_ICONS[Number(k)]} ${v}` }))}
+          value={typeFilter ? String(typeFilter) : ''}
+          onChange={id => setTypeFilter(id ? Number(id) : 0)}
+          placeholder="Tous les types"
+        />
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--theme-text-muted)', cursor: 'pointer' }}>
           <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
           Afficher inactifs
         </label>
         <div style={{ flex: 1 }} />
-        <span className="odoo-pager">
-          <strong>{sortedFiltered.length}</strong> / {activeCount}
+        <span style={{ fontSize: 13, color: 'var(--theme-text-muted)' }}>
+          <strong style={{ color: 'var(--theme-text-strong)' }}>{sortedFiltered.length}</strong> / {activeCount}
         </span>
-      </div>
+      </ListToolbar>
 
       {/* ══════ FILTRES PAR TYPE ══════ */}
-      {/* Ce sont des filtres, pas des indicateurs : `odoo-stat-card` porte déjà l'état
-          actif et le survol, au lieu des cartes flottantes qui les faisaient passer
-          pour des KPI décoratifs. */}
-      <div className="odoo-stat-grid">
-        {[1, 2, 3, 4, 5].map(type => {
-          const count = contenants.filter(c => c.type_production === type && c.is_active).length;
-          return (
-            <button key={type} type="button"
-              onClick={() => setTypeFilter(typeFilter === type ? 0 : type)}
-              aria-pressed={typeFilter === type}
-              className={`odoo-stat-card ${typeFilter === type ? 'active' : ''}`}>
-              <div className="odoo-stat-card-label">
-                <span style={{ marginRight: 4 }}>{TYPE_ICONS[type]}</span>{TYPE_LABELS[type]}
-              </div>
-              <div className="odoo-stat-card-value">{count}</div>
-            </button>
-          );
-        })}
-      </div>
+      {/* Ce sont des filtres, pas des indicateurs : pastilles avec compteurs (gabarit Liste). */}
+      <FilterChips
+        label="Filtrer par type"
+        value={typeFilter ? String(typeFilter) : ''}
+        onChange={k => setTypeFilter(k && Number(k) !== typeFilter ? Number(k) : 0)}
+        chips={[1, 2, 3, 4, 5].map(type => ({
+          key: String(type),
+          label: `${TYPE_ICONS[type]} ${TYPE_LABELS[type]}`,
+          count: contenants.filter(c => c.type_production === type && c.is_active).length,
+        }))} />
 
       {/* ══════ CREATE / EDIT ══════ */}
       {(creating || editing) && (
@@ -342,8 +316,8 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
           sont en RESTRICT, un format déjà utilisé ne peut pas partir sans casser
           l'historique. Le repli évite un échec sur lequel on ne peut rien faire. */}
       {selectedIds.size > 0 && (
-        <div className="odoo-control-bar" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
-          <span className="odoo-pager">
+        <div className="prj-panel" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 14 }}>
             <strong>{selectedIds.size}</strong> format{selectedIds.size > 1 ? 's' : ''} sélectionné{selectedIds.size > 1 ? 's' : ''}
           </span>
           <button onClick={handleBulkDeactivate} className="odoo-btn-secondary" disabled={bulkPending}>
@@ -362,21 +336,19 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
 
       {/* ══════ TABLE ══════ */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5rem' }}>
-          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        </div>
+        <section className="prj-panel sal-empty">
+          <div style={{ width: 24, height: 24, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        </section>
       ) : sortedFiltered.length === 0 ? (
-        <div style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Package size={44} style={{ margin: '0 auto 0.75rem', opacity: 0.35 }} />
-          <p style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>
-            {contenants.length === 0 ? 'Aucun format de production' : 'Aucun résultat'}
-          </p>
-          <p style={{ fontSize: '0.8125rem', marginTop: 4, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>
+        <section className="prj-panel sal-empty">
+          <Package size={28} style={{ opacity: 0.4 }} />
+          <strong>{contenants.length === 0 ? 'Aucun format de production' : 'Aucun résultat'}</strong>
+          <span style={{ maxWidth: 420 }}>
             {contenants.length === 0
               ? 'Un format est le cadre, le moule ou la plaque dans lequel une recette est lancée : il fixe la quantité théorique et le rendement.'
               : 'Aucun format ne correspond aux filtres actifs.'}
-          </p>
-          <div style={{ marginTop: '1rem' }}>
+          </span>
+          <div style={{ marginTop: 4 }}>
             {contenants.length === 0 ? (
               <button onClick={() => { setCreating(true); setEditing(null); }} className="odoo-btn-primary">
                 <Plus size={14} /> Créer un format
@@ -387,10 +359,10 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
               </button>
             )}
           </div>
-        </div>
+        </section>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table">
+        <ListPanel>
+          <table className="odoo-table" style={{ margin: 0 }}>
             <thead>
               <tr>
                 <th style={{ width: 28, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
@@ -427,7 +399,7 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
               ))}
             </tbody>
           </table>
-        </div>
+        </ListPanel>
       )}
     </>
   );
@@ -527,7 +499,7 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelec
             <div className="grid grid-cols-2 gap-6">
               {/* Linked recipes */}
               <div>
-                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <h4 className="text-sm font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
                   <ChefHat size={12} /> Recettes liées ({linkedRecipes.length})
                 </h4>
                 <div className="space-y-1.5">
@@ -552,7 +524,7 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelec
               </div>
               {/* Loss categories */}
               <div>
-                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Catégories de pertes</h4>
+                <h4 className="text-sm font-semibold text-gray-600 mb-2">Catégories de pertes</h4>
                 {c.categories_pertes?.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {c.categories_pertes.map((p, i) => (
@@ -745,7 +717,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
 
           {/* Dimensions physiques (mig 167) — sert au libelle, au rendement decoupe et a la comparaison */}
           <div className="border border-gray-200 rounded p-3 space-y-3" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
-            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-2">
+            <div className="text-sm font-semibold text-gray-600 flex items-center gap-2">
               📐 Dimensions physiques <span className="font-normal normal-case tracking-normal text-gray-400">(optionnel)</span>
             </div>
             <div className="grid grid-cols-4 gap-3">

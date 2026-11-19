@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
+import '../controle/KlUi';
 
 /** Briques communes aux onglets de la Journée boutique (style odoo, pas de Tailwind coloré). */
 
@@ -16,11 +17,13 @@ export const inputStyle: CSSProperties = {
   fontSize: '0.8125rem', background: 'var(--odoo-bg)', color: 'var(--odoo-text)',
 };
 
-export const tableWrap: CSSProperties = { overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 };
+/** Classe d'un tableau en carte (design Ventes) : prj-panel + défilement horizontal. */
+export const tableCard = 'prj-panel prj-scroll';
 export const muted: CSSProperties = { fontSize: '0.6875rem', color: 'var(--theme-text-muted)' };
+/** Intertitre de section (design Ventes) : pas de capitales forcées. */
 export const sectionTitle: CSSProperties = {
-  fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
-  color: 'var(--odoo-text-muted)', margin: '4px 0 0',
+  display: 'flex', alignItems: 'center', gap: 6,
+  fontSize: 17, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--theme-text-strong)', margin: '4px 4px 0',
 };
 
 export function Dot({ color }: { color: string }) {

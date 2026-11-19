@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, RotateCcw, Save, Type } from 'lucide-react';
+import { Loader2, PencilLine, RotateCcw, Save, Type } from 'lucide-react';
 import api from '../../api/client';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { usePermissions } from '../../context/PermissionsContext';
 
 /**
@@ -69,8 +70,8 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
         pour toute la société, menus et écrans compris. « Rétablir » rend le terme du secteur.
       </StatusBanner>
 
-      <div className="odoo-card" style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }} aria-label="Aperçu">
-        <div className="text-xs font-medium text-gray-500" style={{ marginBottom: 4 }}>Aperçu</div>
+      <div className="prj-panel" style={{ padding: '14px 18px', fontSize: '0.875rem' }} aria-label="Aperçu">
+        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Aperçu</div>
         Menu « {term('production')} » › « {term('production_plans')} » › bouton « {term('new_plan')} ».
         Chaque {term('production_plan').toLowerCase()} suit une {term('recipe').toLowerCase()} :
         {' '}{term('base_preps').toLowerCase()} puis {term('finished_product').toLowerCase()},
@@ -78,10 +79,11 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
       </div>
 
       {groups.map(([group, items]) => (
-        <div key={group} style={{ overflowX: 'auto' }}>
+        <div key={group} className="prj-panel">
+          <div className="prj-panel-head">{group}</div>
+          <div className="prj-scroll">
           <table className="odoo-table">
             <thead>
-              <tr><th colSpan={4}>{group}</th></tr>
               <tr><th>Désigne</th><th>Terme du secteur</th><th>Terme affiché</th><th /></tr>
             </thead>
             <tbody>
@@ -94,7 +96,7 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
                       onChange={e => setDrafts(d => ({ ...d, [it.key]: e.target.value }))} />
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    {it.override && <span className="odoo-tag odoo-tag-blue" title={it.updatedBy ? `Modifié par ${it.updatedBy}` : undefined}>Modifié</span>}
+                    {it.override && <StatusTag tone="progress" icon={PencilLine} title={it.updatedBy ? `Modifié par ${it.updatedBy}` : undefined} label="Modifié" />}
                     {canEdit && it.override && (
                       <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 6 }} disabled={reset.isPending}
                         onClick={() => reset.mutate(it.key)} aria-label={`Rétablir ${it.designates}`}>
@@ -106,6 +108,7 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ))}
 

@@ -10,6 +10,7 @@ import { approvalsApi, apiErrorMessage, type ApprovalRule, type ApprovalRuleInpu
 import { rolesApi } from '../../api/users.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
@@ -138,8 +139,8 @@ export default function ApprovalsTab() {
       {!rules.length && <StatusBanner tone="warning" icon={ClipboardCheck} title="Circuits indisponibles">La migration 350 n'est pas appliquée sur cette base.</StatusBanner>}
 
       {draft && (
-        <section style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 12, display: 'grid', gap: 10, background: 'var(--odoo-bg-card, var(--odoo-bg))' }}>
-          <h3 style={{ margin: 0, fontSize: '0.9375rem' }}>Nouvelle règle</h3>
+        <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
+          <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em' }}>Nouvelle règle</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
             <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Libellé
               <input id="approval-new-label" value={draft.label} style={inputStyle} placeholder="Ex. BC fournisseur farine" onChange={e => setDraft({ ...draft, label: e.target.value })} />
@@ -178,7 +179,7 @@ export default function ApprovalsTab() {
         </section>
       )}
 
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-panel prj-scroll">
         <table className="odoo-table">
           <thead>
             <tr>
@@ -246,13 +247,13 @@ export default function ApprovalsTab() {
                 </td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: '0.8125rem' }}>
                   <div>{r.requests_30d} demande{r.requests_30d > 1 ? 's' : ''}</div>
-                  {r.rejected_30d > 0 && <div style={{ color: '#dc3545' }}>{r.rejected_30d} refus</div>}
-                  {r.pending_count > 0 && <div><span className="odoo-tag odoo-tag-orange">{r.pending_count} en attente</span></div>}
+                  {r.rejected_30d > 0 && <div style={{ color: 'var(--prj-red)' }}>{r.rejected_30d} refus</div>}
+                  {r.pending_count > 0 && <div style={{ marginTop: 2 }}><StatusTag tone="todo" label={`${r.pending_count} en attente`} /></div>}
                 </td>
                 {editable && (
                   <td style={{ textAlign: 'right' }}>
                     {canDelete('settings') && (
-                      <button type="button" className="odoo-pager-btn" title="Supprimer la règle" aria-label={`Supprimer « ${r.label} »`} style={{ color: '#dc3545' }}
+                      <button type="button" className="odoo-pager-btn" title="Supprimer la règle" aria-label={`Supprimer « ${r.label} »`} style={{ color: 'var(--prj-red)' }}
                         onClick={async () => { if (await confirm(`Supprimer la règle « ${r.label} » ? Les pièces de ce type ne demanderont plus d'approbation.`, { danger: true, confirmLabel: 'Supprimer' })) remove.mutate(r.code); }}>
                         <Trash2 size={13} />
                       </button>

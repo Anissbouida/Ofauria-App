@@ -19,11 +19,13 @@ import {
   Clock, CheckCircle2, Play, Flag, Eye, AlertCircle,
   FileText, User,
   ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Layers,
-  TrendingUp,
+  TrendingUp, Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty, type FilterChip } from '../sales/ListTemplate';
 
 
 const roleConfig: Record<string, { color: string; bg: string; gradient: string }> = {
@@ -51,11 +53,7 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }
 
 export default function ProductionPage() {
-  return (
-    <div className="odoo-scope">
-      <ProductionPlansView />
-    </div>
-  );
+  return <ProductionPlansView />;
 }
 
 function ProductionPlansView() {
@@ -181,84 +179,23 @@ function ProductionPlansView() {
     { key: 'completed', label: PRODUCTION_STATUS_LABELS.completed, count: stats.completed, icon: Flag },
   ];
 
+  // Pastilles de statut (gabarit Liste Ventes) : remplacent les tuiles et les onglets.
+  const chips: FilterChip[] = tabs.map(t => ({ key: t.key, label: t.label, count: t.count, icon: t.icon }));
+
   return (
-    <>
-      {/* ══════ CONTROL BAR ══════ */}
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <Factory size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Production</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">Plans</span>
-        </div>
-        <button onClick={() => { setResumePrefill(null); setShowForm(true); }} className="odoo-btn-primary">
-          <Plus size={14} /> Nouveau
-        </button>
+    <SalesPageShell icon={Factory} parent="Production" title="Plans" list
+      summary={<><b>{filteredPlans.length}</b> / {plans.length} plan(s){stats.in_progress > 0 ? <> · <b>{stats.in_progress}</b> en cours</> : null}</>}
+      actions={<>
         <button onClick={() => setShowResumePicker(true)} className="odoo-btn-secondary">
           <RotateCcw size={13} /> Reprendre
         </button>
-        <div style={{ flex: 1 }} />
-        <span className="odoo-pager">
-          <strong>{filteredPlans.length}</strong> / {(data as Record<string, any>[] | undefined)?.length || 0}
-        </span>
-      </div>
+        <button onClick={() => { setResumePrefill(null); setShowForm(true); }} className="odoo-btn-primary">
+          <Plus size={14} /> Nouveau
+        </button>
+      </>}>
 
-      {/* ══════ STAT TILES (sober) ══════ */}
-      <div className="odoo-stat-grid">
-        <button onClick={() => setStatusFilter('')}
-          className={`odoo-stat-card ${statusFilter === '' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <FileText size={11} style={{ display: 'inline', marginRight: 4 }} />Brouillons
-          </div>
-          <div className="odoo-stat-card-value">{stats.draft}</div>
-        </button>
-        <button onClick={() => setStatusFilter(statusFilter === 'confirmed' ? '' : 'confirmed')}
-          className={`odoo-stat-card ${statusFilter === 'confirmed' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <CheckCircle2 size={11} style={{ display: 'inline', marginRight: 4, color: '#1f6391' }} />Confirmés
-          </div>
-          <div className="odoo-stat-card-value">{stats.confirmed}</div>
-        </button>
-        <button onClick={() => setStatusFilter(statusFilter === 'in_progress' ? '' : 'in_progress')}
-          className={`odoo-stat-card ${statusFilter === 'in_progress' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <Play size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />En cours
-          </div>
-          <div className="odoo-stat-card-value" style={{ color: stats.in_progress > 0 ? '#b85d1a' : undefined }}>{stats.in_progress}</div>
-        </button>
-        <button onClick={() => setStatusFilter(statusFilter === 'completed' ? '' : 'completed')}
-          className={`odoo-stat-card ${statusFilter === 'completed' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <Flag size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Terminés
-          </div>
-          <div className="odoo-stat-card-value">{stats.completed}</div>
-        </button>
-      </div>
-
-      {/* ══════ SEARCH PANEL avec filtres role + statut ══════ */}
-      <div className="odoo-search-panel">
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Rechercher par date, chef, commande..."
-          className="odoo-search-input" />
-        {searchQuery && (
-          <span className="odoo-filter-chip">
-            Recherche: {searchQuery}
-            <span className="odoo-filter-chip-remove" onClick={() => setSearchQuery('')}>×</span>
-          </span>
-        )}
-        {statusFilter && (
-          <span className="odoo-filter-chip">
-            {tabs.find(t => t.key === statusFilter)?.label}
-            <span className="odoo-filter-chip-remove" onClick={() => setStatusFilter('')}>×</span>
-          </span>
-        )}
-        {roleFilter && (
-          <span className="odoo-filter-chip">
-            {ws.label(roleFilter)}
-            <span className="odoo-filter-chip-remove" onClick={() => setRoleFilter('')}>×</span>
-          </span>
-        )}
+      {/* Barre d'outils : recherche + filtre atelier */}
+      <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="Rechercher par date, chef, commande...">
         {(isAdmin || ws.mine.length > 1) && (
           <SearchSelect
             options={ws.workshops.filter(w => isAdmin || ws.mine.includes(w.code)).map(w => ({ id: w.code, label: w.label }))}
@@ -267,37 +204,19 @@ function ProductionPlansView() {
             placeholder="Atelier"
           />
         )}
-      </div>
+      </ListToolbar>
 
-      {/* Tabs status secondaires (Odoo notebook) */}
-      <div className="odoo-tabs">
-        {tabs.map((tab) => (
-          <button key={tab.key} onClick={() => setStatusFilter(statusFilter === tab.key ? '' : tab.key)}
-            className={`odoo-tab ${statusFilter === tab.key ? 'active' : ''}`}>
-            <tab.icon size={13} />
-            {tab.label}
-            {tab.count > 0 && (
-              <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{tab.count}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* Statuts en pastilles avec compteurs */}
+      <FilterChips chips={chips} value={statusFilter} onChange={k => setStatusFilter(statusFilter === k ? '' : k)} label="Filtrer par statut" />
 
       {/* Plans table */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        </div>
+        <section className="prj-panel sal-empty"><Loader2 className="animate-spin" size={20} /><span>Chargement des plans…</span></section>
       ) : filteredPlans.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Factory size={40} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.875rem', fontWeight: 500 }}>Aucun plan de production</p>
-          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>
-            {searchQuery ? 'Essayez une autre recherche' : 'Créez votre premier plan de production'}
-          </p>
-        </div>
+        <ListEmpty icon={Factory} title="Aucun plan de production"
+          text={searchQuery ? 'Essayez une autre recherche' : 'Créez votre premier plan de production'} />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <ListPanel>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -439,7 +358,7 @@ function ProductionPlansView() {
                 })}
               </tbody>
             </table>
-        </div>
+        </ListPanel>
       )}
 
       {showForm && (
@@ -524,7 +443,7 @@ function ProductionPlansView() {
           </div>
         </div>
       )}
-    </>
+    </SalesPageShell>
   );
 }
 

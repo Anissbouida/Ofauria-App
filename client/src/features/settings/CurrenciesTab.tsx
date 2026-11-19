@@ -55,7 +55,7 @@ export default function CurrenciesTab() {
         )}
       </div>
       {newCur && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', background: 'var(--odoo-bg-alt)' }}>
+        <div className="prj-panel" style={{ padding: '16px 18px', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={{ ...lab, width: 100 }}>Code ISO<input style={{ ...field, fontFamily: 'ui-monospace, monospace' }} maxLength={3} value={newCur.code} onChange={e => setNewCur({ ...newCur, code: e.target.value.toUpperCase() })} placeholder="CHF" /></label>
           <label style={{ ...lab, flex: '1 1 200px' }}>Libellé<input style={field} maxLength={60} value={newCur.label} onChange={e => setNewCur({ ...newCur, label: e.target.value })} placeholder="Franc suisse" /></label>
           <label style={{ ...lab, width: 90 }}>Symbole<input style={field} maxLength={8} value={newCur.symbol} onChange={e => setNewCur({ ...newCur, symbol: e.target.value })} /></label>
@@ -64,7 +64,7 @@ export default function CurrenciesTab() {
         </div>
       )}
       {isLoading ? <Loader2 className="animate-spin" size={16} /> : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Code</th><th>Devise</th><th style={{ textAlign: 'right' }}>Taux du jour</th><th>Depuis le</th><th>Source</th><th>Statut</th><th></th></tr></thead>
             <tbody>{currencies.map(c => (
@@ -72,7 +72,7 @@ export default function CurrenciesTab() {
                 <td style={{ fontFamily: 'ui-monospace, monospace' }}>{c.code}</td>
                 <td>{c.label}{c.symbol ? ` (${c.symbol})` : ''}{c.is_base && <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6 }}>devise de base</span>}</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                  {c.is_base ? '1' : c.rate ? <>1 {c.code} = <strong>{Number(c.rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</strong> {currencySymbol()}</> : <span style={{ color: '#b85d1a' }}>aucun taux</span>}
+                  {c.is_base ? '1' : c.rate ? <>1 {c.code} = <strong>{Number(c.rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</strong> {currencySymbol()}</> : <span style={{ color: 'var(--prj-orange)' }}>aucun taux</span>}
                 </td>
                 <td>{c.is_base ? '—' : d(c.rate_date)}</td>
                 <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>{c.rate_source ?? ''}</td>
@@ -90,7 +90,7 @@ export default function CurrenciesTab() {
         </div>
       )}
       {rateFor && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', background: 'var(--odoo-bg-alt)' }}>
+        <div className="prj-panel" style={{ padding: '16px 18px', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ fontWeight: 600, width: '100%' }}>Nouveau taux pour {rateFor.code}</div>
           <label style={{ ...lab, width: 200 }}>1 {rateFor.code} = … {currencySymbol()}<input type="number" min={0} step="0.000001" style={field} value={rateFor.rate} onChange={e => setRateFor({ ...rateFor, rate: e.target.value })} autoFocus /></label>
           <label style={{ ...lab, width: 170 }}>À partir du<input type="date" style={field} value={rateFor.validOn} onChange={e => setRateFor({ ...rateFor, validOn: e.target.value })} /></label>
@@ -131,10 +131,10 @@ function Revaluation() {
       </div>
       <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>
         Reste dû en devise revalorisé au taux de la date. Pour information : l'écart n'est comptabilisé qu'au règlement (6331 / 7331).
-        {data.missingRates.length > 0 && <span style={{ color: '#b85d1a' }}> Taux manquant : {data.missingRates.join(', ')}.</span>}
+        {data.missingRates.length > 0 && <span style={{ color: 'var(--prj-orange)' }}> Taux manquant : {data.missingRates.join(', ')}.</span>}
       </p>
       {data.rows.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>Aucune facture en devise à régler.</p> : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Facture</th><th>Fournisseur</th><th style={{ textAlign: 'right' }}>Reste dû</th><th style={{ textAlign: 'right' }}>Taux facture</th><th style={{ textAlign: 'right' }}>Taux au {d(data.date)}</th><th style={{ textAlign: 'right' }}>Écart latent</th></tr></thead>
             <tbody>{data.rows.map(r => (
@@ -144,12 +144,12 @@ function Revaluation() {
                 <td style={{ textAlign: 'right' }}>{n2(r.foreign_remaining)} {String(r.currency_code).trim()}</td>
                 <td style={{ textAlign: 'right' }}>{Number(r.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</td>
                 <td style={{ textAlign: 'right' }}>{r.current_rate != null ? Number(r.current_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 }) : '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600, color: (r.latent ?? 0) > 0 ? '#dc3545' : (r.latent ?? 0) < 0 ? '#198754' : undefined }}>
+                <td style={{ textAlign: 'right', fontWeight: 600, color: (r.latent ?? 0) > 0 ? 'var(--prj-red)' : (r.latent ?? 0) < 0 ? 'var(--prj-green)' : undefined }}>
                   {r.latent == null ? '—' : `${r.latent > 0 ? 'perte ' : r.latent < 0 ? 'gain ' : ''}${money(Math.abs(r.latent))}`}</td>
               </tr>
             ))}</tbody>
             <tfoot><tr><td colSpan={5} style={{ textAlign: 'right' }}>Pertes latentes / gains latents</td>
-              <td style={{ textAlign: 'right', fontWeight: 700 }}><span style={{ color: '#dc3545' }}>{n2(data.latentLoss)}</span> / <span style={{ color: '#198754' }}>{n2(data.latentGain)}</span> {currencySymbol()}</td></tr></tfoot>
+              <td style={{ textAlign: 'right', fontWeight: 700 }}><span style={{ color: 'var(--prj-red)' }}>{n2(data.latentLoss)}</span> / <span style={{ color: 'var(--prj-green)' }}>{n2(data.latentGain)}</span> {currencySymbol()}</td></tr></tfoot>
           </table>
         </div>
       )}

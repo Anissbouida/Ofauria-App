@@ -20,10 +20,11 @@ const WC_STATUS: Record<string, { label: string; color: string }> = {
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListPanel } from '../sales/ListTemplate';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
@@ -36,51 +37,43 @@ const colHead: React.CSSProperties = { fontSize: '0.7rem', textTransform: 'upper
 
 export default function WorkCentersPage() {
   const [view, setView] = useState<'routings' | 'centers'>('routings');
+  // Création lancée depuis la barre du haut (bouton principal de l'écran).
+  const [creating, setCreating] = useState(false);
   return (
-    <div className="odoo-scope" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <StatusBanner tone="info" icon={Cog} title="Postes de travail & gammes">
-        Définissez vos postes de travail et leur coût horaire, puis des gammes (séquences d'opérations) pour obtenir le coût de main-d'œuvre standard de fabrication. Capacité autonome, à côté des plans de production réels.
-      </StatusBanner>
-
-      {/* Onglets : la gamme s'appuie sur les postes, donc Gammes en premier. */}
-      <div style={{ display: 'inline-flex', gap: 2, padding: 3, background: 'var(--theme-bg-subtle, rgba(127,127,127,0.08))', borderRadius: 8, alignSelf: 'flex-start' }}>
-        <SegTab icon={ListOrdered} label="Gammes" active={view === 'routings'} onClick={() => setView('routings')} />
-        <SegTab icon={Wrench} label="Postes de travail" active={view === 'centers'} onClick={() => setView('centers')} />
-      </div>
-
-      {view === 'routings' ? <Routings /> : <Centers />}
-    </div>
+    <SalesPageShell icon={Cog} parent="Production" title="Postes & gammes"
+      summary="Définissez vos postes de travail et leur coût horaire, puis des gammes (séquences d'opérations) pour obtenir le coût de main-d'œuvre standard de fabrication. Capacité autonome, à côté des plans de production réels."
+      actions={<>
+        {/* Contrôle segmenté : la gamme s'appuie sur les postes, donc Gammes en premier. */}
+        <div className="prj-views" role="group" aria-label="Vue">
+          <SegTab icon={ListOrdered} label="Gammes" active={view === 'routings'} onClick={() => { setView('routings'); setCreating(false); }} />
+          <SegTab icon={Wrench} label="Postes de travail" active={view === 'centers'} onClick={() => { setView('centers'); setCreating(false); }} />
+        </div>
+        <button className="odoo-btn-primary" onClick={() => setCreating(true)}>
+          <Plus size={14} /> {view === 'routings' ? 'Nouvelle gamme' : 'Nouveau poste'}
+        </button>
+      </>}>
+      {view === 'routings'
+        ? <Routings creating={creating} onCreatingChange={setCreating} />
+        : <Centers creating={creating} onCreatingChange={setCreating} />}
+    </SalesPageShell>
   );
 }
 
 function SegTab({ icon: Icon, label, active, onClick }: { icon: typeof Cog; label: string; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.4rem 0.9rem', borderRadius: 6, border: 'none', cursor: 'pointer',
-      font: 'inherit', fontWeight: 600, fontSize: '0.82rem',
-      background: active ? 'var(--odoo-bg)' : 'transparent', color: active ? 'var(--theme-accent)' : 'var(--theme-text-muted)',
-      boxShadow: active ? '0 1px 2px rgba(0,0,0,0.12)' : 'none',
-    }}><Icon size={14} /> {label}</button>
+    <button type="button" onClick={onClick} className={active ? 'active' : ''} aria-pressed={active}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon size={14} /> {label}</button>
   );
 }
 
-/** Barre d'outils d'une liste : titre + compteur à gauche, action à droite. */
-function Toolbar({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-      <div style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{title}</span>
-        <span style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>{count}</span>
-      </div>
-      {children}
-    </div>
-  );
+/** En-tête d'une liste : titre + compteur (le bouton de création est dans la barre du haut). */
+function Toolbar({ title, count }: { title: string; count: number }) {
+  return <div className="kl-sec" style={{ marginBottom: 0 }}><h2>{title}</h2><small>{count}</small></div>;
 }
 
-function Centers() {
+function Centers({ creating: showForm, onCreatingChange: setShowForm }: { creating: boolean; onCreatingChange: (v: boolean) => void }) {
   const qc = useQueryClient();
   const { data: rows = [], isLoading } = useQuery({ queryKey: ['work-centers'], queryFn: routingsApi.workCenters });
-  const [showForm, setShowForm] = useState(false);
   const [oeeFor, setOeeFor] = useState<{ id: string; name: string } | null>(null);
   const [calFor, setCalFor] = useState<{ id: string; name: string } | null>(null);
   const toggle = useMutation({
@@ -95,11 +88,9 @@ function Centers() {
   });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <Toolbar title="Postes de travail" count={rows.length}>
-        <button className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouveau poste</button>
-      </Toolbar>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
+      <Toolbar title="Postes de travail" count={rows.length} />
+      <ListPanel>
+        <table className="odoo-table" style={{ margin: 0 }}>
           <thead><tr><th>Poste</th><th style={{ textAlign: 'right' }}>Coût horaire</th><th style={{ textAlign: 'right' }}>Capacité</th><th>Statut</th><th style={{ textAlign: 'right' }}>Utilisé dans</th><th>État</th><th style={{ width: 90 }} /></tr></thead>
           <tbody>
             {isLoading && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
@@ -126,7 +117,7 @@ function Centers() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ListPanel>
       {showForm && <CenterForm onClose={() => setShowForm(false)} onSaved={() => { qc.invalidateQueries({ queryKey: ['work-centers'] }); setShowForm(false); }} />}
       {oeeFor && <WorkCenterOeeModal workCenter={oeeFor} onClose={() => setOeeFor(null)} />}
       {calFor && <WorkCenterCalendarModal workCenter={calFor} onClose={() => setCalFor(null)} />}
@@ -175,17 +166,18 @@ function CenterForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
   );
 }
 
-function Routings() {
+function Routings({ creating, onCreatingChange }: { creating: boolean; onCreatingChange: (v: boolean) => void }) {
   const qc = useQueryClient();
   const { data: rows = [], isLoading } = useQuery({ queryKey: ['routings'], queryFn: routingsApi.list });
-  const [editing, setEditing] = useState<string | 'new' | null>(null);
+  const [editingId, setEditing] = useState<string | null>(null);
+  // « Nouvelle gamme » vient de la barre du haut ; une gamme existante s'ouvre au clic sur sa ligne.
+  const editing: string | 'new' | null = creating ? 'new' : editingId;
+  const closeEditor = () => { setEditing(null); onCreatingChange(false); };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <Toolbar title="Gammes" count={rows.length}>
-        <button className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouvelle gamme</button>
-      </Toolbar>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
+      <Toolbar title="Gammes" count={rows.length} />
+      <ListPanel>
+        <table className="odoo-table" style={{ margin: 0 }}>
           <thead><tr><th>Gamme</th><th>Produit associé</th><th style={{ textAlign: 'right' }}>Fournée</th><th style={{ textAlign: 'right' }}>Opérations</th><th style={{ textAlign: 'right' }}>Durée</th><th style={{ textAlign: 'right' }}>Coût MO standard</th><th>État</th></tr></thead>
           <tbody>
             {isLoading && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
@@ -203,8 +195,8 @@ function Routings() {
             ))}
           </tbody>
         </table>
-      </div>
-      {editing && <RoutingEditor id={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { qc.invalidateQueries({ queryKey: ['routings'] }); setEditing(null); }} />}
+      </ListPanel>
+      {editing && <RoutingEditor id={editing === 'new' ? null : editing} onClose={closeEditor} onSaved={() => { qc.invalidateQueries({ queryKey: ['routings'] }); closeEditor(); }} />}
     </div>
   );
 }

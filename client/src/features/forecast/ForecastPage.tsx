@@ -16,6 +16,8 @@ import { categoriesApi } from '../../api/categories.api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import SearchSelect from '../../components/ui/SearchSelect';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListKpi } from '../sales/ListTemplate';
 import { notify } from '../../components/ui/InlineNotification';
 
 /**
@@ -58,32 +60,27 @@ export default function ForecastPage() {
   const current = tabs.find(t => t.key === tab)!;
 
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <TrendingUp size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Prévision de la demande</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{current.label}</span>
+    <SalesPageShell icon={TrendingUp} parent="Production" title="Prévisions" list
+      summary={<>Prévision de la demande · {current.label}</>}
+      actions={
+        /* 2 à 4 vues : contrôle segmenté (design Ventes). */
+        <div className="prj-views" role="tablist" aria-label="Vues de la prévision">
+          {tabs.map(t => {
+            const Icon = t.icon;
+            return (
+              <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}
+                className={tab === t.key ? 'active' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Icon size={13} /> {t.label}
+              </button>
+            );
+          })}
         </div>
-      </div>
-      <div className="odoo-tabs">
-        {tabs.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
-              <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {tab === 'grille' && <GridTab canEdit={canEdit} onTab={setTab} />}
-        {tab === 'evenements' && <EventsTab canEdit={canEdit} />}
-        {tab === 'liens' && canEdit && <LinksTab />}
-        {tab === 'precision' && canEdit && <AccuracyTab />}
-      </div>
-    </div>
+      }>
+      {tab === 'grille' && <GridTab canEdit={canEdit} onTab={setTab} />}
+      {tab === 'evenements' && <EventsTab canEdit={canEdit} />}
+      {tab === 'liens' && canEdit && <LinksTab />}
+      {tab === 'precision' && canEdit && <AccuracyTab />}
+    </SalesPageShell>
   );
 }
 
@@ -138,15 +135,15 @@ function GridTab({ canEdit, onTab }: { canEdit: boolean; onTab: (t: Tab) => void
         </StatusBanner>
       )}
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
+      <div className="prj-toolbar">
         <button type="button" className="odoo-btn-secondary" aria-label="Semaine précédente" onClick={() => setFrom(addDays(from, -7))}><ChevronLeft size={14} /></button>
-        <input type="date" value={from} onChange={e => e.target.value && setFrom(e.target.value)} className="odoo-search-input" style={{ width: 150 }} aria-label="Premier jour" />
+        <input type="date" value={from} onChange={e => e.target.value && setFrom(e.target.value)} className="input" style={{ width: 160 }} aria-label="Premier jour" />
         <button type="button" className="odoo-btn-secondary" aria-label="Semaine suivante" onClick={() => setFrom(addDays(from, 7))}><ChevronRight size={14} /></button>
         {from !== tomorrow && <button type="button" className="odoo-btn-secondary" onClick={() => setFrom(tomorrow)}>Demain</button>}
-        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-          <Search size={13} style={{ position: 'absolute', left: 8, color: 'var(--theme-text-muted)' }} />
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Produit…" className="odoo-search-input" style={{ paddingLeft: 26, width: 180 }} aria-label="Rechercher un produit" />
-        </span>
+        <label className="prj-search" style={{ width: 200 }}>
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Produit…" aria-label="Rechercher un produit" />
+        </label>
         <SearchSelect value={category} onChange={setCategory} ariaLabel="Catégorie" placeholder="Toutes catégories" width={200}
           options={categories.map(([id, name]) => ({ id: String(id), label: name as string }))} />
         <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginLeft: 'auto' }}>
@@ -161,7 +158,7 @@ function GridTab({ canEdit, onTab }: { canEdit: boolean; onTab: (t: Tab) => void
           Aucune vente enregistrée sur les 8 dernières semaines pour ce magasin (caisse ou Contrôle des ventes).
         </StatusBanner>
       ) : (
-        <div style={{ overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table" style={{ margin: 0 }}>
             <thead>
               <tr>
@@ -256,7 +253,7 @@ function EventsTab({ canEdit }: { canEdit: boolean }) {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
+      <div className="prj-toolbar">
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
           <input type="checkbox" checked={showPast} onChange={e => setShowPast(e.target.checked)} /> Afficher les événements passés
         </label>
@@ -268,7 +265,7 @@ function EventsTab({ canEdit }: { canEdit: boolean }) {
       </div>
 
       {draft && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, alignItems: 'end' }}>
+        <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, alignItems: 'end' }}>
           <Field label="Libellé"><input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} className="odoo-search-input" placeholder="Aïd al-Adha" /></Field>
           <Field label="Type">
             <select value={draft.kind} onChange={e => {
@@ -304,7 +301,7 @@ function EventsTab({ canEdit }: { canEdit: boolean }) {
           Ajoutez Ramadan, les fêtes, les vacances scolaires ou les jours de fermeture : la prévision en tient compte, et exclut ces jours de l'historique normal.
         </StatusBanner>
       ) : (
-        <div style={{ overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table" style={{ margin: 0 }}>
             <thead>
               <tr><th>Événement</th><th>Type</th><th>Période</th><th style={{ textAlign: 'right' }}>Effet</th><th>Catégorie</th><th>Magasin</th>{canEdit && <th />}</tr>
@@ -364,7 +361,7 @@ function LinksTab() {
         Les ventes importées depuis Loyverse sont identifiées par leur nom ou leur SKU. Tant qu'un article n'est pas relié à un produit du catalogue,
         ses ventes n'alimentent ni la prévision ni la fiche de besoin. Les articles les plus vendus sont en tête.
       </StatusBanner>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
+      <div className="prj-toolbar">
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
           <input type="checkbox" checked={onlySold} onChange={e => setOnlySold(e.target.checked)} /> Seulement les articles vendus ces 60 derniers jours
         </label>
@@ -374,7 +371,7 @@ function LinksTab() {
       {isLoading ? <Loading /> : rows.length === 0 ? (
         <StatusBanner tone="success" icon={CheckCircle2} title="Tous les articles vendus sont reliés" />
       ) : (
-        <div style={{ overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table" style={{ margin: 0 }}>
             <thead><tr><th>Article Loyverse</th><th>Catégorie Loyverse</th><th style={{ textAlign: 'right' }}>Vendu (60 j)</th><th>Produit du catalogue</th><th /></tr></thead>
             <tbody>
@@ -416,11 +413,11 @@ function AccuracyTab() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
+      <div className="prj-toolbar">
         <span style={{ fontSize: '0.8125rem' }}>Du</span>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="odoo-search-input" style={{ width: 150 }} aria-label="Du" />
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="input" style={{ width: 160 }} aria-label="Du" />
         <span style={{ fontSize: '0.8125rem' }}>au</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="odoo-search-input" style={{ width: 150 }} aria-label="Au" />
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="input" style={{ width: 160 }} aria-label="Au" />
       </div>
       {isLoading ? <Loading /> : !data || data.days === 0 ? (
         <StatusBanner tone="info" icon={Info} title="Pas encore de mesure">
@@ -428,20 +425,12 @@ function AccuracyTab() {
         </StatusBanner>
       ) : (
         <>
-          <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
-            <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-              <div className="odoo-stat-card-label">Erreur moyenne (MAPE)</div>
-              <div className="odoo-stat-card-value">{data.mape == null ? '—' : `${data.mape} %`}</div>
-              <div className="odoo-stat-card-sub">écart moyen entre prévu et vendu</div>
-            </div>
-            <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-              <div className="odoo-stat-card-label">Lignes mesurées</div>
-              <div className="odoo-stat-card-value">{data.days}</div>
-              <div className="odoo-stat-card-sub">produit × jour</div>
-            </div>
+          <div className="prj-kpis">
+            <ListKpi label="Erreur moyenne (MAPE)" value={data.mape == null ? '—' : `${data.mape} %`} sub="écart moyen entre prévu et vendu" />
+            <ListKpi label="Lignes mesurées" value={String(data.days)} sub="produit × jour" />
           </div>
           {[['Par catégorie', data.byCategory], ['Par produit', data.byProduct.slice(0, 50)]].map(([title, list]) => (
-            <div key={title as string} style={{ overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
+            <div key={title as string} className="prj-panel prj-scroll">
               <table className="odoo-table" style={{ margin: 0 }}>
                 <thead><tr><th>{title as string}</th><th style={{ textAlign: 'right' }}>Jours</th><th style={{ textAlign: 'right' }}>Prévu</th><th style={{ textAlign: 'right' }}>Vendu</th><th style={{ textAlign: 'right' }}>Erreur</th></tr></thead>
                 <tbody>
@@ -477,8 +466,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Loading() {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+    <section className="prj-panel sal-empty">
       <Loader2 size={22} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-    </div>
+    </section>
   );
 }

@@ -52,7 +52,7 @@ export default function BomVersionBanner({ recipeId }: { recipeId: string }) {
   const active = data.versions.find(v => v.status === 'active');
 
   return (
-    <div style={{ marginBottom: '1rem', display: 'grid', gap: 8 }}>
+    <div style={{ display: 'grid', gap: 8 }}>
       <StatusBanner tone={data.pendingChanges ? 'warning' : 'info'} icon={GitBranch}
         title={active ? `Version ${active.version_no} active depuis le ${fr(active.valid_from)}` : 'Aucune version active'}
         actions={<>

@@ -61,9 +61,9 @@ export default function PayrollPayDialog({ employeeName, periodLabel, net, outst
               hint="Montant modifiable — mettre 0 pour ne rien retenir sur cette paie.">
               <input type="number" step="0.01" min="0" max={maxDeduction} value={deduction}
                 onChange={e => setDeduction(e.target.value)} className={inputCls}
-                style={invalid ? { borderColor: '#dc3545' } : undefined} />
+                style={invalid ? { borderColor: 'var(--prj-red)' } : undefined} />
             </Field>
-            {invalid && <span style={{ fontSize: '0.75rem', color: '#dc3545' }}>La retenue dépasse le solde d'avances ou le net dû.</span>}
+            {invalid && <span style={{ fontSize: '0.75rem', color: 'var(--prj-red)' }}>La retenue dépasse le solde d'avances ou le net dû.</span>}
           </div>
         </StatusBanner>
       ) : (

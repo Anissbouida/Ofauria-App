@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Gauge, Loader2, RefreshCw, Check, Search } from 'lucide-react';
+import { Gauge, Loader2, RefreshCw, Check } from 'lucide-react';
 import { inventoryApi, type ReorderPointRow } from '../../api/inventory.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import './stock.css';
 
 /**
  * Stock › Paramétrage › Points de commande (G5-02, mig 550).
@@ -62,35 +64,32 @@ export default function ReorderPointsTab() {
       }} />
   );
 
-  if (isLoading || !data) return <div style={{ padding: '1rem' }}><Loader2 className="animate-spin" size={18} /></div>;
+  if (isLoading || !data) return <ListEmpty icon={Loader2} title="Chargement…" />;
 
   return (
-    <div style={{ padding: '1rem', display: 'grid', gap: 12 }}>
+    <div className="stk-stack">
       <StatusBanner tone="info" icon={Gauge} title="Points de commande">
         Point de commande = consommation moyenne des {data.params.usage_days} derniers jours × délai du fournisseur + stock de sécurité.
         Sous ce point, l'article apparaît dans « À commander », qui propose de remonter jusqu'au maximum (à défaut, deux fois le point de commande).
         Mode « calculé » : mis à jour chaque semaine. Mode « manuel » : le recalcul propose, vous validez.
       </StatusBanner>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '4px 8px' }}>
-          <Search size={13} aria-hidden />
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher un article" aria-label="Rechercher un article"
-            style={{ border: 0, outline: 'none', background: 'transparent', fontSize: '0.875rem' }} />
-        </label>
-        <label style={{ fontSize: '0.875rem' }}>
-          <input type="checkbox" checked={onlyProposals} onChange={e => setOnlyProposals(e.target.checked)} /> Propositions à valider ({proposals.length})
-        </label>
-        <div style={{ flex: 1 }} />
+      <ListToolbar search={query} onSearch={setQuery} placeholder="Rechercher un article">
+        <span className="stk-grow" />
         <button type="button" className="odoo-btn-secondary" disabled={recalc.isPending} onClick={() => recalc.mutate()}>
           {recalc.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Recalculer
         </button>
         <button type="button" className="odoo-btn-primary" disabled={!selected.size || apply.isPending} onClick={() => apply.mutate([...selected])}>
           <Check size={14} /> Valider les propositions ({selected.size})
         </button>
-      </div>
+      </ListToolbar>
 
-      <div style={{ overflowX: 'auto' }}>
+      <FilterChips label="Filtrer les points de commande" value={onlyProposals ? 'proposals' : ''} onChange={k => setOnlyProposals(k === 'proposals')} chips={[
+        { key: '', label: 'Tous les articles', count: data.rows.length },
+        { key: 'proposals', label: 'Propositions à valider', count: proposals.length },
+      ]} />
+
+      <ListPanel>
         <table className="odoo-table">
           <thead>
             <tr>
@@ -141,7 +140,7 @@ export default function ReorderPointsTab() {
             ))}
           </tbody>
         </table>
-      </div>
+      </ListPanel>
       <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
         * Délai par défaut ({data.params.default_lead_days} j) : renseignez le délai sur la fiche article × fournisseur pour un calcul juste.
       </p>

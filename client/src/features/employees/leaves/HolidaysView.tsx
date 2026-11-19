@@ -1,20 +1,20 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Check, Loader2, CalendarRange, CalendarDays } from 'lucide-react';
+import { Plus, Trash2, Check, CalendarRange, CalendarDays } from 'lucide-react';
 import { leavesApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { Field, EmptyState, inputCls, panel } from '../ui';
+import { Field, EmptyPanel, LoadingPanel, inputCls, panel } from '../ui';
 
 /**
  * Jours fériés : non décomptés d'un congé en jours ouvrables (art. 232).
  * Les fêtes religieuses suivent le calendrier lunaire : à confirmer à
  * l'annonce officielle (badge « à confirmer »).
  */
-export default function HolidaysView() {
+export default function HolidaysView({ switcher }: { switcher?: ReactNode } = {}) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -43,12 +43,13 @@ export default function HolidaysView() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-          <CalendarRange size={13} /> Année
+      <div className="prj-toolbar">
+        {switcher}
+        <label className="hr-tools">
+          <CalendarRange size={14} style={{ color: 'var(--theme-text-muted)' }} /> <span className="hr-tools-label">Année</span>
           <input type="number" className="odoo-filter-dropdown" style={{ width: 96 }} value={year} onChange={e => setYear(parseInt(e.target.value, 10))} />
         </label>
-        <div style={{ flex: 1 }} />
+        <span className="hr-spacer" />
         {isAdmin && !draft && (
           <button className="odoo-btn-primary" onClick={() => setDraft({ date: `${year}-01-01`, label: '' })} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Plus size={13} /> Ajouter un jour férié
@@ -64,13 +65,11 @@ export default function HolidaysView() {
         </div>
       )}
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-          <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
-        </div>
+        <LoadingPanel />
       ) : !rows.length ? (
-        <EmptyState icon={CalendarDays}>Aucun jour férié saisi pour {year}.</EmptyState>
+        <EmptyPanel icon={CalendarDays}>Aucun jour férié saisi pour {year}.</EmptyPanel>
       ) : (
+        <div className="prj-panel hr-plain"><div className="prj-scroll">
         <table className="odoo-table">
           <thead><tr><th>Date</th><th>Jour</th><th>Libellé</th><th>Statut</th>{isAdmin && <th style={{ width: 70 }}></th>}</tr></thead>
           <tbody>
@@ -84,10 +83,10 @@ export default function HolidaysView() {
                   <td>
                     <div style={{ display: 'inline-flex', gap: 2 }}>
                       {!h.is_confirmed && (
-                        <button className="odoo-pager-btn" title="Confirmer la date" style={{ color: '#28a745' }}
+                        <button className="odoo-pager-btn" title="Confirmer la date" style={{ color: 'var(--prj-green)' }}
                           onClick={() => upsert.mutate({ date: iso(h.holiday_date), label: h.label, isConfirmed: true })}><Check size={13} /></button>
                       )}
-                      <button className="odoo-pager-btn" title="Supprimer" style={{ color: '#dc3545' }}
+                      <button className="odoo-pager-btn" title="Supprimer" style={{ color: 'var(--prj-red)' }}
                         onClick={async () => { if (!(await confirm(`Supprimer « ${h.label} » ? Pour déplacer une fête religieuse, supprimez puis ajoutez la bonne date.`, { title: 'Supprimer le jour férié', confirmLabel: 'Supprimer', danger: true }))) return; remove.mutate(iso(h.holiday_date)); }}><Trash2 size={13} /></button>
                     </div>
                   </td>
@@ -96,6 +95,7 @@ export default function HolidaysView() {
             ))}
           </tbody>
         </table>
+        </div></div>
       )}
     </>
   );

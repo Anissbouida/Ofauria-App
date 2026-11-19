@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { CheckCircle2, Loader2, Printer, Plus, Info, Thermometer } from 'lucide-react';
+import { CheckCircle2, Printer, Plus, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -11,6 +10,8 @@ import {
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
+import { FilterChips } from '../sales/ListTemplate';
+import { Tabs, Panel, SectionTitle, PageLoading } from '../controle/KlUi';
 
 /**
  * Contrôle & Qualité › HACCP (mig 315) — côté gérant : validation des actions
@@ -19,12 +20,12 @@ import { notify } from '../../components/ui/InlineNotification';
  */
 
 type View = 'actions' | 'temperatures' | 'nettoyage' | 'receptions' | 'config';
-const VIEWS: Array<{ key: View; label: string }> = [
-  { key: 'actions', label: 'Actions correctives' },
-  { key: 'temperatures', label: 'Registre températures' },
-  { key: 'nettoyage', label: 'Registre nettoyage' },
-  { key: 'receptions', label: 'Contrôle à réception' },
-  { key: 'config', label: 'Configuration' },
+const VIEWS: Array<[View, string]> = [
+  ['actions', 'Actions correctives'],
+  ['temperatures', 'Registre températures'],
+  ['nettoyage', 'Registre nettoyage'],
+  ['receptions', 'Contrôle à réception'],
+  ['config', 'Configuration'],
 ];
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
@@ -33,21 +34,12 @@ const dt = (s: string | null) => (s ? format(new Date(s), 'dd/MM/yyyy HH:mm') : 
 const t = (v: number | null) => (v == null ? '—' : `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} °C`);
 /** Statut d'une action corrective en étiquette commune : à traiter / à valider = action attendue. */
 const STATUS_TONE: Record<ActionStatus, StatusTone> = { open: 'todo', done: 'todo', validated: 'done' };
-const tableWrap: React.CSSProperties = { overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 };
-
 export default function HaccpManagerTab() {
   const [view, setView] = useState<View>('actions');
+  // Le lien « Feuille du jour » est posé dans la barre du module (ControlePage).
   return (
     <>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="tablist" aria-label="Vues HACCP">
-        {VIEWS.map(v => (
-          <button key={v.key} type="button" role="tab" aria-selected={view === v.key}
-            className={view === v.key ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView(v.key)}>{v.label}</button>
-        ))}
-        <Link to="/haccp" className="odoo-btn-secondary" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Thermometer size={13} /> Feuille du jour
-        </Link>
-      </div>
+      <Tabs label="Vues HACCP" value={view} onChange={setView} options={VIEWS} />
       {view === 'actions' && <ActionsView />}
       {view === 'temperatures' && <TemperaturesView />}
       {view === 'nettoyage' && <CleaningView />}
@@ -59,7 +51,7 @@ export default function HaccpManagerTab() {
 
 function Range({ from, to, onFrom, onTo, children }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void; children?: React.ReactNode }) {
   return (
-    <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
+    <div className="prj-toolbar">
       <span style={{ fontSize: '0.8125rem' }}>Du</span>
       <input type="date" value={from} onChange={e => onFrom(e.target.value)} className="odoo-search-input" style={{ width: 150 }} aria-label="Du" />
       <span style={{ fontSize: '0.8125rem' }}>au</span>
@@ -72,9 +64,7 @@ function Range({ from, to, onFrom, onTo, children }: { from: string; to: string;
   );
 }
 
-function Loading() {
-  return <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 size={20} className="animate-spin" /></div>;
-}
+const Loading = PageLoading;
 
 /* ─── Actions correctives ──────────────────────────────────────────── */
 
@@ -101,20 +91,16 @@ function ActionsView() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <select value={status} onChange={e => setStatus(e.target.value as typeof status)} className="odoo-search-input" aria-label="Statut">
-          <option value="done">À valider</option>
-          <option value="open">À traiter (rien de fait)</option>
-          <option value="validated">Validées</option>
-          <option value="">Toutes (90 jours)</option>
-        </select>
-        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{data.length} action(s)</span>
+      <div className="prj-toolbar">
+        <FilterChips label="Statut" value={status} onChange={k => setStatus(k as typeof status)}
+          chips={[{ key: 'done', label: 'À valider' }, { key: 'open', label: 'À traiter (rien de fait)' }, { key: 'validated', label: 'Validées' }, { key: '', label: 'Toutes (90 jours)' }]} />
+        <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{data.length} action(s)</span>
       </div>
       {isLoading ? <Loading /> : data.length === 0 ? (
         <StatusBanner tone="success" icon={CheckCircle2} title="Rien à afficher">Aucune action corrective dans cet état.</StatusBanner>
       ) : (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Date</th><th>Origine</th><th>Problème</th><th>Action réalisée</th><th>Statut</th><th /></tr></thead>
             <tbody>
               {data.map(a => (
@@ -123,9 +109,9 @@ function ActionsView() {
                   <td><span className="odoo-tag odoo-tag-grey">{ACTION_SOURCE_LABELS[a.source_kind]}</span></td>
                   <td style={{ maxWidth: 320 }}>{a.problem}</td>
                   <td style={{ maxWidth: 320, fontSize: '0.8125rem' }}>
-                    {a.action_taken ?? <span style={{ color: '#dc3545' }}>—</span>}
+                    {a.action_taken ?? <span style={{ color: 'var(--prj-red)' }}>—</span>}
                     {a.done_by_name && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{a.done_by_name} · {dt(a.done_at)}</div>}
-                    {a.validation_note && <div style={{ fontSize: '0.6875rem', color: '#b85d1a' }}>Gérant : {a.validation_note}</div>}
+                    {a.validation_note && <div style={{ fontSize: '0.6875rem', color: 'var(--prj-orange)' }}>Gérant : {a.validation_note}</div>}
                   </td>
                   <td><StatusTag tone={STATUS_TONE[a.status] ?? 'draft'} label={ACTION_STATUS_LABELS[a.status]} />
                     {a.validated_by_name && a.status === 'validated' && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{a.validated_by_name}</div>}
@@ -142,7 +128,7 @@ function ActionsView() {
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
     </>
   );
@@ -168,15 +154,15 @@ function TemperaturesView() {
       {isLoading ? <Loading /> : data.length === 0 ? (
         <StatusBanner tone="info" icon={Info} title="Aucun relevé sur la période" />
       ) : (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Date et heure</th><th>Enceinte</th><th style={{ textAlign: 'right' }}>Relevé</th><th>Plage</th><th>Par</th><th>Action corrective</th></tr></thead>
             <tbody>
               {data.map(r => (
                 <tr key={r.id} className={r.in_range ? undefined : 'row-danger'}>
                   <td style={{ whiteSpace: 'nowrap' }}>{dt(r.read_at)}</td>
                   <td>{r.equipment_name}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: r.in_range ? undefined : '#dc3545' }}>{t(r.value)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: r.in_range ? undefined : 'var(--prj-red)' }}>{t(r.value)}</td>
                   <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{t(r.temp_min)} à {t(r.temp_max)}</td>
                   <td style={{ fontSize: '0.75rem' }}>{r.read_by_name ?? '—'}</td>
                   <td style={{ fontSize: '0.75rem' }}>
@@ -186,7 +172,7 @@ function TemperaturesView() {
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
     </>
   );
@@ -202,8 +188,8 @@ function CleaningView() {
       {isLoading ? <Loading /> : data.length === 0 ? (
         <StatusBanner tone="info" icon={Info} title="Aucun nettoyage enregistré sur la période" />
       ) : (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Date et heure</th><th>Zone</th><th>Tâche</th><th>Fréquence</th><th>Par</th><th>Résultat</th></tr></thead>
             <tbody>
               {data.map(l => (
@@ -220,7 +206,7 @@ function CleaningView() {
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
     </>
   );
@@ -274,7 +260,7 @@ function ReceptionCheckForm({ r, onDone }: { r: ReceptionRow; onDone: () => void
         <input value={notes} onChange={e => setNotes(e.target.value)} className="odoo-search-input" />
       </label>
       {anyKo && (
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: '#dc3545', gridColumn: 'span 2' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--prj-red)', gridColumn: 'span 2' }}>
           Action réalisée (refus, avoir demandé…), facultatif
           <input value={actionTaken} onChange={e => setActionTaken(e.target.value)} className="odoo-search-input" />
         </label>
@@ -308,8 +294,8 @@ function ReceptionsView() {
       {isLoading ? <Loading /> : rows.length === 0 ? (
         <StatusBanner tone="success" icon={CheckCircle2} title="Toutes les réceptions de la période sont contrôlées" />
       ) : (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Date</th><th>Bon</th><th>Fournisseur</th><th>Reçu par</th><th>Contrôle</th><th /></tr></thead>
             <tbody>
               {rows.map(r => [
@@ -319,7 +305,7 @@ function ReceptionsView() {
                   <td>{r.supplier_name ?? '—'}</td>
                   <td style={{ fontSize: '0.75rem' }}>{r.received_by_name ?? '—'}</td>
                   <td style={{ fontSize: '0.75rem' }}>
-                    {r.overall_conformity == null ? <span style={{ color: '#b85d1a', fontWeight: 600 }}>Non contrôlée</span>
+                    {r.overall_conformity == null ? <StatusTag tone="todo" label="Non contrôlée" />
                       : r.overall_conformity ? <StatusTag tone="done" label="Conforme" />
                         : <StatusTag tone="blocked" label="Non conforme" />}
                     {r.temperature_value != null && ` · ${t(r.temperature_value)}`}
@@ -337,7 +323,7 @@ function ReceptionsView() {
               ])}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
     </>
   );
@@ -375,14 +361,13 @@ function EquipmentConfigTable() {
   const numOrNull = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <h3 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600 }}>Enceintes froides surveillées</h3>
-        {!adding && <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setAdding(true)}><Plus size={13} /> Ajouter</button>}
-      </div>
+    <div className="klc-stack">
+      <SectionTitle actions={!adding && <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setAdding(true)}><Plus size={13} /> Ajouter</button>}>
+        Enceintes froides surveillées
+      </SectionTitle>
       {isLoading ? <Loading /> : (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Enceinte</th><th>Type</th><th>Surveillée</th><th>Min (°C)</th><th>Max (°C)</th><th>Relevés / jour</th><th /></tr></thead>
             <tbody>
               {adding && (
@@ -422,9 +407,9 @@ function EquipmentConfigTable() {
               })}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
-      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p className="klc-note">
         Repères usuels : froid positif 0 à 4 °C, surgelé ≤ −18 °C, vitrine pâtisserie 0 à 4 °C. Une enceinte créée ici n'entre pas dans le coût de revient.
       </p>
     </div>
@@ -443,13 +428,12 @@ function TasksConfigTable() {
   const empty = () => ({ zone: '', label: '', frequency: 'daily' as Frequency, method: null, is_active: true, display_order: (data.length + 1) * 10 });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <h3 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600 }}>Plan de nettoyage</h3>
-        {!draft && <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setDraft(empty())}><Plus size={13} /> Ajouter une tâche</button>}
-      </div>
+    <div className="klc-stack">
+      <SectionTitle actions={!draft && <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setDraft(empty())}><Plus size={13} /> Ajouter une tâche</button>}>
+        Plan de nettoyage
+      </SectionTitle>
       {draft && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 2fr auto', gap: 8, alignItems: 'end', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 10 }}>
+        <div className="prj-panel klc-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, alignItems: 'end' }}>
           <input value={draft.zone} onChange={e => setDraft({ ...draft, zone: e.target.value })} className="odoo-search-input" placeholder="Zone" aria-label="Zone" />
           <input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} className="odoo-search-input" placeholder="Tâche" aria-label="Tâche" />
           <select value={draft.frequency} onChange={e => setDraft({ ...draft, frequency: e.target.value as Frequency })} className="odoo-search-input" aria-label="Fréquence">
@@ -463,8 +447,8 @@ function TasksConfigTable() {
         </div>
       )}
       {isLoading ? <Loading /> : (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Zone</th><th>Tâche</th><th>Fréquence</th><th>Méthode</th><th>Active</th><th /></tr></thead>
             <tbody>
               {data.map(k => (
@@ -479,7 +463,7 @@ function TasksConfigTable() {
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
     </div>
   );

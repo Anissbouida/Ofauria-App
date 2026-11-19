@@ -1,3 +1,4 @@
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Webhook, Loader2, Plus, Trash2, Copy, Check } from 'lucide-react';
@@ -48,13 +49,13 @@ function ApiKeysSection({ editable }: { editable: boolean }) {
   const toggle = (s: string) => setScopes(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s]);
 
   return (
-    <section style={{ marginBottom: 32 }}>
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><KeyRound size={16} /> Clés d'API</h3>
-      <p style={{ opacity: 0.75 }}>Permettent à un site marchand d'appeler l'API publique (en-tête <code>Authorization: Bearer …</code>).</p>
+    <section id="set-cles-d-api" data-toc="Clés d'API" style={{ display: 'grid', gap: 10 }}>
+      <div className="kl-sec" style={{ margin: '0 4px' }}><h2 style={{ fontSize: 19, display: 'flex', alignItems: 'center', gap: 8 }}><KeyRound size={17} style={{ color: 'var(--theme-accent)' }} /> Clés d'API</h2></div>
+      <p className="odoo-page-note" style={{ margin: '0 4px' }}>Permettent à un site marchand d'appeler l'API publique (en-tête <code>Authorization: Bearer …</code>).</p>
       {plain && <Secret title="Clé créée" value={plain} />}
 
       {editable && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '12px 0' }}>
+        <div className="prj-panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '14px 18px' }}>
           <input className="odoo-input" placeholder="Libellé (ex. Site vitrine)" value={label} onChange={e => setLabel(e.target.value)} style={{ minWidth: 200 }} />
           {API_SCOPES.map(([s, lbl]) => (
             <label key={s} style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
@@ -68,6 +69,7 @@ function ApiKeysSection({ editable }: { editable: boolean }) {
       )}
 
       {isLoading ? <Loader2 className="spin" /> : (
+        <div className="prj-panel prj-scroll">
         <table className="odoo-table">
           <thead><tr><th>Libellé</th><th>Préfixe</th><th>Portée</th><th>Dernier appel</th><th>État</th><th /></tr></thead>
           <tbody>
@@ -77,7 +79,7 @@ function ApiKeysSection({ editable }: { editable: boolean }) {
                 <td><code>{k.key_prefix}…</code></td>
                 <td>{(k.scopes || []).join(', ') || '—'}</td>
                 <td>{k.last_used_at ? new Date(k.last_used_at).toLocaleString('fr-FR') : '—'}</td>
-                <td>{k.revoked_at ? 'Révoquée' : 'Active'}</td>
+                <td>{k.revoked_at ? <StatusTag tone="cancelled" label="Révoquée" /> : <StatusTag tone="done" label="Active" />}</td>
                 <td>{editable && !k.revoked_at && (
                   <button className="odoo-pager-btn" title="Révoquer" onClick={() => revoke.mutate(k.id)}><Trash2 size={13} /></button>
                 )}</td>
@@ -86,6 +88,7 @@ function ApiKeysSection({ editable }: { editable: boolean }) {
             {!data.length && <tr><td colSpan={6} style={{ textAlign: 'center', opacity: 0.6 }}>Aucune clé.</td></tr>}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   );
@@ -115,13 +118,13 @@ function WebhooksSection({ editable }: { editable: boolean }) {
   const toggle = (s: string) => setEvents(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s]);
 
   return (
-    <section>
-      <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Webhook size={16} /> Webhooks</h3>
-      <p style={{ opacity: 0.75 }}>Kalum notifie une URL quand un événement survient. Chaque envoi est signé (en-tête <code>X-Kalum-Signature</code>, HMAC-SHA256 du corps avec le secret).</p>
+    <section id="set-webhooks" data-toc="Webhooks" style={{ display: 'grid', gap: 10 }}>
+      <div className="kl-sec" style={{ margin: '0 4px' }}><h2 style={{ fontSize: 19, display: 'flex', alignItems: 'center', gap: 8 }}><Webhook size={17} style={{ color: 'var(--theme-accent)' }} /> Webhooks</h2></div>
+      <p className="odoo-page-note" style={{ margin: '0 4px' }}>Kalum notifie une URL quand un événement survient. Chaque envoi est signé (en-tête <code>X-Kalum-Signature</code>, HMAC-SHA256 du corps avec le secret).</p>
       {secret && <Secret title="Secret du webhook" value={secret} />}
 
       {editable && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '12px 0' }}>
+        <div className="prj-panel" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '14px 18px' }}>
           <input className="odoo-input" placeholder="Libellé" value={label} onChange={e => setLabel(e.target.value)} style={{ minWidth: 160 }} />
           <input className="odoo-input" placeholder="https://…/webhook" value={url} onChange={e => setUrl(e.target.value)} style={{ minWidth: 240 }} />
           {WEBHOOK_EVENTS.map(([s, lbl]) => (
@@ -136,6 +139,7 @@ function WebhooksSection({ editable }: { editable: boolean }) {
       )}
 
       {isLoading ? <Loader2 className="spin" /> : (
+        <div className="prj-panel prj-scroll">
         <table className="odoo-table">
           <thead><tr><th>Libellé</th><th>URL</th><th>Événements</th><th>Actif</th><th /></tr></thead>
           <tbody>
@@ -156,6 +160,7 @@ function WebhooksSection({ editable }: { editable: boolean }) {
             {!data.length && <tr><td colSpan={5} style={{ textAlign: 'center', opacity: 0.6 }}>Aucun webhook.</td></tr>}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   );
@@ -165,7 +170,7 @@ export default function IntegrationsTab() {
   const { canEdit } = usePermissions();
   const editable = canEdit('settings');
   return (
-    <div>
+    <div style={{ display: 'grid', gap: 28 }}>
       <ApiKeysSection editable={editable} />
       <WebhooksSection editable={editable} />
     </div>

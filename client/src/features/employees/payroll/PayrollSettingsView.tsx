@@ -9,7 +9,7 @@ import { apiErrorMessage } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { HrModal, SubmitButton, Field, SectionTitle, inputCls, fieldLabel, panel } from '../ui';
+import { HrModal, SubmitButton, Field, SectionTitle, LoadingPanel, inputCls, fieldLabel } from '../ui';
 
 type Bracket = { upTo: number | null; rate: number; deduction: number };
 
@@ -140,7 +140,7 @@ export default function PayrollSettingsView() {
     onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur')),
   });
 
-  if (isLoading || !data) return <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>;
+  if (isLoading || !data) return <LoadingPanel />;
 
   const suffixed = (input: ReactNode, suffix?: string) => (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -161,7 +161,8 @@ export default function PayrollSettingsView() {
     </Field>
   );
   const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12 } as const;
-  const card = { ...panel, display: 'flex', flexDirection: 'column', gap: 12 } as const;
+  // Carte du design Ventes (prj-panel) : fond, coins et ombre viennent de la classe.
+  const card = { padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 } as const;
   const checkLabel = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' } as const;
 
   return (
@@ -172,7 +173,7 @@ export default function PayrollSettingsView() {
         </StatusBanner>
       )}
 
-      <section style={card}>
+      <section className="prj-panel" style={card}>
         <SectionTitle icon={Building2}>Employeur et temps de travail</SectionTitle>
         <div style={grid}>
           <Field label="N° d'affiliation CNSS">
@@ -225,10 +226,10 @@ export default function PayrollSettingsView() {
       </section>
 
       {scale && (
-        <section style={card}>
+        <section className="prj-panel" style={card}>
           <SectionTitle icon={Scale}>
             Barème légal — {scale.label}
-            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 8 }}>
+            <span style={{ fontWeight: 400, color: 'var(--theme-text-muted)', marginLeft: 8 }}>
               en vigueur depuis le {new Date(scale.effective_from).toLocaleDateString('fr-FR')}
             </span>
           </SectionTitle>
@@ -309,7 +310,7 @@ export default function PayrollSettingsView() {
         </section>
       )}
 
-      <section style={card}>
+      <section className="prj-panel" style={card}>
         <SectionTitle icon={ListChecks} actions={isAdmin ? (
           <button className="odoo-btn-secondary" onClick={() => setEditRub({ kind: 'gain', soumis_cnss: true, soumis_ir: true, is_active: true })}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Nouvelle rubrique</button>

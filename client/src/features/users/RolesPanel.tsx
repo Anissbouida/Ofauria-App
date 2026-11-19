@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { LoadingPanel, Segmented } from '../employees/ui';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ShieldCheck, ShieldAlert, Eye, Lock, Trash2, Loader2, Check } from 'lucide-react';
+import { Plus, ShieldCheck, ShieldAlert, Eye, Lock, Trash2, Check } from 'lucide-react';
 import * as shared from '@ofauria/shared';
 import {
   APP_MODULES, MODULE_LABELS, MODULE_VERBS, BUSINESS_VERB_LABELS, DATA_SCOPES, DATA_SCOPE_LABELS,
@@ -46,29 +47,29 @@ export default function RolesPanel() {
   const current = roles.find(r => r.code === selected) ?? null;
 
   return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
+    <div style={{ display: 'grid', gap: 16 }}>
       <SecurityModePanel />
-      <div className="odoo-tabs" role="tablist" aria-label="Droits des rôles">
-        <button type="button" role="tab" aria-selected={view === 'modules'} className={`odoo-tab ${view === 'modules' ? 'active' : ''}`} onClick={() => setView('modules')}>Rôles et droits par module</button>
-        <button type="button" role="tab" aria-selected={view === 'actions'} className={`odoo-tab ${view === 'actions' ? 'active' : ''}`} onClick={() => setView('actions')}>Permissions par action</button>
+      <div className="prj-toolbar">
+        <Segmented label="Droits des rôles" value={view} onChange={setView}
+          options={[{ key: 'modules', label: 'Rôles et droits par module' }, { key: 'actions', label: 'Permissions par action' }]} />
       </div>
       {view === 'actions' ? <RoleActionMatrix roles={roles} /> : <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Rôles</h2>
+        <h2 style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.02em', margin: '6px 0 0' }}>Rôles</h2>
         <button className="odoo-btn-primary" onClick={() => { setCreating(true); setSelected(null); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Nouveau rôle
         </button>
       </div>
       {(creating || duplicateOf) && <CreateRoleForm key={duplicateOf?.code ?? 'new'} roles={roles} from={duplicateOf}
         onDone={(code) => { setCreating(false); setDuplicateOf(null); if (code) setSelected(code); }} />}
-      {isLoading ? <Loader2 className="animate-spin" size={18} /> : (
-        <div style={{ overflowX: 'auto' }}>
+      {isLoading ? <LoadingPanel /> : (
+        <div className="prj-panel hr-plain"><div className="prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Rôle</th><th>Rôle de base</th><th>Modules</th><th>Utilisateurs</th><th>Statut</th></tr></thead>
             <tbody>
               {roles.map(r => (
                 <tr key={r.code} onClick={() => { setSelected(r.code); setCreating(false); }}
-                  style={{ cursor: 'pointer', background: r.code === selected ? 'var(--odoo-bg-hover)' : undefined }}>
+                  style={{ cursor: 'pointer', background: r.code === selected ? 'color-mix(in srgb, var(--theme-accent) 8%, transparent)' : undefined }}>
                   <td>
                     <strong>{r.label}</strong>
                     {r.is_system && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Système</span>}
@@ -81,7 +82,7 @@ export default function RolesPanel() {
               ))}
             </tbody>
           </table>
-        </div>
+        </div></div>
       )}
       {current && <RoleEditor key={current.code} role={current} onDeleted={() => setSelected(null)}
         onDuplicate={() => { setDuplicateOf(current); setCreating(false); }} />}
@@ -118,7 +119,7 @@ function SecurityModePanel() {
     <div style={{ display: 'grid', gap: 8 }}>
       <StatusBanner tone={tone} icon={data.mode === 'enforce' ? ShieldCheck : data.mode === 'log' ? Eye : ShieldAlert} title={title}
         actions={
-          <div className="odoo-view-switcher">
+          <div className="prj-views">
             {(['log', 'enforce', 'off'] as const).map(m => (
               <button key={m} className={data.mode === m ? 'active' : ''} disabled={save.isPending} onClick={() => data.mode !== m && setMode(m)}>
                 {m === 'log' ? 'Observer' : m === 'enforce' ? 'Bloquer' : 'Désactiver'}
@@ -130,7 +131,7 @@ function SecurityModePanel() {
         {data.mode === 'log' && ' Laissez tourner quelques jours, vérifiez la liste ci-dessous, puis passez en « Bloquer ».'}
       </StatusBanner>
       {denials.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel hr-plain"><div className="prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Appel hors droits (14 jours)</th><th>Rôle</th><th>Modules requis</th><th>Utilisateurs</th><th>Appels</th><th>Dernier</th></tr></thead>
             <tbody>
@@ -146,7 +147,7 @@ function SecurityModePanel() {
               ))}
             </tbody>
           </table>
-        </div>
+        </div></div>
       )}
     </div>
   );
@@ -267,7 +268,7 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
     return <StatusBanner tone="neutral" icon={Lock} title="Administrateur">L'administrateur a tous les droits ; son rôle ne se modifie pas.</StatusBanner>;
   }
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12 }}>
+    <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontWeight: 600 }}>Droits du rôle « {role.label} »</div>
@@ -290,8 +291,8 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
           </div>
         )}
       </div>
-      {isLoading || !Object.keys(perms).length ? <Loader2 className="animate-spin" size={18} /> : (
-        <div style={{ overflowX: 'auto' }}>
+      {isLoading || !Object.keys(perms).length ? <LoadingPanel /> : (
+        <div className="prj-panel hr-plain"><div className="prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Module</th>{ACTIONS.map(([, l]) => <th key={l} style={{ textAlign: 'center', width: 90 }}>{l}</th>)}</tr></thead>
             <tbody>
@@ -341,7 +342,7 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
               })}
             </tbody>
           </table>
-        </div>
+        </div></div>
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button className="odoo-btn-primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>

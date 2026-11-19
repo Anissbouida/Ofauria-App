@@ -5,17 +5,19 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Package, ShieldCheck, Recycle, Trash2, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight,
-  Search, RefreshCw, Loader2, Info, Edit3, Filter, Store, TrendingDown,
+  RefreshCw, Loader2, Info, Edit3, Filter, Store, TrendingDown,
 } from 'lucide-react';
 import { unsoldDecisionApi } from '../../api/unsold-decision.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import {
-  StagePipeline, ViewSwitch, PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel,
+  PeriodFilter, SelectFilter, PAGE_SIZE, periodParams, periodLabel,
   type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
-import { Dot, EmptyRow, Loading, inputStyle, muted, n0, n2, sectionTitle, tableWrap, toNum } from './shared';
+import { ListToolbar } from '../sales/ListTemplate';
+import { StageChips, Segmented, Panel, PagerFoot } from '../controle/KlUi';
+import { Dot, EmptyRow, Loading, inputStyle, muted, n0, n2, sectionTitle, tableCard, toNum } from './shared';
 
 /**
  * Invendus de fin de journée (ex-écran /unsold) : compter le reste, accepter ou
@@ -46,10 +48,8 @@ export default function InvendusTab() {
   const [view, setView] = useState<'open' | 'history'>('open');
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <ViewSwitch ariaLabel="Invendus" view={view} onChange={setView}
-          openLabel="À décider aujourd'hui" historyLabel="Décisions passées" />
-      </div>
+      <Segmented label="Invendus" value={view} onChange={setView}
+        options={[['open', 'À décider aujourd\'hui'], ['history', 'Décisions passées']] as const} />
       {view === 'open' ? <DecisionPanel /> : <HistoryPanel />}
     </>
   );
@@ -198,7 +198,7 @@ function DecisionPanel() {
         <StatusBanner tone="success" icon={CheckCircle2} title="Aucun invendu">Tous les produits en vitrine ont été vendus.</StatusBanner>
       ) : (
         <>
-          <StagePipeline
+          <StageChips
             title="Destination des invendus"
             summary={`${n0(summary.all.qty)} unités · ${money(summary.all.cost)} au coût de revient`}
             stages={stages}
@@ -207,16 +207,13 @@ function DecisionPanel() {
             onPick={k => setFilterDest(filterDest === k ? 'all' : (k as 'all' | Destination))}
           />
 
-          <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
-            <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher un produit"
-              placeholder="Rechercher un produit ou une catégorie..." className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
+          <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un produit ou une catégorie...">
             <button type="button" onClick={() => refetch()} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               {isFetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Actualiser
             </button>
-          </div>
+          </ListToolbar>
 
-          <div style={tableWrap}>
+          <div className={tableCard}>
             <table className="odoo-table" style={{ margin: 0 }}>
               <thead>
                 <tr>
@@ -250,7 +247,7 @@ function DecisionPanel() {
                   };
                   return (
                     <Fragment key={pid}>
-                      <tr style={over ? { background: 'color-mix(in srgb, #fff3cd 45%, transparent)' } : undefined}>
+                      <tr style={over ? { background: 'color-mix(in srgb, var(--prj-orange) 8%, transparent)' } : undefined}>
                         <td>
                           <button type="button" onClick={() => setExpanded(open ? null : pid)} aria-expanded={open}
                             style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 6, textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}>
@@ -291,11 +288,11 @@ function DecisionPanel() {
                                   </button>
                                 );
                               })}
-                              {over && <Edit3 size={12} style={{ color: '#d9822b' }} aria-label="Proposition modifiée" />}
+                              {over && <Edit3 size={12} style={{ color: 'var(--prj-orange)' }} aria-label="Proposition modifiée" />}
                             </span>
                           ) : <span style={muted}>Tout vendu</span>}
                         </td>
-                        <td style={{ textAlign: 'right', color: dest === 'waste' && remaining > 0 ? '#dc3545' : 'var(--odoo-text)' }}>
+                        <td style={{ textAlign: 'right', color: dest === 'waste' && remaining > 0 ? 'var(--prj-red)' : 'var(--odoo-text)' }}>
                           {remaining > 0 ? n2(unitCost * remaining) : '—'}
                         </td>
                       </tr>
@@ -307,7 +304,7 @@ function DecisionPanel() {
                               <input type="text" value={reasons[pid] || ''} autoFocus={open}
                                 onChange={e => setReasons(prev => ({ ...prev, [pid]: e.target.value }))}
                                 placeholder="Ex. aspect encore correct, commande client demain..."
-                                style={{ ...inputStyle, flex: 1, borderColor: reasons[pid]?.trim() ? 'var(--odoo-border)' : '#d9822b' }} />
+                                style={{ ...inputStyle, flex: 1, borderColor: reasons[pid]?.trim() ? 'var(--odoo-border)' : 'var(--prj-orange)' }} />
                             </label>
                           </td>
                         </tr>
@@ -341,7 +338,7 @@ function DecisionPanel() {
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
               {summary.all.n} produit{summary.all.n > 1 ? 's' : ''} à traiter
-              {missingReason && <> · <span style={{ color: '#d9822b' }}>motif manquant</span></>}
+              {missingReason && <> · <span style={{ color: 'var(--prj-orange)', fontWeight: 600 }}>motif manquant</span></>}
             </span>
             <button type="button" onClick={submit} disabled={save.isPending || summary.all.qty === 0 || !sessionId}
               className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -358,7 +355,7 @@ function Detail({ label, value, danger }: { label: string; value: string; danger
   return (
     <div>
       <div style={muted}>{label}</div>
-      <div style={{ fontWeight: 600, color: danger ? '#dc3545' : 'var(--odoo-text)' }}>{value}</div>
+      <div style={{ fontWeight: 600, color: danger ? 'var(--prj-red)' : 'var(--odoo-text)' }}>{value}</div>
     </div>
   );
 }
@@ -382,12 +379,12 @@ function HistoryPanel() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
+      <div className="prj-toolbar">
         <PeriodFilter label="Période" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
         <SelectFilter label="Destination" icon={Filter} value={dest} onChange={setDest} allLabel="Toutes"
           options={DESTS.map(d => ({ key: d, label: destLabel(d) }))} />
       </div>
-      <div style={tableWrap}>
+      <Panel footer={<PagerFoot page={page} total={total} onPage={setPage} note="Coût = reste × coût de revient unitaire" />}>
         <table className="odoo-table" style={{ margin: 0 }}>
           <thead>
             <tr>
@@ -415,7 +412,7 @@ function HistoryPanel() {
                 <td>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <DestTag dest={r.final_destination} label={destLabel(r.final_destination)} />
-                    {r.is_override && <span title={r.override_reason || 'Proposition modifiée'}><Edit3 size={12} style={{ color: '#d9822b' }} /></span>}
+                    {r.is_override && <span title={r.override_reason || 'Proposition modifiée'}><Edit3 size={12} style={{ color: 'var(--prj-orange)' }} /></span>}
                   </span>
                 </td>
                 <td style={{ textAlign: 'right' }}>{n2(toNum(r.total_cost))}</td>
@@ -424,8 +421,7 @@ function HistoryPanel() {
             ))}
           </tbody>
         </table>
-        <Pager page={page} total={total} onPage={setPage} note="Coût = reste × coût de revient unitaire" />
-      </div>
+      </Panel>
     </>
   );
 }
@@ -466,7 +462,7 @@ export function InvendusDashboard() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
+      <div className="prj-toolbar">
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
           Mois
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className="odoo-filter-dropdown">
@@ -482,17 +478,17 @@ export function InvendusDashboard() {
         <StatusBanner tone="neutral" icon={Info} title="Aucune donnée">Aucune décision d'invendus ce mois-ci.</StatusBanner>
       ) : (
         <>
-          <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
-            <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-              <div className="odoo-stat-card-label">Invendus du mois</div>
-              <div className="odoo-stat-card-value">{n0(grand)}</div>
-              <div className="odoo-stat-card-sub">unités décidées</div>
+          <div className="prj-kpis">
+            <div className="prj-kpi">
+              <div className="prj-kpi-head"><span>Invendus du mois</span></div>
+              <div className="prj-kpi-value">{n0(grand)}</div>
+              <div className="prj-kpi-sub">unités décidées</div>
             </div>
             {DESTS.map(d => (
-              <div key={d} className="odoo-stat-card" style={{ cursor: 'default' }}>
-                <div className="odoo-stat-card-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Dot color={DEST[d].dot} /> {destLabel(d)}</div>
-                <div className="odoo-stat-card-value">{pct(d)} %</div>
-                <div className="odoo-stat-card-sub">{n0(totals[d].qty)} unités{d === 'waste' ? ` · ${money(totals[d].cost)} perdus` : ''}</div>
+              <div key={d} className="prj-kpi">
+                <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Dot color={DEST[d].dot} /> {destLabel(d)}</span></div>
+                <div className="prj-kpi-value">{pct(d)} %</div>
+                <div className="prj-kpi-sub">{n0(totals[d].qty)} unités{d === 'waste' ? ` · ${money(totals[d].cost)} perdus` : ''}</div>
               </div>
             ))}
           </div>
@@ -506,16 +502,16 @@ export function InvendusDashboard() {
           {(stats.recurringWaste || []).length > 0 && (
             <>
               <h3 style={sectionTitle}>Surproduction : destructions répétées</h3>
-              <div style={tableWrap}>
+              <div className={tableCard}>
                 <table className="odoo-table" style={{ margin: 0 }}>
                   <thead><tr><th>Produit</th><th style={{ textAlign: 'right' }}>Jours détruits</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Perte ({currencySymbol()})</th></tr></thead>
                   <tbody>
                     {stats.recurringWaste.map((p: Product) => (
                       <tr key={p.product_id}>
-                        <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Dot color="#dc3545" /><strong>{p.product_name}</strong></span></td>
+                        <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Dot color="var(--prj-red)" /><strong>{p.product_name}</strong></span></td>
                         <td style={{ textAlign: 'right' }}>{p.waste_days}</td>
                         <td style={{ textAlign: 'right' }}>{n0(toNum(p.total_qty))}</td>
-                        <td style={{ textAlign: 'right', color: '#dc3545', fontWeight: 600 }}>{n2(toNum(p.total_cost))}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--prj-red)', fontWeight: 600 }}>{n2(toNum(p.total_cost))}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -527,7 +523,7 @@ export function InvendusDashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
             <div>
               <h3 style={sectionTitle}>Par catégorie (unités)</h3>
-              <div style={{ ...tableWrap, marginTop: 6 }}>
+              <div className={tableCard} style={{ marginTop: 6 }}>
                 <table className="odoo-table" style={{ margin: 0 }}>
                   <thead><tr><th>Catégorie</th>{DESTS.map(d => <th key={d} style={{ textAlign: 'right' }}>{destLabel(d)}</th>)}</tr></thead>
                   <tbody>
@@ -543,8 +539,8 @@ export function InvendusDashboard() {
               </div>
             </div>
             <div>
-              <h3 style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: 6 }}><TrendingDown size={12} /> Produits les plus détruits (coût)</h3>
-              <div style={{ ...tableWrap, marginTop: 6 }}>
+              <h3 style={sectionTitle}><TrendingDown size={15} /> Produits les plus détruits (coût)</h3>
+              <div className={tableCard} style={{ marginTop: 6 }}>
                 <table className="odoo-table" style={{ margin: 0 }}>
                   <thead><tr><th>Produit</th><th style={{ textAlign: 'right' }}>Fois</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Perte ({currencySymbol()})</th></tr></thead>
                   <tbody>
@@ -566,7 +562,7 @@ export function InvendusDashboard() {
           {(stats.daily || []).length > 0 && (
             <>
               <h3 style={sectionTitle}>Jour par jour</h3>
-              <div style={{ ...tableWrap, maxHeight: 320, overflowY: 'auto' }}>
+              <div className={tableCard} style={{ maxHeight: 320, overflowY: 'auto' }}>
                 <table className="odoo-table" style={{ margin: 0 }}>
                   <thead><tr><th>Date</th><th>Destination</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Coût ({currencySymbol()})</th><th style={{ textAlign: 'right' }}>Décisions</th></tr></thead>
                   <tbody>

@@ -73,7 +73,7 @@ export default function RolloutDialog({ module, pilot, disabledStores, busy, onC
                     ))}
                 </div>
               </div>
-              {pilotEmpty && <p className="odoo-setting-help" style={{ color: '#c0392b' }}>Choisissez au moins un rôle ou un utilisateur.</p>}
+              {pilotEmpty && <p className="odoo-setting-help" style={{ color: 'var(--prj-red)' }}>Choisissez au moins un rôle ou un utilisateur.</p>}
             </>
           )}
 
