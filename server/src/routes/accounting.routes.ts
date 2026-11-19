@@ -37,6 +37,7 @@ import { can } from '../middleware/permission.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 import { emptyBody } from '../validators/common.validator.js';
 import { reportOverrideSchema } from '../validators/sales-flow.validator.js';
+import * as PF from '../validators/payments-flow.validator.js';
 
 // G0-04 : la pièce jointe est reçue en mémoire puis écrite dans le stockage objet
 // (table files) par le contrôleur — plus rien sur le disque du serveur.
@@ -100,34 +101,34 @@ invoicesRouter.get('/line-expenses', authenticate, can('accounting.view'), async
 invoicesRouter.get('/payment-alerts', authenticate, can('accounting.view'), asyncHandler(invoiceController.paymentAlerts));
 invoicesRouter.get('/debts', authenticate, can('accounting.view'), asyncHandler(invoiceController.debts));
 invoicesRouter.get('/:id', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(invoiceController.getById));
-invoicesRouter.put('/line/:id/category', authenticate, can('accounting.category'), validateUuidParams('id'), asyncHandler(invoiceController.updateLineCategory));
-invoicesRouter.put('/:id/category', authenticate, can('accounting.category'), validateUuidParams('id'), asyncHandler(invoiceController.updateCategory));
-invoicesRouter.put('/:id/items', authenticate, can('accounting.items'), validateUuidParams('id'), asyncHandler(invoiceController.replaceItems));
-invoicesRouter.put('/:id/payment-terms', authenticate, can('accounting.payment_terms'), validateUuidParams('id'), asyncHandler(invoiceController.updatePaymentTerms));
-invoicesRouter.put('/:id/status', authenticate, can('accounting.status'), validateUuidParams('id'), asyncHandler(invoiceController.updateStatusManual));
+invoicesRouter.put('/line/:id/category', authenticate, can('accounting.category'), validateUuidParams('id'), validate(PF.invoiceLineCategorySchema), asyncHandler(invoiceController.updateLineCategory));
+invoicesRouter.put('/:id/category', authenticate, can('accounting.category'), validateUuidParams('id'), validate(PF.invoiceCategorySchema), asyncHandler(invoiceController.updateCategory));
+invoicesRouter.put('/:id/items', authenticate, can('accounting.items'), validateUuidParams('id'), validate(PF.replaceInvoiceItemsSchema), asyncHandler(invoiceController.replaceItems));
+invoicesRouter.put('/:id/payment-terms', authenticate, can('accounting.payment_terms'), validateUuidParams('id'), validate(PF.invoicePaymentTermsSchema), asyncHandler(invoiceController.updatePaymentTerms));
+invoicesRouter.put('/:id/status', authenticate, can('accounting.status'), validateUuidParams('id'), validate(PF.invoiceStatusSchema), asyncHandler(invoiceController.updateStatusManual));
 // Litiges (phase 11, D5-59) : montant contesté exclu des relances.
 invoicesRouter.get('/disputes/open', authenticate, can('accounting.view'), asyncHandler(invoiceController.openDisputes));
 invoicesRouter.get('/:id/disputes', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(invoiceController.listDisputes));
-invoicesRouter.post('/:id/disputes', authenticate, can('accounting.disputes'), validateUuidParams('id'), asyncHandler(invoiceController.openDispute));
-invoicesRouter.put('/disputes/:disputeId/resolve', authenticate, can('accounting.resolve'), validateUuidParams('disputeId'), asyncHandler(invoiceController.resolveDispute));
-invoicesRouter.put('/disputes/:disputeId/reject', authenticate, can('accounting.reject'), validateUuidParams('disputeId'), asyncHandler(invoiceController.rejectDispute));
+invoicesRouter.post('/:id/disputes', authenticate, can('accounting.disputes'), validateUuidParams('id'), validate(PF.openDisputeSchema), asyncHandler(invoiceController.openDispute));
+invoicesRouter.put('/disputes/:disputeId/resolve', authenticate, can('accounting.resolve'), validateUuidParams('disputeId'), validate(PF.resolveDisputeSchema), asyncHandler(invoiceController.resolveDispute));
+invoicesRouter.put('/disputes/:disputeId/reject', authenticate, can('accounting.reject'), validateUuidParams('disputeId'), validate(PF.rejectDisputeSchema), asyncHandler(invoiceController.rejectDispute));
 // Créances douteuses / irrécouvrables (phase 11, D5-45) : l'irrécouvrable sort des relances.
 invoicesRouter.get('/bad-debts/open', authenticate, can('accounting.view'), asyncHandler(invoiceController.openBadDebts));
 invoicesRouter.get('/:id/bad-debts', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(invoiceController.listBadDebts));
-invoicesRouter.post('/:id/bad-debts', authenticate, can('accounting.bad_debts'), validateUuidParams('id'), asyncHandler(invoiceController.classifyBadDebt));
-invoicesRouter.put('/bad-debts/:badDebtId/revert', authenticate, can('accounting.revert'), validateUuidParams('badDebtId'), asyncHandler(invoiceController.revertBadDebt));
+invoicesRouter.post('/:id/bad-debts', authenticate, can('accounting.bad_debts'), validateUuidParams('id'), validate(PF.classifyBadDebtSchema), asyncHandler(invoiceController.classifyBadDebt));
+invoicesRouter.put('/bad-debts/:badDebtId/revert', authenticate, can('accounting.revert'), validateUuidParams('badDebtId'), validate(emptyBody), asyncHandler(invoiceController.revertBadDebt));
 // PUT /:id : modification complete (admin + gerant) — montants, dates, fournisseur, etc.
 invoicesRouter.put('/:id', authenticate, can('accounting.invoices'), validateUuidParams('id'), validate(updateInvoiceSchema), asyncHandler(invoiceController.update));
 invoicesRouter.post('/', authenticate, can('accounting.invoices'), validate(createInvoiceSchema), asyncHandler(invoiceController.create));
-invoicesRouter.post('/from-order/:orderId', authenticate, can('accounting.from_order'), validateUuidParams('orderId'), asyncHandler(invoiceController.createFromOrder));
+invoicesRouter.post('/from-order/:orderId', authenticate, can('accounting.from_order'), validateUuidParams('orderId'), validate(emptyBody), asyncHandler(invoiceController.createFromOrder));
 invoicesRouter.post('/merge', authenticate, can('accounting.merge'), validate(mergeInvoicesSchema), asyncHandler(invoiceController.merge));
 // Echelonnement d'une facture en N echeances (materiel achete a credit) — mig 258.
-invoicesRouter.post('/:id/schedule', authenticate, can('accounting.schedule'), validateUuidParams('id'), asyncHandler(paymentScheduleController.createInvoiceSchedule));
-invoicesRouter.post('/:id/cancel', authenticate, can('accounting.cancel'), validateUuidParams('id'), asyncHandler(invoiceController.cancel));
+invoicesRouter.post('/:id/schedule', authenticate, can('accounting.schedule'), validateUuidParams('id'), validate(PF.invoiceScheduleSchema), asyncHandler(paymentScheduleController.createInvoiceSchedule));
+invoicesRouter.post('/:id/cancel', authenticate, can('accounting.cancel'), validateUuidParams('id'), validate(PF.cancelInvoiceSchema), asyncHandler(invoiceController.cancel));
 // Avoirs clients (O2C L4, mig 450).
 invoicesRouter.get('/:id/credit-notes', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(invoiceController.creditNotes));
-invoicesRouter.post('/:id/credit-notes', authenticate, can('accounting.credit_notes'), validateUuidParams('id'), asyncHandler(invoiceController.createCreditNote));
-invoicesRouter.post('/:id/apply-credit', authenticate, can('accounting.apply_credit'), validateUuidParams('id'), asyncHandler(invoiceController.applyCredit));
+invoicesRouter.post('/:id/credit-notes', authenticate, can('accounting.credit_notes'), validateUuidParams('id'), validate(PF.createCreditNoteSchema), asyncHandler(invoiceController.createCreditNote));
+invoicesRouter.post('/:id/apply-credit', authenticate, can('accounting.apply_credit'), validateUuidParams('id'), validate(PF.applyCreditSchema), asyncHandler(invoiceController.applyCredit));
 // Confrontation : valide une facture reçue en brouillon (lot L1 P2P).
 invoicesRouter.post('/:id/validate', authenticate, can('accounting.validate'), validateUuidParams('id'), validate(validateInvoiceSchema), asyncHandler(invoiceController.validate));
 // Contrôle et blocages (mig 309).
@@ -136,7 +137,7 @@ invoicesRouter.post('/:id/holds', authenticate, can('accounting.holds'), validat
 invoicesRouter.post('/holds/:holdId/release', authenticate, can('accounting.release'), validateUuidParams('holdId'), validate(reasonCodeSchema), asyncHandler(invoiceController.releaseHold));
 // DELETE /:id : suppression physique (admin + gerant). ?force=true cascade les paiements.
 invoicesRouter.delete('/:id', authenticate, can('accounting.delete'), validateUuidParams('id'), asyncHandler(invoiceController.remove));
-invoicesRouter.post('/:id/attachment', authenticate, can('accounting.attachment'), validateUuidParams('id'), invoiceUpload.single('attachment'), asyncHandler(invoiceController.uploadAttachment));
+invoicesRouter.post('/:id/attachment', authenticate, can('accounting.attachment'), validateUuidParams('id'), invoiceUpload.single('attachment'), validate(emptyBody), asyncHandler(invoiceController.uploadAttachment));
 invoicesRouter.delete('/:id/attachment', authenticate, can('accounting.delete'), validateUuidParams('id'), asyncHandler(invoiceController.removeAttachment));
 invoicesRouter.get('/:id/download-docx', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(invoiceController.downloadDocx));
 invoicesRouter.get('/:id/download-pdf', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(invoiceController.downloadDocx));
@@ -164,8 +165,8 @@ paymentsRouter.get('/checks', authenticate, can('accounting.view'), asyncHandler
 paymentsRouter.post('/', authenticate, can('accounting.payments'), validate(createPaymentSchema), asyncHandler(paymentController.create));
 // Encaissements clients répartis sur plusieurs factures, avances (O2C L5, mig 451).
 paymentsRouter.get('/customer-receipts', authenticate, can('accounting.view'), asyncHandler(paymentController.customerReceipts));
-paymentsRouter.post('/customer-receipts', authenticate, can('accounting.customer_receipts'), asyncHandler(paymentController.createCustomerReceipt));
-paymentsRouter.post('/customer-receipts/:id/allocate', authenticate, can('accounting.allocate'), validateUuidParams('id'), asyncHandler(paymentController.allocateCustomerReceipt));
+paymentsRouter.post('/customer-receipts', authenticate, can('accounting.customer_receipts'), validate(PF.customerReceiptSchema), asyncHandler(paymentController.createCustomerReceipt));
+paymentsRouter.post('/customer-receipts/:id/allocate', authenticate, can('accounting.allocate'), validateUuidParams('id'), validate(PF.allocateReceiptSchema), asyncHandler(paymentController.allocateCustomerReceipt));
 // Mig 310 (D7) : modes typés, plafond espèces, annulation par contre-pièce, virements internes.
 paymentsRouter.get('/modes', authenticate, can('accounting.view'), asyncHandler(paymentController.modes));
 paymentsRouter.get('/cash-cumul', authenticate, can('accounting.view'),
@@ -178,9 +179,9 @@ paymentsRouter.post('/:id/reissue', authenticate, can('accounting.reissue'), val
 paymentsRouter.get('/:id/actions', authenticate, can('accounting.view'), validateUuidParams('id'),
   asyncHandler(async (req, res) => { res.json({ success: true, data: await listActions('payment', req.params.id) }); }));
 paymentsRouter.put('/:id', authenticate, can('accounting.payments'), validateUuidParams('id'), validate(updatePaymentSchema), asyncHandler(paymentController.update));
-paymentsRouter.post('/:id/mark-cashed', authenticate, can('accounting.mark_cashed'), validateUuidParams('id'), asyncHandler(paymentController.markCashed));
+paymentsRouter.post('/:id/mark-cashed', authenticate, can('accounting.mark_cashed'), validateUuidParams('id'), validate(PF.markCashedSchema), asyncHandler(paymentController.markCashed));
 // Annulation : admin uniquement (rollback ne dois pas etre routine)
-paymentsRouter.post('/:id/unmark-cashed', authenticate, can('accounting.unmark_cashed'), validateUuidParams('id'), asyncHandler(paymentController.unmarkCashed));
+paymentsRouter.post('/:id/unmark-cashed', authenticate, can('accounting.unmark_cashed'), validateUuidParams('id'), validate(emptyBody), asyncHandler(paymentController.unmarkCashed));
 // Annulation paiement : elargi a ADMIN_MANAGER (cas d'usage courant
 // pour corriger erreurs de saisie : mauvais montant, faux N° cheque, doublon).
 // updatePaidAmount() est rejoue dans le delete() -> facture revient au bon statut.

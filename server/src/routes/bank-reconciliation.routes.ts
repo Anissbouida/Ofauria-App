@@ -8,17 +8,19 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { emptyBody } from '../validators/common.validator.js';
+import * as PF from '../validators/payments-flow.validator.js';
 
 // Rapprochement bancaire : reserve a l'admin.
 const router = Router();
 
 router.get('/statements', authenticate, can('accounting.bank_reconciliation.view'), bankReconciliationController.listStatements);
-router.post('/statements', authenticate, can('accounting.bank_reconciliation.statements'), bankReconciliationController.createStatement);
+router.post('/statements', authenticate, can('accounting.bank_reconciliation.statements'), validate(PF.bankStatementSchema), bankReconciliationController.createStatement);
 router.get('/statements/:id', authenticate, can('accounting.bank_reconciliation.view'), bankReconciliationController.getReconciliation);
-router.post('/statements/:id/auto-match', authenticate, can('accounting.bank_reconciliation.auto_match'), bankReconciliationController.autoMatch);
+router.post('/statements/:id/auto-match', authenticate, can('accounting.bank_reconciliation.auto_match'), validateUuidParams('id'), validate(emptyBody), bankReconciliationController.autoMatch);
 router.delete('/statements/:id', authenticate, can('accounting.bank_reconciliation.delete'), bankReconciliationController.deleteStatement);
-router.post('/lines/:id/match', authenticate, can('accounting.bank_reconciliation.match'), bankReconciliationController.matchLine);
-router.post('/lines/:id/unmatch', authenticate, can('accounting.bank_reconciliation.unmatch'), bankReconciliationController.unmatchLine);
+router.post('/lines/:id/match', authenticate, can('accounting.bank_reconciliation.match'), validateUuidParams('id'), validate(PF.bankMatchSchema), bankReconciliationController.matchLine);
+router.post('/lines/:id/unmatch', authenticate, can('accounting.bank_reconciliation.unmatch'), validateUuidParams('id'), validate(emptyBody), bankReconciliationController.unmatchLine);
 
 
 const bigJson = express.json({ limit: '8mb' });

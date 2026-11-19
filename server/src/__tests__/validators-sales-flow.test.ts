@@ -19,7 +19,7 @@ describe('Schémas caisse et ventes (plan pilote, étape 2)', () => {
     };
     const r = S.createOrderSchema.safeParse(body);
     expect(r.success).toBe(true);
-    expect((r as { data: { items: { tvaRate: number }[] } }).data.items[0].tvaRate).toBe(20);
+    expect((r as unknown as { data: { items: { tvaRate: number }[] } }).data.items[0].tvaRate).toBe(20);
     ok(S.updateOrderSchema, { ...body, orderDate: undefined, customerId: ID });
     ko(S.createOrderSchema, { ...body, items: [] });
     ko(S.createOrderSchema, { ...body, items: [{ productId: ID, quantity: 0 }] });

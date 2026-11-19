@@ -36,6 +36,8 @@ import {
 } from '../controllers/ledger.controller.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { emptyBody } from '../validators/common.validator.js';
+import * as PF from '../validators/payments-flow.validator.js';
 import { ROLES } from '@ofauria/shared';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
@@ -77,7 +79,7 @@ ledgerRouter.put('/accounts/:id', authenticate, can('accounting.accounts'), requ
   if (!r.success) { accountBad(res, r.error.issues[0]?.message); return; }
   res.json({ success: true, data: await chartOfAccountsRepository.update(req.params.id, r.data, accountActor(req)) });
 }));
-ledgerRouter.post('/accounts/:id/active', authenticate, can('accounting.active'), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/accounts/:id/active', authenticate, can('accounting.active'), requireVerb('accounting', 'validate'), validateUuidParams('id'), validate(PF.activeFlagSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await chartOfAccountsRepository.setActive(req.params.id, Boolean((req.body as { active?: boolean }).active), accountActor(req)) });
 }));
 ledgerRouter.delete('/accounts/:id', authenticate, can('accounting.delete'), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -92,14 +94,14 @@ ledgerRouter.get('/journals',         authenticate, can('accounting.view'), jour
 
 // Periodes fiscales
 ledgerRouter.get('/fiscal-periods',   authenticate, can('accounting.view'), fiscalPeriodController.list);
-ledgerRouter.patch('/fiscal-periods/:id/status', authenticate, can('accounting.status'), requireVerb('accounting', 'close'), fiscalPeriodController.updateStatus);
+ledgerRouter.patch('/fiscal-periods/:id/status', authenticate, can('accounting.status'), requireVerb('accounting', 'close'), validateUuidParams('id'), validate(PF.fiscalPeriodStatusSchema), fiscalPeriodController.updateStatus);
 // Mig 311 (D8) : checklist de clôture, historique, file de comptabilisation, GR/IR, relevé TVA, paramétrage.
 ledgerRouter.get('/fiscal-periods/:id/checklist', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(fiscalPeriodController.checklist));
 ledgerRouter.get('/fiscal-periods/:id/events', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(fiscalPeriodController.events));
 // Fin de période du cycle de vente (O2C L6, mig 452) : factures à établir, stock de produits finis.
 ledgerRouter.get('/fiscal-periods/:id/end-operations', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(fiscalPeriodController.endOperations));
-ledgerRouter.post('/fiscal-periods/:id/fae', authenticate, can('accounting.fae'), requireVerb('accounting', 'close'), validateUuidParams('id'), asyncHandler(fiscalPeriodController.postFae));
-ledgerRouter.post('/fiscal-periods/:id/fg-stock', authenticate, can('accounting.fg_stock'), requireVerb('accounting', 'close'), validateUuidParams('id'), asyncHandler(fiscalPeriodController.postFgStock));
+ledgerRouter.post('/fiscal-periods/:id/fae', authenticate, can('accounting.fae'), requireVerb('accounting', 'close'), validateUuidParams('id'), validate(emptyBody), asyncHandler(fiscalPeriodController.postFae));
+ledgerRouter.post('/fiscal-periods/:id/fg-stock', authenticate, can('accounting.fg_stock'), requireVerb('accounting', 'close'), validateUuidParams('id'), validate(emptyBody), asyncHandler(fiscalPeriodController.postFgStock));
 // Exercices (mig 416) : contrôles et clôture définitive avec à-nouveaux (admin).
 ledgerRouter.get('/fiscal-years', authenticate, can('accounting.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await fiscalYearRepository.findAll() });
@@ -113,7 +115,7 @@ ledgerRouter.get('/fiscal-years/:year/checklist', authenticate, can('accounting.
   const y = yearParam(req, res); if (y === null) return;
   res.json({ success: true, data: await fiscalYearRepository.checklist(y) });
 }));
-ledgerRouter.post('/fiscal-years/:year/close', authenticate, can('accounting.close'), requireVerb('accounting', 'close'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/fiscal-years/:year/close', authenticate, can('accounting.close'), requireVerb('accounting', 'close'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = yearParam(req, res); if (y === null) return;
   res.json({ success: true, data: await fiscalYearRepository.close(y, req.user!.userId) });
 }));
@@ -222,7 +224,7 @@ ledgerRouter.post('/corporate-tax/payments/:id/cancel', authenticate, can('accou
   if (!r.success) { tplBad(res, 'Motif obligatoire (3 caractères au moins)'); return; }
   res.json({ success: true, data: await corporateTaxRepository.cancelPayment(req.params.id, r.data.reason, taxActor(req)) });
 }));
-ledgerRouter.post('/corporate-tax/:year/book', authenticate, can('accounting.book'), requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/corporate-tax/:year/book', authenticate, can('accounting.book'), requireVerb('accounting', 'post'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
   res.json({ success: true, data: await corporateTaxRepository.book(y, taxActor(req)) });
 }));
@@ -295,7 +297,7 @@ ledgerRouter.post('/bills/remittances/:id/settle', authenticate, can('accounting
   if (!r.success) { tplBad(res); return; }
   res.json({ success: true, data: await billPortfolioRepository.settleRemittance(req.params.id, { date: r.data.date, userId: req.user!.userId }) });
 }));
-ledgerRouter.post('/bills/remittances/:id/cancel', authenticate, can('accounting.cancel'), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/bills/remittances/:id/cancel', authenticate, can('accounting.cancel'), requireVerb('accounting', 'validate'), validateUuidParams('id'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   await billPortfolioRepository.cancelRemittance(req.params.id, { userId: req.user!.userId });
   res.json({ success: true });
 }));
@@ -351,8 +353,8 @@ ledgerRouter.get('/aged-balance', authenticate, can('accounting.view'), asyncHan
   res.json({ success: true, data: await agedBalanceRepository.compute({ side: r.data.side, asOf }) });
 }));
 ledgerRouter.get('/outbox',authenticate, can('accounting.view'), asyncHandler(purchaseLedgerController.outbox));
-ledgerRouter.post('/outbox/replay', authenticate, can('accounting.replay'), asyncHandler(purchaseLedgerController.replay));
-ledgerRouter.post('/outbox/:id/replay', authenticate, can('accounting.replay'), validateUuidParams('id'), asyncHandler(purchaseLedgerController.replay));
+ledgerRouter.post('/outbox/replay', authenticate, can('accounting.replay'), validate(emptyBody), asyncHandler(purchaseLedgerController.replay));
+ledgerRouter.post('/outbox/:id/replay', authenticate, can('accounting.replay'), validateUuidParams('id'), validate(emptyBody), asyncHandler(purchaseLedgerController.replay));
 ledgerRouter.get('/grir/open-items', authenticate, can('accounting.view'), asyncHandler(purchaseLedgerController.grirOpenItems));
 ledgerRouter.get('/vat-deduction-statement', authenticate, can('accounting.view'), asyncHandler(purchaseLedgerController.vatStatement));
 ledgerRouter.get('/posting-profiles', authenticate, can('accounting.view'), asyncHandler(purchaseLedgerController.postingProfiles));
@@ -380,42 +382,30 @@ ledgerRouter.get('/entries/:id',      authenticate, can('accounting.view'), jour
 // Saisie libre (mig 418) : brouillon modifiable, comptabilisation (droit « post »),
 // extourne motivée des écritures manuelles.
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const manualBody = z.object({
-  journalCode: z.string().trim().min(1).max(10),
-  date: z.string().regex(DATE_RE),
-  description: z.string().trim().min(1).max(2000),
-  pieceRef: z.string().trim().max(60).nullish(),
-  pieceDate: z.string().regex(DATE_RE).nullish(),
-  lines: z.array(z.object({
-    accountId: z.string().uuid(),
-    auxiliaryId: z.string().uuid().nullish(),
-    debit: z.coerce.number().min(0),
-    credit: z.coerce.number().min(0),
-    label: z.string().trim().max(200).nullish(),
-  })).min(2).max(500),
-});
+// Schéma partagé avec validate() (plan pilote, lot paiements) : une seule définition.
+const manualBody = PF.manualEntrySchema;
 const manualActor = (req: AuthRequest) => ({ userId: req.user!.userId, storeId: req.user!.storeId ?? null });
 const parseManual = (req: AuthRequest, res: Response) => {
   const r = manualBody.safeParse(req.body);
   if (!r.success) { res.status(400).json({ success: false, error: { message: r.error.issues[0]?.message ?? 'Saisie invalide' } }); return null; }
   return r.data;
 };
-ledgerRouter.post('/entries', authenticate, can('accounting.entries'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/entries', authenticate, can('accounting.entries'), validate(PF.manualEntrySchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const input = parseManual(req, res); if (!input) return;
   res.status(201).json({ success: true, data: await manualEntryRepository.createDraft(input, manualActor(req)) });
 }));
-ledgerRouter.post('/entries/post', authenticate, can('accounting.post'), requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/entries/post', authenticate, can('accounting.post'), requireVerb('accounting', 'post'), validate(PF.manualEntrySchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const input = parseManual(req, res); if (!input) return;
   res.status(201).json({ success: true, data: await manualEntryRepository.createAndPost(input, manualActor(req)) });
 }));
-ledgerRouter.put('/entries/:id', authenticate, can('accounting.entries'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.put('/entries/:id', authenticate, can('accounting.entries'), validateUuidParams('id'), validate(PF.manualEntrySchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const input = parseManual(req, res); if (!input) return;
   res.json({ success: true, data: await manualEntryRepository.updateDraft(req.params.id, input, manualActor(req)) });
 }));
 ledgerRouter.delete('/entries/:id', authenticate, can('accounting.delete'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await manualEntryRepository.deleteDraft(req.params.id, manualActor(req)) });
 }));
-ledgerRouter.post('/entries/:id/post', authenticate, can('accounting.post'), requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/entries/:id/post', authenticate, can('accounting.post'), requireVerb('accounting', 'post'), validateUuidParams('id'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await manualEntryRepository.post(req.params.id, manualActor(req)) });
 }));
 ledgerRouter.post('/entries/:id/reverse', authenticate, can('accounting.reverse'), requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -504,7 +494,7 @@ ledgerRouter.put('/entry-templates/:id', authenticate, can('accounting.entry_tem
   if ('error' in out) { res.status(out.error === 'Modèle introuvable' ? 404 : 400).json({ success: false, error: { message: out.error } }); return; }
   res.json({ success: true, data: out });
 }));
-ledgerRouter.post('/entry-templates/:id/active', authenticate, can('accounting.active'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/entry-templates/:id/active', authenticate, can('accounting.active'), validateUuidParams('id'), validate(PF.activeFlagSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const out = await tplRepo.setActive(req.params.id, Boolean((req.body as { active?: boolean }).active));
   if (!out) { res.status(404).json({ success: false, error: { message: 'Modèle introuvable' } }); return; }
   res.json({ success: true, data: out });
@@ -531,10 +521,10 @@ const actorOf = (req: AuthRequest) => ({ userId: req.user!.userId, ip: req.ip ??
 ledgerRouter.get('/integrity', authenticate, can('accounting.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await integrityRepo.status() });
 }));
-ledgerRouter.post('/integrity/seal', authenticate, can('accounting.seal'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/integrity/seal', authenticate, can('accounting.seal'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await integrityRepo.seal(actorOf(req)) });
 }));
-ledgerRouter.post('/integrity/verify', authenticate, can('accounting.verify'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/integrity/verify', authenticate, can('accounting.verify'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await integrityRepo.verify(actorOf(req)) });
 }));
 ledgerRouter.get('/audit-log', authenticate, can('accounting.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -603,4 +593,4 @@ ledgerRouter.get('/tva-declaration',  authenticate, can('accounting.view'), tvaD
 ledgerRouter.get('/balance-sheet',    authenticate, can('accounting.view'), balanceSheetController.balanceSheet);
 
 // Backfill des ecritures (admin) — generation depuis l'historique existant
-ledgerRouter.post('/backfill',        authenticate, can('accounting.backfill'), backfillController.run);
+ledgerRouter.post('/backfill',        authenticate, can('accounting.backfill'), validate(emptyBody), backfillController.run);
