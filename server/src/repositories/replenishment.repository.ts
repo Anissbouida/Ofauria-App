@@ -216,7 +216,9 @@ export const replenishmentRepository = {
       const batchId = batchResult.rows[0].batch_id;
 
       // Generate a single base request number for this batch
-      const requestNumber = await this.generateRequestNumber();
+      // Plan pilote, étape 3 : le verrou consultatif doit être pris DANS la transaction, sinon il est
+      // relâché aussitôt et deux demandes simultanées reçoivent le même numéro.
+      const requestNumber = await this.generateRequestNumber(client);
 
       for (const [role, items] of Object.entries(roleGroups)) {
         const suffix = ROLE_SUFFIXES[role] || role.toUpperCase().slice(0, 4);

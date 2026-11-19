@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { resolvePolicy } from '../services/policies.js';
 
 /**
@@ -45,28 +45,31 @@ export const lotReleaseRepository = {
    * une matière non conforme est bloquée (comme le contrôle de réception, mig 428).
    */
   async afterInspection(inspectionId: string) {
-    const i = (await db.query(
-      `SELECT product_lot_id, ingredient_lot_id, store_id, conformity FROM quality_inspections WHERE id = $1`, [inspectionId])).rows[0];
-    if (!i) return;
-    const auto = (await resolvePolicy<{ enabled?: boolean }>('quality.auto_release', { storeId: i.store_id ?? null })).value.enabled !== false;
-    const allClear = async (col: 'product_lot_id' | 'ingredient_lot_id', id: string) => (await db.query(
-      `SELECT COUNT(*) FILTER (WHERE status = 'a_faire')::int AS todo, COUNT(*) FILTER (WHERE status = 'faite' AND NOT conformity)::int AS ko
-         FROM quality_inspections WHERE ${col} = $1`, [id])).rows[0];
-    if (i.product_lot_id && auto) {
-      const s = await allClear('product_lot_id', i.product_lot_id);
-      if (s.todo === 0 && s.ko === 0) {
-        await db.query(
-          `UPDATE product_lots SET status = 'active', released_at = NOW(), release_note = 'Libération automatique : inspections conformes', updated_at = NOW()
-            WHERE id = $1 AND status = 'pending_release'`, [i.product_lot_id]);
+    // Plan pilote, étape 3 : écritures sur plusieurs tables en une seule transaction.
+    return withTransaction(async () => {
+      const i = (await db.query(
+        `SELECT product_lot_id, ingredient_lot_id, store_id, conformity FROM quality_inspections WHERE id = $1`, [inspectionId])).rows[0];
+      if (!i) return;
+      const auto = (await resolvePolicy<{ enabled?: boolean }>('quality.auto_release', { storeId: i.store_id ?? null })).value.enabled !== false;
+      const allClear = async (col: 'product_lot_id' | 'ingredient_lot_id', id: string) => (await db.query(
+        `SELECT COUNT(*) FILTER (WHERE status = 'a_faire')::int AS todo, COUNT(*) FILTER (WHERE status = 'faite' AND NOT conformity)::int AS ko
+           FROM quality_inspections WHERE ${col} = $1`, [id])).rows[0];
+      if (i.product_lot_id && auto) {
+        const s = await allClear('product_lot_id', i.product_lot_id);
+        if (s.todo === 0 && s.ko === 0) {
+          await db.query(
+            `UPDATE product_lots SET status = 'active', released_at = NOW(), release_note = 'Libération automatique : inspections conformes', updated_at = NOW()
+              WHERE id = $1 AND status = 'pending_release'`, [i.product_lot_id]);
+        }
       }
-    }
-    if (i.ingredient_lot_id) {
-      if (!i.conformity) {
-        await db.query(`UPDATE ingredient_lots SET status = 'blocked' WHERE id = $1 AND status IN ('active', 'quarantine')`, [i.ingredient_lot_id]);
-      } else if (auto) {
-        const s = await allClear('ingredient_lot_id', i.ingredient_lot_id);
-        if (s.todo === 0 && s.ko === 0) await db.query(`UPDATE ingredient_lots SET status = 'active' WHERE id = $1 AND status = 'quarantine'`, [i.ingredient_lot_id]);
+      if (i.ingredient_lot_id) {
+        if (!i.conformity) {
+          await db.query(`UPDATE ingredient_lots SET status = 'blocked' WHERE id = $1 AND status IN ('active', 'quarantine')`, [i.ingredient_lot_id]);
+        } else if (auto) {
+          const s = await allClear('ingredient_lot_id', i.ingredient_lot_id);
+          if (s.todo === 0 && s.ko === 0) await db.query(`UPDATE ingredient_lots SET status = 'active' WHERE id = $1 AND status = 'quarantine'`, [i.ingredient_lot_id]);
+        }
       }
-    }
+    });
   },
 };

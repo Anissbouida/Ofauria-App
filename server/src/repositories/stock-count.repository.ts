@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { adjustIngredientStock, ingredientStock } from '../services/stock-adjust.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
@@ -128,64 +128,73 @@ export const stockCountRepository = {
 
   /** Saisie (ou correction) d'un comptage : fige le théorique à cet instant. null = efface le comptage. */
   async count(countId: string, lineId: string, p: { countedQty: number | null; note?: string | null; userId: string }) {
-    const c = (await db.query(`SELECT status, store_id FROM stock_counts WHERE id = $1`, [countId])).rows[0];
-    if (!c) return { error: 'not_found' as const };
-    if (c.status !== 'counting') return { error: 'Le comptage est clos : rouvrez-le pour corriger' };
-    const line = (await db.query(`SELECT * FROM stock_count_lines WHERE id = $1 AND count_id = $2`, [lineId, countId])).rows[0];
-    if (!line) return { error: 'Ligne introuvable' };
-    if (p.countedQty === null) {
-      await db.query(`UPDATE stock_count_lines SET counted_qty = NULL, theoretical_at_count = NULL, counted_by = NULL, counted_at = NULL, note = $2 WHERE id = $1`, [lineId, p.note ?? line.note]);
-    } else {
-      const th = await theoretical(db as unknown as Runner, line, c.store_id);
-      await db.query(
-        `UPDATE stock_count_lines SET counted_qty = $2, theoretical_at_count = $3, counted_by = $4, counted_at = now(), note = COALESCE($5, note) WHERE id = $1`,
-        [lineId, round3(p.countedQty), round3(th), p.userId, p.note ?? null]);
-    }
-    await db.query(`UPDATE stock_counts SET lines_counted = (SELECT COUNT(*) FROM stock_count_lines WHERE count_id = $1 AND counted_qty IS NOT NULL) WHERE id = $1`, [countId]);
-    return { data: (await db.query(`SELECT * FROM stock_count_lines WHERE id = $1`, [lineId])).rows[0] };
+    // Plan pilote, étape 3 : écritures sur plusieurs tables en une seule transaction.
+    return withTransaction(async () => {
+      const c = (await db.query(`SELECT status, store_id FROM stock_counts WHERE id = $1 FOR UPDATE`, [countId])).rows[0];
+      if (!c) return { error: 'not_found' as const };
+      if (c.status !== 'counting') return { error: 'Le comptage est clos : rouvrez-le pour corriger' };
+      const line = (await db.query(`SELECT * FROM stock_count_lines WHERE id = $1 AND count_id = $2`, [lineId, countId])).rows[0];
+      if (!line) return { error: 'Ligne introuvable' };
+      if (p.countedQty === null) {
+        await db.query(`UPDATE stock_count_lines SET counted_qty = NULL, theoretical_at_count = NULL, counted_by = NULL, counted_at = NULL, note = $2 WHERE id = $1`, [lineId, p.note ?? line.note]);
+      } else {
+        const th = await theoretical(db as unknown as Runner, line, c.store_id);
+        await db.query(
+          `UPDATE stock_count_lines SET counted_qty = $2, theoretical_at_count = $3, counted_by = $4, counted_at = now(), note = COALESCE($5, note) WHERE id = $1`,
+          [lineId, round3(p.countedQty), round3(th), p.userId, p.note ?? null]);
+      }
+      await db.query(`UPDATE stock_counts SET lines_counted = (SELECT COUNT(*) FROM stock_count_lines WHERE count_id = $1 AND counted_qty IS NOT NULL) WHERE id = $1`, [countId]);
+      return { data: (await db.query(`SELECT * FROM stock_count_lines WHERE id = $1`, [lineId])).rows[0] };
+    });
   },
 
   /** Article trouvé hors liste (ou oublié par le filtre). */
   async addLine(countId: string, p: { ingredientId?: string | null; packagingId?: string | null }) {
-    const c = (await db.query(`SELECT status, store_id FROM stock_counts WHERE id = $1`, [countId])).rows[0];
-    if (!c) return { error: 'not_found' as const };
-    if (c.status !== 'counting') return { error: 'Le comptage est clos' };
-    const r = p.ingredientId
-      ? await db.query(
-          `INSERT INTO stock_count_lines (count_id, item_kind, ingredient_id, item_name, unit, category_id, container_size, theoretical_at_start)
-           SELECT $1, 'ingredient', i.id, i.name, i.unit, i.category_id, i.container_size, $3 FROM ingredients i WHERE i.id = $2
-           ON CONFLICT DO NOTHING RETURNING id`,
-          [countId, p.ingredientId, await ingredientStock(db as unknown as Runner, p.ingredientId, c.store_id)])
-      : await db.query(
-          `INSERT INTO stock_count_lines (count_id, item_kind, packaging_id, item_name, unit, category_id, theoretical_at_start)
-           SELECT $1, 'packaging', p.id, p.name || COALESCE(' · ' || NULLIF(p.format, ''), ''), p.unit, p.category_id, $3 FROM packaging_items p WHERE p.id = $2
-           ON CONFLICT DO NOTHING RETURNING id`,
-          [countId, p.packagingId, await packagingStock(db as unknown as Runner, p.packagingId!, c.store_id)]);
-    if (!r.rows[0]) return { error: 'Article déjà dans l\'inventaire ou introuvable' };
-    await db.query(`UPDATE stock_counts SET lines_total = (SELECT COUNT(*) FROM stock_count_lines WHERE count_id = $1) WHERE id = $1`, [countId]);
-    return { data: r.rows[0] };
+    // Plan pilote, étape 3 : écritures sur plusieurs tables en une seule transaction.
+    return withTransaction(async () => {
+      const c = (await db.query(`SELECT status, store_id FROM stock_counts WHERE id = $1 FOR UPDATE`, [countId])).rows[0];
+      if (!c) return { error: 'not_found' as const };
+      if (c.status !== 'counting') return { error: 'Le comptage est clos' };
+      const r = p.ingredientId
+        ? await db.query(
+            `INSERT INTO stock_count_lines (count_id, item_kind, ingredient_id, item_name, unit, category_id, container_size, theoretical_at_start)
+             SELECT $1, 'ingredient', i.id, i.name, i.unit, i.category_id, i.container_size, $3 FROM ingredients i WHERE i.id = $2
+             ON CONFLICT DO NOTHING RETURNING id`,
+            [countId, p.ingredientId, await ingredientStock(db as unknown as Runner, p.ingredientId, c.store_id)])
+        : await db.query(
+            `INSERT INTO stock_count_lines (count_id, item_kind, packaging_id, item_name, unit, category_id, theoretical_at_start)
+             SELECT $1, 'packaging', p.id, p.name || COALESCE(' · ' || NULLIF(p.format, ''), ''), p.unit, p.category_id, $3 FROM packaging_items p WHERE p.id = $2
+             ON CONFLICT DO NOTHING RETURNING id`,
+            [countId, p.packagingId, await packagingStock(db as unknown as Runner, p.packagingId!, c.store_id)]);
+      if (!r.rows[0]) return { error: 'Article déjà dans l\'inventaire ou introuvable' };
+      await db.query(`UPDATE stock_counts SET lines_total = (SELECT COUNT(*) FROM stock_count_lines WHERE count_id = $1) WHERE id = $1`, [countId]);
+      return { data: r.rows[0] };
+    });
   },
 
   async setStatus(id: string, action: 'submit' | 'reopen' | 'cancel', userId: string) {
-    const c = (await db.query(`SELECT * FROM stock_counts WHERE id = $1`, [id])).rows[0];
-    if (!c) return { error: 'not_found' as const };
-    const from: Record<typeof action, string[]> = { submit: ['counting'], reopen: ['review'], cancel: ['counting', 'review'] };
-    if (!from[action].includes(c.status)) return { error: 'Action impossible dans cet état' };
-    if (action === 'submit' && c.lines_counted === 0) return { error: 'Aucun article compté' };
-    await db.query(
-      `UPDATE stock_counts SET status = $2::text,
-              submitted_by = CASE WHEN $2::text = 'review' THEN $3::uuid ELSE submitted_by END,
-              submitted_at = CASE WHEN $2::text = 'review' THEN now() ELSE submitted_at END,
-              cancelled_at = CASE WHEN $2::text = 'cancelled' THEN now() ELSE cancelled_at END
-        WHERE id = $1`,
-      [id, { submit: 'review', reopen: 'counting', cancel: 'cancelled' }[action], userId]);
-    if (action === 'submit') {
+    // Plan pilote, étape 3 : écritures sur plusieurs tables en une seule transaction.
+    return withTransaction(async () => {
+      const c = (await db.query(`SELECT * FROM stock_counts WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+      if (!c) return { error: 'not_found' as const };
+      const from: Record<typeof action, string[]> = { submit: ['counting'], reopen: ['review'], cancel: ['counting', 'review'] };
+      if (!from[action].includes(c.status)) return { error: 'Action impossible dans cet état' };
+      if (action === 'submit' && c.lines_counted === 0) return { error: 'Aucun article compté' };
       await db.query(
-        `INSERT INTO notifications (target_role, store_id, type, title, message, reference_type, reference_id, created_by)
-         VALUES ('manager', $1, 'stock_count_to_validate', $2, $3, 'stock_count', $4, $5)`,
-        [c.store_id, `Inventaire à valider · ${c.number}`, `${c.lines_counted}/${c.lines_total} article(s) compté(s) : vérifier les écarts puis valider.`, id, userId]);
-    }
-    return { data: await this.findById(id) };
+        `UPDATE stock_counts SET status = $2::text,
+                submitted_by = CASE WHEN $2::text = 'review' THEN $3::uuid ELSE submitted_by END,
+                submitted_at = CASE WHEN $2::text = 'review' THEN now() ELSE submitted_at END,
+                cancelled_at = CASE WHEN $2::text = 'cancelled' THEN now() ELSE cancelled_at END
+          WHERE id = $1`,
+        [id, { submit: 'review', reopen: 'counting', cancel: 'cancelled' }[action], userId]);
+      if (action === 'submit') {
+        await db.query(
+          `INSERT INTO notifications (target_role, store_id, type, title, message, reference_type, reference_id, created_by)
+           VALUES ('manager', $1, 'stock_count_to_validate', $2, $3, 'stock_count', $4, $5)`,
+          [c.store_id, `Inventaire à valider · ${c.number}`, `${c.lines_counted}/${c.lines_total} article(s) compté(s) : vérifier les écarts puis valider.`, id, userId]);
+      }
+      return { data: await this.findById(id) };
+    });
   },
 
   /**

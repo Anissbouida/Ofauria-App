@@ -259,6 +259,24 @@ describe.skipIf(!hasTestDb)('Scénarios RH / Paie (2099)', () => {
       expect(num(row.rows[0].remaining_amount)).toBe(2000);
     });
 
+    it('suppression d\'avance qui échoue : le paiement n\'est pas annulé (une seule transaction, plan pilote étape 3)', async () => {
+      const p = testPool();
+      const adv = await p.query(`SELECT id, payment_id FROM salary_advances WHERE employee_id = $1`, [empHebdoCap]);
+      const { id, payment_id: paymentId } = adv.rows[0];
+      // Déclencheur sur la base de test : la suppression de l'avance échoue APRÈS l'annulation du paiement.
+      await p.query(`CREATE FUNCTION public.fn_test_block_adv() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'blocage test'; END $$`);
+      await p.query(`CREATE TRIGGER trg_test_block_adv BEFORE DELETE ON salary_advances FOR EACH ROW EXECUTE FUNCTION public.fn_test_block_adv()`);
+      try {
+        await expect(salaryAdvanceRepository.remove(id, fx.userId)).rejects.toThrow(/blocage test/);
+      } finally {
+        await p.query(`DROP TRIGGER IF EXISTS trg_test_block_adv ON salary_advances`);
+        await p.query(`DROP FUNCTION IF EXISTS public.fn_test_block_adv()`);
+      }
+      expect((await p.query(`SELECT 1 FROM salary_advances WHERE id = $1`, [id])).rows).toHaveLength(1);
+      const pays = await p.query(`SELECT status FROM payments WHERE id = $1 OR voids_payment_id = $1`, [paymentId]);
+      expect(pays.rows.map(r => r.status)).not.toContain('void');
+    });
+
     it('supprime une avance non remboursée : paiement annulé, contre-pièce, écriture extournée', async () => {
       // Régression : remove() combinait GROUP BY et FOR UPDATE, refusé par Postgres.
       const p = testPool();

@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 
 /**
  * Majoration appliquee aux quantites suggerees d'approvisionnement.
@@ -63,45 +63,51 @@ export const productionMarkupRepository = {
 
   /** Met a jour le taux global et trace le changement. */
   async setGlobal(percent: number, userId: string) {
-    const cur = await db.query(`SELECT production_markup_percent FROM company_settings WHERE id = 1`);
-    const old = cur.rows[0] != null ? parseFloat(cur.rows[0].production_markup_percent) : null;
-    if (old === percent) return;
-    await db.query(
-      `UPDATE company_settings SET production_markup_percent = $1, updated_at = NOW() WHERE id = 1`,
-      [percent]
-    );
-    await db.query(
-      `INSERT INTO production_markup_history (scope, category_id, old_percent, new_percent, changed_by)
-       VALUES ('global', NULL, $1, $2, $3)`,
-      [old, percent, userId]
-    );
+    // Plan pilote, étape 3 : écritures sur plusieurs tables en une seule transaction.
+    return withTransaction(async () => {
+      const cur = await db.query(`SELECT production_markup_percent FROM company_settings WHERE id = 1`);
+      const old = cur.rows[0] != null ? parseFloat(cur.rows[0].production_markup_percent) : null;
+      if (old === percent) return;
+      await db.query(
+        `UPDATE company_settings SET production_markup_percent = $1, updated_at = NOW() WHERE id = 1`,
+        [percent]
+      );
+      await db.query(
+        `INSERT INTO production_markup_history (scope, category_id, old_percent, new_percent, changed_by)
+         VALUES ('global', NULL, $1, $2, $3)`,
+        [old, percent, userId]
+      );
+    });
   },
 
   /** Definit (percent) ou supprime (percent=null) l'override d'une categorie, et trace. */
   async setCategory(categoryId: number, percent: number | null, userId: string) {
-    const cur = await db.query(
-      `SELECT markup_percent FROM category_production_markup WHERE category_id = $1`,
-      [categoryId]
-    );
-    const old = cur.rows[0] != null ? parseFloat(cur.rows[0].markup_percent) : null;
-
-    if (percent === null) {
-      if (old === null) return; // aucun override : rien a faire
-      await db.query(`DELETE FROM category_production_markup WHERE category_id = $1`, [categoryId]);
-    } else {
-      if (old === percent) return;
-      await db.query(
-        `INSERT INTO category_production_markup (category_id, markup_percent, updated_by, updated_at)
-         VALUES ($1, $2, $3, NOW())
-         ON CONFLICT (category_id) DO UPDATE SET markup_percent = $2, updated_by = $3, updated_at = NOW()`,
-        [categoryId, percent, userId]
+    // Plan pilote, étape 3 : écritures sur plusieurs tables en une seule transaction.
+    return withTransaction(async () => {
+      const cur = await db.query(
+        `SELECT markup_percent FROM category_production_markup WHERE category_id = $1`,
+        [categoryId]
       );
-    }
-    await db.query(
-      `INSERT INTO production_markup_history (scope, category_id, old_percent, new_percent, changed_by)
-       VALUES ('category', $1, $2, $3, $4)`,
-      [categoryId, old, percent, userId]
-    );
+      const old = cur.rows[0] != null ? parseFloat(cur.rows[0].markup_percent) : null;
+
+      if (percent === null) {
+        if (old === null) return; // aucun override : rien a faire
+        await db.query(`DELETE FROM category_production_markup WHERE category_id = $1`, [categoryId]);
+      } else {
+        if (old === percent) return;
+        await db.query(
+          `INSERT INTO category_production_markup (category_id, markup_percent, updated_by, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (category_id) DO UPDATE SET markup_percent = $2, updated_by = $3, updated_at = NOW()`,
+          [categoryId, percent, userId]
+        );
+      }
+      await db.query(
+        `INSERT INTO production_markup_history (scope, category_id, old_percent, new_percent, changed_by)
+         VALUES ('category', $1, $2, $3, $4)`,
+        [categoryId, old, percent, userId]
+      );
+    });
   },
 
   /** Historique recent des modifications de majoration. */

@@ -1,5 +1,5 @@
 import { resolvePolicy } from '../services/policies.js';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { readingParamMeta } from '../services/process-referentials.js';
 import { placeBackward, type Window } from '../services/retro-calendar.js';
 
@@ -32,40 +32,43 @@ export const productionEtapesRepository = {
   // Conforme = |mesure - consigne| <= tolerance, seulement si les deux seuils
   // sont fournis ; sinon NULL (relevé libre, pas de verdict).
   async addReading(etapeId: string, data: ReadingInput, userId: string | null) {
-    const consigne = data.consigne ?? null;
-    const tolerance = data.tolerance ?? null;
-    const conforme = (consigne !== null && tolerance !== null)
-      ? Math.abs(Number(data.mesure) - Number(consigne)) <= Number(tolerance)
-      : null;
-    const r = await db.query(
-      `INSERT INTO production_step_readings
-         (etape_id, parametre, consigne, tolerance, mesure, conforme, est_ccp, note, mesure_par)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
-      [etapeId, data.parametre, consigne, tolerance, data.mesure, conforme,
-       data.est_ccp ?? false, data.note ?? null, userId]
-    );
-    // Relevé hors tolérance → action corrective HACCP (source 'process', mig 423),
-    // qui bloquera la mise en lot produit tant qu'elle n'est pas validée.
-    if (conforme === false) {
-      const ctx = await db.query(
-        `SELECT pp.store_id, pie.nom AS etape_nom
-           FROM production_item_etapes pie
-           JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
-           JOIN production_plans pp ON pp.id = ppi.plan_id
-          WHERE pie.id = $1`,
-        [etapeId]
+    // Plan pilote, étape 3 : écritures sur plusieurs tables en une seule transaction.
+    return withTransaction(async () => {
+      const consigne = data.consigne ?? null;
+      const tolerance = data.tolerance ?? null;
+      const conforme = (consigne !== null && tolerance !== null)
+        ? Math.abs(Number(data.mesure) - Number(consigne)) <= Number(tolerance)
+        : null;
+      const r = await db.query(
+        `INSERT INTO production_step_readings
+           (etape_id, parametre, consigne, tolerance, mesure, conforme, est_ccp, note, mesure_par)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [etapeId, data.parametre, consigne, tolerance, data.mesure, conforme,
+         data.est_ccp ?? false, data.note ?? null, userId]
       );
-      const meta = await readingParamMeta(data.parametre);
-      const problem = `Relevé de procédé hors tolérance — étape « ${ctx.rows[0]?.etape_nom ?? '?'} » : `
-        + `${meta.label} mesuré ${data.mesure} ${meta.unit}, cible ${consigne} ± ${tolerance} ${meta.unit}.`;
-      await db.query(
-        `INSERT INTO haccp_corrective_actions (store_id, source_kind, source_id, problem, created_by)
-         VALUES ($1, 'process', $2, $3, $4)`,
-        [ctx.rows[0]?.store_id ?? null, etapeId, problem, userId]
-      );
-    }
-    return r.rows[0];
+      // Relevé hors tolérance → action corrective HACCP (source 'process', mig 423),
+      // qui bloquera la mise en lot produit tant qu'elle n'est pas validée.
+      if (conforme === false) {
+        const ctx = await db.query(
+          `SELECT pp.store_id, pie.nom AS etape_nom
+             FROM production_item_etapes pie
+             JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+             JOIN production_plans pp ON pp.id = ppi.plan_id
+            WHERE pie.id = $1`,
+          [etapeId]
+        );
+        const meta = await readingParamMeta(data.parametre);
+        const problem = `Relevé de procédé hors tolérance — étape « ${ctx.rows[0]?.etape_nom ?? '?'} » : `
+          + `${meta.label} mesuré ${data.mesure} ${meta.unit}, cible ${consigne} ± ${tolerance} ${meta.unit}.`;
+        await db.query(
+          `INSERT INTO haccp_corrective_actions (store_id, source_kind, source_id, problem, created_by)
+           VALUES ($1, 'process', $2, $3, $4)`,
+          [ctx.rows[0]?.store_id ?? null, etapeId, problem, userId]
+        );
+      }
+      return r.rows[0];
+    });
   },
 
   // Une étape de type CCP (cuisson / refroidissement) exige au moins un relevé

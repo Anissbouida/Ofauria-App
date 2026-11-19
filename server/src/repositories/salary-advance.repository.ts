@@ -262,6 +262,12 @@ export const salaryAdvanceRepository = {
    * (payment_id NULL) detectable — moins pire qu'un paiement sans avance.
    */
   async remove(id: string, userId?: string) {
+    // Plan pilote, étape 3 : annulation du paiement (cancelPayrollPayment, qui passe par le pool)
+    // et suppression de l'avance dans UNE transaction ambiante — plus d'avance orpheline possible.
+    return withTransaction(() => this.removeInTransaction(id, userId));
+  },
+
+  async removeInTransaction(id: string, userId?: string) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');

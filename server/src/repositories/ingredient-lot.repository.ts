@@ -823,35 +823,38 @@ export const ingredientLotRepository = {
     notes?: string;
     checkedBy: string;
   }) {
-    const result = await db.query(
-      `INSERT INTO reception_quality_checks
-        (reception_voucher_id, temperature_ok, temperature_value, visual_ok, packaging_ok, labels_ok, overall_conformity, notes, checked_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (reception_voucher_id) DO UPDATE SET
-        temperature_ok = EXCLUDED.temperature_ok, temperature_value = EXCLUDED.temperature_value,
-        visual_ok = EXCLUDED.visual_ok, packaging_ok = EXCLUDED.packaging_ok,
-        labels_ok = EXCLUDED.labels_ok, overall_conformity = EXCLUDED.overall_conformity,
-        notes = EXCLUDED.notes, checked_by = EXCLUDED.checked_by, checked_at = NOW()
-       RETURNING *`,
-      [data.receptionVoucherId, data.temperatureOk ?? null, data.temperatureValue ?? null,
-       data.visualOk ?? null, data.packagingOk ?? null, data.labelsOk ?? null,
-       data.overallConformity, data.notes || null, data.checkedBy]
-    );
+    // Plan pilote, étape 3 : écritures sur plusieurs tables en une seule transaction.
+    return withTransaction(async () => {
+      const result = await db.query(
+        `INSERT INTO reception_quality_checks
+          (reception_voucher_id, temperature_ok, temperature_value, visual_ok, packaging_ok, labels_ok, overall_conformity, notes, checked_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (reception_voucher_id) DO UPDATE SET
+          temperature_ok = EXCLUDED.temperature_ok, temperature_value = EXCLUDED.temperature_value,
+          visual_ok = EXCLUDED.visual_ok, packaging_ok = EXCLUDED.packaging_ok,
+          labels_ok = EXCLUDED.labels_ok, overall_conformity = EXCLUDED.overall_conformity,
+          notes = EXCLUDED.notes, checked_by = EXCLUDED.checked_by, checked_at = NOW()
+         RETURNING *`,
+        [data.receptionVoucherId, data.temperatureOk ?? null, data.temperatureValue ?? null,
+         data.visualOk ?? null, data.packagingOk ?? null, data.labelsOk ?? null,
+         data.overallConformity, data.notes || null, data.checkedBy]
+      );
 
-    // Réception bloquante (épic labo L5, mig 428) + quarantaine à l'entrée (L5 P2P,
-    // mig 461) : un contrôle non conforme VERROUILLE les lots de la réception
-    // (status 'blocked' → exclus de la consommation) ; un contrôle conforme les
-    // LIBÈRE (→ 'active'). Cela couvre à la fois les lots nés en quarantaine
-    // (requires_qc) et les lots déjà actifs bloqués a posteriori. On ne touche
-    // qu'aux lots encore en stock, jamais aux lots consommés/en perte.
-    const lotFilter = `reception_voucher_item_id IN (
-      SELECT id FROM reception_voucher_items WHERE reception_voucher_id = $1)`;
-    if (data.overallConformity === false) {
-      await db.query(`UPDATE ingredient_lots SET status = 'blocked' WHERE ${lotFilter} AND status IN ('active', 'quarantine')`, [data.receptionVoucherId]);
-    } else {
-      await db.query(`UPDATE ingredient_lots SET status = 'active' WHERE ${lotFilter} AND status IN ('blocked', 'quarantine')`, [data.receptionVoucherId]);
-    }
-    return result.rows[0];
+      // Réception bloquante (épic labo L5, mig 428) + quarantaine à l'entrée (L5 P2P,
+      // mig 461) : un contrôle non conforme VERROUILLE les lots de la réception
+      // (status 'blocked' → exclus de la consommation) ; un contrôle conforme les
+      // LIBÈRE (→ 'active'). Cela couvre à la fois les lots nés en quarantaine
+      // (requires_qc) et les lots déjà actifs bloqués a posteriori. On ne touche
+      // qu'aux lots encore en stock, jamais aux lots consommés/en perte.
+      const lotFilter = `reception_voucher_item_id IN (
+        SELECT id FROM reception_voucher_items WHERE reception_voucher_id = $1)`;
+      if (data.overallConformity === false) {
+        await db.query(`UPDATE ingredient_lots SET status = 'blocked' WHERE ${lotFilter} AND status IN ('active', 'quarantine')`, [data.receptionVoucherId]);
+      } else {
+        await db.query(`UPDATE ingredient_lots SET status = 'active' WHERE ${lotFilter} AND status IN ('blocked', 'quarantine')`, [data.receptionVoucherId]);
+      }
+      return result.rows[0];
+    });
   },
 
   /** Get quality check for a reception */

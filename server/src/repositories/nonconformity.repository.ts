@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 
 /**
  * Non-conformités structurées (M7-05) : rattachements (lot, fournisseur, ordre, inspection,
@@ -50,31 +50,34 @@ export const nonconformityRepository = {
   },
 
   async decideLot(id: string, decision: LotDecision, userId: string, note?: string | null) {
-    const nc = (await db.query(`SELECT id, product_lot_id, ingredient_lot_id, lot_decision, title FROM quality_nonconformities WHERE id = $1`, [id])).rows[0];
-    if (!nc) throw Object.assign(new Error('Non-conformité introuvable'), { statusCode: 404 });
-    if (!nc.product_lot_id && !nc.ingredient_lot_id) throw Object.assign(new Error('Aucun lot rattaché à cette non-conformité'), { statusCode: 400 });
-    if (nc.lot_decision) throw Object.assign(new Error('Décision déjà prise sur ce lot'), { statusCode: 409 });
-    const motif = `Non-conformité : ${nc.title}${note ? ` — ${note}` : ''}`;
-    if (decision === 'detruit') {
-      if (nc.product_lot_id) {
-        const { productLotRepository } = await import('./product-lot.repository.js');
-        await productLotRepository.sendToLosses(nc.product_lot_id, 'quarantine_failed', userId, motif);
-      } else {
-        const { ingredientLotRepository } = await import('./ingredient-lot.repository.js');
-        await ingredientLotRepository.sendToLosses(nc.ingredient_lot_id, 'qualite_non_conforme', userId, motif);
+    // Plan pilote, étape 3 : écritures sur plusieurs tables en une seule transaction.
+    return withTransaction(async () => {
+      const nc = (await db.query(`SELECT id, product_lot_id, ingredient_lot_id, lot_decision, title FROM quality_nonconformities WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+      if (!nc) throw Object.assign(new Error('Non-conformité introuvable'), { statusCode: 404 });
+      if (!nc.product_lot_id && !nc.ingredient_lot_id) throw Object.assign(new Error('Aucun lot rattaché à cette non-conformité'), { statusCode: 400 });
+      if (nc.lot_decision) throw Object.assign(new Error('Décision déjà prise sur ce lot'), { statusCode: 409 });
+      const motif = `Non-conformité : ${nc.title}${note ? ` — ${note}` : ''}`;
+      if (decision === 'detruit') {
+        if (nc.product_lot_id) {
+          const { productLotRepository } = await import('./product-lot.repository.js');
+          await productLotRepository.sendToLosses(nc.product_lot_id, 'quarantine_failed', userId, motif);
+        } else {
+          const { ingredientLotRepository } = await import('./ingredient-lot.repository.js');
+          await ingredientLotRepository.sendToLosses(nc.ingredient_lot_id, 'qualite_non_conforme', userId, motif);
+        }
+      } else if (decision === 'accepte' && nc.product_lot_id) {
+        await db.query(
+          `UPDATE product_lots SET status = 'active', released_by = $2, released_at = NOW(), release_note = $3, updated_at = NOW()
+            WHERE id = $1 AND status = 'pending_release'`, [nc.product_lot_id, userId, `Accepté sur dérogation — ${motif}`]);
+      } else if (decision === 'accepte' && nc.ingredient_lot_id) {
+        await db.query(`UPDATE ingredient_lots SET status = 'active' WHERE id = $1 AND status IN ('blocked', 'quarantine')`, [nc.ingredient_lot_id]);
+      } else if (decision === 'retour_fournisseur' && nc.ingredient_lot_id) {
+        await db.query(`UPDATE ingredient_lots SET status = 'blocked' WHERE id = $1 AND status IN ('active', 'quarantine')`, [nc.ingredient_lot_id]);
       }
-    } else if (decision === 'accepte' && nc.product_lot_id) {
       await db.query(
-        `UPDATE product_lots SET status = 'active', released_by = $2, released_at = NOW(), release_note = $3, updated_at = NOW()
-          WHERE id = $1 AND status = 'pending_release'`, [nc.product_lot_id, userId, `Accepté sur dérogation — ${motif}`]);
-    } else if (decision === 'accepte' && nc.ingredient_lot_id) {
-      await db.query(`UPDATE ingredient_lots SET status = 'active' WHERE id = $1 AND status IN ('blocked', 'quarantine')`, [nc.ingredient_lot_id]);
-    } else if (decision === 'retour_fournisseur' && nc.ingredient_lot_id) {
-      await db.query(`UPDATE ingredient_lots SET status = 'blocked' WHERE id = $1 AND status IN ('active', 'quarantine')`, [nc.ingredient_lot_id]);
-    }
-    await db.query(
-      `UPDATE quality_nonconformities SET lot_decision = $2, lot_decided_by = $3, lot_decided_at = NOW() WHERE id = $1`, [id, decision, userId]);
-    return this.get(id);
+        `UPDATE quality_nonconformities SET lot_decision = $2, lot_decided_by = $3, lot_decided_at = NOW() WHERE id = $1`, [id, decision, userId]);
+      return this.get(id);
+    });
   },
 
   async addAction(ncId: string, a: { actionType: 'corrective' | 'preventive'; description: string; responsibleId?: string | null; dueDate?: string | null }, userId: string) {
