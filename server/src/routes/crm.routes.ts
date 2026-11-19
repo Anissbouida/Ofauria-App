@@ -4,6 +4,8 @@ import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js
 import { authorizeModule } from '../middleware/module.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { crmRepository, type Stage } from '../repositories/crm.repository.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { crmCampaignSchema, crmCampaignStatusSchema, crmNoBodySchema } from '../validators/crm.validator.js';
 
 /** CRM (mig 371) : droit « crm » (gérant par défaut, l'admin a tout). */
 export const crmRouter = Router();
@@ -87,7 +89,7 @@ crmRouter.post('/opportunities/:id/stage', authenticate, authorizeModule('crm', 
   res.json({ success: true, data: r.data });
 }));
 
-crmRouter.post('/opportunities/:id/customer', authenticate, authorizeModule('crm', 'edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
+crmRouter.post('/opportunities/:id/customer', authenticate, authorizeModule('crm', 'edit'), validate(crmNoBodySchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await crmRepository.createCustomer(req.params.id, req.user!.userId);
   if ('error' in r) { r.error === 'not_found' ? bad(res, 'Opportunité introuvable', 404) : bad(res, r.error, 409); return; }
   res.json({ success: true, data: r.data });
@@ -126,7 +128,7 @@ crmRouter.get('/campaign-options', authenticate, authorizeModule('crm'), asyncHa
   res.json({ success: true, data: await crmRepository.campaignOptions(req.user!.storeId ?? null) });
 }));
 
-crmRouter.post('/campaigns', authenticate, authorizeModule('crm', 'create'), asyncHandler(async (req: AuthRequest, res: Response) => {
+crmRouter.post('/campaigns', authenticate, authorizeModule('crm', 'create'), validate(crmCampaignSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const schema = z.object({
     name: z.string().trim().min(2).max(160),
     startDate: isoDate.nullish(), endDate: isoDate.nullish(),
@@ -140,7 +142,7 @@ crmRouter.post('/campaigns', authenticate, authorizeModule('crm', 'create'), asy
   res.status(201).json({ success: true, data: out.data });
 }));
 
-crmRouter.post('/campaigns/:id/status', authenticate, authorizeModule('crm', 'edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
+crmRouter.post('/campaigns/:id/status', authenticate, authorizeModule('crm', 'edit'), validate(crmCampaignStatusSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const status = String((req.body as Record<string, unknown>).status);
   if (!['active', 'closed'].includes(status)) { bad(res, 'Statut invalide'); return; }
   const r = await crmRepository.setCampaignStatus(req.params.id, status as 'active' | 'closed');
