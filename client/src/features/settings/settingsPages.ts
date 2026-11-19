@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  Building2, Store, Paintbrush, Printer, Radio, Factory, Truck, Percent, Hash, FileText,
+  Building2, Store, Paintbrush, Printer, Radio, Factory, Truck, Percent, Hash, FileText, Globe,
   BookOpen, Database, Ruler, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook, ShoppingCart, Landmark, Bot, Activity } from 'lucide-react';
 import type { AppModule, SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
@@ -17,7 +17,7 @@ export type SettingsPageKey =
   | 'company' | 'sector' | 'stores' | 'appearance' | 'integrations'
   | 'print' | 'channels' | 'salesRules' | 'posRules' | 'productCategories'
   | 'production' | 'purchasing'
-  | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
+  | 'tax' | 'countryPack' | 'currencies' | 'numbering' | 'documents' | 'ledger'
   | 'referentiel' | 'units' | 'customFields' | 'data' | 'dataQuality'
   | 'notifications' | 'mail' | 'jobs' | 'approvals' | 'audit';
 
@@ -114,6 +114,9 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
 
   { key: 'tax', group: 'Finance', auditTable: 'tax_codes', section: 'tax', label: 'TVA', icon: Percent,
     description: 'Taux de TVA datés', keywords: 'taxe taux tva' },
+  { key: 'countryPack', group: 'Finance', section: 'tax', label: 'Pays et législation', icon: Globe,
+    description: 'Pack pays : paramètres légaux de la paie et de la fiscalité (lecture seule)',
+    keywords: 'pays pack legislation maroc cnss amo ir paie anciennete heures legales 191 26 jours tva rib ice ebds edi liasse' },
   { key: 'currencies', group: 'Finance', modules: ['purchasing', 'accounting'], section: 'currencies', label: 'Devises', icon: Coins,
     description: 'Devises d\'achat et taux de change datés', keywords: 'devise monnaie euro dollar taux change import' },
   { key: 'numbering', group: 'Finance', auditTable: 'document_sequences', section: 'numbering', label: 'Numérotation', icon: Hash,

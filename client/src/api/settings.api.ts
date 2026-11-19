@@ -60,6 +60,22 @@ export interface TaxCode {
   valid_from: string; valid_to: string | null; legal_ref: string | null; status: 'current' | 'past' | 'future';
 }
 
+/** Pack pays (G6-06, mig 606) : paramètres légaux de la paie et de la fiscalité, en lecture seule. */
+export interface CountryPackParameter {
+  key: string; category: 'paie' | 'fiscalite' | 'formats'; label: string;
+  value: unknown; effectiveFrom: string | null; legalRef: string | null;
+  upcoming: { value: unknown; effectiveFrom: string }[];
+}
+export interface CountryPackOverview {
+  country: string;
+  pack: { code: string; name: string; defaultCurrency: string; declarativeFormats: string[]; notes: string | null } | null;
+  fallback: boolean;
+  date: string;
+  parameters: CountryPackParameter[];
+  payrollScale: Record<string, unknown> | null;
+  taxCodes: TaxCode[];
+}
+
 /** Ligne du journal des modifications (config_audit_log mig 328 + ref_audit_log). */
 export interface AuditLogEntry {
   id: string;
@@ -313,6 +329,7 @@ export const settingsApi = {
   restoreModuleVersion: (id: number) =>
     api.post(`/settings/modules/versions/${id}/restore`).then(r => r.data.data) as Promise<ModuleActivation>,
   taxCodes: () => api.get('/settings/tax-codes').then(r => r.data.data) as Promise<TaxCode[]>,
+  countryPack: () => api.get('/settings/country-pack').then(r => r.data.data) as Promise<CountryPackOverview>,
   addTaxRate: (data: Record<string, unknown>) => api.post('/settings/tax-codes', data).then(r => r.data.data) as Promise<TaxCode>,
   updateTaxCode: (id: string, data: Record<string, unknown>) => api.put(`/settings/tax-codes/${id}`, data).then(r => r.data.data) as Promise<TaxCode>,
   documentTemplates: () => api.get('/settings/documents').then(r => r.data.data) as Promise<DocumentTemplate[]>,

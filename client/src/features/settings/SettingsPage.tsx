@@ -24,6 +24,7 @@ import ProductCategoriesTab from './ProductCategoriesTab';
 import CompanyPage from './CompanyPage';
 import StoresPanel from './StoresPanel';
 import TaxCodesTab from './TaxCodesTab';
+import CountryPackTab from './CountryPackTab';
 import CurrenciesTab from './CurrenciesTab';
 import MailTab from './MailTab';
 import CustomFieldsTab from './CustomFieldsTab';
@@ -232,6 +233,7 @@ function SettingsShell() {
     ),
     productCategories: <ProductCategoriesTab />,
     tax: <TaxCodesTab />,
+    countryPack: <CountryPackTab />,
     currencies: <CurrenciesTab />,
     numbering: <NumberingTab />,
     documents: <DocumentsTab />,
