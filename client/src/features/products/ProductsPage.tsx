@@ -29,7 +29,7 @@ import SemiFinisTab from './SemiFinisTab';
 import ExpiredProductLotsBanner from './ExpiredProductLotsBanner';
 import type { ProfileFormData } from './ProductionProfileTab';
 import { mapLoyverseCsv } from './loyverse-csv';
-import { recipeUnitCost, recipeYieldLabel } from './recipeUnitCost';
+import { recipeSalePricing, recipeYieldLabel } from './recipeUnitCost';
 
 type ViewMode = 'grid' | 'table';
 
@@ -853,6 +853,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   const { hasModule } = usePermissions();
   const { data: allRecipes = [] } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list, enabled: hasModule('recipes') });
   const allRecipesList = allRecipes as Record<string, any>[];
+  // Codes TVA : lus ici (avant l'effet de prix) pour porter le prix HT de la fiche en TTC.
+  const { data: taxCodes = [] } = useQuery({ queryKey: ['tax-codes'], queryFn: () => invoicesApi.taxCodes() });
   // Available = no product linked OR linked to the current product being edited
   const availableRecipes = allRecipesList.filter(r => {
     if (!r.product_id) return true;
@@ -894,24 +896,24 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     ? (allRecipes as Record<string, any>[]).find(r => r.id === form.recipeId) || null
     : null;
 
-  // Auto-remplit le prix de vente et le cout de revient depuis la recette selectionnee.
-  // - cout par unite de vente = recipeUnitCost (fournee ÷ rendement du format par defaut,
-  //   ou ÷ poids de la fournee pour une vente au poids)
-  // - prix_vente = cout * margin_multiplier
+  // Auto-remplit le prix de vente et le cout de revient depuis la recette selectionnee :
+  // recipeSalePricing reprend le cout de production complet et le prix conseille de la
+  // fiche (meme calcul serveur que la fiche technique et le PDF), a la piece ou au kilo,
+  // porte en TTC si le prix catalogue est TTC (constat 29 du scenario 1).
   // On override toujours quand la recette ou le mode de vente change (la recette est la source de verite).
+  const taxRatePct = Number((taxCodes as Record<string, any>[]).find(t => t.code === form.taxCode)?.rate) || 0;
   useEffect(() => {
     if (!selectedRecipe) return;
-    const margin = parseFloat(String(selectedRecipe.margin_multiplier ?? '3')) || 3;
-    const costPerUnit = recipeUnitCost(selectedRecipe, form.saleUnit);
-    const suggestedPrice = costPerUnit * margin;
+    const { cost, price } = recipeSalePricing(selectedRecipe, form.saleUnit, { ratePct: taxRatePct, priceIncludesTax: form.priceIncludesTax });
     setForm(f => ({
       ...f,
-      price: suggestedPrice > 0 ? suggestedPrice.toFixed(2) : f.price,
-      costPrice: costPerUnit > 0 ? costPerUnit.toFixed(2) : f.costPrice,
+      price: price > 0 ? price.toFixed(2) : f.price,
+      costPrice: cost > 0 ? cost.toFixed(2) : f.costPrice,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRecipe?.id, selectedRecipe?.total_cost, selectedRecipe?.margin_multiplier, selectedRecipe?.rendement,
-      selectedRecipe?.rendement_unite, selectedRecipe?.rendement_kg, form.saleUnit]);
+      selectedRecipe?.rendement_unite, selectedRecipe?.rendement_kg, selectedRecipe?.sale_prix_piece, selectedRecipe?.sale_prix_kg,
+      form.saleUnit, taxRatePct, form.priceIncludesTax]);
 
   // Smart search: fuzzy match on recipe name, normalize accents
   const normalizeStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -961,7 +963,6 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
   const { data: allUsers = [] } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
   // Codes TVA du référentiel (mig 473) : défaut de TVA par article.
-  const { data: taxCodes = [] } = useQuery({ queryKey: ['tax-codes'], queryFn: () => invoicesApi.taxCodes() });
   const taxCodesList = taxCodes as Record<string, any>[];
   const chefRoles = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
   const chefUsers = allUsers.filter((u: Record<string, any>) => chefRoles.includes(u.role as string) && u.isActive !== false);
@@ -1438,7 +1439,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     {isManufactured ? (
                       <>
                         <input type="number" step="0.01" readOnly tabIndex={-1} style={{ ...fieldInputRO, fontWeight: 700 }} value={form.price} placeholder="0.00" />
-                        <p className="text-xs text-gray-400 mt-1">Calculé automatiquement depuis la recette (coût × marge).</p>
+                        <p className="text-xs text-gray-400 mt-1">Prix conseillé par la fiche technique (coût de production × multiplicateur, arrondi), en TTC si la base est TTC.</p>
                       </>
                     ) : (
                       <>
@@ -1454,7 +1455,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     {isManufactured ? (
                       <>
                         <input type="number" step="0.01" readOnly tabIndex={-1} style={fieldInputRO} value={form.costPrice} placeholder="Auto" />
-                        <p className="text-xs text-gray-400 mt-1">Somme du coût des ingrédients de la recette.</p>
+                        <p className="text-xs text-gray-400 mt-1">Coût de production de la fiche : matière, main-d'œuvre, énergie et structure.</p>
                       </>
                     ) : (
                       <>

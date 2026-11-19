@@ -83,7 +83,13 @@ export const recipeRepository = {
               -- v_recipe_total_weight_kg ne lit que l'ancienne composition et renvoie 0
               -- pour une fiche composee par format. Sert au prix au kilo d'un produit
               -- vendu au poids (scenario 1, constat 27).
-              dw.weight_kg AS default_format_weight_kg,
+              sp.poids_brut_kg AS default_format_weight_kg,
+              -- Mig 614 (constat 29) : coût complet et prix HT de la fiche, à la pièce et
+              -- au kilo, repris tels quels par le formulaire produit.
+              sp.cout_piece AS sale_cout_piece,
+              sp.prix_piece AS sale_prix_piece,
+              sp.cout_kg AS sale_cout_kg,
+              sp.prix_kg AS sale_prix_kg,
               dfc.nom AS default_contenant_nom,
               dfc.id IS NOT NULL AND dfc.nom ILIKE '%assemblage%' AS rendement_a_definir,
               (vtc.total_cost IS NULL OR vtc.total_cost = 0) AS compo_vide,
@@ -122,23 +128,9 @@ export const recipeRepository = {
          ORDER BY rf.is_default DESC, rf.ordre LIMIT 1
        ) df ON true
        LEFT JOIN production_contenants dfc ON dfc.id = df.contenant_id
-       -- Une ligne en masse se convertit directement ; en volume, il faut la masse
-       -- volumique de la matiere ; a la piece, son poids par piece. Sinon la ligne est
-       -- ecartee (comme fn_ingredient_weight_kg).
-       LEFT JOIN LATERAL (
-         SELECT sum(CASE
-             WHEN lower(c.unite) = 'mg' THEN c.quantite / 1000000.0
-             WHEN lower(c.unite) = 'g'  THEN c.quantite / 1000.0
-             WHEN lower(c.unite) = 'kg' THEN c.quantite
-             WHEN lower(c.unite) IN ('ml','cl','dl','l') AND COALESCE(i.densite_kg_l, 0) > 0 THEN
-               c.quantite * CASE lower(c.unite) WHEN 'ml' THEN 0.001 WHEN 'cl' THEN 0.01 WHEN 'dl' THEN 0.1 ELSE 1 END * i.densite_kg_l
-             WHEN lower(c.unite) IN ('unit','unite','unité','u','piece','pièce','pce','pc','pcs') AND COALESCE(i.poids_piece_kg, 0) > 0 THEN
-               c.quantite * i.poids_piece_kg
-             ELSE NULL END) AS weight_kg
-         FROM recipe_format_components c
-         LEFT JOIN ingredients i ON i.id = c.source_ingredient_id
-         WHERE c.format_id = df.id
-       ) dw ON true
+       -- Mig 614 : prix de vente et poids brut de la fournee du format par defaut
+       -- (fn_recipe_sale_pricing, meme regle de poids que l'ancien lateral dw).
+       LEFT JOIN LATERAL fn_recipe_sale_pricing(r.id) sp ON df.id IS NOT NULL
        WHERE r.archived_at IS ${archivedOnly ? 'NOT NULL' : 'NULL'}
        ORDER BY r.is_base DESC, r.name`
     );
@@ -658,7 +650,41 @@ export const recipeRepository = {
     marginMultiplier: number,
     overridePrice: number | null = null,
   ) {
-    if (!productId || yieldQuantity <= 0) return;
+    if (!productId) return;
+
+    // Mig 614 (constat 29) : fiche composée par format → coût complet et prix de la fiche
+    // (fn_recipe_sale_pricing), comme le formulaire produit. L'ancien calcul ci-dessous
+    // divisait la fournée entière par yield_quantity (1 pour une fiche par format) et ne
+    // comptait que la matière.
+    const fiche = (await executor.query(
+      `SELECT p.sale_unit, sp.cout_piece, sp.prix_piece, sp.cout_kg, sp.prix_kg
+         FROM products p
+         JOIN recipes r ON r.product_id = p.id
+         CROSS JOIN LATERAL fn_recipe_sale_pricing(r.id) sp
+        WHERE p.id = $1
+        LIMIT 1`,
+      [productId],
+    ) as { rows: { sale_unit: string | null; cout_piece: string | null; prix_piece: string | null; cout_kg: string | null; prix_kg: string | null }[] }).rows[0];
+    if (fiche) {
+      const auPoids = fiche.sale_unit === 'weight';
+      const cout = Number(auPoids ? fiche.cout_kg : fiche.cout_piece);
+      const prixFiche = Number(auPoids ? fiche.prix_kg : fiche.prix_piece);
+      const prix = overridePrice !== null && overridePrice >= 0 ? overridePrice : prixFiche;
+      // Garde-fou F-025 : coût nul (fiche sans composant) ou poids inconnu → on ne
+      // touche pas au produit.
+      if (!(cout > 0) || !(prix > 0)) return;
+      // Au poids : price (affiché au catalogue « /kg ») et price_per_kg (lu en caisse)
+      // portent la même valeur.
+      await executor.query(
+        auPoids
+          ? `UPDATE products SET cost_price = $1, price = $2, price_per_kg = $2, updated_at = NOW() WHERE id = $3`
+          : `UPDATE products SET cost_price = $1, price = $2, updated_at = NOW() WHERE id = $3`,
+        [cout, prix, productId],
+      );
+      return;
+    }
+
+    if (yieldQuantity <= 0) return;
 
     // Lire l'unite de vente du produit
     const productResult = await executor.query(

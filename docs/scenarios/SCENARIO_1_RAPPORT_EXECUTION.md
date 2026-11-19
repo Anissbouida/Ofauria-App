@@ -285,6 +285,34 @@ gérant met le produit à jour par l'écran (« Produit mis à jour ») : 232,65
 |---|---|---|
 | D-06 | Non joué | Le rendement de la fiche Baguette vaut 120 en base (100 au moment de la création du produit) : modifié en dehors du scénario. |
 
+### Correction : le produit reprend le prix de sa fiche (2026-11-19, constat 29)
+
+Avant : le formulaire produit prenait la matière seule comme prix de revient et
+matière × multiplicateur comme prix (Baguette 0,92 / 2,75 DH), alors que la fiche affiche
+un coût de production complet et un prix conseillé (1,05 / 3,16 DH à 100 pièces). La
+synchro serveur `syncProductPrice` (déclenchée par un changement de coût d'une matière ou
+d'une base) faisait de même, avec le rendement global de la recette (1 pour une fiche par
+format) : elle aurait réécrit le prix d'un produit avec le coût de toute la fournée.
+
+- Migration 614 : `fn_recipe_sale_pricing(recette)` = coût complet et prix HT arrondi du
+  format par défaut (`fn_recipe_cost`), à la pièce et au kilo (format au kilo tel quel,
+  sinon fournée ÷ poids brut de la composition).
+- Liste des fiches : expose ces valeurs ; le poids brut vient de la même fonction.
+- Formulaire produit : coût et prix repris de la fiche, portés en TTC si la base du prix
+  catalogue est TTC et qu'un code TVA est choisi ; libellés des champs corrigés.
+- `syncProductPrice` : même source pour une fiche par format ; au poids, `price` et
+  `price_per_kg` reçoivent la même valeur. L'ancien calcul reste pour les fiches sans format.
+
+Vérifié par l'écran (gérant) : le produit Baguette propose 3,00 DH et 0,88 DH de revient
+(fiche à 120 pièces : 0,76 matière + 15 % de structure ; 2,63 × 3 arrondi au demi-dirham
+supérieur) ; avec la TVA à 20 % et la base TTC, 3,60 DH. Sur décision, le gérant met
+les deux produits à jour par l'écran : Baguette 3,00 DH (revient 0,88), Cornes de gazelle
+223,00 DH/kg (revient 89,18 ; fiche au multiplicateur 2,5). Tests :
+3 tests de base (fonction et synchro), 17 tests du calcul client, suite de base complète
+(770) et 565 tests unitaires serveur.
+
+Écart restant : la fiche affiche son prix avant arrondi (constat 35).
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -317,13 +345,14 @@ gérant met le produit à jour par l'écran (« Produit mis à jour ») : 232,65
 | 26 | Faible | La première version d'une fiche affiche « Aucune différence » au lieu du contenu à valider. | D-07 |
 | 27 | Corrigée | En vente au poids, le prix d'un produit fabriqué reste celui de la pièce : le poids d'une fournée composée par format vaut 0 côté serveur (vue `v_recipe_total_weight_kg`, ancienne composition seulement). | C-03 |
 | 28 | Faible | Le poids brut affiché par la fiche (2,10 kg) ne suit pas les mêmes règles que celui du serveur (2,165 kg) : la fiche compte un volume sans masse volumique comme des grammes et ignore les pièces. | D-34 |
-| 29 | Haute | Le prix de revient d'un produit fabriqué ne prend que la matière (Baguette 0,92 DH), alors que sa fiche calcule un coût de production avec structure (1,05 DH) et un prix conseillé de 3,16 DH HT. Les deux écrans proposent deux prix différents pour le même article, et les charges fixes saisies n'entrent pas dans le coût du produit. | C-01, E-02 |
+| 29 | Corrigée (mig 614) | Le prix de revient d'un produit fabriqué ne prend que la matière (Baguette 0,92 DH), alors que sa fiche calcule un coût de production avec structure (1,05 DH) et un prix conseillé de 3,16 DH HT. Les deux écrans proposent deux prix différents pour le même article, et les charges fixes saisies n'entrent pas dans le coût du produit. | C-01, E-02 |
 | 30 | Moyenne | Les données de base n'ont pas de matière « Eau » : une fiche de pain ne peut pas déclarer son hydratation, et son poids brut est faux (15,6 kg au lieu d'environ 25 kg). À ajouter au scénario (matière à coût quasi nul, masse volumique 1). | D-01 |
 | 31 | Faible | Formulaire produit : un clic sur le nom de la recette dans l'aperçu (au lieu de la liste) ne choisit rien, sans message ; le prix reste à 0. | C-01 |
 | 32 | Corrigée | Le rendement d'un format ne se saisissait qu'en pièces : impossible de déclarer « une plaque donne 2 kg » pour un article vendu au poids. Migration 613. | D-01, C-03 |
 | 33 | Haute | Un changement de rendement n'est pas une modification à valider : la photo de version (`fn_recipe_bom_snapshot`) ne contient que les composants des formats, pas leur rendement. Un chef peut passer de 100 à 120 pièces (ou en kg) sans que le gérant ait à créer de version, alors que tous les coûts unitaires changent. | D-07 |
 | 34 | Moyenne | Ouvrir un produit fabriqué existant recalcule son prix depuis la fiche sans le dire : « Mettre à jour » enregistre le nouveau prix même si l'on venait modifier autre chose. | C-03 |
 | 35 | Faible | Le prix affiché par la fiche (267,55 DH) n'applique pas l'arrondi des prix, que la fonction de coût applique (268 DH). | E-04 |
+| 36 | Haute | Le multiplicateur de la fiche Cornes de gazelle est passé de 3 à 2,5 à 21 h 29 sans version à valider (même cause que le constat 33 : la photo de version ne contient pas les leviers financiers). | D-07 |
 
 ## Reste à jouer
 

@@ -24,6 +24,12 @@ export type RecipeCostSource = {
   rendement_kg?: string | number | null;
   yield_quantity?: string | number | null;
   compo_par_piece?: boolean | null;
+  /** Mig 614 : coût complet et prix HT de la fiche (fn_recipe_sale_pricing). */
+  sale_cout_piece?: string | number | null;
+  sale_prix_piece?: string | number | null;
+  sale_cout_kg?: string | number | null;
+  sale_prix_kg?: string | number | null;
+  margin_multiplier?: string | number | null;
 };
 
 export type SaleUnit = 'unit' | 'weight' | 'person' | string;
@@ -71,4 +77,30 @@ export function recipeUnitCost(recipe: RecipeCostSource, saleUnit: SaleUnit = 'u
     if (weightKg > 0) return totalCost / weightKg;
   }
   return totalCost / recipeYieldPerBatch(recipe);
+}
+
+/**
+ * Coût de revient et prix de vente d'un produit fabriqué, repris de SA fiche (scénario 1,
+ * constat 29) : coût de production complet (matière + main-d'œuvre + énergie + structure)
+ * et prix conseillé arrondi, calculés par le serveur (fn_recipe_sale_pricing) à la pièce
+ * ou au kilo. Le prix de la fiche est HT : il est porté en TTC quand le prix catalogue est
+ * saisi TTC et qu'un taux de TVA est choisi.
+ *
+ * Fiche sans format (ancienne composition) ou au poids sans poids connu : repli sur le
+ * calcul historique, matière × multiplicateur.
+ */
+export function recipeSalePricing(
+  recipe: RecipeCostSource,
+  saleUnit: SaleUnit = 'unit',
+  tax: { ratePct?: number; priceIncludesTax?: boolean } = {},
+): { cost: number; price: number; fromFiche: boolean } {
+  const auPoids = saleUnit === 'weight';
+  const ficheCost = num(auPoids ? recipe.sale_cout_kg : recipe.sale_cout_piece);
+  const fichePrice = num(auPoids ? recipe.sale_prix_kg : recipe.sale_prix_piece);
+  const fromFiche = ficheCost > 0 && fichePrice > 0;
+  const cost = fromFiche ? ficheCost : recipeUnitCost(recipe, saleUnit);
+  const priceHt = fromFiche ? fichePrice : cost * (num(recipe.margin_multiplier) || 3);
+  const rate = tax.ratePct ?? 0;
+  const price = tax.priceIncludesTax !== false && rate > 0 ? priceHt * (1 + rate / 100) : priceHt;
+  return { cost, price, fromFiche };
 }

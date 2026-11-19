@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { recipeUnitCost, recipeYieldPerBatch, recipeYieldLabel } from './recipeUnitCost';
+import { recipeUnitCost, recipeYieldPerBatch, recipeYieldLabel, recipeSalePricing } from './recipeUnitCost';
 
 // Fiche « Cornes de gazelle » du scénario 1 : plaque de 60 pièces, 155,10 DH, 2,10 kg.
 const cornes = { total_cost: '155.10', total_weight_kg: '2.1', rendement: 60, yield_quantity: '1.000', compo_par_piece: false };
@@ -61,5 +61,37 @@ describe('rendement en kg', () => {
     expect(recipeYieldLabel(enKg)).toBe('2 kg');
     expect(recipeYieldLabel({ ...enKg, rendement_kg: '2.1' })).toBe('2,1 kg');
     expect(recipeYieldLabel(cornes)).toBe('60 unites');
+  });
+});
+
+// Mig 614 (constat 29) : le produit reprend le coût complet et le prix de sa fiche.
+describe('recipeSalePricing', () => {
+  // Baguette : fiche 0,877 DH de coût complet, 3,00 DH de prix arrondi ; 6,745 DH/kg, 23,50 DH/kg.
+  const baguette = {
+    total_cost: '91.5', rendement: 120, margin_multiplier: '3',
+    sale_cout_piece: '0.876875', sale_prix_piece: '3.0', sale_cout_kg: '6.745', sale_prix_kg: '23.5',
+  };
+
+  it('à la pièce : coût complet et prix de la fiche, pas la matière seule', () => {
+    expect(recipeSalePricing(baguette, 'unit')).toEqual({ cost: 0.876875, price: 3, fromFiche: true });
+  });
+
+  it('au poids : valeurs au kilo de la fiche', () => {
+    expect(recipeSalePricing(baguette, 'weight')).toMatchObject({ cost: 6.745, price: 23.5, fromFiche: true });
+  });
+
+  it('porte le prix HT de la fiche en TTC quand la base est TTC', () => {
+    expect(recipeSalePricing(baguette, 'unit', { ratePct: 20, priceIncludesTax: true }).price).toBeCloseTo(3.6, 6);
+    expect(recipeSalePricing(baguette, 'unit', { ratePct: 20, priceIncludesTax: false }).price).toBe(3);
+  });
+
+  it('repli matière × multiplicateur pour une fiche sans format', () => {
+    expect(recipeSalePricing({ total_cost: 40, yield_quantity: 20, margin_multiplier: 2.5 }, 'unit'))
+      .toEqual({ cost: 2, price: 5, fromFiche: false });
+  });
+
+  it('repli quand le poids de la fournée est inconnu (prix au kilo absent)', () => {
+    const r = recipeSalePricing({ ...baguette, sale_cout_kg: null, sale_prix_kg: null }, 'weight');
+    expect(r.fromFiche).toBe(false);
   });
 });
