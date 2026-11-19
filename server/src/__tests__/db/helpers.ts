@@ -15,9 +15,12 @@ export const hasTestDb = Boolean(TEST_DATABASE_URL);
 
 let pool: pg.Pool | null = null;
 
-/** Pool dedie aux tests (fixtures, assertions). */
+/** Pool dedie aux tests (fixtures, assertions). Meme fuseau de session que l'application
+ *  (DB_TIMEZONE de config/database.ts) : sinon CURRENT_DATE des fixtures suit le fuseau du
+ *  serveur Postgres et, le soir, une DLC « demain » posee par le test est deja « aujourd'hui »
+ *  pour l'application (echec de scenarios-ventes entre 18 h et minuit). */
 export function testPool(): pg.Pool {
-  if (!pool) pool = new pg.Pool({ connectionString: TEST_DATABASE_URL, max: 3 });
+  if (!pool) pool = new pg.Pool({ connectionString: TEST_DATABASE_URL, max: 3, options: '-c TimeZone=Africa/Casablanca' });
   return pool;
 }
 
