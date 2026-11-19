@@ -61,6 +61,29 @@ production → paie.
 
 ## 3. Étape 3 — transactions critiques (G3-06 vague 3 ciblée)
 
+**FAIT le 2026-11-18 (174374b) — et CORRECTION du constat ci-dessous.** Le premier audit était
+faux : sur les 20 blocs listés, les appels « hors transaction » recevaient en réalité la connexion
+(l'expression régulière coupait à la première parenthèse d'un appel imbriqué). Audit refait
+(arguments à parenthèses équilibrées, variable de connexion réelle) :
+- blocs manuels qui écrivent hors de leur connexion : **2** — suppression d'une avance sur salaire
+  (annulation du paiement par le pool : avance orpheline possible) et numéro de réapprovisionnement
+  (verrou consultatif pris hors transaction : numéros en double possibles sous concurrence) ;
+- les autres signalements sont des lectures (paramètres, featureOn, état courant avant écriture) ;
+- risque plus grave trouvé au passage : **9 méthodes** écrivaient plusieurs tables par le pool
+  **sans aucune transaction** — contrôle à réception d'un lot, inventaire (comptage, ajout de
+  ligne, soumission / réouverture / annulation), libération de lot après contrôle, décision sur une
+  non-conformité, relevé HACCP d'étape, marges de production (taux global et par catégorie).
+
+Traitement : les 9 méthodes et la suppression d'avance passent sous `withTransaction` (corps
+inchangé : les BEGIN/COMMIT internes deviennent des points de sauvegarde) ; verrou de ligne
+(`FOR UPDATE`) sur l'en-tête d'inventaire et la non-conformité contre la double soumission ; le
+numéro de réapprovisionnement est calculé sous le verrou de la transaction. Preuves : deux tests
+qui font échouer la seconde écriture (déclencheur temporaire) — rejoués sur l'ancien code, ils
+échouent (paiement annulé sans avance supprimée ; marge modifiée sans historique).
+Les ~190 autres blocs manuels sont déjà atomiques sur leur connexion : laissés tels quels.
+
+*Constat initial (erroné, conservé pour l'historique) :*
+
 195 blocs `BEGIN … COMMIT` manuels. Un bloc manuel est déjà atomique sur **sa** connexion ; le
 risque réel est un bloc qui appelle, au milieu, du code écrivant par le **pool** (`db.query`, un
 autre dépôt, `withActor`) : cette écriture part sur une autre connexion et survit à un ROLLBACK.
