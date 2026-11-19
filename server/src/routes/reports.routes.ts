@@ -4,6 +4,8 @@ import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { reportBuilderRepository as rb } from '../repositories/report-builder.repository.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { reportDashboardSchema, reportDefinitionSchema, reportRunSchema } from '../validators/reports.validator.js';
 
 const router = Router();
 
@@ -31,7 +33,7 @@ router.get('/custom/filter-options', authenticate, can('reports.view'), asyncHan
   res.json({ success: true, data: await rb.filterOptions(source, filter) });
 }));
 
-router.post('/custom/run', authenticate, can('reports.run'), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/custom/run', authenticate, can('reports.run'), validate(reportRunSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const out = await rb.run(req.body ?? {}, { storeId: storeOf(req) });
   if ('error' in out) { bad(res, out.error as string); return; }
   res.json({ success: true, data: out });
@@ -41,7 +43,7 @@ router.get('/custom/definitions', authenticate, can('reports.view'), asyncHandle
   res.json({ success: true, data: await rb.list(storeOf(req)) });
 }));
 
-router.post('/custom/definitions', authenticate, can('reports.definitions'), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/custom/definitions', authenticate, can('reports.definitions'), validate(reportDefinitionSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const { name, sourceKey, config } = req.body ?? {};
   if (typeof name !== 'string' || !name.trim() || typeof sourceKey !== 'string' || !sourceKey) { bad(res, 'Nom et source requis'); return; }
   const out = await rb.create({ name, sourceKey, config: config ?? {} }, { userId: req.user!.userId, storeId: storeOf(req) });
@@ -49,7 +51,7 @@ router.post('/custom/definitions', authenticate, can('reports.definitions'), asy
   res.status(201).json({ success: true, data: out });
 }));
 
-router.put('/custom/definitions/:id', authenticate, can('reports.definitions'), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.put('/custom/definitions/:id', authenticate, can('reports.definitions'), validate(reportDefinitionSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const { name, sourceKey, config } = req.body ?? {};
   if (typeof name !== 'string' || !name.trim() || typeof sourceKey !== 'string' || !sourceKey) { bad(res, 'Nom et source requis'); return; }
   const out = await rb.update(req.params.id, { name, sourceKey, config: config ?? {} }, storeOf(req));
@@ -73,13 +75,13 @@ router.get('/custom/dashboards/:id', authenticate, can('reports.view'), asyncHan
   res.json({ success: true, data: d });
 }));
 
-router.post('/custom/dashboards', authenticate, can('reports.dashboards'), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/custom/dashboards', authenticate, can('reports.dashboards'), validate(reportDashboardSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const { name, tiles } = req.body ?? {};
   if (typeof name !== 'string' || !name.trim()) { bad(res, 'Nom requis'); return; }
   res.status(201).json({ success: true, data: await rb.createDashboard({ name, tiles }, { userId: req.user!.userId, storeId: storeOf(req) }) });
 }));
 
-router.put('/custom/dashboards/:id', authenticate, can('reports.dashboards'), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.put('/custom/dashboards/:id', authenticate, can('reports.dashboards'), validate(reportDashboardSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const { name, tiles } = req.body ?? {};
   if (typeof name !== 'string' || !name.trim()) { bad(res, 'Nom requis'); return; }
   const out = await rb.updateDashboard(req.params.id, { name, tiles: Array.isArray(tiles) ? tiles : [] }, storeOf(req));
