@@ -77,7 +77,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
           <div className="absolute end-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-1 text-gray-800 z-50">
             <div className="px-4 py-3 border-b">
               <p className="font-semibold text-sm">{user?.firstName} {user?.lastName}</p>
-              <p className="text-xs text-gray-500" dir="ltr">{user?.email}</p>
+              <p className="text-xs text-gray-500"><bdi>{user?.email}</bdi></p>
               <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
                 {user?.role ? ROLE_LABELS[user.role as Role] || user.role : ''}
               </span>

@@ -27,7 +27,7 @@ export function LanguageMenu({ onDone }: { onDone?: () => void }) {
         <Languages size={12} /> {t('header.language')}
       </p>
       {LOCALES.map(l => (
-        <button key={l} type="button" lang={l} dir={l === 'ar' ? 'rtl' : 'ltr'}
+        <button key={l} type="button" lang={l}
           onClick={() => { change(l); onDone?.(); }}
           aria-pressed={locale === l}
           className="w-full text-start px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2">

@@ -248,7 +248,7 @@ export default function LoginPage() {
                     {(u.firstName[0] ?? '?').toUpperCase()}{u.lastInitial}
                   </span>
                   <span className="text-sm font-medium text-gray-800 text-center leading-tight">
-                    {u.firstName}{u.lastInitial ? ` ${u.lastInitial}.` : ''}
+                    <bdi>{u.firstName}{u.lastInitial ? ` ${u.lastInitial}.` : ''}</bdi>
                   </span>
                 </button>
               ))}
@@ -269,7 +269,7 @@ export default function LoginPage() {
         <div className="flex items-center gap-2 mb-4">
           <Lock size={20} className="text-gray-400" />
           <span className="text-gray-500">
-            <strong className="text-gray-800">{selected.firstName}{selected.lastInitial ? ` ${selected.lastInitial}.` : ''}</strong> — {t('auth.enterPin')}
+            <strong className="text-gray-800"><bdi>{selected.firstName}{selected.lastInitial ? ` ${selected.lastInitial}.` : ''}</bdi></strong> — {t('auth.enterPin')}
           </span>
         </div>
 

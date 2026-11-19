@@ -133,7 +133,7 @@ export default function NotificationBell() {
       >
         <Bell size={20} />
         {(unreadCount > 0 || approvalsCount > 0) && (
-          <span className="absolute -top-0.5 -end-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 leading-none animate-pulse">
+          <span dir="ltr" className="absolute -top-0.5 -end-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 leading-none animate-pulse">
             {unreadCount + approvalsCount > 99 ? '99+' : unreadCount + approvalsCount}
           </span>
         )}

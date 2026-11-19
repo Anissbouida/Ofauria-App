@@ -31,7 +31,7 @@ function ModuleTile({ item, onSelect, count = 0 }: { item: NavItem; onSelect: ()
 /** Pastille rouge en coin de tuile (pièces à approuver…). */
 export function CountBadge({ count }: { count: number }) {
   return (
-    <span className="absolute -top-1.5 -end-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-white">
+    <span dir="ltr" className="absolute -top-1.5 -end-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-white">
       {count > 99 ? '99+' : count}
     </span>
   );
