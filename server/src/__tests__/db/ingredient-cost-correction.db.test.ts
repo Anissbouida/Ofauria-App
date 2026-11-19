@@ -56,7 +56,7 @@ describe.skipIf(!hasTestDb)('Correction tracée du coût d\'un ingrédient (G2-0
   });
 
   it('suspect « sans prix » avec ses dernières réceptions et la proposition pondérée', async () => {
-    const s = (await corr.suspects()).find(x => x.ingredientId === ing)!;
+    const s = (await corr.suspects(100_000)).find(x => x.ingredientId === ing)!;
     expect(s).toMatchObject({ reason: 'sans_prix', unitCost: 0, unit: 'kg', proposal: 43 });
     expect(s.receptions.map(r => [r.quantity, r.unitPrice])).toEqual([[30, 44], [10, 40]]);   // la plus récente d'abord
   });
@@ -83,7 +83,7 @@ describe.skipIf(!hasTestDb)('Correction tracée du coût d\'un ingrédient (G2-0
     expect(row.basis.receptions).toHaveLength(2);
 
     // Plus « sans prix » (il peut rester signalé s'il s'écarte de la médiane de sa catégorie dans la base de test).
-    expect((await corr.suspects()).some(x => x.ingredientId === ing && x.reason === 'sans_prix')).toBe(false);
+    expect((await corr.suspects(100_000)).some(x => x.ingredientId === ing && x.reason === 'sans_prix')).toBe(false);
     expect((await corr.history(20)).some(h => h.id === out.id && h.new_cost === 43)).toBe(true);
     expect(await corr.correct(ing, 43, 'Encore une fois', fx.userId)).toEqual({ error: 'Le coût est déjà à cette valeur' });
   });

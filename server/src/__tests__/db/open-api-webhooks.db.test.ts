@@ -39,7 +39,8 @@ describe.skipIf(!hasTestDb)('API ouverte et webhooks (G6-08)', () => {
     expect(Object.keys(spec.paths)).toEqual(['/v1/ping', '/v1/products', '/v1/orders']);
     const body = spec.paths['/v1/orders'].post.requestBody.content['application/json'].schema;
     expect(body.required).toEqual(['items']);
-    expect(body.properties.customerName).toMatchObject({ type: 'string', maxLength: 200 });
+    // zod 4 (z.toJSONSchema) : un champ nullable s'écrit anyOf [chaîne, null] (OpenAPI 3.1).
+    expect(body.properties.customerName.anyOf).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'string', maxLength: 200 }), { type: 'null' }]));
     expect(body.properties.items).toMatchObject({ type: 'array', minItems: 1, maxItems: 200 });
     expect(body.additionalProperties).toBe(false);
     expect(Object.keys(spec.webhooks)).toContain('production.lot_created');

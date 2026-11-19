@@ -56,7 +56,7 @@ const proposalOf = (receptions: Reception[]): number | null => {
 
 export const ingredientCostCorrectionRepository = {
   /** Prix à revoir, les plus éloignés de leur catégorie d'abord, puis les prix manquants. */
-  async suspects(): Promise<PriceSuspect[]> {
+  async suspects(limit = 300): Promise<PriceSuspect[]> {
     const rows = (await db.query(
       `WITH med AS (
          SELECT category_id, unit, percentile_cont(0.5) WITHIN GROUP (ORDER BY unit_cost) AS median, COUNT(*) AS n
@@ -74,7 +74,7 @@ export const ingredientCostCorrectionRepository = {
         ORDER BY (COALESCE(i.unit_cost, 0) = 0),
                  CASE WHEN i.unit_cost > 0 AND m.median > 0 THEN GREATEST(i.unit_cost / m.median, m.median / i.unit_cost) END DESC NULLS LAST,
                  i.name
-        LIMIT 300`)).rows as Omit<PriceSuspect, 'receptions' | 'proposal'>[];
+        LIMIT $1`, [limit])).rows as Omit<PriceSuspect, 'receptions' | 'proposal'>[];
     const receptions = await lastReceptions(rows.map(r => r.ingredientId));
     return rows.map(r => {
       const list = receptions.get(r.ingredientId) ?? [];
