@@ -379,11 +379,14 @@ export const bankReconciliationRepository = {
 export type BankRuleInput = {
   priority?: number; label: string; isActive?: boolean; labelContains?: string | null; labelRegex?: string | null;
   direction?: 'in' | 'out' | null; amountMin?: number | null; amountMax?: number | null;
-  action: 'match' | 'post_entry'; counterAccountId?: string | null; entryLabel?: string | null;
+  action: 'match' | 'post_entry' | 'match_fee'; counterAccountId?: string | null; entryLabel?: string | null;
   amountTolerance?: number; dateToleranceDays?: number;
+  /** match_fee (mig 601) : écart admis en % du brut, et restriction aux encaissements carte. */
+  feePctMin?: number | null; feePctMax?: number | null; candidateSource?: 'card' | null;
 };
 const RULE_COLUMNS = ['id', 'priority', 'label', 'is_active', 'label_contains', 'label_regex', 'direction', 'amount_min::float8 AS amount_min',
-  'amount_max::float8 AS amount_max', 'action', 'counter_account_id', 'entry_label', 'amount_tolerance::float8 AS amount_tolerance', 'date_tolerance_days'];
+  'amount_max::float8 AS amount_max', 'action', 'counter_account_id', 'entry_label', 'amount_tolerance::float8 AS amount_tolerance', 'date_tolerance_days',
+  'fee_pct_min::float8 AS fee_pct_min', 'fee_pct_max::float8 AS fee_pct_max', 'candidate_source'];
 
 export const bankRuleRepository = {
   async list() {
@@ -400,22 +403,34 @@ export const bankRuleRepository = {
     if (!input.labelContains && !input.labelRegex && input.amountMin == null && input.amountMax == null) {
       throw Object.assign(new Error('Indiquez au moins une condition : libellé, expression ou plage de montant'), { statusCode: 400 });
     }
-    if (input.action === 'post_entry' && !input.counterAccountId) {
+    const generates = input.action === 'post_entry' || input.action === 'match_fee';
+    if (generates && !input.counterAccountId) {
       throw Object.assign(new Error('Choisissez le compte de contrepartie de l\'écriture à générer'), { statusCode: 400 });
     }
+    const fee = input.action === 'match_fee';
+    if (fee) {
+      // Commission de carte : flux reçu (net), écart en % du brut.
+      if (input.direction && input.direction !== 'in') throw Object.assign(new Error('Une commission de carte se rapproche sur un flux reçu (entrée)'), { statusCode: 400 });
+      const max = input.feePctMax;
+      if (max == null || !(max >= 0 && max <= 50)) throw Object.assign(new Error('Indiquez l\'écart maximal admis, en % du brut (0 à 50)'), { statusCode: 400 });
+      if ((input.feePctMin ?? 0) < 0 || (input.feePctMin ?? 0) > max) throw Object.assign(new Error('L\'écart minimal doit être compris entre 0 et l\'écart maximal'), { statusCode: 400 });
+    }
     const v = [input.priority ?? 100, input.label.trim(), input.isActive ?? true, input.labelContains?.trim() || null, input.labelRegex?.trim() || null,
-      input.direction ?? null, input.amountMin ?? null, input.amountMax ?? null, input.action, input.action === 'post_entry' ? input.counterAccountId : null,
-      input.entryLabel?.trim() || null, input.amountTolerance ?? 0, input.dateToleranceDays ?? 7];
+      fee ? 'in' : input.direction ?? null, input.amountMin ?? null, input.amountMax ?? null, input.action, generates ? input.counterAccountId : null,
+      input.entryLabel?.trim() || null, input.amountTolerance ?? 0, input.dateToleranceDays ?? 7,
+      fee ? input.feePctMin ?? 0 : null, fee ? input.feePctMax : null, fee ? input.candidateSource ?? null : null];
     const cols = RULE_COLUMNS.join(', ');
     const r = id
       ? await db.query(
         `UPDATE bank_rules SET priority = $1, label = $2, is_active = $3, label_contains = $4, label_regex = $5, direction = $6,
                 amount_min = $7, amount_max = $8, action = $9, counter_account_id = $10, entry_label = $11, amount_tolerance = $12,
-                date_tolerance_days = $13, updated_at = now() WHERE id = $14 RETURNING ${cols}`, [...v, id])
+                date_tolerance_days = $13, fee_pct_min = $14, fee_pct_max = $15, candidate_source = $16, updated_at = now()
+          WHERE id = $17 RETURNING ${cols}`, [...v, id])
       : await db.query(
         `INSERT INTO bank_rules (priority, label, is_active, label_contains, label_regex, direction, amount_min, amount_max, action,
-                                 counter_account_id, entry_label, amount_tolerance, date_tolerance_days, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING ${cols}`, [...v, userId]);
+                                 counter_account_id, entry_label, amount_tolerance, date_tolerance_days, fee_pct_min, fee_pct_max,
+                                 candidate_source, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING ${cols}`, [...v, userId]);
     if (!r.rows[0]) throw Object.assign(new Error('Règle introuvable'), { statusCode: 404 });
     return r.rows[0];
   },

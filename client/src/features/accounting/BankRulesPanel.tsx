@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Save, Trash2, X, ListChecks } from 'lucide-react';
-import { bankReconciliationApi, type BankRule, type BankRuleInput } from '../../api/bank-reconciliation.api';
+import { bankReconciliationApi, type BankRule, type BankRuleAction, type BankRuleInput } from '../../api/bank-reconciliation.api';
 import { planComptableApi } from '../../api/ledger.api';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusTag } from '../../components/ui/StatusTag';
@@ -14,7 +14,9 @@ import { currencySymbol } from '../../utils/money';
 /**
  * Règles de rapprochement bancaire (G4-02). Une règle reconnaît des lignes de relevé par
  * leur libellé, leur sens ou leur montant, puis soit les rapproche d'une écriture existante
- * avec des tolérances, soit génère l'écriture (frais bancaires, commissions, agios).
+ * avec des tolérances, soit génère l'écriture (frais bancaires, commissions, agios), soit
+ * (mig 601, « commission de carte ») rapproche un flux TPE net des encaissements carte bruts
+ * d'un ou plusieurs jours et génère l'écart en commission, s'il reste dans la fourchette en %.
  */
 
 const field: React.CSSProperties = { width: '100%', fontSize: '0.85rem', padding: '7px 9px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
@@ -33,13 +35,24 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
     direction: (rule?.direction ?? draft?.direction ?? '') as '' | 'in' | 'out',
     amountMin: rule?.amount_min != null ? String(rule.amount_min) : draft?.amountMin != null ? String(draft.amountMin) : '',
     amountMax: rule?.amount_max != null ? String(rule.amount_max) : draft?.amountMax != null ? String(draft.amountMax) : '',
-    action: (rule?.action ?? draft?.action ?? 'post_entry') as 'match' | 'post_entry',
+    action: (rule?.action ?? draft?.action ?? 'post_entry') as BankRuleAction,
     counterAccountId: rule?.counter_account_id ?? draft?.counterAccountId ?? '',
     entryLabel: rule?.entry_label ?? draft?.entryLabel ?? '',
     amountTolerance: String(rule?.amount_tolerance ?? 0),
     dateToleranceDays: String(rule?.date_tolerance_days ?? 7),
+    feePctMin: rule?.fee_pct_min != null ? String(rule.fee_pct_min) : '0',
+    feePctMax: rule?.fee_pct_max != null ? String(rule.fee_pct_max) : '3',
+    cardOnly: rule ? rule.candidate_source === 'card' : true,
     isActive: rule?.is_active ?? true,
   });
+  const generates = f.action === 'post_entry' || f.action === 'match_fee';
+  /** Commission de carte : flux reçu, 3 jours, 6147 proposé (compte de la commission carte, mig 356). */
+  const chooseFee = () => setF(x => ({
+    ...x, action: 'match_fee', direction: 'in', dateToleranceDays: x.action === 'match_fee' ? x.dateToleranceDays : '3',
+    amountTolerance: x.action === 'match_fee' ? x.amountTolerance : '0.05',
+    counterAccountId: x.counterAccountId || (accounts as { id: string; code: string }[]).find(a => a.code === '6147')?.id || '',
+    entryLabel: x.entryLabel || 'Commission carte',
+  }));
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF(x => ({ ...x, [k]: v }));
   const options = useMemo(() => (accounts as { id: string; code: string; label: string; is_active?: boolean }[])
     .filter(a => a.is_active !== false && /^\d{4,}$/.test(a.code))
@@ -50,8 +63,9 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
       label: f.label, priority: Number(f.priority) || 100, isActive: f.isActive,
       labelContains: f.labelContains || null, labelRegex: f.labelRegex || null, direction: f.direction || null,
       amountMin: num(f.amountMin), amountMax: num(f.amountMax), action: f.action,
-      counterAccountId: f.action === 'post_entry' ? f.counterAccountId || null : null, entryLabel: f.entryLabel || null,
+      counterAccountId: generates ? f.counterAccountId || null : null, entryLabel: f.entryLabel || null,
       amountTolerance: num(f.amountTolerance) ?? 0, dateToleranceDays: Number(f.dateToleranceDays) || 0,
+      ...(f.action === 'match_fee' ? { feePctMin: num(f.feePctMin) ?? 0, feePctMax: num(f.feePctMax), candidateSource: f.cardOnly ? 'card' as const : null } : {}),
     }, rule?.id),
     onSuccess: () => { notify.success('Règle enregistrée'); onSaved(); },
     onError: e => notify.error(apiErrorMessage(e)),
@@ -86,11 +100,29 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
         </fieldset>
         <fieldset style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 10, display: 'grid', gap: 10 }}>
           <legend style={{ fontSize: '0.78rem', fontWeight: 600, padding: '0 4px' }}>Action</legend>
-          <div style={{ display: 'flex', gap: 16, fontSize: '0.85rem' }}>
+          <div style={{ display: 'flex', gap: 16, fontSize: '0.85rem', flexWrap: 'wrap' }}>
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="radio" checked={f.action === 'post_entry'} onChange={() => set('action', 'post_entry')} /> Générer l'écriture</label>
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="radio" checked={f.action === 'match'} onChange={() => set('action', 'match')} /> Rapprocher d'une écriture existante</label>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="radio" checked={f.action === 'match_fee'} onChange={chooseFee} /> Commission de carte (net reçu ← ventes brutes)</label>
           </div>
-          {f.action === 'post_entry' ? (
+          {f.action === 'match_fee' && (
+            <>
+              <div style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>
+                Le flux reçu est rapproché des encaissements d'un jour (ou de jours consécutifs) précédant l'opération ; l'écart brut − net,
+                s'il reste dans la fourchette, est passé en commission sur le compte choisi. Une seule combinaison doit convenir.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+                <div><label style={lbl} htmlFor="r-fmin">Écart minimal (% du brut)</label><input id="r-fmin" style={field} inputMode="decimal" value={f.feePctMin} onChange={e => set('feePctMin', e.target.value)} /></div>
+                <div><label style={lbl} htmlFor="r-fmax">Écart maximal (% du brut)</label><input id="r-fmax" style={field} inputMode="decimal" value={f.feePctMax} onChange={e => set('feePctMax', e.target.value)} /></div>
+                <div><label style={lbl} htmlFor="r-fneg">Versé en trop toléré ({currencySymbol()})</label><input id="r-fneg" style={field} inputMode="decimal" value={f.amountTolerance} onChange={e => set('amountTolerance', e.target.value)} /></div>
+                <div><label style={lbl} htmlFor="r-fdays">Jours avant l'opération</label><input id="r-fdays" style={field} inputMode="numeric" value={f.dateToleranceDays} onChange={e => set('dateToleranceDays', e.target.value)} /></div>
+              </div>
+              <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.85rem' }}>
+                <input type="checkbox" checked={f.cardOnly} onChange={e => set('cardOnly', e.target.checked)} /> Encaissements carte uniquement (ventes carte, saisie du jour, écart carte de fermeture)
+              </label>
+            </>
+          )}
+          {generates ? (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div><span style={lbl}>Compte de contrepartie</span>
                 <SearchSelect options={options} value={f.counterAccountId} onChange={v => set('counterAccountId', v)} placeholder="6147 — Services bancaires" size="md" width="100%" ariaLabel="Compte de contrepartie" /></div>
@@ -143,7 +175,7 @@ export default function BankRulesPanel() {
       </div>
       {isLoading ? <div style={{ padding: 12 }}><Loader2 size={14} className="animate-spin" /></div> : rules.length === 0 ? (
         <div style={{ padding: 12, fontSize: '0.82rem', color: 'var(--theme-text-muted)' }}>
-          Aucune règle. Exemple : « FRAIS TENUE », sortie → générer l'écriture sur 6147 ; « COM CB », sortie → commissions de carte.
+          Aucune règle. Exemple : « FRAIS TENUE », sortie → générer l'écriture sur 6147 ; « REMISE TPE », entrée → commission de carte 0 à 3 % sur 6147.
         </div>
       ) : (
         <table className="odoo-table" style={{ margin: 0, width: '100%' }}>
@@ -155,7 +187,9 @@ export default function BankRulesPanel() {
                 <td style={{ textAlign: 'right' }}>{r.priority}</td>
                 <td style={{ fontWeight: 500 }}>{r.label}{!r.is_active && <> <StatusTag tone="draft" label="Inactive" /></>}</td>
                 <td style={{ fontSize: '0.8rem' }}>{condition(r)}</td>
-                <td style={{ fontSize: '0.8rem' }}>{r.action === 'post_entry' ? `Écriture sur ${r.counter_account_code ?? '—'}` : `Rapprocher (± ${r.amount_tolerance} ${currencySymbol()}, ± ${r.date_tolerance_days} j)`}</td>
+                <td style={{ fontSize: '0.8rem' }}>{r.action === 'post_entry' ? `Écriture sur ${r.counter_account_code ?? '—'}`
+                  : r.action === 'match_fee' ? `Commission ${r.fee_pct_min ?? 0} à ${r.fee_pct_max ?? 0} % sur ${r.counter_account_code ?? '—'} (${r.date_tolerance_days} j${r.candidate_source === 'card' ? ', cartes' : ''})`
+                  : `Rapprocher (± ${r.amount_tolerance} ${currencySymbol()}, ± ${r.date_tolerance_days} j)`}</td>
                 <td style={{ textAlign: 'right' }}>{r.uses ?? 0}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(r)}>Modifier</button>{' '}

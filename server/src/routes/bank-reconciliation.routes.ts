@@ -103,11 +103,14 @@ const ruleSchema = z.object({
   direction: z.enum(['in', 'out']).nullish(),
   amountMin: z.coerce.number().min(0).nullish(),
   amountMax: z.coerce.number().min(0).nullish(),
-  action: z.enum(['match', 'post_entry']),
+  action: z.enum(['match', 'post_entry', 'match_fee']),
   counterAccountId: z.string().uuid().nullish(),
   entryLabel: z.string().trim().max(120).nullish(),
   amountTolerance: z.coerce.number().min(0).max(1_000_000).optional(),
   dateToleranceDays: z.coerce.number().int().min(0).max(60).optional(),
+  feePctMin: z.coerce.number().min(0).max(50).nullish(),
+  feePctMax: z.coerce.number().min(0).max(50).nullish(),
+  candidateSource: z.enum(['card']).nullish(),
 });
 const applySchema = z.object({ bankLineIds: z.array(z.string().uuid()).max(2000).optional(), minConfidence: z.coerce.number().min(0).max(100).optional() });
 const id = validateUuidParams('id');

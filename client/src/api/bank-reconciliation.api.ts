@@ -129,17 +129,24 @@ export const bankImportApi = {
 /* ═══ G4-02 — rapprochement par règles ═══ */
 export type BankProposal = {
   bankLineId: string; method: 'reference' | 'rule' | 'amount' | 'group'; confidence: number; entryLineIds: string[];
-  ruleId?: string; ruleLabel?: string; generate?: { counterAccountId: string; label: string }; entryNumbers: string[];
+  ruleId?: string; ruleLabel?: string; entryNumbers: string[];
+  /** Écriture à générer ; `amount` = écart d'une règle « commission de carte » (brut − net). */
+  generate?: { counterAccountId: string; label: string; amount?: number };
+  gross?: number; feePct?: number;
 };
 export type BankRuleInput = {
   priority?: number; label: string; isActive?: boolean; labelContains?: string | null; labelRegex?: string | null;
   direction?: 'in' | 'out' | null; amountMin?: number | null; amountMax?: number | null;
-  action: 'match' | 'post_entry'; counterAccountId?: string | null; entryLabel?: string | null;
+  action: BankRuleAction; counterAccountId?: string | null; entryLabel?: string | null;
   amountTolerance?: number; dateToleranceDays?: number;
+  feePctMin?: number | null; feePctMax?: number | null; candidateSource?: 'card' | null;
 };
+/** match_fee (mig 601) : rapprocher un flux net des encaissements bruts et générer la commission. */
+export type BankRuleAction = 'match' | 'post_entry' | 'match_fee';
 export type BankRule = {
   id: string; priority: number; label: string; is_active: boolean; label_contains: string | null; label_regex: string | null;
-  direction: 'in' | 'out' | null; amount_min: number | null; amount_max: number | null; action: 'match' | 'post_entry';
+  direction: 'in' | 'out' | null; amount_min: number | null; amount_max: number | null; action: BankRuleAction;
   counter_account_id: string | null; entry_label: string | null; amount_tolerance: number; date_tolerance_days: number;
+  fee_pct_min: number | null; fee_pct_max: number | null; candidate_source: 'card' | null;
   counter_account_code?: string | null; counter_account_label?: string | null; uses?: number;
 };

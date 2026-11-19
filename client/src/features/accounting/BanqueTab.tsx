@@ -250,7 +250,9 @@ function ReconciliationView({ statementId, onBack }: { statementId: string; onBa
                       <td style={{ fontSize: '0.8125rem' }}>{bl?.label ?? '—'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{bl ? `${bl.direction === 'in' ? '+' : '−'}${n(bl.amount)}` : ''}</td>
                       <td style={{ fontSize: '0.8rem' }}>
-                        {x.generate ? `Écriture à générer : ${x.generate.label}` : x.entryNumbers.join(' + ')}
+                        {x.generate?.amount != null
+                          ? `${x.entryNumbers.join(' + ')} (brut ${n(x.gross ?? 0)}) − ${x.generate.label} ${n(x.generate.amount)} (${x.feePct ?? 0} %) à générer`
+                          : x.generate ? `Écriture à générer : ${x.generate.label}` : x.entryNumbers.join(' + ')}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <StatusTag tone={x.confidence >= 90 ? 'done' : x.confidence >= 80 ? 'todo' : 'progress'}
