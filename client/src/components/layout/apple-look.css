@@ -590,3 +590,33 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 main.kl-apple > .odoo-scope:not(.module-shell), main.kl-apple > div > .odoo-scope:not(.module-shell) { background-color: var(--kl-bg) !important; min-height: 100%; }
 .kl-apple .odoo-tab:not(.fixed .odoo-tab) { text-transform: none; letter-spacing: 0; }
 .kl-apple .odoo-section-header:not(.fixed .odoo-section-header) { text-transform: none; letter-spacing: 0; }
+
+/* ─── Tableaux : UN seul style dans tout le système (2026-11-19) ──────────────
+   Même rendu partout (Ventes, Achats, Compta, Paramètres, Production, Stock…, pages et fenêtres) :
+   - un tableau posé seul EST la carte : fond carte, coins 16 px, ombre douce, sans bordure ;
+   - un tableau dans une carte (prj-panel, kl-widget, odoo-section, fenêtre) reste à plat ;
+   - en-têtes 12 px, graisse 500, gris secondaire, sans fond ni capitales ; lignes 13 px séparées
+     par un trait fin ; survol teinté d'accent ; dernière ligne sans trait.
+   Remplace les variantes par module (Ventes : carte bordée 10 px ; Paramètres : à plat). */
+.kl-apple .odoo-table { font-size: 13px; }
+.kl-apple .odoo-table:not(.prj-panel .odoo-table):not(.kl-widget .odoo-table):not(.kl-group .odoo-table):not(.odoo-section .odoo-table):not(.fixed .odoo-table):not(.kl-sheet .odoo-table):not(.sal-bare .odoo-table):not(.odoo-setting-section .odoo-table):not(.odoo-company-card .odoo-table):not(.odoo-setup-card .odoo-table):not(.odoo-stores-editor .odoo-table) {
+  background: var(--kl-card) !important; border: 0 !important; border-radius: 16px !important;
+  border-collapse: separate !important; border-spacing: 0; overflow: hidden; box-shadow: var(--kl-shadow) !important;
+}
+.kl-apple :is(.prj-panel, .kl-widget, .kl-group, .odoo-section, .fixed, .kl-sheet, .odoo-setting-section, .odoo-company-card, .odoo-setup-card, .odoo-stores-editor) .odoo-table {
+  background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; margin: 0;
+}
+.kl-apple .odoo-table thead th, .kl-sheet .odoo-table thead th {
+  background: transparent !important; color: var(--kl-muted) !important; font-size: 12px !important; font-weight: 500 !important;
+  text-transform: none !important; letter-spacing: 0 !important; padding: 10px 12px !important;
+  border-top: 0 !important; border-bottom: 1px solid var(--kl-sep) !important; white-space: nowrap;
+}
+.kl-apple .odoo-table tbody td, .kl-sheet .odoo-table tbody td {
+  font-size: 13px; padding: 11px 12px !important; border-bottom: 1px solid var(--kl-hair) !important; vertical-align: middle; color: var(--kl-ink);
+}
+.kl-apple .odoo-table tbody tr, .kl-sheet .odoo-table tbody tr { border-bottom: 0 !important; background: transparent; }
+.kl-apple .odoo-table tbody tr:hover td, .kl-sheet .odoo-table tbody tr:hover td { background: color-mix(in srgb, var(--kl-accent) 4%, transparent); }
+.kl-apple .odoo-table tbody tr:last-child td, .kl-sheet .odoo-table tbody tr:last-child td { border-bottom: 0 !important; }
+.kl-apple .odoo-table tfoot td, .kl-apple .odoo-table tfoot th { font-size: 13px; padding: 11px 12px; border-top: 1px solid var(--kl-sep); font-weight: 600; color: var(--kl-ink); background: transparent; }
+/* Tableaux convertis depuis Tailwind : fonds gris d'en-tête et capitales neutralisés. */
+.kl-apple .odoo-table thead tr[class*="bg-"], .kl-sheet .odoo-table thead tr[class*="bg-"] { background: transparent !important; }

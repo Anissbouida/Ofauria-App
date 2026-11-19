@@ -165,7 +165,7 @@ function ClosingDetail({ id, onClose }: { id: string; onClose: () => void }) {
           {isLoading ? (
             <div style={{ textAlign: 'center', padding: 32 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /></div>
           ) : (
-            <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
+            <table className="odoo-table">
               <thead>
                 <tr style={{ color: 'var(--theme-text-muted)', textAlign: 'left' }}>
                   <th style={{ padding: 4 }}>Article</th>

@@ -114,7 +114,7 @@ function PurchaseOrderDetails({ poId }: { poId: string }) {
       </div>
       {po.notes && <div style={{ fontSize: '0.8125rem' }}><b>Notes :</b> {po.notes}</div>}
       <div style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table className="odoo-table">
           <thead>
             <tr style={{ textAlign: 'left', color: 'var(--theme-text-muted)' }}>
               <th style={{ ...cell, fontWeight: 500, fontSize: '0.75rem' }}>Article</th>

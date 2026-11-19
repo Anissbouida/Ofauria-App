@@ -50,7 +50,7 @@ export default function RecipeOutputsPanel({ recipeId }: { recipeId: string }) {
       <div style={{ padding: '0.5rem 1rem', display: 'grid', gap: 8 }}>
         {outs.length === 0 && !adding && <span className="text-xs text-gray-500">Une seule sortie : le produit de la fiche. La coupe reste possible à la déclaration.</span>}
         {outs.length > 0 && (
-          <table className="w-full text-xs">
+          <table className="odoo-table">
             <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Produit</th><th className="text-left px-2">Type</th><th className="text-right px-2">Prévu / pièce</th><th className="text-right px-2">Clé de coût</th><th /></tr></thead>
             <tbody>{outs.map(o => (
               <tr key={o.id} className="border-t border-gray-100">

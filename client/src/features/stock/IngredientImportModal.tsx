@@ -277,7 +277,7 @@ function PreviewTable({ rows, kind }: { rows: PreviewRow[]; kind: 'create' | 'up
   const visible = rows.slice(0, 200);
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+      <table className="odoo-table">
         <thead className="bg-gray-50">
           <tr>
             <th className="p-1.5 text-left">Ligne</th>

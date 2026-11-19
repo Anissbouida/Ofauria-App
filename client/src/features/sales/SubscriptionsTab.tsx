@@ -175,7 +175,7 @@ function SubDetail({ id, onClose }: { id: string; onClose: () => void }) {
           {isLoading ? <div style={{ textAlign: 'center', padding: 32 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /></div> : (
             <>
               <p style={{ fontSize: '0.85rem', color: 'var(--theme-text-muted)', marginTop: 8 }}>{data?.customer_name} · {data && FREQ[data.frequency]} · {data && money(Number(data.amount))} HT</p>
-              <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse', marginTop: 8 }}>
+              <table className="odoo-table" style={{ marginTop: 8 }}>
                 <thead>
                   <tr style={{ color: 'var(--theme-text-muted)', textAlign: 'left' }}>
                     <th style={{ padding: 4 }}>Période</th><th style={{ padding: 4 }}>Facture</th>

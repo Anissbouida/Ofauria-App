@@ -346,7 +346,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {(cout.detail_emballages?.length ?? 0) > 0 && (
               <DetailSection title="Détail emballages" icon={<Package size={12} className="text-orange-500" />}
                 isExpanded={expandedSection === 'emballages'} onToggle={() => setExpandedSection(expandedSection === 'emballages' ? null : 'emballages')}>
-                <table className="w-full text-xs">
+                <table className="odoo-table">
                   <thead><tr className="text-gray-400">
                     <th className="text-left py-1 px-2">Emballage</th>
                     <th className="text-right py-1 px-2">Qté</th>
@@ -367,7 +367,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {cout.detail_matieres.length > 0 && (
               <DetailSection title="Detail matieres" icon={<Package size={12} className="text-amber-500" />}
                 isExpanded={expandedSection === 'matieres'} onToggle={() => setExpandedSection(expandedSection === 'matieres' ? null : 'matieres')}>
-                <table className="w-full text-xs">
+                <table className="odoo-table">
                   <thead><tr className="text-gray-400">
                     <th className="text-left py-1 px-2">Ingredient</th>
                     <th className="text-right py-1 px-2">Qte</th>
@@ -389,7 +389,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {cout.detail_main_oeuvre.length > 0 && (
               <DetailSection title="Detail main d'oeuvre" icon={<Users size={12} className="text-blue-500" />}
                 isExpanded={expandedSection === 'mo'} onToggle={() => setExpandedSection(expandedSection === 'mo' ? null : 'mo')}>
-                <table className="w-full text-xs">
+                <table className="odoo-table">
                   <thead><tr className="text-gray-400">
                     <th className="text-left py-1 px-2">Employe</th>
                     <th className="text-right py-1 px-2">Minutes</th>
@@ -417,7 +417,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                     pour comparer le temps de main-d'œuvre standard au temps réellement passé.
                   </p>
                 ) : (
-                  <table className="w-full text-xs">
+                  <table className="odoo-table">
                     <thead><tr className="text-gray-400">
                       <th className="text-left py-1 px-2">Produit</th>
                       <th className="text-right py-1 px-2">Std (min)</th>
@@ -466,7 +466,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 {outputsCost.map((g) => (
                   <div key={g.plan_item_id} className="mb-3 last:mb-0">
                     <div className="text-xs font-semibold text-gray-700 px-2 py-1">{g.item_product_name}</div>
-                    <table className="w-full text-xs">
+                    <table className="odoo-table">
                       <thead><tr className="text-gray-400">
                         <th className="text-left py-1 px-2">Sortie</th>
                         <th className="text-right py-1 px-2">Qté</th>
@@ -501,7 +501,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {charge && charge.length > 0 && (
               <DetailSection title="Charge par poste (capacité)" icon={<Gauge size={12} className="text-cyan-600" />}
                 isExpanded={expandedSection === 'charge'} onToggle={() => setExpandedSection(expandedSection === 'charge' ? null : 'charge')}>
-                <table className="w-full text-xs">
+                <table className="odoo-table">
                   <thead><tr className="text-gray-400">
                     <th className="text-left py-1 px-2">Poste</th>
                     <th className="text-right py-1 px-2">Charge</th>
@@ -527,7 +527,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {(cout.detail_charges_fixes || []).length > 0 && (
               <DetailSection title="Detail charges fixes" icon={<Building2 size={12} className="text-violet-500" />}
                 isExpanded={expandedSection === 'charges'} onToggle={() => setExpandedSection(expandedSection === 'charges' ? null : 'charges')}>
-                <table className="w-full text-xs">
+                <table className="odoo-table">
                   <thead><tr className="text-gray-400">
                     <th className="text-left py-1 px-2">Charge</th>
                     <th className="text-right py-1 px-2">Mensuel</th>
@@ -547,7 +547,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {(cout.detail_energie || []).length > 0 && (
               <DetailSection title="Detail energie (equipements)" icon={<Zap size={12} className="text-yellow-500" />}
                 isExpanded={expandedSection === 'energie'} onToggle={() => setExpandedSection(expandedSection === 'energie' ? null : 'energie')}>
-                <table className="w-full text-xs">
+                <table className="odoo-table">
                   <thead><tr className="text-gray-400">
                     <th className="text-left py-1 px-2">Equipement</th>
                     <th className="text-right py-1 px-2">Minutes</th>
@@ -569,7 +569,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {(cout.detail_pertes || []).length > 0 && (
               <DetailSection title="Detail pertes (valorisees au cout matiere)" icon={<TrendingDown size={12} className="text-red-500" />}
                 isExpanded={expandedSection === 'pertes'} onToggle={() => setExpandedSection(expandedSection === 'pertes' ? null : 'pertes')}>
-                <table className="w-full text-xs">
+                <table className="odoo-table">
                   <thead><tr className="text-gray-400">
                     <th className="text-left py-1 px-2">Categorie</th>
                     <th className="text-right py-1 px-2">Qte</th>

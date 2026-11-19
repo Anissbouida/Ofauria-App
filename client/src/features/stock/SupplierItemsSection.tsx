@@ -205,7 +205,7 @@ function PriceHistoryRow({ supplierItemId, colSpan }: { supplierItemId: string; 
         ) : prices.length === 0 ? (
           <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8rem' }}>Aucun prix enregistré pour l'instant.</span>
         ) : (
-          <table style={{ width: '100%', fontSize: '0.78rem' }}>
+          <table className="odoo-table">
             <thead><tr style={{ color: 'var(--theme-text-muted)' }}>
               <th style={{ textAlign: 'left', padding: '2px 6px' }}>Prix</th>
               <th style={{ textAlign: 'left', padding: '2px 6px' }}>Depuis</th>

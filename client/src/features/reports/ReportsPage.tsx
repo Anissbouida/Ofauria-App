@@ -606,7 +606,7 @@ function CostTab({ costData, costLoading, lossStats }: {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="odoo-table">
               <thead>
                 <tr className="border-b border-gray-100">
                   <th onClick={() => toggleCbSort('name')} className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Produit<CbSortIcon col="name" /></th>

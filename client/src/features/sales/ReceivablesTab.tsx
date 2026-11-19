@@ -565,7 +565,7 @@ function ReceiptDialog({ c, onClose }: { c: CustomerReceivable; onClose: () => v
               <input value={reference} onChange={e => setReference(e.target.value)} style={field} />
             </label>
           )}
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table className="odoo-table">
             <thead>
               <tr style={{ color: 'var(--odoo-text-muted)', textAlign: 'left' }}>
                 <th style={{ padding: 4 }}>Facture</th><th style={{ padding: 4 }}>Échéance</th>

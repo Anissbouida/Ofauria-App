@@ -1421,7 +1421,7 @@ export default function ProductionLaunchModal({
 
         {stepIngredients ? (
           stepIngredients.length > 0 ? (
-            <table className="w-full text-sm">
+            <table className="odoo-table">
               <tbody className="divide-y divide-gray-100">
                 {stepIngredients.map((ing) => <Row key={refOf(ing)} ing={ing} />)}
               </tbody>
@@ -1430,7 +1430,7 @@ export default function ProductionLaunchModal({
             <div className="px-3 py-3 text-sm text-gray-500 italic">Aucune pesée à cette étape.</div>
           )
         ) : ingredients.length > 0 && (
-          <table className="w-full text-sm">
+          <table className="odoo-table">
             <tbody className="divide-y divide-gray-100">
               {ingredients.map((ing) => <Row key={refOf(ing)} ing={ing} />)}
             </tbody>
@@ -1445,7 +1445,7 @@ export default function ProductionLaunchModal({
               <span className="ml-auto text-gray-400 group-open:hidden">afficher</span>
               <span className="ml-auto text-gray-400 hidden group-open:inline">masquer</span>
             </summary>
-            <table className="w-full text-sm">
+            <table className="odoo-table">
               <tbody className="divide-y divide-gray-100">
                 {ingredients.map((ing) => <Row key={refOf(ing)} ing={ing} muted={!matches(ing, refs!)} />)}
                 {subRecipesData.map((sr, idx) => (
@@ -1679,7 +1679,7 @@ export default function ProductionLaunchModal({
         </div>
         {active ? (
           <div className="p-3 space-y-2">
-            <table className="w-full text-sm">
+            <table className="odoo-table">
               <thead>
                 <tr className="text-[11px] text-gray-500">
                   <th className="text-left font-medium pb-1">Sortie</th>

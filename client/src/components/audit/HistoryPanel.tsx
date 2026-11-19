@@ -26,7 +26,7 @@ export default function HistoryPanel({ table, id }: { table: string; id: string 
         <div style={{ padding: '0.5rem 1rem', fontSize: '0.75rem' }}>
           {isLoading ? 'Chargement…' : isError ? <span className="text-gray-500">Historique non disponible pour votre profil.</span>
             : data.length === 0 ? <span className="text-gray-500">Aucune modification enregistrée depuis la mise en place de l'historique.</span> : (
-            <table className="w-full">
+            <table className="odoo-table">
               <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Quand</th><th className="text-left px-2">Qui</th><th className="text-left px-2">Modification</th></tr></thead>
               <tbody>{data.map(e => (
                 <tr key={e.id} className="border-t border-gray-100" style={{ verticalAlign: 'top' }}>

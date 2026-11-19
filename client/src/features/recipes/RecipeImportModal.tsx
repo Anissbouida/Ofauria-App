@@ -191,7 +191,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                       A completer apres dans l'economat.
                     </p>
                     <div className="overflow-x-auto max-h-48 overflow-y-auto">
-                      <table className="w-full">
+                      <table className="odoo-table">
                         <thead className="bg-gray-50 sticky top-0">
                           <tr>
                             <th className="p-1.5 text-left">Nom</th>
@@ -225,7 +225,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                       A completer apres dans le catalogue produits.
                     </p>
                     <div className="overflow-x-auto max-h-48 overflow-y-auto">
-                      <table className="w-full">
+                      <table className="odoo-table">
                         <thead className="bg-gray-50 sticky top-0">
                           <tr>
                             <th className="p-1.5 text-left">Nom du produit</th>
@@ -377,7 +377,7 @@ function PreviewTable({ rows, kind }: { rows: PreviewRow[]; kind: 'create' | 'up
   const visible = rows.slice(0, 200);
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+      <table className="odoo-table">
         <thead className="bg-gray-50">
           <tr>
             <th className="p-1.5 text-left">Ligne</th>

@@ -1826,7 +1826,7 @@ function InvoiceLinesEditorModal({
                 Edite, ajoute ou supprime des lignes. Le <strong>total HT</strong> est recalcule comme somme des sous-totaux. Choisis un <strong>taux de TVA par ligne</strong> (les articles peuvent avoir des taux differents) : la TVA totale devient la somme des TVA par ligne. Laisse le taux vide (—) pour conserver la TVA d'en-tete actuelle.
               </div>
 
-              <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
+              <table className="odoo-table">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--theme-bg-separator)', textAlign: 'left' }}>
                     <th style={{ padding: '8px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', width: '30%' }}>Ingredient</th>

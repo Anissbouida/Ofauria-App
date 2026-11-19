@@ -1006,7 +1006,7 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
       )}
       {/* Items table */}
       <div className="bg-white rounded-lg border overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="odoo-table">
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
               <th className="text-left px-3 py-2">Article</th>

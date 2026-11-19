@@ -214,7 +214,7 @@ export default function EcrituresTab() {
       {/* Detail des factures divergentes / sans ecriture */}
       {reconciliation && !reconciliationOk && showDivergent && reconciliation.divergent.length > 0 && (
         <div style={{ marginBottom: 12, border: '1px solid #F09595', borderRadius: 6, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+          <table className="odoo-table">
             <thead>
               <tr style={{ background: '#FCEBEB', color: '#791F1F', textAlign: 'left' }}>
                 <th style={{ padding: '6px 10px' }}>Facture</th>

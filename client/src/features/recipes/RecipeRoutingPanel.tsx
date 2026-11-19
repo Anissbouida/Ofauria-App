@@ -21,7 +21,7 @@ export default function RecipeRoutingPanel({ recipeId, recipeName }: { recipeId:
       </div>
       <div style={{ padding: '0.5rem 1rem' }}>
         {!routing ? <span className="text-xs text-gray-500">Aucune gamme : l'atelier suit les étapes de la fiche.</span> : (
-          <table className="w-full text-xs">
+          <table className="odoo-table">
             <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">#</th><th className="text-left px-2">Opération</th><th className="text-left px-2">Type</th><th className="text-left px-2">Poste</th><th className="text-right px-2">MO prévue (min)</th><th className="text-right px-2">Machine (min)</th></tr></thead>
             <tbody>{routing.operations.map(o => (
               <tr key={o.id} className="border-t border-gray-100">
