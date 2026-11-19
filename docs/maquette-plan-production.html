@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan de production — maquette</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #fff; --line: #e3e7ee; --head: #f0f3f7;
+    --text: #1f2937; --muted: #6b7280; --accent: #1d5fd1; --accent-bg: #e8f0fe;
+    --ok: #1f7a35; --ok-bg: #e7f5ea; --warn: #8a5a00; --warn-bg: #fff6df;
+    --bad: #b42318; --bad-bg: #fdecea; --note: #6d28d9;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 -apple-system, "Segoe UI", Inter, sans-serif; color: var(--text); background: var(--bg); }
+  .demo { background: #1f2937; color: #fff; padding: 6px 16px; font-size: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .demo b { color: #fde68a; }
+  .demo button { background: #374151; color: #fff; border: 0; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .demo button.on { background: var(--accent); }
+
+  .bar { background: var(--card); border-bottom: 1px solid var(--line); padding: 8px 16px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .bar .cur { color: var(--text); font-weight: 600; }
+  .head { background: var(--card); padding: 14px 16px 0; border-bottom: 1px solid var(--line); }
+  .head-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 20px; }
+  h1 small { font-weight: 400; color: var(--muted); font-size: 15px; }
+  .meta { color: var(--muted); font-size: 12.5px; margin-top: 3px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .actions { display: flex; gap: 6px; align-items: center; position: relative; }
+  .btn { border: 1px solid var(--line); background: #fff; padding: 6px 12px; border-radius: 5px; font: inherit; font-size: 13px; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .menu { display: none; position: absolute; right: 0; top: 36px; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.12); min-width: 230px; z-index: 5; padding: 4px; }
+  .menu.open { display: block; }
+  .menu div { padding: 7px 10px; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .menu div:hover { background: var(--head); }
+  .menu .sep { height: 1px; background: var(--line); padding: 0; margin: 4px 0; }
+  .menu .red { color: var(--bad); }
+
+  .steps { display: flex; margin: 14px 0 0; padding: 0; list-style: none; }
+  .steps li { flex: 1; text-align: center; position: relative; padding-bottom: 10px; font-size: 12px; color: var(--muted); }
+  .steps li::before { content: ""; position: absolute; top: 9px; left: -50%; right: 50%; height: 2px; background: var(--line); }
+  .steps li:first-child::before { display: none; }
+  .steps li.done::before, .steps li.cur::before { background: var(--accent); }
+  .steps .dot { position: relative; z-index: 1; display: inline-flex; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 2px solid var(--line); align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .steps li.done .dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .steps li.cur .dot { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 4px var(--accent-bg); }
+  .steps .lbl { display: block; font-weight: 600; color: var(--text); margin-top: 3px; }
+  .steps .det { display: block; font-size: 11px; }
+
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); margin: 0 -16px; }
+  .kpi { padding: 10px 16px; border-right: 1px solid var(--line); }
+  .kpi:last-child { border-right: 0; }
+  .kpi .k { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .kpi .v { font-size: 20px; font-weight: 700; margin-top: 2px; }
+  .kpi .s { font-size: 11.5px; color: var(--muted); }
+  .kpi .v.ok { color: var(--ok); } .kpi .v.warn { color: var(--warn); }
+
+  .body { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; padding: 16px; align-items: start; }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 14px; overflow-x: auto; }
+  .tab { padding: 9px 14px; font-size: 13.5px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); white-space: nowrap; background: none; border-top: 0; border-left: 0; border-right: 0; font-family: inherit; }
+  .tab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab .n { background: var(--head); color: var(--muted); border-radius: 9px; padding: 0 7px; font-size: 11px; margin-left: 4px; }
+  .tab .n.warn { background: var(--warn-bg); color: var(--warn); }
+  .pane { display: none; } .pane.on { display: block; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 14px; overflow: hidden; }
+  .card-h { background: var(--head); padding: 9px 14px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #4b5563; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card-h span.sub { text-transform: none; font-weight: 400; letter-spacing: 0; color: var(--muted); }
+  .card-b { padding: 12px 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  .r { text-align: right; } .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+  .u { color: var(--muted); font-size: 11px; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 11.5px; font-weight: 600; }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); } .tag.warn { background: var(--warn-bg); color: var(--warn); }
+  .tag.grey { background: var(--head); color: var(--muted); }
+  .tag.orange { background: #fff1e6; color: #b45309; }
+  input.inl { width: 80px; padding: 4px 6px; border: 1px solid var(--accent); border-radius: 4px; text-align: right; font: inherit; }
+
+  .banner { border: 1px solid; border-left-width: 4px; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .banner.warn { background: var(--warn-bg); border-color: #f0d48a; }
+  .banner b { display: block; }
+  .banner .u { font-size: 12.5px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .phase { padding: 12px 14px; }
+  .phase .t { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+  .phase ul { margin: 8px 0 0; padding-left: 18px; color: #4b5563; font-size: 13px; }
+  .phase a { color: var(--accent); font-size: 12.5px; cursor: pointer; text-decoration: none; display: inline-block; margin-top: 8px; }
+
+  .side { position: sticky; top: 12px; }
+  .side textarea { width: 100%; border: 1px solid var(--line); border-radius: 5px; padding: 8px; font: inherit; font-size: 13px; resize: vertical; min-height: 54px; }
+  .ev { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+  .ev:last-child { border-bottom: 0; }
+  .ev .d { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-top: 6px; flex: none; }
+  .ev .w { color: var(--muted); font-size: 11.5px; }
+  details summary { cursor: pointer; color: var(--accent); font-size: 12.5px; margin-top: 6px; }
+
+  .cost-bar { height: 8px; background: var(--head); border-radius: 4px; overflow: hidden; display: flex; }
+  .cost-bar i { display: block; height: 100%; }
+  .tbl-wrap { overflow-x: auto; }
+
+  @media (max-width: 1000px) {
+    .body { grid-template-columns: 1fr; }
+    .side { position: static; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .grid2 { grid-template-columns: 1fr; }
+    .steps .det { display: none; }
+  }
+  @media (max-width: 600px) { .steps .lbl { font-size: 10.5px; } }
+</style>
+</head>
+<body>
+
+<div class="demo">
+  <b>MAQUETTE</b> — même plan qu'aujourd'hui (Baguette Tradition). En-tête selon l'état :
+  <button data-state="ready">Prêt à produire</button>
+  <button data-state="progress">En production</button>
+  <button data-state="done" class="on">Terminé</button>
+</div>
+
+<div class="bar">← Production › <span class="cur">Plan du 25 oct. 2026</span></div>
+
+<!-- ══ EN-TÊTE : identité + UNE action principale + menu ══ -->
+<div class="head">
+  <div class="head-row">
+    <div>
+      <h1>Plan du samedi 25 octobre 2026 <small>· Baguette Tradition</small></h1>
+      <div class="meta"><span>👤 SAID ALLAM</span><span># 7F2CD6C6</span><span>📅 Quotidien</span><span>BSI-261025-006</span></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="primary">Saisir le rendement</button>
+      <button class="btn" id="more">Plus ▾</button>
+      <div class="menu" id="menu">
+        <div>🖨 Fiche de production</div>
+        <div>🖨 Bon de sortie ingrédients</div>
+        <div>🏷 Tickets des lots</div>
+        <div class="sep"></div>
+        <div>↻ Relancer le plan</div>
+        <div>↩ Repasser en brouillon</div>
+        <div class="sep"></div>
+        <div class="red">🗑 Déclarer une perte</div>
+      </div>
+    </div>
+  </div>
+
+  <ol class="steps" id="steps"></ol>
+  <div class="kpis" id="kpis"></div>
+</div>
+
+<!-- ══ CORPS : contenu à gauche, notes/journal à droite ══ -->
+<div class="body">
+  <main>
+    <div class="tabs">
+      <button class="tab on" data-p="synth">Synthèse</button>
+      <button class="tab" data-p="ingr">Ingrédients <span class="n">1</span></button>
+      <button class="tab" data-p="prod">Production <span class="n warn">1 à saisir</span></button>
+      <button class="tab" data-p="cost">Coûts</button>
+    </div>
+
+    <section class="pane on" id="p-synth">
+      <div class="banner warn">
+        <div><b>Il reste 1 chose à faire sur ce plan</b><span class="u">Le rendement de Baguette Tradition n'est pas saisi : le coût réel par pièce reste provisoire.</span></div>
+        <button class="btn primary" onclick="go('prod')">Saisir le rendement</button>
+      </div>
+      <div class="grid2">
+        <div class="card phase">
+          <div class="t">1 · Ingrédients <span class="tag ok">Livrés</span></div>
+          <ul><li>1 ingrédient : 15,000 kg pesés pour 15,000 kg demandés</li><li>Écart de pesée : 0 %</li><li>1 lot utilisé, DLC la plus proche le 24/12/2026</li></ul>
+          <a onclick="go('ingr')">Voir les ingrédients →</a>
+        </div>
+        <div class="card phase">
+          <div class="t">2 · Production <span class="tag ok">30 / 30</span></div>
+          <ul><li>Lot LOT-261025-008, produit le 25/10 à 14:00</li><li>Pertes déclarées : aucune</li><li>Rendement : <b style="color:var(--warn)">non saisi</b></li></ul>
+          <a onclick="go('prod')">Voir la production →</a>
+        </div>
+        <div class="card phase">
+          <div class="t">3 · Coûts <span class="tag warn">Provisoire</span></div>
+          <ul><li>Coût réel : 74,55 DH, soit 2,49 DH par pièce</li><li>Théorique : 72,90 DH (+2,3 %)</li></ul>
+          <a onclick="go('cost')">Voir les coûts →</a>
+        </div>
+        <div class="card phase">
+          <div class="t">Origine <span class="tag grey">Demande boutique</span></div>
+          <ul><li>Créé par SAID ALLAM le 25/10 à 06:12</li><li>Mise en vitrine prévue : 07:00</li></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Besoins + bon de sortie + traçabilité réunis en UN tableau -->
+    <section class="pane" id="p-ingr">
+      <div class="card">
+        <div class="card-h">Ingrédients du plan <span class="sub">Bon de sortie BSI-261025-006 · <span class="tag ok">Livré</span> le 25/10 à 13:40</span></div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Ingrédient</th><th class="r">Besoin</th><th class="r">Dispo à la confirmation</th><th class="r">Pesé</th><th class="r">Écart</th><th>Lot interne</th><th>Lot fournisseur</th><th>Fournisseur</th><th>DLC</th><th>État</th></tr></thead>
+          <tbody>
+            <tr><td><b>Farine Soisson</b></td><td class="r">15,000 <span class="u">kg</span></td><td class="r">1 310 <span class="u">kg</span></td><td class="r"><b>15,000</b> <span class="u">kg</span></td><td class="r"><span class="tag ok">pile</span></td><td class="mono">REC-20261025-FAR</td><td class="u">non renseigné</td><td class="u">—</td><td>24/12/2026</td><td><span class="tag ok">Pesé</span></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <details class="card" style="padding:10px 14px"><summary>Historique du bon de sortie (3 évènements)</summary>
+        <div class="ev"><span class="d"></span><div>Généré automatiquement à la confirmation<div class="w">25/10 06:15</div></div></div>
+        <div class="ev"><span class="d"></span><div>Pesé par le magasinier : 1 ligne sur 1<div class="w">25/10 13:20</div></div></div>
+        <div class="ev"><span class="d"></span><div>Réception acceptée par le chef<div class="w">25/10 13:40</div></div></div>
+      </details>
+    </section>
+
+    <!-- Articles avec rendement et pertes en colonnes + procédé -->
+    <section class="pane" id="p-prod">
+      <div class="card">
+        <div class="card-h">Articles du plan <span class="sub">1 article</span></div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Produit</th><th class="r">Prévu</th><th class="r">Fait</th><th class="r">Pertes</th><th class="r">Rendement</th><th>N° lot</th><th>Produit le / par</th><th>DLC</th><th>Cycle de vie</th><th>Statut</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><b>Baguette Tradition</b></td><td class="r">30</td><td class="r"><b>30</b></td><td class="r">0</td><td class="r"><input class="inl" placeholder="poids kg"></td><td class="mono">LOT-261025-008</td><td>25/10 14:00<div class="u">SAID ALLAM</div></td><td>25/10/2026</td><td><span class="tag orange">Vente du jour</span></td><td><span class="tag ok">Produit</span></td><td><button class="btn">🏷 Ticket</button></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <div class="card-h">Étapes du procédé <span class="sub">réalisé</span></div>
+        <div class="card-b u" style="font-size:13px">Aucune étape n'a été suivie sur ce plan. Le rétro-planning (heure de vitrine → heure de démarrage) se fait <b>avant</b> la production : il apparaît ici aux états Confirmé et Prêt à produire, puis disparaît une fois le plan terminé.</div>
+      </div>
+    </section>
+
+    <section class="pane" id="p-cost">
+      <div class="card">
+        <div class="card-h">Coût de revient <span class="sub"><span class="tag warn">Provisoire</span> en attente du rendement</span></div>
+        <table>
+          <thead><tr><th>Poste</th><th class="r">Théorique</th><th class="r">Réel</th><th class="r">Écart</th></tr></thead>
+          <tbody>
+            <tr><td>Matières (pesées)</td><td class="r">58,50</td><td class="r">58,50</td><td class="r">0,0 %</td></tr>
+            <tr><td>Main-d'œuvre</td><td class="r">9,00</td><td class="r">10,35</td><td class="r" style="color:var(--bad)">+15,0 %</td></tr>
+            <tr><td>Frais indirects</td><td class="r">5,40</td><td class="r">5,70</td><td class="r">+5,6 %</td></tr>
+            <tr><td><b>Total</b></td><td class="r"><b>72,90 DH</b></td><td class="r"><b>74,55 DH</b></td><td class="r"><b>+2,3 %</b></td></tr>
+            <tr><td>Par pièce (30)</td><td class="r">2,43</td><td class="r">2,49</td><td class="r">+0,06</td></tr>
+          </tbody>
+        </table>
+        <div class="card-b"><div class="cost-bar"><i style="width:78%;background:#1d5fd1"></i><i style="width:14%;background:#60a5fa"></i><i style="width:8%;background:#bfdbfe"></i></div>
+        <div class="u" style="margin-top:6px">Matières 78 % · Main-d'œuvre 14 % · Frais indirects 8 % <i>(répartition fictive)</i></div></div>
+      </div>
+    </section>
+  </main>
+
+  <aside class="side">
+    <div class="card">
+      <div class="card-h">Notes & journal <span class="sub">12 transitions</span></div>
+      <div class="card-b">
+        <textarea placeholder="Ajouter une note pour l'équipe…"></textarea>
+        <div style="text-align:right;margin:6px 0 4px"><button class="btn">Publier</button></div>
+        <div class="ev"><span class="d"></span><div><b>Terminé</b> — clôture complète<div class="w">25/10 14:05 · SAID ALLAM</div></div></div>
+        <div class="ev"><span class="d"></span><div>Baguette Tradition : 30 produits<div class="w">25/10 14:00 · SAID ALLAM</div></div></div>
+        <div class="ev"><span class="d"></span><div><b>En production</b><div class="w">25/10 13:42</div></div></div>
+        <div class="ev"><span class="d"></span><div>Ingrédients reçus (BSI livré)<div class="w">25/10 13:40</div></div></div>
+        <details><summary>8 évènements plus anciens</summary>
+          <div class="ev"><span class="d"></span><div><b>Confirmé</b><div class="w">25/10 06:15</div></div></div>
+          <div class="ev"><span class="d"></span><div><b>Brouillon</b> créé<div class="w">25/10 06:12</div></div></div>
+        </details>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  // Valeurs fictives : seul l'en-tête change selon l'état, pour montrer les KPI contextuels.
+  const states = {
+    ready: {
+      cur: 3, primary: 'Démarrer la production',
+      kpis: [['Quantité prévue','30','pièces · 1 article',''],['Ingrédients','1 / 1','livrés','ok'],['Semi-finis','—','aucun requis',''],['Mise en vitrine','07:00','démarrer avant 03:10','warn'],['Coût théorique','72,90 DH','2,43 DH / pièce','']],
+      det: ['SAID ALLAM','','Livré','','',''] },
+    progress: {
+      cur: 4, primary: 'Enregistrer la production',
+      kpis: [['Avancement','12 / 30','40 %','warn'],['En cours','1','article lancé',''],['En attente','0','article',''],['Pertes','0','pièce',''],['Coût engagé','58,50 DH','matières pesées','']],
+      det: ['SAID ALLAM','','Livré','','12 / 30',''] },
+    done: {
+      cur: 6, primary: 'Saisir le rendement',
+      kpis: [['Produit','30 / 30','100 % du prévu','ok'],['Rendement','—','non saisi','warn'],['Coût réel','74,55 DH','2,49 DH / pièce · +2,3 %',''],['Écart de pesée','0 %','15,000 kg pour 15,000','ok'],['Pertes','0','aucune déclarée','ok']],
+      det: ['SAID ALLAM','','Livré','','30 / 30','Clôture complète'] },
+  };
+  const labels = ['Brouillon','Confirmé','Ingrédients','Prêt à produire','En production','Terminé'];
+  function render(key) {
+    const s = states[key];
+    document.getElementById('steps').innerHTML = labels.map((l, i) => {
+      const cls = i < s.cur ? 'done' : i === s.cur ? 'cur' : '';
+      return `<li class="${cls}"><span class="dot">${i < s.cur ? '✓' : i + 1}</span><span class="lbl">${l}</span><span class="det">${s.det[i] || '&nbsp;'}</span></li>`;
+    }).join('');
+    document.getElementById('kpis').innerHTML = s.kpis.map(([k, v, sub, c]) =>
+      `<div class="kpi"><div class="k">${k}</div><div class="v ${c}">${v}</div><div class="s">${sub}</div></div>`).join('');
+    document.getElementById('primary').textContent = s.primary;
+    document.querySelectorAll('.demo button').forEach(b => b.classList.toggle('on', b.dataset.state === key));
+  }
+  function go(p) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.p === p));
+    document.querySelectorAll('.pane').forEach(x => x.classList.toggle('on', x.id === 'p-' + p));
+  }
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => go(t.dataset.p));
+  document.querySelectorAll('.demo button').forEach(b => b.onclick = () => render(b.dataset.state));
+  document.getElementById('more').onclick = e => { e.stopPropagation(); document.getElementById('menu').classList.toggle('open'); };
+  document.addEventListener('click', () => document.getElementById('menu').classList.remove('open'));
+  render('done');
+</script>
+</body>
+</html>

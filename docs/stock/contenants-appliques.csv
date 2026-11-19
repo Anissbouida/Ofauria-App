@@ -1,0 +1,405 @@
+ingredient_id;nom;categorie;unite;type_contenant;taille_par_contenant
+df67e6e6-a396-4938-b1bf-ebda1d5c0e0b;Barbe de noire;autre;g;Boite;0.500
+740a5e7d-fefe-4839-aefe-b74bf7bcb17a;CURCUMA;autre;g;Boite;0.500
+4a3af530-d11b-4696-8a1e-2ab6e4f6fe11;Cacahuète;autre;g;Boite;0.500
+bcbed57a-7b19-47aa-b56b-7607a7c49303;Champignons noir;autre;g;Boite;0.500
+a0432852-d7dd-49a1-8bad-c7b4f7e4fb56;Cumin;autre;g;Boite;0.500
+36efee4a-518a-48e2-b426-bf19b14b5d25;Flocons d’avoine / graines floconnées;autre;g;Boite;0.500
+363cd788-b59d-4fff-b1d2-0e5d31183bdd;GINGEMBRE;autre;g;Boite;0.500
+a0d341f8-2082-4591-8ba3-eabb01bac4b1;Nigelle;autre;g;Boite;0.500
+7e455883-1079-47cb-bb8b-860ca1de8227;Noix décortiquées;autre;g;Boite;0.500
+b67233a1-b8f8-47bd-8030-dff9b4d7f229;OIGNON EN POUDRE;autre;g;Boite;0.500
+03f75b99-4a94-4910-a53f-b5bc40caca96;Olives noirs;autre;g;Boite;0.500
+1259ad86-8ceb-4fd6-9c0b-12885af76981;PAPRIKA;autre;g;Boite;0.500
+6219e5b4-4ff9-4aa3-b6fe-9c8c740ff128;POIVRE NOIR;autre;g;Boite;0.500
+bd7de45e-6d70-404c-b195-84bcf608f20e;Pistache;autre;g;Boite;0.500
+d8712a89-94de-41cc-82fa-f02c7f7e200c;Sirop de glucose;autre;g;Boite;0.500
+173fb8c3-3d19-4992-aae5-09c5e853afa4;Spéculoos;autre;g;Boite;0.500
+41351862-3db3-4b12-af96-0fbd9b8f3cca;Épices pour poisson;autre;g;Boite;0.500
+a54fb9d1-693a-43c5-b8d7-62b303e44bc2;Amelioruer de viennoiserie;autre;kg;Sac;10.000
+653b5abe-7f9f-4d8e-9045-8a0bf5e5d622;Aneth;autre;kg;Sac;10.000
+69ae31ed-dbc0-4508-b9e3-780afae2bcb1;Biscuit Oreo;autre;kg;Sac;10.000
+5d1bfa8e-c5ab-4a63-b1cf-9c46745ed3f1;Biscuit spéculoos;autre;kg;Sac;10.000
+74b37728-4cdd-43ad-af99-7ecc644506c0;Boulgour;autre;kg;Sac;10.000
+b858af19-bb7d-4f9b-b45c-c75128b94392;CHOCOLAT LAIT DGF;autre;kg;Sac;10.000
+2e912a1e-9a20-47c0-84ec-a1c8ca433d98;CHOCOLAT NOIR DGF;autre;kg;Sac;10.000
+da7ed89e-c2fb-4046-9349-ca61be1c5f67;CREME PATISSIERE;autre;kg;Sac;10.000
+015e9cdf-e23c-4412-9712-695b4321ff4a;Café templier;autre;kg;Sac;10.000
+10701bb5-4efb-431b-8adf-0cd5332d4abe;Confiure;autre;kg;Sac;10.000
+60130009-db4e-4a19-a348-f574ab7516a0;Courgette;autre;kg;Sac;10.000
+bf939375-8b19-4d8a-af75-4eb5f9d63cc7;Cream caramel;autre;kg;Sac;10.000
+b16dc1ac-2885-4d28-b327-8ffc7a36ae29;Crème citron;autre;kg;Sac;10.000
+8a4c7aa0-5c5d-4815-a7e3-764d182c911b;FONDAT PATISSIER;autre;kg;Sac;10.000
+d67221d9-a340-48b7-a726-bcb6da98b482;Fekkas dentelle;autre;kg;Sac;10.000
+cc1c3892-e2f1-44f9-95a3-c5caf8630335;Feuilltine;autre;kg;Sac;10.000
+c4f2cbf3-58fc-4d52-9958-c273f6ad34f4;GLAÇAGE CARAMÈL;autre;kg;Sac;10.000
+9c4f3fbf-8854-494e-8b8e-81c5734d02a5;GLAÇAGE CHOCOLAT;autre;kg;Sac;10.000
+c6f71d16-3832-4b0e-80c7-0315ae24188e;GLAÇAGE FRAMBOISE;autre;kg;Sac;10.000
+f8fe67e5-dff3-47f8-b431-929e57e378b7;GOAL;autre;kg;Sac;10.000
+541b8e39-9447-417a-afb5-3d3454467b82;Gelatine en feuille;autre;kg;Sac;10.000
+3cc308c4-cf6f-4ee7-9a3d-6c370b4ebccb;Graines de lin;autre;kg;Sac;10.000
+53459b11-649e-45b0-8f59-53d2fc49150b;Mais concassé;autre;kg;Sac;10.000
+177908f0-4684-498e-bd42-2a4a0e60e5f1;NOISETTE EN GRAINS;autre;kg;Sac;10.000
+28bb7483-7b21-4386-81f9-1d369cb99611;Olives noires;autre;kg;Sac;10.000
+1e33af75-946d-49a3-8f12-0ec09207e10b;Olives noires;autre;kg;Sac;10.000
+2ddd1ede-eb11-4ca1-87a0-947d9fe27f41;Orge concassée;autre;kg;Sac;10.000
+4e411a09-29b0-44d1-9a2a-b1c272d60527;PISTACHE EN GRAINS;autre;kg;Sac;10.000
+868f09ad-0eaf-4e1e-a487-ee26dcf7ada5;PURAVITA DECORS;autre;kg;Sac;10.000
+525ac446-2938-4547-9c8e-99a5071815a2;Poulet complet;autre;kg;Sac;10.000
+b480b90b-dde9-4374-b179-eb37e891036e;Praliné amande;autre;kg;Sac;10.000
+10cdabf4-0824-4dfd-bcef-84e25c6c757d;Puravita decors;autre;kg;Sac;10.000
+4b99a164-bf73-4ef1-9dc0-663591047392;Purée de mangue;autre;kg;Sac;10.000
+cc777d70-17c1-45af-a4f5-49910c2bea9d;Purée framboises;autre;kg;Sac;10.000
+66715285-da0a-419a-851a-26c937669f93;Purée pomme;autre;kg;Sac;10.000
+6d924ec8-5567-4643-8679-0a15cc8a0f1b;Pâte de spéculoos;autre;kg;Sac;10.000
+116670c1-9826-4248-a1fb-58ee856285a0;RAISIN;autre;kg;Sac;10.000
+02daa5b7-62b4-4bba-ac5c-3079b9f1a897;SUCRE CASSONADE;autre;kg;Sac;10.000
+d1f7a844-e4d6-4372-95b3-851e540e54cc;Sapoir shaabi;autre;kg;Sac;10.000
+d47a2a33-c3b8-41f1-b50b-50ee5bea88d0;Sofat garoin;autre;kg;Sac;10.000
+c866e471-a60d-4a74-bd81-c25bbede5e35;Sésame blan;autre;kg;Sac;10.000
+bb6f3d65-5183-4770-a355-e565607af7e9;TABLETTE SIGNATURE BLANC;autre;kg;Sac;10.000
+0d8b1127-8314-4331-a752-711f11a3f6a3;Tegral multigrain;autre;kg;Sac;10.000
+2b8fbc39-ee20-481f-bf91-1aea3af7e3fd;Thym;autre;kg;Sac;10.000
+88e34127-811c-43b9-be41-99525182698f;Thym;autre;kg;Sac;10.000
+055fbe80-57f7-4c48-a2a1-de8a3155e7f0;Trablit;autre;kg;Sac;10.000
+2bebd73c-2e00-4e17-af79-15843f42d884;Vanille poudre;autre;kg;Sac;10.000
+7cf2798e-586f-4b45-8a3e-a64acfd34c5b;Puree pomme;autre;l;Bidon;5.000
+953c492d-98bc-4301-9252-4fc3aa6abb9f;Purée ananas;autre;l;Bidon;5.000
+a2dd7a72-1399-434c-91f0-f6fcc29659c8;Purée de passion;autre;l;Bidon;5.000
+4c8d29c3-a0f5-47ad-aa71-ff17369fabb1;Trablit;autre;l;Bidon;5.000
+c836405b-e196-491e-99c7-2401e35b821d;Lait de coco;autre;ml;Bidon;1.000
+360c95e5-60fe-4c6a-aca5-8787f595dcd2;Purée de poire;autre;ml;Bidon;1.000
+da75aa62-6328-4f62-8332-8bb3e69dc760;Purée passion;autre;ml;Bidon;1.000
+1a6b9083-3aa7-4d79-bf1f-1e2689d1b1d5;Amarina;autre;unit;Carton;1.000
+1f259339-26b0-4eb3-bfc8-5dfa942ed4c7;BOUTEILLE DE GAZ;autre;unit;Carton;1.000
+1dbc62a0-f01b-4f81-8cbc-4bfac706f2cf;Baignoire;autre;unit;Carton;1.000
+cec40af5-9ae1-49d7-af4d-a749799404fd;Bouillon poisson (boîte 36 cubes);autre;unit;Carton;1.000
+88cb1a15-1484-4718-9527-3ca61ec55c04;Boules colorées;autre;unit;Carton;1.000
+7c0cb08e-dbbd-4f35-9860-46b26645dd79;Brick;autre;unit;Carton;1.000
+5e8889d0-3ec5-43fd-8f00-502a150d2026;COMPTE  de pomme;autre;unit;Carton;1.000
+4f932c39-a44f-4cc0-8866-b2de1dc7cf5c;COMPTE DE POMME;autre;unit;Carton;1.000
+77fb4aac-5906-463c-bc92-04a6225d240e;Champignon;autre;unit;Carton;1.000
+d861a6c8-5c1b-4d15-b343-8148d7949033;Chemise perforée;autre;unit;Carton;1.000
+cdf7de7d-369d-4ebb-90e5-da8d97528159;Chemise à rabat;autre;unit;Carton;1.000
+ffc5e566-5ae1-4886-bbb4-c53d9e0ad6bb;Classeur à levier;autre;unit;Carton;1.000
+e51cc4d5-3953-4b2b-a792-6f4b9aed48a1;Creme de pistach;autre;unit;Carton;1.000
+a39dd2b5-6a9c-427c-a733-821d56ca8ca2;Créme de pistache;autre;unit;Carton;1.000
+62ba82b6-49aa-4fec-9031-c5a2c97f046d;Cuillères;autre;unit;Carton;1.000
+09253661-fd42-4f9c-8dd7-f299a8944221;Danone nature;autre;unit;Carton;1.000
+aad4df28-3f19-4852-90ce-4c4ca8bb0d55;Décors en sucre;autre;unit;Carton;1.000
+090b5477-2f1f-4e88-8cdb-caefc1862808;Feutre;autre;unit;Carton;1.000
+16d70d2b-9a3f-4d79-804a-820ad4e6addf;Filet de fillo;autre;unit;Carton;1.000
+19967453-9c77-42cb-a6fb-5ea23d762840;Fleurs;autre;unit;Carton;1.000
+1ebf9901-17f2-4538-8b9e-df4e1f6a2781;Fromage carée;autre;unit;Carton;1.000
+1b10b00f-890c-4b8e-87dd-f6a5254cc634;Graines de lin;autre;unit;Carton;1.000
+6376a1b2-8c3d-4deb-a4f7-f23298af213e;Grille en plastique;autre;unit;Carton;1.000
+68671240-b1ff-4e5d-b975-e6ff18f0c2f6;Laitue;autre;unit;Carton;1.000
+c8513520-5f7e-4d41-b134-9f7c0fbb660b;Les enveloppes;autre;unit;Carton;1.000
+2bf462fc-24c1-4c3b-a609-6f35af80a1eb;Lotus;autre;unit;Carton;1.000
+3efb31c5-bef9-4961-abbe-c5bf7690181c;Margarine atlas;autre;unit;Carton;1.000
+a8ef7397-b28d-4cf5-aaa1-2d9e022578fe;Matériel frigorifique;autre;unit;Carton;1.000
+96033b61-8073-427e-b775-35a1fbd59cb9;Moutarde top chef;autre;unit;Carton;1.000
+ef817651-c4cb-402c-878f-a7f43a8980db;Nido;autre;unit;Carton;1.000
+07c295c6-82f2-411c-a586-72957e453109;Ola;autre;unit;Carton;1.000
+b65885b2-1c20-4d53-9971-2fc2da15296f;Ola;autre;unit;Carton;1.000
+cb54da2c-3033-4fd7-aa16-3736c0ef1fe0;Oreo;autre;unit;Carton;1.000
+22715830-8d65-45a7-9322-59473d86aa6a;Perles de sucre;autre;unit;Carton;1.000
+6c3af31d-dfa5-4d1a-82e8-7e632303a6b1;Perlé or;autre;unit;Carton;1.000
+3f14c1d1-56f8-4818-82c3-e25707b8dcd9;Plateau Prestige PM;autre;unit;Carton;1.000
+68c196f4-63af-44de-ab97-d788d8356568;Poche;autre;unit;Carton;1.000
+476bb36e-71d3-4b98-98c0-990c441a70a4;Porte documents;autre;unit;Carton;1.000
+8cd68507-3845-413e-8476-53f3da4e3743;Roses;autre;unit;Carton;1.000
+c7ad35e1-dd1b-41f7-b3a4-8dc8e74838c6;Salé;autre;unit;Carton;1.000
+183e6db4-4e40-4201-b75c-d3fdf07f00f1;Savon liquide pour les mains;autre;unit;Carton;1.000
+7509acda-8f42-49ea-9afb-491cca8dbed8;Sucrrée;autre;unit;Carton;1.000
+a506b9ce-e84b-44cf-9253-101f78bb8c9f;Thon tam;autre;unit;Carton;1.000
+17fd49a3-b6ca-4bbb-865f-2c56e1e26cf5;Thé vert;autre;unit;Carton;1.000
+03739673-863e-453d-bd6c-cf015e5e4a0c;Topper;autre;unit;Carton;1.000
+3966ac08-f6f9-4a38-a780-f2d91ac008f2;Vermicelles chinois;autre;unit;Carton;1.000
+bdb4990f-3bfa-4030-a785-7fa2a6321c1c;Beurre;beurre;kg;Carton;10.000
+8d62f50a-b128-49b9-af71-0056cf6460b0;Margarine atlas;beurre;kg;Carton;10.000
+9e38da98-7b30-4c29-8284-cf6677557814;Beurre de cacao;beurre;unit;Carton;1.000
+2f979e58-303d-43dc-9230-3de12446575c;Chocolat cookies drops;chocolat;g;Boite;0.500
+b302776c-aa04-4520-9057-8146b5976c76;Beurre de cacao;chocolat;kg;Poche;2.000
+b4bd541b-23d8-4c48-9be4-608d6311f3c0;Beurre de cacao chocovic;chocolat;kg;Sac;5.000
+d7210288-818b-4295-8489-4e60facee501;CHOCOLAT BLAN DGF;chocolat;kg;Sac;5.000
+09015d0a-1081-4350-a184-c0957be74861;CHOCOLAT COUVERTURE BLANC VHP;chocolat;kg;Sac;5.000
+9acb3a44-9a42-4028-a1c9-9e94b8739263;CHOCOLAT COUVERTURE LAIT  VHP;chocolat;kg;Sac;5.000
+15a89d57-945c-49ae-b61a-c283316cb62b;CHOCOLAT COUVIRETURE SIMPLE PLAN;chocolat;kg;Sac;5.000
+e2563d8e-7749-43ea-a628-4324f7fefdaa;CHOCOLAT DE COUVERTURE BLAN DGF;chocolat;kg;Sac;5.000
+a0872cb8-b0c6-4cc4-8bc3-485ed9de72c0;CHOCOLAT DE COUVERTURE BLANC;chocolat;kg;Sac;5.000
+c6eefed6-56c2-4a06-9742-9f50bfa1868c;CHOCOLAT DE COUVERTURE BLANC DGF;chocolat;kg;Sac;5.000
+cce49b20-87bf-453a-a964-8c2e28401923;CHOCOLAT DE COUVERTURE NOIR DGF;chocolat;kg;Sac;5.000
+f371e612-8fba-4d34-9581-ac8c3264c225;CHOCOLAT DE COUVERTURE NOIR VHP;chocolat;kg;Sac;5.000
+e8b2c8ec-65d0-4e63-8ed7-9838a9bffdd8;Cacao en poudre 10/12;chocolat;kg;Sac;5.000
+a747be07-38a4-40a0-a8e9-b3f4dd897e73;Chocolat 50%;chocolat;kg;Sac;5.000
+31beedc8-5bbc-4463-960a-cfe747e223f8;Chocolat Blanc 30%;chocolat;kg;Sac;5.000
+c8f6f6ee-88a6-46bd-83dd-a035543a1927;Chocolat Gala Blanc;chocolat;kg;Sac;5.000
+77cb6369-1006-4e3b-a9a5-72ec2fbe2c68;Chocolat Gala Noir;chocolat;kg;Sac;5.000
+b2cd762f-4e8a-4576-ba1d-dba7caffbe97;Chocolat Rich Noir;chocolat;kg;Sac;5.000
+c4ff8fee-a57f-4a0a-9087-f97b1a4d1372;Chocolat blanc;chocolat;kg;Sac;5.000
+ae5a5d14-b732-49e9-9557-1c40beda694e;Chocolat blanc sucré ( ven hoten );chocolat;kg;Sac;5.000
+e1938081-5ca7-4aba-b4a0-5002f250b3f1;Chocolat cookies drops;chocolat;kg;Sac;5.000
+c80d2b7a-e0c2-490d-ba44-aaaaaaee0a29;Chocolat couverture blanc 26.4%;chocolat;kg;Sac;5.000
+e9f0188f-2dd5-4497-862e-842c7c7c2706;Chocolat couverture noir VHP;chocolat;kg;Sac;5.000
+83d0a644-d3cc-43cd-9ec9-b54f7dd7b5e2;Chocolat de couverture Lait 33%;chocolat;kg;Sac;5.000
+a297947d-c1fc-4395-bf00-e89a0f5061c0;Chocolat de couverture Noir 55%;chocolat;kg;Sac;5.000
+8bdf0cb6-c01b-45fe-b497-9d2d5a54c94f;Chocolat de couverture Noir 70,5%;chocolat;kg;Sac;5.000
+087e544c-274b-412d-833f-33c273f1ba6a;Chocolat lait;chocolat;kg;Sac;5.000
+032efe04-2049-48f3-9080-4f7989f7b3b4;Chocolat noir;chocolat;kg;Sac;5.000
+b00af037-812d-4796-978a-2aa7056a0413;Gouttes Drops 44%;chocolat;kg;Sac;5.000
+71fcdde7-0ad6-404c-9959-1d041bb39960;Gouttes drops 50% DGF;chocolat;kg;Sac;5.000
+9c660998-849f-4b79-8b4b-2b5df022dd68;Pistoles signature blanc VHP;chocolat;kg;Sac;5.000
+87d24839-6c59-40ec-9278-754db0db22e2;Pouder cacao;chocolat;kg;Sac;5.000
+d4224518-6ef8-427f-bec2-7b3d536a5836;Tablette Signature Blanc VHP;chocolat;kg;Sac;5.000
+348940b8-8b8f-4f3d-912c-c1de8eb1a948;Tablette Signature Lait VHP;chocolat;kg;Sac;5.000
+e53bc720-c078-4dd5-955d-f3c5e61f8c7e;Tablette Signature Noir VHP;chocolat;kg;Sac;5.000
+82c859d3-3954-4f02-aec3-7f014fd3c352;Tegral chocolat;chocolat;kg;Sac;5.000
+a99b39e5-071a-44b0-bac6-c81be981d180;500 batons boulangers DGF;chocolat;unit;Carton;50.000
+f0efa002-961a-4cdc-b8dc-689e4755e7ef;Batons boulangers DGF 500;chocolat;unit;Carton;1.000
+34885ef7-18eb-4034-b599-e11ad7865f30;Chocolat Gala Noir;chocolat;unit;Carton;1.000
+450cc48f-183e-45cf-9f9b-8dc1c2fd6592;Chocolat baton;chocolat;unit;Carton;1.000
+f0e00b98-7d1a-4865-89e0-e891c45e74bf;Chocolat gala blanc;chocolat;unit;Carton;1.000
+394fc12c-1ad3-40a7-a005-63cbf64354dd;Colorant jaune liposoluble;colorants;g;Boite;0.100
+cb9a5bd0-740e-47b0-8f69-0b9a3f29f390;Colorant poudre jaune;colorants;g;Boite;0.100
+ec209878-4ae6-417b-a4d3-b81b5e0c039b;Colorant vert hydrosoluble;colorants;g;Boite;0.100
+79b6c7b2-bdce-43bf-861a-978f228c94ff;Colorant hydrosoluble Bleu Saphir;colorants;kg;Boite;1.000
+95caf64f-0b8c-4ab8-abc3-e9855cd841c1;Colorant hydrosoluble Jaune Ocre;colorants;kg;Boite;1.000
+c6925c23-f76f-4ca1-9f71-2a48314eec8e;Colorant hydrosoluble Jaune Soleil;colorants;kg;Boite;1.000
+8c7fcf45-9c3d-405d-bb8e-4dbb93712594;Colorant hydrosoluble Rouge Fraise;colorants;kg;Boite;1.000
+2c433c72-6e79-44dc-a624-db2467473fe2;Colorant liposoluble Jaune Soleil E110;colorants;kg;Boite;1.000
+1283bd3e-ce0c-4438-98d4-2cbe2af4989e;Colorant liposoluble Rouge Fraise;colorants;kg;Boite;1.000
+a0941455-2ed4-4c82-bfd0-45797634b4c1;Colorant liposoluble Rouge Framboise;colorants;kg;Boite;1.000
+dc377483-e465-40da-8901-ddbc76de8ac6;Colorant rose;colorants;unit;Boite;1.000
+62cbb010-ae6c-4fb5-a47e-33088b000f40;Champignons noirs;conserves;kg;Boite;1.000
+0028ff30-b93d-40c0-8500-b5ed0f369347;Pêche au sirop;conserves;kg;Boite;1.000
+4bf701d1-f071-403f-99d4-56449261587d;Thon Tam;conserves;kg;Boite;1.000
+09905fe9-2573-4a1d-987c-a421c5cde5d3;Citron confuture;conserves;unit;Boite;1.000
+d31c6525-38f4-4560-a595-7413084fbf05;Cornichons (boîte);conserves;unit;Boite;1.000
+ae832bef-98f4-4fd1-8220-9010fe02fb3f;Maïs en grain (boîte);conserves;unit;Boite;1.000
+8ae1c23f-fc30-485c-a573-607d13319e5b;Nestlé;conserves;unit;Boite;1.000
+6cec4de3-6a00-40e1-8898-751a6be54ff6;Crème cheese 33 %;cremes;g;Boite;0.500
+99cafb09-6ce1-4772-b9e1-a8293a3dd86c;Creme chocolat;cremes;kg;Seau;1.000
+8ebec4ef-bee0-4f1c-bea9-d08e7e638f4f;Creme citron;cremes;kg;Seau;1.000
+3cc62179-b119-4396-b7ee-fe4ffdd15e48;Creme de pistach;cremes;kg;Seau;1.000
+c7586e23-e864-42d2-b397-a206deb71e13;Crème cheese;cremes;kg;Seau;1.000
+80333648-a399-465b-b7fd-c8abb52a4573;Crème patissiere;cremes;kg;Seau;1.000
+31fed287-ba51-4c1d-a70e-e6fc9c88f986;Crème fraiche;cremes;l;Brique;1.000
+941f781d-3e94-4574-8e7e-1b2820c8b9db;Créme cuisson;cremes;l;Brique;1.000
+c54f73c2-6362-483d-b03d-a1d788848d12;Creme cheese;cremes;unit;Carton;1.000
+a8920aac-e75a-4714-b2cd-588e70f23f54;Amarena au sirop lourd;decors;kg;Boite;1.000
+ad1bb7fe-e00f-4ceb-9b7f-4e06b1c6b602;Biscuits Oreo miettes;decors;kg;Boite;1.000
+757b4798-f7fc-4b73-88a0-bfe5ed69295e;Brisure biscuit Royaltine;decors;kg;Boite;1.000
+b2442662-e3c1-44f9-bc4d-c316949deedf;Bâtons boulangers 500 BTS;decors;kg;Boite;1.000
+13d7cb6f-e178-47c6-870d-ee2907c48745;Compote de pomme VL;decors;kg;Boite;1.000
+9ca99c2a-e67c-41da-b7a6-5ea1925ca7b2;Confiture de framboise;decors;kg;Boite;1.000
+259ac810-efe7-4f33-b480-4fbc6dd8bc90;Fruits confits;decors;kg;Boite;1.000
+d2c3756f-e143-483c-94d7-80ed750dfbd0;Nappage;decors;kg;Boite;1.000
+2c69da17-4db1-4fea-938a-68194d49c540;Nappage neutre;decors;kg;Boite;1.000
+289d3adc-c609-4346-bd18-1401382cacb3;Noisette;decors;kg;Boite;1.000
+aef9a5f9-77c0-4a2a-b4b5-38e75616e189;Pâte À Glacier Blanche;decors;kg;Boite;1.000
+ce69281f-07c6-449c-a3b0-feffd63d656f;Pâte à sucre blanche;decors;kg;Boite;1.000
+3fb93227-db65-49cb-a650-ea4c6c582525;Tegral vanille;decors;kg;Boite;1.000
+5d67aee8-3b18-4bbe-874b-c62e6c3fcaed;Feuille guitare;decors;unit;Boite;1.000
+0686efa8-60f3-47d7-a925-a39d07a4a65d;Feuille rhodoide;decors;unit;Boite;1.000
+5b97aeb3-d324-4a6f-b881-49cb8e017f0e;Fondant blac;decors;unit;Boite;1.000
+8a9cd1e1-3ce3-406f-a911-4b084cd4378e;Gélatine;decors;unit;Boite;1.000
+13bdc305-b5b3-4112-87e9-910a40b0889e;Praliné amande;decors;unit;Boite;1.000
+66a99b91-3b07-4254-bdec-857b50150e17;Arôme Orange;epices;g;Boite;0.100
+8f083538-3349-4326-8b40-ff5389101a7e;Arôme coco;epices;g;Boite;0.100
+a4bfedb6-ca80-47a9-a4f3-2fcf9eaa2db8;Caramel / colorant caramel;epices;g;Boite;0.100
+63779f81-782c-4e2d-9ad0-1aa76ecb6e80;Cumin du pays;epices;g;Boite;0.100
+11a7075d-bcf4-4ca0-b1cf-18ba44aaee1d;Mélange d'épices pour kefta;epices;g;Boite;0.100
+f719953a-cd41-43fa-8799-ae56bd67814d;Ail en poudre;epices;kg;Boite;1.000
+d817d7ef-cd2a-454c-ad23-e747ee1808f0;Arôme vanille intense 1022;epices;kg;Boite;1.000
+56004222-f73d-405f-b32a-8bbf47a26fb3;Cannelle moulue;epices;kg;Boite;1.000
+08b20f54-3f6c-40a7-835e-4c6bc745c680;Cumin moulu;epices;kg;Boite;1.000
+e761c57d-e95c-42c0-bc5c-71dbf9939fe0;Curcuma moulu;epices;kg;Boite;1.000
+066d0910-4275-481d-b3a5-a79b7ae7d03b;Gingembre moulu;epices;kg;Boite;1.000
+fbcad0d5-8715-4251-82a1-878f315dbf58;Gomme arabique moulue;epices;kg;Boite;1.000
+bdc3d429-de88-4cfc-8cf6-3971c1e34195;Paprika fumée;epices;kg;Boite;1.000
+8a16a3d7-67bf-4559-bf38-3ccf7cde7cfa;Piment doux;epices;kg;Boite;1.000
+be08d672-eb20-4062-a110-78ff0243d37d;Piment fort;epices;kg;Boite;1.000
+eea11c26-c939-40b7-90a8-5cf7d38d1528;Poivre noir moulu;epices;kg;Boite;1.000
+7ef45a4d-8592-4668-8bfe-c9c3bd0204af;Eau de fleur d'oranger (litre);epices;l;Boite;1.000
+90e1e100-3b1b-45ae-a3cf-38deb19afc1c;Extrait de café liquide;epices;l;Boite;1.000
+562663ab-8f54-4605-8611-4ff54cf5ee78;Arome vanille;epices;unit;Boite;1.000
+5bc4450a-d303-401d-8316-1c99a2b01710;Eau de fleur d'oranger;epices;unit;Boite;1.000
+cf0ba850-31e5-4960-80b5-b35b5a4942f2;Vanille Idéal;epices;unit;Boite;1.000
+c5b168ba-273a-4edb-9abe-66bddab156a2;Pomme;farines;g;Boite;0.500
+013782b4-863b-4cc5-9721-6f32054499dd;Améliorant Viennoiserie;farines;kg;Sac;25.000
+c6e3b819-174b-4015-8638-ce2e0bbaae41;Farine Complète;farines;kg;Sac;25.000
+f11f7877-acdb-41bc-87f8-389bd227041f;Farine Fleur;farines;kg;Sac;25.000
+67ffbaa0-d9d4-4dc1-baf8-815064a41629;Farine Soisson;farines;kg;Sac;25.000
+f7323892-145f-4f68-ba5e-674ff19a78ca;Farine boulangerie;farines;kg;Sac;25.000
+4c19a86b-4ebb-4420-8e24-f396cd8c4393;Farine d'orge;farines;kg;Sac;25.000
+cae97f21-4edc-4d40-bfd0-51aa93c4cda7;Farine de maïs;farines;kg;Sac;25.000
+1ebc2edd-3ca7-48c9-8a22-9e763dcc026b;Farine moni;farines;kg;Sac;25.000
+dc1c1f20-6533-428e-8e6f-1d810bcef7c3;Farine viennoiserie;farines;kg;Sac;25.000
+dd3449e0-eae9-4c9e-8833-5a6436703a5c;Maïzena;farines;kg;Sac;25.000
+1fc240c8-53a4-4395-926a-d9201f95b14e;Mix Pain au seigle;farines;kg;Sac;25.000
+d0f14670-0314-4aae-909d-d620998567ff;Mix Pain aux céréales;farines;kg;Sac;25.000
+eaa9f2fb-8b0e-4868-8461-2dec89bc611c;Mix Pain de campagne;farines;kg;Sac;25.000
+22e70c22-1052-4558-b21a-c51218429670;Semoule de mais;farines;kg;Sac;25.000
+751334d9-0030-482d-9fcb-606df3860d83;Semoule fine;farines;kg;Sac;25.000
+6f70c696-1286-4344-99c9-9b2feb765d14;Semoule kenz;farines;kg;Sac;5.000
+3837d48a-a88e-4929-bd57-d301104b97c8;Son de blé;farines;kg;Sac;25.000
+40e97c19-dc61-47ed-b325-e7d791f9bab2;Son de blé;farines;kg;Sac;25.000
+08c87d1d-4138-4804-b4f5-b32458ebe57d;Mangue;farines;unit;Carton;1.000
+4dd824b2-0ba8-4087-a5e3-eb1cf2887a15;Fromage Edam;fromages;kg;Bloc;1.000
+421c4f38-0152-4f62-be7e-de9664dec981;Gruyère râpé;fromages;kg;Bloc;1.000
+20c6f888-dbba-4a97-9a37-a737083b597f;Fromage les enfants;fromages;unit;Carton;1.000
+d589a267-5da9-4519-9f04-59123776c0c6;Kiwi;fruits;g;Boite;0.500
+d3fe8951-6513-4e41-8223-09116e29db93;Ananas;fruits;kg;Sac;5.000
+c262449a-a535-4fe8-975d-ccf71873b79f;Banane;fruits;kg;Sac;5.000
+06b7f618-d95d-4f73-bd5a-0b8e11015486;Citron;fruits;kg;Sac;5.000
+acf925db-cb56-4701-9b07-a6c86129d560;Compote de pomme Valade;fruits;kg;Sac;5.000
+956c8039-5f32-44e3-bb53-471815761933;Fraise;fruits;kg;Sac;5.000
+f39e70fb-958a-43d0-a7a8-eac2018cf789;Framboises;fruits;kg;Sac;5.000
+21ac1638-3cf4-401e-9642-ab69889ba96b;Kiwi;fruits;kg;Sac;5.000
+fd7f35ed-3d11-4640-b562-7d4365cd1184;Mangue;fruits;kg;Sac;5.000
+ca897dfa-4693-48cb-86d2-8ab6a83b7c78;Mangue;fruits;kg;Sac;5.000
+c6efd055-3e21-4ba7-9476-ece0cf7d3d63;Myrtille surgelée;fruits;kg;Sac;5.000
+7dc6f63c-2b99-4961-b089-779e4b9494d2;Orange;fruits;kg;Sac;5.000
+341773a2-901b-44ab-81ee-8b05d867e83b;Oreillons d'abricot au sirop;fruits;kg;Sac;5.000
+3beb3629-47af-4dc0-aa06-48c84a754974;Pomme;fruits;kg;Sac;5.000
+47a02f8a-d7f1-4549-9783-269bcc2fc8d8;Purée de coco;fruits;kg;Sac;5.000
+d02c915b-04c8-461c-af07-f2d217d05615;Purée de griotte;fruits;kg;Sac;5.000
+0e8b6784-5935-4d47-863c-7c7fc4d1d937;Framboise purée;fruits;l;Bidon;5.000
+3b952ca2-17af-4bf5-bedb-80c57362ffd8;Purée mangue;fruits;l;Bidon;5.000
+289744a0-1557-4dfc-be16-efaa5bc00b15;Purée raisin;fruits;l;Bidon;5.000
+a26f593f-9a9e-47a7-986a-7da2a331ea51;Framboise (boîte);fruits;unit;Carton;1.000
+618051c2-8406-4b40-a861-4417e4398cc8;Framboises;fruits;unit;Carton;1.000
+1791df36-3c36-42a1-a52c-2c12e3ce1eb0;Fruits confits;fruits;unit;Carton;1.000
+52f01d89-9f47-479e-af4f-0ae4818e9302;Myrtille;fruits;unit;Carton;1.000
+a910300d-31d7-480f-bc71-c8f1f0185d37;Abricot sec;fruits_secs;kg;Carton;5.000
+791afb50-674c-4469-b310-068591b0df50;Amande concassée;fruits_secs;kg;Sac;2.000
+66ae4930-a26f-4969-b342-4215963809d5;Amande effilée;fruits_secs;kg;Carton;5.000
+047ae0f5-b143-4c22-a1c3-62a8872ce7d7;Amande hachée;fruits_secs;kg;Carton;5.000
+ff27b264-8f83-462c-98fd-6f31d90786f0;Amande poudre;fruits_secs;kg;Carton;5.000
+969d3338-b54a-443d-80c6-99dd6688d7fa;Amande poudre extra fine;fruits_secs;kg;Carton;5.000
+02280821-55c0-43cf-b98a-446007cc0794;Amandes entières;fruits_secs;kg;Carton;25.000
+838b557c-f743-4364-80b3-9de538c211f1;Dattes dénoyautées;fruits_secs;kg;Carton;5.000
+ea1e002e-728d-4c3b-a9b4-5318864e820d;Figues sèches;fruits_secs;kg;Carton;5.000
+98951e69-65d0-482e-993a-c0d573bde341;Grains anis vert;fruits_secs;kg;Carton;5.000
+c7440127-ec25-4f18-a70e-449ff21d6474;Grains de sésame;fruits_secs;kg;Carton;5.000
+d109a2e9-66d7-4ff6-a981-61583013a8f3;Grenoble;fruits_secs;kg;Carton;5.000
+88284408-48b0-42e6-bc2f-aa1d4a0b49bb;Mélange de graines;fruits_secs;kg;Carton;5.000
+1634fbce-66a0-47af-a94c-6cc6b8481cdf;Noisette en poudre;fruits_secs;kg;Carton;5.000
+932945e6-4334-40fe-8e1a-2fbaeb432d80;Noix de coco râpée;fruits_secs;kg;Carton;5.000
+0cc4500c-3c6a-4e55-8f27-6a6fc5acc4c3;Noix décortiquées;fruits_secs;kg;Carton;5.000
+54c7da9f-f328-4687-9baf-24cce76f1975;Pavot bleu;fruits_secs;kg;Carton;5.000
+acf35493-4bd1-498a-8760-e33363a6454a;Pistache décortiquée;fruits_secs;kg;Carton;5.000
+b159f8b3-ff9c-431d-ad43-0a184ec4525d;Praliné amande 50%;fruits_secs;kg;Carton;5.000
+6b49c149-83c4-4571-9c4b-47e2a3472c9d;Praliné noisette 50%;fruits_secs;kg;Carton;5.000
+3948303d-19e2-4fe6-9750-fff7dbd51962;Pâte d'amande 50%;fruits_secs;kg;Carton;5.000
+043ca336-f8b6-4161-8355-0bd239c88374;Pâte de pistache pure;fruits_secs;kg;Carton;5.000
+979a67de-bbf9-410a-8424-68d3a8342734;Raisins secs;fruits_secs;kg;Carton;5.000
+f65866af-2538-4260-86f4-f7bd52e3ad21;Raisins secs blonds;fruits_secs;kg;Carton;5.000
+b185fab4-7a38-47a7-a810-9488b5992909;Raisins secs golden;fruits_secs;kg;Carton;5.000
+c77f460a-2685-4c8c-ac16-dbb8e32fa1e8;Sésame décortiqué;fruits_secs;kg;Carton;5.000
+050cae85-ca66-4995-a817-fa72aa076df8;Gélatine en feuille;gelifiants;kg;Boite;1.000
+cff74c6d-27f6-4b97-8934-83626b8511d2;Pectine NH;gelifiants;kg;Boite;1.000
+286d8af5-9662-48e6-9b87-0360f2926cd3;Pack uht entier jaou;lait;kg;Brique;1.000
+ca642bf7-67bc-4318-ab00-e32908a22abd;Lait;lait;l;Brique;1.000
+7237017b-2cc7-4b42-a55f-9c3fbc5d07ea;Ail;legumes;g;Boite;0.250
+360cf7c4-7d2a-412a-b9c2-b32d76606ffa;Carotte;legumes;kg;Caisse;10.000
+344355b4-ccad-4dd9-82c3-9780a7e3e980;Champignons de Paris;legumes;kg;Caisse;10.000
+26115663-e90b-4b72-a96d-529cb72c6e79;Citron confit;legumes;kg;Caisse;10.000
+440707c6-9838-4fdb-bb72-6c5276a539a3;Citron fraiche;legumes;kg;Caisse;10.000
+62757b91-6ddc-41a2-8b37-0ca4c82b6684;Ognion;legumes;kg;Caisse;10.000
+148c4fda-9b1a-4409-bbc4-e0efe64954b5;Oignon;legumes;kg;Caisse;10.000
+425eb6a4-3ce4-4869-a2fd-ce6936e438ac;Poireau;legumes;kg;Caisse;10.000
+e94c6992-451f-4a24-a90b-b4cc74bb0e46;Poivron jaune/rouge;legumes;kg;Caisse;10.000
+d0e10988-66ff-4b0a-8ae5-1a4aa8a07145;Poivrons;legumes;kg;Caisse;10.000
+730bef94-09b4-4053-9ef9-85c6d8867cea;Tomate;legumes;kg;Caisse;10.000
+9c31e580-0937-484e-9eda-f38004198cfd;Tomate cerise;legumes;kg;Caisse;10.000
+cc091f72-84f3-4e76-b310-df41bcc283ed;Épinards frais;legumes;kg;Caisse;10.000
+8637e8e8-a862-4d69-87e2-40fdda3e79f4;Basilic;legumes;unit;Carton;1.000
+1a474ccf-d3fb-4da7-9425-f5a445af708f;Citron confit;legumes;unit;Carton;1.000
+5fc7a13d-a17e-4688-ac7e-ba8383b6b139;Coriandre fraiche;legumes;unit;Carton;1.000
+85aebd2f-9b51-405d-bf60-1a57800bb9b3;Herbe;legumes;unit;Carton;1.000
+3dc5d723-21f5-4513-a1f1-eee360997ecc;Laitue (pièce);legumes;unit;Carton;1.000
+3ad8f75f-512b-4a23-ad7a-c82ab6d24df1;Améliorant Pain Perfect;levures;kg;Bloc;0.500
+d78e2306-247a-41d4-bc8f-d1752228aa3d;Ibis;levures;kg;Bloc;0.500
+2cbaa3f6-9dbf-469d-87ad-49e782b58dc5;Levure;levures;kg;Bloc;0.500
+c74f92d2-0015-426e-bd57-1fa1b1b61bf2;Levure chimique;levures;kg;Bloc;0.500
+c61e65ba-85c4-4a3e-85a5-98cfdda6b244;Levure fraîche;levures;kg;Bloc;0.500
+e83b1abe-14b6-45e6-88d0-054fad0ca065;Maizina;levures;kg;Bloc;0.500
+87a71cd8-fd5f-4523-a79f-f13326225bdf;Maltorge;levures;kg;Bloc;0.500
+fd67cd8b-ea3f-464e-934d-6cae2c4880c5;O-tentic durum;levures;kg;Bloc;0.500
+7c30ca48-3221-4c77-86e3-267dbc366ba2;Perfect Saveur Grand Chef;levures;kg;Bloc;0.500
+800ce07a-d1eb-465a-9308-78bca73c9234;Levure Chimique Idéal;levures;unit;Carton;1.000
+17e860f1-5054-4686-ba83-965a1287ce77;Levure Ideal;levures;unit;Carton;1.000
+f81631d2-eea3-4bb1-8015-3406c2f03fdd;Beurre;matieres_grasses;kg;Seau;10.000
+e1f3fd4f-6673-4edc-adf6-b3b9d240cd22;Hille;matieres_grasses;l;Bidon;5.000
+cb43604b-d974-4f51-935a-4fb327c88e5a;Huile d'olive;matieres_grasses;l;Bidon;5.000
+14419d4a-9676-493e-aff3-5be9e77b4d1d;Huile de table;matieres_grasses;l;Bidon;5.000
+9cb9c0bc-1e82-4c7f-a596-22dd50b103a1;Huile de table;matieres_grasses;l;Bidon;5.000
+3973a143-7b40-46ab-87ea-ff89f7d8d6b1;Oeufs Jaune;oeufs;kg;Brique;1.000
+4b999a87-3ff9-4814-83b9-c16f1caa03ff;OEUFS DE CAILLE;oeufs;unit;Carton;30.000
+1cabfcad-a8e0-41f7-92ef-7647ec5531fd;Oeuf;oeufs;unit;Carton;30.000
+747b023f-0289-4152-96c1-8c566ed722e9;Oeuf entier;oeufs;unit;Carton;30.000
+fc2dbdcb-34e0-47f7-888d-eb11f7b895ca;Oeufs;oeufs;unit;Carton;30.000
+db3d7e44-4e08-48f7-b4ee-aeaf2a10b7fe;Pâte de pistache;pates_riz;g;Boite;0.500
+98b30e68-7a43-4f62-b217-62dbfa510d26;Feuilles de pastilla;pates_riz;kg;Sac;5.000
+f7b59704-ad1d-4f7e-88e2-ec4c0561ffb9;Konafa;pates_riz;kg;Sac;5.000
+d3157346-022b-4917-8749-615ede123846;Pate amande;pates_riz;kg;Sac;5.000
+a414aa36-8fcb-4858-bcca-3df53686404c;Pate de dattes;pates_riz;kg;Sac;5.000
+7a5039c8-f5ee-44c4-8f74-c803638e74d4;Pâte de pistache 100%;pates_riz;kg;Sac;5.000
+f1d9f258-b860-4937-9454-fc3410198b52;Vermicelle de riz;pates_riz;kg;Sac;5.000
+03071b0a-03c0-4915-b211-c62f455aa231;Pâte blanc;pates_riz;unit;Carton;1.000
+73664631-9fc2-4595-85a2-ab7e14803cba;Pâte noir;pates_riz;unit;Carton;1.000
+5ad41d3b-1eee-40ae-b140-4c2095b84542;Calamar;poissons_fruits_de_mer;kg;Carton;5.000
+f19f705e-7b50-4b16-a900-c9349ded6818;Crevettes;poissons_fruits_de_mer;kg;Carton;5.000
+fc1cd525-1a4e-480a-b04e-82456c25ff51;Crevettes;poissons_fruits_de_mer;kg;Carton;5.000
+df0accc8-51eb-4c7d-b442-da988a980b74;Requin;poissons_fruits_de_mer;kg;Carton;5.000
+7f8def23-119b-4451-af80-38c65714493e;Saumon;poissons_fruits_de_mer;kg;Carton;5.000
+ec456786-bd39-42e7-8055-9cf799c49437;Saumon fume;poissons_fruits_de_mer;kg;Carton;5.000
+a8a367fb-94af-422b-9ed1-ffca3d1e814f;Saumon fumé en tranches;poissons_fruits_de_mer;kg;Carton;5.000
+b85ee76f-dd2e-4764-a1ef-71133010ebfc;Seiche;poissons_fruits_de_mer;kg;Carton;5.000
+5223655e-6e65-4af7-a3cc-f7fbd4585d6a;Sipea;poissons_fruits_de_mer;kg;Carton;5.000
+43c0c78d-38f1-469c-82ee-7e7e1fdb1b26;Pain de mie tranché;preparations;kg;Sac;10.000
+b9581c23-427d-47bd-a906-2c581cd9700e;Préparation crème pâtissière;preparations;kg;Sac;10.000
+04c573ef-9379-44eb-ae53-d000fb7ecaad;Konafa;preparations;unit;Carton;1.000
+3f0db009-e5ad-4d2c-bde3-f71be690a080;Blancs d'œufs liquides pasteurisés;produits_laitiers;kg;Seau;1.000
+212ffa51-a7d8-470c-b7c4-0483475821ab;Chocolat couverture lait VHP;produits_laitiers;kg;Seau;1.000
+5412f6b0-66ed-494b-8b72-6a0552276e52;Crème cuisson;produits_laitiers;kg;Seau;1.000
+b69ed5f1-13c5-4ad7-b1db-ac9d0ce49c32;Crème fraîche;produits_laitiers;kg;Seau;1.000
+c5c609a4-7eda-4588-a6d1-e86bcb96711d;Lait concentré sucré;produits_laitiers;kg;Seau;1.000
+6e28da31-82fc-4baa-8a9b-25ccf77ce72f;Mascarpone;produits_laitiers;kg;Seau;1.000
+44410d21-6116-475e-96df-70dfe63477c2;Mozzarella;produits_laitiers;kg;Seau;1.000
+1ba172c9-d6ea-42e2-af72-ef0b8ae5383a;Mozzarella primera Ovotec;produits_laitiers;kg;Seau;1.000
+aac0e1d4-d07b-4d91-aa5b-2318f3472c0a;Oeufs entiers liquides;produits_laitiers;kg;Seau;1.000
+d6c80135-5dde-4e57-8bd8-ab77df7e22a0;Prép. poudre crème pâtissière MAB;produits_laitiers;kg;Seau;1.000
+55abd57d-29b1-4815-94e7-89440c35e7b5;Lait;produits_laitiers;l;Brique;1.000
+5db9f7dc-4c3d-4738-9a7b-3b87bb07b3e1;Beurre;produits_laitiers;unit;Carton;1.000
+63af2f37-cfef-47f7-96f8-83f51ff5336a;Danone;produits_laitiers;unit;Carton;1.000
+a39dcf87-11fb-42ec-b067-3af8c20535f5;Yagourt Nature;produits_laitiers;unit;Carton;1.000
+6e5127e6-5354-4296-9b21-5525ec738197;Ketchup;sauces;kg;Boite;1.000
+362c873d-bd63-4c79-890e-49ffb08b7405;Mayonnaise bidon;sauces;l;Bidon;5.000
+aa47e3e5-06ae-41d5-9c66-7ed95d1b1318;Sauce Algérienne;sauces;l;Bidon;5.000
+17760337-83d7-4599-acaa-80f39cbb9c8d;Sauce Big Burger;sauces;l;Bidon;5.000
+7bf737dc-cd4c-46a9-938d-ded102654b17;Sauce soja supérieure light;sauces;l;Bidon;5.000
+9c16d9be-d702-4331-a35e-4e364831c38a;Sauce  tomate ola;sauces;unit;Boite;1.000
+092f1ffc-a697-40f6-8639-7b6b886063af;Sel de table fin;sel_vinaigre;kg;Sac;25.000
+fe14cba5-5dd8-47f4-8193-04e6e04a357a;Vinaigre blanc;sel_vinaigre;l;Bidon;5.000
+fdb0f041-3477-47b5-bbbf-c73fb147a9ad;Fondant pâtissier;sucres;kg;Sac;25.000
+1031fe0f-768a-4037-8cc9-dc2452d2c137;Miel liquide;sucres;kg;Sac;25.000
+5af58dc4-50eb-4bb7-994c-f88dfb62faa0;Neige éternelle;sucres;kg;Sac;25.000
+f6746aa5-d7d3-4b6a-a0da-64414d65fd64;Sirop de glucose;sucres;kg;Sac;25.000
+1d339a02-229a-4d19-b0c8-e0a9771f5363;Sucre glace;sucres;kg;Sac;25.000
+54469800-2fa7-4484-9110-6eb6db0b176d;Sucre grain CAL 10;sucres;kg;Sac;25.000
+c7c44426-78dc-4c94-8265-2d547c8ab663;Sucre semoule;sucres;kg;Sac;25.000
+434102af-59c2-424d-bd79-5dffe76f7179;Sucre semoule;sucres;kg;Sac;25.000
+7572c62a-ca88-4a0e-9193-e603c2aa4723;Trimoline sucre inverti;sucres;kg;Sac;25.000
+8a2ce077-281f-4c35-85f6-064f64deead5;Miel;sucres;unit;Carton;1.000
+ec18b706-85f9-4a19-9f40-938c27f1913f;Sucre neige;sucres;unit;Carton;1.000
+dc145d29-a541-4a07-98eb-620a15ec89e3;Blanc de poulet;viandes;kg;Carton;5.000
+1728b8c3-39c2-4b2c-baf5-0a961ce62108;Filet de dinde fume;viandes;kg;Carton;5.000
+4ddb8f5d-d595-4157-8ba7-47da5d9185a5;Filet de poulet;viandes;kg;Carton;5.000
+f06119ae-3731-470b-b797-a845b71e1202;Kefta;viandes;kg;Carton;5.000
+c56f7317-b7c0-463f-8ecf-eba23a5d6364;Kefta;viandes;kg;Carton;5.000
+8f8c20a9-8ff5-4987-9025-f218001a01d8;Khlii;viandes;kg;Carton;5.000
+b908cd9b-6583-467b-b7e2-55a8d50220c1;Viande hachée;viandes;kg;Carton;5.000
+bcdb09e9-c622-4917-b46d-f7d686774014;Filet de dinde fume;viandes;unit;Carton;1.000
