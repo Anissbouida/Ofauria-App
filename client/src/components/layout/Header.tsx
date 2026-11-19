@@ -9,6 +9,8 @@ import type { Role } from '@ofauria/shared';
 import NotificationBell from './NotificationBell';
 import GlobalSearch from './GlobalSearch';
 import { NAV_ITEM_BY_PATH, NAV_LABEL_BY_PATH, SALES_SHELL_PATHS, navLabel } from '../../config/navigation';
+import { useLocale } from '../../i18n';
+import { LanguageMenu } from './LanguageSwitcher';
 
 export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
   const { user, logout } = useAuth();
@@ -27,17 +29,18 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
   }, []);
 
   const { sectorLabel } = usePermissions();
+  const { locale, t } = useLocale();
   const currentPath = '/' + location.pathname.split('/')[1];
   const navItem = NAV_ITEM_BY_PATH[currentPath];
-  const currentModule = SALES_SHELL_PATHS.has(currentPath) ? 'Ventes'
-    : navItem ? navLabel(navItem, sectorLabel) : (NAV_LABEL_BY_PATH[currentPath] || '');
+  const currentModule = SALES_SHELL_PATHS.has(currentPath) ? t('module.sales')
+    : navItem ? navLabel(navItem, sectorLabel, locale) : (NAV_LABEL_BY_PATH[currentPath] || '');
 
   return (
     <header className="h-12 flex items-center px-4 shrink-0 z-40" style={{ backgroundColor: 'var(--theme-accent)', color: 'var(--theme-cta-text)' }}>
       {/* Left: App grid + branding */}
       <div className="flex items-center gap-2">
         <button onClick={onToggleApps}
-          className="p-1.5 rounded hover:bg-white/15 transition-colors" title="Applications">
+          className="p-1.5 rounded hover:bg-white/15 transition-colors" title={t('header.apps')} aria-label={t('header.apps')}>
           <LayoutGrid size={20} />
         </button>
         <button onClick={() => navigate('/', { state: { launcher: true } })}
@@ -71,31 +74,34 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
         </button>
 
         {showUserMenu && (
-          <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-1 text-gray-800 z-50">
+          <div className="absolute end-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-1 text-gray-800 z-50">
             <div className="px-4 py-3 border-b">
               <p className="font-semibold text-sm">{user?.firstName} {user?.lastName}</p>
-              <p className="text-xs text-gray-500">{user?.email}</p>
+              <p className="text-xs text-gray-500" dir="ltr">{user?.email}</p>
               <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
                 {user?.role ? ROLE_LABELS[user.role as Role] || user.role : ''}
               </span>
             </div>
             {/* Espace employe : bulletins, conges, avances (si le compte est lie a une fiche). */}
             <button onClick={() => { navigate('/employees?tab=me'); setShowUserMenu(false); }}
-              className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2">
-              <UserCircle size={16} className="text-gray-400" /> Mon espace
+              className="w-full text-start px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2">
+              <UserCircle size={16} className="text-gray-400" /> {t('header.mySpace')}
             </button>
             {user?.role === 'admin' && (
               <>
                 <button onClick={() => { navigate('/users'); setShowUserMenu(false); }}
-                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2">
-                  <User size={16} className="text-gray-400" /> Mon profil
+                  className="w-full text-start px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2">
+                  <User size={16} className="text-gray-400" /> {t('header.myProfile')}
                 </button>
-                <div className="border-t" />
               </>
             )}
+            <div className="border-t" />
+            {/* G6-05 : langue de l'interface, enregistrée sur le compte. */}
+            <LanguageMenu onDone={() => setShowUserMenu(false)} />
+            <div className="border-t" />
             <button onClick={logout}
-              className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
-              <LogOut size={16} /> Deconnexion
+              className="w-full text-start px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+              <LogOut size={16} /> {t('header.logout')}
             </button>
           </div>
         )}

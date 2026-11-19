@@ -6,7 +6,8 @@ import { usePermissions } from '../../context/PermissionsContext';
 import Header from './Header';
 import ForcePasswordChange from '../../features/auth/ForcePasswordChange';
 import { AlertTriangle } from 'lucide-react';
-import { NAV_HOME, navLabel, isNavItemVisible, visibleNavGroups } from '../../config/navigation';
+import { NAV_HOME, navLabel, navGroupTitle, isNavItemVisible, visibleNavGroups } from '../../config/navigation';
+import { useLocale } from '../../i18n';
 import type { NavItem } from '../../config/navigation';
 import { useApprovalsCount } from '../../api/approvals.api';
 
@@ -14,6 +15,7 @@ const CASHIER_ROLES = ['cashier', 'saleswoman'];
 
 function ModuleTile({ item, onSelect, count = 0 }: { item: NavItem; onSelect: () => void; count?: number }) {
   const { sectorLabel } = usePermissions();
+  const { locale } = useLocale();
   return (
     <button onClick={onSelect}
       className="flex flex-col items-center gap-2 p-4 rounded-xl hover:bg-gray-50 transition-colors group">
@@ -21,7 +23,7 @@ function ModuleTile({ item, onSelect, count = 0 }: { item: NavItem; onSelect: ()
         <item.icon size={24} />
         {count > 0 && <CountBadge count={count} />}
       </div>
-      <span className="text-xs font-medium text-gray-700 text-center leading-tight">{navLabel(item, sectorLabel)}</span>
+      <span className="text-xs font-medium text-gray-700 text-center leading-tight">{navLabel(item, sectorLabel, locale)}</span>
     </button>
   );
 }
@@ -29,7 +31,7 @@ function ModuleTile({ item, onSelect, count = 0 }: { item: NavItem; onSelect: ()
 /** Pastille rouge en coin de tuile (pièces à approuver…). */
 export function CountBadge({ count }: { count: number }) {
   return (
-    <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-white">
+    <span className="absolute -top-1.5 -end-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-white">
       {count > 99 ? '99+' : count}
     </span>
   );
@@ -37,6 +39,7 @@ export function CountBadge({ count }: { count: number }) {
 
 function TimeoutWarningModal() {
   const { timeoutWarning, extendSession, logout } = useAuth();
+  const { t } = useLocale();
   const [countdown, setCountdown] = useState(120); // 2 minutes countdown
 
   useEffect(() => {
@@ -61,21 +64,21 @@ function TimeoutWarningModal() {
         <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <AlertTriangle size={32} className="text-orange-600" />
         </div>
-        <h2 className="text-xl font-bold text-gray-800 mb-2">Session inactive</h2>
+        <h2 className="text-xl font-bold text-gray-800 mb-2">{t('session.inactiveTitle')}</h2>
         <p className="text-gray-500 mb-4">
-          Votre session va expirer dans
+          {t('session.expiresIn')}
         </p>
-        <p className="text-4xl font-bold text-orange-600 mb-6">
+        <p className="text-4xl font-bold text-orange-600 mb-6" dir="ltr">
           {minutes}:{String(seconds).padStart(2, '0')}
         </p>
         <div className="flex gap-3">
           <button onClick={logout}
             className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
-            Deconnexion
+            {t('header.logout')}
           </button>
           <button onClick={extendSession}
             className="flex-1 py-3 rounded-xl text-sm font-semibold bg-primary-600 text-white hover:bg-primary-700 transition-colors">
-            Continuer
+            {t('common.continue')}
           </button>
         </div>
       </div>
@@ -86,6 +89,7 @@ function TimeoutWarningModal() {
 export default function AppLayout() {
   const { user, isLoading: authLoading, mfaConfigured } = useAuth();
   const { hasModule, isLoading: permsLoading } = usePermissions();
+  const { locale, t } = useLocale();
   const isLoading = authLoading || permsLoading;
   const [showApps, setShowApps] = useState(false);
   const navigate = useNavigate();
@@ -115,7 +119,7 @@ export default function AppLayout() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin mx-auto mb-4" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-          <p className="text-gray-500 text-sm">Chargement...</p>
+          <p className="text-gray-500 text-sm">{t('common.loading')}</p>
         </div>
       </div>
     );
@@ -160,7 +164,7 @@ export default function AppLayout() {
             {userGroups.map((group) => (
               <div key={group.title} className="pt-4 first:pt-0">
                 <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                  {group.title}
+                  {navGroupTitle(group, locale)}
                 </p>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
                   {group.items.map((item) => (

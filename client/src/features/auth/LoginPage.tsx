@@ -6,6 +6,8 @@ import { useSettings } from '../../context/SettingsContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { ArrowLeft, Delete, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { authApi } from '../../api/auth.api';
+import { useT } from '../../i18n';
+import { LanguageSelect } from '../../components/layout/LanguageSwitcher';
 
 /** G0-06 : un PIN antérieur compte 4 chiffres, un PIN récent 6 à 10. */
 const PIN_MIN = 4;
@@ -14,6 +16,9 @@ type PinUser = { id: string; firstName: string; lastInitial: string };
 
 export default function LoginPage() {
   const { user, loginWithPin, login, verifyMfa } = useAuth();
+  const t = useT();
+  const tRef = useRef(t);
+  tRef.current = t;
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
   // G6-02 : fournisseurs d'entreprise configurés ; retour de connexion (?mfa= / ?sso_error=).
@@ -24,7 +29,7 @@ export default function LoginPage() {
     const mfa = params.get('mfa');
     if (mfa) setMfaToken(mfa);
     const err = params.get('sso_error');
-    if (err) notify.error(err === 'compte_inconnu' ? 'Aucun compte actif ne correspond à cette adresse : demandez à un administrateur de créer votre compte.' : 'Connexion d\'entreprise impossible, réessayez.');
+    if (err) notify.error(tRef.current(err === 'compte_inconnu' ? 'auth.ssoUnknownAccount' : 'auth.ssoFailed'));
   }, []);
   const { settings } = useSettings();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -63,7 +68,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: { message?: string } } }; message?: string };
       const serverMsg = axiosErr?.response?.data?.error?.message;
-      setError(serverMsg || axiosErr?.message || 'Code PIN incorrect');
+      setError(serverMsg || axiosErr?.message || tRef.current('auth.pinIncorrect'));
       setPin('');
     } finally {
       setLoading(false);
@@ -112,11 +117,11 @@ export default function LoginPage() {
       const status = axiosErr?.response?.status;
       const serverMsg = axiosErr?.response?.data?.error?.message;
       if (!axiosErr?.response) {
-        notify.error('Serveur injoignable — vérifie que le backend tourne (port 3001)');
+        notify.error(t('auth.serverUnreachable'));
       } else if (status === 401 || status === 400) {
-        notify.error(serverMsg || 'Email ou mot de passe incorrect');
+        notify.error(serverMsg || t('auth.badCredentials'));
       } else {
-        notify.error(serverMsg || `Erreur serveur (${status})`);
+        notify.error(serverMsg || t('common.error.server', { status: status ?? '' }));
       }
     } finally {
       setLoading(false);
@@ -133,20 +138,20 @@ export default function LoginPage() {
       try { await verifyMfa(mfaToken, mfaCode.trim()); }
       catch (err: unknown) {
         const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
-        notify.error(msg || 'Code invalide');
+        notify.error(msg || t('auth.invalidCode'));
         if (/expirée/.test(msg ?? '')) { setMfaToken(null); setMfaCode(''); }
       } finally { setLoading(false); }
     };
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
         <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
-          <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--theme-accent)' }}>Double authentification</h1>
-          <p className="text-sm mb-4" style={{ color: 'var(--theme-text-muted)' }}>Saisissez le code à 6 chiffres de votre application d'authentification, ou un code de secours.</p>
+          <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--theme-accent)' }}>{t('auth.mfaTitle')}</h1>
+          <p className="text-sm mb-4" style={{ color: 'var(--theme-text-muted)' }}>{t('auth.mfaHelp')}</p>
           <form onSubmit={submitCode} className="space-y-4">
             <input className="input" autoFocus autoComplete="one-time-code" inputMode="text" maxLength={12} placeholder="123456"
-              aria-label="Code de double authentification" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} />
-            <button type="submit" disabled={loading || mfaCode.trim().length < 6} className="btn-primary w-full py-3">{loading ? 'Vérification...' : 'Valider'}</button>
-            <button type="button" className="text-sm w-full" style={{ color: 'var(--theme-accent)' }} onClick={() => { setMfaToken(null); setMfaCode(''); }}>Retour</button>
+              aria-label={t('auth.mfaCodeLabel')} dir="ltr" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} />
+            <button type="submit" disabled={loading || mfaCode.trim().length < 6} className="btn-primary w-full py-3">{loading ? t('auth.verifying') : t('common.validate')}</button>
+            <button type="button" className="text-sm w-full" style={{ color: 'var(--theme-accent)' }} onClick={() => { setMfaToken(null); setMfaCode(''); }}>{t('common.back')}</button>
           </form>
         </div>
       </div>
@@ -156,7 +161,8 @@ export default function LoginPage() {
   // ═══════ EMAIL MODE ═══════
   if (mode === 'email') {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+      <div className="relative min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+        <LanguageSelect className="absolute top-4 end-4" />
         <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold" style={{ color: 'var(--theme-accent)' }}>{settings.companyName}</h1>
@@ -165,24 +171,24 @@ export default function LoginPage() {
 
           <form onSubmit={handleEmailSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.email')}</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                className="input" placeholder="vous@entreprise.ma" required />
+                className="input" dir="ltr" placeholder={t('auth.emailPlaceholder')} required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.password')}</label>
               <div className="relative">
                 <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
-                  className="input pr-10" placeholder="••••••••" required />
+                  className="input pe-10" dir="ltr" placeholder="••••••••" required />
                 <button type="button" onClick={() => setShowPassword(v => !v)}
-                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600">
+                  aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+                  className="absolute inset-y-0 end-0 flex items-center pe-3 text-gray-400 hover:text-gray-600">
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full py-3">
-              {loading ? 'Connexion...' : 'Se connecter'}
+              {loading ? t('auth.signingIn') : t('auth.signIn')}
             </button>
           </form>
 
@@ -191,7 +197,7 @@ export default function LoginPage() {
             <div className="mt-4 space-y-2">
               {ssoProviders.map(p => (
                 <a key={p.provider} href={serverUrl(`/api/v1/auth/oidc/${p.provider}/start`)} className="btn-secondary w-full py-2 block text-center">
-                  Continuer avec {p.label}
+                  {t('auth.continueWith', { provider: p.label })}
                 </a>
               ))}
             </div>
@@ -201,7 +207,7 @@ export default function LoginPage() {
             <button type="button" onClick={() => setSearchParams({})}
               className="text-sm font-medium flex items-center gap-2 mx-auto"
               style={{ color: 'var(--theme-accent)' }}>
-              <Lock size={14} /> Connexion par code PIN
+              <Lock size={14} /> {t('auth.pinLogin')}
             </button>
           </div>
         </div>
@@ -211,7 +217,8 @@ export default function LoginPage() {
 
   // ═══════ PIN MODE ═══════
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+    <div className="relative min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+      <LanguageSelect className="absolute top-4 end-4" />
       <div className="text-center mb-10">
         <h1 className="text-5xl font-bold" style={{ color: 'var(--theme-accent)' }}>{settings.companyName}</h1>
         <p className="mt-1" style={{ color: 'var(--theme-text-muted)' }}>{settings.subtitle}</p>
@@ -222,13 +229,13 @@ export default function LoginPage() {
         <div className="flex flex-col items-center w-full max-w-2xl">
           <div className="flex items-center gap-2 mb-6">
             <Lock size={20} className="text-gray-400" />
-            <span className="text-gray-500">Qui se connecte ?</span>
+            <span className="text-gray-500">{t('auth.whoIsLoggingIn')}</span>
           </div>
           {pinUsers === null ? (
-            <div className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>Chargement…</div>
+            <div className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>{t('common.loading')}</div>
           ) : pinUsers.length === 0 ? (
             <div className="text-sm text-center" style={{ color: 'var(--theme-text-muted)' }}>
-              Aucun compte n'a de code PIN. Utilisez la connexion administrateur.
+              {t('auth.noPinAccounts')}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 w-full">
@@ -249,7 +256,7 @@ export default function LoginPage() {
           )}
           <a href="/login?mode=email"
             className="mt-8 text-sm text-gray-400 hover:text-gray-600 flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer no-underline">
-            <Mail size={14} /> Connexion administrateur
+            <Mail size={14} /> {t('auth.adminLogin')}
           </a>
         </div>
       ) : (
@@ -257,16 +264,16 @@ export default function LoginPage() {
       <div className="flex flex-col items-center">
         <button type="button" onClick={backToTiles} disabled={loading}
           className="mb-4 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100">
-          <ArrowLeft size={14} /> Changer de personne
+          <ArrowLeft size={14} className="rtl:-scale-x-100" /> {t('auth.changePerson')}
         </button>
         <div className="flex items-center gap-2 mb-4">
           <Lock size={20} className="text-gray-400" />
           <span className="text-gray-500">
-            <strong className="text-gray-800">{selected.firstName}{selected.lastInitial ? ` ${selected.lastInitial}.` : ''}</strong> — entrez votre code PIN
+            <strong className="text-gray-800">{selected.firstName}{selected.lastInitial ? ` ${selected.lastInitial}.` : ''}</strong> — {t('auth.enterPin')}
           </span>
         </div>
 
-        <div className="flex gap-3 mb-6 h-5 items-center" aria-label={`${pin.length} chiffre(s) saisi(s)`}>
+        <div className="flex gap-3 mb-6 h-5 items-center" dir="ltr" aria-label={t('auth.digitsEntered', { count: pin.length })}>
           {pin.length === 0
             ? <span className="text-sm text-gray-300">• • • •</span>
             : Array.from({ length: pin.length }, (_, i) => (
@@ -276,7 +283,7 @@ export default function LoginPage() {
         </div>
 
         {error && <div className="text-red-500 text-sm font-medium mb-4">{error}</div>}
-        {loading && <div className="text-sm font-medium mb-4" style={{ color: 'var(--theme-accent)' }}>Verification...</div>}
+        {loading && <div className="text-sm font-medium mb-4" style={{ color: 'var(--theme-accent)' }}>{t('auth.verifying')}</div>}
 
         <div className="rounded-2xl shadow-lg p-5 w-full max-w-xs" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
           <div className="grid grid-cols-3 gap-3">
@@ -288,7 +295,7 @@ export default function LoginPage() {
             ))}
             <button type="button" onClick={handleClear} disabled={loading}
               className="h-16 rounded-xl bg-gray-50 hover:bg-red-50 text-sm font-medium text-gray-500 transition-all active:scale-95">
-              Effacer
+              {t('auth.clear')}
             </button>
             <button type="button" onClick={() => handleDigit('0')} disabled={loading}
               className="h-16 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-2xl font-semibold text-gray-800 transition-all active:scale-95 disabled:opacity-50">
@@ -301,7 +308,7 @@ export default function LoginPage() {
           </div>
           <button type="button" onClick={() => handlePinSubmit(pin)} disabled={loading || pin.length < PIN_MIN}
             className="btn-primary w-full py-3 mt-4 disabled:opacity-50">
-            {loading ? 'Vérification…' : 'Valider'}
+            {loading ? t('auth.verifying') : t('common.validate')}
           </button>
         </div>
       </div>

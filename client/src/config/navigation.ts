@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { MODULE_LABELS, MODULE_ALIASES } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
+import { translate } from '../i18n/core';
+import type { Locale, TranslationKey } from '../i18n/types';
 
 /**
  * Definition UNIQUE de la navigation : lanceur d'applications (AppLayout), grille
@@ -37,6 +39,8 @@ export interface NavItem {
    * invendus). Partout ailleurs, laisser MODULE_LABELS decider.
    */
   label?: string;
+  /** G6-05 : clé de traduction de `label` (hors français). */
+  labelKey?: TranslationKey;
   /**
    * Restriction par rôle, en plus du module. Sert aux tuiles hébergées par un module
    * large qui ne concernent qu'une partie de ses détenteurs (aucune aujourd'hui, le
@@ -55,6 +59,8 @@ export interface NavItem {
 
 export interface NavGroup {
   title: string;
+  /** G6-05 : clé de traduction du titre. */
+  titleKey: TranslationKey;
   items: NavItem[];
 }
 
@@ -72,6 +78,7 @@ export const NAV_HOME: NavItem = {
 export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Ventes',
+    titleKey: 'nav.group.sales',
     items: [
       { module: 'pos', href: '/pos', icon: Monitor, color: 'bg-green-600',
         description: 'Caisse et ventes directes' },
@@ -93,6 +100,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Achats & Stock',
+    titleKey: 'nav.group.purchasingStock',
     items: [
       { module: 'purchasing', href: '/purchasing', icon: ShoppingBag, color: 'bg-blue-700',
         description: 'Fournisseurs, commandes et factures' },
@@ -103,6 +111,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Production',
+    titleKey: 'nav.group.production',
     items: [
       // Fiches techniques, Prévisions et Relevés HACCP ne sont plus des tuiles du
       // lanceur : ce sont des onglets du module Production (/recipes, /forecast,
@@ -116,21 +125,23 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Contrôle',
+    titleKey: 'nav.group.control',
     items: [
       // Circuits d'approbation (lot 8) : la boîte « À approuver » sans passer par la cloche.
       { module: 'purchasing', href: '/approvals', icon: ClipboardCheck, color: 'bg-amber-500',
-        label: 'Approbations', description: 'Bons de commande, avoirs et écarts qui attendent une décision',
+        label: 'Approbations', labelKey: 'nav.item.approvals', description: 'Bons de commande, avoirs et écarts qui attendent une décision',
         counter: 'approvals' },
       { module: 'controle', href: '/controle', icon: ShieldCheck, color: 'bg-emerald-600',
         description: 'Anomalies, contrôles et registre des pertes' },
       { module: 'unsold', aliases: ['reconciliation'], href: '/boutique', icon: Store, color: 'bg-orange-600',
-        label: 'Journée boutique', description: 'Ouverture, appro et ventes, invendus du jour' },
+        label: 'Journée boutique', labelKey: 'nav.item.shopDay', description: 'Ouverture, appro et ventes, invendus du jour' },
       // Rappel de lot fusionné dans Contrôle & Qualité (onglet « Traçabilité & rappels ») :
       // /traceability/recall redirige vers /controle?tab=tracabilite.
     ],
   },
   {
     title: 'Gestion',
+    titleKey: 'nav.group.management',
     items: [
       { module: 'accounting', href: '/accounting', icon: Calculator, color: 'bg-yellow-600',
         description: 'Caisse, charges et tresorerie' },
@@ -147,6 +158,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Administration',
+    titleKey: 'nav.group.administration',
     items: [
       { module: 'users', href: '/users', icon: Lock, color: 'bg-gray-600',
         description: "Comptes et droits d'acces" },
@@ -160,8 +172,12 @@ export const NAV_GROUPS: NavGroup[] = [
 /** Modules dont le nom dépend du métier : clé de vocabulaire par secteur (mig 495/514). */
 const SECTOR_LABEL_KEYS: Partial<Record<AppModule, string>> = { production: 'production', recipes: 'recipes' };
 
-/** Libellé d'une entrée de menu ; `sectorLabel` (PermissionsContext) l'adapte au secteur. */
-export function navLabel(item: NavItem, sectorLabel?: (key: string, fallback: string) => string): string {
+/**
+ * Libellé d'une entrée de menu ; `sectorLabel` (PermissionsContext) l'adapte au secteur.
+ * G6-05 : hors français, libellé traduit (le vocabulaire sectoriel n'existe qu'en français).
+ */
+export function navLabel(item: NavItem, sectorLabel?: (key: string, fallback: string) => string, locale: Locale = 'fr'): string {
+  if (locale !== 'fr') return translate(locale, item.labelKey ?? `module.${item.module}`);
   const base = item.label ?? MODULE_LABELS[item.module];
   const key = SECTOR_LABEL_KEYS[item.module];
   return key && sectorLabel ? sectorLabel(key, base) : base;
@@ -204,6 +220,9 @@ export function visibleNavGroups(hasModule: (m: AppModule) => boolean, role?: st
       .map(item => resolveNavHref(item, hasModule)) }))
     .filter(group => group.items.length > 0);
 }
+
+/** G6-05 : titre de groupe dans la langue de l'interface. */
+export const navGroupTitle = (group: NavGroup, locale: Locale = 'fr'): string => translate(locale, group.titleKey);
 
 /** Toutes les entrees a plat, accueil compris. */
 export const NAV_ITEMS: NavItem[] = [NAV_HOME, ...NAV_GROUPS.flatMap(g => g.items)];

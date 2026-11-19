@@ -133,7 +133,7 @@ export default function NotificationBell() {
       >
         <Bell size={20} />
         {(unreadCount > 0 || approvalsCount > 0) && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 leading-none animate-pulse">
+          <span className="absolute -top-0.5 -end-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 leading-none animate-pulse">
             {unreadCount + approvalsCount > 99 ? '99+' : unreadCount + approvalsCount}
           </span>
         )}
@@ -141,7 +141,7 @@ export default function NotificationBell() {
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-gray-200 text-gray-800 z-50 overflow-hidden">
+        <div className="absolute end-0 top-full mt-1 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-gray-200 text-gray-800 z-50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
             <h3 className="font-semibold text-sm">Notifications</h3>
@@ -165,7 +165,7 @@ export default function NotificationBell() {
           {/* Boîte À approuver (lot 8) */}
           <button
             onClick={() => { navigate('/approvals'); setOpen(false); }}
-            className={`w-full text-left px-4 py-2.5 border-b flex items-center gap-3 text-sm ${approvalsCount > 0 ? 'bg-amber-50 hover:bg-amber-100 text-amber-900' : 'bg-white hover:bg-gray-50 text-gray-600'}`}
+            className={`w-full text-start px-4 py-2.5 border-b flex items-center gap-3 text-sm ${approvalsCount > 0 ? 'bg-amber-50 hover:bg-amber-100 text-amber-900' : 'bg-white hover:bg-gray-50 text-gray-600'}`}
           >
             <ClipboardCheck size={16} className={approvalsCount > 0 ? 'text-amber-600' : 'text-gray-400'} />
             <span className="flex-1 font-medium">À approuver</span>
@@ -188,7 +188,7 @@ export default function NotificationBell() {
                   <button
                     key={notif.id}
                     onClick={() => handleClickNotification(notif)}
-                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 flex gap-3 ${
+                    className={`w-full text-start px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 flex gap-3 ${
                       read ? 'opacity-60' : ''
                     }`}
                   >

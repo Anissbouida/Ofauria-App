@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Loader2, Package, ShoppingBag, Users, Truck, X } from 'lucide-react';
 import { searchApi, type SearchResult } from '../../api/search.api';
+import { useT } from '../../i18n';
 
 /**
  * Recherche globale de l'en-tête : interroge l'endpoint unifié et affiche les
@@ -14,6 +15,7 @@ const ICONS: Record<SearchResult['type'], typeof Package> = {
 };
 
 export default function GlobalSearch() {
+  const t = useT();
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
@@ -72,7 +74,7 @@ export default function GlobalSearch() {
           onChange={e => { setQ(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Rechercher un article, produit, client…"
+          placeholder={t('header.searchPlaceholder')}
           className="bg-transparent outline-none border-none flex-1 text-sm min-w-0"
           style={{ color: 'inherit' }}
           aria-label="Recherche globale"
@@ -81,7 +83,7 @@ export default function GlobalSearch() {
       </div>
 
       {showMenu && (
-        <div className="absolute left-0 top-full mt-1 w-full bg-white rounded-lg shadow-xl border border-gray-200 py-1 text-gray-800 z-50 max-h-[70vh] overflow-y-auto">
+        <div className="absolute start-0 top-full mt-1 w-full bg-white rounded-lg shadow-xl border border-gray-200 py-1 text-gray-800 z-50 max-h-[70vh] overflow-y-auto">
           {isFetching && results.length === 0 ? (
             <div className="px-4 py-3 text-sm text-gray-400 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Recherche…</div>
           ) : results.length === 0 ? (
@@ -95,7 +97,7 @@ export default function GlobalSearch() {
                   type="button"
                   onMouseEnter={() => setActive(i)}
                   onClick={() => go(r)}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-3 ${i === active ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
+                  className={`w-full text-start px-3 py-2 flex items-center gap-3 ${i === active ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
                 >
                   <span className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center text-gray-500 shrink-0"><Icon size={14} /></span>
                   <span className="min-w-0 flex-1">
