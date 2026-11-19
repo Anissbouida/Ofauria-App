@@ -2067,7 +2067,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | G6-02 | Connexion d'entreprise (OpenID Connect) | non (inactive sans identifiants) |
 | ☐ | G6-03 | Multi-société | — (session dédiée) |
 | ☒ | G6-04 | Multi-client (tenant) | — bloquée : prérequis G1-02 (staging) et G3 (projet Google Cloud) |
-| ☐ | G6-05 | Traductions | — (session dédiée) |
+| ◐ | G6-05 | Traductions | Phase 1 : socle maison client/src/i18n (t/useT, fr de référence typé, ar/en avec repli, RTL sur <html>), users.locale (mig 610) + PUT /users/me/locale, coquille + connexion traduites ; suivi module par module docs/I18N_AVANCEMENT.md (scripts/i18n-report.ts) ; reste l’extraction des modules |
 | ◐ | G6-06 | Devise et pays | Devise faite client (47ea52e→62828b5) et serveur (21409f1→9dff693, mig 592) ; pack pays phase 1 (mig 606, lecture seule) ; reste édition comptable, autres pays, formats déclaratifs non marocains |
 | ☑ | G6-07 | Piste d'audit générique | non |
 | ☑ | G6-08 | API ouverte | non |
