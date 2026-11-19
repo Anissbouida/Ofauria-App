@@ -51,6 +51,14 @@ async function seed() {
     console.log('⏭ Admin user already exists (pas de reset, aucun mot de passe n\'est modifie)');
   }
 
+  // Installation chez un client : l'administrateur seul, sans produits, ingrédients ni clients
+  // d'exemple (le choix du secteur dans l'assistant de configuration pose ses données de départ).
+  if (process.env.SEED_ADMIN_ONLY === '1') {
+    console.log('\nSeed terminé : administrateur seul (installation client).');
+    await db.pool.end();
+    return;
+  }
+
   // Seed some sample products
   const products = [
     { name: 'Baguette tradition', categorySlug: 'pains', price: 1.30, costPrice: 0.40 },
