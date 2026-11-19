@@ -34,6 +34,7 @@ export const PRODUCTION_SCREEN_ELEMENTS: ProductionScreenElement[] = [
   { key: 'serials', area: 'plan', place: 'Production', label: 'Numéros de série', rule: 'Une ligne suit un article par numéro de série.' },
   { key: 'steps', area: 'plan', place: 'Production', label: 'Étapes', rule: 'Fonction « Étapes » active dans les réglages.' },
   { key: 'yield', area: 'plan', place: 'Production', label: 'Rendement', rule: 'Fonction « Rendement » active dans les réglages.' },
+  { key: 'observations', area: 'plan', place: 'Production', label: 'Observations du lancement', rule: 'Une déclaration de production porte une observation ou des bases partagées.' },
   { key: 'cost', area: 'plan', place: 'Coûts', label: 'Coût de revient', rule: 'Fonction « Coût de revient » active dans les réglages.' },
   { key: 'launch.bases', area: 'launch', place: 'Étape 1', label: 'Étape « Sous-ensembles »', rule: 'Quand l\'ordre a des sous-ensembles partagés.', locked: 'Leur production doit être déclarée avant les produits finis.' },
   { key: 'launch.losses', area: 'launch', place: 'Étape 3', label: 'Étape « Pertes et observations »', rule: 'Toujours.' },

@@ -11,6 +11,7 @@ import EtapesPanel from './EtapesPanel';
 import RendementPanel from './RendementPanel';
 import SubcontractPanel from './SubcontractPanel';
 import SerialsPanel from './SerialsPanel';
+import PlanObservationsPanel, { type PlanObservation } from './PlanObservationsPanel';
 import { AlertTriangle } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { visiblePanels, type PanelTab, type PlanPanelCtx } from './planPanelRules';
@@ -51,6 +52,7 @@ const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
   serials: c => <SerialsPanel planId={c.id} />,
   steps: c => <EtapesPanel planId={c.id} planStatus={c.plan.status} isChef={c.isChef} />,
   yield: c => <div id="plan-rendement"><RendementPanel planId={c.id} planStatus={c.plan.status} items={c.items as never} isChef={c.isChef} workshop={c.plan.target_role as string | null} storeId={c.plan.store_id as string | null} /></div>,
+  observations: c => <PlanObservationsPanel observations={c.plan.observations as PlanObservation[]} />,
 };
 
 /** `only` : sous-ensemble des panneaux de l'onglet, quand la page intercale d'autres blocs. */

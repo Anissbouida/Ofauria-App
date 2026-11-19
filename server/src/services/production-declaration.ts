@@ -49,10 +49,17 @@ export async function declareProduction(planId: string, input: ProductionDeclara
   });
 }
 
-/** Observations et bases saisies aux déclarations d'un plan, de la plus récente à la plus ancienne. */
+/**
+ * Observations et bases saisies aux déclarations d'un plan, de la plus récente à la plus
+ * ancienne. Chaque base porte le nom et l'unité de sa fiche (`name`, `unit` ; null si la fiche a disparu) pour
+ * l'affichage sur la fiche de l'ordre.
+ */
 export async function listPlanObservations(planId: string) {
   const r = await db.query(
-    `SELECT o.id, o.note, o.bases, o.created_at, NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), '') AS created_by_name
+    `SELECT o.id, o.note, o.created_at, NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), '') AS created_by_name,
+            COALESCE((SELECT jsonb_agg(b.v || jsonb_build_object('name', rc.name, 'unit', rc.yield_unit) ORDER BY b.ord)
+                        FROM jsonb_array_elements(o.bases) WITH ORDINALITY AS b(v, ord)
+                        LEFT JOIN recipes rc ON rc.id::text = b.v->>'subRecipeId'), '[]'::jsonb) AS bases
        FROM production_plan_observations o LEFT JOIN users u ON u.id = o.created_by
       WHERE o.plan_id = $1 ORDER BY o.created_at DESC`, [planId]);
   return r.rows;

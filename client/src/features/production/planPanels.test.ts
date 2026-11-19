@@ -49,6 +49,13 @@ describe('Registre des panneaux de l\'ordre (M8-01)', () => {
     expect(prep({ hasTabs: true, needsCount: 0, bonNotNeeded: false })).toEqual(['no-needs']);
     expect(prep({ hasTabs: true, needsCount: 0, bonNotNeeded: true })).toEqual([]);
   });
+  it('observations du lancement : dès qu\'une déclaration en porte (G0-24)', () => {
+    const obs = [{ id: 'o1', note: 'Four 2 en panne', bases: [], created_at: '2026-11-18T08:00:00Z', created_by_name: null }];
+    expect(visible({ plan: { status: 'completed', observations: obs } }, 'production')).toEqual(['steps', 'yield', 'observations']);
+    expect(visible({ plan: { status: 'completed', observations: [] } }, 'production')).not.toContain('observations');
+    expect(visible({ plan: { status: 'completed' } }, 'production')).not.toContain('observations');
+    expect(visible({ plan: { status: 'completed', observations: obs }, hidden: new Set(['observations']) } as never, 'production')).not.toContain('observations');
+  });
   it('étapes et rendement selon le paramétrage', () => {
     expect(visible({ plan: { status: 'completed' } }, 'production')).toEqual(['steps', 'yield']);
     expect(visible({ plan: { status: 'completed' }, productionSettings: { production_steps_enabled: false, production_yield_enabled: false } }, 'production')).toEqual([]);

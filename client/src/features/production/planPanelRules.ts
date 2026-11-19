@@ -38,6 +38,8 @@ export const PLAN_PANEL_RULES: { id: string; tab: PanelTab; when: (c: PlanPanelC
   { id: 'serials', tab: 'production', when: c => c.items.some(it => it.tracking_mode === 'serial') },
   { id: 'steps', tab: 'production', when: c => c.productionSettings?.production_steps_enabled !== false },
   { id: 'yield', tab: 'production', when: c => c.productionSettings?.production_yield_enabled !== false },
+  // G0-24 : observations et bases saisies au lancement, dès qu'une déclaration en porte.
+  { id: 'observations', tab: 'production', when: c => Array.isArray(c.plan.observations) && c.plan.observations.length > 0 },
   { id: 'cost', tab: 'couts', when: c => c.productionSettings?.production_cost_enabled !== false },
 ];
 
