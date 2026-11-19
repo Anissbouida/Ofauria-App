@@ -254,6 +254,18 @@ export const stockCountRepository = {
                 lines_counted = (SELECT COUNT(*) FROM stock_count_lines WHERE count_id = $1 AND counted_qty IS NOT NULL)
           WHERE id = $1`,
         [id, p.userId, p.zeroUncounted, round2(gain), round2(loss), round2(gain + loss)]);
+      // G6-08 : webhook « inventaire validé » (écarts appliqués au stock), dans la transaction.
+      {
+        const { emitEvent } = await import('../services/events.js');
+        const adjusted = (await client.query(
+          `SELECT item_kind, ingredient_id, packaging_id, item_name, applied_qty::float8 AS quantity_delta, applied_value::float8 AS value_delta
+             FROM stock_count_lines WHERE count_id = $1 AND applied_qty IS NOT NULL AND applied_qty <> 0 ORDER BY item_name`, [id])).rows;
+        await emitEvent('stock.count_validated', {
+          stock_count_id: id, number: c.number, store_id: c.store_id ?? null,
+          gain_value: round2(gain), loss_value: round2(loss), gap_value: round2(gain + loss),
+          adjustments: adjusted,
+        }, client);
+      }
       await client.query('COMMIT');
       return { data: await this.findById(id) };
     } catch (e) {

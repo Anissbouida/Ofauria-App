@@ -920,6 +920,12 @@ export const invoiceRepository = {
         }
       });
 
+      // G6-08 : webhook « facture client émise » / « avoir client émis », dans la transaction.
+      if (invoiceType === 'emitted') {
+        const { emitEvent, invoiceEventData } = await import('../services/events.js');
+        await emitEvent(isCreditNote ? 'credit_note.issued' : 'invoice.issued', invoiceEventData(invResult.rows[0]), client);
+      }
+
       if (!outer) await client.query('COMMIT');
       return invResult.rows[0];
     } catch (err) {
@@ -1001,6 +1007,10 @@ export const invoiceRepository = {
         if (entry) await persistEntry(client, entry, { userId });
       });
 
+      // G6-08 : webhook « facture client émise » (facture d'acompte), dans la transaction.
+      const { emitEvent, invoiceEventData } = await import('../services/events.js');
+      await emitEvent('invoice.issued', invoiceEventData(inv), client);
+
       return inv;
     });
   },
@@ -1072,6 +1082,9 @@ export const invoiceRepository = {
         );
       }
       // Pas de postOrQueue : la vente POS a déjà écrit l'encaissement et le produit.
+      // G6-08 : webhook « facture client émise » (née réglée), dans la transaction.
+      const { emitEvent, invoiceEventData } = await import('../services/events.js');
+      await emitEvent('invoice.issued', invoiceEventData(inv), client);
       return inv;
     });
   },
@@ -1327,6 +1340,12 @@ export const invoiceRepository = {
         [totalPaid, status, id, foreignPaid]
       );
 
+      // G6-08 : webhook « facture réglée » au passage à soldée (pas pour un avoir), dans la transaction.
+      if (status === 'paid' && currentStatus !== 'paid' && !isCreditNote && result.rows[0]) {
+        const { emitEvent, invoiceEventData } = await import('../services/events.js');
+        await emitEvent('invoice.paid', invoiceEventData(result.rows[0]), client);
+      }
+
       if (ownTxn) await client.query('COMMIT');
       return result.rows[0];
     } catch (err) {
@@ -1488,6 +1507,13 @@ export const invoiceRepository = {
            ON CONFLICT (source_kind, source_id, ingredient_lot_id) DO NOTHING`,
           [id, r.ingredient_lot_id, lot.ingredient_id, r.qty_basis, r.qty_remaining, r.unit_delta,
            r.amount_to_stock, r.amount_to_variance, before?.unit_cost ?? null, after?.unit_cost ?? before?.unit_cost ?? null, userId]);
+      }
+
+      // G6-08 : webhook « facture fournisseur validée », dans la transaction.
+      {
+        const { emitEvent, invoiceEventData } = await import('../services/events.js');
+        const validated = (await client.query(`SELECT * FROM invoices WHERE id = $1`, [id])).rows[0];
+        await emitEvent('invoice.validated', { ...invoiceEventData(validated), supplier_invoice_number: validated.supplier_invoice_number ?? null }, client);
       }
 
       await client.query('COMMIT');

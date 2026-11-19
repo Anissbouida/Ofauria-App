@@ -739,6 +739,25 @@ export const receptionVoucherRepository = {
       const toInspect = await qualityControlPlanRepository.generateForReception(db, rv.id as string);
       if (toInspect.length) warnings.push(`${toInspect.length} contrôle(s) à réception à réaliser (plan de contrôle).`);
 
+      // G6-08 : webhook « réception de marchandises » (entrée en stock), dans la transaction.
+      {
+        const { emitEvent } = await import('../services/events.js');
+        const lines = (await client.query(
+          `SELECT rvi.ingredient_id, rvi.packaging_id, COALESCE(i.name, pk.name) AS item_name,
+                  rvi.quantity_received::float8 AS quantity, rvi.unit_price::float8 AS unit_price,
+                  rvi.supplier_lot_number, rvi.expiration_date::text AS expiration_date
+             FROM reception_voucher_items rvi
+             LEFT JOIN ingredients i ON i.id = rvi.ingredient_id
+             LEFT JOIN packaging_items pk ON pk.id = rvi.packaging_id
+            WHERE rvi.reception_voucher_id = $1 ORDER BY rvi.created_at, rvi.id`, [rv.id])).rows;
+        await emitEvent('stock.received', {
+          reception_voucher_id: rv.id, voucher_number: rv.voucher_number,
+          purchase_order_id: data.purchaseOrderId, purchase_order_number: po.order_number,
+          supplier_id: po.supplier_id, store_id: data.storeId || null, purchase_order_status: newStatus,
+          lot_numbers: lotNumbers, lines,
+        }, client);
+      }
+
       return { ...rv, status: newStatus, autoInvoice, warnings, lotNumbers };
     });
   },
