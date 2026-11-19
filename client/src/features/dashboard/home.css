@@ -3,12 +3,6 @@
 .kl-apple .home-page { min-height: 100%; }
 .kl-apple .home-page .sal-page { max-width: 1240px; width: 100%; margin: 0 auto; box-sizing: border-box; }
 
-/* Tuiles du jour : un kl-widget cliquable */
-.kl-apple .home-widget { display: block; width: 100%; text-align: left; border: 0; font: inherit; color: inherit; cursor: pointer; transition: box-shadow .15s, transform .15s; }
-.kl-apple .home-widget:hover, .kl-apple .home-widget:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--kl-accent) 35%, transparent), var(--kl-shadow); outline: none; }
-.kl-apple .home-widget .kl-big { font-size: 34px; }
-.kl-apple .home-bar { height: 6px; border-radius: 99px; background: var(--kl-fill); overflow: hidden; margin-top: 12px; }
-.kl-apple .home-bar > span { display: block; height: 100%; border-radius: 99px; background: var(--kl-accent); }
 
 /* Modules : listes groupées sur deux colonnes ou plus */
 .kl-apple .home-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 28px; align-items: start; }
