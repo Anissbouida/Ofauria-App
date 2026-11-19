@@ -12,6 +12,8 @@ import { conversionHandlers, createConversionSchema, updateConversionSchema } fr
 
 const ingredientConversions = conversionHandlers('ingredient');
 import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema, correctIngredientCostSchema, ingredientAllergensSchema, reorderApplySchema, reorderUpdateSchema, reorderRecalculateSchema } from '../validators/stock.validator.js';
+import { emptyBody } from '../validators/common.validator.js';
+import { stockClosingSchema, createIngredientSchema, updateIngredientSchema, convertToConsumableSchema } from '../validators/stock-flow.validator.js';
 
 const router = Router();
 
@@ -52,7 +54,7 @@ router.get('/stock-at', authenticate, can('stock.inventory.view'), inventoryCont
 router.get('/stock-journal-gaps', authenticate, can('stock.inventory.view'), inventoryController.journalGaps);
 router.get('/closings/preview', authenticate, can('stock.inventory.view'), inventoryController.closingPreview);
 router.get('/closings', authenticate, can('stock.inventory.view'), inventoryController.closingList);
-router.post('/closings', authenticate, can('stock.inventory.closings'), inventoryController.closingCreate);
+router.post('/closings', authenticate, can('stock.inventory.closings'), validate(stockClosingSchema), inventoryController.closingCreate);
 router.get('/closings/:id', authenticate, can('stock.inventory.view'), inventoryController.closingGet);
 router.delete('/closings/:id', authenticate, can('stock.inventory.delete'), inventoryController.closingDelete);
 
@@ -79,6 +81,7 @@ ingredientsRouter.post(
   authenticate,
   can('stock.ingredients.preview'),
   ingredientImportUpload.single('file'),
+  validate(emptyBody),
   ingredientImportController.preview
 );
 ingredientsRouter.post(
@@ -86,6 +89,7 @@ ingredientsRouter.post(
   authenticate,
   can('stock.ingredients.commit'),
   ingredientImportUpload.single('file'),
+  validate(emptyBody),
   ingredientImportController.commit
 );
 
@@ -101,9 +105,9 @@ ingredientsRouter.delete('/:id/conversions/:convId', authenticate, validateUuidP
 ingredientsRouter.get('/:id', authenticate, ingredientController.getById);
 // Unité de stock : code du référentiel `units` (mig 515).
 const stockUnitOf = requireUnits((body: { unit?: string | null }) => [{ unit: body.unit }]);
-ingredientsRouter.post('/', authenticate, can('stock.ingredients.create'), stockUnitOf, ingredientController.create);
-ingredientsRouter.put('/:id', authenticate, can('stock.ingredients.edit'), stockUnitOf, requireStockUnitChange(), ingredientController.update);
+ingredientsRouter.post('/', authenticate, can('stock.ingredients.create'), validate(createIngredientSchema), stockUnitOf, ingredientController.create);
+ingredientsRouter.put('/:id', authenticate, can('stock.ingredients.edit'), validateUuidParams('id'), validate(updateIngredientSchema), stockUnitOf, requireStockUnitChange(), ingredientController.update);
 // Convertit un ingredient mal range en consommable (packaging_items)
-ingredientsRouter.post('/:id/convert-to-consumable', authenticate, can('stock.ingredients.convert_to_consumable'), ingredientController.convertToConsumable);
+ingredientsRouter.post('/:id/convert-to-consumable', authenticate, can('stock.ingredients.convert_to_consumable'), validateUuidParams('id'), validate(convertToConsumableSchema), ingredientController.convertToConsumable);
 // Suppression : admin + gerant (cf demande utilisateur — flexibilite mise en place)
 ingredientsRouter.delete('/:id', authenticate, can('stock.ingredients.delete'), ingredientController.remove);

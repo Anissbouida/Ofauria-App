@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { openingInventoryCheckController } from '../controllers/opening-inventory-check.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { openingCheckSchema, openingCheckValidateSchema } from '../validators/stock-flow.validator.js';
 
 const router = Router();
 
@@ -16,6 +18,7 @@ router.post(
   '/opening',
   authenticate,
   can('pos.inventory_checks.opening'),
+  validate(openingCheckSchema),
   openingInventoryCheckController.create
 );
 
@@ -30,6 +33,8 @@ router.post(
   '/opening/:id/validate',
   authenticate,
   can('pos.inventory_checks.validate'),
+  validateUuidParams('id'),
+  validate(openingCheckValidateSchema),
   openingInventoryCheckController.validate
 );
 

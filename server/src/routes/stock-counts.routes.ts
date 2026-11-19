@@ -7,7 +7,8 @@ import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { stockCountRepository } from '../repositories/stock-count.repository.js';
 import { abcCycleCountRepository } from '../repositories/abc-cycle-count.repository.js';
-import { validate } from '../middleware/validate.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { emptyBody as actionBody } from '../validators/common.validator.js';
 
 const emptyBody = z.object({}).passthrough();
 
@@ -91,17 +92,17 @@ stockCountsRouter.post('/:id/lines', authenticate, can('stock.stock_counts.lines
   res.status(201).json({ success: true, data: r.data });
 }));
 
-stockCountsRouter.post('/:id/submit', authenticate, can('stock.stock_counts.submit'), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.post('/:id/submit', authenticate, can('stock.stock_counts.submit'), validateUuidParams('id'), validate(actionBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await stockCountRepository.setStatus(req.params.id, 'submit', req.user!.userId);
   if ('error' in r) { bad(res, r.error, 409); return; }
   res.json({ success: true, data: present(r.data!, req) });
 }));
-stockCountsRouter.post('/:id/reopen', authenticate, can('stock.stock_counts.reopen'), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.post('/:id/reopen', authenticate, can('stock.stock_counts.reopen'), validateUuidParams('id'), validate(actionBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await stockCountRepository.setStatus(req.params.id, 'reopen', req.user!.userId);
   if ('error' in r) { bad(res, r.error, 409); return; }
   res.json({ success: true, data: r.data });
 }));
-stockCountsRouter.post('/:id/cancel', authenticate, can('stock.stock_counts.cancel'), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.post('/:id/cancel', authenticate, can('stock.stock_counts.cancel'), validateUuidParams('id'), validate(actionBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await stockCountRepository.setStatus(req.params.id, 'cancel', req.user!.userId);
   if ('error' in r) { bad(res, r.error, 409); return; }
   res.json({ success: true, data: r.data });
