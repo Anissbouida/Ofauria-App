@@ -111,6 +111,25 @@ Les 175 autres blocs restent tels quels, listés pour plus tard.
 
 ## 4. Étape 4 — préparation staging / pilote
 
+**FAIT le 2026-11-18.**
+- Migrations : rejeu sur base vierge, reprises non réversibles, procédure et script de contrôle —
+  voir `docs/MIGRATIONS_519_595.md` et `server/scripts/post-migration-check.sql` (7dd526a).
+- Parcours chiffrés : `server/src/__tests__/db/parcours-pilote.db.test.ts` (13f1074), 15 tests
+  verts ; les parcours achat / production / stock / pertes / paie déjà couverts ailleurs sont
+  réutilisés (scenarios-achats, production-workflow, scenarios-ventes, sale-cancellation…).
+
+**Deux défauts bloquants pour la caisse, trouvés par les parcours (non corrigés, `it.fails`) :**
+1. La clôture de caisse **compte les tickets annulés** (`cash-register.repository.ts`, `close()`,
+   la requête n'écarte pas `cancelled_at`) : chiffre d'affaires, espèces attendues et tiroir
+   gonflés → faux manquant au comptage, avec son écriture d'écart.
+2. L'annulation d'un ticket **ne recrédite pas le lot** (`sale.repository.ts`, `cancel()`) : la
+   vitrine du magasin est restituée mais pas le lot ni les liens ticket ↔ lot → stock par lot
+   faux (FEFO, rappel de lot, DLC).
+
+**À savoir :** aucune réouverture d'une journée clôturée n'existe (une fois la caisse fermée, un
+ticket ne s'annule plus : avoir) ; une facture fournisseur sans catégorie est enregistrée mais
+son écriture reste en file d'attente (« Charge sans catégorie », mig 311).
+
 1. **Migrations 519 → 595** : séquence vérifiée sur base vierge, liste des migrations non
    réversibles (suppressions, conversions, reprises de données), script de contrôle post-migration
    (contraintes valides, déclencheurs actifs, comptes de lignes clés, fonctions présentes).
