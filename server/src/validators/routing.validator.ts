@@ -51,3 +51,21 @@ export const equipmentLinkSchema = z.object({
 }).refine(b => b.workCenterId !== undefined || b.fixedAssetId !== undefined, { message: 'Rien à rattacher' });
 /** Action sans corps (ouverture d'une intervention depuis un arrêt). */
 export const emptyBodySchema = z.object({}).passthrough();
+
+/* ─── G0-07 : postes de charge (routing.controller) — types seulement, le contrôleur garde
+ *     ses messages (nom requis, statut connu, début et motif d'arrêt requis). ─────────── */
+const numOrText = z.union([z.number().finite(), z.string().max(40)]).nullish();
+export const workCenterSchema = z.object({
+  name: z.string().max(160).optional(),
+  hourlyCost: numOrText,
+  capacityMinutesPerDay: numOrText,
+}).passthrough();
+export const activeFlagSchema = z.preprocess(v => v ?? {}, z.object({ active: z.boolean().nullish() }).passthrough());
+export const workCenterStatusSchema = z.object({ status: z.string().max(30).optional() }).passthrough();
+export const downtimeSchema = z.object({
+  fromTime: z.string().max(40).optional(),
+  toTime: z.string().max(40).nullish(),
+  reason: z.string().max(500).optional(),
+  notes: z.string().max(2000).nullish(),
+  createIntervention: z.boolean().optional(),
+}).passthrough();
