@@ -14,7 +14,7 @@ import { settingsRepository } from '../repositories/settings.repository.js';
 import { serviceYears } from '../services/payroll-engine.js';
 import { countryParam } from '../services/country-pack.js';
 import { generatePayslipPdf, type PayslipLineRow } from '../services/payslip-pdf.service.js';
-import { companyLegalFromRow } from '../utils/company-legal.js';
+import { loadEmployerLegal, loadLegalLogo } from '../utils/company-legal.js';
 import { payrollLedger } from '../services/payroll-ledger.service.js';
 import { payrollDeclarationRepository, type DeclarationKind } from '../repositories/payroll-declarations.repository.js';
 
@@ -311,8 +311,9 @@ export async function sendPayslipPdf(res: Response, p: Record<string, any>) {
   const totalRetenues = num(p.cnss_employee) + num(p.amo_employee) + num(p.cimr_employee) + num(p.ir_net) + num(p.other_deductions);
   const c = cumulRes.rows[0];
   const buffer = await generatePayslipPdf({
-    company: { ...companyLegalFromRow(company), cnss: settings.employer_cnss_number },
-    logo: resolveLogo(company?.logo_url),
+    // G6-03 : employeur = entité de l'établissement du salarié (défaut : entité par défaut).
+    company: await loadEmployerLegal({ storeId: p.store_id ?? null }, settings.employer_cnss_number),
+    logo: resolveLogo((await loadLegalLogo({ storeId: p.store_id ?? null }, company?.logo_url)) ?? undefined),
     periodLabel: `${MONTHS[p.month - 1]} ${p.year}`,
     periodRange: `Du ${fr(start)} au ${fr(end)}`,
     employee: {

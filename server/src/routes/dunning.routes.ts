@@ -9,6 +9,7 @@ import { dunningRepository, dunningSettings } from '../repositories/dunning.repo
 import { generateDunningPdf } from '../services/dunning-pdf.service.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { dunningLevelSchema, dunningNoBodySchema } from '../validators/dunning.validator.js';
+import { requestLegalContext } from '../services/legal-entity.js';
 
 /**
  * Relances clients et blocage de crédit (mig 366). Direction uniquement : c'est elle qui
@@ -100,6 +101,8 @@ dunningRouter.get('/:id/pdf', authenticate, can('sales.dunning.view'), asyncHand
     customerName: d.customer_name, customerAddress: [d.customer_address, d.customer_city].filter(Boolean).join(', ') || null, customerIce: d.customer_ice,
     items: d.items.map((i: Record<string, any>) => ({ number: i.doc_number, kind: i.doc_kind, docDate: day(i.doc_date), dueDate: day(i.due_date)!, daysLate: i.days_late, remaining: Number(i.remaining) })),
     amountDue: Number(d.amount_due), fee: Number(d.fee_amount), interest: Number(d.interest_amount), logo,
+    // G6-03 : une relance n'a pas d'établissement — entité de l'établissement de l'utilisateur, sinon par défaut.
+    legalContext: requestLegalContext(req),
   });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${d.number}.pdf"`);

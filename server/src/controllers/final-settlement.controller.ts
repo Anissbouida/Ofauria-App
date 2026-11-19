@@ -6,7 +6,7 @@ import { finalSettlementRepository } from '../repositories/final-settlement.repo
 import { payrollSettingsRepository } from '../repositories/payroll-config.repository.js';
 import { EXIT_REASON_LABELS, type ExitReason } from '../services/final-settlement.js';
 import { generateSettlementReceiptPdf, generateWorkCertificatePdf } from '../services/hr-documents-pdf.service.js';
-import { loadCompanyLegal } from '../utils/company-legal.js';
+import { loadEmployerLegal } from '../utils/company-legal.js';
 
 /** Depart du salarie : solde de tout compte, recu et certificat (lot 6). */
 
@@ -91,9 +91,11 @@ export const finalSettlementController = {
       for (const l of stc) lines.push({ label: l.label, detail: l.detail, ...(l.kind === 'gain' ? { gain: num(l.amount) } : { retenue: num(l.amount) }) });
       net = Math.round((num(comp.totalGains) - num(comp.totalDeductions)) * 100) / 100;
     }
-    const [settings, legal] = await Promise.all([payrollSettingsRepository.get(), loadCompanyLegal()]);
+    const settings = await payrollSettingsRepository.get();
+    // G6-03 : employeur = entité de l'établissement du salarié (défaut : entité par défaut).
+    const legal = await loadEmployerLegal({ storeId: s.store_id ?? null }, settings.employer_cnss_number);
     const buffer = await generateSettlementReceiptPdf({
-      company: { ...legal, cnss: settings.employer_cnss_number },
+      company: legal,
       employee: { name: `${s.first_name} ${s.last_name}`, cin: s.cin, cnss: s.cnss_number },
       exitDate: fr(s.exit_date), reasonLabel: EXIT_REASON_LABELS[s.reason as ExitReason] ?? s.reason,
       lines, netAmount: Math.max(0, net), place: legal.city ?? null, issuedOn: fr(new Date()),
@@ -120,9 +122,11 @@ export const finalSettlementController = {
       if (last && last.title === title) last.to = to;
       else positions.push({ title, from: fr(c.start_date), to });
     }
-    const [settings, legal] = await Promise.all([payrollSettingsRepository.get(), loadCompanyLegal()]);
+    const settings = await payrollSettingsRepository.get();
+    // G6-03 : employeur = entité de l'établissement du salarié (défaut : entité par défaut).
+    const legal = await loadEmployerLegal({ storeId: s.store_id ?? null }, settings.employer_cnss_number);
     const buffer = await generateWorkCertificatePdf({
-      company: { ...legal, cnss: settings.employer_cnss_number },
+      company: legal,
       employee: { name: `${s.first_name} ${s.last_name}`, cin: s.cin, cnss: s.cnss_number },
       hireDate: fr(s.hire_date), exitDate: fr(s.exit_date), positions, place: legal.city ?? null, issuedOn: fr(new Date()),
     });

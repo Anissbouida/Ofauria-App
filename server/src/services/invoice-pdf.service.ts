@@ -5,6 +5,7 @@ import { loadDocumentTemplate, legalFooterLines, formatRib } from '../utils/docu
 import { arabicFontPath, containsArabic, drawArabicLineRight, numberToWordsAR } from '../utils/arabic-pdf.js';
 import { baseCurrencyCode, currencySymbol } from './currency.js';
 import { logger } from '../utils/logger.js';
+import type { LegalContext } from './legal-entity.js';
 
 // Resolve logo — try multiple possible locations
 function findDefaultLogo(): string {
@@ -92,6 +93,8 @@ interface InvoiceData {
   /** Phase 10.1 — langue du document. Défaut : français (chemin inchangé).
    *  'ar' : libellés et montant en toutes lettres en arabe, police Cairo, tracé droite-à-gauche. */
   locale?: 'fr' | 'ar';
+  /** G6-03 : entité juridique de la pièce (établissement) pour le pied de page légal. */
+  legalContext?: LegalContext;
 }
 
 /**
@@ -235,7 +238,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   const arFont = AR ? arabicFontPath() : null;
   const Kar = AR ? KIND_TEXT_AR[data.kind ?? 'invoice'] : null;
   const L = (key: keyof typeof LABELS_AR, fr: string) => (AR && arFont ? (LABELS_AR[key] ?? fr) : fr);
-  const tpl = await loadDocumentTemplate(data.kind === 'quote' || data.kind === 'proforma' ? 'quote' : 'invoice');
+  const tpl = await loadDocumentTemplate(data.kind === 'quote' || data.kind === 'proforma' ? 'quote' : 'invoice', data.legalContext);
   if (!tpl.showBank) {
     data = { ...data, companyBankName: undefined, companyBankAccount: undefined };
   } else if (!data.companyBankAccount && tpl.bank) {

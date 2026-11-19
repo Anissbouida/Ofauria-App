@@ -3,8 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { unsoldDecisionRepository } from '../repositories/unsold-decision.repository.js';
 import { printerService } from '../services/printer.service.js';
-import { settingsRepository } from '../repositories/settings.repository.js';
-import { companyLegalFromRow } from '../utils/company-legal.js';
+import { loadCompanyLegal } from '../utils/company-legal.js';
 
 export const cashRegisterController = {
   /** Rattrapage des écarts de fermeture non comptabilisés : aperçu puis exécution (mig 518). */
@@ -237,7 +236,8 @@ export const cashRegisterController = {
       return;
     }
 
-    const settings = await settingsRepository.get();
+    // G6-03 : raison sociale de l'entité de l'établissement de la caisse.
+    const legal = await loadCompanyLegal({ storeId: (session.store_id as string | null) ?? null });
     const { printerId } = (req.body || {}) as { printerId?: string };
     const num = (v: unknown) => (v == null ? 0 : parseFloat(String(v)) || 0);
     const result = await printerService.printZReport({
@@ -260,7 +260,7 @@ export const cashRegisterController = {
         difference: session.difference != null ? num(session.difference) : null,
         notes: session.notes,
       },
-      company: { name: companyLegalFromRow(settings).name },
+      company: { name: legal.name },
       options: { printerId: typeof printerId === 'string' && printerId ? printerId : undefined },
     });
 

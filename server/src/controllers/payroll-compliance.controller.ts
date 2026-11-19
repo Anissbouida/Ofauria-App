@@ -5,7 +5,7 @@ import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
 import { payrollSettingsRepository, taxScaleRepository, monthBounds } from '../repositories/payroll-config.repository.js';
 import { payrollDeclarationRepository } from '../repositories/payroll-declarations.repository.js';
 import { buildEbds, parsePreetabli } from '../services/ebds.js';
-import { loadCompanyLegal } from '../utils/company-legal.js';
+import { loadCompanyLegal, loadEmployerLegal } from '../utils/company-legal.js';
 import { loadPayrollBook, payrollBookEdition } from '../services/payroll-book.service.js';
 import { editionContext, renderPdf, renderXlsx } from '../services/ledger-editions.service.js';
 import {
@@ -194,11 +194,12 @@ export async function sendAttestation(res: Response, emp: Row, kind: string, mon
     db.query(`SELECT contract_type, job_title, monthly_salary FROM employee_contracts WHERE employee_id = $1 AND status = 'active' ORDER BY start_date DESC LIMIT 1`, [emp.id]),
     db.query(`SELECT label FROM ref_entries WHERE table_id = 'employee_roles' AND code = $1 LIMIT 1`, [emp.role]),
     payrollSettingsRepository.get(),
-    loadCompanyLegal(),
+    loadCompanyLegal({ storeId: emp.store_id ?? null }),
   ]);
   const c = contract.rows[0];
   const base = {
-    company: { ...legal, cnss: settings.employer_cnss_number },
+    // G6-03 : employeur = entité de l'établissement du salarié.
+    company: await loadEmployerLegal({ storeId: emp.store_id ?? null }, settings.employer_cnss_number),
     employee: { name: `${emp.first_name} ${emp.last_name}`, cin: emp.cin, cnss: emp.cnss_number },
     hireDate: fr(emp.hire_date),
     jobTitle: c?.job_title || role.rows[0]?.label || emp.role,

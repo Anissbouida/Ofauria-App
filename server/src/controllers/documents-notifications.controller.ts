@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
 import { auditedQuery } from '../utils/audit-context.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { requestLegalContext, resolveLegalEntity } from '../services/legal-entity.js';
 import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
 import { generatePurchaseOrderPdf } from '../services/purchase-order-pdf.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
@@ -60,12 +61,15 @@ export const documentsNotificationsController = {
 
   /** Aperçu PDF avec des données d'exemple et les réglages enregistrés. */
   async preview(req: AuthRequest, res: Response) {
-    const legal = await loadCompanyLegal();
-    const logo = (await settingsRepository.get())?.logo_url as string | undefined;
+    // G6-03 : aperçu à l'en-tête de l'entité de l'établissement de l'utilisateur (défaut : entité par défaut).
+    const legalContext = requestLegalContext(req);
+    const legal = await loadCompanyLegal(legalContext);
+    const logo = ((await resolveLegalEntity(legalContext))?.logo_url || (await settingsRepository.get())?.logo_url) as string | undefined;
     const today = new Date().toLocaleDateString('fr-FR');
     const company = {
       companyName: legal.name, companyAddress: legal.address, companyPhone: legal.phone, companyEmail: legal.email,
       companyRC: legal.rc, companyPatente: legal.patente, companyIF: legal.if, companyICE: legal.ice, logoPath: logo || undefined,
+      legalContext,
     };
     let pdf: Buffer;
     if (req.params.docType === 'invoice') {

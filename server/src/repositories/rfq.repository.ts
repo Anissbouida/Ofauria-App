@@ -20,8 +20,8 @@ function httpError(statusCode: number, message: string, code?: string): HttpErro
  */
 async function enqueueRfqSupplierEmails(rfqId: string, userId: string | null): Promise<number> {
   const head = (await db.query(
-    `SELECT number, title, needed_by, response_deadline, notes FROM rfqs WHERE id = $1`, [rfqId])).rows[0] as
-    { number: string; title: string; needed_by: string | null; response_deadline: string | null; notes: string | null } | undefined;
+    `SELECT number, title, needed_by, response_deadline, notes, store_id FROM rfqs WHERE id = $1`, [rfqId])).rows[0] as
+    { number: string; title: string; needed_by: string | null; response_deadline: string | null; notes: string | null; store_id: string | null } | undefined;
   if (!head) return 0;
   const suppliers = (await db.query(
     `SELECT s.name, s.contact_name, s.email
@@ -35,7 +35,7 @@ async function enqueueRfqSupplierEmails(rfqId: string, userId: string | null): P
       WHERE ri.rfq_id = $1 ORDER BY ri.display_order, ri.id`, [rfqId])).rows as
     { label: string; quantity: string; unit: string | null }[];
 
-  const legal = await loadCompanyLegal();
+  const legal = await loadCompanyLegal({ storeId: head.store_id });   // G6-03 : entité de l'établissement
   const company = legal.name || 'Notre société';
   const frDate = (d: string | null) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
   const lines = items.map(it => `- ${it.label} : ${Number(it.quantity)}${it.unit ? ' ' + it.unit : ''}`).join('\n');

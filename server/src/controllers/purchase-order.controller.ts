@@ -13,6 +13,7 @@ import { existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { resolveLegalEntity } from '../services/legal-entity.js';
 import { checkApprovalLimit } from '../services/governance.js';
 import { effectiveScopeFor, scopeStoreFilter } from '../services/access-rights.js';
 import { logger } from '../utils/logger.js';
@@ -713,19 +714,23 @@ export const purchaseOrderController = {
 
       // Get company settings
       const settings = await settingsRepository.get();
+      // G6-03 : entité juridique de l'établissement du BC (défaut : entité par défaut).
+      const legalContext = { storeId: (po.store_id as string | null) ?? null };
+      const entityLogo = (await resolveLegalEntity(legalContext))?.logo_url;
+      const logoUrl: string | undefined = entityLogo || settings?.logo_url || undefined;
 
       // Resolve logo
       const __filename = fileURLToPath(import.meta.url);
       const __dirname = dirname(__filename);
       const projectRoot = resolve(__dirname, '..', '..', '..');
       let logoPath: string | undefined;
-      if (settings?.logo_url && settings.logo_url.startsWith('data:')) {
+      if (logoUrl && logoUrl.startsWith('data:')) {
         // Logo persiste en base (data URI) : transmis tel quel, le service PDF le decode.
-        logoPath = settings.logo_url;
+        logoPath = logoUrl;
       } else {
         const logoCandidates = [
-          settings?.logo_url ? resolve(projectRoot, 'uploads', settings.logo_url) : '',
-          settings?.logo_url ? resolve(projectRoot, settings.logo_url) : '',
+          logoUrl ? resolve(projectRoot, 'uploads', logoUrl) : '',
+          logoUrl ? resolve(projectRoot, logoUrl) : '',
           resolve(projectRoot, 'client', 'public', 'images', 'logo-horizontal.png'),
           resolve(projectRoot, 'uploads', 'logos', 'logo-1775319515435.png'),
         ].filter(Boolean);
@@ -757,7 +762,7 @@ export const purchaseOrderController = {
 
       const totalHT = items.reduce((sum: number, it: { subtotal: number | null }) => sum + (it.subtotal || 0), 0);
 
-      const legal = await loadCompanyLegal();
+      const legal = await loadCompanyLegal(legalContext);
       const buffer = await generatePurchaseOrderPdf({
         orderNumber: po.order_number,
         orderDate: orderDateStr,
@@ -780,6 +785,7 @@ export const purchaseOrderController = {
         companyIF: legal.if,
         companyICE: legal.ice,
         logoPath,
+        legalContext,
       });
 
       const filename = `${po.order_number || 'BC'}.pdf`.replace(/[/\\]/g, '-');

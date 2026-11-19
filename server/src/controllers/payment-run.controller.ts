@@ -51,7 +51,7 @@ export const paymentRunController = {
       res.status(400).json({ success: false, error: { message: 'Renseignez le RIB (IBAN) du compte de trésorerie de la campagne avant d\'éditer la lettre d\'ordre.' } });
       return;
     }
-    const legal = await loadCompanyLegal();
+    const legal = await loadCompanyLegal({ storeId: (d.run.store_id as string | null) ?? null });   // G6-03
     const day = String(d.run.payment_date).split('-').reverse().join('/');
     const buffer = await generateTransferOrderPdf({
       company: { ...legal, cnss: null }, employerRib: d.employerRib, employerBank: d.employerBank,

@@ -9,6 +9,7 @@ import { quoteRepository } from '../repositories/quote.repository.js';
 import { getParameter } from '../services/module-parameters.service.js';
 import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { resolveLegalEntity } from '../services/legal-entity.js';
 import { currencySymbol } from '../services/currency.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { emptyBody } from '../validators/common.validator.js';
@@ -140,8 +141,12 @@ quotesRouter.get('/:id/pdf', authenticate, can('sales.quotes.view'), asyncHandle
   if (!q) { bad(res, 'Devis introuvable', 404); return; }
   const number = kind === 'proforma' ? await quoteRepository.ensureProformaNumber(q.id) : q.number;
   const fr = (d: unknown) => (d ? new Date(d instanceof Date ? d : `${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('fr-FR') : '');
-  const legal = await loadCompanyLegal();
+  // G6-03 : entité juridique de l'établissement du devis (défaut : entité par défaut).
+  const legalContext = { storeId: (q.store_id as string | null) ?? null };
+  const legal = await loadCompanyLegal(legalContext);
+  const entityLogo = (await resolveLegalEntity(legalContext))?.logo_url ?? null;
   const settings = (await db.query(`SELECT logo_url FROM company_settings LIMIT 1`)).rows[0];
+  const logoUrl: string | null = entityLogo || settings?.logo_url || null;
   const items = q.items as Record<string, any>[];
   const ratio = Number(q.subtotal) > 0 ? 1 - Number(q.discount_amount) / Number(q.subtotal) : 1;
   const tva = new Map<number, number>();
@@ -183,7 +188,8 @@ quotesRouter.get('/:id/pdf', authenticate, can('sales.quotes.view'), asyncHandle
     extraNotes: [q.delivery_terms && `Livraison : ${q.delivery_terms}`, q.notes].filter(Boolean).join('\n') || undefined,
     companyName: legal.name, companyAddress: legal.address, companyPhone: legal.phone, companyEmail: legal.email,
     companyRC: legal.rc, companyPatente: legal.patente, companyIF: legal.if, companyICE: legal.ice,
-    logoPath: settings?.logo_url?.startsWith('data:') ? settings.logo_url : undefined,
+    logoPath: logoUrl?.startsWith('data:') ? logoUrl : undefined,
+    legalContext,
   });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${String(number).replace(/[/\\]/g, '-')}.pdf"`);

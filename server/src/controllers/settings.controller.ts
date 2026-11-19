@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
+import { clearLegalEntityCache } from '../services/legal-entity.js';
 
 function toApi(row: Record<string, unknown>) {
   return {
@@ -163,6 +164,8 @@ export const settingsController = {
       ...legal,
       ...(legalCapital !== undefined ? { legalCapital } : {}),
     }, req.user?.userId);
+    // G6-03 : l'identité légale est recopiée sur l'entité par défaut (déclencheur, mig 608).
+    clearLegalEntityCache();
     res.json({ success: true, data: toApi(settings) });
   },
 };

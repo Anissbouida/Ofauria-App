@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { loadDocumentTemplate, legalFooterLines } from '../utils/document-template.js';
+import type { LegalContext } from './legal-entity.js';
 
 // Resolve logo
 function findDefaultLogo(): string {
@@ -68,6 +69,8 @@ interface POData {
   companyIF?: string;
   companyICE?: string;
   logoPath?: string;
+  /** G6-03 : entité juridique de l'établissement du BC (défaut : entité par défaut). */
+  legalContext?: LegalContext;
 }
 
 // ── Couleurs de la charte (identiques aux factures) ──
@@ -103,7 +106,7 @@ function txt(doc: PDFKit.PDFDocument, text: string, x: number, y: number, opts: 
 
 export async function generatePurchaseOrderPdf(data: POData): Promise<Buffer> {
   // Mentions communes reglees dans Parametres > Documents (mig 332) et fiche societe.
-  const tpl = await loadDocumentTemplate('purchase_order');
+  const tpl = await loadDocumentTemplate('purchase_order', data.legalContext);
   const M = 40;
   const PW = 595.28;
   const PH = 841.89;

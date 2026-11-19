@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { loadDocumentTemplate, legalFooterLines } from '../utils/document-template.js';
+import { resolveLegalEntity } from './legal-entity.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { currencySymbol } from './currency.js';
 
@@ -45,8 +46,11 @@ function resolveLogo(logoUrl?: string | null): string | Buffer | null {
 }
 
 export async function generateDeliveryNotePdf(note: Record<string, any>): Promise<Buffer> {
-  const tpl = await loadDocumentTemplate('invoice');
+  // G6-03 : entité juridique de l'établissement du BL (défaut : entité par défaut).
+  const legalContext = { storeId: (note.store_id as string | null) ?? null };
+  const tpl = await loadDocumentTemplate('invoice', legalContext);
   const settings = await settingsRepository.get();
+  const entity = await resolveLegalEntity(legalContext);
   const M = 40, PW = 595.28, PH = 841.89, CW = PW - M * 2;
   const doc = new PDFDocument({ size: 'A4', margins: { top: M, bottom: 0, left: M, right: M },
     info: { Title: `Bon de livraison ${note.number}`, Author: tpl.legal.name } });
@@ -58,7 +62,7 @@ export async function generateDeliveryNotePdf(note: Record<string, any>): Promis
   const box = (x: number, y: number, w: number, h: number) => doc.rect(x, y, w, h).lineWidth(0.5).stroke(BORDER);
 
   let y = M;
-  const logo = resolveLogo(settings?.logo_url);
+  const logo = resolveLogo(entity?.logo_url || settings?.logo_url);
   if (logo) {
     try { doc.image(logo, M, y, { width: 200, height: 80 }); } catch { /* logo illisible */ }
   } else {

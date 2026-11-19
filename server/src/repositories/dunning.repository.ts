@@ -129,7 +129,7 @@ export const dunningRepository = {
     if (!level) return { error: 'Aucun niveau de relance atteint (voir les niveaux)' };
     const c = (await db.query(`SELECT c.id, ${NAME} AS name, c.email FROM customers c WHERE c.id = $1`, [customerId])).rows[0];
     if (!c) return { error: 'Client introuvable' };
-    const legal = await loadCompanyLegal();
+    const legal = await loadCompanyLegal({ storeId: p.storeId ?? null });   // G6-03
     const amount = round2(docs.reduce((s, d) => s + d.remaining, 0));
     const rate = Number(level.interest_rate) || 0;
     const interest = round2(docs.reduce((s, d) => s + d.remaining * rate / 100 * d.days_late / 365, 0));

@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { loadDocumentTemplate, legalFooterLines } from '../utils/document-template.js';
 import { currencySymbol } from './currency.js';
+import type { LegalContext } from './legal-entity.js';
 
 /**
  * Lettre de relance client (mig 366) : en-tête société, bloc client, objet, texte du
@@ -13,6 +14,8 @@ export type DunningLetter = {
   customerName: string; customerAddress?: string | null; customerIce?: string | null;
   items: { number: string; kind: 'invoice' | 'ticket'; docDate: string | null; dueDate: string; daysLate: number; remaining: number }[];
   amountDue: number; fee: number; interest: number; logo?: string | null;
+  /** G6-03 : entité juridique de l'émetteur (défaut : entité par défaut). */
+  legalContext?: LegalContext;
 };
 
 const BROWN = '#8E4A1F';
@@ -32,7 +35,7 @@ const n = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, m
 const fr = (iso: string | null) => (iso ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('fr-FR') : '');
 
 export async function generateDunningPdf(d: DunningLetter): Promise<Buffer> {
-  const tpl = await loadDocumentTemplate('invoice');
+  const tpl = await loadDocumentTemplate('invoice', d.legalContext);
   const M = 50; const PW = 595.28; const PH = 841.89; const CW = PW - M * 2;
   const doc = new PDFDocument({ size: 'A4', margins: { top: M, bottom: 0, left: M, right: M }, info: { Title: `${d.levelLabel} ${d.number}`, Author: tpl.legal.name } });
   const chunks: Buffer[] = [];

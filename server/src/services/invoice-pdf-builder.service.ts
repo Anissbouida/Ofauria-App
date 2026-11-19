@@ -2,6 +2,7 @@ import { db } from '../config/database.js';
 import { invoiceRepository } from '../repositories/accounting.repository.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { resolveLegalEntity } from './legal-entity.js';
 import { generateInvoicePdf } from './invoice-pdf.service.js';
 import { baseCurrencyCode } from './currency.js';
 
@@ -46,6 +47,10 @@ export async function invoicePdfById(
   }
 
   const settings = await settingsRepository.get();
+  // G6-03 : identité de l'entité juridique de l'établissement de la facture (défaut : entité par défaut).
+  const legalContext = { storeId: ((invoice as Record<string, unknown>).store_id as string | null) ?? null };
+  const entity = await resolveLegalEntity(legalContext);
+  const logoUrl = (entity?.logo_url || settings?.logo_url) as string | undefined;
 
   let customerName = 'Client';
   let customerAddress = '';
@@ -100,12 +105,12 @@ export async function invoicePdfById(
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = pathMod.dirname(__filename);
   const projectRoot = pathMod.resolve(__dirname, '..', '..', '..');
-  if (settings?.logo_url && settings.logo_url.startsWith('data:')) {
-    logoPath = settings.logo_url;
+  if (logoUrl && logoUrl.startsWith('data:')) {
+    logoPath = logoUrl;
   } else {
     const logoCandidates = [
-      settings?.logo_url ? pathMod.join(projectRoot, 'uploads', settings.logo_url) : '',
-      settings?.logo_url ? pathMod.join(projectRoot, settings.logo_url) : '',
+      logoUrl ? pathMod.join(projectRoot, 'uploads', logoUrl) : '',
+      logoUrl ? pathMod.join(projectRoot, logoUrl) : '',
       pathMod.join(projectRoot, 'client', 'public', 'images', 'logo-horizontal.png'),
       pathMod.join(projectRoot, 'uploads', 'logos', 'logo-1775319515435.png'),
     ].filter(Boolean);
@@ -132,7 +137,7 @@ export async function invoicePdfById(
   const ttcCur = curCode !== baseCurrencyCode() && inv.foreign_total_amount != null ? Number(inv.foreign_total_amount) : toCur(totalAmount);
   const htCur = toCur(amount);
 
-  const legal = await loadCompanyLegal();
+  const legal = await loadCompanyLegal(legalContext);
   const isCreditNote = inv.kind === 'credit_note';
   const buffer = await generateInvoicePdf({
     kind: isCreditNote ? 'credit_note' : 'invoice',
@@ -168,6 +173,7 @@ export async function invoicePdfById(
     companyBankAccount: '',
     logoPath,
     locale: opts.locale === 'ar' ? 'ar' : 'fr',
+    legalContext,
   });
 
   const filename = `${inv.invoice_number || 'facture'}.pdf`.replace(/[/\\]/g, '-');
