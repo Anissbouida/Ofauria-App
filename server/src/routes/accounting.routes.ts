@@ -38,6 +38,7 @@ import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 import { emptyBody } from '../validators/common.validator.js';
 import { reportOverrideSchema } from '../validators/sales-flow.validator.js';
 import * as PF from '../validators/payments-flow.validator.js';
+import { createAccountingCategorySchema, updateAccountingCategorySchema } from '../validators/accounting-setup.validator.js';
 
 // G0-04 : la pièce jointe est reçue en mémoire puis écrite dans le stockage objet
 // (table files) par le contrôleur — plus rien sur le disque du serveur.
@@ -76,15 +77,15 @@ suppliersRouter.delete('/:id', authenticate, can('purchasing.suppliers.delete'),
 export const expenseCategoriesRouter = Router();
 expenseCategoriesRouter.get('/', authenticate, can('accounting.expense_categories.view'), expenseCategoryController.list);
 expenseCategoriesRouter.get('/:id/children', authenticate, can('accounting.expense_categories.view'), expenseCategoryController.children);
-expenseCategoriesRouter.post('/', authenticate, can('accounting.expense_categories.create'), expenseCategoryController.create);
-expenseCategoriesRouter.put('/:id', authenticate, can('accounting.expense_categories.edit'), expenseCategoryController.update);
+expenseCategoriesRouter.post('/', authenticate, can('accounting.expense_categories.create'), validate(createAccountingCategorySchema), expenseCategoryController.create);
+expenseCategoriesRouter.put('/:id', authenticate, can('accounting.expense_categories.edit'), validate(updateAccountingCategorySchema), expenseCategoryController.update);
 expenseCategoriesRouter.delete('/:id', authenticate, can('accounting.expense_categories.delete'), expenseCategoryController.remove);
 
 export const revenueCategoriesRouter = Router();
 revenueCategoriesRouter.get('/', authenticate, can('accounting.revenue_categories.view'), revenueCategoryController.list);
 revenueCategoriesRouter.get('/:id/children', authenticate, can('accounting.revenue_categories.view'), revenueCategoryController.children);
-revenueCategoriesRouter.post('/', authenticate, can('accounting.revenue_categories.create'), revenueCategoryController.create);
-revenueCategoriesRouter.put('/:id', authenticate, can('accounting.revenue_categories.edit'), revenueCategoryController.update);
+revenueCategoriesRouter.post('/', authenticate, can('accounting.revenue_categories.create'), validate(createAccountingCategorySchema), revenueCategoryController.create);
+revenueCategoriesRouter.put('/:id', authenticate, can('accounting.revenue_categories.edit'), validate(updateAccountingCategorySchema), revenueCategoryController.update);
 revenueCategoriesRouter.delete('/:id', authenticate, can('accounting.revenue_categories.delete'), revenueCategoryController.remove);
 
 export const invoicesRouter = Router();
