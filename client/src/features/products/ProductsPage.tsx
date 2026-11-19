@@ -29,7 +29,7 @@ import SemiFinisTab from './SemiFinisTab';
 import ExpiredProductLotsBanner from './ExpiredProductLotsBanner';
 import type { ProfileFormData } from './ProductionProfileTab';
 import { mapLoyverseCsv } from './loyverse-csv';
-import { recipeUnitCost, recipeYieldPerBatch } from './recipeUnitCost';
+import { recipeUnitCost, recipeYieldLabel } from './recipeUnitCost';
 
 type ViewMode = 'grid' | 'table';
 
@@ -910,7 +910,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
       costPrice: costPerUnit > 0 ? costPerUnit.toFixed(2) : f.costPrice,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRecipe?.id, selectedRecipe?.total_cost, selectedRecipe?.margin_multiplier, selectedRecipe?.rendement, form.saleUnit]);
+  }, [selectedRecipe?.id, selectedRecipe?.total_cost, selectedRecipe?.margin_multiplier, selectedRecipe?.rendement,
+      selectedRecipe?.rendement_unite, selectedRecipe?.rendement_kg, form.saleUnit]);
 
   // Smart search: fuzzy match on recipe name, normalize accents
   const normalizeStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1318,7 +1319,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                                           <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                                             {r.is_base && <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-600 text-[10px] font-bold">BASE</span>}
                                             {cost > 0 && <span>Cout: {money(cost)}</span>}
-                                            {(() => { const y = recipeYieldPerBatch(r); return <span>Rend: {y} unite{y > 1 ? 's' : ''}</span>; })()}
+                                            <span>Rend: {recipeYieldLabel(r)}</span>
                                           </div>
                                         </div>
                                       </button>

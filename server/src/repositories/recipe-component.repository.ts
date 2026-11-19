@@ -22,6 +22,9 @@ export interface ReplacePayload {
   /** M3-04 : poids dans l'unité saisie, prioritaires sur poidsCruG / poidsCuitG. */
   poidsCruQty?: number | null; poidsCruUnit?: WeightUnit;
   poidsCuitQty?: number | null; poidsCuitUnit?: WeightUnit;
+  /** Mig 613 : unité du rendement (absent = inchangée) et rendement en kilos. */
+  rendementUnite?: 'unit' | 'kg';
+  rendementKg?: number | null;
 }
 
 export interface FinanceInput {
@@ -47,7 +50,12 @@ const num = (v: unknown): number => {
 function computeFinance(row: Record<string, unknown>) {
   // Rendement = pièces/fournée. Source unique : pieces_par_fournee saisi, sinon le
   // rendement du format (nb_par_defaut), sinon yield_quantity (recettes sans format).
-  const pieces = Math.max(1, num(row.pieces_par_fournee) || num(row.format_nb_par_defaut) || num(row.yield_quantity) || 1);
+  // Mig 613 : format au kilo → l'unité de rendement est le kilo (décimal, peut être < 1),
+  // tous les montants « par pièce » ci-dessous deviennent des montants au kilo.
+  const rendementKg = num(row.rendement_kg);
+  const pieces = row.rendement_unite === 'kg' && rendementKg > 0
+    ? rendementKg
+    : Math.max(1, num(row.pieces_par_fournee) || num(row.format_nb_par_defaut) || num(row.yield_quantity) || 1);
   // total_cost = somme de la composition. Par pièce → c'est déjà le coût d'1 pièce.
   // Par fournée → c'est le coût du lot entier ⇒ on divise par le rendement.
   const totalCompo = num(row.total_cost);
@@ -138,6 +146,7 @@ export const recipeComponentRepository = {
   async findByFormat(recipeId: string, formatId: string) {
     const fmt = await db.query(
       `SELECT f.id, f.recipe_id, f.contenant_id, f.nb_par_defaut, f.nb_parts,
+              f.rendement_unite, f.rendement_kg,
               f.poids_cru_g, f.poids_cuit_g, f.cout_emballage_unitaire, f.is_default,
               f.densite_kg_l,
               -- M3-04 : poids dans l'unité saisie.
@@ -298,6 +307,11 @@ export const recipeComponentRepository = {
         `UPDATE recipe_formats
          SET nb_par_defaut = COALESCE($2, nb_par_defaut),
              nb_parts      = COALESCE($3, nb_parts),
+             -- Mig 613 : unité absente = inchangée ; en kg, le rendement kilo suit.
+             rendement_unite = COALESCE($9, rendement_unite),
+             rendement_kg    = CASE WHEN COALESCE($9, rendement_unite) = 'kg'
+                                    THEN COALESCE($10::numeric, rendement_kg)
+                                    ELSE rendement_kg END,
              poids_cru_unit_id  = CASE WHEN $4::numeric IS NULL THEN poids_cru_unit_id ELSE ${unitIdSql('$7')} END,
              poids_cru_qty      = COALESCE($4::numeric, poids_cru_qty),
              poids_cuit_unit_id = CASE WHEN $5::numeric IS NULL THEN poids_cuit_unit_id ELSE ${unitIdSql('$8')} END,
@@ -306,7 +320,7 @@ export const recipeComponentRepository = {
              updated_at    = NOW()
          WHERE id = $1`,
         [formatId, data.nbParDefaut ?? null, data.nbParts ?? null, cru?.qty ?? null, cuit?.qty ?? null, userId ?? null,
-         cru?.unit ?? 'g', cuit?.unit ?? 'g']
+         cru?.unit ?? 'g', cuit?.unit ?? 'g', data.rendementUnite ?? null, data.rendementKg ?? null]
       );
 
       // Le miroir recipe_components (lu par v_recipe_total_cost_v2) est désormais
@@ -534,6 +548,7 @@ export const recipeComponentRepository = {
   async listFormats(recipeId: string) {
     const r = await db.query(
       `SELECT f.id, f.contenant_id, f.nb_par_defaut, f.nb_parts, f.is_default, f.ordre,
+              f.rendement_unite, f.rendement_kg,
               f.cout_emballage_unitaire,
               pc.nom AS contenant_nom,
               (SELECT count(*) FROM recipe_format_components c WHERE c.format_id = f.id) AS nb_composants,

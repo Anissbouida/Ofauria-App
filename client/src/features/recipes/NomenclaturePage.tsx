@@ -115,15 +115,17 @@ export default function NomenclaturePage() {
         <div className="prj-kpis pd-sticky-kpis">
           <div className="prj-kpi">
             <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Layers size={13} /> Rendement {kpi?.contenantNom ? `(${kpi.contenantNom})` : `(pièces/${T.batch.toLowerCase()})`}</span></div>
-            <div className="prj-kpi-value">{kpi ? kpi.rendement : '—'}</div>
+            <div className="prj-kpi-value">
+              {kpi ? (kpi.unite === 'kg' ? `${kpi.rendement.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg` : kpi.rendement) : '—'}
+            </div>
           </div>
-          <div className="prj-kpi" title="Matière + main d'œuvre + énergie + frais de structure, ramenés à une pièce.">
-            <div className="prj-kpi-head"><span>Coût prod. / pièce</span></div>
+          <div className="prj-kpi" title={`Matière + main d'œuvre + énergie + frais de structure, ramenés ${kpi?.unite === 'kg' ? 'au kilo' : 'à une pièce'}.`}>
+            <div className="prj-kpi-head"><span>Coût prod. / {kpi?.unite ?? 'pièce'}</span></div>
             <div className="prj-kpi-value">{kpi ? dh(kpi.coutProd) : '—'}</div>
             {kpi && <div className="prj-kpi-sub">matière {dh(kpi.coutMatiere)}</div>}
           </div>
           <div className="prj-kpi">
-            <div className="prj-kpi-head"><span>Prix / pièce</span></div>
+            <div className="prj-kpi-head"><span>Prix / {kpi?.unite ?? 'pièce'}</span></div>
             <div className="prj-kpi-value">{kpi ? dh(kpi.prix) : '—'}</div>
           </div>
           <div className="prj-kpi" title="(Prix − coût de production) / prix">

@@ -76,6 +76,9 @@ export const recipeRepository = {
               vfs.nb_formats AS formats_nb,
               vfs.perte_pct AS formats_perte_pct,
               df.nb_par_defaut AS rendement,
+              -- Mig 613 : unité du rendement du format par défaut (pièces ou kilos).
+              df.rendement_unite AS rendement_unite,
+              df.rendement_kg AS rendement_kg,
               -- Poids (kg) d'une fournee du format par defaut, depuis sa composition :
               -- v_recipe_total_weight_kg ne lit que l'ancienne composition et renvoie 0
               -- pour une fiche composee par format. Sert au prix au kilo d'un produit
@@ -91,7 +94,9 @@ export const recipeRepository = {
                   'contenant_nom', pcf.nom,
                   'quantite_par_format', rf.quantite_par_format,
                   'quantite_par_format_unite', rf.quantite_par_format_unite,
-                  'nb_par_defaut', rf.nb_par_defaut
+                  'nb_par_defaut', rf.nb_par_defaut,
+                  'rendement_unite', rf.rendement_unite,
+                  'rendement_kg', rf.rendement_kg
                 ) ORDER BY rf.ordre, pcf.nom)
                 FROM recipe_formats rf
                 JOIN production_contenants pcf ON pcf.id = rf.contenant_id
@@ -111,7 +116,7 @@ export const recipeRepository = {
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
        LEFT JOIN LATERAL (
-         SELECT rf.id, rf.nb_par_defaut, rf.contenant_id
+         SELECT rf.id, rf.nb_par_defaut, rf.contenant_id, rf.rendement_unite, rf.rendement_kg
          FROM recipe_formats rf
          WHERE rf.recipe_id = r.id AND rf.is_active = true
          ORDER BY rf.is_default DESC, rf.ordre LIMIT 1

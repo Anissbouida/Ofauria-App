@@ -49,6 +49,9 @@ export interface FicheFormat {
   contenantNom: string | null;
   isDefault: boolean;
   nbParDefaut: number;
+  /** Mig 613 : rendement en pièces (nbParDefaut) ou en kilos (rendementKg). */
+  rendementUnite: 'unit' | 'kg';
+  rendementKg: number | null;
   nbParts: number | null;
   quantiteParFormat: number;
   quantiteParFormatUnite: string;
@@ -298,6 +301,18 @@ function qty(v: number, unit: string): string {
   return `${n(v, dec)} ${unit}`;
 }
 
+/** Mig 613 : format au kilo → rendement en kg, montants unitaires au kilo. */
+const isKg = (f: FicheFormat) => f.rendementUnite === 'kg' && (f.rendementKg ?? 0) > 0;
+function rendementTxt(f: FicheFormat): string {
+  return isKg(f) ? `${n(f.rendementKg, 3)} kg` : `${f.nbParDefaut} pièce(s)`;
+}
+function uniteTxt(f: FicheFormat): string {
+  return isKg(f) ? 'kg' : 'pièce';
+}
+function rendementDiv(f: FicheFormat): number {
+  return isKg(f) ? (f.rendementKg as number) : f.nbParDefaut;
+}
+
 export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
   CUR = (await companyCurrency()).symbol;
   const doc = new PDFDocument({
@@ -379,9 +394,9 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
   const cells: Array<[string, string]> = seul
     ? [
       ['FORMAT', seul.contenantNom || 'Sans contenant'],
-      ['RENDEMENT', `${seul.nbParDefaut} pièce(s)`],
+      ['RENDEMENT', rendementTxt(seul)],
       ['COÛT LANCEMENT', dh(seul.coutFormatDh)],
-      ['COÛT / PIÈCE', dh(seul.coutUnitaireDh)],
+      [`COÛT / ${uniteTxt(seul).toUpperCase()}`, dh(seul.coutUnitaireDh)],
     ]
     : [
       ['RENDEMENT BRUT', qty(data.yieldQuantity, data.yieldUnit)],
@@ -441,7 +456,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
       const nom = (f.contenantNom || 'Format sans contenant') + (f.isDefault ? '  (defaut)' : '');
       const values = [
         nom,
-        String(f.nbParDefaut),
+        isKg(f) ? rendementTxt(f) : String(f.nbParDefaut),
         qty(f.quantiteParFormat, f.quantiteParFormatUnite),
         dh(f.coutFormatDh),
         dh(f.coutUnitaireDh),
@@ -522,7 +537,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     for (const f of formatsAvecBom) {
       ensure(60);
       doc.font('Helvetica-Bold').fontSize(9).fillColor(BROWN);
-      txt(`${f.contenantNom || 'Format sans contenant'} — ${f.nbParDefaut} pièce(s)`, M, y);
+      txt(`${f.contenantNom || 'Format sans contenant'} — ${rendementTxt(f)}`, M, y);
       y += 15;
 
       const drawBomHead = () => {
@@ -561,8 +576,8 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
       doc.rect(M, y, CW, 16).fill(BEIGE);
       doc.font('Helvetica-Bold').fontSize(8).fillColor(BROWN);
       txt('Total lancement', M + 4, y + 4.5);
-      const perPiece = f.nbParDefaut > 0 ? total / f.nbParDefaut : null;
-      txt(`${n(total)} ${CUR}   —   ${n(perPiece)} ${CUR} / pièce`,
+      const perPiece = rendementDiv(f) > 0 ? total / rendementDiv(f) : null;
+      txt(`${n(total)} ${CUR}   —   ${n(perPiece)} ${CUR} / ${uniteTxt(f)}`,
           M + CW - cCols[4].w - 4, y + 4.5, { width: cCols[4].w, align: 'right' });
       y += 24;
     }

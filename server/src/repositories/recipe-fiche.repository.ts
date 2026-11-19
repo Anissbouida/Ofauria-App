@@ -61,6 +61,7 @@ export const recipeFicheRepository = {
 
     const formats = await db.query(
       `SELECT rf.id, rf.is_default, rf.nb_par_defaut, rf.nb_parts,
+              rf.rendement_unite, rf.rendement_kg,
               rf.quantite_par_format, rf.quantite_par_format_unite,
               rf.margin_multiplier_override, rf.prix_vente_unitaire_override,
               pc.nom AS contenant_nom,

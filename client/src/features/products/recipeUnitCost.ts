@@ -19,6 +19,9 @@ export type RecipeCostSource = {
   /** Poids d'une fournée du format par défaut (fiche composée par format). */
   default_format_weight_kg?: string | number | null;
   rendement?: string | number | null;
+  /** Mig 613 : rendement du format par défaut en pièces ('unit') ou en kilos ('kg'). */
+  rendement_unite?: 'unit' | 'kg' | string | null;
+  rendement_kg?: string | number | null;
   yield_quantity?: string | number | null;
   compo_par_piece?: boolean | null;
 };
@@ -39,11 +42,29 @@ export function recipeYieldPerBatch(recipe: RecipeCostSource): number {
   return yieldQty > 0 ? yieldQty : 1;
 }
 
+/** Rendement en kilos déclaré sur le format (mig 613), sinon 0. */
+function declaredYieldKg(recipe: RecipeCostSource): number {
+  if (recipe.compo_par_piece || recipe.rendement_unite !== 'kg') return 0;
+  return num(recipe.rendement_kg);
+}
+
+/** Libellé du rendement proposé dans le formulaire produit : « 100 unités » ou « 2,1 kg ». */
+export function recipeYieldLabel(recipe: RecipeCostSource): string {
+  const kg = declaredYieldKg(recipe);
+  if (kg > 0) return `${kg.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg`;
+  const y = recipeYieldPerBatch(recipe);
+  return `${y} unite${y > 1 ? 's' : ''}`;
+}
+
 /** Coût de revient par unité de vente (pièce, ou kilo pour une vente au poids). */
 export function recipeUnitCost(recipe: RecipeCostSource, saleUnit: SaleUnit = 'unit'): number {
   const totalCost = num(recipe.total_cost);
   if (totalCost <= 0) return 0;
   if (saleUnit === 'weight') {
+    // Rendement déclaré en kilos sur le format : c'est le poids vendable de la
+    // fournée (pertes comprises), prioritaire sur le poids brut de la composition.
+    const yieldKg = declaredYieldKg(recipe);
+    if (yieldKg > 0) return totalCost / yieldKg;
     // Fiche par format : poids de la fournée du format par défaut (même périmètre que
     // total_cost). Ancienne composition : poids total de la recette.
     const weightKg = num(recipe.default_format_weight_kg) || num(recipe.total_weight_kg);

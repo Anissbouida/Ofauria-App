@@ -12,11 +12,11 @@ résultat, partie par partie.
 
 | Partie | Cas | Joués | Conformes | Écarts | Sans objet | Non joués |
 |---|---|---|---|---|---|---|
-| E. Paramétrage de la production | 8 | 1 | 1 | 0 | 0 | 7 |
+| E. Paramétrage de la production | 8 | 2 | 1 | 1 | 0 | 6 |
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
-| C. Produits | 24 | 3 | 1 | 1 | 0 | 21 |
-| D. Fiches techniques | 46 | 7 | 4 | 3 | 0 | 39 |
+| C. Produits | 24 | 4 | 1 | 2 | 0 | 20 |
+| D. Fiches techniques | 46 | 8 | 4 | 4 | 0 | 38 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -239,6 +239,52 @@ masse directe, volume avec masse volumique, pièce avec poids par pièce, sinon 
 
 État en base : 1 format, 1 fiche (version 1 active), 1 produit.
 
+### Atelier Boulangerie : Baguette (2026-11-19, par les écrans)
+
+Comptes : gérant (format, validation), Boulanger matin (fiche, produit).
+
+| ID | Statut | Constat |
+|---|---|---|
+| — | Conforme | Le gérant crée le format « Pétrin baguettes 100 pièces » (pétrissage et cuisson, fournée, 100 pièces, 3 pertes, 25 kg). |
+| E-02 | Écart | Le prix de revient du produit Baguette (0,92 DH) ne contient aucune part des charges fixes (36 000 DH par mois saisis en E-01). La fiche affiche une « Structure 15 % » ; l'origine de ce taux n'est pas vérifiée (taux par défaut ou calcul depuis les charges). |
+| D-01 | Écart | Le boulanger crée la fiche « Baguette », ajoute le format et compose : farine T55 15 kg, sel fin 300 g, levure fraîche 300 g. Résultat : 91,50 DH la fournée, 15,6 kg, 0,92 DH de matière par pièce, allergène gluten détecté. **Pas d'eau** : aucune matière « Eau » dans les données de base, donc l'hydratation (environ 10 l) manque et le poids brut (15,6 kg) ne correspond pas aux 25 kg du format. Poids cuit et perte à la cuisson non saisis. |
+| D-34 | Écart | L'enregistrement passe pour la composition (200) mais la mise à jour financière est refusée (403) : le boulanger voit « Accès interdit » et « Modifications non enregistrées », alors que sa composition est bien enregistrée (constat 21, reproduit). |
+| D-07 | Conforme | Le gérant crée et active la version 1 (« Validation gérant : fiche initiale pétrin 100 baguettes »). Comparaison toujours « Aucune différence » pour une première version (constat 26, reproduit). |
+| C-01 | Écart | Le boulanger crée « Baguette » (Fabriqué, catégorie Pain proposée d'office, à la pièce). La recette est proposée avec « Rend : 100 unités » (correction du constat 24 confirmée). Prix de revient 0,92 DH, prix de vente 2,75 DH (0,915 × 3). **Mais la fiche affiche un coût de production de 1,05 DH et un prix de vente de 3,16 DH HT** : elle ajoute la structure (15 %), le produit ne prend que la matière. Toujours aucun code TVA proposé au chef (constat 25). |
+
+Piège d'écran : dans le formulaire produit, le nom de la recette apparaît aussi dans
+l'aperçu à droite ; un clic sur cet aperçu au lieu de la liste laisse le champ recette
+vide sans message, et le prix reste à 0.
+
+État en base : 2 formats, 2 fiches (version 1 active), 2 produits.
+
+### Correction : rendement en pièces ou en kilos (2026-11-19)
+
+Constat de l'utilisateur : le rendement d'un format ne se saisit qu'en pièces, alors qu'un
+article vendu au poids (cornes de gazelle) ou une préparation de base rend des kilos.
+Décision : au choix, pièces OU kilos, par format.
+
+- Migration 613 : `recipe_formats.rendement_unite` (`unit` par défaut, ou `kg`) et
+  `rendement_kg` (décimal, obligatoire en kg) ; `fn_recipe_cost` divise par les kilos pour
+  un format au kilo (PDF de fiche, coût théorique de production).
+- Fiche : sélecteur « p. / kg » à côté du rendement ; en kg, le bandeau, la décomposition
+  du prix et l'onglet du format passent au kilo. Une composition saisie par pièce reste en
+  pièces. Le nombre de pièces est conservé (planification).
+- Produit vendu au poids : le coût au kilo prend le rendement en kilos, prioritaire sur le
+  poids brut de la composition. Libellé « Rend : 2 kg » dans le choix de la recette.
+- Historique de restauration (mig 346) : l'unité est photographiée et restaurée.
+
+Vérifié par l'écran (gérant) sur « Cornes de gazelle » : rendement 2 kg → matière
+77,55 DH/kg, coût de production 89,18 DH/kg, prix 267,55 DH/kg ; enregistré, relu après
+rechargement ; `fn_recipe_cost` donne les mêmes montants (prix arrondi à 268 DH par le
+réglage d'arrondi). La fiche produit recalcule 232,65 DH/kg (77,55 × 3). Sur décision, le
+gérant met le produit à jour par l'écran (« Produit mis à jour ») : 232,65 DH/kg, revient
+77,55 DH/kg, vente au poids (avant : 214,92 DH/kg, calculé sur le poids brut 2,165 kg).
+
+| ID | Statut | Constat |
+|---|---|---|
+| D-06 | Non joué | Le rendement de la fiche Baguette vaut 120 en base (100 au moment de la création du produit) : modifié en dehors du scénario. |
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -271,6 +317,13 @@ masse directe, volume avec masse volumique, pièce avec poids par pièce, sinon 
 | 26 | Faible | La première version d'une fiche affiche « Aucune différence » au lieu du contenu à valider. | D-07 |
 | 27 | Corrigée | En vente au poids, le prix d'un produit fabriqué reste celui de la pièce : le poids d'une fournée composée par format vaut 0 côté serveur (vue `v_recipe_total_weight_kg`, ancienne composition seulement). | C-03 |
 | 28 | Faible | Le poids brut affiché par la fiche (2,10 kg) ne suit pas les mêmes règles que celui du serveur (2,165 kg) : la fiche compte un volume sans masse volumique comme des grammes et ignore les pièces. | D-34 |
+| 29 | Haute | Le prix de revient d'un produit fabriqué ne prend que la matière (Baguette 0,92 DH), alors que sa fiche calcule un coût de production avec structure (1,05 DH) et un prix conseillé de 3,16 DH HT. Les deux écrans proposent deux prix différents pour le même article, et les charges fixes saisies n'entrent pas dans le coût du produit. | C-01, E-02 |
+| 30 | Moyenne | Les données de base n'ont pas de matière « Eau » : une fiche de pain ne peut pas déclarer son hydratation, et son poids brut est faux (15,6 kg au lieu d'environ 25 kg). À ajouter au scénario (matière à coût quasi nul, masse volumique 1). | D-01 |
+| 31 | Faible | Formulaire produit : un clic sur le nom de la recette dans l'aperçu (au lieu de la liste) ne choisit rien, sans message ; le prix reste à 0. | C-01 |
+| 32 | Corrigée | Le rendement d'un format ne se saisissait qu'en pièces : impossible de déclarer « une plaque donne 2 kg » pour un article vendu au poids. Migration 613. | D-01, C-03 |
+| 33 | Haute | Un changement de rendement n'est pas une modification à valider : la photo de version (`fn_recipe_bom_snapshot`) ne contient que les composants des formats, pas leur rendement. Un chef peut passer de 100 à 120 pièces (ou en kg) sans que le gérant ait à créer de version, alors que tous les coûts unitaires changent. | D-07 |
+| 34 | Moyenne | Ouvrir un produit fabriqué existant recalcule son prix depuis la fiche sans le dire : « Mettre à jour » enregistre le nouveau prix même si l'on venait modifier autre chose. | C-03 |
+| 35 | Faible | Le prix affiché par la fiche (267,55 DH) n'applique pas l'arrondi des prix, que la fonction de coût applique (268 DH). | E-04 |
 
 ## Reste à jouer
 

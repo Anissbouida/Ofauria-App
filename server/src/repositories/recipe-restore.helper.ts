@@ -151,22 +151,27 @@ export async function restoreRecipeVersion(recipeId: string, versionNumber: numb
           `UPDATE recipe_formats SET contenant_id = $2, quantite_par_format = $3, quantite_par_format_unite = COALESCE($4, quantite_par_format_unite),
              nb_par_defaut = COALESCE($5, nb_par_defaut), nb_parts = $6, poids_cru_g = $7, poids_cuit_g = $8, densite_kg_l = $9,
              cout_emballage_unitaire = COALESCE($10, cout_emballage_unitaire), is_default = COALESCE($11, is_default), is_active = COALESCE($12, true),
-             product_id = $13, prix_vente_unitaire_override = $14, margin_multiplier_override = $15, updated_at = NOW()
+             product_id = $13, prix_vente_unitaire_override = $14, margin_multiplier_override = $15,
+             -- Mig 613 : une version antérieure sans unité de rendement reste en pièces.
+             rendement_unite = COALESCE($16, 'unit'), rendement_kg = $17, updated_at = NOW()
            WHERE id = $1`,
           [formatId, f.contenant_id ?? null, f.quantite_par_format, f.quantite_par_format_unite ?? null, f.nb_par_defaut ?? null,
            f.nb_parts ?? null, f.poids_cru_g ?? null, f.poids_cuit_g ?? null, f.densite_kg_l ?? null, f.cout_emballage_unitaire ?? null,
-           f.is_default ?? null, f.is_active ?? true, f.product_id ?? null, f.prix_vente_unitaire_override ?? null, f.margin_multiplier_override ?? null]
+           f.is_default ?? null, f.is_active ?? true, f.product_id ?? null, f.prix_vente_unitaire_override ?? null, f.margin_multiplier_override ?? null,
+           f.rendement_unite ?? null, f.rendement_kg ?? null]
         );
       } else {
         const created = await client.query(
           `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite, nb_par_defaut, nb_parts,
              poids_cru_g, poids_cuit_g, densite_kg_l, cout_emballage_unitaire, is_default, is_active, product_id,
-             prix_vente_unitaire_override, margin_multiplier_override)
-           VALUES ($1, $2, $3, COALESCE($4, 'g'), COALESCE($5, 1), $6, $7, $8, $9, COALESCE($10, 0), COALESCE($11, false), true, $12, $13, $14)
+             prix_vente_unitaire_override, margin_multiplier_override, rendement_unite, rendement_kg)
+           VALUES ($1, $2, $3, COALESCE($4, 'g'), COALESCE($5, 1), $6, $7, $8, $9, COALESCE($10, 0), COALESCE($11, false), true, $12, $13, $14,
+                   COALESCE($15, 'unit'), $16)
            RETURNING id`,
           [recipeId, f.contenant_id ?? null, f.quantite_par_format, f.quantite_par_format_unite ?? null, f.nb_par_defaut ?? null,
            f.nb_parts ?? null, f.poids_cru_g ?? null, f.poids_cuit_g ?? null, f.densite_kg_l ?? null, f.cout_emballage_unitaire ?? null,
-           f.is_default ?? null, f.product_id ?? null, f.prix_vente_unitaire_override ?? null, f.margin_multiplier_override ?? null]
+           f.is_default ?? null, f.product_id ?? null, f.prix_vente_unitaire_override ?? null, f.margin_multiplier_override ?? null,
+           f.rendement_unite ?? null, f.rendement_kg ?? null]
         );
         formatId = created.rows[0].id;
         warnings.push(`Format recree (l'original avait ete supprime)`);

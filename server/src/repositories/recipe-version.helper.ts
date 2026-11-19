@@ -48,6 +48,7 @@ export async function snapshotRecipeVersion(
        WHERE c.recipe_id = $1 ORDER BY c.ordre`, [recipeId]),
     q.query(
       `SELECT f.id, f.contenant_id, f.quantite_par_format, f.quantite_par_format_unite, f.nb_par_defaut,
+              f.rendement_unite, f.rendement_kg,
               f.nb_parts, f.poids_cru_g, f.poids_cuit_g, f.densite_kg_l, f.cout_emballage_unitaire,
               f.poids_cru_qty, (SELECT code FROM ref_entries WHERE id = f.poids_cru_unit_id) AS poids_cru_unit,
               f.poids_cuit_qty, (SELECT code FROM ref_entries WHERE id = f.poids_cuit_unit_id) AS poids_cuit_unit,

@@ -221,7 +221,10 @@ export const recipeController = {
       const isCompose = r.mode_cout === 'compose';
 
       const formats: FicheFormat[] = data.formats.map((f) => {
-        const nbPieces = Math.max(1, Number(f.nb_par_defaut) || 1);
+        // Mig 613 : format au kilo → l'unité de rendement est le kilo.
+        const rendementKg = numOrNull(f.rendement_kg);
+        const enKg = f.rendement_unite === 'kg' && rendementKg !== null && rendementKg > 0;
+        const nbPieces = enKg ? (rendementKg as number) : Math.max(1, Number(f.nb_par_defaut) || 1);
         const coutLancement = isCompose
           ? numOrNull(f.cout_compose_dh)
           : (numOrNull(f.cout_matiere_unitaire) !== null
@@ -246,6 +249,8 @@ export const recipeController = {
           contenantNom: (f.contenant_nom as string) || null,
           isDefault: Boolean(f.is_default),
           nbParDefaut: Number(f.nb_par_defaut) || 1,
+          rendementUnite: enKg ? 'kg' : 'unit',
+          rendementKg: enKg ? rendementKg : null,
           nbParts: f.nb_parts === null ? null : Number(f.nb_parts),
           quantiteParFormat: num(f.quantite_par_format),
           quantiteParFormatUnite: (f.quantite_par_format_unite as string) || 'g',

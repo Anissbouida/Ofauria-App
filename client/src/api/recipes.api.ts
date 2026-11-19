@@ -55,6 +55,9 @@ export interface FormatComponentsData {
     recipe_id: string;
     contenant_id: string | null;
     nb_par_defaut: number;
+    /** Mig 613 : rendement en pièces (nb_par_defaut) ou en kilos (rendement_kg). */
+    rendement_unite?: 'unit' | 'kg';
+    rendement_kg?: string | null;
     nb_parts: number | null;
     poids_cru_g: string | null;
     poids_cuit_g: string | null;
@@ -94,6 +97,8 @@ export interface FormatSummary {
   contenant_id: string;
   contenant_nom: string | null;
   nb_par_defaut: number;
+  rendement_unite?: 'unit' | 'kg';
+  rendement_kg?: string | null;
   nb_parts: number | null;
   is_default: boolean;
   ordre: number;

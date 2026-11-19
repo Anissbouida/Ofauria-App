@@ -32,7 +32,13 @@ export const replaceComponentsSchema = z.object({
   poidsCruUnit: weightUnitSchema.optional(),
   poidsCuitQty: z.number().nonnegative().nullable().optional(),
   poidsCuitUnit: weightUnitSchema.optional(),
-});
+  // Mig 613 : rendement en pièces (nbParDefaut) OU en kilos (rendementKg, décimal).
+  rendementUnite: z.enum(['unit', 'kg']).optional(),
+  rendementKg: z.number().positive('Le rendement en kg doit être supérieur à 0').nullable().optional(),
+}).refine(
+  (d) => d.rendementUnite !== 'kg' || (d.rendementKg != null && d.rendementKg > 0),
+  { message: 'Saisis le rendement en kg de la fournée.', path: ['rendementKg'] }
+);
 
 // PATCH leviers financiers saisissables (frais indirects + multiplicateur de vente).
 export const financeSchema = z.object({

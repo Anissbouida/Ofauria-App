@@ -48,11 +48,20 @@ const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(DIACRITICS,
 let seq = 0;
 const newKey = () => `row-${++seq}`;
 const np = (s: string): number | null => { const n = parseFloat(s); return Number.isFinite(n) ? n : null; };
+/** Libellé du rendement d'un format dans les onglets : « ×100 » ou « 2,1 kg » (mig 613). */
+const fmtRendement = (ft: { nb_par_defaut: number; rendement_unite?: 'unit' | 'kg'; rendement_kg?: string | null }) => {
+  const kg = ft.rendement_kg != null ? parseFloat(ft.rendement_kg) : NaN;
+  return ft.rendement_unite === 'kg' && kg > 0
+    ? `${kg.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg`
+    : `×${ft.nb_par_defaut}`;
+};
 
 /** Champs editables hors lignes de composition — sert a la detection de modifications. */
 interface EditableFields {
   rendement: string; parts: string; mult: string; tauxMO: string; moMin: string;
   energie: string; structPct: string; perte: string; compoParPiece: boolean;
+  /** Mig 613 : rendement en pièces (rendement) ou en kilos (rendementKg). */
+  rendementUnite: 'unit' | 'kg'; rendementKg: string;
 }
 /** Empreinte stable de l'etat editable (lignes + champs), comparee a la reference. */
 function signature(rows: Row[], f: EditableFields): string {
@@ -171,6 +180,8 @@ function SubTree({ recipeId, depth }: { recipeId: string; depth: number }) {
 export interface FormatKpi {
   contenantNom: string | null;
   rendement: number;
+  /** Mig 613 : unité du rendement et des montants unitaires (pièce ou kg). */
+  unite: 'pièce' | 'kg';
   coutMatiere: number;
   coutProd: number;
   prix: number;
@@ -197,6 +208,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const baselineRef = useRef<string>('');
   const [rows, setRows] = useState<Row[]>([]);
   const [rendement, setRendement] = useState('');
+  const [rendementUnite, setRendementUnite] = useState<'unit' | 'kg'>('unit');
+  const [rendementKg, setRendementKg] = useState('');
   const [parts, setParts] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [dragKey, setDragKey] = useState<string | null>(null);
@@ -280,10 +293,14 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       structPct: f.taux_frais_structure_pct != null ? parseFloat(f.taux_frais_structure_pct).toString() : '',
       perte: f.perte_standard_pct != null && parseFloat(f.perte_standard_pct) > 0 ? parseFloat(f.perte_standard_pct).toString() : '',
       compoParPiece: f.compo_par_piece === true,
+      rendementUnite: f.rendement_unite === 'kg' ? 'kg' : 'unit',
+      rendementKg: f.rendement_kg != null ? parseFloat(f.rendement_kg).toString() : '',
     };
     setRows(nextRows);
     setShowParts((f.nb_parts ?? 1) > 1);
     setRendement(nextFields.rendement);
+    setRendementUnite(nextFields.rendementUnite);
+    setRendementKg(nextFields.rendementKg);
     setParts(nextFields.parts);
     setMult(nextFields.mult);
     setTauxMO(nextFields.tauxMO);
@@ -299,7 +316,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   }, [data]);
   useEffect(() => { applyData(); }, [applyData]);
 
-  const currentSig = signature(rows, { rendement, parts, mult, tauxMO, moMin, energie, structPct, perte, compoParPiece });
+  const currentSig = signature(rows, { rendement, parts, mult, tauxMO, moMin, energie, structPct, perte, compoParPiece, rendementUnite, rendementKg });
   const isDirty = !!data && baselineRef.current !== '' && currentSig !== baselineRef.current;
 
   // Filet de securite navigateur (fermeture d'onglet / rechargement). La navigation
@@ -395,7 +412,15 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   };
   const badConversionCount = rows.filter(isBadConversion).length;
 
-  const rendementNum = Math.max(1, parseInt(rendement) || 1);
+  // Mig 613 : en kg, le rendement est décimal (peut être < 1) et tous les montants
+  // « par pièce » ci-dessous deviennent des montants au kilo. Une composition saisie
+  // par pièce reste par pièce.
+  const enKg = rendementUnite === 'kg' && !compoParPiece;
+  const rendementKgNum = np(rendementKg.replace(',', '.'));
+  const rendementNum = enKg
+    ? (rendementKgNum != null && rendementKgNum > 0 ? rendementKgNum : 1)
+    : Math.max(1, parseInt(rendement) || 1);
+  const uniteTxt: 'pièce' | 'kg' = enKg ? 'kg' : 'pièce';
   const partsNum = Math.max(1, parseInt(parts) || 1);
   const poidsBrutG = rows.reduce((s, r) => { const eq = baseEquiv(r); return s + (eq ? eq.val : 0); }, 0);
   const perteNum = Math.min(99.99, Math.max(0, np(perte) ?? 0));
@@ -437,11 +462,11 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     if (!data?.format) return;
     onFinanceRef.current?.({
       contenantNom: data.format.contenant_nom,
-      rendement: rendementNum,
+      rendement: rendementNum, unite: uniteTxt,
       coutMatiere: fin.matierePiece, coutProd: fin.coutProd,
       prix: fin.prix, margePct: fin.margePct,
     });
-  }, [data?.format, rendementNum, fin.matierePiece, fin.coutProd, fin.prix, fin.margePct]);
+  }, [data?.format, rendementNum, uniteTxt, fin.matierePiece, fin.coutProd, fin.prix, fin.margePct]);
   useEffect(() => () => onFinanceRef.current?.(null), []);
 
   /**
@@ -499,6 +524,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!formatId) throw new Error('Aucun format sélectionné');
+      if (enKg && !(rendementKgNum != null && rendementKgNum > 0)) {
+        throw new Error('Saisis le rendement en kg de la fournée.');
+      }
       const components = rows.filter((r) => r.type && r.sourceId && parseFloat(r.quantite) > 0).map((r, i) => {
         // Mig 265 (audit A5) : envoie la perte % ligne pour majorer matiere et besoins.
         const perte = r.pertePct != null && r.pertePct !== '' ? parseFloat(r.pertePct.replace(',', '.')) : 0;
@@ -512,8 +540,11 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       });
       await recipesApi.saveFormatComponents(recipeId, formatId, {
         components,
-        nbParDefaut: parseInt(rendement) || null,
+        // En kg, le nombre de pièces est conservé tel quel (planification) : null = inchangé.
+        nbParDefaut: enKg ? null : (parseInt(rendement) || null),
         nbParts: parseInt(parts) || null,
+        rendementUnite: enKg ? 'kg' : 'unit',
+        rendementKg: enKg ? rendementKgNum : null,
       });
       return recipesApi.saveFinance(recipeId, {
         marginMultiplier: np(mult) ?? 3,
@@ -703,7 +734,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           <button key={ft.id} type="button" onClick={() => switchFormat(ft.id)}
             title={bad ? `${ft.bad_conversions_count} composant(s) avec conversion d'unité douteuse — coût peu fiable` : undefined}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${ft.id === formatId ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
-            <Box size={13} /> {ft.contenant_nom || 'Format'} <span className={ft.id === formatId ? 'text-primary-50' : 'text-gray-400'}>×{ft.nb_par_defaut}</span>
+            <Box size={13} /> {ft.contenant_nom || 'Format'} <span className={ft.id === formatId ? 'text-primary-50' : 'text-gray-400'}>{fmtRendement(ft)}</span>
             {ft.is_default && <span className={`text-[10px] ${ft.id === formatId ? 'text-primary-50' : 'text-gray-400'}`}>(défaut)</span>}
             {bad && <AlertTriangle size={12} className={ft.id === formatId ? 'text-amber-100' : 'text-amber-500'} />}
           </button>
@@ -772,9 +803,26 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-3">
                 <div>
                   <label className={lbl} htmlFor="fmt-rendement">Rendement</label>
+                  {/* Mig 613 : rendement en pièces OU en kilos (article vendu au poids,
+                      préparation de base). Une composition saisie par pièce reste en pièces. */}
                   <span className={box}>
-                    <input id="fmt-rendement" type="number" min="1" className={inp} value={rendement} onChange={(e) => setRendement(e.target.value)} placeholder="50" />
-                    <span className={sfx}>p.</span>
+                    {enKg ? (
+                      <input id="fmt-rendement" type="number" min="0.001" step="any" className={inp} value={rendementKg}
+                        onChange={(e) => setRendementKg(e.target.value)} placeholder="2,5" />
+                    ) : (
+                      <input id="fmt-rendement" type="number" min="1" className={inp} value={rendement} onChange={(e) => setRendement(e.target.value)} placeholder="50" />
+                    )}
+                    {compoParPiece ? (
+                      <span className={sfx}>p.</span>
+                    ) : (
+                      <select aria-label="Unité du rendement" value={rendementUnite}
+                        onChange={(e) => setRendementUnite(e.target.value === 'kg' ? 'kg' : 'unit')}
+                        className="text-[11px] text-gray-500 bg-transparent border-0 p-0 pr-1 focus:outline-none cursor-pointer"
+                        title="Rendement d'une fournée : en pièces, ou en kilos pour un article vendu au poids">
+                        <option value="unit">p.</option>
+                        <option value="kg">kg</option>
+                      </select>
+                    )}
                   </span>
                 </div>
                 {(partsNum > 1 || showParts) ? (
@@ -900,7 +948,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                       className="h-8 min-w-[190px] px-2.5 bg-white border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400">
                       <option value="">Choisir un format…</option>
                       {formats.filter((ft) => ft.id !== formatId).map((ft) => (
-                        <option key={ft.id} value={ft.id}>{ft.contenant_nom || 'Format'} ×{ft.nb_par_defaut}</option>
+                        <option key={ft.id} value={ft.id}>{ft.contenant_nom || 'Format'} {fmtRendement(ft)}</option>
                       ))}
                     </select>
                     <button type="button" disabled={!copySrc} onClick={copyFromFormat}
@@ -940,7 +988,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   somme, multiplicateur, prix. Les chiffres de décision sont aussi
                   rappelés dans le bandeau KPI du haut de page. */}
               <div className="mt-3 flex items-center gap-x-2 gap-y-1 flex-wrap px-3 py-2 rounded-md border border-gray-200 bg-gray-50 text-[13px] tabular-nums text-gray-600">
-                <span className="text-[11px] text-gray-400">Par pièce</span>
+                <span className="text-[11px] text-gray-400">{enKg ? 'Au kilo' : 'Par pièce'}</span>
                 <span>Matière <strong>{dh(fin.matierePiece)}</strong></span>
                 <span className="text-gray-400">+</span>
                 <span>MO + énergie <strong>{dh(fin.moPiece + fin.energiePiece)}</strong></span>
@@ -987,7 +1035,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             style={{ boxShadow: '0 -2px 6px rgba(0,0,0,0.08)' }}>
             <p className="text-xs text-gray-400">
               Format <strong>{f.contenant_nom}</strong> · saisie <strong>{compoParPiece ? 'par pièce' : `par ${bLc}`}</strong>
-              {!compoParPiece && <> (coût/pièce = total ÷ {rendementNum})</>}.
+              {!compoParPiece && <> (coût/{uniteTxt} = total ÷ {enKg ? `${rendementNum.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg` : rendementNum})</>}.
               Coût/{bLc} : <strong>{dh(coutFournee)}</strong>.
             </p>
             <div className="inline-flex items-center gap-2">
