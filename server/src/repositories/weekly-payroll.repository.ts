@@ -9,6 +9,7 @@ import { getLocalISODate } from '../utils/timezone.js';
 import { loadPayrollContext } from './payroll-config.repository.js';
 import { provisionalWithholding, periodMonth } from '../services/payroll-engine.js';
 import { currencySymbol } from '../services/currency.js';
+import { payPayslip } from './payslip-payment.helper.js';
 
 /**
  * Paie hebdomadaire.
@@ -250,95 +251,21 @@ export const weeklyPayrollRepository = {
 
   /** Corps du paiement, exécuté dans la transaction ouverte par markPaid. */
   async markPaidInTx(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
-    // Verrou de la ligne : un double clic attend, puis voit la paie déjà payée.
-    const existing = await db.query('SELECT * FROM weekly_payroll WHERE id = $1 FOR UPDATE', [id]);
-    const row = existing.rows[0];
-    if (!row) return null;
-    if (row.paid) return row;
-
-    const net = parseFloat(row.net_amount as string);
-    const deduction = Math.max(0, Math.round((advanceDeduction || 0) * 100) / 100);
-    if (deduction > 0) {
-      const outstandingRes = await salaryAdvanceRepository.outstandingByEmployee(row.employee_id as string);
-      const outstanding = parseFloat(outstandingRes[0]?.outstanding || '0');
-      if (deduction > Math.min(net, outstanding) + 0.005) {
-        throw new Error(`Retenue ${deduction.toFixed(2)} ${currencySymbol()} superieure au net a payer (${net.toFixed(2)} ${currencySymbol()}) ou au solde d'avances (${outstanding.toFixed(2)} ${currencySymbol()})`);
-      }
-    }
-
-    // Verrou d'idempotence atomique : double-clic -> seule la 1re requete
-    // matche paid=false, la 2e reprend l'etat courant sans re-payer.
-    // paid_by (mig 239) : trace QUI a valide le paiement (conformite audit).
-    const claim = await db.query(
-      `UPDATE weekly_payroll SET paid = true, paid_at = NOW(), payment_method = $1,
-                                 advance_deduction = $2, paid_by = $3, updated_by = $3
-         WHERE id = $4 AND paid = false RETURNING *`,
-      [paymentMethod, deduction, createdBy || null, id]
-    );
-    if (claim.rowCount === 0) {
-      const now = await db.query('SELECT * FROM weekly_payroll WHERE id = $1', [id]);
-      return now.rows[0] || null;
-    }
-    const wp = claim.rows[0];
-
-    // Recupere infos employe pour la description comptable
-    const emp = await db.query('SELECT first_name, last_name FROM employees WHERE id = $1', [wp.employee_id]);
-    const empName = emp.rows[0] ? `${emp.rows[0].first_name} ${emp.rows[0].last_name}` : '';
-
-    const catResult = await db.query(`SELECT id FROM expense_categories WHERE name = 'Salaires' AND type = 'expense' LIMIT 1`);
-    const categoryId = catResult.rows[0]?.id || null;
-
-    // Decaissement reel = net moins la retenue (le cash de l'avance est deja
-    // sorti a l'octroi — une seule sortie caisse au total).
-    // Rollback complet en cas d'echec : supprime le paiement deja cree + reset
-    // du flag paid. Verifie aussi le retour d'applyDeduction pour detecter une
-    // retenue partielle (course avec une paie concurrente).
-    let createdPaymentId: string | null = null;
-    try {
-      const weekStartStr = toDateStr(wp.week_start);
-      const cashOut = Math.round((net - deduction) * 100) / 100;
-      if (cashOut > 0) {
-        const payment = await paymentRepository.create({
-          // reference VARCHAR(50) : tronque pour ne pas echouer sur un nom long
-          reference: `SAL-S${weekStartStr}-${empName.replace(/\s+/g, '')}`.slice(0, 50),
-          type: 'salary',
-          categoryId,
-          employeeId: wp.employee_id,
-          amount: cashOut,
-          paymentMethod,
-          paymentDate: getLocalISODate(),
-          description: `Salaire semaine du ${weekStartStr} - ${empName}`
-            + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} ${currencySymbol()})` : ''),
-          createdBy: createdBy || wp.employee_id,
-          storeId,
-        });
-        createdPaymentId = payment?.id ?? null;
-      }
-
-      if (deduction > 0) {
-        const applied = await salaryAdvanceRepository.applyDeduction({
-          employeeId: wp.employee_id as string,
-          amount: deduction,
-          weeklyPayrollId: id,
-          userId: createdBy || (wp.employee_id as string),
-          storeId,
+    // G0-14 : corps commun (payslip-payment.helper) — verrou, retenue, marquage idempotent, sortie de caisse.
+    const { row } = await payPayslip({
+      table: 'weekly_payroll',
+      deductionLink: 'weeklyPayrollId',
+      netOf: async r => ({ net: parseFloat(r.net_amount as string) }),
+      describe: (r, empName) => {
+        const weekStartStr = toDateStr(r.week_start);
+        return {
+          reference: `SAL-S${weekStartStr}-${empName.replace(/\s+/g, '')}`,
+          description: `Salaire semaine du ${weekStartStr} - ${empName}`,
           label: `${empName} semaine du ${weekStartStr}`,
-        });
-        if (Math.abs(applied - deduction) > 0.005) {
-          throw new Error(
-            `Retenue partielle : ${applied.toFixed(2)} ${currencySymbol()} imputes sur ${deduction.toFixed(2)} ${currencySymbol()} demandes ` +
-            `(solde d'avances insuffisant, probablement une paie concurrente).`
-          );
-        }
-      }
-    } catch (err) {
-      // G0-14 : plus de compensation manuelle — la transaction annule la sortie de
-      // caisse, la retenue et le marquage payé.
-      void createdPaymentId;
-      throw new Error(`Paiement annulé — la sortie de caisse n'a pas pu être créée : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
-    }
-
-    return wp;
+        };
+      },
+    }, id, { paymentMethod, createdBy, storeId, advanceDeduction });
+    return row;
   },
 
   /**

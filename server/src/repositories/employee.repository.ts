@@ -9,6 +9,7 @@ import { checkSmig, smigScaleFromRow, smigBlockMessage } from '../services/smig.
 import { loadTimeRules } from './time-rules.repository.js';
 import { nightOvertimeMinutes } from '../services/overtime-engine.js';
 import { currencySymbol } from '../services/currency.js';
+import { payPayslip } from './payslip-payment.helper.js';
 
 /**
  * Vue interne : compte les repayments d'avance rattaches a un employe.
@@ -949,138 +950,49 @@ export const payrollRepository = {
 
   /** Corps du paiement, exécuté dans la transaction ouverte par markPaid. */
   async markPaidInTx(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
-    // Verrou de la ligne : un double clic attend, puis voit le bulletin déjà payé.
-    const existing = await db.query('SELECT * FROM payroll WHERE id = $1 FOR UPDATE', [id]);
-    const current = existing.rows[0];
-    if (!current) return null;
-    if (current.paid) return current;
-
-    // Salarie hebdo / quinzaine declare (mig 327) : le net du bulletin est
-    // deja en partie verse par les acomptes periodiques ; seul le reste sort.
-    let acomptes = 0;
-    if (current.pay_frequency === 'weekly' || current.pay_frequency === 'biweekly') {
-      const { start, end } = monthBoundsOf(current.month, current.year);
-      const pm = await loadPeriodicMonth(current.employee_id, current.pay_frequency, start, end);
-      if (pm.unpaid > 0) {
-        throw new Error(`${pm.unpaid} paie(s) ${current.pay_frequency === 'weekly' ? 'hebdomadaire(s)' : 'de quinzaine'} du mois non payée(s) : réglez-les avant le bulletin mensuel.`);
-      }
-      if (Math.abs(pm.acomptes - parseFloat(current.acomptes_amount)) > 0.005) {
-        throw new Error('Les acomptes du mois ont changé depuis le calcul : régénérez le bulletin avant de le payer.');
-      }
-      acomptes = pm.acomptes;
-    }
-    const net = Math.round((parseFloat(current.net_salary) - acomptes) * 100) / 100;
-    // F-060 : les acomptes hebdo/quinzaine sont arrondis au centime a chaque
-    // periode ; sur 4-5 periodes, leur somme peut depasser de quelques centimes
-    // le net mensuel recalcule, sans vrai trop-percu. On tolere ce bruit d'arrondi
-    // (un vrai trop-percu, lui, se chiffre en dirhams) : sinon un bulletin etait
-    // bloque pour 0,01 DH. Le decaissement reste borne par `if (cashOut > 0)`.
-    const ACOMPTES_ROUNDING_TOLERANCE = 0.05;
-    if (net < -ACOMPTES_ROUNDING_TOLERANCE) {
-      // Typiquement des semaines payees avant la retenue provisoire (transition).
-      throw new Error(`Acomptes versés supérieurs au net du mois : trop-perçu de ${(-net).toFixed(2)} ${currencySymbol()} (paies périodiques versées sans retenue provisoire). Récupérez-le avant de régler ce bulletin.`);
-    }
-    const deduction = Math.max(0, Math.round((advanceDeduction || 0) * 100) / 100);
-    if (deduction > 0) {
-      const outstandingRes = await salaryAdvanceRepository.outstandingByEmployee(current.employee_id);
-      const outstanding = parseFloat(outstandingRes[0]?.outstanding || '0');
-      if (deduction > Math.min(net, outstanding) + 0.005) {
-        throw new Error(`Retenue ${deduction.toFixed(2)} ${currencySymbol()} superieure au net a payer (${net.toFixed(2)} ${currencySymbol()}) ou au solde d'avances (${outstanding.toFixed(2)} ${currencySymbol()})`);
-      }
-    }
-
-    // ─── Verrou d'idempotence atomique ───
-    // WHERE paid = false RETURNING : PostgreSQL prend un verrou de ligne sur
-    // le UPDATE ; deux requetes concurrentes (double-clic) : la premiere passe,
-    // la seconde ne matche rien -> rowCount 0 -> on ressort avec l'etat actuel.
-    // Elimine la course qui existait entre le SELECT ci-dessus et l'UPDATE.
-    // paid_by (mig 239) : trace QUI a valide le paiement (conformite audit).
-    const claim = await db.query(
-      `UPDATE payroll SET paid = true, paid_at = NOW(), payment_method = $1,
-                          advance_deduction = $2, paid_by = $3, updated_by = $3
-         WHERE id = $4 AND paid = false RETURNING *`,
-      [paymentMethod, deduction, createdBy || null, id]
-    );
-    if (claim.rowCount === 0) {
-      const now = await db.query('SELECT * FROM payroll WHERE id = $1', [id]);
-      return now.rows[0] || null;
-    }
-    const payroll = claim.rows[0];
-
-    // Get employee info for the accounting entry description
-    const emp = await db.query('SELECT first_name, last_name FROM employees WHERE id = $1', [payroll.employee_id]);
-    const employee = emp.rows[0];
-    const empName = employee ? `${employee.first_name} ${employee.last_name}` : '';
-
-    // Find "Salaires" expense category
-    const catResult = await db.query(`SELECT id FROM expense_categories WHERE name = 'Salaires' AND type = 'expense' LIMIT 1`);
-    const categoryId = catResult.rows[0]?.id || null;
-
-    // Decaissement reel = net moins la retenue d'avance (le cash de l'avance
-    // est deja sorti a l'octroi — ne le deduire qu'UNE fois de la caisse).
-    // Si une etape (paiement OU retenue) echoue, on annule TOUT :
-    //  - la sortie de caisse deja creee est supprimee (paymentRepository.delete
-    //    reverse aussi l'ecriture comptable) ;
-    //  - le flag paid revient a false pour permettre un nouvel essai.
-    let createdPaymentId: string | null = null;
-    try {
-      const cashOut = Math.round((net - deduction) * 100) / 100;
-      if (cashOut > 0) {
-        const payment = await paymentRepository.create({
-          // reference VARCHAR(50) : tronque pour ne pas echouer sur un nom long
-          reference: `SAL-${payroll.month}/${payroll.year}-${empName.replace(/\s+/g, '')}`.slice(0, 50),
-          type: 'salary',
-          categoryId,
-          employeeId: payroll.employee_id,
-          amount: cashOut,
-          paymentMethod: paymentMethod,
-          paymentDate: getLocalISODate(),
-          description: `Salaire ${payroll.month}/${payroll.year} - ${empName}`
-            + (acomptes > 0 ? ` (solde après acomptes ${acomptes.toFixed(2)} ${currencySymbol()})` : '')
-            + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} ${currencySymbol()})` : ''),
-          createdBy: createdBy || payroll.employee_id,
-          storeId,
-        });
-        createdPaymentId = payment?.id ?? null;
-      }
-
-      if (deduction > 0) {
-        const applied = await salaryAdvanceRepository.applyDeduction({
-          employeeId: payroll.employee_id,
-          amount: deduction,
-          payrollId: id,
-          userId: createdBy || payroll.employee_id,
-          storeId,
-          label: `${empName} ${payroll.month}/${payroll.year}`,
-        });
-        // Course avec une autre paie qui consomme le solde entre validation
-        // et imputation : le cash est deja sorti pour la valeur pleine mais
-        // la creance 3431 n'est eteinte que pour `applied`. Refuse plutot que
-        // laisser une divergence silencieuse ; le cleanup ci-dessous annule
-        // tout et l'operateur retente avec la bonne retenue.
-        if (Math.abs(applied - deduction) > 0.005) {
-          throw new Error(
-            `Retenue partielle : ${applied.toFixed(2)} ${currencySymbol()} imputes sur ${deduction.toFixed(2)} ${currencySymbol()} demandes ` +
-            `(solde d'avances insuffisant, probablement une paie concurrente).`
-          );
+    // G0-14 : corps commun (payslip-payment.helper). Propre au mensuel : le net après acomptes
+    // périodiques (mig 327) et le reclassement 4432 après paiement.
+    const { row: payroll, paidNow } = await payPayslip({
+      table: 'payroll',
+      deductionLink: 'payrollId',
+      netOf: async current => {
+        // Salarié hebdo / quinzaine déclaré (mig 327) : le net du bulletin est déjà en partie versé
+        // par les acomptes périodiques ; seul le reste sort.
+        let acomptes = 0;
+        if (current.pay_frequency === 'weekly' || current.pay_frequency === 'biweekly') {
+          const { start, end } = monthBoundsOf(current.month, current.year);
+          const pm = await loadPeriodicMonth(current.employee_id, current.pay_frequency, start, end);
+          if (pm.unpaid > 0) {
+            throw new Error(`${pm.unpaid} paie(s) ${current.pay_frequency === 'weekly' ? 'hebdomadaire(s)' : 'de quinzaine'} du mois non payée(s) : réglez-les avant le bulletin mensuel.`);
+          }
+          if (Math.abs(pm.acomptes - parseFloat(current.acomptes_amount)) > 0.005) {
+            throw new Error('Les acomptes du mois ont changé depuis le calcul : régénérez le bulletin avant de le payer.');
+          }
+          acomptes = pm.acomptes;
         }
-      }
-    } catch (err) {
-      // G0-14 : plus de compensation manuelle — la transaction annule la sortie de
-      // caisse, la retenue et le marquage payé.
-      void createdPaymentId;
-      throw new Error(`Paiement annulé — la sortie de caisse n'a pas pu être créée : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
-    }
+        const net = Math.round((parseFloat(current.net_salary) - acomptes) * 100) / 100;
+        // F-060 : les acomptes, arrondis au centime à chaque période, peuvent dépasser de quelques
+        // centimes le net mensuel recalculé, sans vrai trop-perçu : bruit toléré.
+        const ACOMPTES_ROUNDING_TOLERANCE = 0.05;
+        if (net < -ACOMPTES_ROUNDING_TOLERANCE) {
+          throw new Error(`Acomptes versés supérieurs au net du mois : trop-perçu de ${(-net).toFixed(2)} ${currencySymbol()} (paies périodiques versées sans retenue provisoire). Récupérez-le avant de régler ce bulletin.`);
+        }
+        return { net, note: acomptes > 0 ? ` (solde après acomptes ${acomptes.toFixed(2)} ${currencySymbol()})` : undefined };
+      },
+      describe: (r, empName) => ({
+        reference: `SAL-${r.month}/${r.year}-${empName.replace(/\s+/g, '')}`,
+        description: `Salaire ${r.month}/${r.year} - ${empName}`,
+        label: `${empName} ${r.month}/${r.year}`,
+      }),
+    }, id, { paymentMethod, createdBy, storeId, advanceDeduction });
+    if (!payroll || !paidNow) return payroll;
 
-    // Mois deja comptabilise (cloture) : solde la dette 4432 du net paye.
-    // Un echec ici n'annule pas le paiement (deja en caisse) : il est
-    // rejoue a la prochaine cloture (postMonth est idempotent).
-    // Point de sauvegarde (G0-14) : son échec est annulé seul, sans emporter le paiement.
+    // Mois déjà comptabilisé (clôture) : solde la dette 4432 du net payé. Point de sauvegarde (G0-14) :
+    // son échec est annulé seul, sans emporter le paiement ; rejoué à la prochaine clôture.
     try { await withTransaction(() => payrollLedger.afterPaid(id, createdBy || payroll.employee_id)); }
     catch (ledgerErr) {
       logger.error({ err: ledgerErr, payrollId: id }, '[payroll.markPaid] reclassement 4432 non passé');
     }
-
     return payroll;
   },
 
