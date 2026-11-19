@@ -44,6 +44,8 @@ l'équipement), règle serveur élargie. Les plans d'entretien restent sur immob
 
 ## 2. Étape 2 — validation des routes critiques (G0-07 ciblé)
 
+**FAIT le 2026-11-18** : les 192 routes critiques ont un schéma (3d8cd98 caisse et ventes, 34f5a01 paiements, 9e5a7c4 achats et paie, 3a5763b stock, 0b42b12 production) ; liste blanche 357 → 165 (importantes et secondaires seulement). Règles reprises du code, corps en passthrough, corps réels du client rejoués en test. Seul changement de comportement : une valeur non numérique (« abc ») que le code ramenait en silence à 0 est maintenant refusée en 400.
+
 357 mutations sans schéma (`fixtures/unvalidated-mutations.json`) :
 **192 critiques**, 144 importantes, 21 secondaires (liste complète en annexe).
 
@@ -97,7 +99,31 @@ Les 175 autres blocs restent tels quels, listés pour plus tard.
 
 ## 5. Règles métier ambiguës à trancher
 
-(Complété au fil des lots ; rien n'est imposé sans réponse.)
+Rien n'est imposé : ces champs ne sont contrôlés qu'en type. À trancher avant d'ajouter une borne.
+
+**Stock et réceptions (impact direct sur les quantités)**
+1. `PUT purchase-order /:id/items`, `quantityDelivered` : aucune borne ; une valeur négative ferait **sortir** du stock (le dépôt reporte l'écart).
+2. Livraison (`confirm-delivery`) et bon de réception, quantité négative : ignorée sans erreur. Faut-il la refuser ?
+3. Prix d'achat négatif (`confirm-delivery`, `update-prices`, lignes du BC) : enregistré tel quel.
+4. Frais annexes d'un BC négatifs : acceptés (sert-il d'avoir ?).
+5. Transfert de produits, quantité ≤ 0 : ligne ignorée sans erreur.
+6. Ajustement d'emballage : variation signée, stock ramené à 0 au minimum (une perte supérieure au stock disparaît sans trace).
+7. Réception d'un transfert de production, `qtyReceived` : ni plancher ni refus d'un négatif.
+8. Contrôle d'ouverture : quantités entières imposées par la base, signe libre.
+
+**Caisse, ventes, règlements**
+9. Règlement client et imputation d'avoir : montant négatif non refusé explicitement (échec « rien à imputer »).
+10. Litige et créance douteuse : montant négatif ramené à 0 puis refusé par le dépôt.
+11. Contrôle des ventes : aucune borne de signe sur les quantités et le prix unitaire.
+12. Relevé bancaire saisi à la main : soldes négatifs acceptés, lignes à 0 ignorées, sens « in » par défaut.
+
+**Production et paramètres**
+13. Paramètres de production (`chargesFixesPct`, `overproductionPct`, `markupPercent`) : aucune borne (0–100 ?).
+14. Rendement, `vers_magasin` : entier imposé alors que les quantités planifiées sont décimales depuis la mig 512.
+15. Bon de sortie `generate` : `storeId` exigé par le schéma existant mais inutilisé (magasin du plan).
+16. Échéancier, `status` : texte libre (`pending` / `cancelled` annoncés, non vérifiés).
+
+**Défaut relevé hors périmètre** : `stock-frigo.controller` lit `user.id` au lieu de `user.userId` — l'auteur des mouvements frigo est enregistré vide (aucun écran n'appelle ces routes aujourd'hui).
 
 ## Annexe — classement des 357 routes sans schéma
 
