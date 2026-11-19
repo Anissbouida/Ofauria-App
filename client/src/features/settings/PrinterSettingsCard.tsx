@@ -47,7 +47,7 @@ export default function PrinterSettingsCard() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['printers-system'] }); notify.success('File d\'impression créée : choisissez-la ci-dessous'); },
     onError: (err: unknown) => notify.error((err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Impossible de créer la file'),
   });
-  const useQueue = (p: SystemPrinter) => {
+  const selectQueue = (p: SystemPrinter) => {
     setEditing(null);
     setForm({ ...EMPTY_FORM, name: form.name || p.name, interface: 'cups', connectionString: p.name });
     setShowForm(true);
@@ -196,7 +196,7 @@ export default function PrinterSettingsCard() {
                   <p className="text-xs text-gray-400 font-mono truncate">{p.uri}{p.status ? ` · ${p.status}` : ''}</p>
                 </div>
                 {p.kind === 'queue' ? (
-                  <button onClick={() => useQueue(p)} className="btn-secondary text-xs">Utiliser cette file</button>
+                  <button onClick={() => selectQueue(p)} className="btn-secondary text-xs">Utiliser cette file</button>
                 ) : (
                   <div className="flex items-center gap-2">
                     <input value={attachName} onChange={e => setAttachName(e.target.value.replace(/[^A-Za-z0-9_-]/g, ''))} className="input text-xs w-28" placeholder="Nom de file" />

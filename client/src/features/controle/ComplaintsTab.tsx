@@ -159,7 +159,8 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const [amount, setAmount] = useState('');
 
   const refresh = () => { qc.invalidateQueries({ queryKey: ['complaint', id] }); qc.invalidateQueries({ queryKey: ['complaints'] }); qc.invalidateQueries({ queryKey: ['controle-overview'] }); };
-  const act = <T,>(fn: () => Promise<T>, done?: string) => useMutation({
+  // Hook appelé à chaque rendu, en tête du composant (règle des hooks React).
+  const useAct = <T,>(fn: () => Promise<T>, done?: string) => useMutation({
     mutationFn: fn, onSuccess: () => { refresh(); if (done) notify.success(done); }, onError: e => notify.error(apiErrorMessage(e)),
   });
   const setStatus = useMutation({
@@ -167,8 +168,8 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
     onSuccess: () => { refresh(); setResolving(null); setNote(''); setResolution(''); setAmount(''); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
-  const assignMe = act(() => complaintsApi.assign(id, user!.id), 'Réclamation prise en charge');
-  const unassign = act(() => complaintsApi.assign(id, null));
+  const assignMe = useAct(() => complaintsApi.assign(id, user!.id), 'Réclamation prise en charge');
+  const unassign = useAct(() => complaintsApi.assign(id, null));
   const comment = useMutation({
     mutationFn: () => complaintsApi.comment(id, note.trim()),
     onSuccess: () => { refresh(); setNote(''); }, onError: e => notify.error(apiErrorMessage(e)),

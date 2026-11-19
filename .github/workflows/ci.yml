@@ -53,6 +53,11 @@ jobs:
       - name: Build shared package
         run: npm run build:shared
 
+      # G3-04 : bloque sur les vrais défauts (hooks React, code inatteignable…) ; le style
+      # (any, variables inutilisées) reste en avertissement, voir eslint.config.mjs.
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck server
         run: npm run build --workspace=server
 
