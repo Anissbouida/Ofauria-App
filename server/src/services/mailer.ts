@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { db } from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { mailRecipient } from '../config/app-env.js';
 
 /**
  * Envoi d'e-mails (mig 364).
@@ -69,11 +70,19 @@ export async function mailStatus() {
 async function send(to: { email: string; name?: string | null }, subject: string, text: string, s: MailSettings) {
   const from = process.env.SMTP_FROM || 'journal@kalum.local';
   const body = s.footer ? `${text}\n\n—\n${s.footer}` : text;
+  // G3-01 : en staging, jamais d'e-mail à un vrai destinataire — détourné vers STAGING_MAIL_TO,
+  // ou journalisé seulement si la variable manque (le message est marqué envoyé).
+  const real = mailRecipient(to.email);
+  if (real === null) {
+    logger.info({ to: to.email, subject }, 'mail (staging) : non envoyé, STAGING_MAIL_TO absent');
+    return { messageId: 'staging-suppressed' };
+  }
+  const diverted = real !== to.email;
   const info = await transporter().sendMail({
     from: s.from_name ? { name: s.from_name, address: from } : from,
-    to: to.name ? { name: to.name, address: to.email } : to.email,
+    to: diverted ? real : to.name ? { name: to.name, address: to.email } : to.email,
     replyTo: s.reply_to || undefined,
-    subject,
+    subject: diverted ? `[STAGING → ${to.email}] ${subject}` : subject,
     text: body,
   });
   if (mode() === 'log') logger.info({ to: to.email, subject }, 'mail (journal) : non envoyé, MAIL_TRANSPORT=log');

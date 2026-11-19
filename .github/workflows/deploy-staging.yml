@@ -1,0 +1,149 @@
+name: Deploy to staging
+
+# G3-01 étape 3 — déploiement automatique en staging après une CI verte sur main.
+# INACTIF tant que la variable de dépôt STAGING_SERVICE_NAME n'est pas posée : aucun coût,
+# aucune ressource créée par ce fichier. Prérequis (docs/RUNBOOK_ACTIONS_EXTERNES.md, § Staging) :
+#   variables : STAGING_SERVICE_NAME, STAGING_SQL_INSTANCE (projet:région:instance),
+#               STAGING_ALLOWED_ORIGINS, STAGING_MAIL_TO (boîte de test, facultatif)
+#   Secret Manager : STAGING_DATABASE_URL, STAGING_JWT_SECRET
+# La production reste sur deploy.yml (environnement « production », relecteurs obligatoires).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+env:
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  build-and-push:
+    name: Build & push image (staging)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: ${{ vars.STAGING_SERVICE_NAME != '' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image: ${{ steps.image.outputs.uri }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+      - name: Compute image URI
+        id: image
+        run: |
+          IMAGE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPOSITORY }}/${{ vars.STAGING_SERVICE_NAME }}:${{ env.DEPLOY_SHA }}"
+          echo "uri=$IMAGE" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.uri }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  migrate:
+    name: Run DB migrations (staging)
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    timeout-minutes: 10
+    environment:
+      name: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: npm ci --workspaces --include-workspace-root --ignore-scripts
+      - run: cd shared && npx tsc --project tsconfig.json --composite false --declaration --outDir dist
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Fetch secrets
+        id: secrets
+        uses: google-github-actions/get-secretmanager-secrets@v3
+        with:
+          secrets: |-
+            DATABASE_URL:${{ vars.GCP_PROJECT_ID }}/STAGING_DATABASE_URL
+            JWT_SECRET:${{ vars.GCP_PROJECT_ID }}/STAGING_JWT_SECRET
+      - name: Start Cloud SQL Auth Proxy
+        run: |
+          curl -fSL -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.13.0/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port=5432 "${{ vars.STAGING_SQL_INSTANCE }}" &
+          echo "PROXY_PID=$!" >> "$GITHUB_ENV"
+          for i in {1..30}; do nc -z 127.0.0.1 5432 && exit 0; sleep 1; done
+          echo "Cloud SQL Auth Proxy ne démarre pas"; exit 1
+      - name: Run migrations via proxy
+        env:
+          RAW_DATABASE_URL: ${{ steps.secrets.outputs.DATABASE_URL }}
+          JWT_SECRET: ${{ steps.secrets.outputs.JWT_SECRET }}
+        run: |
+          USER_PASS=$(printf '%s' "$RAW_DATABASE_URL" | sed -E 's|^postgres(ql)?://([^@]+)@.*$|\2|')
+          DBNAME=$(printf '%s' "$RAW_DATABASE_URL" | sed -E 's|^.*@/([^?]+)(\?.*)?$|\1|')
+          if [[ -z "$USER_PASS" || -z "$DBNAME" || "$USER_PASS" == "$RAW_DATABASE_URL" ]]; then
+            echo "STAGING_DATABASE_URL illisible (attendu : postgres://user:pass@/dbname?host=...)"; exit 1
+          fi
+          PROXY_URL="postgres://${USER_PASS}@127.0.0.1:5432/${DBNAME}"
+          echo "::add-mask::$PROXY_URL"; echo "::add-mask::$USER_PASS"
+          DATABASE_URL="$PROXY_URL" npm run migrate --workspace=server
+      - name: Stop proxy
+        if: always()
+        run: '[[ -n "${PROXY_PID:-}" ]] && kill "$PROXY_PID" 2>/dev/null || true'
+
+  deploy:
+    name: Deploy staging
+    runs-on: ubuntu-latest
+    needs: [build-and-push, migrate]
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ vars.STAGING_SERVICE_NAME }}
+          region: ${{ vars.GCP_REGION }}
+          image: ${{ needs.build-and-push.outputs.image }}
+          # APP_ENV=staging : bandeau STAGING et e-mails détournés vers STAGING_MAIL_TO
+          # (sans cette variable, aucun e-mail ne part). Tâches planifiées coupées.
+          flags: >-
+            --port=8080
+            --allow-unauthenticated
+            --min-instances=0
+            --max-instances=1
+            --add-cloudsql-instances=${{ vars.STAGING_SQL_INSTANCE }}
+            --set-env-vars=^@^NODE_ENV=production@APP_ENV=staging@SCHEDULER_DISABLED=true@SERVER_PORT=8080@STAGING_MAIL_TO=${{ vars.STAGING_MAIL_TO }}@ALLOWED_ORIGINS=${{ vars.STAGING_ALLOWED_ORIGINS }}
+          secrets: |
+            JWT_SECRET=STAGING_JWT_SECRET:latest
+            DATABASE_URL=STAGING_DATABASE_URL:latest

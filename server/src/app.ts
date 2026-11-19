@@ -17,6 +17,7 @@ import { authenticate } from './middleware/auth.middleware.js';
 import { publicApiLimiter, portalLimiter, globalApiLimiter } from './middleware/rate-limit.middleware.js';
 import { runWithTimezone } from './utils/timezone.js';
 import { logger } from './utils/logger.js';
+import { appEnv } from './config/app-env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -187,6 +188,11 @@ app.use('/uploads', authenticate, express.static(path.resolve(__dirname, '../../
 }));
 
 // API routes
+// G3-01 : environnement affiché par le client (bandeau STAGING). Sans authentification, sans secret.
+app.get('/api/v1/env', (_req, res) => {
+  res.json({ environment: appEnv() });
+});
+
 app.use('/api/v1', routes);
 
 // Santé (G0-05).
