@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
+import { userRoleContext } from './access-rights.js';
 
 /**
  * Ateliers de production (mig 511, plan Production générique, lot P2).
@@ -67,11 +68,24 @@ export async function defaultWorkshop(): Promise<string | null> {
   return (await listWorkshops()).find(w => w.isActive && w.isDefault)?.code ?? null;
 }
 
-/** Ateliers (actifs) dont l'utilisateur est membre, par rôle ou nominativement. */
+/**
+ * Ateliers (actifs) dont l'utilisateur est membre, par rôle ou nominativement.
+ *
+ * La session ne porte que les rôles de BASE (le jeton met le rôle de base principal dans
+ * `role`). Un rôle créé dans Utilisateurs › Rôles — « Chef Beldi », base `beldi_sale` — n'y
+ * figure donc pas, alors que l'écran des ateliers le propose comme membre. On compare donc
+ * aussi les rôles réellement attribués à l'utilisateur (délégations en cours comprises),
+ * lus en base seulement si un atelier a pour membre un rôle absent de la session.
+ * Un rôle livré déclaré membre couvre toujours les rôles créés à partir de lui.
+ */
 export async function workshopsOf(user: WorkshopUser): Promise<string[]> {
+  const active = (await listWorkshops()).filter(w => w.isActive);
   const roles = new Set([user.role, ...(user.baseRoles ?? [])]);
-  return (await listWorkshops())
-    .filter(w => w.isActive && (w.memberUsers.includes(user.userId) || w.memberRoles.some(r => roles.has(r))))
+  if (active.some(w => w.memberRoles.some(r => !roles.has(r)))) {
+    for (const code of (await userRoleContext(user.userId)).roleCodes) roles.add(code);
+  }
+  return active
+    .filter(w => w.memberUsers.includes(user.userId) || w.memberRoles.some(r => roles.has(r)))
     .map(w => w.code);
 }
 

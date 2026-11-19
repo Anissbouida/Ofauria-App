@@ -57,6 +57,56 @@ describe.skipIf(!hasTestDb)('Ateliers de production', () => {
     expect(await ws.workshopsOf({ userId, role: 'manager' })).toEqual([]);
   });
 
+  // Scénario 0 : « Chef Beldi » et « Chef Salé » sont deux rôles créés à partir du même
+  // rôle livré ; la session ne porte que ce rôle de base. Un atelier dont le membre est
+  // le rôle créé doit reconnaître son titulaire, et le cumul donner les deux ateliers.
+  it('un rôle créé, membre d\'un atelier, donne cet atelier — seul ou en cumul', async () => {
+    const p = testPool();
+    const roles = ['tst_chef_a', 'tst_chef_b'];
+    const shops = ['tst_atelier_a', 'tst_atelier_b'];
+    const clean = async () => {
+      await p.query(`DELETE FROM production_workshops WHERE code = ANY($1)`, [shops]);
+      await p.query(`DELETE FROM users WHERE email LIKE 'tst-atelier-%@kalum.test'`);
+      await p.query(`DELETE FROM roles WHERE code = ANY($1)`, [roles]);
+    };
+    await clean();
+    try {
+      for (const code of roles) {
+        await p.query(`INSERT INTO roles (code, label, base_role, is_system) VALUES ($1, $1, 'magasinier', false)`, [code]);
+      }
+      const mkUser = async (name: string, codes: string[]) => {
+        const id = (await p.query(
+          `INSERT INTO users (email, password_hash, first_name, last_name, role) VALUES ($1, 'x', 'Test', $2, $3) RETURNING id`,
+          [`tst-atelier-${name}-${RUN}@kalum.test`, name, codes[0]])).rows[0].id as string;
+        for (const [i, c] of codes.entries()) {
+          await p.query(
+            `INSERT INTO user_roles (user_id, role_code, is_primary) VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, role_code) DO UPDATE SET is_primary = EXCLUDED.is_primary`, [id, c, i === 0]);
+        }
+        return id;
+      };
+      const a = await mkUser('a', ['tst_chef_a']);
+      const b = await mkUser('b', ['tst_chef_b']);
+      const both = await mkUser('ab', ['tst_chef_a', 'tst_chef_b']);
+      for (const [i, code] of shops.entries()) {
+        await ws.saveWorkshop(code, {
+          label: code, workCenterId: null, isDefault: false, isActive: true, sortOrder: 900 + i,
+          categoryIds: [], memberRoles: [roles[i]], memberUsers: [],
+        });
+      }
+      // Ce que la connexion met dans le jeton : le rôle de base, jamais le rôle créé.
+      const session = (userId: string) => ({ userId, role: 'magasinier', baseRoles: ['magasinier'] });
+      expect(await ws.workshopsOf(session(a))).toEqual(['tst_atelier_a']);
+      expect(await ws.workshopsOf(session(b))).toEqual(['tst_atelier_b']);
+      expect(await ws.workshopsOf(session(both))).toEqual(shops);
+      // Un magasinier sans rôle créé n'entre dans aucun des deux ateliers.
+      expect(await ws.workshopsOf(session(userId))).toEqual([]);
+    } finally {
+      await clean();
+      ws.invalidateWorkshops();
+    }
+  });
+
   it('les plans se filtrent sur plusieurs ateliers à la fois', async () => {
     const { productionRepository } = await import('../../repositories/production.repository.js');
     const r = await productionRepository.findAll({ targetRoles: ['baker', 'pastry_chef'], limit: 5, offset: 0 });
