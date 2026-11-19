@@ -2,8 +2,9 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { companyBankRepository, type BankAccountInput } from '../repositories/company-bank.repository.js';
 import { taxCodeRepository } from '../repositories/tax-code.repository.js';
+import { taxScaleRepository } from '../repositories/payroll-config.repository.js';
+import { activeCountryCode, countryPackOverview } from '../services/country-pack.js';
 import { ribKeyValid } from '../services/salary-transfer.js';
-import { db } from '../config/database.js';
 import { sectorRepository, type Activation, type AdjustmentChanges } from '../repositories/sector.repository.js';
 import { impactPreview } from '../services/module-impact.js';
 import { loadSectorStarter, sectorStarterPreview } from '../services/sector-starter.service.js';
@@ -268,10 +269,21 @@ export const companyController = {
 
   async taxCodes(_req: AuthRequest, res: Response) {
     if (!(await taxCodeRepository.available())) { res.json({ success: true, data: [] }); return; }
-    const country = (await db.query(
-      `SELECT CASE WHEN to_regclass('public.module_parameters') IS NOT NULL
-                   THEN (SELECT value->>'code' FROM module_parameters WHERE key = 'company.country_code') END AS c`)).rows[0]?.c ?? 'MA';
-    res.json({ success: true, data: await taxCodeRepository.list(country) });
+    // Pays actif (module_parameters company.country_code) lu par le pack pays (G6-06).
+    res.json({ success: true, data: await taxCodeRepository.list(await activeCountryCode()) });
+  },
+
+  /**
+   * Pack pays en lecture seule (G6-06) : pays, paramètres légaux en vigueur, barème de
+   * cotisations / IR en vigueur (payroll_tax_scales) et taux de TVA en vigueur (tax_codes).
+   */
+  async countryPack(_req: AuthRequest, res: Response) {
+    const overview = await countryPackOverview();
+    const scale = await taxScaleRepository.findForDate(overview.date).catch(() => null);
+    const taxCodes = (await taxCodeRepository.available())
+      ? (await taxCodeRepository.list(overview.country)).filter((t: { status?: string }) => t.status === 'current')
+      : [];
+    res.json({ success: true, data: { ...overview, payrollScale: scale, taxCodes } });
   },
 
   async addTaxRate(req: AuthRequest, res: Response) {

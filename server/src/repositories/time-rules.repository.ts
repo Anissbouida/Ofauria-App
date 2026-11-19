@@ -1,8 +1,9 @@
 import { db } from '../config/database.js';
 import {
-  classifyOvertime, holidayDays, DEFAULT_OT_RATES,
+  classifyOvertime, holidayDays,
   type OvertimeHours, type OvertimeRates,
 } from '../services/overtime-engine.js';
+import { countryParam } from '../services/country-pack.js';
 
 /**
  * Regles de temps de travail (lot 3, mig 321) : majorations d'heures sup,
@@ -34,18 +35,23 @@ export async function loadTimeRules(): Promise<TimeRules> {
     db.query('SELECT holiday_date::text AS d FROM public_holidays'),
   ]);
   const r = s.rows[0] ?? {};
+  // Réglage de l'employeur d'abord ; à défaut, valeur légale du pack pays (G6-06).
+  const [ot, monthlyHours, weeklyHours, holidayRate, night, quota] = await Promise.all([
+    countryParam('paie.ot_rates'), countryParam('paie.legal_monthly_hours'), countryParam('paie.legal_weekly_hours'),
+    countryParam('paie.holiday_worked_rate'), countryParam('paie.night_window'), countryParam('paie.ot_annual_quota_hours'),
+  ]);
   return {
     otRates: {
-      day: num(r.ot_rate_day, DEFAULT_OT_RATES.day), night: num(r.ot_rate_night, DEFAULT_OT_RATES.night),
-      restDay: num(r.ot_rate_rest_day, DEFAULT_OT_RATES.restDay), restNight: num(r.ot_rate_rest_night, DEFAULT_OT_RATES.restNight),
+      day: num(r.ot_rate_day, ot.day), night: num(r.ot_rate_night, ot.night),
+      restDay: num(r.ot_rate_rest_day, ot.restDay), restNight: num(r.ot_rate_rest_night, ot.restNight),
     },
-    monthlyLegalHours: num(r.monthly_legal_hours, 191),
-    weeklyLegalHours: num(r.weekly_legal_hours, 44),
-    holidayWorkedRate: num(r.holiday_worked_rate, 1),
+    monthlyLegalHours: num(r.monthly_legal_hours, monthlyHours),
+    weeklyLegalHours: num(r.weekly_legal_hours, weeklyHours),
+    holidayWorkedRate: num(r.holiday_worked_rate, holidayRate),
     restWeekday: r.leave_rest_weekday ?? 0,
-    nightStart: String(r.night_start ?? '21:00').slice(0, 5),
-    nightEnd: String(r.night_end ?? '06:00').slice(0, 5),
-    annualQuotaHours: num(r.ot_annual_quota_hours, 100),
+    nightStart: String(r.night_start ?? night.start).slice(0, 5),
+    nightEnd: String(r.night_end ?? night.end).slice(0, 5),
+    annualQuotaHours: num(r.ot_annual_quota_hours, quota),
     holidays: h.rows.map((x: { d: string }) => x.d),
   };
 }

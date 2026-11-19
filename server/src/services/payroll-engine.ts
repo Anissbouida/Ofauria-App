@@ -71,6 +71,8 @@ export interface PayslipInput {
   otRates?: OvertimeRates;
   /** Duree legale mensuelle (191 h) : taux horaire = salaire / duree. */
   legalMonthlyHours?: number;
+  /** Bareme de prime d'anciennete du pack pays (G6-06) ; a defaut, bareme marocain. */
+  seniorityBrackets?: SeniorityBracket[];
   /** Jours feries travailles et majoration (1 = un jour de plus). */
   holidayWorkedDays?: number;
   holidayWorkedRate?: number;
@@ -169,14 +171,27 @@ export interface PayslipResult {
 
 export const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
-/** Prime d'anciennete (Code du travail art. 350-352), en fraction. */
-export function seniorityRate(years: number): number {
-  if (years < 2) return 0;
-  if (years < 5) return 0.05;
-  if (years < 12) return 0.10;
-  if (years < 20) return 0.15;
-  if (years < 25) return 0.20;
-  return 0.25;
+/** Tranche de prime d'anciennete : taux applicable a partir de minYears annees de service. */
+export interface SeniorityBracket { minYears: number; rate: number }
+
+/**
+ * Bareme marocain (Code du travail art. 350-352) : 5 % a 2 ans, 10 % a 5 ans, 15 % a 12 ans,
+ * 20 % a 20 ans, 25 % a 25 ans. Valeur du pack pays MA (G6-06, cle paie.seniority_brackets) ;
+ * sert de repli quand l'appelant ne fournit pas le bareme du pack.
+ */
+export const DEFAULT_SENIORITY_BRACKETS: SeniorityBracket[] = [
+  { minYears: 2, rate: 0.05 }, { minYears: 5, rate: 0.10 }, { minYears: 12, rate: 0.15 },
+  { minYears: 20, rate: 0.20 }, { minYears: 25, rate: 0.25 },
+];
+
+/** Prime d'anciennete en fraction : taux de la plus haute tranche atteinte (0 avant la premiere). */
+export function seniorityRate(years: number, brackets: SeniorityBracket[] = DEFAULT_SENIORITY_BRACKETS): number {
+  let rate = 0;
+  let reached = -Infinity;
+  for (const b of brackets) {
+    if (years >= b.minYears && b.minYears > reached) { rate = b.rate; reached = b.minYears; }
+  }
+  return rate;
 }
 
 /** Annees de service revolues a une date (anciennete = depuis l'embauche). */
@@ -241,7 +256,7 @@ export function computeMonthlyPayslip(input: PayslipInput, scale: TaxScale): Pay
   // ─── Elements du salaire de base (regles pointage existantes) ───
   const absentDays = Math.max(0, input.baseDays - input.coveredDays);
   const absenceDeduction = r2(absentDays * dailyRate);
-  const rate = seniorityRate(input.seniorityYears);
+  const rate = seniorityRate(input.seniorityYears, input.seniorityBrackets);
   // Anciennete sur le salaire effectivement gagne (base moins absences).
   const seniorityBonus = r2((base - absenceDeduction) * rate);
   // Heures sup majorees (art. 201) au taux horaire legal (salaire / 191 h).
@@ -272,7 +287,7 @@ interface FixedPart {
  * retenir : les paies periodiques ne paient deja que les jours dus.
  */
 function computePeriodicMonth(input: PayslipInput, p: PeriodicGross, scale: TaxScale): PayslipResult {
-  const rate = seniorityRate(input.seniorityYears);
+  const rate = seniorityRate(input.seniorityYears, input.seniorityBrackets);
   const seniorityBonus = r2(p.base * rate);
   const salaireFixe = r2(p.base + seniorityBonus + p.overtime + p.holiday);
   return finishPayslip(input, scale, {

@@ -12,6 +12,7 @@ import {
 } from '../repositories/payroll-config.repository.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { serviceYears } from '../services/payroll-engine.js';
+import { countryParam } from '../services/country-pack.js';
 import { generatePayslipPdf, type PayslipLineRow } from '../services/payslip-pdf.service.js';
 import { companyLegalFromRow } from '../utils/company-legal.js';
 import { payrollLedger } from '../services/payroll-ledger.service.js';
@@ -254,7 +255,11 @@ export async function sendPayslipPdf(res: Response, p: Record<string, any>) {
   const sc = scaleRes.rows[0];
   const rate = (col: string) => (sc ? pct(num(sc[col])) : '');
   const { start, end } = monthBounds(p.month, p.year);
-  const baseDays = num(settings.monthly_base_days) || 26;
+  // Réglages de l'employeur, à défaut valeurs légales du pack pays au mois du bulletin (G6-06).
+  const [legalDays, legalHours, legalOt] = await Promise.all([
+    countryParam('paie.base_days', start), countryParam('paie.legal_monthly_hours', start), countryParam('paie.ot_rates', start),
+  ]);
+  const baseDays = num(settings.monthly_base_days) || legalDays;
   const daily = num(p.base_salary) / baseDays;
   const declared = p.is_declared !== false;
 
@@ -265,12 +270,12 @@ export async function sendPayslipPdf(res: Response, p: Record<string, any>) {
   if (num(p.seniority_bonus) > 0) rows.push({ label: 'Prime d\'ancienneté', base: fmt(num(p.base_salary) - num(p.deductions)), rate: p.seniority_rate != null ? pct(num(p.seniority_rate)) : '', gain: num(p.seniority_bonus) });
   if (num(p.overtime_amount) > 0) {
     // Detail par majoration (lot 3) ; bulletins anterieurs : une seule ligne.
-    const hourly = num(p.base_salary) / (num(settings.monthly_legal_hours) || 191);
+    const hourly = num(p.base_salary) / (num(settings.monthly_legal_hours) || legalHours);
     const cats: Array<[string, number, number]> = [
-      ['Heures sup. jour', num(p.ot_day_hours), num(settings.ot_rate_day ?? 0.25)],
-      ['Heures sup. nuit', num(p.ot_night_hours), num(settings.ot_rate_night ?? 0.5)],
-      ['Heures sup. repos (jour)', num(p.ot_rest_day_hours), num(settings.ot_rate_rest_day ?? 0.5)],
-      ['Heures sup. repos (nuit)', num(p.ot_rest_night_hours), num(settings.ot_rate_rest_night ?? 1)],
+      ['Heures sup. jour', num(p.ot_day_hours), num(settings.ot_rate_day ?? legalOt.day)],
+      ['Heures sup. nuit', num(p.ot_night_hours), num(settings.ot_rate_night ?? legalOt.night)],
+      ['Heures sup. repos (jour)', num(p.ot_rest_day_hours), num(settings.ot_rate_rest_day ?? legalOt.restDay)],
+      ['Heures sup. repos (nuit)', num(p.ot_rest_night_hours), num(settings.ot_rate_rest_night ?? legalOt.restNight)],
     ];
     const detailed = cats.filter(c => c[1] > 0);
     if (detailed.length) {

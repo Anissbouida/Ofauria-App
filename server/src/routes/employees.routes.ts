@@ -11,6 +11,7 @@ import { employeeSelfController, advanceRequestController } from '../controllers
 import { payrollComplianceController } from '../controllers/payroll-compliance.controller.js';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requireDeclarativeFormat } from '../middleware/country-pack.middleware.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { emptyBody } from '../validators/common.validator.js';
 import { ebdsSchema } from '../validators/payroll-flow.validator.js';
@@ -186,7 +187,7 @@ payrollRouter.post('/declarations/declare', authenticate, can('employees.payroll
 payrollRouter.post('/declarations/settle', authenticate, can('employees.payroll.settle'), validate(settlePayrollDeclarationSchema), asyncHandler(payrollConfigController.settle));
 // Fichier e-BDS Damancom depuis le preetabli CNSS (mig 325).
 const preetabliUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
-payrollRouter.post('/declarations/ebds', authenticate, authorizeModule('employees', 'view'), preetabliUpload.single('file'), validate(ebdsSchema), asyncHandler(payrollComplianceController.ebds));
+payrollRouter.post('/declarations/ebds', authenticate, authorizeModule('employees', 'view'), requireDeclarativeFormat('ebds', 'Fichier e-BDS Damancom'), preetabliUpload.single('file'), validate(ebdsSchema), asyncHandler(payrollComplianceController.ebds));
 // Ordre de virement groupe des salaires (mig 325) : liste, CSV banque, lettre PDF.
 payrollRouter.get('/transfer', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollComplianceController.transferOrder));
 // Livre de paie (G0-12) : une ligne par salarié et par mois, PDF paysage ou Excel.

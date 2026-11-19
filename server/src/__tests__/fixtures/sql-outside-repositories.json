@@ -3,7 +3,6 @@
   "controllers/approval-rules.controller.ts": 26,
   "controllers/bon-sortie.controller.ts": 3,
   "controllers/caisse-import.controller.ts": 9,
-  "controllers/company.controller.ts": 1,
   "controllers/documents-notifications.controller.ts": 4,
   "controllers/employee-self.controller.ts": 22,
   "controllers/employee.controller.ts": 10,

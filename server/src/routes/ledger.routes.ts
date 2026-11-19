@@ -35,6 +35,8 @@ import {
   purchaseLedgerController,
 } from '../controllers/ledger.controller.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requireDeclarativeFormat } from '../middleware/country-pack.middleware.js';
+import { declarativeFormatAvailable, declarativeFormatRefusal } from '../services/country-pack.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { emptyBody } from '../validators/common.validator.js';
 import * as PF from '../validators/payments-flow.validator.js';
@@ -149,6 +151,10 @@ const editionVerb = (req: AuthRequest, res: Response, next: () => void) =>
 ledgerRouter.get('/editions/:kind', authenticate, can('accounting.view'), editionVerb, asyncHandler(async (req: AuthRequest, res: Response) => {
   const kind = req.params.kind as EditionKind;
   if (!EDITION_KINDS.includes(kind)) { tplBad(res, 'État inconnu'); return; }
+  if (kind === 'liasse') {
+    const f = await declarativeFormatAvailable('liasse');
+    if (!f.ok) { tplBad(res, declarativeFormatRefusal('Liasse fiscale', f.country)); return; }
+  }
   const r = editionQuery.safeParse(req.query);
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
   const q = r.data;
@@ -241,7 +247,7 @@ const fxRates = z.record(z.string().regex(/^[A-Z]{3}$/), z.coerce.number().posit
 const parseRatesQuery = (v: unknown) => Object.fromEntries(String(v ?? '').split(',').map(x => x.split(':'))
   .filter(([k, r]) => /^[A-Z]{3}$/.test(k ?? '') && Number(r) > 0).map(([k, r]) => [k, Number(r)]));
 // Liasse fiscale (lot Bonus 14) : bilan, CPC, ESG et passage au résultat fiscal, en lecture.
-ledgerRouter.get('/liasse/:year', authenticate, can('accounting.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.get('/liasse/:year', authenticate, can('accounting.view'), requireDeclarativeFormat('liasse', 'Liasse fiscale'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
   const model = req.query.model === 'simplifie' ? 'simplifie' : 'normal';
   res.json({ success: true, data: await liasseRepository.build(y, model) });
@@ -256,18 +262,18 @@ const sendEdi = (req: AuthRequest, res: Response, out: { filename: string; xml: 
   res.setHeader('Content-Disposition', `attachment; filename="${out.filename}.${f}"`);
   res.send(body);
 };
-ledgerRouter.get('/edi/tva-deductions/:year', authenticate, can('accounting.view'), requireVerb('accounting', 'export'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.get('/edi/tva-deductions/:year', authenticate, can('accounting.view'), requireVerb('accounting', 'export'), requireDeclarativeFormat('edi_tva_deductions', 'EDI relevé des déductions de TVA'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
   const regime = req.query.regime === '2' ? 2 : 1;
   const period = Number(req.query.period);
   if (!Number.isInteger(period) || period < 1 || period > (regime === 1 ? 12 : 4)) { tplBad(res, 'Période invalide'); return; }
   sendEdi(req, res, await buildVatDeductionEdi({ year: y, period, regime }));
 }));
-ledgerRouter.get('/edi/9421/:year', authenticate, can('accounting.view'), requireVerb('accounting', 'export'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.get('/edi/9421/:year', authenticate, can('accounting.view'), requireVerb('accounting', 'export'), requireDeclarativeFormat('edi_9421', 'EDI état 9421'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
   sendEdi(req, res, await buildIr9421Edi(y));
 }));
-ledgerRouter.get('/edi/liasse/:year', authenticate, can('accounting.view'), requireVerb('accounting', 'export'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.get('/edi/liasse/:year', authenticate, can('accounting.view'), requireVerb('accounting', 'export'), requireDeclarativeFormat('edi_liasse_is', 'EDI liasse IS'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
   sendEdi(req, res, await buildLiasseIsEdi(y, req.query.model === 'simplifie' ? 'simplifie' : 'normal'));
 }));
@@ -356,7 +362,7 @@ ledgerRouter.get('/outbox',authenticate, can('accounting.view'), asyncHandler(pu
 ledgerRouter.post('/outbox/replay', authenticate, can('accounting.replay'), validate(emptyBody), asyncHandler(purchaseLedgerController.replay));
 ledgerRouter.post('/outbox/:id/replay', authenticate, can('accounting.replay'), validateUuidParams('id'), validate(emptyBody), asyncHandler(purchaseLedgerController.replay));
 ledgerRouter.get('/grir/open-items', authenticate, can('accounting.view'), asyncHandler(purchaseLedgerController.grirOpenItems));
-ledgerRouter.get('/vat-deduction-statement', authenticate, can('accounting.view'), asyncHandler(purchaseLedgerController.vatStatement));
+ledgerRouter.get('/vat-deduction-statement', authenticate, can('accounting.view'), requireDeclarativeFormat('vat_deduction_statement', 'Relevé des déductions de TVA'), asyncHandler(purchaseLedgerController.vatStatement));
 ledgerRouter.get('/posting-profiles', authenticate, can('accounting.view'), asyncHandler(purchaseLedgerController.postingProfiles));
 
 // Comptes de produits par famille (mig 481, phase 5.3) : ventilation du CA.

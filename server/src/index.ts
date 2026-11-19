@@ -2,6 +2,7 @@ import { env } from './config/env.js';
 import app from './app.js';
 import { startScheduler } from './services/scheduler.js';
 import { loadCompanyCurrency } from './services/currency.js';
+import { loadCountryPack } from './services/country-pack.js';
 import { logger } from './utils/logger.js';
 
 // Prevent server crash on unhandled async errors
@@ -17,4 +18,5 @@ app.listen(env.PORT, () => {
   logger.info(`   Environment: ${env.NODE_ENV}`);
   startScheduler();
   void loadCompanyCurrency(); // devise de la société pour documents et messages (G6-06)
+  void loadCountryPack(); // pack pays : paramètres légaux pour les validateurs synchrones (G6-06)
 });

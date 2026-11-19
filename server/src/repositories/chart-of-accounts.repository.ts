@@ -18,6 +18,7 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { currencySymbol } from '../services/currency.js';
+import { countryParam } from '../services/country-pack.js';
 
 type Actor = { userId: string };
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | 'result';
@@ -29,7 +30,6 @@ export type AccountInput = {
 };
 
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
-const TVA_RATES = [7, 10, 14, 20];
 
 /** Nature proposée d'après le code (conventions du plan existant). */
 export function defaultType(code: string): AccountType {
@@ -102,7 +102,8 @@ async function withTx<T>(userId: string, fn: (c: PoolClient) => Promise<T>): Pro
 }
 
 /** Contrôles communs à la création et à la modification. */
-function validate(p: AccountInput) {
+/** vatRates : taux de TVA légaux du pack pays (G6-06, fiscalite.vat_rates ; 7/10/14/20 au Maroc). */
+function validate(p: AccountInput, vatRates: number[]) {
   const code = p.code.trim();
   if (!/^[1-8]\d{3,9}$/.test(code)) throw fail('Code : 4 à 10 chiffres, commençant par la classe (1 à 8)');
   const label = p.label.trim();
@@ -115,7 +116,7 @@ function validate(p: AccountInput) {
   let rate = p.tvaRate ?? null, dir = p.tvaDirection ?? null;
   if (rate != null || dir != null) {
     if (!/^(3455|4455)/.test(code)) throw fail('La TVA ne se rattache qu\'aux comptes 3455x (récupérable) et 4455x (facturée)');
-    if (rate != null && !TVA_RATES.includes(Number(rate))) throw fail('Taux de TVA : 7, 10, 14 ou 20 %');
+    if (rate != null && !vatRates.includes(Number(rate))) throw fail(`Taux de TVA : ${vatRates.slice(0, -1).join(', ')} ou ${vatRates[vatRates.length - 1]} %`);
     dir = dir || (code.startsWith('3455') ? 'deductible' : 'collected');
     if ((dir === 'deductible') !== code.startsWith('3455')) throw fail('Sens de TVA incohérent avec le compte (3455 récupérable, 4455 facturée)');
   }
@@ -129,7 +130,7 @@ export const chartOfAccountsRepository = {
 
   create(p: AccountInput, actor: Actor) {
     return withTx(actor.userId, async c => {
-      const v = validate(p);
+      const v = validate(p, await countryParam('fiscalite.vat_rates'));
       if ((await c.query(`SELECT 1 FROM accounts WHERE code = $1`, [v.code])).rows.length) throw fail(`Le compte ${v.code} existe déjà`, 409);
       const parent = (await c.query(
         `SELECT id FROM accounts WHERE $1 LIKE code || '%' AND code <> $1 ORDER BY length(code) DESC LIMIT 1`, [v.code])).rows[0];
@@ -147,7 +148,7 @@ export const chartOfAccountsRepository = {
     return withTx(actor.userId, async c => {
       const cur = (await c.query(`SELECT * FROM accounts WHERE id = $1 FOR UPDATE`, [id])).rows[0];
       if (!cur) throw fail('Compte introuvable', 404);
-      const v = validate(p);
+      const v = validate(p, await countryParam('fiscalite.vat_rates'));
       if (v.code !== cur.code && (await c.query(`SELECT 1 FROM accounts WHERE code = $1`, [v.code])).rows.length) {
         throw fail(`Le compte ${v.code} existe déjà`, 409);
       }

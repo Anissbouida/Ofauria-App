@@ -106,6 +106,8 @@ router.get('/bank-accounts', authenticate, authorizeSettings('company'), asyncHa
 router.post('/bank-accounts', authenticate, jsonParser, authorizeSettings('company', 'create'), asyncHandler(companyController.saveBankAccount));
 router.put('/bank-accounts/:id', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.saveBankAccount));
 router.get('/tax-codes', authenticate, authorizeSettings('tax'), asyncHandler(companyController.taxCodes));
+// Pack pays (G6-06) : paramètres légaux de la paie et de la fiscalité, en lecture seule.
+router.get('/country-pack', authenticate, authorizeSettings('tax'), asyncHandler(companyController.countryPack));
 router.post('/tax-codes', authenticate, jsonParser, authorizeSettings('tax', 'create'), asyncHandler(companyController.addTaxRate));
 router.put('/tax-codes/:id', authenticate, jsonParser, authorizeSettings('tax', 'edit'), asyncHandler(companyController.updateTaxCode));
 

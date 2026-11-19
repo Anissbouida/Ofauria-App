@@ -1,8 +1,9 @@
 import { db } from '../config/database.js';
 import {
   computeMonthlyPayslip, serviceYears, taxScaleFromRow,
-  type RubriqueInput, type TaxScale, type IrCumul, type PeriodicGross,
+  type RubriqueInput, type TaxScale, type IrCumul, type PeriodicGross, type SeniorityBracket,
 } from '../services/payroll-engine.js';
+import { countryParam } from '../services/country-pack.js';
 import { leaveBalanceRepository } from './leave.repository.js';
 import { loadTimeRules, periodTimeFacts, type TimeRules } from './time-rules.repository.js';
 import { reposDaysFor } from './weekly-payroll.repository.js';
@@ -23,6 +24,14 @@ export interface PayrollContext {
   scale: TaxScale;
   baseDays: number;
   time: TimeRules;
+  /** Prime d'ancienneté du pack pays en vigueur au mois (G6-06). */
+  seniorityBrackets?: SeniorityBracket[];
+}
+
+/** Base journalière : réglage de l'employeur, à défaut valeur légale du pack pays (26 au Maroc). */
+async function baseDaysOf(settings: Record<string, unknown>, date?: string): Promise<number> {
+  const legal = await countryParam('paie.base_days', date);
+  return parseInt(String(settings.monthly_base_days ?? legal), 10) || legal;
 }
 
 // ─── Bareme ─────────────────────────────────────────────────────────────
@@ -137,7 +146,7 @@ export const taxScaleRepository = {
 export const payrollSettingsRepository = {
   async get() {
     const r = await db.query('SELECT * FROM payroll_settings WHERE id = 1');
-    return r.rows[0] || { employer_cnss_number: null, monthly_base_days: 26 };
+    return r.rows[0] || { employer_cnss_number: null, monthly_base_days: null };
   },
   async update(data: Record<string, unknown>, userId?: string) {
     // Champ absent = inchange. Conges (lot 2) et temps de travail (lot 3) inclus.
@@ -324,7 +333,7 @@ export async function monthAttendanceFacts(emp: Record<string, any>, start: stri
 export async function monthlyAttendanceRecap(month: number, year: number, storeId?: string | null) {
   const { start, end } = monthBounds(month, year);
   const settings = await payrollSettingsRepository.get();
-  const baseDays = parseInt(String(settings.monthly_base_days ?? 26), 10) || 26;
+  const baseDays = await baseDaysOf(settings, start);
   const time = await loadTimeRules();
   const emps = (await db.query(
     `SELECT e.id, e.hire_date, e.monthly_salary FROM employees e
@@ -361,8 +370,9 @@ export async function loadPayrollContext(month: number, year: number): Promise<P
   const settings = await payrollSettingsRepository.get();
   return {
     scale: taxScaleFromRow(row),
-    baseDays: parseInt(String(settings.monthly_base_days ?? 26), 10) || 26,
+    baseDays: await baseDaysOf(settings, start),
     time: await loadTimeRules(),
+    seniorityBrackets: await countryParam('paie.seniority_brackets', start),
   };
 }
 
@@ -490,6 +500,7 @@ export async function computeAndSavePayslip(
     overtime: tf.overtime,
     otRates: ctx.time.otRates,
     legalMonthlyHours: ctx.time.monthlyLegalHours,
+    seniorityBrackets: ctx.seniorityBrackets,
     holidayWorkedDays: tf.holidayWorked,
     holidayWorkedRate: ctx.time.holidayWorkedRate,
     irRegularisation: irCumul,

@@ -8,6 +8,7 @@ import { can } from '../middleware/permission.middleware.js';
 import { requireVerb } from '../middleware/module.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateUuidParams } from '../middleware/validate.middleware.js';
+import { countryParamSync } from '../services/country-pack.js';
 
 // Immobilisations : reserve a l'admin (comme le reste du noyau comptable).
 const router = Router();
@@ -29,7 +30,8 @@ const disposalBody = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   kind: z.enum(['sale', 'scrap']),
   price: z.coerce.number().min(0).optional(),
-  vatRate: z.coerce.number().refine(v => [0, 7, 10, 14, 20].includes(v), 'Taux de TVA non géré').optional(),
+  // Taux légaux du pack pays (G6-06) + 0 (cession sans TVA).
+  vatRate: z.coerce.number().refine(v => v === 0 || countryParamSync('fiscalite.vat_rates').includes(v), 'Taux de TVA non géré').optional(),
   counterpart: z.enum(['receivable', 'bank', 'cash']).optional(),
   buyer: z.string().trim().max(200).nullish(),
   reason: z.string().trim().max(1000).nullish(),

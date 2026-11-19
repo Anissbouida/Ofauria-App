@@ -5,6 +5,7 @@ import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip } fr
 import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
 import { logger } from '../utils/logger.js';
+import { countryParam } from '../services/country-pack.js';
 
 /**
  * Solde de tout compte (lot 6, mig 323).
@@ -65,8 +66,9 @@ async function context(employeeId: string, req: SettlementRequest) {
     exitDate: req.exitDate,
     monthlySalary,
     averageMonthlyGross: avg?.n >= 3 ? parseFloat(avg.avg) : 0,
-    legalMonthlyHours: parseFloat(settings.monthly_legal_hours ?? '191'),
-    baseDays: settings.monthly_base_days ?? 26,
+    // Réglage de l'employeur, à défaut valeur légale du pack pays (G6-06).
+    legalMonthlyHours: parseFloat(settings.monthly_legal_hours ?? String(await countryParam('paie.legal_monthly_hours', req.exitDate))),
+    baseDays: settings.monthly_base_days ?? await countryParam('paie.base_days', req.exitDate),
     leaveBalanceDays: balance?.available ?? 0,
     noticeWorked: req.noticeWorked,
     damagesMonths: req.damagesMonths ?? 0,

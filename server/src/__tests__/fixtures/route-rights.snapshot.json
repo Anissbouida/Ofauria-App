@@ -2298,6 +2298,7 @@
  "GET /settings/audit-trail/:table/:id": null,
  "GET /settings/auth-events": null,
  "GET /settings/bank-accounts": null,
+ "GET /settings/country-pack": null,
  "GET /settings/data/export/base": null,
  "GET /settings/data/export/configuration": null,
  "GET /settings/data/import/:entity/template": null,
