@@ -101,11 +101,11 @@ export const productionEtapesRepository = {
        LEFT JOIN LATERAL (
          SELECT r0.etapes
            FROM recipes r0
-          WHERE r0.id = ppi.base_recipe_id
-             OR (ppi.base_recipe_id IS NULL AND ppi.product_id IS NOT NULL
+          WHERE r0.id = COALESCE(ppi.alt_recipe_id, ppi.base_recipe_id)
+             OR (ppi.alt_recipe_id IS NULL AND ppi.base_recipe_id IS NULL AND ppi.product_id IS NOT NULL
                  AND (r0.product_id = ppi.product_id
                       OR r0.id IN (SELECT rf.recipe_id FROM recipe_formats rf WHERE rf.product_id = ppi.product_id AND rf.is_active)))
-          ORDER BY (r0.id = ppi.base_recipe_id) DESC NULLS LAST, (r0.product_id = ppi.product_id) DESC NULLS LAST
+          ORDER BY (r0.id = COALESCE(ppi.alt_recipe_id, ppi.base_recipe_id)) DESC NULLS LAST, (r0.product_id = ppi.product_id) DESC NULLS LAST
           LIMIT 1
        ) r ON true
        LEFT JOIN produit_profil_production ppp ON ppp.produit_id = ppi.product_id

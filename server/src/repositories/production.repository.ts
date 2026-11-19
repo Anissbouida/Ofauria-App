@@ -1434,6 +1434,7 @@ export const productionRepository = {
           // theo_snapshot_at IS NULL empeche l'ecrasement d'un snapshot existant.
           await client.query(
             `UPDATE production_plan_items ppi SET
+               -- M4-04 : fiche choisie sur la ligne (alternative), sinon fiche par défaut.
                -- L2 (mig 409) : coût théorique figé via la fonction de coût UNIQUE
                -- fn_recipe_cost — matière des VRAIS composants du format (perte_pct
                -- incluse), pas une répartition au prorata du poids (fausse en multi-
@@ -1447,7 +1448,7 @@ export const productionRepository = {
                  FROM recipes r
                  LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
                  LEFT JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON ppi.format_id IS NOT NULL
-                 WHERE r.product_id = ppi.product_id
+                 WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
                  LIMIT 1
                ),
                theo_cout_complet_u = (
@@ -1457,14 +1458,14 @@ export const productionRepository = {
                  FROM recipes r
                  LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
                  LEFT JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON ppi.format_id IS NOT NULL
-                 WHERE r.product_id = ppi.product_id
+                 WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
                  LIMIT 1
                ),
                theo_prix_u = (
                  SELECT fc.prix_u
                  FROM recipes r
                  JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON true
-                 WHERE r.product_id = ppi.product_id AND ppi.format_id IS NOT NULL
+                 WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1)) AND ppi.format_id IS NOT NULL
                  LIMIT 1
                ),
                theo_snapshot_at = $1::timestamptz,
@@ -2402,7 +2403,7 @@ export const productionRepository = {
               r.id as recipe_id, r.yield_quantity, r.yield_unit
        FROM production_plan_items ppi
        JOIN products p ON p.id = ppi.product_id
-       LEFT JOIN recipes r ON r.product_id = ppi.product_id
+       LEFT JOIN recipes r ON r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
        WHERE ppi.plan_id = $1 AND ppi.status = 'pending'
          AND (ppi.waiting_status IS NULL OR ppi.waiting_status = 'restored')`,
       [planId]
@@ -2518,7 +2519,7 @@ export const productionRepository = {
                 r.id as recipe_id, r.yield_quantity
          FROM production_plan_items ppi
          JOIN products p ON p.id = ppi.product_id
-         LEFT JOIN recipes r ON r.product_id = ppi.product_id
+         LEFT JOIN recipes r ON r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
          WHERE ppi.plan_id = $1 AND ppi.status = 'pending'`,
         [planId]
       );

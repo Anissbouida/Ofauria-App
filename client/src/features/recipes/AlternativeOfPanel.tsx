@@ -24,6 +24,12 @@ export default function AlternativeOfPanel({ recipe }: { recipe: { id: string; p
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['recipe'] }); notify.success('Rattachement enregistré'); },
     onError: (e) => notify.error(apiErrorMessage(e)),
   });
+  // M4-04 : cette nomenclature devient la fiche par défaut (l'actuelle devient une alternative).
+  const makeDefault = useMutation({
+    mutationFn: () => api.post(`/recipes/${recipe.id}/make-default`, {}),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['recipe'] }); qc.invalidateQueries({ queryKey: ['recipes'] }); notify.success('Fiche par défaut du produit'); },
+    onError: (e) => notify.error(apiErrorMessage(e)),
+  });
   if (recipe.product_id) return null;
   return (
     <div className="odoo-section" style={{ marginBottom: '1rem' }}>
@@ -35,6 +41,11 @@ export default function AlternativeOfPanel({ recipe }: { recipe: { id: string; p
         </select>
         <button type="button" className="odoo-btn-secondary" disabled={!productId || save.isPending} onClick={() => save.mutate(productId)}>Rattacher</button>
         {recipe.alternative_for_product_id && <button type="button" className="odoo-btn-secondary" onClick={() => { setProductId(''); save.mutate(null); }}>Détacher</button>}
+        {recipe.alternative_for_product_id && (
+          <button type="button" className="odoo-btn-secondary" disabled={makeDefault.isPending}
+            title="Cette fiche devient la fiche par défaut du produit ; l'actuelle devient une alternative"
+            onClick={() => makeDefault.mutate()}>Définir par défaut</button>
+        )}
       </div>
     </div>
   );

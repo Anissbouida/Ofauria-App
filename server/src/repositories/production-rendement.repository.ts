@@ -12,8 +12,10 @@ const FREINTE_STD_JOIN = `
      WHERE rf.is_active AND rf.is_default
        AND (rf.product_id = ppi.product_id
             OR rr.product_id = ppi.product_id
-            OR rr.id = ppi.base_recipe_id)
-     ORDER BY (rf.product_id = ppi.product_id) DESC NULLS LAST
+            OR rr.id = ppi.base_recipe_id
+            OR rr.id = ppi.alt_recipe_id)
+     -- M4-04 : formats de la fiche choisie sur la ligne d'abord.
+     ORDER BY (rr.id = ppi.alt_recipe_id) DESC NULLS LAST, (rf.product_id = ppi.product_id) DESC NULLS LAST
      LIMIT 1
   ) fmt ON true`;
 const FREINTE_STD_EXPR = `CASE WHEN fmt.poids_cru_g > 0 AND fmt.poids_cuit_g IS NOT NULL

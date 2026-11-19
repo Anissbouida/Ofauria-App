@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { recipeController } from '../controllers/recipe.controller.js';
+import { recipeRepository } from '../repositories/recipe.repository.js';
 import { recipeImportController } from '../controllers/recipe-import.controller.js';
 import { recipeComponentController } from '../controllers/recipe-component.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
@@ -143,6 +144,10 @@ router.get('/by-product/:productId', authenticate, recipeController.getByProduct
 // Nomenclatures d'un produit (M4-04) — avant /:id.
 router.get('/for-product/:productId', authenticate, validateUuidParams('productId'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await recipesForProduct(req.params.productId as string) });
+}));
+// M4-04 : la nomenclature supplémentaire devient la fiche par défaut de son produit.
+router.post('/:id/make-default', authenticate, validateUuidParams('id'), can('recipes.edit'), validate(z.object({}).strict()), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await recipeRepository.makeDefaultRecipe(req.params.id as string) });
 }));
 router.put('/:id/alternative', authenticate, validateUuidParams('id'), can('recipes.edit'), validate(alternativeSchema), asyncHandler(async (req, res) => {
   try {

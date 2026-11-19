@@ -171,7 +171,7 @@ export const traceabilityRepository = {
               ppi.planned_quantity, ppi.actual_quantity::float, ppi.status
          FROM production_plan_items ppi
          LEFT JOIN products p ON p.id = ppi.product_id
-         LEFT JOIN recipes rp ON rp.product_id = ppi.product_id
+         LEFT JOIN recipes rp ON rp.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
         WHERE ppi.plan_id = ANY($1::uuid[])`,
       [planIds],
     ) : { rows: [] };

@@ -4018,6 +4018,14 @@
   "admin",
   "manager"
  ],
+ "POST /recipes/:id/make-default": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "POST /recipes/:id/outputs": [
   "admin",
   "baker",

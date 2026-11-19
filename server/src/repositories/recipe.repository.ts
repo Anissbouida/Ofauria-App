@@ -1253,6 +1253,32 @@ export const recipeRepository = {
     });
   },
 
+  /**
+   * M4-04 — une nomenclature supplémentaire devient la fiche par défaut de son produit ;
+   * l'ancienne fiche par défaut devient une alternative du même produit. En une transaction,
+   * fiches verrouillées (l'index unique sur product_id impose de libérer l'ancienne d'abord).
+   */
+  async makeDefaultRecipe(recipeId: string) {
+    return withTransaction(async () => {
+      const t = (await db.query(
+        `SELECT id, name, alternative_for_product_id, archived_at FROM recipes WHERE id = $1 FOR UPDATE`, [recipeId])).rows[0];
+      if (!t) throw Object.assign(new Error('Fiche introuvable'), { statusCode: 404 });
+      if (!t.alternative_for_product_id) throw Object.assign(new Error('Cette fiche n\'est pas une nomenclature supplémentaire d\'un produit'), { statusCode: 409 });
+      if (t.archived_at) throw Object.assign(new Error('Fiche archivée : restaurez-la d\'abord'), { statusCode: 409 });
+      const productId = t.alternative_for_product_id as string;
+      const cur = (await db.query(`SELECT id FROM recipes WHERE product_id = $1 FOR UPDATE`, [productId])).rows[0];
+      if (cur) {
+        await db.query(
+          `UPDATE recipes SET product_id = NULL, alternative_for_product_id = $2, usage = 'alternative', updated_at = now() WHERE id = $1`,
+          [cur.id, productId]);
+      }
+      await db.query(
+        `UPDATE recipes SET product_id = $2, alternative_for_product_id = NULL, usage = 'fabrication', updated_at = now() WHERE id = $1`,
+        [recipeId, productId]);
+      return { productId, defaultRecipeId: recipeId, previousDefaultId: (cur?.id as string | undefined) ?? null };
+    });
+  },
+
   // Derniers remplacements (pour annuler).
   async listBulkReplaceLogs(limit = 10) {
     const r = await db.query(

@@ -70,4 +70,28 @@ describe.skipIf(!hasTestDb)('Plusieurs nomenclatures par article (M4-04)', () =>
     await expect(repos.productionRepository.setItemRecipe(c.planId, c.itemId, other)).rejects.toThrow(/pas une nomenclature de ce produit/);
     await expect(rf.setAlternative(defaultRecipe, productId, 'alternative')).rejects.toThrow(/fiche par défaut/);
   });
+
+  it('coût prévu d\'un ordre fait sur l\'alternative : 10 × 0,3 kg × 10 = 30, pas 50', async () => {
+    const { productionCoutRepository: pc } = await import('../../repositories/production-cout.repository.js');
+    const d = await plan();
+    await repos.productionRepository.setItemRecipe(d.planId, d.itemId, altRecipe);
+    await repos.productionRepository.confirm(d.planId, fx.userId);
+    expect((await pc.computePlanCost(d.planId)).coutPrevu).toBeCloseTo(30, 2);
+    const e = await plan();
+    await repos.productionRepository.confirm(e.planId, fx.userId);
+    expect((await pc.computePlanCost(e.planId)).coutPrevu).toBeCloseTo(50, 2);
+  });
+
+  it('l\'alternative devient la fiche par défaut, l\'ancienne devient une alternative', async () => {
+    const { recipeRepository } = await import('../../repositories/recipe.repository.js');
+    await expect(recipeRepository.makeDefaultRecipe(defaultRecipe)).rejects.toThrow(/pas une nomenclature supplémentaire/);
+    await recipeRepository.makeDefaultRecipe(altRecipe);
+    expect((await rf.getRecipeFor(productId))?.id).toBe(altRecipe);
+    expect((await rf.recipesForProduct(productId)).map(r => [r.id, r.is_default, r.usage])).toEqual([[altRecipe, true, 'fabrication'], [defaultRecipe, false, 'alternative']]);
+    const f = await plan();
+    await repos.productionRepository.confirm(f.planId, fx.userId);
+    expect(await flourNeed(f.planId)).toBeCloseTo(3, 3);
+    await recipeRepository.makeDefaultRecipe(defaultRecipe); // retour à l'état initial
+    expect((await rf.getRecipeFor(productId))?.id).toBe(defaultRecipe);
+  });
 });

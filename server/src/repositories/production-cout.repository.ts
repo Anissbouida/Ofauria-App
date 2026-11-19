@@ -370,7 +370,8 @@ export const productionCoutRepository = {
            END
          ) AS total_prevu_mix_reel
        FROM production_plan_items ppi
-       LEFT JOIN recipes r ON r.product_id = ppi.product_id
+       -- M4-04 : fiche choisie sur la ligne (alternative), sinon fiche par défaut.
+       LEFT JOIN recipes r ON r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
        LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        WHERE ppi.plan_id = $1 AND ppi.status != 'cancelled'`,
       [planId]
@@ -428,7 +429,7 @@ export const productionCoutRepository = {
          FROM production_plan_items ppi
          JOIN products p ON p.id = ppi.product_id
          LEFT JOIN recipe_formats rf ON rf.id = ppi.format_id
-         LEFT JOIN recipes r ON r.product_id = ppi.product_id AND r.archived_at IS NULL
+         LEFT JOIN recipes r ON r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id AND r2.archived_at IS NULL LIMIT 1))
         WHERE ppi.plan_id = $1 AND ppi.status <> 'cancelled'
         ORDER BY p.name`, [planId])).rows as { id: string; product_name: string; qty: number; unit_kg: number | null; price: number; share_pct: number | null }[];
     let key = wanted;
@@ -657,7 +658,7 @@ export const productionCoutRepository = {
                  AND plu.ingredient_id IN (
                    SELECT ri.ingredient_id FROM recipe_ingredients ri
                    JOIN recipes r ON r.id = ri.recipe_id
-                   WHERE r.product_id = ppi.product_id
+                   WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
                  )
              ) item_mat ON true
              LEFT JOIN LATERAL (
@@ -752,7 +753,7 @@ export const productionCoutRepository = {
                AND plu.ingredient_id IN (
                  SELECT ri.ingredient_id FROM recipe_ingredients ri
                  JOIN recipes r ON r.id = ri.recipe_id
-                 WHERE r.product_id = ppi.product_id
+                 WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
                )
            ), 0)
          ) as total_matieres

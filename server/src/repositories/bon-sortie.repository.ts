@@ -582,7 +582,7 @@ export const bonSortieRepository = {
       const planItemsResult = await client.query(
         `SELECT pi.product_id, pi.planned_quantity, r.id as recipe_id, r.yield_quantity
          FROM production_plan_items pi
-         LEFT JOIN recipes r ON r.product_id = pi.product_id
+         LEFT JOIN recipes r ON r.id = COALESCE(pi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = pi.product_id LIMIT 1))
          WHERE pi.plan_id = $1 AND r.id IS NOT NULL`,
         [planId]
       );
