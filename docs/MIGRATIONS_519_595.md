@@ -3,6 +3,12 @@
 État au 2026-11-18. Ces 77 migrations sont sur `main` et appliquées en dev et sur la base de test ;
 **aucune n'est appliquée en production**.
 
+> **Relevé en production le 2026-11-18 (lecture seule)** : dernière migration appliquée = **505**
+> (`505_quote_free_lines.sql`). Le déploiement jouera donc **90 migrations, de 506 à 595** — les
+> 13 migrations 506 à 518 s'ajoutent à la plage étudiée ici (voir section 2 bis). Sauvegardes faites
+> avant toute opération : sauvegarde Cloud SQL à la demande `1795055846731` (« Avant deploiement plan
+> pilote ») et copie locale `pg_dump` hors du dépôt.
+
 ## 1. Séquence vérifiée
 
 - 77 fichiers, numéros 519 à 595 continus : aucun trou, aucun doublon.
@@ -38,6 +44,18 @@ calculée (`cout_total`) recréée aussitôt ; les `DROP TRIGGER IF EXISTS` recr
 Migrations sans section `INVERSION` (à documenter si un retour arrière ciblé devient nécessaire) :
 519 à 530, 563, 564, 566 à 569, 572 à 574, 576, 592.
 
+## 2 bis. Migrations 506 à 518 (aussi à jouer en production)
+
+Même audit : aucune ne redéfinit une fonction ou une vue antérieure à 506 (pas de piège de
+propriétaire). Points à connaître :
+- **512** : quantités planifiées, produites, transférées (`production_plan_items`,
+  transferts, commandes) passent d'entier à décimal — élargissement sans perte, mais verrou des
+  tables pendant l'opération : **appliquer hors des heures d'ouverture**.
+- **508** : supprime les réglages de modules identiques au préréglage du secteur (sans effet visible).
+- 507, 513, 514 : mises à jour de configuration (activation des modules, référentiels de procédé,
+  vocabulaire) ; 509, 511, 515, 518 : déclencheurs et contraintes recréés.
+- 12 des 13 n'ont pas de section `INVERSION` : retour arrière = restauration de la sauvegarde.
+
 ## 3. Procédure de déploiement (staging, puis production)
 
 1. **Sauvegarde** complète de la base cible (et test de restauration sur staging — G3-02).
@@ -46,6 +64,8 @@ Migrations sans section `INVERSION` (à documenter si un retour arrière ciblé 
 3. Appliquer les migrations avec le lanceur du projet (`server/src/config/migrate.ts`), dans l'ordre.
 4. Contrôler : `psql "$DATABASE_URL" -f server/scripts/post-migration-check.sql` — chaque ligne doit
    être `OK`. La ligne « Info : allergènes… » est attendue tant que G2-06 n'est pas fait.
+   Le contrôle « migrations 519 à 595 » ne couvre pas 506-518 : vérifier aussi
+   `SELECT count(*) FROM _migrations WHERE name ~ '^(50[6-9]|51[0-8])_';` → 13.
 5. Rejouer le jeu de référence (`npx tsx scripts/reference-snapshot.ts capture … --like avant-g0`
    puis `compare`) : zéro écart attendu sur les chiffres existants.
 6. Déployer le code serveur et client correspondant (`main`) seulement après un contrôle vert.
