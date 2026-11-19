@@ -118,7 +118,7 @@ Les 175 autres blocs restent tels quels, listés pour plus tard.
   verts ; les parcours achat / production / stock / pertes / paie déjà couverts ailleurs sont
   réutilisés (scenarios-achats, production-workflow, scenarios-ventes, sale-cancellation…).
 
-**Deux défauts bloquants pour la caisse, trouvés par les parcours (non corrigés, `it.fails`) :**
+**Deux défauts bloquants pour la caisse, trouvés par les parcours — CORRIGÉS le 2026-11-18** (ead6757 clôture, e866295 annulation ; tests repassés en `it`). En dev, aucune journée clôturée ne contient de ticket annulé : aucun total historique à reprendre. **Avant le déploiement, relancer en production** : `SELECT count(DISTINCT s.session_id) FROM sales s JOIN cash_register_sessions cs ON cs.id = s.session_id WHERE s.cancelled_at IS NOT NULL AND cs.status = 'closed';` — un résultat non nul signale des clôtures passées aux totaux faux (lecture seule ; reprise sur accord).
 1. La clôture de caisse **compte les tickets annulés** (`cash-register.repository.ts`, `close()`,
    la requête n'écarte pas `cancelled_at`) : chiffre d'affaires, espèces attendues et tiroir
    gonflés → faux manquant au comptage, avec son écriture d'écart.
