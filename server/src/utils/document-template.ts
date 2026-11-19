@@ -1,5 +1,7 @@
 import { db } from '../config/database.js';
-import { loadCompanyLegal, type CompanyLegal } from './company-legal.js';
+import { companyLegalFromEntity, companyLegalFromRow, type CompanyLegal } from './company-legal.js';
+import { resolveLegalEntity, type LegalContext } from '../services/legal-entity.js';
+import { settingsRepository } from '../repositories/settings.repository.js';
 import { currencySymbol } from '../services/currency.js';
 
 /**
@@ -33,18 +35,30 @@ async function tableExists(name: string): Promise<boolean> {
   return (await db.query(`SELECT to_regclass($1) IS NOT NULL AS ok`, [`public.${name}`])).rows[0].ok as boolean;
 }
 
-/** Modèle d'un type de pièce ; valeurs neutres si les migrations 331/332 ne sont pas passées. */
-export async function loadDocumentTemplate(docType: DocumentType): Promise<DocumentTemplate> {
-  const legal = await loadCompanyLegal();
+/**
+ * Modèle d'un type de pièce ; valeurs neutres si les migrations 331/332 ne sont pas passées.
+ * `ctx` (G6-03) : entité juridique de la pièce (établissement ou entité imposée) ; à défaut,
+ * l'entité par défaut. Pour une entité autre que celle par défaut, le compte bancaire
+ * affiché est pris parmi les comptes des établissements de cette entité.
+ */
+export async function loadDocumentTemplate(docType: DocumentType, ctx: LegalContext = {}): Promise<DocumentTemplate> {
+  const entity = await resolveLegalEntity(ctx);
+  const legal = entity ? companyLegalFromEntity(entity) : companyLegalFromRow(await settingsRepository.get());
   let tpl: Record<string, unknown> | undefined;
   if (await tableExists('document_templates')) {
     tpl = (await db.query(`SELECT * FROM document_templates WHERE doc_type = $1`, [docType])).rows[0];
   }
   let bank: DocumentTemplate['bank'] = null;
   if (await tableExists('company_bank_accounts')) {
-    const b = (await db.query(
-      `SELECT bank_name, rib FROM company_bank_accounts
-        WHERE is_active AND show_on_invoices ORDER BY is_default DESC, created_at LIMIT 1`)).rows[0];
+    const b = (entity && !entity.is_default
+      ? await db.query(
+        `SELECT bank_name, rib FROM company_bank_accounts
+          WHERE is_active AND show_on_invoices
+            AND store_id IN (SELECT id FROM stores WHERE legal_entity_id = $1)
+          ORDER BY is_default DESC, created_at LIMIT 1`, [entity.id])
+      : await db.query(
+        `SELECT bank_name, rib FROM company_bank_accounts
+          WHERE is_active AND show_on_invoices ORDER BY is_default DESC, created_at LIMIT 1`)).rows[0];
     if (b) bank = { bankName: b.bank_name, rib: b.rib };
   }
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
