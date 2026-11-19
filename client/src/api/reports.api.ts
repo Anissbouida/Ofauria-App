@@ -20,12 +20,18 @@ export type CostSummary = {
   laborCost: number;
   energyCost: number;
   lossesCost: number;
+  packagingCost: number;
+  chargesCost: number;
+  subcontractingCost: number;
   primeCost: number;
   totalCost: number;
   foodCostPct: number;
   laborCostPct: number;
   energyCostPct: number;
   lossesCostPct: number;
+  packagingCostPct: number;
+  chargesCostPct: number;
+  subcontractingCostPct: number;
   primeCostPct: number;
   totalCostPct: number;
   breakdown: CostBreakdownItem[];

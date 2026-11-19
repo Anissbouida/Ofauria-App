@@ -443,6 +443,8 @@ export const productionCoutRepository = {
     const rows = items.map(i => {
       const share = sum > 0 ? basis(i) / sum : items.length ? 1 / items.length : 0;
       return { plan_item_id: i.id, product_name: i.product_name, quantity: i.qty, basis: Math.round(basis(i) * 1000) / 1000,
+               // share : part non arrondie, enregistrée (detail_repartition) et lue par les rapports (G0-23).
+               share: Math.round(share * 1e10) / 1e10,
                share_pct: Math.round(share * 100000) / 1000, cost: Math.round(total * share * 100) / 100,
                unit_cost: i.qty > 0 ? Math.round(total * share / i.qty * 10000) / 10000 : null, manual_pct: i.share_pct };
     });
@@ -461,6 +463,8 @@ export const productionCoutRepository = {
       for (const x of shares) {
         await db.query(`UPDATE production_plan_items SET cost_share_pct = $3 WHERE id = $1 AND plan_id = $2`, [x.planItemId, planId, x.pct]);
       }
+      // G0-23 : un plan déjà chiffré garde une répartition enregistrée à jour des parts.
+      await this.saveRepartition(planId);
       return { saved: shares.length };
     });
   },
@@ -551,7 +555,22 @@ export const productionCoutRepository = {
     // Charges mensuelles : ce plan change la base de repartition du mois. Les autres plans
     // du mois sont re-repartis, pour que la somme des parts egale les charges saisies.
     if (c.chargesMethod === 'monthly') await this.respreadMonthlyCharges(planId);
+    // G0-23 (mig 598) : la repartition entre articles est enregistree avec le cout ; les
+    // rapports de marge et le cout des lots la lisent (v_plan_item_cost_share).
+    await this.saveRepartition(planId, c.allocation);
     return (await db.query(`SELECT * FROM production_cout_reel WHERE id = $1`, [result.rows[0].id])).rows[0];
+  },
+
+  /**
+   * Enregistre la répartition du coût du plan entre ses articles (G0-23, mig 598). Les
+   * parts (share) ne dépendent pas du total : une re-répartition des charges mensuelles
+   * ne les rend pas fausses. Sans allocation fournie, elle est recalculée (parts manuelles).
+   */
+  async saveRepartition(planId: string, allocation?: object) {
+    const row = (await db.query(`SELECT cout_total FROM production_cout_reel WHERE plan_id = $1`, [planId])).rows[0];
+    if (!row) return;
+    const alloc = allocation ?? await this.allocate(planId, parseFloat(row.cout_total) || 0);
+    await db.query(`UPDATE production_cout_reel SET detail_repartition = $2 WHERE plan_id = $1`, [planId, JSON.stringify(alloc)]);
   },
 
   /** Re-répartit les charges mensuelles sur tous les plans chiffrés du mois du plan donné. */
@@ -647,9 +666,12 @@ export const productionCoutRepository = {
                ppi.actual_quantity,
                ppi.status as item_status,
                COALESCE(item_mat.cout_matieres_item, 0) as cout_matieres_item,
-               COALESCE(item_mo.cout_mo_item, 0) as cout_mo_item
+               COALESCE(item_mo.cout_mo_item, 0) as cout_mo_item,
+               -- G0-23 : part de l'article dans le coût unifié du plan (mig 598).
+               ROUND(pcr.cout_total * item_share.share, 2) as cout_revient_item
              FROM production_plan_items ppi
              JOIN products p ON p.id = ppi.product_id
+             LEFT JOIN v_plan_item_cost_share item_share ON item_share.plan_item_id = ppi.id
              LEFT JOIN LATERAL (
                SELECT SUM(plu.quantity_used * COALESCE(plu.unit_cost_at_use, il.unit_cost, 0)) as cout_matieres_item
                FROM production_lot_usage plu
@@ -739,31 +761,26 @@ export const productionCoutRepository = {
     if (dateTo) { params.push(dateTo); dateFilter += ` AND pp.plan_date <= $${params.length}`; }
 
     const result = await db.query(
+      // G0-23 : part de chaque article dans le coût unifié du plan (v_plan_item_cost_share,
+      // mig 598 : répartition enregistrée par computePlanCost, sinon prorata des quantités).
+      // Avant, les matières étaient ré-estimées ici par les ingrédients de la fiche (un
+      // ingrédient commun à deux articles du plan comptait deux fois, emballages ignorés).
       `SELECT
-         ppi.product_id,
+         s.product_id,
          p.name as product_name,
          COUNT(DISTINCT pp.id) as nb_plans,
-         SUM(COALESCE(ppi.actual_quantity, ppi.planned_quantity)) as total_quantity,
-         SUM(
-           COALESCE((
-             SELECT SUM(plu.quantity_used * COALESCE(plu.unit_cost_at_use, il.unit_cost, 0))
-             FROM production_lot_usage plu
-             JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
-             WHERE plu.production_plan_id = pp.id
-               AND plu.ingredient_id IN (
-                 SELECT ri.ingredient_id FROM recipe_ingredients ri
-                 JOIN recipes r ON r.id = ri.recipe_id
-                 WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
-               )
-           ), 0)
-         ) as total_matieres
-       FROM production_plan_items ppi
-       JOIN production_plans pp ON pp.id = ppi.plan_id
-       JOIN products p ON p.id = ppi.product_id
+         SUM(s.quantity) as total_quantity,
+         ROUND(SUM(pcr.cout_matieres * s.share), 2) as total_matieres,
+         ROUND(SUM(pcr.cout_total * s.share), 2) as total_revient,
+         ROUND(SUM(pcr.cout_total * s.share) / NULLIF(SUM(s.quantity), 0), 4) as cout_unitaire
+       FROM v_plan_item_cost_share s
+       JOIN production_plan_items ppi ON ppi.id = s.plan_item_id
+       JOIN production_plans pp ON pp.id = s.plan_id
+       JOIN products p ON p.id = s.product_id
        JOIN production_cout_reel pcr ON pcr.plan_id = pp.id
        WHERE pp.store_id = $1 AND pp.status = 'completed' AND ppi.status != 'cancelled'${dateFilter}
-       GROUP BY ppi.product_id, p.name
-       ORDER BY total_matieres DESC`,
+       GROUP BY s.product_id, p.name
+       ORDER BY total_revient DESC`,
       params
     );
     return result.rows;

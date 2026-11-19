@@ -259,26 +259,22 @@ export const reportsController = {
     // Labor/energie/pertes restent globaux (non per-produit) car production-wide.
     const planStoreFilter = storeId ? ' AND pp.store_id = $3' : '';
     const breakdownRow = await db.query(`
-      WITH plan_totals AS (
-        SELECT ppi.plan_id, SUM(COALESCE(ppi.actual_quantity, ppi.planned_quantity)) AS total_qty
-        FROM production_plan_items ppi
-        GROUP BY ppi.plan_id
-      ),
-      production_unit_cost AS (
+      WITH production_unit_cost AS (
+        -- G0-23 : part de l'article dans le coût unifié du plan (v_plan_item_cost_share,
+        -- mig 598 : répartition de computePlanCost, sinon ancien prorata des quantités).
         SELECT
-          ppi.product_id,
-          SUM(pcr.cout_matieres * (COALESCE(ppi.actual_quantity, ppi.planned_quantity)::numeric
-              / NULLIF(pt.total_qty, 0))) AS allocated_cost,
-          SUM(COALESCE(ppi.actual_quantity, ppi.planned_quantity)) AS produced_qty
+          s.product_id,
+          -- float8 : même type qu'avant (quantités DOUBLE PRECISION, mig 512).
+          SUM(pcr.cout_matieres * s.share)::float8 AS allocated_cost,
+          SUM(s.quantity)::float8 AS produced_qty
         FROM production_plans pp
         JOIN production_cout_reel pcr ON pcr.plan_id = pp.id
-        JOIN production_plan_items ppi ON ppi.plan_id = pp.id
-        JOIN plan_totals pt ON pt.plan_id = pp.id
+        JOIN v_plan_item_cost_share s ON s.plan_id = pp.id
         WHERE pp.status = 'completed'
           AND pp.completed_at IS NOT NULL
           AND (pp.completed_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
           ${planStoreFilter}
-        GROUP BY ppi.product_id
+        GROUP BY s.product_id
       ),
       recipe_live_cost AS (
         SELECT rec.product_id,
@@ -332,11 +328,16 @@ export const reportsController = {
       ORDER BY (sold.revenue - COALESCE(returned.revenue_returned, 0)) DESC NULLS LAST
     `, params);
 
-    // Labor + energie + pertes globaux depuis production_cout_reel (period-wide).
+    // Termes non matière du coût unifié (computePlanCost → production_cout_reel), globaux
+    // sur la période : main-d'œuvre, énergie, emballages, charges, façon. Pertes = « dont »
+    // (déjà dans les matières), affichées mais jamais additionnées (G0-23).
     const globalCostsRow = await db.query(`
       SELECT
         COALESCE(SUM(pcr.cout_main_oeuvre), 0) AS labor_cost,
         COALESCE(SUM(pcr.cout_energie), 0) AS energy_cost,
+        COALESCE(SUM(pcr.cout_emballages), 0) AS packaging_cost,
+        COALESCE(SUM(pcr.cout_charges_fixes), 0) AS charges_cost,
+        COALESCE(SUM(pcr.cout_sous_traitance), 0) AS subcontracting_cost,
         COALESCE(SUM(pcr.cout_pertes), 0) AS losses_cost
       FROM production_plans pp
       JOIN production_cout_reel pcr ON pcr.plan_id = pp.id
@@ -362,9 +363,14 @@ export const reportsController = {
     const foodCost = breakdown.reduce((s, r) => s + (parseFloat(r.food_cost) || 0), 0);
     const laborCost = parseFloat(globalCostsRow.rows[0].labor_cost) || 0;
     const energyCost = parseFloat(globalCostsRow.rows[0].energy_cost) || 0;
+    const packagingCost = parseFloat(globalCostsRow.rows[0].packaging_cost) || 0;
+    const chargesCost = parseFloat(globalCostsRow.rows[0].charges_cost) || 0;
+    const subcontractingCost = parseFloat(globalCostsRow.rows[0].subcontracting_cost) || 0;
     const lossesCost = parseFloat(globalCostsRow.rows[0].losses_cost) || 0;
     const primeCost = foodCost + laborCost;
-    const totalCost = primeCost + energyCost + lossesCost;
+    // G0-23 : mêmes termes que cout_total (matières + emballages + MO + énergie + charges +
+    // façon). Les pertes n'y sont plus ajoutées : elles sont déjà dans les matières.
+    const totalCost = primeCost + energyCost + packagingCost + chargesCost + subcontractingCost;
 
     const pct = (n: number) => (netSales > 0 ? (n / netSales) * 100 : 0);
 
@@ -377,12 +383,18 @@ export const reportsController = {
         laborCost,
         energyCost,
         lossesCost,
+        packagingCost,
+        chargesCost,
+        subcontractingCost,
         primeCost,
         totalCost,
         foodCostPct: pct(foodCost),
         laborCostPct: pct(laborCost),
         energyCostPct: pct(energyCost),
         lossesCostPct: pct(lossesCost),
+        packagingCostPct: pct(packagingCost),
+        chargesCostPct: pct(chargesCost),
+        subcontractingCostPct: pct(subcontractingCost),
         primeCostPct: pct(primeCost),
         totalCostPct: pct(totalCost),
         breakdown,
@@ -431,32 +443,25 @@ export const reportsController = {
     const planStoreFilter = storeId ? ` AND pp.store_id = $${storeId ? params.indexOf(storeId) + 1 : 0}` : '';
 
     const result = await db.query(`
-      WITH plan_totals AS (
-        SELECT ppi.plan_id,
-               SUM(COALESCE(ppi.actual_quantity, ppi.planned_quantity)) AS total_qty
-        FROM production_plan_items ppi
-        GROUP BY ppi.plan_id
-      ),
-      production_unit_cost AS (
+      WITH production_unit_cost AS (
         -- For each product produced in completed plans during the period:
-        -- allocated_cost = SUM over plans of plan.cout_matieres * (product_qty / total_plan_qty)
+        -- allocated_cost = SUM over plans of plan.cout_matieres * part de l'article
         -- unit_cost = allocated_cost / total_produced_qty
+        -- G0-23 : la part est celle du coût unifié (v_plan_item_cost_share, mig 598 :
+        -- répartition de computePlanCost, sinon ancien prorata des quantités).
         SELECT
-          ppi.product_id,
-          SUM(
-            pcr.cout_matieres
-            * (COALESCE(ppi.actual_quantity, ppi.planned_quantity)::numeric / NULLIF(pt.total_qty, 0))
-          ) AS allocated_cost,
-          SUM(COALESCE(ppi.actual_quantity, ppi.planned_quantity)) AS produced_qty
+          s.product_id,
+          -- float8 : même type qu'avant (quantités DOUBLE PRECISION, mig 512).
+          SUM(pcr.cout_matieres * s.share)::float8 AS allocated_cost,
+          SUM(s.quantity)::float8 AS produced_qty
         FROM production_plans pp
         JOIN production_cout_reel pcr ON pcr.plan_id = pp.id
-        JOIN production_plan_items ppi ON ppi.plan_id = pp.id
-        JOIN plan_totals pt ON pt.plan_id = pp.id
+        JOIN v_plan_item_cost_share s ON s.plan_id = pp.id
         WHERE pp.status = 'completed'
           AND pp.completed_at IS NOT NULL
           AND (pp.completed_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
           ${planStoreFilter}
-        GROUP BY ppi.product_id
+        GROUP BY s.product_id
       ),
       recipe_live_cost AS (
         -- Fallback theorique (utilise seulement si production_cout_reel n'a pas de donnees pour ce produit).

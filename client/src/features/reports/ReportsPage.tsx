@@ -545,16 +545,19 @@ function CostTab({ costData, costLoading, lossStats }: {
             <div className="border-t border-gray-100 pt-4">
               <CostBar label="Cout primaire (Matiere + Main d'oeuvre)" value={costData.primeCost} pct={costData.primeCostPct} sales={costData.netSales} color="bg-emerald-500" bold />
             </div>
-            {(costData.energyCost > 0 || costData.lossesCost > 0) && (
+            {(costData.energyCost > 0 || costData.packagingCost > 0 || costData.chargesCost > 0 || costData.subcontractingCost > 0 || costData.lossesCost > 0) && (
               <div className="border-t border-gray-100 pt-4 space-y-3">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Composantes supplementaires (cout de revient complet)</p>
                 <CostBar label="Cout energie" value={costData.energyCost} pct={costData.energyCostPct} sales={costData.netSales} color="bg-purple-500" />
-                <CostBar label="Cout pertes" value={costData.lossesCost} pct={costData.lossesCostPct} sales={costData.netSales} color="bg-orange-500" />
-                <CostBar label="Cout total (Matiere + Main d'oeuvre + Energie + Pertes)" value={costData.totalCost} pct={costData.totalCostPct} sales={costData.netSales} color="bg-gray-700" bold />
+                {costData.packagingCost > 0 && <CostBar label="Cout emballages" value={costData.packagingCost} pct={costData.packagingCostPct} sales={costData.netSales} color="bg-amber-500" />}
+                {costData.chargesCost > 0 && <CostBar label="Charges indirectes" value={costData.chargesCost} pct={costData.chargesCostPct} sales={costData.netSales} color="bg-slate-500" />}
+                {costData.subcontractingCost > 0 && <CostBar label="Sous-traitance (facon)" value={costData.subcontractingCost} pct={costData.subcontractingCostPct} sales={costData.netSales} color="bg-cyan-600" />}
+                <CostBar label="Cout total (cout de revient : matiere + emballages + main d'oeuvre + energie + charges + facon)" value={costData.totalCost} pct={costData.totalCostPct} sales={costData.netSales} color="bg-gray-700" bold />
+                {costData.lossesCost > 0 && <CostBar label="dont pertes (deja comptees dans la matiere)" value={costData.lossesCost} pct={costData.lossesCostPct} sales={costData.netSales} color="bg-orange-500" />}
               </div>
             )}
             <div className="text-xs text-gray-500 leading-relaxed bg-gray-50 rounded-lg p-3">
-              <p><span className="font-semibold">Source des couts :</span> production_cout_reel — agregation des 4 composantes (matieres, main d'oeuvre, energie, pertes) calculees par plan de production sur la periode.</p>
+              <p><span className="font-semibold">Source des couts :</span> cout de revient unifie des plans de production de la periode (le meme que la fiche du plan). Le cout matiere par produit suit la repartition du plan entre ses articles.</p>
               <p className="mt-1"><span className="font-semibold">Formules :</span> % = composante / Ventes nettes. Cout primaire = Matiere + Main d'oeuvre.</p>
               <p className="mt-1"><span className="font-semibold">Cibles :</span> Matiere 25-30%, Main d'oeuvre &lt;30%, Primaire &lt;60%.</p>
               <p className="mt-1">

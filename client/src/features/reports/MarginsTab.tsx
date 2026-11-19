@@ -115,7 +115,7 @@ export default function MarginsTab({ from, to }: { from: string; to: string }) {
         </section>
       )}
       <p className="kl-rep-note">
-        Coût de revient : format de la fiche technique, sinon recette, sinon coût saisi sur le produit (ignoré s'il est égal ou supérieur au prix).
+        Coût de revient : celui du lot vendu (coût de revient réel de son ordre de fabrication, réparti entre ses articles comme sur la fiche de l'ordre) ; à défaut, format de la fiche technique, sinon recette, sinon coût saisi sur le produit (ignoré s'il est égal ou supérieur au prix).
         Les ventes importées du Contrôle des ventes sont rattachées au canal par défaut. Les charges ne portant pas de canal, il s'agit d'une marge sur coût de revient, pas d'un résultat net.
       </p>
     </>
