@@ -7,6 +7,8 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { storeFile, FileRejectedError, type FileOwnerType } from '../services/storage.service.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { uploadFileSchema } from '../validators/upload.validator.js';
 
 // G0-04 : plus de SVG (contenu actif possible) ; le type réel est vérifié sur les
 // premiers octets par storeFile, l'extension n'est qu'un premier tri.
@@ -34,7 +36,7 @@ const uploadPhoto = multer({ storage: multer.memoryStorage(), limits: { fileSize
 
 const router = Router();
 
-router.post('/logo', authenticate, authorizeSettings('appearance', 'edit'), uploadLogo.single('logo'), (req: AuthRequest, res: Response) => {
+router.post('/logo', authenticate, authorizeSettings('appearance', 'edit'), uploadLogo.single('logo'), validate(uploadFileSchema), (req: AuthRequest, res: Response) => {
   if (!req.file) {
     res.status(400).json({ success: false, error: { message: 'Aucun fichier envoye' } });
     return;
@@ -61,7 +63,7 @@ const photoHandler = (ownerType: FileOwnerType) => asyncHandler(async (req: Auth
   }
 });
 
-router.post('/loss-photo', authenticate, uploadPhoto.single('photo'), photoHandler('loss'));
-router.post('/complaint-photo', authenticate, uploadPhoto.single('photo'), photoHandler('complaint'));
+router.post('/loss-photo', authenticate, uploadPhoto.single('photo'), validate(uploadFileSchema), photoHandler('loss'));
+router.post('/complaint-photo', authenticate, uploadPhoto.single('photo'), validate(uploadFileSchema), photoHandler('complaint'));
 
 export default router;
