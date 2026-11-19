@@ -54,6 +54,15 @@ export interface CompanyBankAccount {
   id: string; label: string; bank_name: string; rib: string; swift: string | null; ledger_account: string | null;
   store_id: string | null; store_name: string | null; is_default: boolean; show_on_invoices: boolean; is_active: boolean;
 }
+/** Entité juridique (G6-03, mig 608) : la société qui émet les pièces d'un établissement. */
+export interface LegalEntity {
+  id: string; code: string; legal_name: string; trade_name: string | null; legal_form: string | null; capital: string | null;
+  ice: string | null; if_number: string | null; rc: string | null; patente: string | null; cnss: string | null;
+  address: string | null; city: string | null; commune_code: string | null; phone: string | null; email: string | null;
+  website: string | null; currency_code: string; country_code: string; logo_url: string | null;
+  is_default: boolean; is_active: boolean; store_count: number;
+}
+export interface LegalEntityStore { id: string; name: string; code: string | null; is_active: boolean; legal_entity_id: string }
 /** Taux de TVA daté (tax_codes, mig 309/331). */
 export interface TaxCode {
   id: string; code: string; label: string; rate: string; kind: string; recoverable: boolean;
@@ -296,6 +305,11 @@ export const settingsApi = {
   parameters: () => api.get('/settings/parameters').then(r => r.data.data) as Promise<BusinessParameter[]>,
   updateParameter: (key: string, value: Record<string, unknown>) =>
     api.put(`/settings/parameters/${key}`, { value }).then(r => r.data.data),
+  legalEntities: () => api.get('/settings/legal-entities').then(r => r.data.data) as Promise<{ entities: LegalEntity[]; stores: LegalEntityStore[] }>,
+  saveLegalEntity: (id: string | null, data: Record<string, unknown>) =>
+    (id ? api.put(`/settings/legal-entities/${id}`, data) : api.post('/settings/legal-entities', data)).then(r => r.data.data) as Promise<LegalEntity>,
+  assignStoreEntity: (storeId: string, legalEntityId: string) =>
+    api.put(`/settings/legal-entities/stores/${storeId}`, { legalEntityId }).then(r => r.data.data),
   bankAccounts: () => api.get('/settings/bank-accounts').then(r => r.data.data) as Promise<CompanyBankAccount[]>,
   saveBankAccount: (id: string | null, data: Record<string, unknown>) =>
     (id ? api.put(`/settings/bank-accounts/${id}`, data) : api.post('/settings/bank-accounts', data)).then(r => r.data.data) as Promise<CompanyBankAccount>,

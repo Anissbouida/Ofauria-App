@@ -17,7 +17,8 @@ import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { validate } from '../middleware/validate.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { legalEntityController, legalEntityCreateSchema, legalEntityUpdateSchema, legalEntityStoreSchema } from '../controllers/legal-entity.controller.js';
 import { unitsRepository } from '../repositories/units.repository.js';
 import { emptyBody } from '../validators/common.validator.js';
 import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
@@ -104,6 +105,11 @@ router.put('/modules/:key/rollout', authenticate, jsonParser, authorizeSettings(
 // Données de départ par secteur (phase 9.3) : aperçu + chargement à la demande (direction).
 router.get('/sector/starter', authenticate, asyncHandler(companyController.sectorStarter));
 router.post('/sector/starter', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(emptyBody), asyncHandler(companyController.loadSectorStarter));
+// Entités juridiques (G6-03, mig 608) : section « Société » ; une seule entité au départ (miroir de la fiche société).
+router.get('/legal-entities', authenticate, authorizeSettings('company'), asyncHandler(legalEntityController.list));
+router.post('/legal-entities', authenticate, jsonParser, authorizeSettings('company', 'create'), validate(legalEntityCreateSchema), asyncHandler(legalEntityController.create));
+router.put('/legal-entities/stores/:storeId', authenticate, jsonParser, authorizeSettings('company', 'edit'), validateUuidParams('storeId'), validate(legalEntityStoreSchema), asyncHandler(legalEntityController.assignStore));
+router.put('/legal-entities/:id', authenticate, jsonParser, authorizeSettings('company', 'edit'), validateUuidParams('id'), validate(legalEntityUpdateSchema), asyncHandler(legalEntityController.update));
 router.get('/bank-accounts', authenticate, authorizeSettings('company'), asyncHandler(companyController.bankAccounts));
 router.post('/bank-accounts', authenticate, jsonParser, authorizeSettings('company', 'create'), validate(bankAccountSchema), asyncHandler(companyController.saveBankAccount));
 router.put('/bank-accounts/:id', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(bankAccountSchema), asyncHandler(companyController.saveBankAccount));

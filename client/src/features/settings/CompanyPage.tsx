@@ -6,6 +6,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { settingsApi } from '../../api/settings.api';
 import { serverUrl } from '../../api/client';
 import CompanyBankAccounts, { formatRib } from './CompanyBankAccounts';
+import CompanyLegalEntities from './CompanyLegalEntities';
 import ParametersPanel from './ParametersPanel';
 import { settingAnchor } from './SettingsPrimitives';
 import { useDirtyForm, useDraft } from './DirtyForms';
@@ -217,6 +218,10 @@ export default function CompanyPage({ onOpen, onLeave }: {
 
           <section className="odoo-company-card odoo-company-bank">
             <CompanyBankAccounts />
+          </section>
+
+          <section className="odoo-company-card odoo-company-bank">
+            <CompanyLegalEntities />
           </section>
 
           <ParametersPanel keys={['company.country_code']} />
