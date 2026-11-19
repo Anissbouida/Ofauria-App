@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, CheckCircle2, Circle, Download, FileDown, FileUp, History, Layers, Lightbulb, RotateCcw, Save, Sparkles, Trash2, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
@@ -489,8 +489,27 @@ export default function SectorTab() {
                   ? <AlertTriangle size={16} style={{ color: 'var(--odoo-warning, #f0ad4e)', flexShrink: 0, marginTop: 2 }} />
                   : <Lightbulb size={16} style={{ color: 'var(--odoo-purple)', flexShrink: 0, marginTop: 2 }} />}
                 <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>{r.title}</div>
+                  <div style={{ fontWeight: 600, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+                    {r.title}
+                    {r.severity && (
+                      <span className={`odoo-tag ${r.severity === 'blocking' ? 'odoo-tag-red' : 'odoo-tag-orange'}`}>
+                        {r.severity === 'blocking' ? 'Bloquant' : 'Avertissement'}
+                      </span>
+                    )}
+                  </div>
                   <p className="odoo-setting-help" style={{ margin: '2px 0 0' }}>{r.detail}</p>
+                  {r.items && r.items.length > 0 && (
+                    <details style={{ marginTop: 4 }}>
+                      <summary className="odoo-setting-help" style={{ cursor: 'pointer' }}>
+                        {r.count ?? r.items.length} élément(s) en cause{(r.count ?? 0) > r.items.length ? ` — ${r.items.length} affichés` : ''}
+                      </summary>
+                      <ul style={{ margin: '4px 0 0', paddingLeft: 18, maxHeight: 220, overflowY: 'auto' }}>
+                        {r.items.map(it => (
+                          <li key={it.id}><Link to={it.to}>{it.label}</Link></li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   {inDraft(r)

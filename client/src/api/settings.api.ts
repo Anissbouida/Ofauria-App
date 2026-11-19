@@ -192,12 +192,17 @@ export interface ModuleImpact {
 export interface HealthRecommendation {
   key: string;
   tone: 'suggestion' | 'warning';
+  /** Contrôles de cohérence (C-04) : « blocking » = un ordre ou un lot restera bloqué. */
+  severity?: 'blocking' | 'warning';
   module: string;
   title: string;
   detail: string;
   action:
     | { kind: 'adjust'; label: string; changes: { modules?: Record<string, boolean>; features?: Record<string, boolean> } }
     | { kind: 'link'; label: string; to: string };
+  /** Nombre total d'éléments en cause ; `items` en porte au plus 200, avec lien vers la fiche. */
+  count?: number;
+  items?: { id: string; label: string; to: string }[];
 }
 export interface HealthReport { recommendations: HealthRecommendation[]; dismissed: number }
 

@@ -2120,7 +2120,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☑ | C-01 | Modèle de configuration étendu | non |
 | ☑ | C-02 | « Exportable et livré dans un profil » dans la définition de fini | non |
 | ☑ | C-03 | Écran « Profil d'industrie » | non |
-| ◐ | C-04 | Bilan de santé enrichi | non |
+| ☑ | C-04 | Bilan de santé enrichi | non |
 | ☑ | C-05 | Trois profils de référence | non (données de départ à la demande) |
 | ☑ | C-06 | Test d'acceptation par profil | non |
 | ☑ | C-07 | Garde « jamais le secteur » | non |
@@ -2132,7 +2132,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **C-01** : modèle `kalum.config` version 2 (v1 accepté) avec les couches production (`services/industry-profile.ts`) : types d'ordre, politiques société, gabarits d'impression ; import filtré (codes, règles bon de sortie / sous-traitance, politiques validées par le catalogue, colonnes du catalogue) ; `sector_packs.profile`, appliqué par « Charger les données de départ » sans rien écraser. Restent les couches unités, gammes types, emplacements, plans de contrôle, panneaux.
 - **C-05** : mig 586, profils `process`, `discret`, `atelier` bâtis sur Fabrication (modules, options, vocabulaire neutre hérités ; données de départ de Fabrication) avec types d'ordre, politiques, impressions et vocabulaire propres selon la matrice 2 ter.5. Valeurs proposées, à relire avec une personne du métier.
 - **C-03** : la confirmation de bascule montre ce que le profil apporte ; aperçu des données de départ de n'importe quel profil. Restent les tuiles par couche et l'indicateur d'avancement.
-- **C-04** : contrôles type d'ordre ↔ modules masqués, sous-traitance sans fournisseur, étapes « par gamme » sans gamme, termes de boulangerie affichés hors boulangerie.
+- **C-04** : contrôles type d'ordre ↔ modules masqués, sous-traitance sans fournisseur, étapes « par gamme » sans gamme, termes de boulangerie affichés hors boulangerie. Complété (sans migration) par des contrôles avec gravité (bloquant / avertissement), compteur et liste des éléments en cause (200 au plus, lien vers la fiche), requêtes dans `repositories/config-health.repository.ts` : type d'ordre sans série de numérotation (bloquant) ou sans atelier actif (avertissement) ; étape exigée par un type d'ordre dont le module est masqué, sous-traitance → Achats ajoutée (bloquant) ; article dont l'unité de fabrication ne se convertit pas en unité de stock, d'après `v_impossible_unit_conversions_v2` (bloquant) ; nomenclature sans version active ; gamme sans opération ou opération sans poste actif ; poste sans calendrier ; contrôle bloquant au plan de contrôle sans utilisateur actif détenant le droit « inspections qualité » (même règle que `hasPermission`, bloquant, module Contrôle). Test `config-health-coherence.db.test.ts`.
 - **C-06** : test en base : aucun terme ni option de boulangerie dans les profils livrés, couches valides, un type par défaut. Restent le déroulé complet d'un ordre par profil et le test d'écran.
 - **C-07** : `never-sector-guard.test.ts`, aucune exception.
 - **C-10** : `docs/GUIDE_CONFIGURATION_INDUSTRIE.md`.
