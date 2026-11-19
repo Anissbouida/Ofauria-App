@@ -8,6 +8,8 @@ import { db } from '../config/database.js';
 import { auditedQuery } from '../utils/audit-context.js';
 import { mailStatus, sendTestEmail, processOutbox } from '../services/mailer.js';
 import { JOBS, runJob, runDueJobs } from '../services/scheduler.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { emptyBody } from '../validators/common.validator.js';
 
 /**
  * Paramètres › E-mails et Tâches planifiées (mig 364). Droits : section « notifications ».
@@ -113,7 +115,7 @@ automationRouter.patch('/jobs/:key', authenticate, authorizeSettings('notificati
   res.json({ success: true, data: r.rows[0] });
 }));
 
-automationRouter.post('/jobs/:key/run', authenticate, authorizeSettings('notifications', 'edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
+automationRouter.post('/jobs/:key/run', authenticate, authorizeSettings('notifications', 'edit'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!JOBS[req.params.key]) { bad(res, 'Tâche inconnue', 404); return; }
   res.json({ success: true, data: await runJob(req.params.key, 'manual', req.user!.userId) });
 }));

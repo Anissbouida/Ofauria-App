@@ -15,6 +15,7 @@ const mfaVerifySchema = mfaCodeSchema.extend({ mfaToken: z.string().min(20).max(
 const mfaDisableSchema = mfaCodeSchema.extend({ password: z.string().min(1).max(200) });
 const mfaEmptySchema = z.object({}).passthrough();
 import { ipKeyGenerator } from 'express-rate-limit';
+import { emptyBody } from '../validators/common.validator.js';
 
 // G0-06 : la liste des tuiles est publique → 60 lectures / minute par IP.
 const pinUsersLimiter = makeLimiter(60, (req) => ipKeyGenerator(req.ip ?? ''), 'Trop de requêtes. Réessayez dans une minute.');
@@ -69,7 +70,7 @@ router.get('/pin-users', pinUsersLimiter, authController.pinUsers);
 router.get('/users-list', authenticate, can('users.auth.view'), authController.activeUsers);
 router.post('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 router.post('/register', authenticate, can('users.auth.register'), validate(registerSchema), authController.register);
-router.post('/logout', authenticate, authController.logout);
+router.post('/logout', authenticate, validate(emptyBody), authController.logout);
 router.get('/me', authenticate, authController.me);
 
 export default router;
