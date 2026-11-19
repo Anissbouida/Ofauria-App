@@ -2065,7 +2065,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 |---|---|---|---|
 | ☑ | G6-01 | Double authentification | non |
 | ◐ | G6-02 | Connexion d'entreprise (OpenID Connect) | non (inactive sans identifiants) |
-| ☐ | G6-03 | Multi-société | — (session dédiée) |
+| ◐ | G6-03 | Multi-société | Phase 1 faite (mig 608-609) : entités juridiques, établissement → entité, pièces à l'identité de l'entité, numérotation à portée entité facultative ; phase 2 (plan comptable, exercices, RLS par entité) décrite dans docs/G6-03_MULTI_SOCIETE.md |
 | ☒ | G6-04 | Multi-client (tenant) | — bloquée : prérequis G1-02 (staging) et G3 (projet Google Cloud) |
 | ◐ | G6-05 | Traductions | Phase 1 : socle maison client/src/i18n (t/useT, fr de référence typé, ar/en avec repli, RTL sur <html>), users.locale (mig 610) + PUT /users/me/locale, coquille + connexion traduites ; suivi module par module docs/I18N_AVANCEMENT.md (scripts/i18n-report.ts) ; reste l’extraction des modules |
 | ◐ | G6-06 | Devise et pays | Devise faite client (47ea52e→62828b5) et serveur (21409f1→9dff693, mig 592) ; pack pays phase 1 (mig 606, lecture seule) ; reste édition comptable, autres pays, formats déclaratifs non marocains |
