@@ -169,9 +169,9 @@ export const cashRegisterRepository = {
          -- (les jours couverts par une saisie manuelle historique comptent comme
          -- comptabilisés : la saisie porte le CA de ces jours).
          (SELECT COUNT(*) FROM sales s
-           WHERE s.session_id = cs.id AND s.payment_status IS DISTINCT FROM 'unpaid' AND s.total > 0) as tickets_count,
+           WHERE s.session_id = cs.id AND s.payment_status IS DISTINCT FROM 'unpaid' AND s.total > 0 AND s.cancelled_at IS NULL) as tickets_count,
          (SELECT COUNT(*) FROM sales s
-           WHERE s.session_id = cs.id AND s.payment_status IS DISTINCT FROM 'unpaid' AND s.total > 0
+           WHERE s.session_id = cs.id AND s.payment_status IS DISTINCT FROM 'unpaid' AND s.total > 0 AND s.cancelled_at IS NULL
              AND NOT EXISTS (SELECT 1 FROM journal_entries je WHERE je.source_id = s.id AND je.status <> 'draft')
              AND NOT EXISTS (SELECT 1 FROM manual_shift_entries m
                               WHERE m.store_id = s.store_id
@@ -267,7 +267,9 @@ export const cashRegisterRepository = {
           COUNT(CASE WHEN sale_type = 'delivery' THEN 1 END) as delivery_count
         FROM sales
         WHERE session_id = $1
-          AND payment_status IS DISTINCT FROM 'unpaid'`,
+          AND payment_status IS DISTINCT FROM 'unpaid'
+          -- Plan pilote : un ticket annulé (sale.repository.cancel) ne compte ni dans le CA ni dans le tiroir.
+          AND cancelled_at IS NULL`,
         [sessionId]
       );
 
