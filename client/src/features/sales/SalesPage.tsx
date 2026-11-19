@@ -29,6 +29,7 @@ import RoutesTab from './RoutesTab';
 import { ListKpi } from './ListTemplate';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ReceivablesTab from './ReceivablesTab';
+import OfflineAbandonedSection from './OfflineAbandonedSection';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur', manager: 'Gérant', cashier: 'Caissier', baker: 'Boulanger',
@@ -1086,6 +1087,7 @@ export default function SalesPage() {
               <ListKpi label="Caisses justes" value={`${sessionKpis.exact} / ${sessionKpis.closed}`} sub="sessions clôturées sans écart" tone={sessionKpis.closed && sessionKpis.exact === sessionKpis.closed ? 'green' : undefined} />
             </section>
             {user?.role === 'admin' && <ClosureGapsBanner />}
+            <OfflineAbandonedSection dateFrom={dateFrom} dateTo={dateTo} />
 
             {/* Sessions en cours : liste groupée façon Réglages (nom, ouverture, pastille). */}
             {sessions.some((s: Record<string, any>) => s.status !== 'closed') && (

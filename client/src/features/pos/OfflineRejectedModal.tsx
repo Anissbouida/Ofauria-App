@@ -1,13 +1,18 @@
 import { money } from '../../utils/money';
-import { useState } from 'react';
-import { AlertTriangle, RotateCcw, Trash2, X } from 'lucide-react';
+import { useState, type FormEvent } from 'react';
+import { AlertTriangle, Pencil, RotateCcw, Trash2, X } from 'lucide-react';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
-import { rejectedList, retryRejected, abandonRejected, type RejectedCheckout } from './offlineQueue';
+import {
+  rejectedList, retryRejected, abandonRejected, correctRejected, CORRECTABLE_PAYMENTS,
+  type RejectedCheckout, type CorrectablePayment,
+} from './offlineQueue';
 
 /**
  * Ventes hors-ligne refusées par le serveur au moment de leur envoi (G0-21) : caisse
  * fermée, stock insuffisant, promotion épuisée… Elles ne bloquent plus les suivantes.
  * Le caissier corrige la cause puis renvoie la vente, ou l'abandonne avec un motif.
+ * Il peut aussi corriger le CONTENU avant renvoi (quantités, lignes retirées, moyen de
+ * paiement, code promo) ; l'abandon remonte au serveur (journal de la direction).
  */
 const when = (iso: string) => (iso ? new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
@@ -18,6 +23,7 @@ export default function OfflineRejectedModal({ onClose, onChanged }: {
 }) {
   const [items, setItems] = useState<RejectedCheckout[]>(() => rejectedList());
   const [abandoning, setAbandoning] = useState<string | null>(null);
+  const [correcting, setCorrecting] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const refresh = () => setItems(rejectedList());
 
@@ -50,9 +56,16 @@ export default function OfflineRejectedModal({ onClose, onChanged }: {
                   <div className="text-xs text-gray-500">Réf. provisoire {key.slice(0, 8).toUpperCase()}</div>
                 </div>
                 {r.meta.summary && <p className="mt-1 text-xs text-gray-600">{r.meta.summary}</p>}
+                {r.meta.correctedAt && (
+                  <p className="mt-1 text-xs text-amber-700">Corrigée le {when(r.meta.correctedAt)}{r.meta.originalSummary ? ` · avant : ${r.meta.originalSummary}` : ''}</p>
+                )}
                 <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"><span className="font-semibold">Refusée :</span> {r.reason}</p>
 
-                {abandoning === key ? (
+                {correcting === key ? (
+                  <CorrectionForm item={r} onCancel={() => setCorrecting(null)} onSent={() => {
+                    setCorrecting(null); refresh(); onChanged('retry');
+                  }} />
+                ) : abandoning === key ? (
                   <form className="mt-3 flex flex-wrap gap-2" onSubmit={e => {
                     e.preventDefault();
                     if (reason.trim().length < 3) return;
@@ -73,6 +86,10 @@ export default function OfflineRejectedModal({ onClose, onChanged }: {
                       className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700">
                       <RotateCcw size={14} /> Renvoyer
                     </button>
+                    <button type="button" onClick={() => { setCorrecting(key); setAbandoning(null); }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                      <Pencil size={14} /> Corriger
+                    </button>
                     <button type="button" onClick={() => { setAbandoning(key); setReason(''); }}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
                       <Trash2 size={14} /> Abandonner
@@ -89,5 +106,101 @@ export default function OfflineRejectedModal({ onClose, onChanged }: {
         </div>
       </div>
     </ModalBackdrop>
+  );
+}
+
+const PAYMENT_LABELS: Record<CorrectablePayment, string> = { cash: 'Espèces', card: 'Carte', mobile: 'Paiement mobile', check: 'Chèque', mixed: 'Mixte (espèces + carte)' };
+const inputCls = 'rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-200';
+
+/**
+ * Correction du contenu d'une vente refusée, puis renvoi (G0-21). Ce qui est contrôlé
+ * localement est dans `applyCorrection` (offlineQueue.ts) ; le serveur revérifie tout.
+ */
+function CorrectionForm({ item, onCancel, onSent }: { item: RejectedCheckout; onCancel: () => void; onSent: () => void }) {
+  const key = String(item.payload.idempotencyKey);
+  const saleItems = (Array.isArray(item.payload.items) ? item.payload.items : []) as { productId?: string; quantity?: number }[];
+  const unpaid = item.payload.paymentStatus === 'unpaid';
+  const [rows, setRows] = useState(() => saleItems.map((it, index) => ({ index, keep: true, quantity: String(it.quantity ?? '') })));
+  const currentPm = String(item.payload.paymentMethod ?? 'cash');
+  const [pm, setPm] = useState<string>(currentPm);
+  const [cash, setCash] = useState(item.payload.cashAmount != null ? String(item.payload.cashAmount) : '');
+  const [card, setCard] = useState(item.payload.cardAmount != null ? String(item.payload.cardAmount) : '');
+  const hasCoupon = Boolean(item.payload.couponCode);
+  const [removeCoupon, setRemoveCoupon] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const num = (v: string) => (v.trim() === '' ? NaN : Number(v.replace(',', '.')));
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const err = correctRejected(key, {
+      items: rows.filter(r => r.keep).map(r => ({ index: r.index, quantity: num(r.quantity) })),
+      paymentMethod: !unpaid && (CORRECTABLE_PAYMENTS as readonly string[]).includes(pm) ? pm as CorrectablePayment : undefined,
+      cashAmount: pm === 'mixed' ? num(cash) : undefined,
+      cardAmount: pm === 'mixed' ? num(card) : undefined,
+      removeCoupon,
+    });
+    if (err) { setError(err); return; }
+    retryRejected(key);
+    onSent();
+  };
+
+  return (
+    <form className="mt-3 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3" onSubmit={submit}>
+      <div className="space-y-2">
+        {rows.map((row, i) => {
+          const line = item.meta.lines?.[row.index];
+          const unitLabel = line?.unit === 'g' ? 'g' : line?.unit === 'person' ? 'pers' : '×';
+          return (
+            <div key={row.index} className="flex flex-wrap items-center gap-2">
+              <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-gray-800">
+                <input type="checkbox" checked={row.keep} aria-label={`Garder ${line?.name || `la ligne ${row.index + 1}`}`}
+                  onChange={e => setRows(rs => rs.map((r, j) => (j === i ? { ...r, keep: e.target.checked } : r)))} />
+                <span className={row.keep ? 'truncate' : 'truncate text-gray-400 line-through'}>
+                  {line?.name || `Article ${String(saleItems[row.index]?.productId ?? '').slice(0, 8)}`}
+                </span>
+              </label>
+              <input inputMode="decimal" value={row.quantity} disabled={!row.keep} aria-label={`Quantité de ${line?.name || `la ligne ${row.index + 1}`}`}
+                onChange={e => setRows(rs => rs.map((r, j) => (j === i ? { ...r, quantity: e.target.value } : r)))}
+                className={`${inputCls} w-24 text-right tabular-nums disabled:opacity-50`} />
+              <span className="w-8 text-xs text-gray-500">{unitLabel}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {unpaid ? (
+        <p className="text-xs text-gray-600">Vente non encaissée (à crédit) : le moyen de paiement ne se corrige pas.</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-sm text-gray-700" htmlFor={`pm-${key}`}>Paiement</label>
+          <select id={`pm-${key}`} value={pm} onChange={e => setPm(e.target.value)} className={inputCls}>
+            {!(CORRECTABLE_PAYMENTS as readonly string[]).includes(currentPm) && <option value={currentPm}>{currentPm}</option>}
+            {CORRECTABLE_PAYMENTS.map(m => <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>)}
+          </select>
+          {pm === 'mixed' && (
+            <>
+              <input inputMode="decimal" value={cash} onChange={e => setCash(e.target.value)} placeholder="Espèces" aria-label="Part espèces" className={`${inputCls} w-24 text-right`} />
+              <input inputMode="decimal" value={card} onChange={e => setCard(e.target.value)} placeholder="Carte" aria-label="Part carte" className={`${inputCls} w-24 text-right`} />
+            </>
+          )}
+        </div>
+      )}
+
+      {hasCoupon && (
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={removeCoupon} onChange={e => setRemoveCoupon(e.target.checked)} />
+          Retirer le code promo « {String(item.payload.couponCode)} »
+        </label>
+      )}
+
+      <p className="text-xs text-gray-500">Le serveur recalcule le total (prix, promotions) au renvoi. La référence provisoire du ticket client reste la même.</p>
+      {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700">
+          <RotateCcw size={14} /> Enregistrer et renvoyer
+        </button>
+        <button type="button" onClick={onCancel} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Annuler</button>
+      </div>
+    </form>
   );
 }

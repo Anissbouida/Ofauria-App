@@ -15,6 +15,11 @@ export const salesApi = {
   /** Annulation d'un ticket (phase 8.1) : direction, motif obligatoire. */
   cancel: (id: string, reason: string) => api.post(`/sales/${id}/cancel`, { reason }).then(r => r.data.data),
   deferred: () => api.get('/sales/deferred').then(r => r.data.data),
+  /** G0-21 (mig 596) : remonte une vente hors ligne abandonnée à la caisse (dédoublonnée par clé). */
+  reportOfflineAbandoned: (data: Record<string, unknown>) => api.post('/sales/offline-abandoned', data).then(r => r.data.data),
+  /** G0-21 (mig 596) : journal des ventes hors ligne abandonnées, consultation direction. */
+  offlineAbandoned: (params: { dateFrom?: string; dateTo?: string }) =>
+    api.get('/sales/offline-abandoned', { params }).then(r => r.data.data as OfflineAbandonedSale[]),
   /** Créances clients (mig 351) : balance âgée, tickets impayés + factures clients ouvertes. */
   receivables: () => api.get('/sales/receivables').then(r => r.data.data as ReceivablesReport),
   todayStats: () => api.get('/sales/today').then(r => r.data.data),
@@ -50,4 +55,14 @@ export interface ReceivablesReport {
   totals: { total: number; overdue: number; buckets: Record<AgingBucket, number>; customers: number; documents: number };
   reconciliation: ReceivablesReconciliation;
   customers: CustomerReceivable[];
+}
+
+/** Vente hors ligne refusée puis abandonnée à la caisse (G0-21, mig 596). */
+export interface OfflineAbandonedSale {
+  id: string; idempotency_key: string; store_id: string | null; store_name: string | null;
+  abandoned_by: string | null; abandoned_by_name: string | null;
+  queued_at: string | null; rejected_at: string | null; abandoned_at: string;
+  total: string | null; summary: string | null;
+  reject_reason: string; reject_status: number | null; reject_code: string | null; abandon_reason: string;
+  payload: Record<string, unknown>; sale_id: string | null; sale_number: string | null; created_at: string;
 }

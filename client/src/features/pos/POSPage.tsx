@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { salesApi } from '../../api/sales.api';
-import { enqueueCheckout, flushQueue, pendingCount, rejectedCount, isNetworkError } from './offlineQueue';
+import { enqueueCheckout, flushQueue, pendingCount, rejectedCount, isNetworkError, reportAbandoned, unreportedAbandonedCount } from './offlineQueue';
 import OfflineRejectedModal from './OfflineRejectedModal';
 import { sachetConfigApi } from '../../api/sachet-config.api';
 import { customersApi } from '../../api/customers.api';
@@ -877,6 +877,8 @@ export default function POSPage() {
         const key = enqueueCheckout(variables, {
           total,
           summary: cart.map(i => `${i.unit === 'g' ? `${i.quantity} g` : i.quantity} × ${i.name}`).join(', ').slice(0, 200),
+          // Libellés et prix alignés sur variables.items : de quoi corriger la vente si le serveur la refuse.
+          lines: cart.map(i => ({ name: i.name, price: i.price, unit: i.unit })),
         });
         const offlineReceipt = buildReceipt({
           saleNumber: `HL-${key.slice(0, 8).toUpperCase()}`, date: new Date().toISOString(), isUnpaid,
@@ -899,6 +901,8 @@ export default function POSPage() {
   // Synchronisation hors-ligne (phase 8.4) : rejoue la file à la reconnexion.
   // G0-21 : une vente refusée par le serveur ne bloque plus la file, elle passe « à traiter ».
   const flushOffline = useCallback(async () => {
+    // Abandons pas encore remontés au serveur (journal de la direction, mig 596) : best effort.
+    if (unreportedAbandonedCount() > 0) await reportAbandoned(r => salesApi.reportOfflineAbandoned(r)).catch(() => undefined);
     if (pendingCount() === 0) { setOfflineRejected(rejectedCount()); return; }
     const { done, rejected } = await flushQueue((p) => salesApi.checkout(p as Record<string, any>));
     setOfflinePending(pendingCount());
@@ -2910,7 +2914,7 @@ export default function POSPage() {
             onChanged={action => {
               setOfflineRejected(rejectedCount());
               setOfflinePending(pendingCount());
-              if (action === 'retry') void flushOffline();
+              if (action === 'retry' || action === 'abandon') void flushOffline();
             }} />
         )}
         <span className="flex items-center gap-1"><Printer size={12} /> {terminalPrefs.printerId ? 'Imprimante du poste' : 'Imprimante par défaut du magasin'}</span>
