@@ -29,6 +29,7 @@ import SemiFinisTab from './SemiFinisTab';
 import ExpiredProductLotsBanner from './ExpiredProductLotsBanner';
 import type { ProfileFormData } from './ProductionProfileTab';
 import { mapLoyverseCsv } from './loyverse-csv';
+import { recipeUnitCost, recipeYieldPerBatch } from './recipeUnitCost';
 
 type ViewMode = 'grid' | 'table';
 
@@ -894,15 +895,14 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     : null;
 
   // Auto-remplit le prix de vente et le cout de revient depuis la recette selectionnee.
-  // - cost_per_unit = recipe.total_cost / yield_quantity
-  // - prix_vente = cost_per_unit * margin_multiplier
-  // On override toujours quand recipeId change (la recette est la source de verite).
+  // - cout par unite de vente = recipeUnitCost (fournee ÷ rendement du format par defaut,
+  //   ou ÷ poids de la fournee pour une vente au poids)
+  // - prix_vente = cout * margin_multiplier
+  // On override toujours quand la recette ou le mode de vente change (la recette est la source de verite).
   useEffect(() => {
     if (!selectedRecipe) return;
-    const totalCost = parseFloat((selectedRecipe.total_cost as string) || '0');
-    const yieldQty = parseFloat((selectedRecipe.yield_quantity as string) || '1') || 1;
     const margin = parseFloat(String(selectedRecipe.margin_multiplier ?? '3')) || 3;
-    const costPerUnit = totalCost / yieldQty;
+    const costPerUnit = recipeUnitCost(selectedRecipe, form.saleUnit);
     const suggestedPrice = costPerUnit * margin;
     setForm(f => ({
       ...f,
@@ -910,7 +910,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
       costPrice: costPerUnit > 0 ? costPerUnit.toFixed(2) : f.costPrice,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRecipe?.id, selectedRecipe?.total_cost, selectedRecipe?.margin_multiplier]);
+  }, [selectedRecipe?.id, selectedRecipe?.total_cost, selectedRecipe?.margin_multiplier, selectedRecipe?.rendement, form.saleUnit]);
 
   // Smart search: fuzzy match on recipe name, normalize accents
   const normalizeStr = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -1318,7 +1318,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                                           <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                                             {r.is_base && <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-600 text-[10px] font-bold">BASE</span>}
                                             {cost > 0 && <span>Cout: {money(cost)}</span>}
-                                            {r.yield_quantity && <span>Rend: {r.yield_quantity as number} unite{(r.yield_quantity as number) > 1 ? 's' : ''}</span>}
+                                            {(() => { const y = recipeYieldPerBatch(r); return <span>Rend: {y} unite{y > 1 ? 's' : ''}</span>; })()}
                                           </div>
                                         </div>
                                       </button>

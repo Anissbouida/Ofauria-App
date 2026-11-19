@@ -76,6 +76,11 @@ export const recipeRepository = {
               vfs.nb_formats AS formats_nb,
               vfs.perte_pct AS formats_perte_pct,
               df.nb_par_defaut AS rendement,
+              -- Poids (kg) d'une fournee du format par defaut, depuis sa composition :
+              -- v_recipe_total_weight_kg ne lit que l'ancienne composition et renvoie 0
+              -- pour une fiche composee par format. Sert au prix au kilo d'un produit
+              -- vendu au poids (scenario 1, constat 27).
+              dw.weight_kg AS default_format_weight_kg,
               dfc.nom AS default_contenant_nom,
               dfc.id IS NOT NULL AND dfc.nom ILIKE '%assemblage%' AS rendement_a_definir,
               (vtc.total_cost IS NULL OR vtc.total_cost = 0) AS compo_vide,
@@ -106,12 +111,29 @@ export const recipeRepository = {
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
        LEFT JOIN LATERAL (
-         SELECT rf.nb_par_defaut, rf.contenant_id
+         SELECT rf.id, rf.nb_par_defaut, rf.contenant_id
          FROM recipe_formats rf
          WHERE rf.recipe_id = r.id AND rf.is_active = true
          ORDER BY rf.is_default DESC, rf.ordre LIMIT 1
        ) df ON true
        LEFT JOIN production_contenants dfc ON dfc.id = df.contenant_id
+       -- Une ligne en masse se convertit directement ; en volume, il faut la masse
+       -- volumique de la matiere ; a la piece, son poids par piece. Sinon la ligne est
+       -- ecartee (comme fn_ingredient_weight_kg).
+       LEFT JOIN LATERAL (
+         SELECT sum(CASE
+             WHEN lower(c.unite) = 'mg' THEN c.quantite / 1000000.0
+             WHEN lower(c.unite) = 'g'  THEN c.quantite / 1000.0
+             WHEN lower(c.unite) = 'kg' THEN c.quantite
+             WHEN lower(c.unite) IN ('ml','cl','dl','l') AND COALESCE(i.densite_kg_l, 0) > 0 THEN
+               c.quantite * CASE lower(c.unite) WHEN 'ml' THEN 0.001 WHEN 'cl' THEN 0.01 WHEN 'dl' THEN 0.1 ELSE 1 END * i.densite_kg_l
+             WHEN lower(c.unite) IN ('unit','unite','unité','u','piece','pièce','pce','pc','pcs') AND COALESCE(i.poids_piece_kg, 0) > 0 THEN
+               c.quantite * i.poids_piece_kg
+             ELSE NULL END) AS weight_kg
+         FROM recipe_format_components c
+         LEFT JOIN ingredients i ON i.id = c.source_ingredient_id
+         WHERE c.format_id = df.id
+       ) dw ON true
        WHERE r.archived_at IS ${archivedOnly ? 'NOT NULL' : 'NULL'}
        ORDER BY r.is_base DESC, r.name`
     );
