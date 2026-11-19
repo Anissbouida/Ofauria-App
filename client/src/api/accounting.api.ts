@@ -359,4 +359,17 @@ export const paymentRunsApi = {
   execute: (id: string): Promise<{ executed: number; advices: number }> => api.post(`/payment-runs/${id}/execute`, {}).then(r => r.data.data),
   cancel: (id: string): Promise<PaymentRunDetail> => api.post(`/payment-runs/${id}/cancel`, {}).then(r => r.data.data),
   rejectLine: (lineId: string, reasonCodeId: string, note: string) => api.post(`/payment-runs/lines/${lineId}/reject`, { reasonCodeId, note }).then(r => r.data.data),
+  /** Format du fichier de virement d'un compte bancaire (mig 600) ; null = CSV générique. */
+  transferFormat: (treasuryAccountId: string): Promise<TransferFormatView> => api.get(`/payment-runs/transfer-format/${treasuryAccountId}`).then(r => r.data.data),
+  saveTransferFormat: (treasuryAccountId: string, format: TransferFormat | null): Promise<TransferFormatView> =>
+    api.put(`/payment-runs/transfer-format/${treasuryAccountId}`, { format }).then(r => r.data.data),
 };
+export type TransferColumn = 'seq' | 'name' | 'rib' | 'bank' | 'amount' | 'motif' | 'date' | 'debit_rib' | 'currency' | 'reference';
+export interface TransferFormat {
+  separator: ';' | ',' | 'tab' | '|' | 'fixed'; decimal: '.' | ','; amountInCents: boolean; header: boolean;
+  dateFormat: 'DD/MM/YYYY' | 'YYYY-MM-DD' | 'YYYYMMDD' | 'DDMMYYYY'; columns: TransferColumn[];
+  widths?: Partial<Record<TransferColumn, number>>; uppercase: boolean; lineEnding: 'crlf' | 'lf'; extension: 'csv' | 'txt';
+}
+export interface TransferFormatView {
+  treasuryAccountId: string; label: string; isGeneric: boolean; format: TransferFormat; columns: Record<TransferColumn, string>; preview: string;
+}

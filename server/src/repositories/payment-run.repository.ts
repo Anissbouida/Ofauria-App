@@ -1,9 +1,10 @@
 import { db, withTransaction } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
 import { approvalService } from '../services/approval.service.js';
-import { buildTransferCsv, formatRib, normalizeRib, ribKeyValid, type TransferLine } from '../services/salary-transfer.js';
+import { formatRib, normalizeRib, ribKeyValid, type TransferLine } from '../services/salary-transfer.js';
+import { buildBankTransferFile, normalizeTransferFormat, GENERIC_TRANSFER_FORMAT, TRANSFER_COLUMNS, type TransferFormat } from '../services/bank-transfer-format.js';
 import { enqueueEmail } from '../services/mailer.js';
-import { currencySymbol } from '../services/currency.js';
+import { currencySymbol, companyCurrency } from '../services/currency.js';
 
 /**
  * Paiements fournisseurs en lot (G4-01, mig 543).
@@ -42,6 +43,18 @@ const PAYABLE = `
   AND i.total_amount - COALESCE(i.paid_amount, 0) > 0.005
   AND NOT EXISTS (SELECT 1 FROM invoice_holds h WHERE h.invoice_id = i.id AND h.released_at IS NULL AND h.blocks_payment)`;
 
+/** Aperçu d'un format sur deux bénéficiaires fictifs (RIB à clé valide). */
+async function transferPreview(format: TransferFormat | null, debitRib: string | null) {
+  const lines: TransferLine[] = [
+    { payrollId: '', employeeId: '1', name: 'Minoterie Atlas', rib: '011780000012345678901296', bankName: 'Attijariwafa bank', amount: 12500.5 },
+    { payrollId: '', employeeId: '2', name: 'Emballages du Sud', rib: '007780000098765432109876', bankName: 'Banque Populaire', amount: 980 },
+  ];
+  return buildBankTransferFile(lines, {
+    motif: 'REGLEMENT CP-20261130-01', paymentDate: '2026-11-30', debitRib: debitRib ?? '000000000000000000000000',
+    currency: (await companyCurrency()).code, reference: 'CP-20261130-01',
+  }, format).content;
+}
+
 export const paymentRunRepository = {
   /** Factures payables échues au plus tard à `dueBefore` (sans échéance comprises). */
   async candidates(opts: { dueBefore: string; storeId?: string | null }) {
@@ -79,7 +92,8 @@ export const paymentRunRepository = {
   async get(id: string) {
     const run = (await db.query(
       `SELECT r.*, r.payment_date::text AS payment_date, r.total_amount::float8 AS total_amount,
-              t.label AS treasury_label, t.kind AS treasury_kind, t.bank_name AS treasury_bank, t.iban AS treasury_iban
+              t.label AS treasury_label, t.kind AS treasury_kind, t.bank_name AS treasury_bank, t.iban AS treasury_iban,
+              t.transfer_format
          FROM payment_runs r JOIN treasury_accounts t ON t.id = r.treasury_account_id WHERE r.id = $1`, [id])).rows[0];
     if (!run) return null;
     const lines = (await db.query(
@@ -186,11 +200,44 @@ export const paymentRunRepository = {
     return { run, lines: [...bySupplier.values()] };
   },
 
-  /** CSV pour le portail de la banque ; la campagne passe « fichier édité ». */
+  /**
+   * Fichier pour le portail de la banque, au format du compte débité (mig 600 ; CSV générique
+   * sans format saisi) ; la campagne passe « fichier édité ».
+   */
   async transferFile(id: string) {
     const { run, lines } = await this.transferLines(id);
+    const { content, extension } = buildBankTransferFile(lines, {
+      motif: `REGLEMENT ${run.run_number}`, paymentDate: String(run.payment_date), debitRib: normalizeRib(run.treasury_iban),
+      currency: (await companyCurrency()).code, reference: String(run.run_number),
+    }, (run.transfer_format as TransferFormat | null) ?? null);
     if (run.status === 'approved') await db.query(`UPDATE payment_runs SET status = 'file_generated', file_generated_at = now() WHERE id = $1`, [id]);
-    return { filename: `virement_fournisseurs_${run.run_number}.csv`, csv: buildTransferCsv(lines, `REGLEMENT ${run.run_number}`) };
+    return { filename: `virement_fournisseurs_${run.run_number}.${extension}`, csv: content, extension };
+  },
+
+  /** Format du fichier de virement d'un compte bancaire, avec un aperçu sur deux lignes fictives. */
+  async transferFormat(treasuryAccountId: string) {
+    const t = (await db.query(`SELECT id, label, kind, iban, transfer_format FROM treasury_accounts WHERE id = $1`, [treasuryAccountId])).rows[0];
+    if (!t) throw Object.assign(new Error('Compte de trésorerie introuvable'), { statusCode: 404 });
+    const format = (t.transfer_format as TransferFormat | null) ?? null;
+    return {
+      treasuryAccountId: t.id as string, label: t.label as string, isGeneric: format == null, format: format ?? GENERIC_TRANSFER_FORMAT,
+      columns: TRANSFER_COLUMNS, preview: await transferPreview(format, normalizeRib(t.iban)),
+    };
+  },
+
+  /** Enregistre le format d'un compte bancaire (null = retour au CSV générique). */
+  async saveTransferFormat(treasuryAccountId: string, input: unknown | null) {
+    const t = (await db.query(`SELECT kind FROM treasury_accounts WHERE id = $1`, [treasuryAccountId])).rows[0];
+    if (!t) throw Object.assign(new Error('Compte de trésorerie introuvable'), { statusCode: 404 });
+    if (t.kind !== 'bank') throw bad('Le format de virement concerne un compte bancaire, pas la caisse');
+    let format: TransferFormat | null = null;
+    if (input != null) {
+      const n = normalizeTransferFormat(input);
+      if (!n.format) throw bad(n.errors.join(' ; '));
+      format = n.format;
+    }
+    await db.query(`UPDATE treasury_accounts SET transfer_format = $2::jsonb WHERE id = $1`, [treasuryAccountId, format ? JSON.stringify(format) : null]);
+    return this.transferFormat(treasuryAccountId);
   },
 
   /** Exécution : un règlement par ligne, tout ou rien ; puis avis de paiement par e-mail. */

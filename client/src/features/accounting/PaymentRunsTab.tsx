@@ -1,7 +1,7 @@
 import { cashForecastApi } from '../../api/ledger.api';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Banknote, CheckCircle2, Download, FileText, Loader2, Play, Plus, Send, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Banknote, CheckCircle2, Download, FileText, Loader2, Play, Plus, Send, Settings2, X, AlertTriangle } from 'lucide-react';
 import { paymentRunsApi, paymentsApi, type PaymentRunCandidate, type PaymentRunStatus } from '../../api/accounting.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
@@ -10,6 +10,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { money as fmtMoney } from '../../utils/money';
+import TransferFormatDialog from './TransferFormatDialog';
 
 /**
  * Paiements fournisseurs en lot (G4-01).
@@ -42,10 +43,17 @@ export default function PaymentRunsTab() {
 
 function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) => void }) {
   const { data: runs = [], isLoading } = useQuery({ queryKey: ['payment-runs'], queryFn: paymentRunsApi.list });
+  const { data: modes } = useQuery({ queryKey: ['payment-modes'], queryFn: paymentsApi.modes });
+  const banks = (modes?.treasuryAccounts ?? []).filter(t => t.kind === 'bank');
+  const [formatOpen, setFormatOpen] = useState(false);
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <StatusBanner tone="info" icon={Banknote} title="Paiements fournisseurs en lot"
-        actions={<button type="button" className="odoo-btn-primary" onClick={onNew} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={14} /> Nouvelle campagne</button>}>
+        actions={<span style={{ display: 'inline-flex', gap: 8 }}>
+          <button type="button" className="odoo-btn-secondary" disabled={!banks.length} onClick={() => setFormatOpen(true)} title="Format du fichier attendu par le portail de la banque"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Settings2 size={14} /> Format banque</button>
+          <button type="button" className="odoo-btn-primary" onClick={onNew} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={14} /> Nouvelle campagne</button>
+        </span>}>
         Regroupez les factures fournisseurs échues dans une campagne de virement : approbation, fichier pour la banque, puis exécution en un geste
         (règlements, écritures et lettrage créés pour chaque facture).
       </StatusBanner>
@@ -73,6 +81,9 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
             </tbody>
           </table>
         </div>
+      )}
+      {formatOpen && banks.length > 0 && (
+        <TransferFormatDialog banks={banks} initialId={banks.find(b => b.is_default)?.id ?? banks[0].id} onClose={() => setFormatOpen(false)} />
       )}
     </div>
   );
@@ -267,7 +278,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </StatusBanner>
       )}
       {run.status === 'pending_approval' && (
-        <StatusBanner tone="info" icon={Send} title="En attente d'approbation">La campagne suit le circuit d'approbation des paiements ; le fichier s'édite une fois approuvée.</StatusBanner>
+        <StatusBanner tone="info" icon={Send} title="En attente d'approbation">La campagne suit le circuit d'approbation des paiements (par défaut : un administrateur) ; le fichier s'édite une fois approuvée.</StatusBanner>
       )}
       {run.status === 'executed' && (
         <StatusBanner tone="success" icon={CheckCircle2} title="Campagne exécutée">

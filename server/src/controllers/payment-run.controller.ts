@@ -31,10 +31,18 @@ export const paymentRunController = {
     res.json({ success: true, data: await paymentRunRepository.submit(req.params.id as string, req.user!.userId) });
   },
   async transferFile(req: AuthRequest, res: Response) {
-    const { filename, csv } = await paymentRunRepository.transferFile(req.params.id as string);
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    const { filename, csv, extension } = await paymentRunRepository.transferFile(req.params.id as string);
+    res.setHeader('Content-Type', `${extension === 'txt' ? 'text/plain' : 'text/csv'}; charset=utf-8`);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
+  },
+  /** Format du fichier de virement d'un compte bancaire (mig 600). */
+  async transferFormat(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await paymentRunRepository.transferFormat(req.params.treasuryAccountId as string) });
+  },
+  async saveTransferFormat(req: AuthRequest, res: Response) {
+    const b = req.body as { format: unknown | null };
+    res.json({ success: true, data: await paymentRunRepository.saveTransferFormat(req.params.treasuryAccountId as string, b.format ?? null) });
   },
   /** Lettre d'ordre au banquier (PDF), reprise de l'ordre de virement des salaires. */
   async orderLetter(req: AuthRequest, res: Response) {
