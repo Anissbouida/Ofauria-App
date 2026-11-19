@@ -5,6 +5,8 @@ import { can } from '../middleware/permission.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { activeUnits } from '../services/unit-referential.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { refEntrySchema, refReactivateSchema, refReorderSchema } from '../validators/referentiel.validator.js';
 
 const router = Router();
 
@@ -26,11 +28,11 @@ router.get('/units/active', authenticate, asyncHandler(async (_req, res) => {
 // contenant au moment du transfert Économat → Pesage. Les mutations relevent du droit
 // « Parametres » (section Referentiel).
 router.get('/:tableName', authenticate, can('settings.params.view'), asyncHandler(refEntryController.list));
-router.post('/:tableName', authenticate, authorizeSettings('referentiel', 'create'), asyncHandler(refEntryController.create));
-router.put('/:tableName/reorder', authenticate, authorizeSettings('referentiel', 'edit'), asyncHandler(refEntryController.reorder));
+router.post('/:tableName', authenticate, authorizeSettings('referentiel', 'create'), validate(refEntrySchema), asyncHandler(refEntryController.create));
+router.put('/:tableName/reorder', authenticate, authorizeSettings('referentiel', 'edit'), validate(refReorderSchema), asyncHandler(refEntryController.reorder));
 router.get('/:tableName/audit', authenticate, authorizeSettings('referentiel'), asyncHandler(refEntryController.audit));
-router.put('/:tableName/:id', authenticate, authorizeSettings('referentiel', 'edit'), asyncHandler(refEntryController.update));
-router.put('/:tableName/:id/reactivate', authenticate, authorizeSettings('referentiel', 'edit'), asyncHandler(refEntryController.reactivate));
+router.put('/:tableName/:id', authenticate, authorizeSettings('referentiel', 'edit'), validate(refEntrySchema), asyncHandler(refEntryController.update));
+router.put('/:tableName/:id/reactivate', authenticate, authorizeSettings('referentiel', 'edit'), validate(refReactivateSchema), asyncHandler(refEntryController.reactivate));
 router.delete('/:tableName/:id', authenticate, authorizeSettings('referentiel', 'delete'), asyncHandler(refEntryController.remove));
 
 export default router;
