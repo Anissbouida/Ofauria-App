@@ -387,7 +387,7 @@ Formats créés par le gérant : « Plaque tartelettes 12 pièces », « Cercle 
 | D-30 | Écart | L'entremets se décrit par format (cercle 6 personnes, 6 parts) : rien ne fait suivre les quantités du nombre de parts de 4 à 16 sans créer un format par taille (constat 55). La vente par personne reste à jouer côté produit (C-04). |
 | D-31 | Bloquant | Opéra sur le cadre (biscuit 1,2 kg, ganache 800 g, beurre 500 g ; 136,54 DH le cadre). Rendement d'abord à 1 : le produit « Tranche d'opéra » aurait repris le coût du cadre entier ; corrigé en saisissant 48 tranches (2,84 DH la tranche, prix 10,00 DH), alors que le format annonçait déjà 48 tranches (constat 53). Les sorties déclarées exigent un produit existant ; or la fiche, déjà liée à « Tranche d'opéra », n'est plus proposée pour un second produit (« Recette déjà liée à un produit ») : « Entremets opéra » ne peut être créé que comme « Revente », ce qui est faux (constat 54). Non poursuivi. |
 | D-53 | Conforme | La cheffe pâtissière emploie la pâte feuilletée du chef viennoisier dans son mille-feuille (50 g de pâte 1,42 DH, 80 g de crème pâtissière 1,87 DH ; 3,29 DH). |
-| D-07 | Écart | Versions créées pour la tarte et le sirop ; biscuit, entremets, opéra et mille-feuille restent sans version : le gérant a été déconnecté à plusieurs reprises (constat 56). |
+| D-07 | Conforme | Versions créées pour la tarte et le sirop, puis, après la correction du constat 56, pour le biscuit, l'entremets, l'opéra et le mille-feuille, sans nouvelle déconnexion. Les 16 fiches du scénario ont une version active. |
 
 Après chaque enregistrement, la page de la fiche se recharge et remonte en haut (constat 57).
 
