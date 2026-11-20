@@ -15,7 +15,7 @@ résultat, partie par partie.
 | E. Paramétrage de la production | 8 | 2 | 1 | 1 | 0 | 6 |
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
-| C. Produits | 24 | 4 | 1 | 2 | 0 | 20 |
+| C. Produits | 24 | 5 | 2 | 2 | 0 | 19 |
 | D. Fiches techniques | 46 | 12 | 8 | 4 | 0 | 34 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
@@ -353,8 +353,15 @@ Chef Viennoiserie (Chef Tourier du scénario) : Mehdi Alaoui. Formats créés pa
 | D-07 | Écart | Le gérant crée la version 1 des trois fiches ; la page de la pâte affiche « Utilisée par : Croissant · Pain au chocolat ». Première version toujours « Aucune différence » (constat 26). |
 | D-25 | Conforme | Le gérant remplace le beurre de tourage par du beurre doux dans la pâte : le croissant passe de 1,76 à 1,62 DH de matière. Mais le croissant reste « identique à la version active » alors que son coût affiché inclut déjà une modification de la pâte non validée (constat 47). Pour revenir à la version 1, aucun bouton : le gérant remet le beurre de tourage à la main (constat 46). Comparaison : composants listés deux fois (constat 39). |
 
-État en base : 4 formats, 5 fiches (pâte, croissant et pain au chocolat en version 1), 2 produits.
-Produits Croissant et Pain au chocolat pas encore créés.
+### Produits Croissant et Pain au chocolat (2026-11-19, compte du Chef Viennoiserie)
+
+| ID | Statut | Constat |
+|---|---|---|
+| C-02 | Conforme | Le chef crée « Croissant » (Fabriqué, recette Croissant, à la pièce) : prix 5,50 DH, revient 2,03 DH, repris de la fiche (correction du constat 29 confirmée). « Pain au chocolat » : 10,50 DH, revient 3,48 DH. Catégorie Viennoiserie, donc atelier viennoiserie. C-02 en cours : 4 produits sur 25. |
+| — | Écart | La catégorie proposée d'office est « Pain » alors que la fiche est classée en Viennoiserie (constat 49). La liste des recettes affiche « Rend : 1 unité » pour une fiche saisie par pièce, au lieu des 40 pièces de la plaque (constat 50). Le code TVA ne propose toujours que « Aucun » au chef (constat 25 reproduit). |
+| — | Observation | Le multiplicateur du croissant est passé de 3 à 2,5 à 01 h 48 depuis le compte administrateur (modification faite en parallèle du scénario, non jouée par un agent) : le prix proposé est 5,50 DH (2,03 × 2,5, arrondi) au lieu de 6,50 DH. Aucune version n'a été demandée (constats 33 et 36). |
+
+État en base : 4 formats, 5 fiches (pâte, croissant et pain au chocolat en version 1), 4 produits.
 
 ## Constats à traiter
 
@@ -408,6 +415,8 @@ Produits Croissant et Pain au chocolat pas encore créés.
 | 46 | Moyenne | Aucun moyen d'abandonner des modifications non validées pour revenir à la version active : il faut tout ressaisir à la main. | D-07, D-25 |
 | 47 | Moyenne | Une fiche affiche un coût calculé sur la composition en cours de ses préparations de base, modifications non validées comprises, tout en se disant « identique à la version active ». | D-25 |
 | 48 | Faible | Liste des formats de production : colonne « Recettes » vide même pour les formats employés par des fiches. | E |
+| 49 | Faible | Nouveau produit : la catégorie « Pain » est proposée d'office, quelle que soit la catégorie de production de la fiche choisie. | C-02 |
+| 50 | Faible | Nouveau produit : une fiche saisie par pièce apparaît avec « Rend : 1 unité » au lieu du rendement de son format (40 pièces) ; le coût affiché, lui, est bien celui d'une pièce. | C-02 |
 
 ## Reste à jouer
 
