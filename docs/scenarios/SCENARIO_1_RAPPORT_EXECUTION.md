@@ -17,7 +17,7 @@ résultat, partie par partie.
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 8 | 2 | 5 | 0 | 16 |
 | D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
-| F. Premier approvisionnement | 58 | 45 | 26 | 19 | 2 | 11 |
+| F. Premier approvisionnement | 58 | 54 | 34 | 20 | 2 | 2 |
 | G à I, T | 48 | 0 | 0 | 0 | 0 | 48 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -459,7 +459,7 @@ rien (constat 64).
 | F-11 | Conforme | BC-2026-0002 : 89 caisses de 30 œufs à 1,20 DH = 3 204 DH, envoyé sans approbation. |
 | F-12 | Conforme | BC-2026-0003 : 131 sacs de T55 (3 275 kg) = 18 012,50 DH ; à l'envoi, « à approuver », étape 1 « Administrateur », règle « Bon de commande au-dessus de 5 000 DH » (engagement TTC + cumul du jour chez le fournisseur). Conséquence voulue : BC-2026-0001 (1 302 DH, même fournisseur, même jour) part aussi en approbation. Détail de l'approbation : identifiant technique de la catégorie affiché, « 0 circuit actif » alors qu'un circuit est en cours (constat 74). |
 | F-13 | Conforme | Le responsable des achats n'a rien dans « À approuver » ; son BC est dans « Mes demandes », en attente de l'administrateur. |
-| F-14 | Non joué | Le compte administrateur est celui de l'utilisateur : BC-2026-0001 et BC-2026-0003 attendent son approbation. |
+| F-14 | Conforme | Joué par l'utilisateur sur le compte administrateur (20/11, 15 h 36) : BC-2026-0001 et BC-2026-0003 approuvés, ils passent « Envoyé · en attente de livraison ». |
 | F-15 | Écart | BC-2026-0001 ne s'envoie pas (approbation, F-12). PDF vérifié sur BC-2026-0002 : identité légale complète en pied de page (raison sociale, RC, patente, IF, ICE), lignes présentes, mais **ni prix, ni TVA, ni total**, et la quantité est en unité de base (2 670 « unit » au lieu de 89 caisses) (constat 68). |
 | F-16 | Conforme | Un BC envoyé ne se modifie plus directement : « Demande de changement » crée une révision motivée (motif obligatoire, précision). 89 → 90 caisses, 3 240 DH, ligne « Modifié · Modification de quantité » dans l'historique. |
 | F-17 | Conforme | BC-2026-0004 envoyé puis annulé avec le motif « Doublon de commande » et une précision : « Les demandes d'achat qu'il couvrait redeviennent à commander » ; la demande de sucre repasse « pending ». |
@@ -482,7 +482,7 @@ non essayé (constat 73).
 
 | ID | Statut | Constat |
 |---|---|---|
-| F-30 | Non joué | Les deux BC de la Minoterie (BC-2026-0001 et BC-2026-0003) attendent l'approbation de l'administrateur (F-14). |
+| F-30 | Conforme | Joué après F-14 (voir « Partie F — suite ») : BC-2026-0003 reçu par contenant, 131 sacs × 25 kg = 3 275 kg calculés par l'écran. |
 | F-31 | Conforme | Beurre de tourage (BC-2026-0007, Laiterie du Gharb, issu de la demande de Mehdi par la demande de prix AO-2026-0003) : lot et DLC obligatoires à la saisie ; lot interne LI-261120-00004 créé avec le lot fournisseur LG-B-2611 et la DLC 15/01/2027. |
 | F-32 | Conforme | 30 kg reçus sur 50 : BC « Réception partielle », reliquat de 20 kg attendu. |
 | F-33 | Conforme | Seconde réception : le BC passe « livre_complet ». La réception qui solde le BC exige le numéro de facture du fournisseur et crée la facture (FAC-LG-8812, 5 100 DH). |
@@ -517,19 +517,19 @@ script (ce que l'utilisateur ferait en cliquant « OK »).
 | ID | Statut | Constat |
 |---|---|---|
 | F-50 | Conforme | Les factures naissent à la réception qui solde le BC (ou à la clôture du reliquat), en brouillon. « Contrôle de la facture » sur FAC-LG-8812 : rapprochement par ligne commandé / reçu / facturé et prix commandé / facturé, « Facture conforme au rapprochement ». Aucune échéance calculée (« Échéance — », constat 1). |
-| F-51 | Non joué | Bouton « Joindre un fichier » présent ; l'outil de test ne sait pas envoyer de fichier. |
+| F-51 | Conforme | Joué dans la suite : PDF joint à BRK-F-101, « Facture jointe avec succès », pièce conservée et relisible. |
 | F-52 | Écart | BRK-F-101 : prix passé de 5,00 à 5,50 DH par « Éditer les lignes » (le formulaire affiche « Écart avec le montant enregistré +45,00 DH »). Mais l'enregistrement **recrée la ligne sans lien avec la ligne de BC, la réception ni la catégorie** : le contrôle, même relancé, répond « Facture conforme » et n'a plus de rapprochement par ligne (constat 81). |
-| F-53 | Non joué (débloqué) | Bloqué par la même cause (constat 81, corrigé) : une quantité facturée modifiée par l'éditeur de lignes reste désormais rapprochée de la réception. |
+| F-53 | Conforme | Joué dans la suite après la correction du constat 81 : la validation d'une facture de 150 kg pour 90 kg reçus est refusée avec un message clair (constat 89 pour le contrôle du brouillon). |
 | F-54 | Écart | Le responsable des achats reçoit « Accès interdit » en mettant une facture en litige. Le gérant le peut : sans motif, après une simple confirmation ; BRK-F-102 passe « Bloquée / litige », « Payer » est remplacé par « Voir le litige » (constat 84). |
 | F-55 | Conforme | « Valider » est proposé au responsable des achats, mais refusé (« Accès interdit », message générique). |
 | F-56 | Écart | Le gérant valide FAC-LG-8812 en confirmant le n° et le total TTC du papier : « À payer ». L'écriture d'achat (AC-2026-00007) était **déjà passée à la réception**, facture encore en brouillon ; la validation n'ajoute rien, et chaque édition extourne puis repasse l'écriture. Étiquette « À vérifier » sur des factures pourtant conformes (constat 83). |
 | F-57 | Conforme | FR-2026-0001 (œufs) validée (n° fournisseur saisi, la facture n'en avait pas) puis payée en espèces : 3 132 DH, écriture au journal de caisse (CA-2026-00001), une seule fois. Plafond espèces affiché (jour et mois) et alerte « non déductible » au-delà de 5 000 DH. Le paiement n'est rattaché à aucune session de caisse (constat 86). |
 | F-58 | Conforme (sur F5) | Les BC de la Minoterie attendent l'approbation : virement joué sur BRK-F-102 (Al Baraka, 540 DH), référence obligatoire, journal de banque (BQ-2026-00001), facture « Réglée ». Pas de choix du compte bancaire. |
 | F-59 | Conforme | FAC-LG-8812 : 3 000 DH par chèque barré (n° obligatoire), « Partiellement réglée · reste 2 100,00 DH ». Le chèque est passé au journal des opérations diverses (OD-2026-00001) (constat 86). |
-| F-60 | Non joué | Pas de BC chez Froid et Fours (F-20 bloqué). |
+| F-60 | Écart | Joué dans la suite : aucun acompte fournisseur possible (constat 90). |
 | F-61 | Conforme | Seconde facture FAC-LG-8812 chez Laiterie du Gharb : refusée par le serveur (« Ce numéro de facture est déjà enregistré pour ce fournisseur »), l'écran n'affiche que « Erreur ». La saisie manuelle exige une catégorie que le responsable des achats ne peut pas choisir (liste vide, constat 71). |
 | F-62 | Écart | L'avoir fournisseur n'existe que dans le formulaire de paiement par chèque (« Avoir fournisseur, déduit de la dette sans sortie de trésorerie »). Un avoir de 36 DH couvrant tout le reste des œufs (chèque à 0) est refusé : « Données invalides » ; le reste de 36 DH demeure (constat 85). |
-| F-63 | Non joué (débloqué) | PIL-2026-77 (euros) ne se validait pas : erreur serveur « column "updated_at" of relation "ingredients" does not exist » (`accounting.repository.ts:1493`), et la réévaluation comparait le prix facturé (139,9997) au coût du lot frais d'approche compris (179,9997), ce qui aurait effacé les 1 200 DH de frais. **Corrigé (mig 618)** : la facture se valide, le coût du chocolat reste 179,9997 DH. Le paiement à un autre taux que celui du BC reste à jouer (la facture est en litige) (constat 82). |
+| F-63 | Conforme | Payée dans la suite à 11,00 DH l'euro : perte de change de 58,11 DH en 6331. Avant : PIL-2026-77 (euros) ne se validait pas : erreur serveur « column "updated_at" of relation "ingredients" does not exist » (`accounting.repository.ts:1493`), et la réévaluation comparait le prix facturé (139,9997) au coût du lot frais d'approche compris (179,9997), ce qui aurait effacé les 1 200 DH de frais. **Corrigé (mig 618)** : la facture se valide, le coût du chocolat reste 179,9997 DH. Le paiement à un autre taux que celui du BC reste à jouer (la facture est en litige) (constat 82). |
 | F-64 | Conforme | « Lever le litige » : BRK-F-102 redevient « À payer », bouton « Payer » de retour. |
 | F-65 | Écart | Pas de catégorie par ligne dans Factures reçues : la catégorie se choisit pour toute la facture (« Modifier la facture »), l'éditeur de lignes n'a que la TVA (constat 87). |
 | F-66 | Conforme | Le commercial ouvre l'écran Factures reçues (menu visible, « Nouvelle facture » affiché, constat 72) mais n'y voit aucune facture. |
@@ -537,7 +537,26 @@ script (ce que l'utilisateur ferait en cliquant « OK »).
 État en base : FAC-LG-8812 partiellement réglée (reste 2 100 DH), BRK-F-102 réglée,
 FR-2026-0001 partiellement réglée (reste 36 DH), BRK-F-101 en brouillon (ligne rattachée de nouveau au BC
 et à la réception après la correction du constat 81, prix 5,50 DH),
-PIL-2026-77 validée après correction et toujours en litige.
+PIL-2026-77 validée après correction et toujours en litige (état mis à jour dans la suite ci-dessous).
+
+### Partie F — suite : cas débloqués et stock d'ouverture (2026-11-20, Responsable des achats puis Gérant)
+
+| ID | Statut | Constat |
+|---|---|---|
+| F-52 (rejoué) | Écart | Après la correction du constat 81, le contrôle de BRK-F-101 montre de nouveau le rapprochement par ligne (prix commandé 5, facturé 5,5 en orange). La validation par le gérant passe pourtant **sans blocage de prix** : la tolérance installée est de 2 % ou 0,50 DH par unité, la plus large des deux, et 0,50 DH sur un sucre à 5,00 DH représente 10 % (constat 88). La validation réévalue correctement le lot : 5,00 → 5,50 DH, CMUP 5,50 → 5,75 DH, +45,00 DH au stock. Seul blocage ouvert : « TVA à vérifier » (ligne sans taux), non bloquant. |
+| F-53 | Conforme | Le responsable des achats passe BRK-F-101 à 150 kg (90 reçus) par « Éditer les lignes » : enregistré sans avertissement. Le contrôle affiche 150 en rouge mais titre « Facture conforme au rapprochement », même après « Recontrôler » : sur un brouillon, aucun blocage n'est calculé (constat 89). À la validation, le gérant est refusé : « BC BC-2026-0008 : la ligne serait sur-facturée (150.0000 facturé > 90.0000 reçu, tolérance 2.00 %) ». Quantité remise à 90 kg, puis facture validée (F-52). |
+| F-51 | Conforme | Gérant, BRK-F-101 : « Joindre un fichier », PDF choisi (le sélecteur de fichier a été alimenté par script, comme pour les fenêtres `confirm()`), « Facture jointe avec succès ». La pièce est rangée dans le stockage de fichiers (`invoice/2026/11/…pdf`, nom d'origine et empreinte conservés) et se rouvre en `application/pdf`. Le responsable des achats a le droit `accounting.attachment`. |
+| F-63 | Conforme | Gérant : « Lever le litige » sur PIL-2026-77 (387,10 €, taux de la facture 10,85), puis « Payer ». Le formulaire demande le taux du jour : 11,00 → « Sortie de trésorerie 4 258,10 DH », « Dette soldée au taux de la facture 4 199,99 DH », « Perte de change 58,11 DH (6331) ». Virement avec référence obligatoire : écriture BQ-2026-00002 (4411 débit 4 199,99, 6331 débit 58,11, 5141 crédit 4 258,10), facture « Réglée ». |
+| F-14 | Conforme | Voir plus haut : approbation faite par l'utilisateur sur le compte administrateur. |
+| F-30 | Conforme | Responsable des achats, BC-2026-0003 : la saisie par contenant (« sac × 25 kg ») calcule les kilos (131 sacs → 3 275 kg). Lot fournisseur et DLC obligatoires ; la réception solde le BC et exige le n° de facture du fournisseur : lot interne LI-261120-00011 (lot MA-T55-2611, DLC 20/05/2027, emplacement attribué), BC « livre_complet », facture MA-2026-4471 (18 012,50 DH) en brouillon. Les dates saisies au clavier ne sont pas prises dans les champs date du panneau de test (saisies autrement). |
+| F-60 | Écart | Aucun acompte fournisseur : ni le BC (actions : envoyer, annuler, bloquer, supprimer) ni la facture ne proposent un versement à la commande. Le seul paiement rattachable à un BC est une dépense passée en charge, pas une avance (compte 4091) déduite de la facture finale (constat 90). Le BC chez Froid et Fours reste en outre impossible pour le responsable des achats (F-20). |
+| F-70 | Conforme | Gérant (compte Économe inutilisable), Stock › Inventaires : « Stock de départ novembre 2026 », matières premières, comptage à l'aveugle, articles sans stock inclus : INV-2026-0001, 38 articles. Formule par contenant acceptée (« 2x10 » → 20 kg de beurre doux, « 87x30 » → 2 610 œufs). Six articles comptés, les autres laissés « non comptés » (pas de mise à zéro). Stock créé au coût du catalogue par des lots ADJ (beurre doux 20 kg à 85 DH, levure fraîche 5 kg à 28 DH, miel 3,5 kg à 90 DH, sel 25 kg à 2 DH) ; aucune facture, aucune dette fournisseur. Ces lots n'ont **ni DLC ni lot fournisseur**, levure fraîche comprise (constat 91). |
+| F-71 | Conforme (observé) | « Article hors liste » ne cherche que dans le catalogue et le périmètre de l'inventaire : une matière absente du catalogue (pistache) ou un consommable dans un inventaire de matières (boîte pâtissière) répond « Aucun résultat ». Il faut créer l'article avant de le compter. |
+| F-72 | Conforme | « Terminer le comptage » (confirmation : les 32 non comptés ne seront pas ajustés), puis « Valider l'inventaire » : « Inventaire validé : écart net 1 979,00 DH » (excédents +2 205,00, manquants −226,00 : beurre de tourage −2 kg, −190 DH ; œufs −30, −36 DH), valorisé au coût moyen du jour. Stock ajusté (tourage 50 kg, œufs 2 610). Aucune écriture comptable : cohérent avec un inventaire intermittent (variation de stock à la clôture), à confirmer côté comptabilité. Le gérant voit la colonne « Théorique » malgré le comptage à l'aveugle. |
+
+État en base : BC-2026-0001 envoyé (non reçu), BC-2026-0003 reçu et soldé ; factures BRK-F-101
+validée (495 DH, à payer), PIL-2026-77 réglée, MA-2026-4471 en brouillon ; inventaire
+INV-2026-0001 validé. Restent F-39 et F-40 (compte Économe).
 
 ## Constats à traiter
 
@@ -630,9 +649,13 @@ PIL-2026-77 validée après correction et toujours en litige.
 | 85 | Moyenne | Avoir fournisseur seulement dans un paiement par chèque, et refusé quand il couvre tout le reste dû (chèque à 0). | F-62 |
 | 86 | Faible | Paiements : espèces non rattachées à une session de caisse, chèque passé au journal OD, pas de choix du compte bancaire, étiquette « À vérifier » sur des factures conformes, messages génériques (« Erreur », « Accès interdit »). | F-55 à F-61 |
 | 87 | Faible | Pas de catégorie de charge par ligne dans Factures reçues (catégorie de facture seulement). | F-65 |
+| 88 | Moyenne | Tolérance de prix à la facture : `fn_validate_invoice` retient la plus large de 2 % et 0,50 DH par unité (`match_tolerances` à l'installation). Sur un article bon marché, 0,50 DH l'emporte : 10 % d'écart sur un sucre à 5,00 DH passe sans blocage. | F-52 |
+| 89 | Moyenne | Contrôle d'une facture en brouillon : le titre dit « Facture conforme au rapprochement » alors que le tableau montre un écart de quantité (150 pour 90 reçus) et de prix ; les blocages ne sont calculés qu'à la validation, et l'éditeur de lignes n'avertit pas. Message de refus avec quantités à quatre décimales (« 150.0000 »). | F-53 |
+| 90 | Haute | Pas d'acompte fournisseur : impossible de verser 50 % à la commande (F9), ni de le déduire de la facture finale ; pas de compte d'avance 4091, le seul paiement lié à un BC est une dépense en charge. | F-60 |
+| 91 | Moyenne | Lots créés par la validation d'un inventaire (ADJ-…) sans DLC ni lot fournisseur, y compris pour une denrée périssable (levure fraîche) : ni FEFO ni alerte de péremption. | F-70 |
 
 ## Reste à jouer
 
-Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-14 (approbation par l’administrateur), puis F-30 ; F-39, F-40 (Économe) ; F-51, F-53, F-60, F-63 (paiement à un autre taux) ; stock d’ouverture (F-70 à F-72). Puis C (produits),
+Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Puis C (produits),
 D (fiches techniques), E (suite), G (stock), H (caisse), I (contrôles) et les
 cas transverses.
