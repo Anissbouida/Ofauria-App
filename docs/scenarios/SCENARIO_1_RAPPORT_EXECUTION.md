@@ -15,7 +15,7 @@ résultat, partie par partie.
 | E. Paramétrage de la production | 8 | 2 | 1 | 1 | 0 | 6 |
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
-| C. Produits | 24 | 5 | 2 | 2 | 0 | 19 |
+| C. Produits | 24 | 7 | 2 | 4 | 0 | 17 |
 | D. Fiches techniques | 46 | 20 | 14 | 6 | 0 | 26 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
@@ -393,6 +393,16 @@ Après chaque enregistrement, la page de la fiche se recharge et remonte en haut
 
 État en base : 10 formats, 16 fiches, 5 produits (Tranche d'opéra en plus).
 
+### Produits de pâtisserie (2026-11-20, compte de la Cheffe pâtissière)
+
+| ID | Statut | Constat |
+|---|---|---|
+| C-02 | Conforme | Créés par la cheffe, catégorie Pâtisserie : Éclair au chocolat 14,00 DH (revient 4,61 DH), Mille-feuille 11,50 DH (3,78 DH), prix et coûts repris des fiches. Catégorie « Pain » toujours proposée d'office (constat 49). |
+| C-05 | Écart | Le formulaire produit ignore les formats : la fiche Tarte aux fraises est proposée par son format par défaut (« Rend : 12 unités », 18,00 DH). Le prix par format existe côté fiche (un produit lié par format), mais les produits 6 et 8 personnes ne peuvent pas être créés en « Fabriqué » : la fiche est déjà liée (même blocage que le constat 54). Seul « Tartelette aux fraises » est créé (constat 58). |
+| C-04 | Écart | « Entremets chocolat » en vente par personne : le prix par personne n'est pas déduit de la fiche (6 parts, 182,00 DH conseillés pour l'entremets entier), la cheffe saisit 30,50 DH. Le prix de revient enregistré reste celui de l'entremets entier (60,62 DH) face à un prix par personne : toute marge calculée sur ce produit est fausse (constat 59). Tailles proposées en caisse à vérifier en partie H. |
+
+État en base : 9 produits.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -454,6 +464,8 @@ Après chaque enregistrement, la page de la fiche se recharge et remonte en haut
 | 55 | Moyenne | Pas de fiche « par personne » dont les quantités suivent le nombre de parts : il faut un format par taille. | D-30 |
 | 56 | Corrigée | Déconnexions répétées pendant le scénario. Cause reproduite : quand le serveur ne répond pas (redémarrage, ici à chaque modification faite par une autre session de travail ; en production, un déploiement ou un démarrage à froid), `/auth/me` renvoie une erreur 500 et l'application la traitait comme « non connecté » : retour à l'écran de connexion alors que la session restait valide. Désormais seul un 401 ou 403 déconnecte ; une erreur réseau ou serveur est réessayée (8 essais, 1,5 s d'écart). Vérifié : redémarrage de l'API pendant un rechargement, la page reste ouverte. | — |
 | 57 | Faible | Après un enregistrement de fiche, la page se recharge et remonte en haut ; la saisie reprend après un défilement. | D-29 |
+| 58 | Haute | Un produit vendu en plusieurs formats (tarte individuelle, 6 et 8 personnes) n'est pas réalisable : le formulaire produit ne connaît que le format par défaut, et la fiche déjà liée n'est plus proposée pour les produits des autres formats. | C-05 |
+| 59 | Haute | Produit vendu par personne : prix par personne saisi à la main (pas déduit de la fiche et de ses parts), mais prix de revient de l'entremets entier (60,62 DH pour 30,50 DH de prix) ; les marges sont fausses. | C-04 |
 
 ## Reste à jouer
 
