@@ -18,7 +18,8 @@ résultat, partie par partie.
 | C. Produits | 24 | 8 | 2 | 5 | 0 | 16 |
 | D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
 | F. Premier approvisionnement | 58 | 54 | 34 | 20 | 2 | 2 |
-| G à I, T | 48 | 0 | 0 | 0 | 0 | 48 |
+| G. Tenue du stock | 14 | 11 | 7 | 4 | 0 | 3 |
+| H, I, T | 34 | 0 | 0 | 0 | 0 | 34 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
 
@@ -558,6 +559,32 @@ PIL-2026-77 validée après correction et toujours en litige (état mis à jour 
 validée (495 DH, à payer), PIL-2026-77 réglée, MA-2026-4471 en brouillon ; inventaire
 INV-2026-0001 validé. Restent F-39 et F-40 (compte Économe).
 
+## Partie G — Tenue du stock (2026-11-20, compte du Gérant)
+
+Jouée avec le compte du gérant : le mot de passe de l'économe a été changé. Les refus propres à
+l'économe sont vérifiés par ses droits (`role_action_permissions`), le refus du responsable des
+achats à l'écran.
+
+| ID | Statut | Constat |
+|---|---|---|
+| G-01 | Écart | Stock › Réserve : par matière, quantité en réserve et au pesage, nombre de lots, jours de stock, DLC la plus proche, statut (OK, DLC ≤ 7 j, sans usage…). La fiche matière détaille les lots (lot fournisseur, coût, valeur) et la fiche lot la chaîne BC → BR → lot → DLC et la répartition réserve / pesage. Mais l'installation n'a que **deux emplacements**, « Économat (sec) » et « Zone de pesage » : beurre et lait sont rangés en « sec », pas de chambre froide ; les œufs et les lots d'inventaire n'ont aucun emplacement (constat 94). |
+| G-02 | Conforme | « Ouvrir » sur la farine → Bons de sortie › Contenants à ouvrir : lot proposé en FEFO, quantité par contenant (1 sac × 25 kg), « Mettre au pesage » : « 25.00 kg Farine T55 mis au pesage (lot LI-261120-00011) », réserve 3 250 kg. |
+| G-03 | Conforme | Lait entier, deux lots : le lot à DLC 22/11 est proposé par défaut, celui au 25/11 en second. |
+| G-04 | Écart | Le lot au 25/11 choisi à la main est ouvert sans alerte ni justification, alors qu'un lot plus proche de sa DLC reste en réserve (constat 92). |
+| G-05 | Écart | Fiche matière › « Ajuster » › « Perte / Casse », 25 kg, motif « Casse / renversé », note : « Stock ajusté », mouvement « Perte / Déchet » tracé avec son motif. Mais ni lot ni zone ne se choisissent : les 25 kg ont été retirés du sac **ouvert au poste de pesée** (pesage 25 → 0), pas de la réserve où le sac a cassé ; le mouvement n'est rattaché à aucun lot et ne porte pas de coût ; le champ « Motif de la perte » est affiché deux fois (constat 93). |
+| G-06 | Conforme | Poste de pesée › Lait entier › contenant ouvert › « Remettre en réserve » (quantité, note) : « 1 l de Lait entier (lot LG-L-2611-2) remis en réserve » ; réserve 10 + 10 l, pesage 0, total 20 l, le lot reste marqué ouvert. La DLC du contenant s'y affiche 24/11 pour un lot au 25/11 (constat 96). |
+| G-07 | Conforme | Seuil du miel porté à 5 kg (stock 3,5) : bandeau « Stock bas · 3.5 kg restant(s), seuil minimum 5 kg » avec « Demander », et Achats › À commander : « Miel · stock 3.5 / seuil 5 kg », 585 DH estimés. Pas de notification (constat 96). |
+| G-08 | Non joué | Aucun lot n'atteint sa DLC ce jour (première : lait au 22/11). Le lait est déjà signalé « DLC ≤ 7 j » et « Ouvrir en priorité ». |
+| G-09 | Non joué | Même cause ; l'action « Lot aux pertes » existe sur la fiche lot et au poste de pesée. |
+| G-10 | Conforme | Ouvrir 10 kg de levure fraîche pour 5 kg en stock : champ en orange, « Mettre au pesage » désactivé. Une perte de 10 kg par « Ajuster » est refusée par le serveur (« Stock insuffisant (disponible: 5, demande: 10) ») mais **sans message à l'écran**, la fenêtre reste ouverte (même défaut que le constat 75). |
+| G-11 | Conforme | Droits : l'économe n'a pas `stock.inventory.adjust` (ajustement manuel refusé), le gérant l'a ; son ajustement exige un type et un motif (liste), la note reste facultative. |
+| G-12 | Écart | Historique incomplet : l'onglet « Historique » de la farine ne montre que la réception (+3 275 kg) et la perte (−25 kg), pas l'ouverture vers le pesage ; la fiche lot n'a pas d'historique de mouvements (constat 95). |
+| G-13 | Conforme | Le responsable des achats ouvre Bons de sortie › Contenants à ouvrir, voit « Mettre au pesage » actif, et reçoit « Accès interdit » au clic (message générique, bouton affiché : constat 72). |
+| G-14 | Non joué | Pas encore de produits boissons (partie C) ni de BC chez Rif Boissons Distribution. |
+
+État en base : farine 3 250 kg (réserve), lait 20 l (deux lots, dont un ouvert puis refermé),
+miel sous son seuil (3,5 / 5 kg), une perte de 25 kg de farine tracée.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -653,9 +680,14 @@ INV-2026-0001 validé. Restent F-39 et F-40 (compte Économe).
 | 89 | Moyenne | Contrôle d'une facture en brouillon : le titre dit « Facture conforme au rapprochement » alors que le tableau montre un écart de quantité (150 pour 90 reçus) et de prix ; les blocages ne sont calculés qu'à la validation, et l'éditeur de lignes n'avertit pas. Message de refus avec quantités à quatre décimales (« 150.0000 »). | F-53 |
 | 90 | Haute | Pas d'acompte fournisseur : impossible de verser 50 % à la commande (F9), ni de le déduire de la facture finale ; pas de compte d'avance 4091, le seul paiement lié à un BC est une dépense en charge. | F-60 |
 | 91 | Moyenne | Lots créés par la validation d'un inventaire (ADJ-…) sans DLC ni lot fournisseur, y compris pour une denrée périssable (levure fraîche) : ni FEFO ni alerte de péremption. | F-70 |
+| 92 | Moyenne | Ouvrir un lot plus récent alors qu'un lot plus proche de sa DLC est en réserve : ni alerte ni justification demandée (le FEFO n'est qu'une proposition par défaut). | G-04 |
+| 93 | Moyenne | Perte par « Ajuster » : pas de choix du lot ni de la zone ; la quantité est retirée en priorité du contenant ouvert au poste de pesée (25 kg de farine pris au pesage, pas à la réserve) ; mouvement sans lot ni coût ; champ « Motif de la perte » en double ; refus « Stock insuffisant » non affiché. | G-05, G-10 |
+| 94 | Moyenne | Emplacements : seulement « Économat (sec) » et « Zone de pesage » à l'installation ; toute réception va en « sec », y compris beurre et lait ; œufs et lots d'inventaire sans emplacement. Pas de froid positif ni négatif proposé. | G-01 |
+| 95 | Moyenne | Historique des mouvements incomplet : la fiche matière ignore les ouvertures vers le pesage et les retours ; la fiche lot n'a aucun historique (réception, ouverture, pesées, pertes). | G-12 |
+| 96 | Faible | DLC affichée un jour plus tôt au poste de pesée (24/11 pour un lot au 25/11, décalage de fuseau probable) ; aucune notification de stock bas ; la notification « Inventaire à valider » reste après la validation. | G-06, G-07 |
 
 ## Reste à jouer
 
-Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Puis C (produits),
-D (fiches techniques), E (suite), G (stock), H (caisse), I (contrôles) et les
-cas transverses.
+Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
+première DLC atteinte), G-14 (après les produits boissons de la partie C). Puis C (produits),
+D (fiches techniques), E (suite), H (caisse), I (contrôles) et les cas transverses.
