@@ -78,6 +78,13 @@ describe.skipIf(!hasTestDb)('Administration des comptes (mig 617)', () => {
     const after = (await p().query(`SELECT totp_enabled, totp_secret_enc, token_version, mfa_required FROM users WHERE id = $1`, [staffId])).rows[0];
     expect(after).toMatchObject({ totp_enabled: false, totp_secret_enc: null, mfa_required: true });
     expect(after.token_version).toBe(before + 1);
+
+    // Sa propre 2FA ne se réinitialise pas ici (une session volée suffirait à la retirer).
+    await p().query(`UPDATE users SET totp_enabled = true, totp_secret_enc = 'x' WHERE id = $1`, [adminId]);
+    const self = await request(app).post(`/users/${adminId}/mfa-reset`).send({});
+    expect(self.status).toBe(403);
+    expect((await p().query(`SELECT totp_enabled FROM users WHERE id = $1`, [adminId])).rows[0].totp_enabled).toBe(true);
+    await p().query(`UPDATE users SET totp_enabled = false, totp_secret_enc = NULL WHERE id = $1`, [adminId]);
   });
 
   it('refuse de se désactiver soi-même et de désactiver/supprimer/rétrograder le dernier administrateur', async () => {

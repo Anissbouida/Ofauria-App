@@ -350,6 +350,12 @@ export const userController = {
    * la reconfigure à sa prochaine connexion.
    */
   async resetMfa(req: AuthRequest, res: Response) {
+    // Sur son propre compte, la désactivation passe par /auth/mfa/disable (mot de passe + code) :
+    // sinon une session volée suffirait à retirer le second facteur.
+    if (req.params.id === req.user?.userId) {
+      res.status(403).json({ success: false, error: { message: 'Vous ne pouvez pas réinitialiser votre propre double authentification : demandez-le à un autre administrateur' } });
+      return;
+    }
     const target = await userRepository.findById(req.params.id);
     if (!target) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
     await mfaRepository.disable(target.id);

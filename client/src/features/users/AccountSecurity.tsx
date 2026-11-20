@@ -144,7 +144,8 @@ export function securityMenuItems(u: UserRow, run: (a: AccountAction, u: UserRow
   const items: (RowMenuItem | false)[] = [
     !u.mfaRequired && !u.mfaEnabled && { label: 'Exiger la double authentification', icon: ShieldCheck, onSelect: () => run('mfaRequire', u) },
     !!u.mfaRequiredForUser && { label: 'Ne plus exiger la double authentification', icon: ShieldOff, onSelect: () => run('mfaUnrequire', u) },
-    !!u.mfaEnabled && { label: 'Réinitialiser la double authentification', icon: Smartphone, onSelect: () => run('mfaReset', u) },
+    // Jamais sa propre 2FA (un autre administrateur, ou /auth/mfa/disable avec mot de passe + code).
+    !self && !!u.mfaEnabled && { label: 'Réinitialiser la double authentification', icon: Smartphone, onSelect: () => run('mfaReset', u) },
     !!u.lockedUntil && { label: 'Déverrouiller', icon: Unlock, onSelect: () => run('unlock', u) },
     u.mustChangePassword
       ? { label: 'Lever le changement de mot de passe', icon: KeyRound, onSelect: () => run('mustChangeOff', u) }
@@ -196,7 +197,7 @@ export function SecuritySection({ userId, selfId, onDeleted }: { userId: string;
           {u.mfaRequiredForUser
             ? <button type="button" className="odoo-btn-secondary" style={btn} disabled={busy} onClick={() => void run('mfaUnrequire', u)}><ShieldOff size={13} /> Ne plus exiger</button>
             : !u.mfaRequiredByRole && <button type="button" className="odoo-btn-secondary" style={btn} disabled={busy} onClick={() => void run('mfaRequire', u)}><ShieldCheck size={13} /> Exiger</button>}
-          {u.mfaEnabled && (
+          {u.mfaEnabled && !self && (
             <button type="button" className="odoo-btn-danger" style={btn} disabled={busy} onClick={() => void run('mfaReset', u)}><Smartphone size={13} /> Réinitialiser</button>
           )}
         </>}>
@@ -205,6 +206,7 @@ export function SecuritySection({ userId, selfId, onDeleted }: { userId: string;
           {u.mfaRequiredByRole ? 'Exigée par le rôle (bouton « Double authentification » de la liste).'
             : u.mfaRequiredForUser ? 'Exigée pour ce compte.'
             : u.mfaEnabled ? 'Activée par l\'utilisateur.' : 'Code à 6 chiffres d\'une application, en plus du mot de passe.'}
+          {self && u.mfaEnabled && ' Votre propre double authentification ne se réinitialise pas ici : demandez-le à un autre administrateur.'}
         </span>
       </Row>
       <Row title="Connexion"
