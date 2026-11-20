@@ -15,7 +15,7 @@ résultat, partie par partie.
 | E. Paramétrage de la production | 8 | 2 | 1 | 1 | 0 | 6 |
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
-| C. Produits | 24 | 8 | 2 | 5 | 0 | 16 |
+| C. Produits | 24 | 21 | 9 | 12 | 0 | 3 |
 | D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
 | F. Premier approvisionnement | 58 | 54 | 34 | 20 | 2 | 2 |
 | G. Tenue du stock | 14 | 11 | 7 | 4 | 0 | 3 |
@@ -610,6 +610,37 @@ l'utilisateur (H-01 vérifié par les écrans de caisse et le code).
 État en base : session de Hamza ouverte (fond 500 DH) ; deux sessions de test du gérant fermées
 (300 et 250 DH, justes) ; aucune vente.
 
+## Partie C — Produits, suite et bilan (2026-11-20, Gérant, Commercial, Caissier)
+
+Bilan de la partie : les cas déjà joués avec les chefs (C-01, C-03, C-04, C-05, C-07) gardent
+leur statut ci-dessus ; les autres sont joués ici, au compte du gérant sauf mention.
+
+| ID | Statut | Constat |
+|---|---|---|
+| C-02 | Conforme (20 / 25) | Créés ce jour : Ghriba 4,50 DH, Msemen 3,50 DH, Pizza individuelle 14,50 DH (prix repris des fiches), Eau minérale 50 cl et Soda 33 cl (revente), et par import Pain complet, Pain rond, Pain de mie, Chebakia. Manquent Macarons et Quiche (pas de fiche), Briouates (vente à la douzaine, constat 62), les deux plateaux (constat 61). La fiche choisie ne reprend ni le nom ni la catégorie : la catégorie reste « Pain » tant qu'on ne la change pas. Pendant le chargement des fiches, le formulaire affiche « Aucune recette disponible » (constat 104). |
+| C-06 | Non joué | Pas de fiche « Macarons » ; même limite que les formats (C-05). |
+| C-08 | Écart (bloquant) | La fiche du plateau beldi ne peut pas contenir de produits finis (constat 61, D-37) : produit non créé. |
+| C-09 | Non joué | Le formulaire a bien un interrupteur « Sur commande », mais le plateau salé ne peut pas avoir de fiche (constat 61, D-40). |
+| C-10 | Écart | Eau minérale créée en « Revente » (sans fiche, prix libre, prix d'achat 3,00 DH), vendable : elle apparaît en caisse (en rupture). Mais son stock ne peut pas venir d'un achat : une ligne de BC ne porte qu'une matière ou un consommable, jamais un produit (`purchase_order_items` sans produit ; le commentaire de `sourcing.helper.ts` le confirme) (constat 102). À la modification, la fiche rouvre l'article en « Fabriqué », recette obligatoire : la liste des produits ne renvoie pas sa nature (constat 101). |
+| C-11 | Écart | Croissant › Tarifs › « Prix par canal de vente » : Gros / B2B 4,50 DH enregistré. Ce prix n'est lu que par la caisse (sélecteur de canal) ; les commandes et les devis ne consultent ni les prix par canal ni les listes de prix (`order.controller.ts`) : il ne s'applique pas à une commande professionnelle (constat 103). |
+| C-12 | Conforme (paramétré) | Pas de palier par quantité sur le produit (les paliers ne concernent que la vente au poids) ; il passe par une promotion : « Croissants par 50 », −10 % sur Croissant, quantité minimum 50, caisse et commandes. Application non vérifiée sur une commande : aucun client n'existe encore. |
+| C-13 | Écart | Second « Eau minérale 50 cl » : le serveur bute sur l'unicité du `slug`, l'erreur n'est pas rattrapée (« Unhandled Rejection », routes produits sans `asyncHandler` sous Express 4) et la requête reste sans réponse : « Enregistrement… » sans fin, aucun message, et le bouton des autres fiches reste bloqué jusqu'au rechargement (constat 100). |
+| C-14 | Écart | Prix −2 : refusé par le navigateur seulement (« Value must be greater than or equal to 0. », en anglais). Prix 0 : produit créé sans avertissement. Le prix d'un produit fabriqué n'est pas saisissable (repris de la fiche) (constat 103). |
+| C-15 | Écart | Eau minérale vendue 0,00 DH pour 3,00 DH d'achat : aucune alerte de marge (constat 103). Sur un fabriqué, le prix est figé sur la fiche : le cas ne peut pas se produire depuis la fiche produit. |
+| C-16 | Écart | Impossible de laisser la catégorie vide à l'écran : « Pain » est présélectionnée, sans option « aucune » ; un oubli range donc l'article dans Pain. Le serveur, lui, accepte un produit sans catégorie (`categoryId` facultatif) (constat 104). |
+| C-17 | Conforme (observé) | Boissons n'est rattachée à aucun atelier (les cinq ateliers ont chacun leur catégorie) ; un article de revente n'est pas produit, il ne tombe donc pas sur la boulangerie. |
+| C-18 | Conforme | Photo choisie pour Croissant (fichier fourni par script au sélecteur), « Mettre à jour » : image envoyée au stockage de fichiers, toujours affichée après rechargement. |
+| C-19 | Conforme | Msemen rendu indisponible (« Disponible à la vente » décoché) : il disparaît de la caisse, même de la liste « En rupture » (19 articles au lieu de 21), et reste au catalogue (« Inactif »). |
+| C-20 | Écart | Suppression d'un produit sans mouvement (« Produit test suppression », importé pour l'essai) : refusée au gérant (403, `products.delete` réservé à l'administrateur), sans message à l'écran, alors que le bouton « Supprimer » lui est montré ; la confirmation ne nomme pas le produit. Produit désactivé à la place. Le cas « produit déjà vendu » reste à jouer (aucune vente) (constat 104). |
+| C-21 | Conforme | Création par un chef vérifiée plus haut (C-02, C-03) ; modification refusée par les droits (`products.edit` : administrateur et gérant seulement). |
+| C-22 | Conforme | Le Commercial voit le catalogue (et les boutons « Nouveau », « Importer CSV ») ; changer le prix de l'eau est refusé (403), sans message, la fenêtre reste ouverte (constat 104). |
+| C-23 | Non joué | Le nombre d'articles par sachet se règle dans Paramètres › Règles de caisse, écran refusé au gérant (« Vous n'avez pas accès aux paramètres ») : à faire avec l'administrateur. |
+| C-24 | Conforme | Import d'un fichier au format Loyverse (6 lignes) : « 1 ligne ignorée … — détail en console », puis « Import terminé : 5 créés ». « 12,50 » lu 12,50 DH, Chebakia vendue au poids, la ligne au prix « douze » écartée sans bloquer les autres. Réserves : le détail des lignes écartées ne s'affiche que dans la console du navigateur ; les produits importés sont « Fabriqué » sans fiche, même en Boissons (constat 104). |
+
+État en base : 21 produits (dont Msemen indisponible et « Produit test suppression » désactivé,
+à supprimer par l'administrateur) ; prix de gros du croissant 4,50 DH ; promotion « Croissants
+par 50 » active ; photo du croissant.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -713,10 +744,16 @@ l'utilisateur (H-01 vérifié par les écrans de caisse et le code).
 | 97 | Moyenne | Fond de caisse : ni montant de départ paramétré, ni proposition du montant laissé à la clôture précédente (pourtant fourni par `/cash-register/last-amount`), ni écart d'ouverture calculé ; aucune écriture pour le fond. | H-01, H-05 |
 | 98 | Moyenne | Sessions de caisse par utilisateur, sans notion de poste ni de tiroir : deux sessions ouvertes en même temps dans la même boutique, chacune avec son fond, sans avertissement. | H-06 |
 | 99 | Faible | Caisse : textes sans accents (« Caisse fermee », « a vendre », « Resultat », « montant trouve »), prix au kilo sans unité sur la vignette, même image pour tous les produits, vignette en rupture sans message au toucher. | H-02, H-07, H-08 |
+| 100 | Haute | Créer un produit en doublon fige l'écran : l'erreur d'unicité (`products_slug_key`) n'est pas rattrapée, les routes produits n'ont pas d'`asyncHandler` (Express 4), la requête reste sans réponse ; « Enregistrement… » sans fin, sans message, jusqu'au rechargement. Toute autre erreur levée sur ces routes ferait de même. | C-13 |
+| 101 | Moyenne | Modifier un produit de revente : la liste des produits ne renvoie pas `item_kind`, la fiche rouvre l'article en « Fabriqué » avec recette obligatoire ; il faut recocher « Revente » à chaque modification. | C-10 |
+| 102 | Haute | Les produits de revente ne s'achètent pas : une ligne de BC ne porte qu'une matière ou un consommable ; boissons et autres marchandises n'ont aucun chemin d'entrée en stock par achat. | C-10, G-14 |
+| 103 | Moyenne | Prix : les prix par canal (Gros / B2B) ne valent qu'en caisse, pas sur les commandes ni les devis ; prix 0 accepté sans avertissement ; aucune alerte de marge sous le coût d'achat ; prix négatif refusé par le seul navigateur. | C-11, C-14, C-15 |
+| 104 | Faible | Fiche produit et catalogue : catégorie « Pain » présélectionnée (pas de « aucune »), nom et catégorie non repris de la fiche, « Aucune recette disponible » pendant le chargement ; suppression réservée à l'administrateur mais bouton montré, refus 403 muets (gérant, commercial), confirmation sans nom du produit ; import : lignes écartées détaillées en console seulement, produits importés « Fabriqué » sans fiche. | C-02, C-16, C-20, C-22, C-24 |
 
 ## Reste à jouer
 
 Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
-première DLC atteinte), G-14 (après les produits boissons de la partie C). Partie H : H-09
-(imprimante à configurer). Puis C (produits), D (fiches techniques), E (suite), I (contrôles)
-et les cas transverses.
+première DLC atteinte), G-14 (bloqué : une boisson ne s'achète pas, constat 102). Partie H :
+H-09 (imprimante à configurer). Partie C : C-06, C-09 (fiches manquantes), C-23 (administrateur),
+second volet de C-20 (après une vente). Puis D (fiches techniques), E (suite), I (contrôles) et
+les cas transverses.
