@@ -17,7 +17,8 @@ résultat, partie par partie.
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 8 | 2 | 5 | 0 | 16 |
 | D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
-| F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
+| F. Premier approvisionnement | 58 | 18 | 10 | 8 | 2 | 38 |
+| G à I, T | 48 | 0 | 0 | 0 | 0 | 48 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
 
@@ -435,6 +436,48 @@ Après chaque enregistrement, la page de la fiche se recharge et remonte en haut
 
 État en base : 24 fiches dont 23 en version (le plateau beldi vide n'en a pas), 11 produits.
 
+## Partie F — Premier approvisionnement, de la demande à la commande (2026-11-20, par les écrans)
+
+Comptes : Chef Viennoiserie (demandes), Responsable des achats (demandes de prix, bons de
+commande). Le compte Économe reste inutilisable. Réglages des achats tels qu'à l'installation :
+plusieurs contrôles sont en mode « avertissement » (`po_requires_request`, `sod_mode`,
+`lot_dlc_enforcement`, `cash_limit_enforcement`, `off_contract_enforcement`) et n'empêchent
+rien (constat 64).
+
+| ID | Statut | Constat |
+|---|---|---|
+| F-01 | Écart | Le chef demande 50 kg de beurre de tourage et 100 kg de farine T45 depuis la fiche de chaque matière (Stock › matière › « Commander ») : deux demandes, une par article. Elles sont **directement « Prêtes »** : l'approbation ne porte plus sur la demande mais sur le bon de commande chiffré (choix de la mig 465, commentaire du contrôleur). Aucune confirmation visible après « Ajouter à la liste ». Le texte du formulaire annonce que « le gérant crée directement le bon de commande », ce qui n'est plus le flux. |
+| F-02 | Écart | Pas de demande groupée : une demande = un article. Joué partiellement (compte Économe inutilisable) ; l'écran « Demandes d'achat » regroupe ensuite les demandes par fournisseur. |
+| F-03 | Sans objet | Pas d'approbation de demande (voir F-01). Une demande peut être annulée avec un motif. |
+| F-04 | Sans objet | Même cause. |
+| F-05 | Conforme | Depuis « Demandes d'achat », groupe Minoterie Atlas, « Lancer la demande de prix » : AO-2026-0001 créée en brouillon avec la farine. Le sucre (autre groupe fournisseur) est ajouté à la main dans la demande de prix, avec Comptoir Cacao et Al Baraka : trois fournisseurs consultés, envoi « en attente » des devis (pas de SMTP en local, les messages restent en file). **Le sucre ajouté à la main ne couvre pas sa demande d'achat**, qui reste « à commander » (constat 67). |
+| F-06 | Conforme | Trois devis saisis (référence, validité, délai, conditions, note qualité, prix par ligne). Le sucre est demandé en sacs de 18 kg et chiffré au sac ; le comparateur ramène bien au kilo (6,80 / 6,50 / 6,00 DH). Totaux HT : 1 374,40, 1 302,00, 1 228,00 DH. |
+| F-07 | Conforme | Notation pondérée prix 50 %, qualité 25 %, fournisseur 25 % : Minoterie 80,8 « Recommandé », Comptoir 79,5, Al Baraka 77,5 « Moins cher ». Le délai de livraison (1, 2, 6 jours) est affiché mais n'entre pas dans la note (constat 66). Attribution à Minoterie : BC-2026-0001 créé (1 302 DH). |
+| F-08 | Écart | Attribuer à Al Baraka (non recommandé) ne demande qu'une confirmation, sans justification ; l'API n'en prévoit pas (constat 65). Attribution annulée. |
+| F-09 | Écart | « Nouveau BC › Articles stockés » chez la Ferme avicole Zerhoun sans demande de prix ni demande d'achat : créé et envoyé (BC-2026-0002). La règle existe (mig 454) mais reste en mode avertissement (constat 64). |
+| F-10 | Conforme | Demande de prix AO-2026-0002 (sucre) à deux fournisseurs, Comptoir « a décliné », un seul devis : l'attribution reste possible, sans alerte. BC-2026-0004 créé. |
+| F-11 | Conforme | BC-2026-0002 : 89 caisses de 30 œufs à 1,20 DH = 3 204 DH, envoyé sans approbation. |
+| F-12 | Conforme | BC-2026-0003 : 131 sacs de T55 (3 275 kg) = 18 012,50 DH ; à l'envoi, « à approuver », étape 1 « Administrateur », règle « Bon de commande au-dessus de 5 000 DH » (engagement TTC + cumul du jour chez le fournisseur). Conséquence voulue : BC-2026-0001 (1 302 DH, même fournisseur, même jour) part aussi en approbation. Détail de l'approbation : identifiant technique de la catégorie affiché, « 0 circuit actif » alors qu'un circuit est en cours (constat 74). |
+| F-13 | Conforme | Le responsable des achats n'a rien dans « À approuver » ; son BC est dans « Mes demandes », en attente de l'administrateur. |
+| F-14 | Non joué | Le compte administrateur est celui de l'utilisateur : BC-2026-0001 et BC-2026-0003 attendent son approbation. |
+| F-15 | Écart | BC-2026-0001 ne s'envoie pas (approbation, F-12). PDF vérifié sur BC-2026-0002 : identité légale complète en pied de page (raison sociale, RC, patente, IF, ICE), lignes présentes, mais **ni prix, ni TVA, ni total**, et la quantité est en unité de base (2 670 « unit » au lieu de 89 caisses) (constat 68). |
+| F-16 | Conforme | Un BC envoyé ne se modifie plus directement : « Demande de changement » crée une révision motivée (motif obligatoire, précision). 89 → 90 caisses, 3 240 DH, ligne « Modifié · Modification de quantité » dans l'historique. |
+| F-17 | Conforme | BC-2026-0004 envoyé puis annulé avec le motif « Doublon de commande » et une précision : « Les demandes d'achat qu'il couvrait redeviennent à commander » ; la demande de sucre repasse « pending ». |
+| F-18 | Écart | BC-2026-0005 chez Pâtisserie Import Lyon : devise EUR proposée d'office, prix converti (140 DH/kg = 12,9032 €/kg), 30 kg = 387,10 € ≈ 4 199,99 DH, pastille « EUR » dans la liste. Mais aucun taux du jour : « Aucun taux saisi pour EUR », le taux est saisi à la main sur le bon (constat 69). |
+| F-19 | Conforme | BC-2026-0006 chez Emballages du Nord : la ligne « Boîte pâtissière 20 cm » porte l'étiquette « Consommable » (`line_type = consumable`). |
+| F-20 | Bloquant | BC d'immobilisation chez Froid et Fours : la catégorie est obligatoire et la liste répond « Aucun résultat » ; l'appel `/expense-categories` est refusé (403) au responsable des achats. Même cause que le constat 7 ; toutes ses lignes de BC sont d'ailleurs « Sans catégorie » (constat 71). |
+| F-21 | Écart | Quantité 0 refusée (« Les quantités doivent être supérieures à 0 »). Prix −2,50 : le BC est créé, la ligne enregistrée sans prix (« Prix à définir ») ; pas de refus explicite (constat 70). Prix corrigé à 2,50 DH ensuite. |
+
+Autres observations : un chef voit tout le module Achats, y compris « + Nouveau BC » qui ouvre
+le formulaire, alors que son rôle n'a que la création de demandes ; le responsable des achats
+voit « Modifier », « Ajuster » et « Supprimer » sur une fiche matière alors qu'il n'a que la
+lecture du stock (constat 72). L'écran « Modifier le bon de commande » annonce qu'une quantité
+livrée saisie là « ajuste automatiquement le stock », donc sans réception, sans lot ni DLC ;
+non essayé (constat 73).
+
+État en base : 6 BC (0001 et 0003 en attente d'approbation, 0002 envoyé, 0004 annulé, 0005 et
+0006 en brouillon), 2 demandes de prix attribuées, demandes de beurre et de sucre à commander.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -501,9 +544,21 @@ Après chaque enregistrement, la page de la fiche se recharge et remonte en haut
 | 60 | Moyenne | Le poids standard par pièce (contrôlé à la production) ne se saisit pas sur la fiche : seulement dans Paramètres › Qualité des données, réservé à l'administrateur. | D-35 |
 | 61 | Haute | Une fiche ne peut pas contenir de produit fini : un plateau assorti (beldi, salé) qui consomme des produits n'est pas modélisable. | D-37, D-40 |
 | 62 | Moyenne | Pas d'unité de vente distincte de l'unité de fabrication : un produit se vend à la pièce, au poids ou par personne, sans conditionnement (douzaine, boîte de 6 ou 12). Les briouates fabriquées à la pièce ne se vendent pas à la douzaine. | C-06, C-07, D-39 |
+| 63 | À décider | Une demande d'achat ne porte qu'un article et n'a pas d'approbation (l'approbation est sur le BC chiffré, mig 465). Le scénario (demande groupée, approbation et refus de ligne) est à réaligner, ou le besoin à réintroduire. | F-01 à F-04 |
+| 64 | Haute | Sur une installation neuve, plusieurs contrôles d'achat sont en mode « avertissement » et n'empêchent rien : demande d'achat obligatoire pour un BC, séparation des tâches, DLC des lots, plafond espèces, achats hors contrat. Rien ne signale à l'administrateur qu'ils sont éteints. | F-09 |
+| 65 | Moyenne | Attribuer une demande de prix à un autre devis que le mieux noté ne demande aucune justification. | F-08 |
+| 66 | Faible | Le délai de livraison des devis n'entre pas dans la notation pondérée (prix, qualité, fournisseur). | F-07 |
+| 67 | Haute | Un article ajouté à la main dans une demande de prix ne couvre pas la demande d'achat du même article : elle reste « à commander » et peut être commandée deux fois (sucre sur BC-2026-0001 puis BC-2026-0004). | F-05, F-17 |
+| 68 | Haute | Le PDF du bon de commande n'a ni prix, ni TVA, ni total, et affiche la quantité en unité de base (2 670 unités au lieu de 89 caisses). | F-15 |
+| 69 | Moyenne | Pas de taux de change du jour : le taux est saisi à la main sur chaque BC en devise (Paramètres › Devises vide). | F-18 |
+| 70 | Faible | Un prix négatif sur une ligne de BC est effacé sans message (ligne « Prix à définir ») au lieu d'être refusé. | F-21 |
+| 71 | Haute | Le responsable des achats n'a pas accès aux catégories de dépenses (403) : toutes ses lignes de BC sont « Sans catégorie » et un BC d'immobilisation est impossible (catégorie obligatoire, liste vide). Même cause que le constat 7. | F-19, F-20 |
+| 72 | Moyenne | Boutons affichés sans le droit correspondant : module Achats complet et « + Nouveau BC » pour un chef, « Modifier », « Ajuster », « Supprimer » sur une fiche matière pour le responsable des achats (lecture seule). | F-01, F-05 |
+| 73 | À vérifier | L'écran « Modifier le bon de commande » permet de saisir une quantité livrée qui, selon son texte, ajuste le stock directement, sans réception (ni lot, ni DLC). | F-19 |
+| 74 | Faible | Approbations : identifiant technique de la catégorie d'achat affiché, compteur « 0 circuit actif » faux, numéros « AO- » (appel d'offres) pour les demandes de prix, colonne « Dernier prix payé » qui montre un prix seulement commandé. | F-10, F-12 |
 
 ## Reste à jouer
 
-Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Puis C (produits),
-D (fiches techniques), E (suite), F (achats), G (stock), H (caisse), I (contrôles) et les
+Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-14 (approbation par l’administrateur), réceptions (F-30 à F-46), factures et paiements (F-50 à F-66), stock d’ouverture (F-70 à F-72). Puis C (produits),
+D (fiches techniques), E (suite), G (stock), H (caisse), I (contrôles) et les
 cas transverses.
