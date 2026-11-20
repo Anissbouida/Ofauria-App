@@ -1488,9 +1488,11 @@ export const invoiceRepository = {
         if (!lot?.ingredient_id) continue;
         const before = (await client.query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [lot.ingredient_id])).rows[0];
         // CMUP de l'article = moyenne pondérée des lots actifs restants (même base que
-        // landed-cost.repository : economat + pesage).
+        // landed-cost.repository : economat + pesage). La table ingredients n'a pas de
+        // colonne updated_at : la poser faisait échouer toute validation avec écart de prix
+        // (scénario 1, constat 82).
         const after = (await client.query(
-          `UPDATE ingredients i SET unit_cost = sub.wavg, updated_at = NOW()
+          `UPDATE ingredients i SET unit_cost = sub.wavg
              FROM (SELECT SUM(unit_cost * (economat_quantity + pesage_quantity))
                           / NULLIF(SUM(economat_quantity + pesage_quantity), 0) AS wavg
                      FROM ingredient_lots

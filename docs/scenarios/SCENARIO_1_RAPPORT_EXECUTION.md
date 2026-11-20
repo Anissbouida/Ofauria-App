@@ -17,7 +17,7 @@ résultat, partie par partie.
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 8 | 2 | 5 | 0 | 16 |
 | D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
-| F. Premier approvisionnement | 58 | 46 | 26 | 20 | 2 | 10 |
+| F. Premier approvisionnement | 58 | 45 | 26 | 19 | 2 | 11 |
 | G à I, T | 48 | 0 | 0 | 0 | 0 | 48 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -529,14 +529,14 @@ script (ce que l'utilisateur ferait en cliquant « OK »).
 | F-60 | Non joué | Pas de BC chez Froid et Fours (F-20 bloqué). |
 | F-61 | Conforme | Seconde facture FAC-LG-8812 chez Laiterie du Gharb : refusée par le serveur (« Ce numéro de facture est déjà enregistré pour ce fournisseur »), l'écran n'affiche que « Erreur ». La saisie manuelle exige une catégorie que le responsable des achats ne peut pas choisir (liste vide, constat 71). |
 | F-62 | Écart | L'avoir fournisseur n'existe que dans le formulaire de paiement par chèque (« Avoir fournisseur, déduit de la dette sans sortie de trésorerie »). Un avoir de 36 DH couvrant tout le reste des œufs (chèque à 0) est refusé : « Données invalides » ; le reste de 36 DH demeure (constat 85). |
-| F-63 | Bloquant | PIL-2026-77 (euros) ne se valide pas : erreur serveur « column "updated_at" of relation "ingredients" does not exist » (`accounting.repository.ts:1493`, réévaluation du coût au prix facturé). Et la réévaluation prévue (`fn_stock_revaluation_preview`) compare le prix facturé (139,9997) au coût du lot frais d'approche compris (179,9997) : une fois l'erreur corrigée, elle effacerait les 1 200 DH de frais (constat 82). |
+| F-63 | Non joué (débloqué) | PIL-2026-77 (euros) ne se validait pas : erreur serveur « column "updated_at" of relation "ingredients" does not exist » (`accounting.repository.ts:1493`), et la réévaluation comparait le prix facturé (139,9997) au coût du lot frais d'approche compris (179,9997), ce qui aurait effacé les 1 200 DH de frais. **Corrigé (mig 618)** : la facture se valide, le coût du chocolat reste 179,9997 DH. Le paiement à un autre taux que celui du BC reste à jouer (la facture est en litige) (constat 82). |
 | F-64 | Conforme | « Lever le litige » : BRK-F-102 redevient « À payer », bouton « Payer » de retour. |
 | F-65 | Écart | Pas de catégorie par ligne dans Factures reçues : la catégorie se choisit pour toute la facture (« Modifier la facture »), l'éditeur de lignes n'a que la TVA (constat 87). |
 | F-66 | Conforme | Le commercial ouvre l'écran Factures reçues (menu visible, « Nouvelle facture » affiché, constat 72) mais n'y voit aucune facture. |
 
 État en base : FAC-LG-8812 partiellement réglée (reste 2 100 DH), BRK-F-102 réglée,
 FR-2026-0001 partiellement réglée (reste 36 DH), BRK-F-101 en brouillon (ligne détachée du BC),
-PIL-2026-77 en brouillon et en litige (validation impossible).
+PIL-2026-77 validée après correction et toujours en litige.
 
 ## Constats à traiter
 
@@ -623,7 +623,7 @@ PIL-2026-77 en brouillon et en litige (validation impossible).
 | 79 | Moyenne | Pas de retour fournisseur depuis les Achats ; seulement une décision de non-conformité dans Contrôle. | F-45 |
 | 80 | Faible | Écran Réceptions : compteurs non rafraîchis après confirmation, « Tout reçu » laisse les contenants à 0, coût en devise à quatre décimales. | F-36, F-41, F-42 |
 | 81 | Haute | « Éditer les lignes » d'une facture fournisseur recrée les lignes sans lien avec le BC, la réception ni la catégorie : le rapprochement est perdu et un écart de prix n'est plus détecté (« Facture conforme »). | F-52, F-53 |
-| 82 | Haute | Valider une facture dont le prix diffère du coût du lot échoue (« column updated_at of relation ingredients does not exist », `accounting.repository.ts:1493`). La réévaluation compare en outre le prix facturé au coût du lot frais d'approche compris : corrigée telle quelle, elle effacerait les frais. Toute facture en devise avec frais d'approche est bloquée. | F-63 |
+| 82 | Corrigée (mig 618) | Valider une facture dont le prix différait du coût du lot échouait (« column updated_at of relation ingredients does not exist », `accounting.repository.ts:1493`), et la réévaluation comparait le prix facturé au coût du lot frais d'approche compris (elle les aurait effacés). Désormais l'écart se mesure contre le prix de la ligne de réception, s'ajoute au coût du lot (frais conservés) et n'est appliqué qu'une fois par facture et par lot. Test `revaluation-receipt-price.db.test.ts`. | F-63 |
 | 83 | Moyenne | L'écriture d'une facture fournisseur est passée dès sa création (à la réception), facture encore en brouillon ; la validation par le gérant n'a pas d'effet comptable et chaque édition extourne et repasse. | F-56 |
 | 84 | Moyenne | Mise en litige réservée au gérant (refusée au responsable des achats), sans motif ni trace autre qu'une confirmation du navigateur. | F-54 |
 | 85 | Moyenne | Avoir fournisseur seulement dans un paiement par chèque, et refusé quand il couvre tout le reste dû (chèque à 0). | F-62 |
@@ -632,6 +632,6 @@ PIL-2026-77 en brouillon et en litige (validation impossible).
 
 ## Reste à jouer
 
-Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-14 (approbation par l’administrateur), puis F-30 ; F-39, F-40 (Économe) ; F-51, F-53, F-60 ; stock d’ouverture (F-70 à F-72). Puis C (produits),
+Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-14 (approbation par l’administrateur), puis F-30 ; F-39, F-40 (Économe) ; F-51, F-53, F-60, F-63 (paiement à un autre taux) ; stock d’ouverture (F-70 à F-72). Puis C (produits),
 D (fiches techniques), E (suite), G (stock), H (caisse), I (contrôles) et les
 cas transverses.
