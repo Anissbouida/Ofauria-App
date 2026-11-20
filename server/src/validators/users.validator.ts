@@ -20,6 +20,7 @@ export const createUserSchema = body({
   firstName: txt(100), lastName: txt(100),
   role: z.string().max(40).optional(), roles: roleCodes.optional(), primaryRole: z.string().max(40).nullish(),
   pinCode: pin, storeId: z.string().max(60).nullish(), employeeId: z.string().max(60).nullish(),
+  mustChangePassword: z.boolean().optional(), mfaRequired: z.boolean().optional(),
 });
 /* Modification — user.controller.update (tout est facultatif ; PIN null = retiré). */
 export const updateUserSchema = body({

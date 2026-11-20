@@ -5,6 +5,17 @@ export const usersApi = {
   create: (data: Record<string, any>) => api.post('/users', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/users/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/users/${id}`),
+  /** Suppression définitive : refusée (409 USER_HAS_HISTORY) si le compte a déjà servi. */
+  removePermanently: (id: string) => api.delete(`/users/${id}/permanent`),
+  // Sécurité d'un compte (mig 617) : 2FA exigée / réinitialisée, verrou, sessions, mot de passe.
+  setMfaRequired: (id: string, required: boolean) => api.put(`/users/${id}/mfa-required`, { required }).then(r => r.data.data),
+  resetMfa: (id: string) => api.post(`/users/${id}/mfa-reset`, {}).then(r => r.data.data),
+  unlock: (id: string) => api.post(`/users/${id}/unlock`, {}).then(r => r.data.data),
+  revokeSessions: (id: string) => api.post(`/users/${id}/revoke-sessions`, {}).then(r => r.data.data),
+  setMustChangePassword: (id: string, value: boolean) => api.put(`/users/${id}/must-change-password`, { value }).then(r => r.data.data),
+  /** Politique : rôles qui doivent activer la double authentification. */
+  mfaPolicy: () => api.get('/users/security/mfa-policy').then(r => r.data.data as { requiredRoles: string[] }),
+  setMfaPolicy: (requiredRoles: string[]) => api.put('/users/security/mfa-policy', { requiredRoles }).then(r => r.data.data as { requiredRoles: string[] }),
   getPermissions: (id: string) => api.get(`/users/${id}/permissions`).then(r => r.data.data),
   setPermissions: (id: string, permissions: Record<string, any>[]) =>
     api.put(`/users/${id}/permissions`, { permissions }).then(r => r.data.data),

@@ -30,6 +30,12 @@ export type AuthEventType =
   | 'mfa_failed'
   | 'user_created'
   | 'user_updated'
+  // Suppression définitive d'un compte sans historique (trace : e-mail + nom dans details).
+  | 'user_deleted'
+  // Administration de la sécurité d'un compte : 2FA réinitialisée / exigée, verrou levé.
+  | 'mfa_reset'
+  | 'mfa_requirement_changed'
+  | 'account_unlocked'
   | 'permission_changed'
   | 'token_revoked'
   // Appel API hors des droits par module (garde des modules, mig 330).

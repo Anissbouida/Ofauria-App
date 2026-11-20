@@ -13,6 +13,11 @@ import { approvalLimitSchema, createRoleSchema, createSodRuleSchema, createUserS
 /** G6-05 : langue de l'interface ; null = revenir au défaut de la société. */
 export const setLocaleSchema = z.object({ locale: z.enum(['fr', 'ar', 'en']).nullable() }).strict();
 const setActionPermissionsSchema = z.object({ keys: z.array(z.string().min(3).max(120)).max(2000) });
+/** Administration de la sécurité d'un compte (2FA exigée, changement de mot de passe imposé). */
+const requiredFlagSchema = z.object({ required: z.boolean() }).strict();
+const valueFlagSchema = z.object({ value: z.boolean() }).strict();
+const emptySchema = z.object({}).strict();
+const mfaPolicySchema = z.object({ requiredRoles: z.array(z.string().min(1).max(60)).max(100) }).strict();
 
 const router = Router();
 
@@ -29,6 +34,9 @@ router.put('/roles/:code/action-permissions', authenticate, can('users.permissio
 router.get('/:id/action-permissions', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(roleController.userActionPermissions));
 router.get('/security', authenticate, can('users.view'), asyncHandler(roleController.security));
 router.put('/security', authenticate, can('users.edit'), validate(enforcementModeSchema), asyncHandler(roleController.setSecurityMode));
+// Politique de double authentification par rôle (paramètre security.mfa).
+router.get('/security/mfa-policy', authenticate, can('users.view'), asyncHandler(userController.mfaPolicy));
+router.put('/security/mfa-policy', authenticate, can('users.edit'), validate(mfaPolicySchema), asyncHandler(userController.setMfaPolicy));
 
 // Gouvernance (mig 336) : separation des taches (SoD), plafonds d'approbation,
 // delegations temporaires. Litteraux specifiques declares avant /sod/:code.
@@ -50,8 +58,15 @@ router.delete('/delegations/:id', authenticate, can('users.delete'), asyncHandle
 
 router.get('/', authenticate, can('users.view'), userController.list);
 router.post('/', authenticate, can('users.create'), validate(createUserSchema), userController.create);
-router.put('/:id', authenticate, can('users.edit'), validate(updateUserSchema), userController.update);
-router.delete('/:id', authenticate, can('users.delete'), userController.remove);
+router.put('/:id', authenticate, can('users.edit'), validate(updateUserSchema), asyncHandler(userController.update));
+router.delete('/:id', authenticate, can('users.delete'), asyncHandler(userController.remove));
+// Sécurité d'un compte : 2FA, verrouillage, sessions, mot de passe, suppression définitive.
+router.put('/:id/mfa-required', authenticate, validateUuidParams('id'), can('users.edit'), validate(requiredFlagSchema), asyncHandler(userController.setMfaRequired));
+router.post('/:id/mfa-reset', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.resetMfa));
+router.post('/:id/unlock', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.unlock));
+router.post('/:id/revoke-sessions', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.revokeSessions));
+router.put('/:id/must-change-password', authenticate, validateUuidParams('id'), can('users.edit'), validate(valueFlagSchema), asyncHandler(userController.setMustChangePassword));
+router.delete('/:id/permanent', authenticate, validateUuidParams('id'), can('users.delete'), asyncHandler(userController.hardDelete));
 
 // Profil de l'utilisateur connecté — aucune clé de droit : chacun règle sa propre langue (G6-05).
 router.put('/me/locale', authenticate, validate(setLocaleSchema), asyncHandler(userController.setMyLocale));

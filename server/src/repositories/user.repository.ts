@@ -153,6 +153,51 @@ export const userRepository = {
     );
   },
 
+  /** Dernière connexion réussie par compte (mot de passe, PIN ou second facteur). */
+  async lastLogins(): Promise<Map<string, Date>> {
+    const r = await db.query(
+      `SELECT user_id, MAX(created_at) AS at FROM auth_events
+        WHERE success AND user_id IS NOT NULL AND event_type IN ('login_success', 'pin_login_success', 'mfa_success')
+        GROUP BY user_id`);
+    return new Map(r.rows.map((x: { user_id: string; at: Date }) => [x.user_id, x.at]));
+  },
+
+  /** Administrateurs actifs (rôle principal admin), hors compte technique et hors `exceptId`. */
+  async countActiveAdmins(exceptId?: string): Promise<number> {
+    const r = await db.query(
+      `SELECT count(*)::int AS n FROM users WHERE role = 'admin' AND is_active AND NOT is_system AND id IS DISTINCT FROM $1`,
+      [exceptId ?? null]);
+    return r.rows[0].n;
+  },
+
+  /**
+   * Tables métier qui référencent ce compte : sa présence dans une seule d'entre elles
+   * (document créé, validé, pointage…) interdit la suppression définitive — on désactive.
+   * Ignorées : les tables en ON DELETE CASCADE (rôles, droits, identités, notifications…
+   * propres au compte, supprimées avec lui) et auth_events (journal de connexion, gardé
+   * avec l'e-mail). Identifiants issus du catalogue, cités par quote_ident.
+   */
+  async historyReferences(id: string, limit = 5): Promise<string[]> {
+    const fks = (await db.query(
+      `SELECT quote_ident(n.nspname) || '.' || quote_ident(t.relname) AS tbl, quote_ident(a.attname) AS col, t.relname AS name
+         FROM pg_constraint c
+         JOIN pg_class t ON t.oid = c.conrelid
+         JOIN pg_namespace n ON n.oid = t.relnamespace
+         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+        WHERE c.contype = 'f' AND c.confrelid = 'users'::regclass AND array_length(c.conkey, 1) = 1
+          AND c.confdeltype <> 'c' AND t.relname <> 'auth_events' AND NOT t.relispartition`)).rows as { tbl: string; col: string; name: string }[];
+    if (!fks.length) return [];
+    const parts = fks.map((f, i) => `SELECT $${i + 2}::text AS name WHERE EXISTS (SELECT 1 FROM ${f.tbl} WHERE ${f.col} = $1)`);
+    const r = await db.query(`SELECT DISTINCT name FROM (${parts.join(' UNION ALL ')}) x LIMIT ${Number(limit)}`, [id, ...fks.map(f => f.name)]);
+    return r.rows.map((x: { name: string }) => x.name);
+  },
+
+  /** Suppression définitive (le contrôleur a vérifié l'absence d'historique). */
+  async hardDelete(id: string, actorId?: string): Promise<boolean> {
+    const r = await auditedQuery(actorId, 'DELETE FROM users WHERE id = $1 AND NOT is_system', [id]);
+    return (r.rowCount ?? 0) > 0;
+  },
+
   async isLocked(id: string): Promise<Date | null> {
     const result = await db.query(
       'SELECT locked_until FROM users WHERE id = $1 AND locked_until > NOW()',

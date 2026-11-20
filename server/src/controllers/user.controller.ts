@@ -15,22 +15,63 @@ import { effectiveRights } from '../services/access-rights.js';
 import { normalizePermissions, permissionView } from '../services/permission-input.js';
 import { sodEnforcementMode, evaluateRoleCodesSod } from '../services/governance.js';
 import { logger } from '../utils/logger.js';
+import { mfaRepository } from '../repositories/mfa.repository.js';
+
+type Guarded = 'deactivate' | 'delete' | 'demote';
+const GUARD_VERB: Record<Guarded, string> = { deactivate: 'désactiver', delete: 'supprimer', demote: 'retirer le rôle administrateur de' };
+
+/**
+ * Garde-fous d'administration : on ne se désactive ni ne se supprime soi-même, et l'on
+ * ne prive jamais l'application de son dernier administrateur actif. Répond 400 et rend
+ * false quand l'action est refusée.
+ */
+async function guardAccountLoss(req: AuthRequest, res: Response, targetId: string, action: Guarded): Promise<boolean> {
+  if (action !== 'demote' && targetId === req.user?.userId) {
+    res.status(400).json({ success: false, error: { message: `Vous ne pouvez pas ${GUARD_VERB[action]} votre propre compte` } });
+    return false;
+  }
+  const target = await userRepository.findById(targetId);
+  if (!target) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return false; }
+  if ((target as { is_system?: boolean }).is_system) {
+    res.status(400).json({ success: false, error: { message: 'Le compte technique Système ne se modifie pas' } });
+    return false;
+  }
+  if (target.role === 'admin' && target.is_active && (await userRepository.countActiveAdmins(targetId)) === 0) {
+    res.status(400).json({ success: false, error: { message: `Impossible de ${GUARD_VERB[action]} le dernier administrateur actif : nommez d'abord un autre administrateur` } });
+    return false;
+  }
+  return true;
+}
 
 export const userController = {
   async list(_req: AuthRequest, res: Response) {
-    const [users, allRoles] = await Promise.all([userRepository.findAll(), userRepository.allUserRoles()]);
+    const [users, allRoles, lastLogins, mfaRoles] = await Promise.all([
+      userRepository.findAll(), userRepository.allUserRoles(), userRepository.lastLogins(), mfaRepository.requiredRoles(),
+    ]);
     const rolesByUser = new Map<string, string[]>();
     for (const r of allRoles) {
       const arr = rolesByUser.get(r.user_id) ?? [];
       arr.push(r.role_code);
       rolesByUser.set(r.user_id, arr);
     }
-    const safe = users.map(u => ({
-      id: u.id, email: u.email, firstName: u.first_name, lastName: u.last_name,
-      role: u.role, roles: rolesByUser.get(u.id) ?? (u.role ? [u.role] : []),
-      isActive: u.is_active, hasPin: !!u.pin_code, pinWeak: pinIsWeak(u), mustChangePassword: !!u.must_change_password,
-      storeId: u.store_id, createdAt: u.created_at,
-    }));
+    const now = Date.now();
+    const safe = users.map(u => {
+      const roles = rolesByUser.get(u.id) ?? (u.role ? [u.role] : []);
+      const mfaRequiredByRole = mfaRoles.some(r => roles.includes(r));
+      const mfaRequiredForUser = !!(u as { mfa_required?: boolean }).mfa_required;
+      const lockedUntil = (u as { locked_until?: Date | null }).locked_until;
+      return {
+        id: u.id, email: u.email, firstName: u.first_name, lastName: u.last_name,
+        role: u.role, roles,
+        isActive: u.is_active, hasPin: !!u.pin_code, pinWeak: pinIsWeak(u), mustChangePassword: !!u.must_change_password,
+        storeId: u.store_id, createdAt: u.created_at,
+        // Sécurité du compte (double authentification, verrouillage, dernière connexion).
+        mfaEnabled: !!u.totp_enabled, mfaRequired: mfaRequiredByRole || mfaRequiredForUser, mfaRequiredByRole, mfaRequiredForUser,
+        lockedUntil: lockedUntil && new Date(lockedUntil).getTime() > now ? lockedUntil : null,
+        failedLoginCount: (u as { failed_login_count?: number }).failed_login_count ?? 0,
+        lastLoginAt: lastLogins.get(u.id) ?? null,
+      };
+    });
     res.json({ success: true, data: safe });
   },
 
@@ -76,6 +117,9 @@ export const userController = {
       await userRepository.update(user.id, { pinCode: pinHash, pinLength: String(pinCode).length }, req.user?.userId);
     }
     await userRepository.setRoleCodes(user.id, roleCodes, primaryRole, req.user?.userId);
+    // Options de création : mot de passe provisoire à changer, double authentification exigée.
+    if (req.body.mustChangePassword === true) await userRepository.setMustChangePassword(user.id, true);
+    if (req.body.mfaRequired === true) await mfaRepository.setRequiredForUser(user.id, true);
     // Lien espace employé (employees.user_id) si une fiche est choisie.
     if (req.body.employeeId !== undefined) {
       await userRepository.setLinkedEmployee(user.id, req.body.employeeId ? String(req.body.employeeId) : null, req.user?.userId);
@@ -89,7 +133,7 @@ export const userController = {
       targetUserId: updated!.id,
       email: updated!.email,
       success: true,
-      details: { role: updated!.role, roles: roleCodes, hasPin: !!updated!.pin_code, ...(sodViolations.length ? { sodViolations: sodViolations.map(v => v.code) } : {}) },
+      details: { role: updated!.role, roles: roleCodes, hasPin: !!updated!.pin_code, mustChangePassword: req.body.mustChangePassword === true, mfaRequired: req.body.mfaRequired === true, ...(sodViolations.length ? { sodViolations: sodViolations.map(v => v.code) } : {}) },
     });
 
     res.status(201).json({
@@ -175,6 +219,10 @@ export const userController = {
       }
     }
 
+    // Garde-fous : ni soi-même ni le dernier administrateur actif.
+    if (isActive === false && !(await guardAccountLoss(req, res, req.params.id, 'deactivate'))) return;
+    if (newPrimaryRole !== undefined && newPrimaryRole !== 'admin' && !(await guardAccountLoss(req, res, req.params.id, 'demote'))) return;
+
     // Snapshot de l'ancien role pour detecter un changement de role
     const oldUser = await userRepository.findById(req.params.id);
     const oldRole = (oldUser as { role?: string } | null)?.role;
@@ -233,6 +281,7 @@ export const userController = {
   },
 
   async remove(req: AuthRequest, res: Response) {
+    if (!(await guardAccountLoss(req, res, req.params.id, 'deactivate'))) return;
     // A07-5 : bump avant desactivation pour invalider les sessions actives.
     await userRepository.bumpTokenVersion(req.params.id);
     await userRepository.delete(req.params.id, req.user?.userId);
@@ -244,6 +293,126 @@ export const userController = {
       details: { action: 'deactivated' },
     });
     res.json({ success: true, data: null });
+  },
+
+  /**
+   * Suppression définitive : seulement pour un compte sans historique (créé par erreur,
+   * jamais utilisé). Un compte qui a laissé une trace (document, pointage, validation…)
+   * se désactive : la traçabilité des opérations l'exige.
+   */
+  async hardDelete(req: AuthRequest, res: Response) {
+    const id = req.params.id;
+    if (!(await guardAccountLoss(req, res, id, 'delete'))) return;
+    const target = await userRepository.findById(id);
+    const refs = await userRepository.historyReferences(id);
+    const hasHistory = () => res.status(409).json({
+      success: false,
+      error: {
+        message: 'Ce compte a déjà servi dans l\'application : le supprimer effacerait la traçabilité de ses opérations. Désactivez-le plutôt.',
+        code: 'USER_HAS_HISTORY', details: { tables: refs },
+      },
+    });
+    if (refs.length) { hasHistory(); return; }
+    try {
+      if (!(await userRepository.hardDelete(id, req.user?.userId))) {
+        res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } });
+        return;
+      }
+    } catch (err) {
+      // Trace apparue entre-temps, ou référence sans clé étrangère connue : on refuse proprement.
+      const e = err as { code?: string; message?: string };
+      if (e.code === '23503' || /append-only|ajout seul/i.test(e.message ?? '')) { hasHistory(); return; }
+      throw err;
+    }
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'user_deleted', userId: req.user?.userId, email: target!.email, success: true,
+      details: { deletedUserId: id, name: `${target!.first_name} ${target!.last_name}`, role: target!.role },
+    });
+    res.json({ success: true, data: null });
+  },
+
+  /** Double authentification exigée (ou non) pour ce compte, en plus de la politique par rôle. */
+  async setMfaRequired(req: AuthRequest, res: Response) {
+    const required = req.body.required === true;
+    if (!(await mfaRepository.setRequiredForUser(req.params.id, required))) {
+      res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } });
+      return;
+    }
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'mfa_requirement_changed', userId: req.user?.userId, targetUserId: req.params.id, success: true, details: { required },
+    });
+    res.json({ success: true, data: { required } });
+  },
+
+  /**
+   * Réinitialise la double authentification (téléphone perdu, application supprimée) :
+   * secret et codes de secours effacés, sessions fermées. Si elle reste exigée, le compte
+   * la reconfigure à sa prochaine connexion.
+   */
+  async resetMfa(req: AuthRequest, res: Response) {
+    const target = await userRepository.findById(req.params.id);
+    if (!target) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
+    await mfaRepository.disable(target.id);
+    await userRepository.bumpTokenVersion(target.id);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'mfa_reset', userId: req.user?.userId, targetUserId: target.id, email: target.email, success: true,
+    });
+    res.json({ success: true, data: null });
+  },
+
+  /** Lève le verrouillage après trop d'échecs de connexion. */
+  async unlock(req: AuthRequest, res: Response) {
+    const target = await userRepository.findById(req.params.id);
+    if (!target) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
+    await userRepository.resetFailedLogins(target.id);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'account_unlocked', userId: req.user?.userId, targetUserId: target.id, email: target.email, success: true,
+    });
+    res.json({ success: true, data: null });
+  },
+
+  /** Ferme toutes les sessions ouvertes du compte (jetons invalidés). */
+  async revokeSessions(req: AuthRequest, res: Response) {
+    const target = await userRepository.findById(req.params.id);
+    if (!target) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
+    await userRepository.bumpTokenVersion(target.id);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'token_revoked', userId: req.user?.userId, targetUserId: target.id, email: target.email, success: true,
+      details: { action: 'all_sessions' },
+    });
+    res.json({ success: true, data: null });
+  },
+
+  /** Impose (ou lève) le changement de mot de passe à la prochaine connexion. */
+  async setMustChangePassword(req: AuthRequest, res: Response) {
+    const value = req.body.value === true;
+    const target = await userRepository.findById(req.params.id);
+    if (!target) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
+    await userRepository.setMustChangePassword(target.id, value);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'user_updated', userId: req.user?.userId, targetUserId: target.id, email: target.email, success: true,
+      details: { changed: ['mustChangePassword'], value },
+    });
+    res.json({ success: true, data: { value } });
+  },
+
+  /** Politique de double authentification : rôles qui doivent l'activer. */
+  async mfaPolicy(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: { requiredRoles: await mfaRepository.requiredRoles() } });
+  },
+  async setMfaPolicy(req: AuthRequest, res: Response) {
+    const roles = [...new Set((req.body.requiredRoles as string[]).map(String))];
+    for (const c of roles) {
+      if (!(await roleRepository.isAssignable(c))) {
+        res.status(400).json({ success: false, error: { message: `Rôle inconnu ou désactivé : ${c}` } });
+        return;
+      }
+    }
+    await mfaRepository.setRequiredRoles(roles, req.user!.userId);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'mfa_requirement_changed', userId: req.user?.userId, success: true, details: { requiredRoles: roles },
+    });
+    res.json({ success: true, data: { requiredRoles: roles } });
   },
 
   async getPermissions(req: AuthRequest, res: Response) {

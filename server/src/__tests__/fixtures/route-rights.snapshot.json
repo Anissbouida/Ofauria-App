@@ -324,6 +324,9 @@
  "DELETE /users/:id": [
   "admin"
  ],
+ "DELETE /users/:id/permanent": [
+  "admin"
+ ],
  "DELETE /users/approval-limits/:id": [
   "admin"
  ],
@@ -2521,6 +2524,9 @@
  "GET /users/security": [
   "admin"
  ],
+ "GET /users/security/mfa-policy": [
+  "admin"
+ ],
  "GET /users/sod": [
   "admin"
  ],
@@ -4522,6 +4528,15 @@
  "POST /users": [
   "admin"
  ],
+ "POST /users/:id/mfa-reset": [
+  "admin"
+ ],
+ "POST /users/:id/revoke-sessions": [
+  "admin"
+ ],
+ "POST /users/:id/unlock": [
+  "admin"
+ ],
  "POST /users/approval-limits": [
   "admin"
  ],
@@ -5126,6 +5141,12 @@
  "PUT /users/:id": [
   "admin"
  ],
+ "PUT /users/:id/mfa-required": [
+  "admin"
+ ],
+ "PUT /users/:id/must-change-password": [
+  "admin"
+ ],
  "PUT /users/:id/permissions": [
   "admin"
  ],
@@ -5140,6 +5161,9 @@
   "admin"
  ],
  "PUT /users/security": [
+  "admin"
+ ],
+ "PUT /users/security/mfa-policy": [
   "admin"
  ],
  "PUT /users/sod/:code": [
