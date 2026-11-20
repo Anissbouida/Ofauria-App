@@ -16,7 +16,7 @@ résultat, partie par partie.
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 5 | 2 | 2 | 0 | 19 |
-| D. Fiches techniques | 46 | 15 | 11 | 4 | 0 | 31 |
+| D. Fiches techniques | 46 | 20 | 14 | 6 | 0 | 26 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -376,6 +376,23 @@ Chef Pâtissier : Nadia Berrada. Formats créés par le gérant : « Bassine 5 k
 
 État en base : 6 formats, 10 fiches toutes en version (Baguette en version 2), 4 produits. Produits pâtisserie pas encore créés.
 
+### Atelier Pâtisserie, suite : formats multiples, trois niveaux, cadre, mille-feuille (2026-11-20, par les écrans)
+
+Formats créés par le gérant : « Plaque tartelettes 12 pièces », « Cercle 20 cm 6 personnes » et « Cercle 24 cm 8 personnes » (1 pièce, 6 ou 8 pièces après découpe), « Cadre opéra 40x60 » (1 cadre, 48 tranches après découpe).
+
+| ID | Statut | Constat |
+|---|---|---|
+| D-29 | Conforme | « Tarte aux fraises » saisie par fournée, trois formats avec chacun sa composition (pas de règle de trois) : tartelettes 360 g de pâte sucrée, 600 g de crème, 900 g de fraises (10 % de perte à l'équeutage, bien appliquée : 35,00 DH) soit 5,14 DH la tartelette ; cercle 6 personnes 37,55 DH ; cercle 8 personnes 51,63 DH, créé avec « Dupliquer depuis » le format 6 personnes puis ajusté. Les parts (6 et 8) se ressaisissent sur la fiche : le format les annonce mais la fiche part de 1 (constat 53). |
+| D-33 | Conforme | Trois niveaux : sirop d'imbibage (eau, sucre ; 1,8 kg) → biscuit chocolat imbibé (300 g de sirop + farine, cacao, sucre, 12 œufs ; 1,6 kg, 19,03 DH/kg) → entremets chocolat (300 g de biscuit, 400 g de ganache, 300 ml de crème). Coûts justes à chaque niveau ; l'explosion descend jusqu'à l'eau et au sucre du sirop. 52,71 DH l'entremets de 6 parts. |
+| D-30 | Écart | L'entremets se décrit par format (cercle 6 personnes, 6 parts) : rien ne fait suivre les quantités du nombre de parts de 4 à 16 sans créer un format par taille (constat 55). La vente par personne reste à jouer côté produit (C-04). |
+| D-31 | Bloquant | Opéra sur le cadre (biscuit 1,2 kg, ganache 800 g, beurre 500 g ; 136,54 DH le cadre). Rendement d'abord à 1 : le produit « Tranche d'opéra » aurait repris le coût du cadre entier ; corrigé en saisissant 48 tranches (2,84 DH la tranche, prix 10,00 DH), alors que le format annonçait déjà 48 tranches (constat 53). Les sorties déclarées exigent un produit existant ; or la fiche, déjà liée à « Tranche d'opéra », n'est plus proposée pour un second produit (« Recette déjà liée à un produit ») : « Entremets opéra » ne peut être créé que comme « Revente », ce qui est faux (constat 54). Non poursuivi. |
+| D-53 | Conforme | La cheffe pâtissière emploie la pâte feuilletée du chef viennoisier dans son mille-feuille (50 g de pâte 1,42 DH, 80 g de crème pâtissière 1,87 DH ; 3,29 DH). |
+| D-07 | Écart | Versions créées pour la tarte et le sirop ; biscuit, entremets, opéra et mille-feuille restent sans version : le gérant a été déconnecté à plusieurs reprises (constat 56). |
+
+Après chaque enregistrement, la page de la fiche se recharge et remonte en haut (constat 57).
+
+État en base : 10 formats, 16 fiches, 5 produits (Tranche d'opéra en plus).
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -432,6 +449,11 @@ Chef Pâtissier : Nadia Berrada. Formats créés par le gérant : « Bassine 5 k
 | 50 | Faible | Nouveau produit : une fiche saisie par pièce apparaît avec « Rend : 1 unité » au lieu du rendement de son format (40 pièces) ; le coût affiché, lui, est bien celui d'une pièce. | C-02 |
 | 51 | Faible | Aucun type de format de production pour une préparation en bassine ou en cuve (crème, ganache, pâte) : « Moule / Découpe » utilisé faute de mieux. | D-27 |
 | 52 | Faible | Une préparation qui contient déjà la fiche en cours reste proposée comme composant : la boucle n'est refusée qu'à l'enregistrement (message clair). | D-32 |
+| 53 | Moyenne | Le nombre de pièces après découpe déclaré sur le format (6, 8, 48) n'est pas repris par la fiche : parts et rendement repartent de 1. Un produit lié à l'opéra aurait coûté le cadre entier. | D-29, D-31 |
+| 54 | Haute | Une fiche ne se lie qu'à un seul produit, et une sortie déclarée exige un produit existant : le second produit d'une coupe (entremets opéra à côté des tranches) ne peut être créé que comme « Revente ». La découpe d'un cadre en deux produits n'est pas réalisable proprement. | D-31 |
+| 55 | Moyenne | Pas de fiche « par personne » dont les quantités suivent le nombre de parts : il faut un format par taille. | D-30 |
+| 56 | À confirmer | Déconnexions répétées (`/auth/me` répond 401) pendant le scénario, jusqu'à deux minutes après une connexion. Observées pendant un travail en parallèle sur la sécurité des comptes (migration 617, serveur relancé à chaque modification) : à revérifier en dehors de ce travail. | — |
+| 57 | Faible | Après un enregistrement de fiche, la page se recharge et remonte en haut ; la saisie reprend après un défilement. | D-29 |
 
 ## Reste à jouer
 
