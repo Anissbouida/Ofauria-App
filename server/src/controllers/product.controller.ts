@@ -17,6 +17,20 @@ function slugify(text: string): string {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+/**
+ * Violation d'unicité sur un produit → message lisible (409), sinon null.
+ * Le nom donne le `slug`, unique : un second « Eau minérale 50 cl » levait une erreur
+ * SQL non rattrapée et la requête restait sans réponse (scénario 1, constat 100).
+ */
+function uniqueViolationMessage(err: unknown): string | null {
+  const e = err as { code?: string; constraint?: string };
+  if (e?.code !== '23505') return null;
+  const constraint = String(e.constraint || '');
+  if (constraint.includes('barcode')) return 'Ce code-barres est déjà attribué à un autre article.';
+  if (constraint.includes('slug') || constraint.includes('name')) return 'Un produit du même nom existe déjà.';
+  return 'Cet article existe déjà.';
+}
+
 export const productController = {
   /** GET /products/:id/label-data — données de l'étiquette réglementaire (G2-09) : ingrédients éclatés par poids, allergènes, mentions, blocages. */
   async labelData(req: AuthRequest, res: Response) {
@@ -234,10 +248,8 @@ export const productController = {
       res.status(201).json({ success: true, data: product });
     } catch (err) {
       await client.query('ROLLBACK');
-      if ((err as { code?: string }).code === '23505' && String((err as { constraint?: string }).constraint || '').includes('barcode')) {
-        res.status(409).json({ success: false, error: { message: 'Ce code-barres est déjà attribué à un autre article.' } });
-        return;
-      }
+      const dup = uniqueViolationMessage(err);
+      if (dup) { res.status(409).json({ success: false, error: { message: dup } }); return; }
       throw err;
     } finally {
       client.release();
@@ -322,10 +334,8 @@ export const productController = {
     try {
       product = await productRepository.update(productId, data);
     } catch (err) {
-      if ((err as { code?: string }).code === '23505' && String((err as { constraint?: string }).constraint || '').includes('barcode')) {
-        res.status(409).json({ success: false, error: { message: 'Ce code-barres est déjà attribué à un autre article.' } });
-        return;
-      }
+      const dup = uniqueViolationMessage(err);
+      if (dup) { res.status(409).json({ success: false, error: { message: dup } }); return; }
       throw err;
     }
 
