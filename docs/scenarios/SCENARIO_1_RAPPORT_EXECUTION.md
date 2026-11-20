@@ -15,8 +15,8 @@ résultat, partie par partie.
 | E. Paramétrage de la production | 8 | 2 | 1 | 1 | 0 | 6 |
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
-| C. Produits | 24 | 7 | 2 | 4 | 0 | 17 |
-| D. Fiches techniques | 46 | 25 | 17 | 8 | 0 | 21 |
+| C. Produits | 24 | 8 | 2 | 5 | 0 | 16 |
+| D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -423,6 +423,18 @@ Après chaque enregistrement, la page de la fiche se recharge et remonte en haut
 | D-37 | Bloquant | La fiche « Plateau beldi assorti » ne peut pas contenir de produits finis : la recherche « Cornes » ne donne « Aucun résultat » ; seules les préparations de base et les matières sont proposées. Un plateau qui consomme des produits n'est pas réalisable. La fiche vide reste en base (constat 61). |
 | D-07 | Conforme | Versions 1 créées par le gérant pour la ghriba et le msemen. |
 
+### Atelier Salé : pâte à pizza, pizza, briouates, plateau (2026-11-20, compte du Chef Salé)
+
+| ID | Statut | Constat |
+|---|---|---|
+| D-38 | Conforme (partiel) | Préparation « Pâte à pizza » en bassine 5 kg, rendement 3,3 kg (farine T55 2 kg, eau 1,2 l, huile 0,1 l, sel 40 g) : 12,89 DH la fournée. « Pizza individuelle » saisie par pièce sur la plaque de 30 : 120 g de pâte (0,47 DH, coûtée sur le rendement kilo grâce au correctif du constat 41), 50 g de tomate concassée, 40 g de fromage râpé ; 4,17 DH de matière. La quiche au thon n'est pas saisie : même schéma que la pizza (pâte et garniture), rien de nouveau à éprouver. La DLC courte reprise à la production reste à vérifier dans la partie production. |
+| D-39 | Écart | Briouates au poulet saisies par pièce sur la plaque beldi 60 pièces : blanc de poulet 25 g, oignon 10 g avec 10 % de perte, farine T55 10 g ; 45 g et 1,49 DH de matière, 1,71 DH de coût de production. La fabrication à la pièce fonctionne, mais la vente à la douzaine n'existe pas : le produit ne connaît que la pièce, le poids et la personne, sans conditionnement de vente (constat 62). |
+| C-07 | Écart | Même cause : « Briouates au poulet vendues à la douzaine » ne se crée pas. Un second produit « douzaine » n'est pas possible non plus, la fiche ne se liant qu'à un produit (constat 54). Produit non créé. |
+| D-40 | Bloquant | Plateau salé pour 20 personnes : la recherche « pizza » dans les composants ne propose que la préparation « Pâte à pizza », jamais la fiche « Pizza individuelle ». Même blocage que le plateau beldi (constat 61) ; aucune fiche créée cette fois. |
+| D-07 | Conforme | Versions 1 créées par le gérant pour la pâte à pizza, la pizza individuelle et les briouates. |
+
+État en base : 24 fiches dont 23 en version (le plateau beldi vide n'en a pas), 11 produits.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -487,7 +499,8 @@ Après chaque enregistrement, la page de la fiche se recharge et remonte en haut
 | 58 | Haute | Un produit vendu en plusieurs formats (tarte individuelle, 6 et 8 personnes) n'est pas réalisable : le formulaire produit ne connaît que le format par défaut, et la fiche déjà liée n'est plus proposée pour les produits des autres formats. | C-05 |
 | 59 | Haute | Produit vendu par personne : prix par personne saisi à la main (pas déduit de la fiche et de ses parts), mais prix de revient de l'entremets entier (60,62 DH pour 30,50 DH de prix) ; les marges sont fausses. | C-04 |
 | 60 | Moyenne | Le poids standard par pièce (contrôlé à la production) ne se saisit pas sur la fiche : seulement dans Paramètres › Qualité des données, réservé à l'administrateur. | D-35 |
-| 61 | Haute | Une fiche ne peut pas contenir de produit fini : un plateau assorti (beldi, salé) qui consomme des produits n'est pas modélisable. | D-37 |
+| 61 | Haute | Une fiche ne peut pas contenir de produit fini : un plateau assorti (beldi, salé) qui consomme des produits n'est pas modélisable. | D-37, D-40 |
+| 62 | Moyenne | Pas d'unité de vente distincte de l'unité de fabrication : un produit se vend à la pièce, au poids ou par personne, sans conditionnement (douzaine, boîte de 6 ou 12). Les briouates fabriquées à la pièce ne se vendent pas à la douzaine. | C-06, C-07, D-39 |
 
 ## Reste à jouer
 
