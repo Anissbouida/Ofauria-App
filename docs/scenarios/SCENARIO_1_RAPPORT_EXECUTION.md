@@ -16,7 +16,7 @@ résultat, partie par partie.
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 7 | 2 | 4 | 0 | 17 |
-| D. Fiches techniques | 46 | 21 | 15 | 6 | 0 | 25 |
+| D. Fiches techniques | 46 | 25 | 17 | 8 | 0 | 21 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -413,6 +413,16 @@ Après chaque enregistrement, la page de la fiche se recharge et remonte en haut
 
 État en base : 18 fiches toutes en version, 11 produits.
 
+### Atelier Beldi, suite : ghriba, msemen, plateau assorti (2026-11-20, compte de la Cheffe beldi)
+
+| ID | Statut | Constat |
+|---|---|---|
+| D-35 | Écart | Ghriba sur la plaque beldi 60 pièces (poudre d'amande 500 g, sucre glace 250 g, 3 œufs, levure chimique 10 g ; 8 % de perte à la cuisson) : 71,95 DH la plaque, 1,20 DH la pièce. Le poids standard par pièce ne se saisit pas sur la fiche (poids brut et cuit calculés, en lecture seule) : il se règle dans Paramètres › Qualité des données › Poids des formats, écran réservé à l'administrateur. Ni la cheffe ni le gérant ne peuvent le renseigner (constat 60). |
+| D-36 | Conforme | Msemen (semoule 1,5 kg, farine 1,5 kg, eau 1,8 l, huile 0,3 l ; 0,43 DH la pièce) avec deux étapes rédigées en français et en arabe (nom, points à suivre en darija) : affichées de droite à gauche, conservées en base telles que saisies. |
+| D-14 | Conforme | Après l'enregistrement des étapes, la cheffe modifie la composition (huile 0,35 l) et enregistre : les deux étapes restent. |
+| D-37 | Bloquant | La fiche « Plateau beldi assorti » ne peut pas contenir de produits finis : la recherche « Cornes » ne donne « Aucun résultat » ; seules les préparations de base et les matières sont proposées. Un plateau qui consomme des produits n'est pas réalisable. La fiche vide reste en base (constat 61). |
+| D-07 | Conforme | Versions 1 créées par le gérant pour la ghriba et le msemen. |
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -476,6 +486,8 @@ Après chaque enregistrement, la page de la fiche se recharge et remonte en haut
 | 57 | Faible | Après un enregistrement de fiche, la page se recharge et remonte en haut ; la saisie reprend après un défilement. | D-29 |
 | 58 | Haute | Un produit vendu en plusieurs formats (tarte individuelle, 6 et 8 personnes) n'est pas réalisable : le formulaire produit ne connaît que le format par défaut, et la fiche déjà liée n'est plus proposée pour les produits des autres formats. | C-05 |
 | 59 | Haute | Produit vendu par personne : prix par personne saisi à la main (pas déduit de la fiche et de ses parts), mais prix de revient de l'entremets entier (60,62 DH pour 30,50 DH de prix) ; les marges sont fausses. | C-04 |
+| 60 | Moyenne | Le poids standard par pièce (contrôlé à la production) ne se saisit pas sur la fiche : seulement dans Paramètres › Qualité des données, réservé à l'administrateur. | D-35 |
+| 61 | Haute | Une fiche ne peut pas contenir de produit fini : un plateau assorti (beldi, salé) qui consomme des produits n'est pas modélisable. | D-37 |
 
 ## Reste à jouer
 
