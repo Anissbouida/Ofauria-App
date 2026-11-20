@@ -19,7 +19,8 @@ résultat, partie par partie.
 | D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
 | F. Premier approvisionnement | 58 | 54 | 34 | 20 | 2 | 2 |
 | G. Tenue du stock | 14 | 11 | 7 | 4 | 0 | 3 |
-| H, I, T | 34 | 0 | 0 | 0 | 0 | 34 |
+| H. Caisse | 11 | 10 | 8 | 2 | 0 | 1 |
+| I, T | 23 | 0 | 0 | 0 | 0 | 23 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
 
@@ -585,6 +586,30 @@ achats à l'écran.
 État en base : farine 3 250 kg (réserve), lait 20 l (deux lots, dont un ouvert puis refermé),
 miel sous son seuil (3,5 / 5 kg), une perte de 25 kg de farine tracée.
 
+## Partie H — Caisse (2026-11-20, Caissier puis Gérant)
+
+Comptes : les codes PIN sont ceux de `server/scripts/seed-scenario0-accounts.ts`. Celui de Hamza
+(260222) est bon ; celui d'Imane ne correspond plus au script (changé depuis, comme le mot de
+passe de l'économe) : Hamza joue le caissier 1. Le compte administrateur est celui de
+l'utilisateur (H-01 vérifié par les écrans de caisse et le code).
+
+| ID | Statut | Constat |
+|---|---|---|
+| H-01 | Écart | Aucun fond de caisse de départ paramétrable : le montant se saisit librement à chaque ouverture, sans montant attendu ; l'ouverture ne passe aucune écriture comptable (constat 97). |
+| H-02 | Conforme | Écran de connexion : tuiles Hamza B., Hassan O., Imane F. ; tuile de Hamza + code PIN → « Caisse fermee · Bonjour Hamza ! · Ouvrir la caisse ». |
+| H-03 | Conforme | Deux codes faux sur la tuile d'Imane : « Code PIN incorrect (4 tentative(s) restante(s)) », puis 3. Verrouillage de 15 min après 5 échecs (`auth.controller.ts`), non poussé jusqu'au bout pour ne pas bloquer le compte. |
+| H-04 | Conforme | « Ouvrir la caisse » → fond saisi 500 DH → « Caisse ouverte ! », pied d'écran « Caisse ouverte à 15:24 · Hamza Belkadi » ; session à son nom. Saisie directe du montant, sans comptage par coupures à l'ouverture (il existe à la fermeture). |
+| H-05 | Écart | Session du gérant fermée en « Passation de shift » avec 300 DH (« Caisse juste »), puis rouverte avec 250 DH : ouverte sans remarque. Le serveur connaît pourtant le montant laissé à la clôture (`/cash-register/last-amount` = 300) mais ne le propose pas et ne calcule aucun écart d'ouverture : 50 DH disparaissent sans trace (constat 97). |
+| H-06 | Conforme (observé) | Pendant la session de Hamza, le gérant ouvre la sienne (300 DH) : deux sessions ouvertes en même temps dans la même boutique, sans avertissement. Une session par utilisateur, pas par poste ni par tiroir (constat 98). |
+| H-07 | Conforme (partiel) | Catégories Pain, Viennoiserie, Pâtisserie, Beldi, Salé, Boissons. 11 produits créés à ce stade (partie C inachevée, 25 attendus), tous sans stock faute de production : rangés sous « EN RUPTURE · 11 — afficher », aucun proposé à la vente. Prix au kilo affiché sans unité (Cornes de gazelle « 223,00 DH »), même vignette pour tous (constat 99). |
+| H-08 | Conforme | Toucher « Baguette » (rupture) n'ajoute rien au ticket : vente sans stock refusée (`POS_ALLOW_NEGATIVE_STOCK=false`), mais sans message (constat 99). |
+| H-09 | Non joué | « Plus › Réglages du poste » : « Aucune imprimante ticket configurée pour ce magasin (Réglages → Impression) » ; pas de ticket de test côté caissier, et aucune vente possible (tout en rupture). |
+| H-10 | Conforme | Caissier : `/settings` → « Vous n'avez pas accès aux paramètres » ; `/employees` → « Mon espace » (sa fiche, ses congés, ses attestations) seulement. |
+| H-11 | Conforme | Le gérant ouvre la caisse : session à son nom (« Karim Bennani », 300 DH), fermeture « Passation de shift » avec résultat (fond, attendu, trouvé, carte POS / TPE, « Caisse juste ») et rapport imprimable. |
+
+État en base : session de Hamza ouverte (fond 500 DH) ; deux sessions de test du gérant fermées
+(300 et 250 DH, justes) ; aucune vente.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -685,9 +710,13 @@ miel sous son seuil (3,5 / 5 kg), une perte de 25 kg de farine tracée.
 | 94 | Moyenne | Emplacements : seulement « Économat (sec) » et « Zone de pesage » à l'installation ; toute réception va en « sec », y compris beurre et lait ; œufs et lots d'inventaire sans emplacement. Pas de froid positif ni négatif proposé. | G-01 |
 | 95 | Moyenne | Historique des mouvements incomplet : la fiche matière ignore les ouvertures vers le pesage et les retours ; la fiche lot n'a aucun historique (réception, ouverture, pesées, pertes). | G-12 |
 | 96 | Faible | DLC affichée un jour plus tôt au poste de pesée (24/11 pour un lot au 25/11, décalage de fuseau probable) ; aucune notification de stock bas ; la notification « Inventaire à valider » reste après la validation. | G-06, G-07 |
+| 97 | Moyenne | Fond de caisse : ni montant de départ paramétré, ni proposition du montant laissé à la clôture précédente (pourtant fourni par `/cash-register/last-amount`), ni écart d'ouverture calculé ; aucune écriture pour le fond. | H-01, H-05 |
+| 98 | Moyenne | Sessions de caisse par utilisateur, sans notion de poste ni de tiroir : deux sessions ouvertes en même temps dans la même boutique, chacune avec son fond, sans avertissement. | H-06 |
+| 99 | Faible | Caisse : textes sans accents (« Caisse fermee », « a vendre », « Resultat », « montant trouve »), prix au kilo sans unité sur la vignette, même image pour tous les produits, vignette en rupture sans message au toucher. | H-02, H-07, H-08 |
 
 ## Reste à jouer
 
 Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
-première DLC atteinte), G-14 (après les produits boissons de la partie C). Puis C (produits),
-D (fiches techniques), E (suite), H (caisse), I (contrôles) et les cas transverses.
+première DLC atteinte), G-14 (après les produits boissons de la partie C). Partie H : H-09
+(imprimante à configurer). Puis C (produits), D (fiches techniques), E (suite), I (contrôles)
+et les cas transverses.
