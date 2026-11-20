@@ -64,7 +64,9 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
     onSuccess: (r: { id: string }) => {
       qc.invalidateQueries({ queryKey: ['recipes'] });
       notify.success(isBase ? 'Préparation créée — complète la composition' : 'Recette créée — complète la composition');
-      navigate(isBase ? `/recipes/${r.id}/preparation` : `/recipes/${r.id}/nomenclature`);
+      // Bases et produits finis s'éditent dans le même éditeur (L2) : l'ancienne route
+      // /recipes/:id/preparation n'existe plus et affichait une page blanche.
+      navigate(`/recipes/${r.id}/nomenclature`);
     },
     onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur lors de la création')),
   });

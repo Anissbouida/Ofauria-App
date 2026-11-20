@@ -16,7 +16,7 @@ résultat, partie par partie.
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 4 | 1 | 2 | 0 | 20 |
-| D. Fiches techniques | 46 | 9 | 5 | 4 | 0 | 37 |
+| D. Fiches techniques | 46 | 12 | 8 | 4 | 0 | 34 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -339,6 +339,23 @@ matière Eau est créée par le gérant.
 État en base : 2 formats, 2 fiches (Baguette en version 2, Cornes en version 1), 2 produits,
 38 matières.
 
+### Atelier Viennoiserie : pâte feuilletée, croissant, pain au chocolat (2026-11-19, par les écrans)
+
+Chef Viennoiserie (Chef Tourier du scénario) : Mehdi Alaoui. Formats créés par le gérant.
+
+| ID | Statut | Constat |
+|---|---|---|
+| D-23 | Conforme (après correction) | Le chef crée la préparation de base « Pâte levée feuilletée » (catégorie Préparations de base, pâte à 22 °C, hydratation 55 %). **Page blanche** juste après « Préparation créée » : l'écran allait vers une adresse supprimée (`/recipes/:id/preparation`). Corrigé : l'éditeur unique s'ouvre (constat 40). |
+| — | Écart | Le chef tente de créer le format de la pâte : le bouton « Nouveau format » lui est proposé, la saisie se fait, puis « Erreur lors de l'enregistrement » (refus `production.contenants.create`, constat 22 reproduit). Dans le même formulaire, « 0,3 » kg de perte devient « 03 », soit 3 kg (constat 8 reproduit). Le gérant crée « Pâton feuilleté 10 kg » (laminage, au kilo de pâte, 10 kg bruts, 0,3 kg de chutes, net 9,7 kg). |
+| D-23 | Écart | Le format au kilo s'attache à la fiche avec un rendement par défaut de **10 pièces** : le chef bascule l'unité sur kg et saisit 9,7 kg (constat 42). Composition : farine T45 4,5 kg, lait 1,4 l, eau 0,9 l, sucre 450 g, sel 90 g, levure 180 g, beurre de tourage 2,4 kg ; 275,53 DH la fournée, 28,41 DH de matière au kilo utilisable. La fiche d'une base affiche multiplicateur, prix de vente, marge et « Vente au point de vente » (constat 43). |
+| D-24 | Conforme (après correction) | Le gérant crée « Plaque viennoiserie 40 pièces » (1 pièce perdue). Le chef crée Croissant (saisie par pièce) : 60 g de pâte feuilletée + 0,05 œuf de dorure, 15 % de perte à la cuisson. **Avant correction, les 60 g de pâte coûtaient 16,53 DH** au lieu de 1,70 DH : la base était coûtée sur un rendement de 1 kg (valeur de création), pas sur les 9,7 kg du format (constat 41, migration 616). Après correction : croissant 1,76 DH de matière, 2,03 DH de coût complet ; pain au chocolat (55 g de pâte, 10 g de chocolat, dorure) 3,02 DH. L'explosion descend jusqu'aux matières de la pâte (beurre 0,015 kg, farine 0,028 kg par croissant). |
+| D-15 | Conforme | Allergènes déduits à travers la préparation de base : croissant gluten, lait, œufs ; pain au chocolat gluten, lait, œufs, soja. |
+| D-07 | Écart | Le gérant crée la version 1 des trois fiches ; la page de la pâte affiche « Utilisée par : Croissant · Pain au chocolat ». Première version toujours « Aucune différence » (constat 26). |
+| D-25 | Conforme | Le gérant remplace le beurre de tourage par du beurre doux dans la pâte : le croissant passe de 1,76 à 1,62 DH de matière. Mais le croissant reste « identique à la version active » alors que son coût affiché inclut déjà une modification de la pâte non validée (constat 47). Pour revenir à la version 1, aucun bouton : le gérant remet le beurre de tourage à la main (constat 46). Comparaison : composants listés deux fois (constat 39). |
+
+État en base : 4 formats, 5 fiches (pâte, croissant et pain au chocolat en version 1), 2 produits.
+Produits Croissant et Pain au chocolat pas encore créés.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -382,6 +399,15 @@ matière Eau est créée par le gérant.
 | 38 | Corrigée | La perte à la cuisson saisie par un chef était perdue : elle n'était enregistrée qu'avec les paramètres financiers (réservés au gérant). Elle part désormais avec la composition. | D-01 |
 | 39 | Moyenne | Comparaison des versions : composants listés deux fois (recette et format par défaut), nom technique `perte_standard_pct` affiché, auteur des modifications absent. | D-07, D-21 |
 | 36 | Haute | Le multiplicateur de la fiche Cornes de gazelle est passé de 3 à 2,5 à 21 h 29 sans version à valider (même cause que le constat 33 : la photo de version ne contient pas les leviers financiers). | D-07 |
+| 40 | Corrigée | Créer une préparation de base menait à une page blanche : l'écran de création allait vers l'ancienne page de préparation, supprimée lors de l'unification de l'éditeur. | D-23 |
+| 41 | Corrigée (mig 616) | Une préparation de base au rendement en kilos était coûtée sur 1 kg (rendement de création) quand une autre fiche l'emploie : 60 g de pâte feuilletée valaient 6 % de la fournée (16,53 DH au lieu de 1,70 DH). Le rendement kilo du format par défaut est désormais recopié dans la recette à l'enregistrement ; la migration rattrape les bases existantes. | D-24 |
+| 42 | Moyenne | Un format créé au kilo (« Kg pâte ») s'attache à la fiche avec un rendement par défaut en pièces (10 p.) : il faut basculer l'unité et ressaisir le rendement. | D-23 |
+| 43 | Faible | La fiche d'une préparation de base affiche multiplicateur, prix de vente, marge et « Vente au point de vente », alors qu'elle ne se vend pas. | D-23 |
+| 44 | Faible | La liste des unités d'une ligne de composition propose m, m², h et min pour une farine ; une matière stockée à la pièce (œufs) est proposée en grammes par défaut (l'alerte de conversion douteuse s'affiche bien). | D-24 |
+| 45 | Faible | L'explosion à plat affiche les petites quantités en kilos à 3 décimales : sel « 0,001 kg » et « 0,00 DH » par croissant au lieu de 0,6 g. | D-24 |
+| 46 | Moyenne | Aucun moyen d'abandonner des modifications non validées pour revenir à la version active : il faut tout ressaisir à la main. | D-07, D-25 |
+| 47 | Moyenne | Une fiche affiche un coût calculé sur la composition en cours de ses préparations de base, modifications non validées comprises, tout en se disant « identique à la version active ». | D-25 |
+| 48 | Faible | Liste des formats de production : colonne « Recettes » vide même pour les formats employés par des fiches. | E |
 
 ## Reste à jouer
 

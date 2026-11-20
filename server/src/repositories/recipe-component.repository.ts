@@ -334,6 +334,23 @@ export const recipeComponentRepository = {
         );
       }
 
+      // Préparation de base au kilo (mig 613) : son rendement (recipes.yield_quantity, lu par
+      // listSources et v_recipe_component_cost pour coûter son emploi dans une autre fiche)
+      // suit le rendement kilo du format par défaut. Sans ça il restait à 1 kg (valeur de
+      // création) : 60 g de pâte coûtaient 6 % de la fournée entière (scénario 1).
+      // Le mode pièces garde le rendement saisi au niveau recette (fiches existantes).
+      if (isDefault) {
+        await client.query(
+          `UPDATE recipes r
+           SET yield_quantity = f.rendement_kg, yield_unit = 'kg', updated_at = NOW()
+           FROM recipe_formats f
+           WHERE r.id = $1 AND f.id = $2 AND r.is_base
+             AND f.rendement_unite = 'kg' AND f.rendement_kg > 0
+             AND (r.yield_quantity IS DISTINCT FROM f.rendement_kg OR r.yield_unit IS DISTINCT FROM 'kg')`,
+          [recipeId, formatId]
+        );
+      }
+
       // Le miroir recipe_components (lu par v_recipe_total_cost_v2) est désormais
       // reconstruit automatiquement par trigger (mig 412) depuis les composants du
       // format par défaut — plus de resynchronisation à la main ici.
