@@ -16,7 +16,7 @@ résultat, partie par partie.
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 7 | 2 | 4 | 0 | 17 |
-| D. Fiches techniques | 46 | 20 | 14 | 6 | 0 | 26 |
+| D. Fiches techniques | 46 | 21 | 15 | 6 | 0 | 25 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -402,6 +402,16 @@ Après chaque enregistrement, la page de la fiche se recharge et remonte en haut
 | C-04 | Écart | « Entremets chocolat » en vente par personne : le prix par personne n'est pas déduit de la fiche (6 parts, 182,00 DH conseillés pour l'entremets entier), la cheffe saisit 30,50 DH. Le prix de revient enregistré reste celui de l'entremets entier (60,62 DH) face à un prix par personne : toute marge calculée sur ce produit est fausse (constat 59). Tailles proposées en caisse à vérifier en partie H. |
 
 État en base : 9 produits.
+
+### Viennoiserie, suite : brioche et chausson aux pommes (2026-11-20, compte du Chef Viennoiserie)
+
+| ID | Statut | Constat |
+|---|---|---|
+| D-26 | Conforme | Brioche saisie par fournée sur la plaque viennoiserie (farine T45 2 kg, 20 œufs, beurre 1 kg, sucre 250 g, sel 40 g, levure 80 g ; 12 % de perte à la cuisson) : 124,82 DH les 40, 3,12 DH la brioche. Chausson aux pommes saisi par pièce : 70 g de pâte feuilletée, 60 g de pomme avec 25 % de perte à l'épluchage, 8 g de sucre ; la perte est appliquée au coût (0,72 DH) et aux besoins (l'explosion demande 0,08 kg de pomme par chausson) ; 2,76 DH le chausson. |
+| C-02 | Conforme | Produits créés par le chef : Brioche 11,00 DH (revient 3,59 DH), Chausson aux pommes 10,00 DH (3,17 DH). |
+| D-07 | Conforme | Versions 1 créées par le gérant pour les deux fiches. |
+
+État en base : 18 fiches toutes en version, 11 produits.
 
 ## Constats à traiter
 
