@@ -150,6 +150,10 @@ export const invoicesApi = {
   /** Remplace les lignes (admin + gerant). Recalcule amount + TVA + total_amount automatiquement.
    *  tvaRate : taux TVA de la ligne en % (null = pas de TVA explicite, fallback en-tete). */
   replaceItems: (id: string, items: Array<{
+    /** id d'une ligne existante : mise à jour sur place, ses liens (BC, réception, catégorie…) restent. */
+    id?: string;
+    purchaseOrderItemId?: string | null;
+    receptionVoucherItemId?: string | null;
     productId?: string | null;
     ingredientId?: string | null;
     description?: string | null;

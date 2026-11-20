@@ -1691,7 +1691,7 @@ export const invoiceRepository = {
    * Note : on prefere subtotal envoye par le client (deja arrondi a l'affichage)
    * plutot que recalculer qty * unit_price, pour eviter les drift de centimes.
    */
-  async replaceItems(id: string, items: { productId?: string | null; ingredientId?: string | null; description?: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; purchaseOrderItemId?: string | null; receptionVoucherItemId?: string | null }[]) {
+  async replaceItems(id: string, items: { id?: string | null; productId?: string | null; ingredientId?: string | null; description?: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; purchaseOrderItemId?: string | null; receptionVoucherItemId?: string | null }[]) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -1723,11 +1723,34 @@ export const invoiceRepository = {
         );
       }
 
-      await client.query(`DELETE FROM invoice_items WHERE invoice_id = $1`, [id]);
+      // Une ligne existante (id renvoyé par l'écran) est MISE À JOUR sur place, pas recréée :
+      // elle garde son id et tous ses liens — ligne de BC, de réception, catégorie, article
+      // d'emballage, code TVA, BL, ligne créditée — ainsi que les blocages qui la visent
+      // (invoice_holds, supprimés en cascade sinon). Avant, tout était effacé puis réinséré
+      // avec les seuls champs saisis : le rapprochement 3 voies perdait la ligne (scénario 1,
+      // constat 81). Un lien envoyé explicitement remplace l'ancien ; absent, l'ancien reste.
+      const existingIds = new Set<string>((await client.query(
+        `SELECT id FROM invoice_items WHERE invoice_id = $1`, [id])).rows.map((r: { id: string }) => r.id));
+      const keptIds = items.map(it => it.id).filter((x): x is string => !!x && existingIds.has(x));
+      await client.query(
+        `DELETE FROM invoice_items WHERE invoice_id = $1 AND NOT (id = ANY($2::uuid[]))`, [id, keptIds]);
       for (const it of items) {
         if (!Number.isFinite(it.quantity) || !Number.isFinite(it.unitPrice)) continue;
         const tvaRate = it.tvaRate ?? null;
         const tvaAmount = lineTvaAmount(it.subtotal, tvaRate);
+        if (it.id && existingIds.has(it.id)) {
+          await client.query(
+            `UPDATE invoice_items
+                SET product_id = COALESCE($2, product_id), ingredient_id = $3, description = $4,
+                    quantity = $5, unit_price = $6, subtotal = $7, tva_rate = $8, tva_amount = $9,
+                    purchase_order_item_id = COALESCE($10, purchase_order_item_id),
+                    reception_voucher_item_id = COALESCE($11, reception_voucher_item_id)
+              WHERE id = $1 AND invoice_id = $12`,
+            [it.id, it.productId || null, it.ingredientId || null, it.description || null,
+             it.quantity, it.unitPrice, it.subtotal, tvaRate, tvaAmount,
+             it.purchaseOrderItemId || null, it.receptionVoucherItemId || null, id]);
+          continue;
+        }
         await client.query(
           // Les liens vers la ligne de BC / de réception sont conservés (lot L1
           // P2P) : sans eux, corriger les lignes rendait le rapprochement aveugle.

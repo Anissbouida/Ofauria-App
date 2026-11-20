@@ -126,7 +126,7 @@ export default function EmittedInvoicesTab() {
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   // tvaRate : taux TVA de la ligne en % (null = pas de TVA explicite).
-  const [manualItems, setManualItems] = useState<{ productId: string; description: string; quantity: number; unitPrice: number; tvaRate: number | null }[]>([
+  const [manualItems, setManualItems] = useState<{ id?: string; productId: string; description: string; quantity: number; unitPrice: number; tvaRate: number | null }[]>([
     { productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null },
   ]);
 
@@ -195,7 +195,9 @@ export default function EmittedInvoicesTab() {
   const linesInDh = () => manualItems.map(it => {
     const unitPrice = foreign ? Math.round(it.unitPrice * rateValue * 10000) / 10000 : it.unitPrice;
     // Facture directe = prestations (O2C L4) : les marchandises se facturent depuis le BL.
-    return { description: it.description, quantity: it.quantity, unitPrice,
+    // id d'une ligne existante (modification) : mise à jour sur place, liens conservés (constat 81).
+    return { ...(it.id ? { id: it.id } : {}),
+      description: it.description, quantity: it.quantity, unitPrice,
       subtotal: Math.round(it.quantity * unitPrice * 100) / 100, tvaRate: it.tvaRate };
   });
 
@@ -280,6 +282,7 @@ export default function EmittedInvoicesTab() {
       setManualRate(cur !== BASE_CURRENCY ? String(rate) : '');
       const items = (full.items as Record<string, any>[]) || [];
       setManualItems(items.length ? items.map(it => ({
+        id: it.id as string,
         productId: (it.product_id as string) || '',
         description: (it.description as string) || (it.product_name as string) || '',
         quantity: parseFloat(it.quantity as string) || 0,

@@ -502,6 +502,8 @@ export const invoiceController = {
       return Number.isFinite(n) ? n : null;
     };
     const items = (body.items as Record<string, unknown>[]).map((raw) => ({
+      // id d'une ligne existante : mise à jour sur place, liens conservés (constat 81).
+      id: (raw.id as string | null | undefined) || null,
       productId: (raw.productId as string | null | undefined) || null,
       ingredientId: (raw.ingredientId as string | null | undefined) || null,
       description: (raw.description as string | null | undefined) || null,

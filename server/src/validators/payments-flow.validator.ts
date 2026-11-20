@@ -40,7 +40,7 @@ export const invoiceLineCategorySchema = z.object({
 // replaceItems : le contrôleur exige le tableau (message clair) et convertit lui-même les nombres
 // (invalide → 0) ; taux vide = TVA d'en-tête ; liens de rapprochement conservés (deux graphies).
 const replaceItemLine = z.object({
-  productId: rawId, ingredientId: rawId, description: str(2000).nullish(),
+  id: rawId, productId: rawId, ingredientId: rawId, description: str(2000).nullish(),
   quantity: rawNum, unitPrice: rawNum, subtotal: rawNum, tvaRate: rawNum,
   purchaseOrderItemId: rawId, purchase_order_item_id: rawId,
   receptionVoucherItemId: rawId, reception_voucher_item_id: rawId,

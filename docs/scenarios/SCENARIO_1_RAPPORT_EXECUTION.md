@@ -519,7 +519,7 @@ script (ce que l'utilisateur ferait en cliquant « OK »).
 | F-50 | Conforme | Les factures naissent à la réception qui solde le BC (ou à la clôture du reliquat), en brouillon. « Contrôle de la facture » sur FAC-LG-8812 : rapprochement par ligne commandé / reçu / facturé et prix commandé / facturé, « Facture conforme au rapprochement ». Aucune échéance calculée (« Échéance — », constat 1). |
 | F-51 | Non joué | Bouton « Joindre un fichier » présent ; l'outil de test ne sait pas envoyer de fichier. |
 | F-52 | Écart | BRK-F-101 : prix passé de 5,00 à 5,50 DH par « Éditer les lignes » (le formulaire affiche « Écart avec le montant enregistré +45,00 DH »). Mais l'enregistrement **recrée la ligne sans lien avec la ligne de BC, la réception ni la catégorie** : le contrôle, même relancé, répond « Facture conforme » et n'a plus de rapprochement par ligne (constat 81). |
-| F-53 | Non joué | Même cause : une quantité facturée modifiée par l'éditeur de lignes ne serait plus rapprochée de la réception. |
+| F-53 | Non joué (débloqué) | Bloqué par la même cause (constat 81, corrigé) : une quantité facturée modifiée par l'éditeur de lignes reste désormais rapprochée de la réception. |
 | F-54 | Écart | Le responsable des achats reçoit « Accès interdit » en mettant une facture en litige. Le gérant le peut : sans motif, après une simple confirmation ; BRK-F-102 passe « Bloquée / litige », « Payer » est remplacé par « Voir le litige » (constat 84). |
 | F-55 | Conforme | « Valider » est proposé au responsable des achats, mais refusé (« Accès interdit », message générique). |
 | F-56 | Écart | Le gérant valide FAC-LG-8812 en confirmant le n° et le total TTC du papier : « À payer ». L'écriture d'achat (AC-2026-00007) était **déjà passée à la réception**, facture encore en brouillon ; la validation n'ajoute rien, et chaque édition extourne puis repasse l'écriture. Étiquette « À vérifier » sur des factures pourtant conformes (constat 83). |
@@ -535,7 +535,8 @@ script (ce que l'utilisateur ferait en cliquant « OK »).
 | F-66 | Conforme | Le commercial ouvre l'écran Factures reçues (menu visible, « Nouvelle facture » affiché, constat 72) mais n'y voit aucune facture. |
 
 État en base : FAC-LG-8812 partiellement réglée (reste 2 100 DH), BRK-F-102 réglée,
-FR-2026-0001 partiellement réglée (reste 36 DH), BRK-F-101 en brouillon (ligne détachée du BC),
+FR-2026-0001 partiellement réglée (reste 36 DH), BRK-F-101 en brouillon (ligne rattachée de nouveau au BC
+et à la réception après la correction du constat 81, prix 5,50 DH),
 PIL-2026-77 validée après correction et toujours en litige.
 
 ## Constats à traiter
@@ -622,7 +623,7 @@ PIL-2026-77 validée après correction et toujours en litige.
 | 78 | Moyenne | Frais annexes de réception répartis au prorata de la valeur, pas au poids. | F-42 |
 | 79 | Moyenne | Pas de retour fournisseur depuis les Achats ; seulement une décision de non-conformité dans Contrôle. | F-45 |
 | 80 | Faible | Écran Réceptions : compteurs non rafraîchis après confirmation, « Tout reçu » laisse les contenants à 0, coût en devise à quatre décimales. | F-36, F-41, F-42 |
-| 81 | Haute | « Éditer les lignes » d'une facture fournisseur recrée les lignes sans lien avec le BC, la réception ni la catégorie : le rapprochement est perdu et un écart de prix n'est plus détecté (« Facture conforme »). | F-52, F-53 |
+| 81 | Corrigée | « Éditer les lignes » d'une facture recréait les lignes sans lien avec le BC, la réception ni la catégorie : le rapprochement était perdu et un écart de prix n'était plus détecté (« Facture conforme »). Désormais l'écran renvoie l'id de chaque ligne et le serveur la met à jour sur place : même id, liens BC / réception / catégorie / emballage / BL conservés, blocages de la ligne gardés ; seules les lignes retirées sont supprimées. Une ligne reprise du BC lié porte sa ligne de BC. Même correction pour les factures clients. La fiche en cache est relue après enregistrement (sans quoi une réouverture montrait les anciennes lignes). Test `invoice-lines-edit-links.db.test.ts`. Vérifié à l'écran sur BRK-F-101 (liens remis en base, prix 5,45 puis 5,50 : même ligne, liens gardés, la facture réapparaît dans la réévaluation, 45,00 DH). | F-52, F-53 |
 | 82 | Corrigée (mig 618) | Valider une facture dont le prix différait du coût du lot échouait (« column updated_at of relation ingredients does not exist », `accounting.repository.ts:1493`), et la réévaluation comparait le prix facturé au coût du lot frais d'approche compris (elle les aurait effacés). Désormais l'écart se mesure contre le prix de la ligne de réception, s'ajoute au coût du lot (frais conservés) et n'est appliqué qu'une fois par facture et par lot. Test `revaluation-receipt-price.db.test.ts`. | F-63 |
 | 83 | Moyenne | L'écriture d'une facture fournisseur est passée dès sa création (à la réception), facture encore en brouillon ; la validation par le gérant n'a pas d'effet comptable et chaque édition extourne et repasse. | F-56 |
 | 84 | Moyenne | Mise en litige réservée au gérant (refusée au responsable des achats), sans motif ni trace autre qu'une confirmation du navigateur. | F-54 |

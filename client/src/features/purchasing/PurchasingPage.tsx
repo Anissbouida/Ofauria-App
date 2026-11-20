@@ -1450,6 +1450,8 @@ function ReceivedInvoiceFormModal({
 type InvoiceLine = {
   // ID DB (present si ligne existante), sinon undefined pour les nouvelles
   id?: string;
+  // Ligne de BC d'origine (reprise depuis le BC lié) : le serveur garde aussi celle d'une ligne existante.
+  purchaseOrderItemId?: string | null;
   ingredientId: string | null;
   description: string;
   quantity: string;  // en string pour permettre input vide
@@ -1613,6 +1615,7 @@ function InvoiceLinesEditorModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const queryClient = useQueryClient();
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice', invoiceId],
     queryFn: () => invoicesApi.getById(invoiceId),
@@ -1651,9 +1654,11 @@ function InvoiceLinesEditorModal({
   }, [invoice, initialized]);
 
   const mutation = useMutation({
-    mutationFn: (items: Array<{ ingredientId: string | null; description: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null }>) =>
+    mutationFn: (items: Array<{ id?: string; purchaseOrderItemId?: string | null; ingredientId: string | null; description: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null }>) =>
       invoicesApi.replaceItems(invoiceId, items),
-    onSuccess,
+    // La fiche en cache doit être relue : sinon une réouverture montre les anciennes lignes
+    // et un second enregistrement écraserait la correction.
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] }); onSuccess(); },
     onError: (err: unknown) => {
       const msg = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
@@ -1726,6 +1731,7 @@ function InvoiceLinesEditorModal({
         .map(it => {
           const q = parseFloat(anyDelivered ? it.quantity_delivered : it.quantity_ordered) || 0;
           return {
+            purchaseOrderItemId: (it.id as string) || null,
             ingredientId: (it.ingredient_id as string) || null,
             description: (it.ingredient_name as string) || '',
             quantity: String(q),
@@ -1758,6 +1764,10 @@ function InvoiceLinesEditorModal({
         const q = parseFloat(l.quantity) || 0;
         const p = parseFloat(l.unitPrice) || 0;
         return {
+          // Ligne existante : son id la fait mettre à jour sur place, liens BC/réception/
+          // catégorie conservés (constat 81). Ligne reprise du BC : rattachée à sa ligne de BC.
+          id: l.id,
+          purchaseOrderItemId: l.purchaseOrderItemId ?? null,
           ingredientId: l.ingredientId,
           description: l.description.trim() || null,
           quantity: q,
