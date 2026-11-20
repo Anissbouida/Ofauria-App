@@ -16,7 +16,7 @@ résultat, partie par partie.
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 4 | 1 | 2 | 0 | 20 |
-| D. Fiches techniques | 46 | 8 | 4 | 4 | 0 | 38 |
+| D. Fiches techniques | 46 | 9 | 5 | 4 | 0 | 37 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -324,6 +324,21 @@ je n'ai pas le compte) : Boulangerie, Viennoiserie, Pâtisserie, Beldi (gâteaux
 Salé / Traiteur, Préparations de base. Classement des fiches **par l'écran** (gérant,
 « ✎ » identité de la fiche) : Baguette → Boulangerie, Cornes de gazelle → Beldi.
 
+### Baguette complétée, boulanger de nuit, version 2 (2026-11-19, par les écrans)
+
+Le compte de l'Économe n'est pas utilisable (mot de passe changé par l'utilisateur) : la
+matière Eau est créée par le gérant.
+
+| ID | Statut | Constat |
+|---|---|---|
+| — | Écart | Le gérant crée la matière « Eau » (litre, 0,01 DH/l, masse volumique 1, en vrac, sans fournisseur). Aucune famille ne convient (pas de famille « Eau ») : rangée dans « Sel & Vinaigre ». Elle apparaît aussitôt en **Rupture**, alors qu'elle ne s'achète ni ne se stocke. |
+| D-01 | Conforme (après correction) | Le boulanger ajoute l'eau (10 l) : fournée 25,6 kg bruts (le format annonce 25 kg), 91,60 DH. Il saisit 18 % de perte à la cuisson : 21,0 kg cuits. **Avant correction, la perte était perdue** : elle partait avec les paramètres financiers, refusés au chef (403), et revenait à 0 après rechargement. Corrigé : la perte part avec la composition ; un refus des paramètres financiers n'est plus une erreur (« Composition enregistrée (paramètres financiers réservés au gérant, non modifiés) »). |
+| D-21 | Conforme (décision révisée) | Le boulanger de nuit ouvre la fiche du boulanger du matin et passe le sel de 300 à 330 g : enregistré. Selon la décision révisée (les chefs composent, le gérant valide par la version), la modification reste en attente jusqu'à la validation. Le texte du cas prévoyait un refus. |
+| D-07 | Écart | Le gérant voit les modifications : eau ajoutée, sel 300 → 330 g, perte 0 → 18. Les composants sont listés **deux fois** (« Composants » et « Format 1 (défaut) »), la perte s'affiche sous son nom technique `perte_standard_pct`, **l'auteur de chaque modification n'apparaît pas**, et le passage du rendement de 100 à 120 n'y figure pas (constat 33). Version 2 créée et active. |
+
+État en base : 2 formats, 2 fiches (Baguette en version 2, Cornes en version 1), 2 produits,
+38 matières.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -348,7 +363,7 @@ Salé / Traiteur, Préparations de base. Classement des fiches **par l'écran** 
 | 18 | Corrigée (mig 615) | Aucune catégorie de production sur une installation neuve, et **aucun écran pour en créer** (la table `recipe_categories` n'avait qu'une route de lecture) : la liste « Catégorie de production » de la fiche restait vide. Elles sont désormais éditables dans Paramètres › Référentiel › Production et pertes (administrateur). Elles ne servent qu'au classement des fiches : les ateliers sont rattachés aux catégories de produits. | D-34 |
 | 19 | Faible | Le chef reçoit un refus sur la gamme opératoire de sa propre fiche (appel refusé en arrière-plan). | D-34 |
 | 20 | Haute | Une quantité en grammes d'une matière stockée à la pièce est comptée comme des pièces : 110 g d'œufs coûtent 132 DH au lieu de 2,40 DH. Le poids par pièce saisi sur la matière n'est pas utilisé. | B-04, D-13 |
-| 21 | Moyenne | Un seul bouton enregistre la composition et les paramètres financiers : un chef obtient « Accès interdit » alors que sa composition est enregistrée. | D-34 |
+| 21 | Corrigée | Un seul bouton enregistre la composition et les paramètres financiers : un chef obtient « Accès interdit » alors que sa composition est enregistrée. Le refus des paramètres financiers n'est plus une erreur. | D-34 |
 | 22 | Moyenne | La création d'un format refusée faute de droit affiche « Erreur lors de l'enregistrement », et le bouton reste proposé au chef. | — |
 | 23 | Faible | Dans la composition, la liste déroulante des composants est coupée par le bas du cadre : les choix sont invisibles tant qu'on ne tape pas. | D-34 |
 | 24 | Corrigée (vente à la pièce) | Un produit lié à une fiche composée par format reprend le coût de toute la fournée comme coût unitaire (rendement lu à 1 au lieu de 60) : 155,10 DH de revient et 465,30 DH de prix au lieu d'environ 3 DH et 9 DH la pièce. Le prix de vente étant en lecture seule, il est impossible de le corriger à la création. | C-03, C-21 |
@@ -363,6 +378,9 @@ Salé / Traiteur, Préparations de base. Classement des fiches **par l'écran** 
 | 33 | Haute | Un changement de rendement n'est pas une modification à valider : la photo de version (`fn_recipe_bom_snapshot`) ne contient que les composants des formats, pas leur rendement. Un chef peut passer de 100 à 120 pièces (ou en kg) sans que le gérant ait à créer de version, alors que tous les coûts unitaires changent. | D-07 |
 | 34 | Moyenne | Ouvrir un produit fabriqué existant recalcule son prix depuis la fiche sans le dire : « Mettre à jour » enregistre le nouveau prix même si l'on venait modifier autre chose. | C-03 |
 | 35 | Faible | Le prix affiché par la fiche (267,55 DH) n'applique pas l'arrondi des prix, que la fonction de coût applique (268 DH). | E-04 |
+| 37 | Moyenne | Pas de famille de matière pour l'eau, et une matière qui ne s'achète pas (eau du réseau) apparaît en rupture et « à traiter » dans le stock. | B, D-01 |
+| 38 | Corrigée | La perte à la cuisson saisie par un chef était perdue : elle n'était enregistrée qu'avec les paramètres financiers (réservés au gérant). Elle part désormais avec la composition. | D-01 |
+| 39 | Moyenne | Comparaison des versions : composants listés deux fois (recette et format par défaut), nom technique `perte_standard_pct` affiché, auteur des modifications absent. | D-07, D-21 |
 | 36 | Haute | Le multiplicateur de la fiche Cornes de gazelle est passé de 3 à 2,5 à 21 h 29 sans version à valider (même cause que le constat 33 : la photo de version ne contient pas les leviers financiers). | D-07 |
 
 ## Reste à jouer

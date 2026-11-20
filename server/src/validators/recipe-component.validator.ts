@@ -35,6 +35,10 @@ export const replaceComponentsSchema = z.object({
   // Mig 613 : rendement en pièces (nbParDefaut) OU en kilos (rendementKg, décimal).
   rendementUnite: z.enum(['unit', 'kg']).optional(),
   rendementKg: z.number().positive('Le rendement en kg doit être supérieur à 0').nullable().optional(),
+  // Perte à la cuisson / de fabrication (recipes.perte_standard_pct) : donnée technique de
+  // la fiche, enregistrée avec la composition (droit des chefs) et plus seulement avec les
+  // paramètres financiers (réservés au gérant) — scénario 1, constat 38.
+  perteStandardPct: z.number().min(0).max(99.99).nullable().optional(),
 }).refine(
   (d) => d.rendementUnite !== 'kg' || (d.rendementKg != null && d.rendementKg > 0),
   { message: 'Saisis le rendement en kg de la fournée.', path: ['rendementKg'] }

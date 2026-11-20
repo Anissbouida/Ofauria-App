@@ -25,6 +25,8 @@ export interface ReplacePayload {
   /** Mig 613 : unité du rendement (absent = inchangée) et rendement en kilos. */
   rendementUnite?: 'unit' | 'kg';
   rendementKg?: number | null;
+  /** Perte à la cuisson (recipes.perte_standard_pct), donnée technique saisie par le chef. */
+  perteStandardPct?: number | null;
 }
 
 export interface FinanceInput {
@@ -322,6 +324,15 @@ export const recipeComponentRepository = {
         [formatId, data.nbParDefaut ?? null, data.nbParts ?? null, cru?.qty ?? null, cuit?.qty ?? null, userId ?? null,
          cru?.unit ?? 'g', cuit?.unit ?? 'g', data.rendementUnite ?? null, data.rendementKg ?? null]
       );
+
+      // Perte à la cuisson : niveau recette, enregistrée avec la composition (absente =
+      // inchangée ; null ou 0 = aucune perte).
+      if (data.perteStandardPct !== undefined) {
+        await client.query(
+          `UPDATE recipes SET perte_standard_pct = $2, updated_at = NOW() WHERE id = $1`,
+          [recipeId, data.perteStandardPct ?? 0]
+        );
+      }
 
       // Le miroir recipe_components (lu par v_recipe_total_cost_v2) est désormais
       // reconstruit automatiquement par trigger (mig 412) depuis les composants du

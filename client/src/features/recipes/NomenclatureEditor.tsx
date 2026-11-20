@@ -545,19 +545,33 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         nbParts: parseInt(parts) || null,
         rendementUnite: enKg ? 'kg' : 'unit',
         rendementKg: enKg ? rendementKgNum : null,
+        // Perte à la cuisson : donnée technique, enregistrée avec la composition (droit
+        // des chefs) — constat 38 du scénario 1.
+        perteStandardPct: np(perte) ?? 0,
       });
-      return recipesApi.saveFinance(recipeId, {
-        marginMultiplier: np(mult) ?? 3,
-        tauxMainOeuvreDhH: np(tauxMO),
-        mainOeuvreMin: moMin !== '' ? parseInt(moMin) : null,
-        coutEnergieFournee: np(energie),
-        tauxFraisStructurePct: np(structPct),
-        perteStandardPct: np(perte),
-        compoParPiece,
-      });
+      // Paramètres financiers : réservés au gérant (recipes.finance). Un refus (403) ne
+      // fait pas échouer l'enregistrement : la composition est déjà enregistrée
+      // (constat 21 du scénario 1 : le chef voyait « Accès interdit »).
+      try {
+        await recipesApi.saveFinance(recipeId, {
+          marginMultiplier: np(mult) ?? 3,
+          tauxMainOeuvreDhH: np(tauxMO),
+          mainOeuvreMin: moMin !== '' ? parseInt(moMin) : null,
+          coutEnergieFournee: np(energie),
+          tauxFraisStructurePct: np(structPct),
+          perteStandardPct: np(perte),
+          compoParPiece,
+        });
+        return { financeSaved: true };
+      } catch (e) {
+        if ((e as { response?: { status?: number } })?.response?.status === 403) return { financeSaved: false };
+        throw e;
+      }
     },
-    onSuccess: () => {
-      notify.success('Composition enregistrée');
+    onSuccess: (res) => {
+      notify.success(res?.financeSaved === false
+        ? 'Composition enregistrée (paramètres financiers réservés au gérant, non modifiés)'
+        : 'Composition enregistrée');
       qc.invalidateQueries({ queryKey: ['format-components', recipeId] });
       qc.invalidateQueries({ queryKey: ['recipe-formats', recipeId] });
       qc.invalidateQueries({ queryKey: ['recipe', recipeId] });
