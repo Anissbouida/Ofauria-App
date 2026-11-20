@@ -17,7 +17,7 @@ résultat, partie par partie.
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 8 | 2 | 5 | 0 | 16 |
 | D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
-| F. Premier approvisionnement | 58 | 18 | 10 | 8 | 2 | 38 |
+| F. Premier approvisionnement | 58 | 32 | 18 | 14 | 2 | 24 |
 | G à I, T | 48 | 0 | 0 | 0 | 0 | 48 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -478,6 +478,36 @@ non essayé (constat 73).
 État en base : 6 BC (0001 et 0003 en attente d'approbation, 0002 envoyé, 0004 annulé, 0005 et
 0006 en brouillon), 2 demandes de prix attribuées, demandes de beurre et de sucre à commander.
 
+### Partie F — Réceptions (2026-11-20, compte du Responsable des achats)
+
+| ID | Statut | Constat |
+|---|---|---|
+| F-30 | Non joué | Les deux BC de la Minoterie (BC-2026-0001 et BC-2026-0003) attendent l'approbation de l'administrateur (F-14). |
+| F-31 | Conforme | Beurre de tourage (BC-2026-0007, Laiterie du Gharb, issu de la demande de Mehdi par la demande de prix AO-2026-0003) : lot et DLC obligatoires à la saisie ; lot interne LI-261120-00004 créé avec le lot fournisseur LG-B-2611 et la DLC 15/01/2027. |
+| F-32 | Conforme | 30 kg reçus sur 50 : BC « Réception partielle », reliquat de 20 kg attendu. |
+| F-33 | Conforme | Seconde réception : le BC passe « livre_complet ». La réception qui solde le BC exige le numéro de facture du fournisseur et crée la facture (FAC-LG-8812, 5 100 DH). |
+| F-34 | Conforme | 22 kg pour le reliquat (52 reçus pour 50 commandés, dans la tolérance de 10 %) : accepté ; la fiche du BC signale « 1 écart » (beurre surlivré). |
+| F-35 | Écart | 40 kg pour le reliquat (70 pour 50) : refusé par le serveur (« la ligne dépasserait la quantité commandée… tolérance 10 % »), mais **aucun message à l'écran** : la fenêtre reste ouverte, le bouton revient, rien n'explique le refus (constat 75). |
+| F-36 | Écart | Œufs (BC-2026-0002) : pas de quantité refusée ni de motif à la réception. Contournement : 88 caisses reçues sur 90 (2 640 œufs, lot ZER-2611-A, DLC 10/12), puis « Clôturer le reliquat » avec le motif « Livraison partielle acceptée, reliquat abandonné » et la précision « 2 caisses cassées » (constat 76). La facture FR-2026-0001 (3 168 DH) est créée à la clôture, sans numéro du fournisseur. |
+| F-37 | Écart | Lait avec une DLC au 18/11 : refusé par le serveur (« la DLC 2026-11-18 est déjà dépassée, la marchandise ne peut pas être réceptionnée »), mais sans message à l'écran (constat 75). |
+| F-38 | Écart | Lait avec une DLC dans 2 jours : accepté sans alerte, aucune alerte de péremption créée. Le lait n'exige d'ailleurs ni lot ni DLC à la réception (constat 77). |
+| F-39 | Non joué | Compte Économe inutilisable. Les lots reçus n'ont pas d'emplacement. |
+| F-40 | Non joué | Même cause. |
+| F-41 | Conforme | Sucre semoule, stock à zéro : 90 kg à 5,00 DH (BC-2026-0008) puis 90 kg à 6,00 DH (BC-2026-0009) : coût de la matière 5,00 puis **5,50 DH** le kilo. La demande de sucre reste pourtant « à commander » (constat 67). |
+| F-42 | Écart | Chocolat de couverture en euros (BC-2026-0005), « Frais annexes » de 1 200 DH à la réception : le coût passe de 139,9997 à 179,9997 DH le kilo (+40 DH, 30 kg). Mais les frais sont répartis **au prorata de la valeur**, pas au poids, et la catégorie de charge reste vide (403, constat 71) (constat 78). |
+| F-43 | Conforme | L'écran Réceptions ne propose que des BC envoyés : pas de réception sans bon de commande. |
+| F-44 | Conforme | « Clôturer le reliquat » avec motif obligatoire (liste) et précision : BC-2026-0002 clôturé, 60 œufs annulés et tracés. |
+| F-45 | Écart | Aucune action de retour fournisseur dans les Achats (BC, bon de réception) ; seule une décision « Retour fournisseur » existe sur une non-conformité du module Contrôle. Non joué (constat 79). |
+| F-46 | Conforme | Le caissier ouvre l'écran Réceptions (menu Achats visible, constat 72) mais n'y voit aucun BC : aucune réception possible. |
+
+Autres observations : les compteurs de l'écran Réceptions ne se mettent à jour qu'après un
+rechargement ; « Tout reçu » remplit les kilos mais laisse le nombre de sacs à 0 ; le coût d'un
+article payé en devise garde quatre décimales (179,9997) (constat 80).
+
+État en base : 9 BC (0002, 0005, 0007, 0008 et 0009 reçus et soldés ; 0001 et 0003 en
+approbation ; 0004 annulé ; 0006 en brouillon), 6 bons de réception, 5 factures en attente,
+aucune validée (FR-2026-0001, FAC-LG-8812, BRK-F-101, BRK-F-102, PIL-2026-77).
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -556,9 +586,15 @@ non essayé (constat 73).
 | 72 | Moyenne | Boutons affichés sans le droit correspondant : module Achats complet et « + Nouveau BC » pour un chef, « Modifier », « Ajuster », « Supprimer » sur une fiche matière pour le responsable des achats (lecture seule). | F-01, F-05 |
 | 73 | À vérifier | L'écran « Modifier le bon de commande » permet de saisir une quantité livrée qui, selon son texte, ajuste le stock directement, sans réception (ni lot, ni DLC). | F-19 |
 | 74 | Faible | Approbations : identifiant technique de la catégorie d'achat affiché, compteur « 0 circuit actif » faux, numéros « AO- » (appel d'offres) pour les demandes de prix, colonne « Dernier prix payé » qui montre un prix seulement commandé. | F-10, F-12 |
+| 75 | Haute | Réception : un refus du serveur (DLC dépassée, quantité hors tolérance) n'est pas affiché ; la fenêtre reste ouverte sans explication. | F-35, F-37 |
+| 76 | Moyenne | Pas de quantité refusée ni de motif à la réception (casse, non-conformité) : il faut recevoir moins puis clôturer le reliquat. | F-36 |
+| 77 | Moyenne | Aucune alerte pour une DLC proche à la réception ; un produit frais comme le lait n'exige ni lot ni DLC. | F-38 |
+| 78 | Moyenne | Frais annexes de réception répartis au prorata de la valeur, pas au poids. | F-42 |
+| 79 | Moyenne | Pas de retour fournisseur depuis les Achats ; seulement une décision de non-conformité dans Contrôle. | F-45 |
+| 80 | Faible | Écran Réceptions : compteurs non rafraîchis après confirmation, « Tout reçu » laisse les contenants à 0, coût en devise à quatre décimales. | F-36, F-41, F-42 |
 
 ## Reste à jouer
 
-Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-14 (approbation par l’administrateur), réceptions (F-30 à F-46), factures et paiements (F-50 à F-66), stock d’ouverture (F-70 à F-72). Puis C (produits),
+Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-14 (approbation par l’administrateur), puis F-30 ; F-39, F-40 (Économe) ; factures et paiements (F-50 à F-66), stock d’ouverture (F-70 à F-72). Puis C (produits),
 D (fiches techniques), E (suite), G (stock), H (caisse), I (contrôles) et les
 cas transverses.
