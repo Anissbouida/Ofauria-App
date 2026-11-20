@@ -17,7 +17,7 @@ résultat, partie par partie.
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 8 | 2 | 5 | 0 | 16 |
 | D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
-| F. Premier approvisionnement | 58 | 32 | 18 | 14 | 2 | 24 |
+| F. Premier approvisionnement | 58 | 46 | 26 | 20 | 2 | 10 |
 | G à I, T | 48 | 0 | 0 | 0 | 0 | 48 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -508,6 +508,36 @@ article payé en devise garde quatre décimales (179,9997) (constat 80).
 approbation ; 0004 annulé ; 0006 en brouillon), 6 bons de réception, 5 factures en attente,
 aucune validée (FR-2026-0001, FAC-LG-8812, BRK-F-101, BRK-F-102, PIL-2026-77).
 
+### Partie F — Factures et paiements (2026-11-20, Responsable des achats puis Gérant)
+
+Méthode : les boutons « Mettre en litige » et « Lever le litige » passent par une fenêtre
+`confirm()` du navigateur, que le panneau de test ferme d'office ; elle a été acceptée par
+script (ce que l'utilisateur ferait en cliquant « OK »).
+
+| ID | Statut | Constat |
+|---|---|---|
+| F-50 | Conforme | Les factures naissent à la réception qui solde le BC (ou à la clôture du reliquat), en brouillon. « Contrôle de la facture » sur FAC-LG-8812 : rapprochement par ligne commandé / reçu / facturé et prix commandé / facturé, « Facture conforme au rapprochement ». Aucune échéance calculée (« Échéance — », constat 1). |
+| F-51 | Non joué | Bouton « Joindre un fichier » présent ; l'outil de test ne sait pas envoyer de fichier. |
+| F-52 | Écart | BRK-F-101 : prix passé de 5,00 à 5,50 DH par « Éditer les lignes » (le formulaire affiche « Écart avec le montant enregistré +45,00 DH »). Mais l'enregistrement **recrée la ligne sans lien avec la ligne de BC, la réception ni la catégorie** : le contrôle, même relancé, répond « Facture conforme » et n'a plus de rapprochement par ligne (constat 81). |
+| F-53 | Non joué | Même cause : une quantité facturée modifiée par l'éditeur de lignes ne serait plus rapprochée de la réception. |
+| F-54 | Écart | Le responsable des achats reçoit « Accès interdit » en mettant une facture en litige. Le gérant le peut : sans motif, après une simple confirmation ; BRK-F-102 passe « Bloquée / litige », « Payer » est remplacé par « Voir le litige » (constat 84). |
+| F-55 | Conforme | « Valider » est proposé au responsable des achats, mais refusé (« Accès interdit », message générique). |
+| F-56 | Écart | Le gérant valide FAC-LG-8812 en confirmant le n° et le total TTC du papier : « À payer ». L'écriture d'achat (AC-2026-00007) était **déjà passée à la réception**, facture encore en brouillon ; la validation n'ajoute rien, et chaque édition extourne puis repasse l'écriture. Étiquette « À vérifier » sur des factures pourtant conformes (constat 83). |
+| F-57 | Conforme | FR-2026-0001 (œufs) validée (n° fournisseur saisi, la facture n'en avait pas) puis payée en espèces : 3 132 DH, écriture au journal de caisse (CA-2026-00001), une seule fois. Plafond espèces affiché (jour et mois) et alerte « non déductible » au-delà de 5 000 DH. Le paiement n'est rattaché à aucune session de caisse (constat 86). |
+| F-58 | Conforme (sur F5) | Les BC de la Minoterie attendent l'approbation : virement joué sur BRK-F-102 (Al Baraka, 540 DH), référence obligatoire, journal de banque (BQ-2026-00001), facture « Réglée ». Pas de choix du compte bancaire. |
+| F-59 | Conforme | FAC-LG-8812 : 3 000 DH par chèque barré (n° obligatoire), « Partiellement réglée · reste 2 100,00 DH ». Le chèque est passé au journal des opérations diverses (OD-2026-00001) (constat 86). |
+| F-60 | Non joué | Pas de BC chez Froid et Fours (F-20 bloqué). |
+| F-61 | Conforme | Seconde facture FAC-LG-8812 chez Laiterie du Gharb : refusée par le serveur (« Ce numéro de facture est déjà enregistré pour ce fournisseur »), l'écran n'affiche que « Erreur ». La saisie manuelle exige une catégorie que le responsable des achats ne peut pas choisir (liste vide, constat 71). |
+| F-62 | Écart | L'avoir fournisseur n'existe que dans le formulaire de paiement par chèque (« Avoir fournisseur, déduit de la dette sans sortie de trésorerie »). Un avoir de 36 DH couvrant tout le reste des œufs (chèque à 0) est refusé : « Données invalides » ; le reste de 36 DH demeure (constat 85). |
+| F-63 | Bloquant | PIL-2026-77 (euros) ne se valide pas : erreur serveur « column "updated_at" of relation "ingredients" does not exist » (`accounting.repository.ts:1493`, réévaluation du coût au prix facturé). Et la réévaluation prévue (`fn_stock_revaluation_preview`) compare le prix facturé (139,9997) au coût du lot frais d'approche compris (179,9997) : une fois l'erreur corrigée, elle effacerait les 1 200 DH de frais (constat 82). |
+| F-64 | Conforme | « Lever le litige » : BRK-F-102 redevient « À payer », bouton « Payer » de retour. |
+| F-65 | Écart | Pas de catégorie par ligne dans Factures reçues : la catégorie se choisit pour toute la facture (« Modifier la facture »), l'éditeur de lignes n'a que la TVA (constat 87). |
+| F-66 | Conforme | Le commercial ouvre l'écran Factures reçues (menu visible, « Nouvelle facture » affiché, constat 72) mais n'y voit aucune facture. |
+
+État en base : FAC-LG-8812 partiellement réglée (reste 2 100 DH), BRK-F-102 réglée,
+FR-2026-0001 partiellement réglée (reste 36 DH), BRK-F-101 en brouillon (ligne détachée du BC),
+PIL-2026-77 en brouillon et en litige (validation impossible).
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -592,9 +622,16 @@ aucune validée (FR-2026-0001, FAC-LG-8812, BRK-F-101, BRK-F-102, PIL-2026-77).
 | 78 | Moyenne | Frais annexes de réception répartis au prorata de la valeur, pas au poids. | F-42 |
 | 79 | Moyenne | Pas de retour fournisseur depuis les Achats ; seulement une décision de non-conformité dans Contrôle. | F-45 |
 | 80 | Faible | Écran Réceptions : compteurs non rafraîchis après confirmation, « Tout reçu » laisse les contenants à 0, coût en devise à quatre décimales. | F-36, F-41, F-42 |
+| 81 | Haute | « Éditer les lignes » d'une facture fournisseur recrée les lignes sans lien avec le BC, la réception ni la catégorie : le rapprochement est perdu et un écart de prix n'est plus détecté (« Facture conforme »). | F-52, F-53 |
+| 82 | Haute | Valider une facture dont le prix diffère du coût du lot échoue (« column updated_at of relation ingredients does not exist », `accounting.repository.ts:1493`). La réévaluation compare en outre le prix facturé au coût du lot frais d'approche compris : corrigée telle quelle, elle effacerait les frais. Toute facture en devise avec frais d'approche est bloquée. | F-63 |
+| 83 | Moyenne | L'écriture d'une facture fournisseur est passée dès sa création (à la réception), facture encore en brouillon ; la validation par le gérant n'a pas d'effet comptable et chaque édition extourne et repasse. | F-56 |
+| 84 | Moyenne | Mise en litige réservée au gérant (refusée au responsable des achats), sans motif ni trace autre qu'une confirmation du navigateur. | F-54 |
+| 85 | Moyenne | Avoir fournisseur seulement dans un paiement par chèque, et refusé quand il couvre tout le reste dû (chèque à 0). | F-62 |
+| 86 | Faible | Paiements : espèces non rattachées à une session de caisse, chèque passé au journal OD, pas de choix du compte bancaire, étiquette « À vérifier » sur des factures conformes, messages génériques (« Erreur », « Accès interdit »). | F-55 à F-61 |
+| 87 | Faible | Pas de catégorie de charge par ligne dans Factures reçues (catégorie de facture seulement). | F-65 |
 
 ## Reste à jouer
 
-Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-14 (approbation par l’administrateur), puis F-30 ; F-39, F-40 (Économe) ; factures et paiements (F-50 à F-66), stock d’ouverture (F-70 à F-72). Puis C (produits),
+Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-14 (approbation par l’administrateur), puis F-30 ; F-39, F-40 (Économe) ; F-51, F-53, F-60 ; stock d’ouverture (F-70 à F-72). Puis C (produits),
 D (fiches techniques), E (suite), G (stock), H (caisse), I (contrôles) et les
 cas transverses.
