@@ -16,7 +16,7 @@ résultat, partie par partie.
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 5 | 2 | 2 | 0 | 19 |
-| D. Fiches techniques | 46 | 12 | 8 | 4 | 0 | 34 |
+| D. Fiches techniques | 46 | 15 | 11 | 4 | 0 | 31 |
 | F à I, T | 106 | 0 | 0 | 0 | 0 | 106 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
@@ -363,6 +363,19 @@ Chef Viennoiserie (Chef Tourier du scénario) : Mehdi Alaoui. Formats créés pa
 
 État en base : 4 formats, 5 fiches (pâte, croissant et pain au chocolat en version 1), 4 produits.
 
+### Atelier Pâtisserie : préparations de base et éclair (2026-11-19, par les écrans)
+
+Chef Pâtissier : Nadia Berrada. Formats créés par le gérant : « Bassine 5 kg » (au kilo, 0,1 kg de perte ; aucun type de production ne convient à une bassine, « Moule / Découpe » faute de mieux, constat 51) et « Plaque éclairs 30 pièces ».
+
+| ID | Statut | Constat |
+|---|---|---|
+| D-27 | Conforme | Trois préparations de base créées par la cheffe, sans page blanche (correction du constat 40 confirmée), toutes sur la bassine avec un rendement en kilos recopié dans la recette (correction du constat 41 confirmée) : crème pâtissière (lait 2 l, 8 œufs, sucre 400 g, farine 180 g, beurre 150 g, 2 gousses de vanille ; 2,9 kg) 23,36 DH/kg ; pâte sucrée (farine 1 kg, beurre 500 g, sucre glace 375 g, poudre d'amande 125 g, 4 œufs, sel 5 g ; 2,1 kg) 35,03 DH/kg ; ganache (chocolat 1 kg, crème 1 l ; 2 kg) 89,00 DH/kg. À chaque fois, le format au kilo arrive avec un rendement en pièces (constat 42 reproduit) ; le poids brut affiché ignore les œufs et la masse volumique du lait (2,73 kg au lieu d'environ 3,2 kg, constat 28 reproduit). |
+| D-28 | Conforme | Pâte à choux (eau, lait, beurre, farine, 18 œufs, sel ; 2,6 kg, 25,92 DH/kg), puis Éclair au chocolat saisi par pièce : 40 g de pâte à choux 1,04 DH, 70 g de crème pâtissière 1,64 DH, 15 g de ganache 1,34 DH, soit 4,01 DH de matière, 4,61 DH de coût complet. Allergènes déduits à travers les deux niveaux : gluten, lait, œufs, soja. |
+| D-32 | Conforme | La cheffe met 100 g de ganache dans la crème pâtissière (enregistré), puis 100 g de crème pâtissière dans la ganache : refus 409 « Cycle détecté : « Crème pâtissière » contient (directement ou indirectement) cette recette. Composition refusée. » La crème reste proposée dans la liste alors que la page de la ganache affiche « Utilisée par : Crème pâtissière » : la boucle n'est vue qu'à l'enregistrement (constat 52). Retour à l'état initial ensuite. |
+| D-07 | Conforme | Le gérant crée la version 1 des cinq fiches. |
+
+État en base : 6 formats, 10 fiches toutes en version (Baguette en version 2), 4 produits. Produits pâtisserie pas encore créés.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -417,6 +430,8 @@ Chef Viennoiserie (Chef Tourier du scénario) : Mehdi Alaoui. Formats créés pa
 | 48 | Faible | Liste des formats de production : colonne « Recettes » vide même pour les formats employés par des fiches. | E |
 | 49 | Faible | Nouveau produit : la catégorie « Pain » est proposée d'office, quelle que soit la catégorie de production de la fiche choisie. | C-02 |
 | 50 | Faible | Nouveau produit : une fiche saisie par pièce apparaît avec « Rend : 1 unité » au lieu du rendement de son format (40 pièces) ; le coût affiché, lui, est bien celui d'une pièce. | C-02 |
+| 51 | Faible | Aucun type de format de production pour une préparation en bassine ou en cuve (crème, ganache, pâte) : « Moule / Découpe » utilisé faute de mieux. | D-27 |
+| 52 | Faible | Une préparation qui contient déjà la fiche en cours reste proposée comme composant : la boucle n'est refusée qu'à l'enregistrement (message clair). | D-32 |
 
 ## Reste à jouer
 
