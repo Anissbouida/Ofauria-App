@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 import { authApi } from '../api/auth.api';
 import { queryClient } from '../App';
 import { useSettings } from './SettingsContext';
+import { probeSession } from './sessionProbe';
 import type { User, LoginRequest } from '@ofauria/shared';
 
 // Inactivity timeout configuration (in minutes)
@@ -116,15 +117,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // OWASP A02-5 : on ne peut plus lire le token JS (HttpOnly), on tente
     // directement /auth/me. Le cookie est envoye automatiquement via
-    // withCredentials. Si 401, l'utilisateur n'est pas connecte.
-    authApi.me()
-      .then(setUser)
-      .catch(() => {
+    // withCredentials. Si 401, l'utilisateur n'est pas connecte. Une erreur reseau ou
+    // serveur (API en redemarrage, deploiement) est reessayee : elle ne dit rien de la
+    // session et renvoyait a tort vers l'ecran de connexion (scenario 1, constat 56).
+    let cancelled = false;
+    probeSession(() => authApi.me() as Promise<User>)
+      .then((me) => {
+        if (cancelled) return;
+        if (me) { setUser(me); return; }
         // Nettoie les residus legacy potentiels.
         localStorage.removeItem('ofauria_token');
         localStorage.removeItem('ofauria_user');
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const login = async (data: LoginRequest) => {
