@@ -16,9 +16,10 @@ async function run() {
        FROM invoices i
       WHERE i.invoice_type = 'received' AND i.validation_status = 'draft'
         AND i.reception_voucher_id IS NOT NULL AND i.status <> 'cancelled'
-        AND EXISTS (SELECT 1 FROM journal_entries je WHERE je.source_id = i.id)
+        AND EXISTS (SELECT 1 FROM journal_entries je
+                     WHERE je.source_id = i.id AND je.source_kind = 'invoice' AND je.status <> 'reversed')
       ORDER BY i.created_at`)).rows;
-  console.log(`${drafts.length} facture(s) brouillon née(s) d'une réception avec écriture.`);
+  console.log(`${drafts.length} facture(s) brouillon née(s) d'une réception avec écriture active.`);
   for (const d of drafts) {
     console.log(`  ${d.invoice_number} (${d.total_amount} DH)${dryRun ? '' : ' → extourne'}`);
     if (dryRun) continue;
