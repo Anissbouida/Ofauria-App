@@ -120,7 +120,10 @@ export const recipeRepository = {
               pc.poids_kg as contenant_poids_kg,
               -- Coût de revient incomplet (constat 108, mig 621) : ingrédient sans prix,
               -- conversion douteuse ou préparation vide, directement ou par une base.
-              COALESCE(cg.nb, 0) > 0 AS cout_incomplet
+              COALESCE(cg.nb, 0) > 0 AS cout_incomplet,
+              -- Constat 123 : matière par pièce (ou par kilo) du format par défaut, source unique
+              -- fn_recipe_cost ; la liste ne la recalcule plus (÷ rendement faux en saisie par pièce).
+              (SELECT fc.matiere_u FROM fn_recipe_cost(r.id, df.id) fc WHERE df.id IS NOT NULL) AS cout_matiere_piece
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id

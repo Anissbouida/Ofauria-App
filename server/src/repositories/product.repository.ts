@@ -1,5 +1,9 @@
 import { db } from '../config/database.js';
 
+/** Texte sans accents ni casse, côté SQL, sans extension (unaccent n'est pas garanti en production). */
+const foldSql = (expr: string) =>
+  `translate(lower(${expr}), 'àáâäãåçèéêëìíîïñòóôöõùúûüýÿ', 'aaaaaaceeeeiiiinooooouuuuyy')`;
+
 export const productRepository = {
   async findAll(params: { categoryId?: number; categoryIds?: number[]; search?: string; isAvailable?: boolean; limit: number; offset: number; storeId?: string; useVitrine?: boolean }) {
     const conditions: string[] = [];
@@ -12,7 +16,8 @@ export const productRepository = {
     if (params.isAvailable !== undefined) { conditions.push(`p.is_available = $${i++}`); values.push(params.isAvailable); }
     // Recherche sur le nom, la référence (SKU) et le code-barres (mig 472) :
     // un code tapé/scanné (le scanner USB saisit le code + Entrée) retrouve l'article.
-    if (params.search) { conditions.push(`(p.name ILIKE $${i} OR COALESCE(p.sku, '') ILIKE $${i} OR COALESCE(p.barcode, '') ILIKE $${i})`); i++; values.push(`%${params.search}%`); }
+    // Constat 122 : nom comparé sans accents ni casse (« eclair » trouve « Éclair au chocolat »).
+    if (params.search) { conditions.push(`(${foldSql('p.name')} LIKE ${foldSql(`$${i}`)} OR COALESCE(p.sku, '') ILIKE $${i} OR COALESCE(p.barcode, '') ILIKE $${i})`); i++; values.push(`%${params.search}%`); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 

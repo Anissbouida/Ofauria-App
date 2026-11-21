@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { textIncludes } from '../../utils/searchText';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { inventoryApi, ingredientsApi } from '../../api/inventory.api';
@@ -252,8 +253,8 @@ export default function StockPage() {
   const filteredInventory = useMemo(() => {
     let items = inventory as InventoryItem[];
     if (search) {
-      const q = search.toLowerCase();
-      items = items.filter(i => i.ingredient_name.toLowerCase().includes(q) || (i.supplier || '').toLowerCase().includes(q) || (i.active_lot_numbers || '').toLowerCase().includes(q));
+      // Constat 122 : accents ignorés (« creme » trouve « Crème »).
+      items = items.filter(i => textIncludes(search, i.ingredient_name, i.supplier, i.active_lot_numbers));
     }
     // Filtre categorie a 2 niveaux : branche (sous-arbre) puis type precis.
     if (branchFilter) items = items.filter(i => isUnder(i.category_id, branchFilter));

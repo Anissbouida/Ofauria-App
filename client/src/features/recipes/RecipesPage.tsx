@@ -18,6 +18,7 @@ import RecipeImportModal from './RecipeImportModal';
 import BulkReplaceModal from './BulkReplaceModal';
 import type { RecipeCategory } from '../../api/recipes.api';
 import { useActionPermissions } from '../../hooks/useActionPermissions';
+import { textIncludes } from '../../utils/searchText';
 import { apiErrorMessage } from '../../api/errors';
 
 type ActiveTab = 'product' | 'base' | 'contenants';
@@ -181,12 +182,17 @@ export default function RecipesPage() {
   const isBaseTab = activeTab === 'base';
 
   const filtered = recipes.filter((r: Record<string, any>) => {
-    const s = search.toLowerCase();
-    const matchSearch = !s || (r.name as string).toLowerCase().includes(s) || (r.product_name as string || '').toLowerCase().includes(s);
+    // Constat 122 : accents ignorés (« eclair » trouve « Éclair au chocolat »).
+    const matchSearch = textIncludes(search, r.name as string, r.product_name as string);
     const matchTab = isBaseTab ? r.is_base === true : !r.is_base;
     const matchCategory = !categoryFilter || (r.category_id as string) === categoryFilter;
     return matchSearch && matchTab && matchCategory;
   });
+
+  // Constat 123 : même coût matière par pièce que l'affichage (source unique fn_recipe_cost).
+  const unitMaterial = (x: Record<string, any>) => x.cout_matiere_piece != null
+    ? parseFloat(String(x.cout_matiere_piece))
+    : parseFloat((x.total_cost as string) || '0') / ((x.yield_quantity as number) || 1);
 
   const sortedFiltered = useMemo(() => {
     const arr = [...filtered];
@@ -212,16 +218,16 @@ export default function RecipesPage() {
             const net = parseFloat((x.total_weight_kg as string) || '0') * (1 - (parseFloat((x.perte_standard_pct as string) || '0') / 100));
             return net > 0 ? parseFloat((x.total_cost as string) || '0') / net : 0;
           };
-          const cA = a.is_base ? perKg(a) : parseFloat((a.total_cost as string) || '0') / ((a.yield_quantity as number) || 1);
-          const cB = b.is_base ? perKg(b) : parseFloat((b.total_cost as string) || '0') / ((b.yield_quantity as number) || 1);
+          const cA = a.is_base ? perKg(a) : unitMaterial(a);
+          const cB = b.is_base ? perKg(b) : unitMaterial(b);
           cmp = cA - cB; break;
         }
         case 'margin': {
           const prA = parseFloat((a.product_price as string) || '0');
-          const cpuA = parseFloat((a.total_cost as string) || '0') / ((a.yield_quantity as number) || 1);
+          const cpuA = unitMaterial(a);
           const mA = prA > 0 ? (prA - cpuA) / prA * 100 : 0;
           const prB = parseFloat((b.product_price as string) || '0');
-          const cpuB = parseFloat((b.total_cost as string) || '0') / ((b.yield_quantity as number) || 1);
+          const cpuB = unitMaterial(b);
           const mB = prB > 0 ? (prB - cpuB) / prB * 100 : 0;
           cmp = mA - mB; break;
         }
@@ -508,9 +514,13 @@ export default function RecipesPage() {
         <div className="odoo-kanban">
           <div className="odoo-kanban-grid">
             {sortedFiltered.map((r: Record<string, any>) => {
-              const totalCost = parseFloat(r.total_cost as string || '0');
               const yieldQty = r.yield_quantity as number || 1;
-              const costPerUnit = totalCost / yieldQty;
+              // Constat 123 : matière par pièce lue à la source unique (fn_recipe_cost) quand elle
+              // existe ; la fournée s'en déduit pour une composition saisie par pièce.
+              const sourcePiece = !r.is_base && r.cout_matiere_piece != null ? parseFloat(String(r.cout_matiere_piece)) : null;
+              const gridRendement = parseInt(String(r.rendement ?? '')) || Math.round(yieldQty) || 1;
+              const totalCost = sourcePiece != null && r.compo_par_piece ? sourcePiece * gridRendement : parseFloat(r.total_cost as string || '0');
+              const costPerUnit = sourcePiece ?? totalCost / yieldQty;
               // Fallback : pas de produit lie → calcule prix attendu via margin_multiplier
               const productPrice = parseFloat(r.product_price as string || '0');
               const rMargin = parseFloat(String(r.margin_multiplier ?? '0'));
@@ -627,10 +637,13 @@ export default function RecipesPage() {
                 <tr><td colSpan={isBaseTab ? 11 : 10} style={{ padding: 0 }}><EmptyState /></td></tr>
               ) : sortedFiltered.map((r: Record<string, any>) => {
                 const isComposeRow = r.mode_cout === 'compose';
-                const totalCost = parseFloat(r.total_cost as string || '0');
                 const yieldQty = r.yield_quantity as number || 1;
                 // Composé : coût/pièce = coût total ÷ rendement (format) ; sinon legacy ÷ yield.
                 const rendement = parseInt(String(r.rendement ?? '')) || (isComposeRow ? Math.round(yieldQty) : yieldQty) || 1;
+                // Constat 123 : matière par pièce de la source unique (fn_recipe_cost) ; en saisie par
+                // pièce, le coût « fournée » vaut pièce × rendement (et non l'inverse).
+                const sourcePiece = !r.is_base && r.cout_matiere_piece != null ? parseFloat(String(r.cout_matiere_piece)) : null;
+                const totalCost = sourcePiece != null && r.compo_par_piece ? sourcePiece * rendement : parseFloat(r.total_cost as string || '0');
                 // Base : le coût est ramené au kilo NET. Diviser par le rendement
                 // tel quel donnait DH/g pour une fiche en grammes et DH/kg pour sa
                 // voisine en kilos — deux lignes du même tableau à un facteur 1000.
@@ -642,7 +655,7 @@ export default function RecipesPage() {
                 const poidsNetKg = poidsKg * (1 - perteBase / 100);
                 const costPerUnit = r.is_base
                   ? (poidsNetKg > 0 ? totalCost / poidsNetKg : 0)
-                  : (isComposeRow ? totalCost / Math.max(1, rendement) : totalCost / yieldQty);
+                  : sourcePiece ?? (isComposeRow ? totalCost / Math.max(1, rendement) : totalCost / yieldQty);
                 const productPrice = parseFloat(r.product_price as string || '0');
                 const rMargin = parseFloat(String(r.margin_multiplier ?? '0'));
                 // Composé : prix conseillé théorique = coût/pièce × multiplicateur.
