@@ -229,6 +229,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const [showParts, setShowParts] = useState(false);
   const [compoParPiece, setCompoParPiece] = useState(false);
   const [dureeEtapes, setDureeEtapes] = useState(0);
+  // Rendement auquel correspondent les quantités saisies (constat 113) : sert à proposer
+  // la mise à l'échelle quand le rendement change.
+  const [scaleBase, setScaleBase] = useState('');
 
   const { data: roles = [] } = useQuery({ queryKey: ['component-roles'], queryFn: recipesApi.componentRoles, staleTime: 3e5 });
   const { data: sources } = useQuery({ queryKey: ['component-sources'], queryFn: recipesApi.componentSources, staleTime: 3e5 });
@@ -301,6 +304,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     setRows(nextRows);
     setShowParts((f.nb_parts ?? 1) > 1);
     setRendement(nextFields.rendement);
+    setScaleBase(nextFields.rendement);
     setRendementUnite(nextFields.rendementUnite);
     setRendementKg(nextFields.rendementKg);
     setParts(nextFields.parts);
@@ -424,6 +428,21 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   //    écartée en silence à l'enregistrement, l'enregistrement est refusé ;
   //  - un même composant sur plusieurs lignes est signalé (pas additionné : un ajout en
   //    deux temps, farine du levain puis de la pâte, peut être voulu).
+  // Mise à l'échelle (scénario 1, constat 113) : le rendement passe de N à M pièces, les
+  // quantités restent celles d'une fournée de N tant qu'on ne choisit pas.
+  const scaleFrom = parseInt(scaleBase) || 0;
+  const scaleTo = parseInt(rendement) || 0;
+  const scaleRatio = scaleFrom > 0 && scaleTo > 0 ? scaleTo / scaleFrom : 1;
+  const askScale = !compoParPiece && rendementUnite !== 'kg' && scaleRatio !== 1
+    && rows.some((r) => r.sourceId && parseFloat(r.quantite) > 0);
+  const applyScale = () => {
+    setRows((rs) => rs.map((r) => {
+      const q = parseFloat(r.quantite);
+      return r.sourceId && q > 0 ? { ...r, quantite: String(Number((q * scaleRatio).toFixed(3))) } : r;
+    }));
+    setScaleBase(rendement);
+  };
+
   const isBadQty = (r: Row): boolean => !!(r.type && r.sourceId) && !(parseFloat(r.quantite) > 0);
   const badQtyRows = rows.filter(isBadQty);
   const lineName = (r: Row) => sourceMap[`${r.type}:${r.sourceId}`]?.name ?? 'composant';
@@ -949,6 +968,17 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   <strong>{badConversionCount} conversion{badConversionCount > 1 ? 's' : ''} d'unité douteuse{badConversionCount > 1 ? 's' : ''}</strong>
                   {' — '}le coût affiché est peut-être faux. Choisis une unité de la même famille que la source (g/kg/mg entre elles, ml/cl/dl/l entre elles), ou renseigne la densité de l'ingrédient pour un croisement poids ↔ volume.
                 </span>
+              </div>
+            )}
+
+            {askScale && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-blue-50 border border-blue-200 text-[13px] text-blue-800 flex-wrap">
+                <AlertTriangle size={15} className="shrink-0" />
+                <span style={{ flex: '1 1 320px' }}>
+                  <strong>Rendement passé de {scaleFrom} à {scaleTo} pièces</strong> — les quantités ci-dessous sont encore celles d'une fournée de {scaleFrom}. Mettre toute la composition à l'échelle (×{scaleRatio.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}) ou garder les quantités (pièces plus petites ou plus grandes) ?
+                </span>
+                <button type="button" className="odoo-btn-primary" onClick={applyScale}>Mettre à l'échelle</button>
+                <button type="button" className="odoo-btn-secondary" onClick={() => setScaleBase(rendement)}>Garder les quantités</button>
               </div>
             )}
 
