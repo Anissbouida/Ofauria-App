@@ -18,7 +18,7 @@ résultat, partie par partie.
 | C. Produits | 24 | 21 | 9 | 12 | 0 | 3 |
 | D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
 | F. Premier approvisionnement | 58 | 54 | 34 | 20 | 2 | 2 |
-| G. Tenue du stock | 14 | 11 | 7 | 4 | 0 | 3 |
+| G. Tenue du stock | 14 | 12 | 8 | 4 | 0 | 2 |
 | H. Caisse | 11 | 10 | 8 | 2 | 0 | 1 |
 | I, T | 23 | 0 | 0 | 0 | 0 | 23 |
 
@@ -581,7 +581,7 @@ achats à l'écran.
 | G-11 | Conforme | Droits : l'économe n'a pas `stock.inventory.adjust` (ajustement manuel refusé), le gérant l'a ; son ajustement exige un type et un motif (liste), la note reste facultative. |
 | G-12 | Écart | Historique incomplet : l'onglet « Historique » de la farine ne montre que la réception (+3 275 kg) et la perte (−25 kg), pas l'ouverture vers le pesage ; la fiche lot n'a pas d'historique de mouvements (constat 95). |
 | G-13 | Conforme | Le responsable des achats ouvre Bons de sortie › Contenants à ouvrir, voit « Mettre au pesage » actif, et reçoit « Accès interdit » au clic (message générique, bouton affiché : constat 72). |
-| G-14 | Non joué | Pas encore de produits boissons (partie C) ni de BC chez Rif Boissons Distribution. |
+| G-14 | Conforme (partiel) | Après la correction du constat 102 : BC-2026-0010 chez Rif Boissons Distribution, 24 « Eau minérale 50 cl » reçues sans aucune production : lot produit PA-261121-0001 en réserve, stock réserve 24, coût 3,00 DH. Le passage en vitrine (demande d'approvisionnement vitrine, puis transfert) et la vente restent à jouer avec la caisse. |
 
 État en base : farine 3 250 kg (réserve), lait 20 l (deux lots, dont un ouvert puis refermé),
 miel sous son seuil (3,5 / 5 kg), une perte de 25 kg de farine tracée.
@@ -621,7 +621,7 @@ leur statut ci-dessus ; les autres sont joués ici, au compte du gérant sauf me
 | C-06 | Non joué | Pas de fiche « Macarons » ; même limite que les formats (C-05). |
 | C-08 | Écart (bloquant) | La fiche du plateau beldi ne peut pas contenir de produits finis (constat 61, D-37) : produit non créé. |
 | C-09 | Non joué | Le formulaire a bien un interrupteur « Sur commande », mais le plateau salé ne peut pas avoir de fiche (constat 61, D-40). |
-| C-10 | Écart | Eau minérale créée en « Revente » (sans fiche, prix libre, prix d'achat 3,00 DH), vendable : elle apparaît en caisse (en rupture). Mais son stock ne peut pas venir d'un achat : une ligne de BC ne porte qu'une matière ou un consommable, jamais un produit (`purchase_order_items` sans produit ; le commentaire de `sourcing.helper.ts` le confirme) (constat 102). À la modification, la fiche rouvrait l'article en « Fabriqué », recette obligatoire, la liste des produits ne renvoyant pas sa nature (constat 101, corrigé). |
+| C-10 | Écart | Eau minérale créée en « Revente » (sans fiche, prix libre, prix d'achat 3,00 DH), vendable : elle apparaît en caisse (en rupture). Mais son stock ne peut pas venir d'un achat : une ligne de BC ne porte qu'une matière ou un consommable, jamais un produit (`purchase_order_items` sans produit ; le commentaire de `sourcing.helper.ts` le confirme) (constat 102), corrigé : achetée depuis par BC-2026-0010, 24 bouteilles en réserve). À la modification, la fiche rouvrait l'article en « Fabriqué », recette obligatoire, la liste des produits ne renvoyant pas sa nature (constat 101, corrigé). |
 | C-11 | Écart | Croissant › Tarifs › « Prix par canal de vente » : Gros / B2B 4,50 DH enregistré. Ce prix n'est lu que par la caisse (sélecteur de canal) ; les commandes et les devis ne consultent ni les prix par canal ni les listes de prix (`order.controller.ts`) : il ne s'applique pas à une commande professionnelle (constat 103). |
 | C-12 | Conforme (paramétré) | Pas de palier par quantité sur le produit (les paliers ne concernent que la vente au poids) ; il passe par une promotion : « Croissants par 50 », −10 % sur Croissant, quantité minimum 50, caisse et commandes. Application non vérifiée sur une commande : aucun client n'existe encore. |
 | C-13 | Écart (corrigé, constat 100) | Second « Eau minérale 50 cl » : le serveur bute sur l'unicité du `slug`, l'erreur n'est pas rattrapée (« Unhandled Rejection », routes produits sans `asyncHandler` sous Express 4) et la requête reste sans réponse : « Enregistrement… » sans fin, aucun message, et le bouton des autres fiches reste bloqué jusqu'au rechargement (constat 100). |
@@ -746,14 +746,14 @@ par 50 » active ; photo du croissant.
 | 99 | Faible | Caisse : textes sans accents (« Caisse fermee », « a vendre », « Resultat », « montant trouve »), prix au kilo sans unité sur la vignette, même image pour tous les produits, vignette en rupture sans message au toucher. | H-02, H-07, H-08 |
 | 100 | Corrigée | Corrigé : les 20 routes produits passent par `asyncHandler` et une violation d'unicité (nom, code-barres) répond 409, « Un produit du même nom existe déjà. » à la création comme au renommage ; test `product-duplicate-name.db.test.ts` ; vérifié à l'écran (second « Eau minérale 50 cl » : message affiché, bouton rendu, aucun doublon en base). Constat d'origine : créer un produit en doublon fige l'écran : l'erreur d'unicité (`products_slug_key`) n'est pas rattrapée, les routes produits n'ont pas d'`asyncHandler` (Express 4), la requête reste sans réponse ; « Enregistrement… » sans fin, sans message, jusqu'au rechargement. Toute autre erreur levée sur ces routes ferait de même. | C-13 |
 | 101 | Corrigée | Corrigé : la liste des produits renvoie `item_kind` (`productRepository.findAll`), la fiche rouvre l'eau minérale en « Revente » sans recette ; test ajouté à `product-item-kind.db.test.ts` ; vérifié à l'écran. Constat d'origine : modifier un produit de revente : la liste des produits ne renvoie pas `item_kind`, la fiche rouvre l'article en « Fabriqué » avec recette obligatoire ; il faut recocher « Revente » à chaque modification. | C-10 |
-| 102 | Haute | Les produits de revente ne s'achètent pas : une ligne de BC ne porte qu'une matière ou un consommable ; boissons et autres marchandises n'ont aucun chemin d'entrée en stock par achat. | C-10, G-14 |
+| 102 | Corrigée (mig 619) | Corrigé : un BC porte désormais une ligne « produit de revente » (`product_id`, type `product`, désignation et catégorie « Achats de marchandises » figées ; un produit fabriqué est refusé). La réception crée un lot produit en réserve (PA-AAMMJJ-NNNN, DLC, lot fournisseur en note), augmente le stock réserve du magasin et fixe le coût du produit (CMUP) ; la facture issue de la réception porte le produit ; l'écriture de réception débite 6111 (comptes 3111 et 6111 et catégorie créés par la migration). Extourne et correction d'une réception de produit : refus explicite (409), à traiter plus tard. Test `po-resale-product.db.test.ts`. Vérifié à l'écran : BC-2026-0010 chez Rif Boissons, 24 « Eau minérale 50 cl » à 3,00 DH, réception (lot PA-261121-0001, DLC 30/06/2027), facture RIF-F-5521 en brouillon, écritures AC-2026-00034 (6111 / 4417) et AC-2026-00035 (4417 / 4411). Constat d'origine : les produits de revente ne s'achètent pas : une ligne de BC ne porte qu'une matière ou un consommable ; boissons et autres marchandises n'ont aucun chemin d'entrée en stock par achat. | C-10, G-14 |
 | 103 | Moyenne | Prix : les prix par canal (Gros / B2B) ne valent qu'en caisse, pas sur les commandes ni les devis ; prix 0 accepté sans avertissement ; aucune alerte de marge sous le coût d'achat ; prix négatif refusé par le seul navigateur. | C-11, C-14, C-15 |
 | 104 | Faible | Fiche produit et catalogue : catégorie « Pain » présélectionnée (pas de « aucune »), nom et catégorie non repris de la fiche, « Aucune recette disponible » pendant le chargement ; suppression réservée à l'administrateur mais bouton montré, refus 403 muets (gérant, commercial), confirmation sans nom du produit ; import : lignes écartées détaillées en console seulement, produits importés « Fabriqué » sans fiche. | C-02, C-16, C-20, C-22, C-24 |
 
 ## Reste à jouer
 
 Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
-première DLC atteinte), G-14 (bloqué : une boisson ne s'achète pas, constat 102). Partie H :
+première DLC atteinte), G-14 (second volet : vitrine et vente de l'eau). Partie H :
 H-09 (imprimante à configurer). Partie C : C-06, C-09 (fiches manquantes), C-23 (administrateur),
 second volet de C-20 (après une vente). Puis D (fiches techniques), E (suite), I (contrôles) et
 les cas transverses.

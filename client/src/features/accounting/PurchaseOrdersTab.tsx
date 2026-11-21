@@ -14,6 +14,7 @@ import { suppliersApi, invoicesApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { containerOf, roundUpToContainer, containerLabel, type ContainerDef } from '../../utils/container';
 import { packagingApi } from '../../api/packaging.api';
+import { productsApi } from '../../api/products.api';
 import { useStockCategories } from '../stock/useStockCategories';
 import {
   Plus, Send, PackageCheck, X, Trash2, AlertTriangle, Eye, Ban, PackageX,
@@ -67,12 +68,12 @@ const FEE_ROOT_IDS = ['10000000-0000-0000-0000-000000000007', '10000000-0000-000
 const DEFAULT_FEE_CATEGORY_ID = '30000000-0000-0000-0000-000000000064';
 
 /* Type de ligne de BC (mig 349) : les lignes service / immobilisation n'ont pas d'article. */
-type PoLineKind = 'ingredient' | 'consumable' | 'service' | 'asset';
+type PoLineKind = 'ingredient' | 'consumable' | 'product' | 'service' | 'asset';
 const isFreeLine = (k: unknown) => k === 'service' || k === 'asset';
 /* Nature d'un nouveau BC, choisie avant la saisie des lignes. */
 const ORDER_TYPES = [
   { key: 'stock' as const, label: 'Articles stockés', icon: Boxes, color: '#2f6f3e', tint: '#e8f5ec',
-    examples: 'Matières premières, emballages, consommables d\'entretien',
+    examples: 'Matières premières, emballages, consommables d\'entretien, produits de revente (boissons)',
     effect: 'Entrée en stock (lots, DLC), coût moyen mis à jour' },
   { key: 'service' as const, label: 'Service / frais', icon: Wrench, color: '#1d4f91', tint: '#e7f0fb',
     examples: 'Réparation, maintenance, transport, énergie, loyer, prestations',
@@ -84,6 +85,7 @@ const ORDER_TYPES = [
 
 function LineKindTag({ kind }: { kind: unknown }) {
   if (kind === 'consumable') return <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>;
+  if (kind === 'product') return <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Revente</span>;
   if (kind === 'service') return <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Service</span>;
   if (kind === 'asset') return <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Immobilisation</span>;
   return null;
@@ -179,7 +181,7 @@ type POItem = {
   id: string;
   ingredient_id: string;
   packaging_id?: string | null;
-  kind?: 'ingredient' | 'consumable' | 'service' | 'asset';
+  kind?: 'ingredient' | 'consumable' | 'product' | 'service' | 'asset';
   ingredient_name: string;
   ingredient_unit: string;
   quantity_ordered: string;
@@ -1037,6 +1039,8 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
                   <td className="px-3 py-2 text-xs">
                     {isFreeLine(item.kind) ? (
                       <span style={{ color: 'var(--odoo-text-muted)' }}>{resolveCat(item.item_category_id)?.path || '—'}</span>
+                    ) : item.kind === 'product' ? (
+                      <span style={{ color: 'var(--odoo-text-muted)' }}>{resolveCat(item.item_category_id)?.path || 'Achats de marchandises'}</span>
                     ) : (
                     <CategoryQuickEdit
                       kind={(item.kind as 'ingredient' | 'consumable') || (item.packaging_id ? 'consumable' : 'ingredient')}
@@ -1386,6 +1390,12 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const toCur = (dh: number) => (dh > 0 && rate > 0 ? Math.round(dh / rate * 10000) / 10000 : null);
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
   const { data: consumables = [] } = useQuery({ queryKey: ['packaging-items'], queryFn: () => packagingApi.list({ activeOnly: true }) });
+  // Produits de revente (mig 619) : achetés en l'état, ils entrent en stock produit à la réception.
+  const { data: resaleProducts = [] } = useQuery({
+    queryKey: ['products', 'resale-purchasable'],
+    queryFn: async () => ((await productsApi.list({ limit: '500' }))?.data as Record<string, any>[] ?? [])
+      .filter(pr => pr.item_kind === 'resale'),
+  });
   const { kindOf, resolve, byId, leavesUnder } = useStockCategories();
   // Categories proposees pour une ligne sans article, selon son type.
   const freeCategoryOptions = useMemo(() => {
@@ -1480,6 +1490,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     ...(consumables as Record<string, any>[])
       .filter(c => !addedKeys.has(`consumable:${c.id}`))
       .map(c => ({ ...c, _kind: 'consumable' }) as Record<string, any>),
+    ...(resaleProducts as Record<string, any>[])
+      .filter(pr => !addedKeys.has(`product:${pr.id}`))
+      .map(pr => ({ ...pr, unit: 'unit', unit_cost: pr.cost_price, category_id: null, _kind: 'product' }) as Record<string, any>),
   ];
   // Recherche insensible aux accents ; les articles habituels du fournisseur remontent en tete.
   const filteredProducts = available
@@ -1494,7 +1507,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     const cost = parseFloat(p.unit_cost as string) || 0;
     const container = p._kind === 'ingredient' ? containerOf(p) : null;
     setItems([...items, {
-      kind: p._kind as 'ingredient' | 'consumable',
+      kind: p._kind as 'ingredient' | 'consumable' | 'product',
       refId: p.id as string,
       name: p.name as string,
       unit: p.unit as string,
@@ -1558,6 +1571,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       items: items.map(({ kind, refId, name, categoryId, quantityOrdered, unitPrice }) => ({
         ingredientId: kind === 'ingredient' ? refId : null,
         packagingId: kind === 'consumable' ? refId : null,
+        productId: kind === 'product' ? refId : null,
         ...(isFreeLine(kind) ? { lineType: kind, description: name, categoryId, unit: 'unit' } : {}),
         quantityOrdered,
         unitPrice: unitPrice != null && unitPrice > 0 ? Math.round(unitPrice * rate * 10000) / 10000 : null,
@@ -1707,11 +1721,12 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                             <span className="font-medium">
                               {p.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({p.unit as string})</span>
                               {p._kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
+                              {p._kind === 'product' && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Revente</span>}
                               {isUsual(p) && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Habituel</span>}
                             </span>
                             {/* Chemin de categorie : repere une erreur de classement avant l'achat */}
-                            <span style={{ display: 'block', fontSize: '0.6875rem', color: catPath ? 'var(--odoo-text-muted)' : '#b85d1a' }}>
-                              {catPath || 'Sans catégorie'}{cont ? ` · ${containerLabel(cont, p.unit as string)}` : ''}
+                            <span style={{ display: 'block', fontSize: '0.6875rem', color: catPath || p._kind === 'product' ? 'var(--odoo-text-muted)' : '#b85d1a' }}>
+                              {p._kind === 'product' ? 'Produit de revente · Achats de marchandises' : (catPath || 'Sans catégorie')}{cont ? ` · ${containerLabel(cont, p.unit as string)}` : ''}
                             </span>
                           </span>
                           <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>{n(parseFloat(p.unit_cost as string) || 0)} {currencySymbol()}/{p.unit as string}</span>
@@ -1833,6 +1848,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                       <td>
                         {item.kind === 'service' || item.kind === 'asset' ? (
                           <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{resolve(item.categoryId)?.path || '—'}</span>
+                        ) : item.kind === 'product' ? (
+                          // Produit de revente (mig 619) : imputé en Achats de marchandises (6111) côté serveur.
+                          <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Achats de marchandises</span>
                         ) : (
                         <CategoryQuickEdit
                           kind={item.kind} refId={item.refId} categoryId={item.categoryId}

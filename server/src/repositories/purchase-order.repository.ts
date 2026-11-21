@@ -7,10 +7,12 @@ import type { PoolClient } from 'pg';
 import { closePurchaseRequestsForOrder } from './purchase-request.helper.js';
 import { baseCurrencyCode } from '../services/currency.js';
 
-/** Ligne de BC en entrée : article (ingrédient / consommable) ou ligne libre (service / immobilisation). */
-export type PoLineType = 'ingredient' | 'consumable' | 'service' | 'asset';
+/** Ligne de BC en entrée : article (ingrédient / consommable / produit de revente) ou ligne libre (service / immobilisation). */
+export type PoLineType = 'ingredient' | 'consumable' | 'product' | 'service' | 'asset';
 export interface PoLineInput {
   ingredientId?: string | null; packagingId?: string | null;
+  /** Produit de revente (mig 619) : entre en stock produit (réserve) à la réception. */
+  productId?: string | null;
   lineType?: PoLineType | null; description?: string | null; categoryId?: string | null; unit?: string | null;
   quantityOrdered: number; unitPrice?: number | null;
   /** Prix dans la devise du BC (mig 363) ; unitPrice reste en DH. */
@@ -20,13 +22,33 @@ export interface PoLineInput {
 export function lineTypeOf(it: PoLineInput): PoLineType {
   if (it.ingredientId) return 'ingredient';
   if (it.packagingId) return 'consumable';
+  if (it.productId) return 'product';
   return it.lineType === 'asset' ? 'asset' : 'service';
 }
+
+/** Catégorie de dépense « Achats de marchandises » (6111, mig 619) : défaut des lignes produit. */
+export const CAT_ACHATS_MARCHANDISES = '10000000-0000-0000-0000-000000000011';
 
 /** Champs propres a une ligne sans article ; null pour un ingredient/consommable (le trigger copie la fiche). */
 function freeLineFields(it: PoLineInput): { description: string | null; categoryId: string | null; unit: string | null } {
   if (it.ingredientId || it.packagingId) return { description: null, categoryId: null, unit: null };
   return { description: it.description?.trim() || null, categoryId: it.categoryId || null, unit: it.unit?.trim() || 'unit' };
+}
+
+/**
+ * Ligne produit de revente (mig 619) : la désignation et la catégorie sont figées sur la
+ * ligne, comme une ligne service, pour que facture, écriture de réception et rapprochement
+ * (qui lisent COALESCE(ingrédient, consommable, poi.description) et poi.category_id) la
+ * traitent sans cas particulier. Seul un produit de revente s'achète ainsi.
+ */
+async function lineFields(client: { query: PoolClient['query'] }, it: PoLineInput) {
+  if (!it.productId) return freeLineFields(it);
+  const p = (await client.query(`SELECT name, item_kind FROM products WHERE id = $1`, [it.productId])).rows[0];
+  if (!p) throw Object.assign(new Error('Produit introuvable'), { statusCode: 400 });
+  if (p.item_kind !== 'resale') {
+    throw Object.assign(new Error(`« ${p.name} » n'est pas un produit de revente : seul un produit de revente s'achète sur un bon de commande.`), { statusCode: 400 });
+  }
+  return { description: p.name as string, categoryId: it.categoryId || CAT_ACHATS_MARCHANDISES, unit: 'unit' };
 }
 
 export const purchaseOrderRepository = {
@@ -332,12 +354,12 @@ export const purchaseOrderRepository = {
             });
           }
         }
-        const free = freeLineFields(item);
+        const free = await lineFields(client, item);
         await client.query(
-          `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, unit_price,
+          `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, product_id, quantity_ordered, unit_price,
                                              line_type, description, category_id, base_unit, foreign_unit_price)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, qty, item.unitPrice ?? null,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, item.productId ?? null, qty, item.unitPrice ?? null,
            lineTypeOf(item), free.description, free.categoryId, free.unit,
            data.currencyCode && data.currencyCode !== baseCurrencyCode() ? (item.foreignUnitPrice ?? null) : null]
         );
@@ -520,10 +542,10 @@ export const purchaseOrderRepository = {
       const currentStatus = po.rows[0].status;
 
       const current = await client.query<{
-        id: string; ingredient_id: string | null; packaging_id: string | null; quantity_ordered: string;
+        id: string; ingredient_id: string | null; packaging_id: string | null; product_id: string | null; quantity_ordered: string;
         quantity_delivered: string; unit_price: string | null;
       }>(
-        `SELECT id, ingredient_id, packaging_id, quantity_ordered::text, quantity_delivered::text, unit_price::text
+        `SELECT id, ingredient_id, packaging_id, product_id, quantity_ordered::text, quantity_delivered::text, unit_price::text
          FROM purchase_order_items WHERE purchase_order_id = $1 FOR UPDATE`,
         [id]
       );
@@ -539,10 +561,15 @@ export const purchaseOrderRepository = {
       }
       // Ajuste le stock d'une ligne selon son type (ingredient -> inventory, consommable -> packaging).
       const adjustLineStock = async (
-        line: { ingredient_id?: string | null; packaging_id?: string | null },
+        line: { ingredient_id?: string | null; packaging_id?: string | null; product_id?: string | null },
         change: number, note: string,
       ) => {
         if (Math.abs(change) <= 0.0001) return;
+        // Produit de revente (mig 619) : son stock naît d'une réception (lot produit) ;
+        // une quantité livrée corrigée ici ne créerait ni lot ni mouvement.
+        if (line.product_id) {
+          throw new Error('Produit de revente : la quantité livrée se corrige par une réception, pas par la modification du bon.');
+        }
         if (line.packaging_id) {
           if (!consumableStoreId) return;
           await packagingItemRepository.adjustStock(client as PoolClient, {
@@ -605,19 +632,19 @@ export const purchaseOrderRepository = {
         } else {
           // Nouvelle ligne — qty_delivered = 0 par defaut (admin ne touche pas le stock via add).
           const newDel = qdelRaw ?? 0;
-          const free = freeLineFields(it);
+          const free = await lineFields(client, it);
           const inserted = await client.query<{ id: string }>(
-            `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, quantity_delivered, unit_price,
+            `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, product_id, quantity_ordered, quantity_delivered, unit_price,
                                                line_type, description, category_id, base_unit)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-            [id, it.ingredientId ?? null, it.packagingId ?? null, qord, newDel, price,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+            [id, it.ingredientId ?? null, it.packagingId ?? null, it.productId ?? null, qord, newDel, price,
              lineTypeOf(it), free.description, free.categoryId, free.unit]
           );
           if (newDel > 0.0001) {
             // Cas atypique : admin ajoute une ligne avec qty deja livree
             // (typiquement pour rattraper un stock arrive sans BC). On ajuste.
             await adjustLineStock(
-              { ingredient_id: it.ingredientId ?? null, packaging_id: it.packagingId ?? null }, newDel,
+              { ingredient_id: it.ingredientId ?? null, packaging_id: it.packagingId ?? null, product_id: it.productId ?? null }, newDel,
               `Admin edit BC ${orderNumber} : ajout ligne avec qty livree ${newDel} (id ${inserted.rows[0].id})`);
           }
         }

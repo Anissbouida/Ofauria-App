@@ -187,6 +187,12 @@ export const purchaseOrderController = {
         res.status(400).json({ success: false, error: { message: 'Données du bon de commande invalides.' } });
         return;
       }
+      // Refus métier explicite (ex. produit qui n'est pas de revente, mig 619) : son code et son message.
+      const status = (err as { statusCode?: number })?.statusCode;
+      if (status && status < 500) {
+        res.status(status).json({ success: false, error: { message: (err as Error).message } });
+        return;
+      }
       logger.error({ err: err }, '[purchaseOrder.create] Error:');
       const message = err instanceof Error ? err.message : 'Erreur lors de la creation du bon de commande';
       res.status(500).json({ success: false, error: { message } });
@@ -591,6 +597,7 @@ export const purchaseOrderController = {
       id: raw.id as string | undefined,
       ingredientId: (raw.ingredientId as string | null) ?? null,
       packagingId: (raw.packagingId as string | null) ?? null,
+      productId: (raw.productId as string | null) ?? null,
       lineType: (raw.lineType as PoLineType | null) ?? null,
       description: (raw.description as string | null) ?? null,
       categoryId: (raw.categoryId as string | null) ?? null,
@@ -609,7 +616,7 @@ export const purchaseOrderController = {
     // Une ligne existante (id) garde son article ; une nouvelle ligne sans article
     // (service / immobilisation) exige designation + categorie (mig 349).
     if (items.some(it => it.quantityOrdered <= 0
-        || (!it.id && !(it.ingredientId || it.packagingId) && !(it.description?.trim() && it.categoryId)))) {
+        || (!it.id && !(it.ingredientId || it.packagingId || it.productId) && !(it.description?.trim() && it.categoryId)))) {
       res.status(400).json({ success: false, error: { message: 'Chaque ligne doit avoir un article (ou une désignation et une catégorie) et une quantité > 0' } });
       return;
     }

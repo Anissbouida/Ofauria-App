@@ -51,8 +51,10 @@ export const createPurchaseOrderSchema = z.object({
     z.object({
       ingredientId: z.string().guid('Ingrédient invalide').optional().nullable(),
       packagingId: z.string().guid('Consommable invalide').optional().nullable(),
+      // Produit de revente (mig 619) : entre en stock produit à la réception.
+      productId: z.string().guid('Produit invalide').optional().nullable(),
       // Ligne sans article (mig 349) : service ou immobilisation, désignation + catégorie de dépense.
-      lineType: z.enum(['ingredient', 'consumable', 'service', 'asset']).optional().nullable(),
+      lineType: z.enum(['ingredient', 'consumable', 'product', 'service', 'asset']).optional().nullable(),
       description: z.string().max(500).optional().nullable(),
       categoryId: z.string().guid('Catégorie invalide').optional().nullable(),
       unit: z.string().max(20).optional().nullable(),
@@ -61,11 +63,11 @@ export const createPurchaseOrderSchema = z.object({
       foreignUnitPrice: z.coerce.number().min(0, 'Prix en devise invalide').max(1_000_000).optional().nullable(),
     }).refine((i) => {
       if (i.lineType === 'service' || i.lineType === 'asset') {
-        return !i.ingredientId && !i.packagingId && Boolean(i.description?.trim()) && Boolean(i.categoryId);
+        return !i.ingredientId && !i.packagingId && !i.productId && Boolean(i.description?.trim()) && Boolean(i.categoryId);
       }
-      return Boolean(i.ingredientId) !== Boolean(i.packagingId);
+      return [i.ingredientId, i.packagingId, i.productId].filter(Boolean).length === 1;
     }, {
-      message: 'Une ligne porte soit un ingrédient, soit un consommable, soit (service / immobilisation) une désignation et une catégorie.',
+      message: 'Une ligne porte soit un ingrédient, soit un consommable, soit un produit de revente, soit (service / immobilisation) une désignation et une catégorie.',
     }),
   ).min(1, 'Au moins un article requis').max(200),
 }).passthrough();

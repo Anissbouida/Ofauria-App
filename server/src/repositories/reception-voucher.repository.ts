@@ -2,6 +2,7 @@ import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
+import { adjustProductStock } from './product-stock.helper.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.service.js';
 import { closePurchaseRequestsForOrder } from './purchase-request.helper.js';
@@ -47,11 +48,11 @@ async function resolveInvoiceCategoryFromPo(
          JOIN expense_categories ec ON ec.id = pkg.category_id
         WHERE poi.purchase_order_id = $1
        UNION
-       -- Lignes service / immobilisation (mig 349) : leur categorie de depense.
+       -- Lignes service / immobilisation (mig 349) et produit de revente (mig 619) : leur categorie de depense.
        SELECT DISTINCT ec.id::text AS id, ec.parent_id::text AS parent_id
          FROM purchase_order_items poi
          JOIN expense_categories ec ON ec.id = poi.category_id
-        WHERE poi.purchase_order_id = $1 AND poi.line_type IN ('service', 'asset')
+        WHERE poi.purchase_order_id = $1 AND poi.line_type IN ('service', 'asset', 'product')
      )
      SELECT
        CASE
@@ -113,7 +114,7 @@ export async function createInvoiceFromPo(
   // Garantit que la facture refletera le prix reellement paye meme si le BC
   // avait un prix 0/NULL au depart.
   const poItemDetails = await client.query(
-    `SELECT poi.id, poi.ingredient_id, poi.packaging_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
+    `SELECT poi.id, poi.ingredient_id, poi.packaging_id, poi.product_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
             COALESCE(ing.name, pkg.name, poi.description) as ingredient_name,
             COALESCE(ing.category_id, pkg.category_id, poi.category_id) AS line_category_id,
             -- TVA attendue (mig 309) : taux saisi sur la ligne de BC, sinon code par défaut de l'article
@@ -148,6 +149,7 @@ export async function createInvoiceFromPo(
       tvaRate,
       ingredientId: (it.ingredient_id as string | null) ?? null,
       packagingId: (it.packaging_id as string | null) ?? null,
+      productId: (it.product_id as string | null) ?? null,
       // Categorie figee au moment de l'achat (celle de l'article), pour que
       // la ligne garde sa categorie meme si l'article est reclasse plus tard.
       categoryId: (it.line_category_id as string | null) ?? null,
@@ -212,11 +214,12 @@ export async function createInvoiceFromPo(
 
   for (const item of invoiceItems) {
     await client.query(
-      `INSERT INTO invoice_items (invoice_id, ingredient_id, packaging_id, category_id, description, quantity, unit_price, subtotal,
+      `INSERT INTO invoice_items (invoice_id, ingredient_id, packaging_id, product_id, category_id, description, quantity, unit_price, subtotal,
                                   tva_rate, tva_amount, tax_code, purchase_order_item_id, reception_voucher_item_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+       VALUES ($1, $2, $3, $14, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [invoice.id, item.ingredientId, item.packagingId, item.categoryId, item.description, item.quantity, item.unitPrice, item.subtotal,
-       item.tvaRate, item.tvaRate != null ? Math.round(item.subtotal * item.tvaRate) / 100 : null, item.taxCode, item.poItemId, item.receptionVoucherItemId]
+       item.tvaRate, item.tvaRate != null ? Math.round(item.subtotal * item.tvaRate) / 100 : null, item.taxCode, item.poItemId, item.receptionVoucherItemId,
+       item.productId]
     );
   }
 
@@ -463,15 +466,17 @@ export const receptionVoucherRepository = {
 
         // Insert reception voucher item (ingredient OU consommable, lot/DLC fields)
         const rviResult = await client.query(
-          `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, ingredient_id, packaging_id, quantity_received, unit_price, notes, supplier_lot_number, expiration_date, manufactured_date,
+          // Produit de revente (mig 619) : repris de la ligne de BC, l'écran n'a pas à l'envoyer.
+          `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, ingredient_id, packaging_id, product_id, quantity_received, unit_price, notes, supplier_lot_number, expiration_date, manufactured_date,
                                                kind, created_by, po_unit_price, gross_weight, tare_weight, net_weight)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'receive', $11,
-                   (SELECT unit_price FROM purchase_order_items WHERE id = $2), $12, $13, $14) RETURNING id`,
+           VALUES ($1, $2, $3, $4, (SELECT product_id FROM purchase_order_items WHERE id = $2), $5, $6, $7, $8, $9, $10, 'receive', $11,
+                   (SELECT unit_price FROM purchase_order_items WHERE id = $2), $12, $13, $14) RETURNING id, product_id`,
           [rv.id, item.poItemId, item.ingredientId ?? null, item.packagingId ?? null, item.quantityReceived, item.unitPrice ?? null, item.notes || null,
            item.supplierLotNumber || null, item.expirationDate || null, item.manufacturedDate || null, data.receivedBy,
            item.grossWeight ?? null, item.tareWeight ?? null, item.netWeight ?? null]
         );
         const rviId = rviResult.rows[0].id;
+        const productId = (rviResult.rows[0].product_id as string | null) ?? null;
 
         // La quantité livrée de la ligne n'est plus écrite ici : l'insertion de la ligne de
         // réception poste un événement GR (trigger rvi_post_gr, mig 307) qui met à jour les
@@ -496,6 +501,57 @@ export const receptionVoucherRepository = {
         //     réception vaut « service rendu » ou mise en service ; l'écriture GR/IR
         //     impute la charge (6xxx) ou l'actif (23xx) par la catégorie, et la fiche
         //     d'immobilisation est créée après la boucle (ensureFixedAssetsForPo). ───
+        // ─── Produit de revente (mig 619) : lot produit en réserve + stock réserve du
+        //     magasin ; la vitrine se garnit ensuite par l'approvisionnement vitrine. ───
+        if (productId) {
+          let productStoreId: string | null = data.storeId || null;
+          if (!productStoreId) {
+            const s = await client.query(`SELECT id FROM stores ORDER BY created_at LIMIT 1`);
+            productStoreId = (s.rows[0]?.id as string | undefined) ?? null;
+          }
+          if (!productStoreId) {
+            const e: Error & { statusCode?: number } = new Error('Aucun magasin disponible pour réceptionner le produit.');
+            e.statusCode = 400;
+            throw e;
+          }
+          if (item.expirationDate && item.expirationDate < new Date().toISOString().slice(0, 10)) {
+            const e: Error & { statusCode?: number } = new Error(
+              `La DLC ${item.expirationDate} est déjà dépassée, la marchandise ne peut pas être réceptionnée.`);
+            e.statusCode = 409;
+            throw e;
+          }
+          // Coût du produit : CMUP sur le stock (réserve + vitrine) avant l'entrée.
+          const prodLock = (await client.query(
+            `SELECT name, cost_price FROM products WHERE id = $1 FOR UPDATE`, [productId])).rows[0];
+          const stockBefore = parseFloat((await client.query(
+            `SELECT COALESCE(SUM(stock_quantity + vitrine_quantity), 0) AS qty FROM product_store_stock WHERE product_id = $1`,
+            [productId])).rows[0]?.qty ?? '0');
+          const lotNumber = (await client.query(
+            `SELECT 'PA-' || to_char(now() AT TIME ZONE 'Africa/Casablanca', 'YYMMDD') || '-' ||
+                    lpad((COUNT(*) + 1)::text, 4, '0') AS n
+               FROM product_lots WHERE reception_voucher_item_id IS NOT NULL
+                AND created_at::date = (now() AT TIME ZONE 'Africa/Casablanca')::date`)).rows[0].n as string;
+          await client.query(
+            `INSERT INTO product_lots (product_id, store_id, lot_number, produced_at, expires_at, quantity_total,
+                                       backroom_qty, vitrine_qty, status, unit_cost, reception_voucher_item_id, notes)
+             VALUES ($1, $2, $3, now(), $4, $5, $5, 0, 'active', $6, $7, $8)`,
+            [productId, productStoreId, lotNumber, item.expirationDate || null, item.quantityReceived,
+             effectiveCost, rviId,
+             [`Réception ${voucherNumber} — BC ${po.order_number}`, item.supplierLotNumber ? `lot fournisseur ${item.supplierLotNumber}` : null]
+               .filter(Boolean).join(' · ')]);
+          lotNumbers.push(lotNumber);
+          await adjustProductStock(client as unknown as import('pg').PoolClient, productId, item.quantityReceived, productStoreId);
+          if (effectiveCost && effectiveCost > 0) {
+            const oldCost = prodLock?.cost_price != null ? parseFloat(prodLock.cost_price) : null;
+            const newCost = stockBefore <= 0 || oldCost == null || oldCost <= 0
+              ? effectiveCost
+              : (stockBefore * oldCost + item.quantityReceived * effectiveCost) / (stockBefore + item.quantityReceived);
+            await client.query(`UPDATE products SET cost_price = $1, updated_at = NOW() WHERE id = $2`,
+              [Math.round(newCost * 100) / 100, productId]);
+          }
+          continue;
+        }
+
         if (!item.ingredientId && !item.packagingId) continue;
 
         if (isConsumable) {
@@ -800,6 +856,15 @@ export const receptionVoucherRepository = {
         [purchaseOrderId]
       );
       const po = poRes.rows[0];
+      // Produit de revente reçu (mig 619) : l'extourne ne reprend pas encore le lot produit.
+      const hasProduct = await client.query(
+        `SELECT 1 FROM reception_voucher_items rvi JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
+          WHERE rv.purchase_order_id = $1 AND rvi.product_id IS NOT NULL LIMIT 1`, [purchaseOrderId]);
+      if (hasProduct.rowCount) {
+        const e: Error & { statusCode?: number } = new Error(
+          'Ce bon comporte des produits de revente reçus : l\'extourne de la réception n\'est pas encore prise en charge pour eux.');
+        e.statusCode = 409; throw e;
+      }
       if (!po) {
         const e: Error & { statusCode?: number } = new Error('Bon de commande non trouve');
         e.statusCode = 404; throw e;
@@ -1028,6 +1093,9 @@ export const receptionVoucherRepository = {
           ORDER BY rv.created_at DESC LIMIT 1 FOR UPDATE OF rvi`,
         [poLineId, purchaseOrderId])).rows[0];
       if (!orig) throw fail(409, 'Aucune réception active sur cette ligne');
+      // Produit de revente (mig 619) : son lot produit et son stock réserve ne sont pas
+      // repris par cette correction ; refus explicite plutôt qu'un stock faux.
+      if (orig.product_id) throw fail(409, 'Produit de revente : la correction de réception n\'est pas encore prise en charge, corrigez le stock du produit (ajustement) et la facture.');
 
       if (!isAdmin) {
         const win = (await client.query(`SELECT COALESCE((value->>'hours')::int, 72) AS h FROM module_parameters WHERE key = 'purchasing.receipt_correction_window_hours'`)).rows[0]?.h ?? 72;
