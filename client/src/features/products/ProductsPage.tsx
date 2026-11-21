@@ -235,8 +235,10 @@ function CatalogueTab() {
       const details = e?.response?.data?.error?.details;
       let msg = e?.response?.data?.error?.message || e?.message || 'Erreur lors de l\'enregistrement';
       if (details) {
+        // Les messages du serveur sont déjà en français ; le nom technique du champ
+        // (« name: », scénario 1, T-02) n'apprend rien à l'utilisateur.
         const first = Object.entries(details)[0];
-        if (first) msg = `${first[0]}: ${first[1].join(', ')}`;
+        if (first) msg = first[1].join(', ');
       }
       notify.error(msg);
     },
