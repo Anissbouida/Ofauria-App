@@ -676,6 +676,22 @@ autres sont joués ici.
 Pain rond a été créée (vide d'abord, pour D-09, puis composée), non liée au produit ; la
 ganache de l'Éclair est revenue à 15 g.
 
+## Parties A et B — suite (2026-11-21, Gérant)
+
+| ID | Statut | Constat |
+|---|---|---|
+| A-09 | Conforme | Fiche de la Farine T55, onglet Fournisseurs : Minoterie Atlas à 5,50 DH/kg, rempli tout seul à la réception (« auto ») ; ajout d'un second fournisseur avec prix, quantité par contenant (25 kg), délai et quantité minimale. |
+| A-10 | Conforme (paramétré) | Épicerie de gros Al Baraka ajoutée en second (5,80 DH/kg, sac de 25 kg) ; Minoterie Atlas reste préférée (⭐, « proposé par défaut à l'achat ») ; l'ordre de proposition est « non bloqué, puis préféré » (supplier-item.repository). |
+| A-12 | Non joué | Désactiver un fournisseur est réservé à l'administrateur (bouton et route). Les formulaires de BC n'offrent que les fournisseurs actifs. |
+| A-13 | Non joué | Idem (administrateur). Par construction, « supprimer » un fournisseur le désactive : jamais de suppression, les pièces rattachées sont conservées. |
+| A-14 | Non joué | L'import générique est dans Paramètres › Import et export (administrateur). |
+| B-05 | Conforme (après correction, constat 108) | Miel au kilo employé en litres sans densité : signalé dans l'éditeur et sur la fiche (« Coût de revient incomplet : conversion d'unité douteuse »). |
+| B-07 | Conforme | Les quantités restent dans l'unité saisie (sel 330 g, levure 300 g affichés en grammes, jamais convertis). |
+| B-10 | Non joué | Fusion de deux fiches de beurre : pas de doublon à fusionner, non créé pour ne pas polluer les données. |
+| B-17 | Conforme (partiel) | « Sac à baguette » créé par erreur comme matière, puis « Le déplacer vers Consommables » : la conversion fonctionne (stock et historique transférés, matière retirée). Mais un consommable « Sac à baguette » existait déjà (partie B) : la conversion en crée un second, sans catégorie, sans signaler le doublon (constat 129). À l'écran, le premier essai n'a rien envoyé : la catégorie choisie dans la liste n'avait pas été retenue. |
+| B-18 | Non joué | Four à sole comme matière : non créé (la ligne de BC « immobilisation » existe pour l'équipement, mig 349). |
+| B-19 | Conforme (après correction, constat 128) | Supprimer la Farine T55, employée dans 14 fiches : refus nommant les fiches, plus de « Forcer la suppression » efficace. |
+
 ## Partie E — Paramétrage de la production, suite (2026-11-21, Gérant)
 
 | ID | Statut | Constat |
