@@ -43,6 +43,17 @@ describe.skipIf(!hasTestDb)("Type d'article (item_kind)", () => {
     await expect(p().query(`UPDATE products SET item_kind = 'bogus' WHERE id = $1`, [id])).rejects.toThrow();
   });
 
+  it('la liste des produits renvoie item_kind (la fiche ouverte depuis la liste garde « Revente », constat 101)', async () => {
+    const name = `Soda liste ${RUN}`;
+    const id = (await p().query(
+      `INSERT INTO products (name, slug, price, item_kind) VALUES ($1, $2, 7, 'resale') RETURNING id`,
+      [name, `soda-liste-${RUN}`])).rows[0].id;
+    ids.push(id);
+    const { rows } = await products.findAll({ search: name, limit: 10, offset: 0 });
+    const row = (rows as Record<string, unknown>[]).find(r => r.id === id);
+    expect(row?.item_kind).toBe('resale');
+  });
+
   it('le validateur accepte les 4 natures et refuse une inconnue', () => {
     for (const k of ['manufactured', 'resale', 'service', 'subscription']) {
       expect(updateProductSchema.safeParse({ itemKind: k }).success).toBe(true);

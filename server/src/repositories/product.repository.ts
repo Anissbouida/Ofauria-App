@@ -71,6 +71,9 @@ export const productRepository = {
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
               p.sale_unit, p.price_per_kg, p.price_per_person, p.sku, p.barcode,
               p.tax_code, p.price_includes_tax,
+              -- Nature de l'article : sans elle, la fiche ouverte depuis la liste retombait
+              -- sur « Fabriqué » (recette obligatoire) pour un article de revente (constat 101).
+              p.item_kind,
               p.created_at, p.updated_at,
               ${stockColumns}
               ${lotMetricsCols}
