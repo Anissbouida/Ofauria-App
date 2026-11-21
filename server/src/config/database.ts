@@ -22,6 +22,13 @@ pool.on('connect', (client) => {
   client.query(`SET TIME ZONE '${DB_TIMEZONE}'`).catch((err) => {
     logger.error({ err: err }, '[db] impossible de fixer le fuseau de session');
   });
+  // JIT désactivé (scénario 1, constat 112) : les requêtes de l'application sont courtes,
+  // mais le coût estimé des vues et fonctions de coût imbriquées déclenche la compilation
+  // JIT, qui coûte bien plus que l'exécution : liste des fiches 68 ms sans JIT, 0,9 à 10 s
+  // avec (selon la fraîcheur des statistiques).
+  client.query('SET jit = off').catch((err) => {
+    logger.error({ err: err }, '[db] impossible de désactiver le JIT de session');
+  });
 });
 
 pool.on('error', (err) => {
