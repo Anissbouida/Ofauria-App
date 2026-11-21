@@ -513,6 +513,47 @@ export const ingredientRepository = {
       };
     }
 
+    // 1 bis) Scénario 1, constat 128 — la composition actuelle des fiches (par format) n'était
+    // pas lue : une matière employée dans quatre fiches passait pour inutilisée.
+    const formatUses = await db.query(
+      `SELECT COUNT(DISTINCT r.id)::int AS n, COALESCE(string_agg(DISTINCT r.name, ', ' ORDER BY r.name), '') AS names
+         FROM recipe_format_components c
+         JOIN recipe_formats f ON f.id = c.format_id
+         JOIN recipes r ON r.id = f.recipe_id
+        WHERE c.source_ingredient_id = $1`,
+      [id]
+    );
+    const formatCount = formatUses.rows[0]?.n ?? 0;
+    if (formatCount > 0) {
+      const names = String(formatUses.rows[0]?.names || '').split(', ').filter(Boolean).slice(0, 3).join(', ');
+      const suffix = formatCount > 3 ? `… (${formatCount} au total)` : '';
+      return {
+        ok: false,
+        reason: `Cette matière entre dans ${formatCount} fiche(s) technique(s) : ${names}${suffix}. Retirez-la de ces fiches avant de la supprimer.`,
+      };
+    }
+
+    // 1 ter) Constat 128 — une matière déjà achetée a une histoire (BC, réceptions, factures) :
+    // la supprimer effaçait les lignes de réception et de commande. Refus ; elle reste dans la
+    // liste, rangée « Sans usage » quand elle n'a plus de stock ni de fiche.
+    const history = (await db.query(
+      `SELECT (SELECT COUNT(*) FROM reception_voucher_items WHERE ingredient_id = $1)::int AS receptions,
+              (SELECT COUNT(*) FROM purchase_order_items WHERE ingredient_id = $1)::int AS commandes,
+              (SELECT COUNT(*) FROM invoice_items WHERE ingredient_id = $1)::int AS factures`,
+      [id]
+    )).rows[0] ?? { receptions: 0, commandes: 0, factures: 0 };
+    if (history.receptions > 0 || history.commandes > 0 || history.factures > 0) {
+      const parts = [
+        history.commandes ? `${history.commandes} ligne(s) de commande` : null,
+        history.receptions ? `${history.receptions} réception(s)` : null,
+        history.factures ? `${history.factures} ligne(s) de facture` : null,
+      ].filter(Boolean).join(', ');
+      return {
+        ok: false,
+        reason: `Cette matière a déjà été achetée (${parts}) : la supprimer effacerait cet historique. Elle reste dans la liste ; sans stock ni fiche, elle est rangée « Sans usage ».`,
+      };
+    }
+
     // 2) Stock actif : bloque seulement si force=false. En mode force, le stock
     // sera jete et trace plus bas comme 'waste' pour preserver l'audit ONSSA.
     const activeStock = await db.query(
