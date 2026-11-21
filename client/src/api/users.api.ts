@@ -22,6 +22,8 @@ export const usersApi = {
   /** G6-05 : langue de l'interface de l'utilisateur connecté (null = défaut de la société). */
   setMyLocale: (locale: 'fr' | 'ar' | 'en' | null) => api.put('/users/me/locale', { locale }).then(r => r.data.data),
   myPermissions: () => api.get('/users/me/permissions').then(r => r.data.data),
+  /** Clés de droits par action de l'utilisateur connecté (constat 111). */
+  myActionPermissions: (): Promise<string[]> => api.get('/users/me/action-permissions').then(r => r.data.data.keys as string[]),
   // Fiches salariees pour le lien espace employe (employees.user_id).
   employeesForLink: () => api.get('/users/employees-link').then(r => r.data.data) as Promise<{ id: string; name: string; user_id: string | null }[]>,
 };

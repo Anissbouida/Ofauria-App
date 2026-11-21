@@ -229,7 +229,8 @@
   "manager"
  ],
  "DELETE /recipes/:id": [
-  "admin"
+  "admin",
+  "manager"
  ],
  "DELETE /recipes/:recipeId/formats/:formatId": [
   "admin",
@@ -2655,6 +2656,7 @@
  "GET /users/employees-link": [
   "admin"
  ],
+ "GET /users/me/action-permissions": null,
  "GET /users/me/permissions": null,
  "GET /users/roles": [
   "admin"
@@ -4214,7 +4216,8 @@
   "viennoiserie"
  ],
  "POST /recipes/:id/restore": [
-  "admin"
+  "admin",
+  "manager"
  ],
  "POST /recipes/:id/substitutes": [
   "admin",
@@ -4249,7 +4252,8 @@
   "viennoiserie"
  ],
  "POST /recipes/bulk-archive": [
-  "admin"
+  "admin",
+  "manager"
  ],
  "POST /recipes/bulk-delete": [
   "admin"
@@ -4265,7 +4269,8 @@
   "manager"
  ],
  "POST /recipes/bulk-restore": [
-  "admin"
+  "admin",
+  "manager"
  ],
  "POST /recipes/import/commit": [
   "admin"

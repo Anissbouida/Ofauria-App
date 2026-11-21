@@ -17,6 +17,8 @@ import { useAuth } from '../../context/AuthContext';
 import RecipeImportModal from './RecipeImportModal';
 import BulkReplaceModal from './BulkReplaceModal';
 import type { RecipeCategory } from '../../api/recipes.api';
+import { useActionPermissions } from '../../hooks/useActionPermissions';
+import { apiErrorMessage } from '../../api/errors';
 
 type ActiveTab = 'product' | 'base' | 'contenants';
 type ViewMode = 'grid' | 'list';
@@ -61,6 +63,14 @@ export default function RecipesPage() {
     searchBase: sectorLabel('search_base_preps', 'Rechercher une préparation de base...'),
   };
   const isAdmin = user?.role === 'admin';
+  // Constat 111 : seuls les boutons permis sont montrés, et un refus s'affiche.
+  const { can } = useActionPermissions();
+  const canArchive = can('recipes.delete');          // DELETE /recipes/:id archive la fiche
+  const canRestore = can('recipes.restore');
+  const canBulkArchive = can('recipes.bulk_archive');
+  const canBulkRestore = can('recipes.bulk_restore');
+  const canBulkDelete = can('recipes.bulk_delete');
+  const onActionError = (e: unknown) => notify.error(apiErrorMessage(e, 'Action refusée'));
   // Vue « Archivées » : fiches retirées des listes (retenues par l'historique de
   // production, ou mises de côté) — consultables et restaurables, jamais mélangées
   // aux actives. La clé de query préfixée 'recipes' reste invalidée par les
@@ -112,10 +122,12 @@ export default function RecipesPage() {
   const deleteMutation = useMutation({
     mutationFn: recipesApi.remove,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['recipes'] }); notify.success('Fiche archivée — restaurable depuis la vue Archivées'); },
+    onError: onActionError,
   });
   const restoreMutation = useMutation({
     mutationFn: recipesApi.restore,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['recipes'] }); notify.success('Fiche restaurée'); },
+    onError: onActionError,
   });
 
   // Sélection multiple (vue liste, admin) : suppression en masse par onglet.
@@ -142,6 +154,7 @@ export default function RecipesPage() {
         notify.success(`${result.deletedCount} fiche(s) supprimée(s)`);
       }
     },
+    onError: onActionError,
   });
   const bulkArchiveMutation = useMutation({
     mutationFn: recipesApi.bulkArchive,
@@ -150,6 +163,7 @@ export default function RecipesPage() {
       setSelectedIds(new Set());
       notify.success(`${result.archivedCount} fiche(s) archivée(s)`);
     },
+    onError: onActionError,
   });
   const bulkRestoreMutation = useMutation({
     mutationFn: recipesApi.bulkRestore,
@@ -158,6 +172,7 @@ export default function RecipesPage() {
       setSelectedIds(new Set());
       notify.success(`${result.restoredCount} fiche(s) restaurée(s)`);
     },
+    onError: onActionError,
   });
 
   /** L'onglet Bases et l'onglet Produits partagent le tableau mais pas les colonnes :
@@ -462,21 +477,23 @@ export default function RecipesPage() {
           <button onClick={() => setSelectedIds(new Set())} className="odoo-btn-secondary">
             Tout désélectionner
           </button>
-          {showArchived ? (
+          {showArchived ? (canBulkRestore && (
             <button onClick={() => bulkRestoreMutation.mutate([...selectedIds])} className="odoo-btn-secondary"
               disabled={bulkRestoreMutation.isPending}>
               <ArchiveRestore size={13} /> {bulkRestoreMutation.isPending ? 'Restauration…' : 'Restaurer la sélection'}
             </button>
-          ) : (
+          )) : (canBulkArchive && (
             <button onClick={askBulkArchive} className="odoo-btn-secondary"
               disabled={bulkArchiveMutation.isPending}>
               <Archive size={13} /> {bulkArchiveMutation.isPending ? 'Archivage…' : 'Archiver la sélection'}
             </button>
-          )}
+          ))}
+          {canBulkDelete && (
           <button onClick={askBulkDelete} className="odoo-btn-danger"
             disabled={bulkDeleteMutation.isPending}>
             <Trash2 size={13} /> {bulkDeleteMutation.isPending ? 'Suppression…' : 'Supprimer la sélection'}
           </button>
+          )}
         </div>
       )}
 
@@ -741,26 +758,21 @@ export default function RecipesPage() {
                           disabled={printingId === r.id}>
                           <Printer size={13} />
                         </button>
-                        {showArchived && (
-                          <button onClick={(e) => { e.stopPropagation(); bulkRestoreMutation.mutate([r.id as string]); }}
-                            className="odoo-pager-btn" title="Restaurer la fiche"
-                            disabled={bulkRestoreMutation.isPending}>
-                            <ArchiveRestore size={13} />
-                          </button>
-                        )}
-                        {showArchived ? (
+                        {/* Un seul bouton par geste, montré seulement s'il est permis (constat 111). */}
+                        {showArchived ? (canRestore && (
                           <button onClick={(e) => { e.stopPropagation(); restoreMutation.mutate(r.id as string); }}
-                            className="odoo-pager-btn" title="Restaurer"
+                            className="odoo-pager-btn" title="Restaurer la fiche"
+                            disabled={restoreMutation.isPending}
                             style={{ color: '#28a745' }}>
                             <ArchiveRestore size={13} />
                           </button>
-                        ) : (
+                        )) : (canArchive && (
                           <button onClick={(e) => { e.stopPropagation(); askDelete(r); }}
-                            className="odoo-pager-btn" title="Archiver"
+                            className="odoo-pager-btn" title="Archiver la fiche (restaurable)"
                             style={{ color: '#dc3545' }}>
                             <Archive size={13} />
                           </button>
-                        )}
+                        ))}
                       </div>
                     </td>
                   </tr>
