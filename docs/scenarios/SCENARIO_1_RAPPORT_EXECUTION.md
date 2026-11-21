@@ -12,7 +12,7 @@ résultat, partie par partie.
 
 | Partie | Cas | Joués | Conformes | Écarts | Sans objet | Non joués |
 |---|---|---|---|---|---|---|
-| E. Paramétrage de la production | 8 | 2 | 1 | 1 | 0 | 6 |
+| E. Paramétrage de la production | 8 | 6 | 4 | 2 | 0 | 2 |
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 21 | 9 | 12 | 0 | 3 |
@@ -676,6 +676,17 @@ autres sont joués ici.
 Pain rond a été créée (vide d'abord, pour D-09, puis composée), non liée au produit ; la
 ganache de l'Éclair est revenue à 15 g.
 
+## Partie E — Paramétrage de la production, suite (2026-11-21, Gérant)
+
+| ID | Statut | Constat |
+|---|---|---|
+| E-03 | Non joué | Majorations globale et par catégorie : réglées dans Paramètres › Production, écran réservé à l'administrateur. |
+| E-04 | Conforme (constaté) | L'arrondi au demi-dirham est actif (`au_demi_dh`) : les prix conseillés des fiches tombent sur ,00 ou ,50 (Baguette 3,50, Pain rond 5,50, Pain de mie 14,50). |
+| E-05 | Conforme (partiel) | Taux de charges fixes −5 % : refusé par le navigateur (« Value must be greater than or equal to 0 », en anglais), rien d'enregistré (40 % conservé). Majoration de 1 000 % non jouable : elle se règle dans Paramètres (administrateur). |
+| E-06 | Conforme (partiel) | Postes de travail créés avec leur coût horaire : Four 40 DH/h, Pétrin 25 DH/h, 480 min/jour. Ils servent au coût de main-d'œuvre standard des gammes, à la charge des postes et à l'écart main-d'œuvre standard / réel ; le coût réel d'un plan ne les compte pas directement (il s'appuie sur les étapes et les paramètres de la fiche). |
+| E-07 | Écart | Le gérant ouvre Production › Paramétrage et l'enregistre (tolérance de surproduction 0 → 10 % acceptée, remise à 0) ; le scénario prévoyait un paramétrage réservé à l'administrateur. L'onglet Impressions demande trois fois ses réglages et reçoit trois refus (403) sans rien afficher (constat 127). |
+| E-08 | Non joué | Passage du contrôle des droits en mode bloquant : Utilisateurs › Rôles, administrateur. NB : la garde des modules est en mode « observation » sur la base de développement (constat 105). |
+
 ## Parties I et T — Contrôles de fin de scénario et cas transverses (2026-11-21, Gérant, Caissier)
 
 Les contrôles réservés à l'administrateur (vue d'ensemble du paramétrage, écran Qualité des
@@ -838,10 +849,11 @@ possible.
 | 124 | Haute | TVA d'achat absente (I-08) : aucun article ni catégorie n'a de code de TVA par défaut ; les lignes de BC, de réception et de facture fournisseur sont donc sans taux, alors que les fournisseurs sont assujettis (sauf la ferme avicole et la société d'épices). Aucune TVA récupérable n'est enregistrée, les achats sont comptés TTC en charge. À décider puis paramétrer : taux par article (farine, sucre, beurre, chocolat… n'ont pas le même), proposé par défaut sur le BC ; et une alerte à la validation d'une facture d'un fournisseur assujetti sans TVA. | I-08 |
 | 125 | Corrigée | Corrigé : la piste d'audit (mig 578) lit l'auteur dans `app.user_id`, que seuls quelques dépôts posaient ; la plupart des modifications étaient sans auteur (fiches, produits, fournisseurs). `authenticate` exécute désormais la suite de la requête dans `runWithActor` ; toute connexion empruntée pour écrire (requête d'écriture, transaction, connexion explicite) porte l'auteur, remis à zéro au retour au pool ; les lectures restent directes. Test `audit-actor-context.db.test.ts` (écriture simple, transaction, pas de fuite hors requête). Vérifié : modification de la fiche Pain de mie attribuée à Karim Bennani. | I-07 |
 | 126 | Faible | Tablette (768 px) : le menu latéral des modules tronque ses libellés (« Registre des… », « Emplaceme… »). | T-12 |
+| 127 | Faible | Paramétrage de la production (E-07) : le gérant l'ouvre et l'enregistre, alors que le scénario le réservait à l'administrateur (à décider : droit « Paramètres › Production » du gérant) ; l'onglet Impressions demande trois fois ses réglages (`/production/print-templates/settings`) et reçoit trois refus 403 sans message. | E-07 |
 
 ## Reste à jouer
 
 Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
 première DLC atteinte), G-14 (second volet : vitrine et vente de l'eau). Partie H :
 H-09 (imprimante à configurer). Partie C : C-06, C-09 (fiches manquantes), C-23 (administrateur),
-second volet de C-20 (après une vente). Partie D : D-52 (double rôle, à attribuer par l'administrateur). Partie I : I-01, I-02 (administrateur). Puis E (suite).
+second volet de C-20 (après une vente). Partie D : D-52 (double rôle, à attribuer par l'administrateur). Partie I : I-01, I-02 (administrateur). Partie E : E-03, E-08 (administrateur).
