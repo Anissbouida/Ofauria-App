@@ -52,6 +52,10 @@ export const recipeComponentController = {
         res.status(409).json({ success: false, error: { message: (err as Error).message } });
         return;
       }
+      if ((err as { code?: string })?.code === 'STALE_FORMAT') {
+        res.status(409).json({ success: false, error: { code: 'STALE_FORMAT', message: (err as Error).message } });
+        return;
+      }
       throw err;
     }
   },

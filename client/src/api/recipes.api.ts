@@ -52,6 +52,8 @@ export interface FormatComponent {
 export interface FormatComponentsData {
   format: {
     id: string;
+    /** Jeton de version (constat 114) : renvoyé à l'enregistrement pour détecter un écrasement. */
+    version?: string;
     recipe_id: string;
     contenant_id: string | null;
     nb_par_defaut: number;

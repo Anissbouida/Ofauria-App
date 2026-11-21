@@ -23,6 +23,8 @@ const componentSchema = z
 // PUT remplace l'intégralité de la nomenclature d'un format + champs format optionnels.
 export const replaceComponentsSchema = z.object({
   components: z.array(componentSchema).default([]),
+  // Constat 114 : version du format chargée par l'écran (contrôle d'écrasement).
+  expectedVersion: z.string().regex(/^\d{1,20}$/).nullable().optional(),
   nbParDefaut: z.number().int().positive().nullable().optional(),
   nbParts: z.number().int().positive().nullable().optional(),
   poidsCruG: z.number().nonnegative().nullable().optional(),

@@ -232,6 +232,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   // Rendement auquel correspondent les quantités saisies (constat 113) : sert à proposer
   // la mise à l'échelle quand le rendement change.
   const [scaleBase, setScaleBase] = useState('');
+  // Version du format chargée (constat 114) : envoyée à l'enregistrement, le serveur refuse
+  // (409) si quelqu'un a modifié la composition entre-temps.
+  const versionRef = useRef<string | null>(null);
 
   const { data: roles = [] } = useQuery({ queryKey: ['component-roles'], queryFn: recipesApi.componentRoles, staleTime: 3e5 });
   const { data: sources } = useQuery({ queryKey: ['component-sources'], queryFn: recipesApi.componentSources, staleTime: 3e5 });
@@ -280,6 +283,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const applyData = useCallback(() => {
     if (!data) return;
     const f = data.format;
+    versionRef.current = f.version ?? null;
     const nextRows: Row[] = data.components.map((c) => ({
       key: newKey(), role: c.role ?? '', type: c.source_type,
       sourceId: c.source_recipe_id ?? c.source_ingredient_id ?? '',
@@ -582,7 +586,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           pertePct: Number.isFinite(perte) && perte > 0 ? perte : 0,
         };
       });
-      await recipesApi.saveFormatComponents(recipeId, formatId, {
+      const saved = await recipesApi.saveFormatComponents(recipeId, formatId, {
+        expectedVersion: versionRef.current,
         components,
         // En kg, le nombre de pièces est conservé tel quel (planification) : null = inchangé.
         nbParDefaut: enKg ? null : (parseInt(rendement) || null),
@@ -593,6 +598,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         // des chefs) — constat 38 du scénario 1.
         perteStandardPct: np(perte) ?? 0,
       });
+      versionRef.current = saved?.format?.version ?? versionRef.current;
       // Paramètres financiers : réservés au gérant (recipes.finance). Un refus (403) ne
       // fait pas échouer l'enregistrement : la composition est déjà enregistrée
       // (constat 21 du scénario 1 : le chef voyait « Accès interdit »).

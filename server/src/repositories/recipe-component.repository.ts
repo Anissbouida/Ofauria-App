@@ -15,6 +15,8 @@ export interface ComponentInput {
 
 export interface ReplacePayload {
   components: ComponentInput[];
+  /** Version du format chargée par l'écran (constat 114) : refus 409 si le format a changé depuis. */
+  expectedVersion?: string | null;
   nbParDefaut?: number | null;
   nbParts?: number | null;
   poidsCruG?: number | null;
@@ -149,6 +151,9 @@ export const recipeComponentRepository = {
     const fmt = await db.query(
       `SELECT f.id, f.recipe_id, f.contenant_id, f.nb_par_defaut, f.nb_parts,
               f.rendement_unite, f.rendement_kg,
+              -- Jeton de version (microsecondes, en texte : un Date JS perdrait la précision) :
+              -- deux sessions sur la même fiche ne s'écrasent plus en silence (constat 114).
+              (extract(epoch FROM f.updated_at) * 1000000)::bigint::text AS version,
               f.poids_cru_g, f.poids_cuit_g, f.cout_emballage_unitaire, f.is_default,
               f.densite_kg_l,
               -- M3-04 : poids dans l'unité saisie.
@@ -273,6 +278,22 @@ export const recipeComponentRepository = {
         return null;
       }
       const isDefault = owns.rows[0].is_default === true;
+
+      // Contrôle de version (scénario 1, constat 114) : si l'écran a chargé une autre version
+      // du format, quelqu'un l'a modifié entre-temps — refus plutôt qu'écrasement silencieux.
+      if (data.expectedVersion) {
+        const cur = (await client.query(
+          `SELECT (extract(epoch FROM f.updated_at) * 1000000)::bigint::text AS version, f.updated_at,
+                  NULLIF(btrim(concat_ws(' ', u.first_name, u.last_name)), '') AS who
+             FROM recipe_formats f LEFT JOIN users u ON u.id = f.updated_by
+            WHERE f.id = $1 FOR UPDATE OF f`, [formatId])).rows[0];
+        if (cur && cur.version !== data.expectedVersion) {
+          const at = new Date(cur.updated_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Casablanca' });
+          const err = new Error(`Cette composition a été modifiée${cur.who ? ` par ${cur.who}` : ''} à ${at} depuis que vous l'avez ouverte. Rechargez la fiche pour voir ses changements, puis refaites les vôtres.`);
+          (err as { code?: string }).code = 'STALE_FORMAT';
+          throw err;
+        }
+      }
 
       // Version complete AVANT modification (mig 346) : la nomenclature par format
       // n'etait jamais versionnee, seul le formulaire recette le faisait.
