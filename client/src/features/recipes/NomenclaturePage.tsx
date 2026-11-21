@@ -34,7 +34,12 @@ export default function NomenclaturePage() {
   const [kpi, setKpi] = useState<FormatKpi | null>(null);
   const [editIdentity, setEditIdentity] = useState(false);
 
-  const { data: recipe, isLoading } = useQuery({ queryKey: ['recipe', id], queryFn: () => recipesApi.getById(id!), enabled: !!id });
+  const { data: recipe, isLoading, error } = useQuery({
+    queryKey: ['recipe', id], queryFn: () => recipesApi.getById(id!), enabled: !!id,
+    retry: (n, e) => (e as { response?: { status?: number } })?.response?.status !== 403 && n < 1,
+  });
+  // Lecture des fiches réservée (`recipes.view`, scénario 1, constat 105).
+  const forbidden = (error as { response?: { status?: number } } | null)?.response?.status === 403;
   const { data: etapesStatus } = useQuery({ queryKey: ['recipe-etapes-status', id], queryFn: () => recipesApi.etapesStatus(id!), enabled: !!id });
 
   if (isLoading) {
@@ -46,7 +51,7 @@ export default function NomenclaturePage() {
         <div className="pd-page">
           <section className="prj-panel sal-empty">
             <ChefHat size={28} style={{ opacity: 0.4 }} />
-            <strong>{T.recipe} introuvable.</strong>
+            <strong>{forbidden ? "Vous n'avez pas accès aux fiches techniques." : `${T.recipe} introuvable.`}</strong>
             <button onClick={() => navigate('/recipes?tab=product')} className="odoo-btn-secondary">Retour aux {T.recipesLc}</button>
           </section>
         </div>

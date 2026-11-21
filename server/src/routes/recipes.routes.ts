@@ -110,28 +110,28 @@ router.post(
   validate(recipeNoBodySchema), recipeImportController.commit
 );
 
-router.get('/', authenticate, recipeController.list);
-router.get('/base', authenticate, recipeController.baseRecipes);
+router.get('/', authenticate, can('recipes.view'), recipeController.list);
+router.get('/base', authenticate, can('recipes.view'), recipeController.baseRecipes);
 router.get('/categories', authenticate, recipeController.listCategories);
 // Nomenclature par format (composants) — chemins génériques déclarés AVANT /:id.
 // G2-05 — poids cru / cuit des formats, en grille.
 router.get('/format-weights', authenticate, can('recipes.format_weights.view'), asyncHandler(recipeComponentController.formatWeights));
 router.put('/format-weights/:formatId', authenticate, can('recipes.format_weights'), validateUuidParams('formatId'), validate(formatWeightsSchema), asyncHandler(recipeComponentController.saveFormatWeights));
 router.get('/component-roles', authenticate, recipeComponentController.listRoles);
-router.get('/component-sources', authenticate, recipeComponentController.listSources);
+router.get('/component-sources', authenticate, can('recipes.view'), recipeComponentController.listSources);
 router.patch('/:recipeId/finance', authenticate, can('recipes.finance'), validate(financeSchema), recipeComponentController.saveFinance);
 router.patch('/:recipeId/identity', authenticate, can('recipes.identity'), validate(identitySchema), recipeComponentController.saveIdentity);
-router.get('/:recipeId/etapes-status', authenticate, validateUuidParams('recipeId'), asyncHandler(recipeComponentController.etapesStatus));
+router.get('/:recipeId/etapes-status', authenticate, can('recipes.view'), validateUuidParams('recipeId'), asyncHandler(recipeComponentController.etapesStatus));
 router.put('/:recipeId/etapes', authenticate, can('recipes.etapes'), validate(saveEtapesSchema), stepTypesOf, asyncHandler(recipeComponentController.saveEtapes));
-router.get('/:recipeId/children', authenticate, recipeComponentController.children);
+router.get('/:recipeId/children', authenticate, can('recipes.view'), recipeComponentController.children);
 // Explosion à plat (mig 400) — roadmap lot 5
-router.get('/:id/explosion', authenticate, recipeController.getExplosion);
-router.get('/:recipeId/formats', authenticate, recipeComponentController.listFormats);
+router.get('/:id/explosion', authenticate, can('recipes.view'), recipeController.getExplosion);
+router.get('/:recipeId/formats', authenticate, can('recipes.view'), recipeComponentController.listFormats);
 router.post('/:recipeId/formats', authenticate, can('recipes.formats'), validate(createFormatSchema), recipeComponentController.createFormat);
 router.post('/:recipeId/formats/:formatId/duplicate', authenticate, can('recipes.duplicate'), validate(duplicateFormatSchema), recipeComponentController.duplicateFormat);
 router.put('/:recipeId/formats/:formatId', authenticate, can('recipes.formats'), validate(updateFormatSchema), recipeComponentController.updateFormat);
 router.delete('/:recipeId/formats/:formatId', authenticate, can('recipes.formats.delete'), recipeComponentController.deleteFormat);
-router.get('/:recipeId/formats/:formatId/components', authenticate, recipeComponentController.list);
+router.get('/:recipeId/formats/:formatId/components', authenticate, can('recipes.view'), recipeComponentController.list);
 router.put(
   '/:recipeId/formats/:formatId/components',
   authenticate,
@@ -140,9 +140,9 @@ router.put(
   unitsOf,
   recipeComponentController.replace
 );
-router.get('/by-product/:productId', authenticate, recipeController.getByProductId);
+router.get('/by-product/:productId', authenticate, can('recipes.view'), recipeController.getByProductId);
 // Nomenclatures d'un produit (M4-04) — avant /:id.
-router.get('/for-product/:productId', authenticate, validateUuidParams('productId'), asyncHandler(async (req, res) => {
+router.get('/for-product/:productId', authenticate, can('recipes.view'), validateUuidParams('productId'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await recipesForProduct(req.params.productId as string) });
 }));
 // M4-04 : la nomenclature supplémentaire devient la fiche par défaut de son produit.
@@ -155,7 +155,7 @@ router.put('/:id/alternative', authenticate, validateUuidParams('id'), can('reci
   } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } }); }
 }));
 // Substituts d'article (M4-05).
-router.get('/:id/substitutes', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+router.get('/:id/substitutes', authenticate, can('recipes.view'), validateUuidParams('id'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await recipeSubstituteRepository.listForRecipe(req.params.id as string) });
 }));
 router.post('/:id/substitutes', authenticate, validateUuidParams('id'), can('recipes.edit'), validate(substituteSchema), asyncHandler(async (req, res) => {
@@ -169,7 +169,7 @@ router.delete('/substitutes/:subId', authenticate, validateUuidParams('subId'), 
   res.status(ok ? 200 : 404).json({ success: ok });
 }));
 // Sorties déclarées : co-produits, sous-produits (M4-06).
-router.get('/:id/outputs', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+router.get('/:id/outputs', authenticate, can('recipes.view'), validateUuidParams('id'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await recipeOutputRepository.list(req.params.id as string) });
 }));
 router.post('/:id/outputs', authenticate, validateUuidParams('id'), can('recipes.edit'), validate(recipeOutputSchema), asyncHandler(async (req, res) => {
@@ -182,13 +182,13 @@ router.delete('/outputs/:outputId', authenticate, validateUuidParams('outputId')
   res.status(ok ? 200 : 404).json({ success: ok });
 }));
 // Versions de nomenclature (M4-01).
-router.get('/:id/bom-versions', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+router.get('/:id/bom-versions', authenticate, can('recipes.view'), validateUuidParams('id'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await bomVersionRepository.list(req.params.id as string) });
 }));
-router.get('/:id/bom-versions/pending', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+router.get('/:id/bom-versions/pending', authenticate, can('recipes.view'), validateUuidParams('id'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await bomVersionRepository.pendingDiff(req.params.id as string) });
 }));
-router.get('/:id/bom-versions/compare', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+router.get('/:id/bom-versions/compare', authenticate, can('recipes.view'), validateUuidParams('id'), asyncHandler(async (req, res) => {
   try {
     res.json({ success: true, data: await bomVersionRepository.compare(req.params.id as string, Number(req.query.a), Number(req.query.b)) });
   } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } }); }
@@ -198,12 +198,12 @@ router.post('/:id/bom-versions/activate', authenticate, validateUuidParams('id')
     res.status(201).json({ success: true, data: await activateBomVersion(req.params.id as string, req.body, (req as never as { user: { userId: string } }).user.userId) });
   } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } }); }
 }));
-router.get('/:id', authenticate, recipeController.getById);
-router.get('/:id/versions', authenticate, recipeController.versions);
+router.get('/:id', authenticate, can('recipes.view'), recipeController.getById);
+router.get('/:id/versions', authenticate, can('recipes.view'), recipeController.versions);
 router.post('/:id/versions/:versionNumber/restore', authenticate, can('recipes.versions.restore'), validate(recipeNoBodySchema), recipeController.restoreVersion);
 // Fiche technique imprimable (PDF) — lecture seule, ouverte a tout utilisateur
 // authentifie : c'est le document que le labo pose sur le plan de travail.
-router.get('/:id/fiche-technique', authenticate, recipeController.downloadFiche);
+router.get('/:id/fiche-technique', authenticate, can('recipes.view'), recipeController.downloadFiche);
 router.post('/', authenticate, can('recipes.create'), validate(createRecipeSchema), stepTypesOf, unitsOf, recipeController.create);
 router.put('/:id', authenticate, can('recipes.edit'), validate(updateRecipeSchema), stepTypesOf, unitsOf, recipeController.update);
 // Archivage (mig 275 wip + 346) : DELETE archive, plus de suppression physique ;

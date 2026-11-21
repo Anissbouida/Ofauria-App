@@ -471,6 +471,8 @@ export const PERMISSIONS = {
   "recipes.import_template.view": { module: "recipes", label: "Importer template : consulter", defaultRoles: ["admin"] },
   "recipes.restore": { module: "recipes", label: "Recettes : restaurer", defaultRoles: ["admin"] },
   "recipes.revert": { module: "recipes", label: "Recettes : revert", defaultRoles: ["admin"] },
+  /** Lecture des fiches (composition, coûts, étapes) : production et magasin, pas la caisse (scénario 1, constat 105). */
+  "recipes.view": { module: "recipes", label: "Recettes : consulter", defaultRoles: ["admin", "baker", "beldi_sale", "magasinier", "manager", "pastry_chef", "viennoiserie"] },
   "recipes.versions.restore": { module: "recipes", label: "Versions : restaurer", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },
   "reconciliation.bulk": { module: "reconciliation", label: "Reconciliation : en masse", defaultRoles: ["admin", "manager"] },
   "reconciliation.bulk_appro": { module: "reconciliation", label: "Reconciliation : en masse appro", defaultRoles: ["admin", "manager"] },

@@ -66,10 +66,13 @@ export default function RecipesPage() {
   // aux actives. La clé de query préfixée 'recipes' reste invalidée par les
   // invalidateQueries(['recipes']) existants.
   const [showArchived, setShowArchived] = useState(false);
-  const { data: recipes = [], isLoading } = useQuery({
+  const { data: recipes = [], isLoading, error: listError } = useQuery({
     queryKey: ['recipes', { archived: showArchived }],
     queryFn: () => recipesApi.list(showArchived),
+    // Refus de droit (403, `recipes.view`) : définitif, pas de nouvel essai.
+    retry: (n, e) => (e as { response?: { status?: number } })?.response?.status !== 403 && n < 1,
   });
+  const forbidden = (listError as { response?: { status?: number } } | null)?.response?.status === 403;
   const { data: recipeCategories = [] } = useQuery<RecipeCategory[]>({
     queryKey: ['recipe-categories'],
     queryFn: recipesApi.listCategories,
@@ -335,6 +338,19 @@ export default function RecipesPage() {
   );
 
   const tabLabel = activeTab === 'contenants' ? T.formatsTab : activeTab === 'base' ? T.baseTab : T.finishedTab;
+
+  // Lecture des fiches réservée (scénario 1, constat 105) : la caisse n'y a pas accès.
+  if (forbidden) {
+    return (
+      <SalesPageShell icon={ChefHat} parent="Production" title={sectorLabel('recipes', 'Fiches techniques')} list>
+        <section className="prj-panel sal-empty">
+          <ChefHat size={28} style={{ opacity: 0.4 }} />
+          <strong>Vous n'avez pas accès aux fiches techniques.</strong>
+          <span>La consultation des fiches est réservée à la production, au magasin et à la direction.</span>
+        </section>
+      </SalesPageShell>
+    );
+  }
 
   return (
     <SalesPageShell icon={ChefHat} parent="Production" title={sectorLabel('recipes', 'Fiches techniques')} list

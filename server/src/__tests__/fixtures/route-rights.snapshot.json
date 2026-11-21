@@ -1993,33 +1993,177 @@
   "admin",
   "manager"
  ],
- "GET /recipes": null,
- "GET /recipes/:id": null,
- "GET /recipes/:id/bom-versions": null,
- "GET /recipes/:id/bom-versions/compare": null,
- "GET /recipes/:id/bom-versions/pending": null,
- "GET /recipes/:id/explosion": null,
- "GET /recipes/:id/fiche-technique": null,
- "GET /recipes/:id/outputs": null,
- "GET /recipes/:id/substitutes": null,
- "GET /recipes/:id/versions": null,
- "GET /recipes/:recipeId/children": null,
- "GET /recipes/:recipeId/etapes-status": null,
- "GET /recipes/:recipeId/formats": null,
- "GET /recipes/:recipeId/formats/:formatId/components": null,
- "GET /recipes/base": null,
+ "GET /recipes": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id/bom-versions": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id/bom-versions/compare": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id/bom-versions/pending": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id/explosion": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id/fiche-technique": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id/outputs": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id/substitutes": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:id/versions": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:recipeId/children": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:recipeId/etapes-status": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:recipeId/formats": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/:recipeId/formats/:formatId/components": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/base": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /recipes/bulk-replace/logs": [
   "admin",
   "manager"
  ],
- "GET /recipes/by-product/:productId": null,
+ "GET /recipes/by-product/:productId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /recipes/categories": null,
  "GET /recipes/component-roles": null,
- "GET /recipes/component-sources": null,
+ "GET /recipes/component-sources": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /recipes/export": [
   "admin"
  ],
- "GET /recipes/for-product/:productId": null,
+ "GET /recipes/for-product/:productId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /recipes/format-weights": [
   "admin",
   "baker",
