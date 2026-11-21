@@ -35,6 +35,8 @@ export interface Workshop {
   sortOrder: number;
   categoryIds: number[];
   categorySlugs: string[];
+  /** Catégories de production des fiches (mig 620). */
+  recipeCategoryIds: string[];
   memberRoles: string[];
   memberUsers: string[];
 }

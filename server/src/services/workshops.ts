@@ -19,6 +19,8 @@ export type Workshop = {
   sortOrder: number;
   categoryIds: number[];
   categorySlugs: string[];
+  /** Catégories de production des fiches (mig 620) : atelier des fiches sans produit. */
+  recipeCategoryIds: string[];
   memberRoles: string[];
   memberUsers: string[];
 };
@@ -31,20 +33,22 @@ let cache: { at: number; list: Workshop[] } | null = null;
 
 export async function listWorkshops(): Promise<Workshop[]> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.list;
-  const [ws, cats, members] = await Promise.all([
+  const [ws, cats, members, recipeCats] = await Promise.all([
     db.query(`SELECT code, label, work_center_id, is_default, is_active, sort_order FROM production_workshops ORDER BY sort_order, label`),
     db.query(`SELECT wc.workshop_code, c.id, c.slug FROM production_workshop_categories wc JOIN categories c ON c.id = wc.category_id`),
     db.query(`SELECT workshop_code, role_code, user_id FROM production_workshop_members`),
+    db.query(`SELECT workshop_code, recipe_category_id FROM production_workshop_recipe_categories`),
   ]);
   const list: Workshop[] = ws.rows.map(r => ({
     code: r.code, label: r.label, workCenterId: r.work_center_id, isDefault: r.is_default, isActive: r.is_active,
-    sortOrder: r.sort_order, categoryIds: [], categorySlugs: [], memberRoles: [], memberUsers: [],
+    sortOrder: r.sort_order, categoryIds: [], categorySlugs: [], recipeCategoryIds: [], memberRoles: [], memberUsers: [],
   }));
   const byCode = new Map(list.map(w => [w.code, w]));
   for (const c of cats.rows) {
     const w = byCode.get(c.workshop_code);
     if (w) { w.categoryIds.push(c.id); if (c.slug) w.categorySlugs.push(c.slug); }
   }
+  for (const c of recipeCats.rows) byCode.get(c.workshop_code)?.recipeCategoryIds.push(c.recipe_category_id);
   for (const m of members.rows) {
     const w = byCode.get(m.workshop_code);
     if (!w) continue;
@@ -102,6 +106,8 @@ export type WorkshopInput = {
   isActive: boolean;
   sortOrder: number;
   categoryIds: number[];
+  /** Absent : catégories de fiches inchangées. */
+  recipeCategoryIds?: string[];
   memberRoles: string[];
   memberUsers: string[];
 };
@@ -133,6 +139,18 @@ export async function saveWorkshop(code: string, input: WorkshopInput, userId?: 
       await client.query(
         `INSERT INTO production_workshop_categories (category_id, workshop_code) VALUES ($1, $2)
          ON CONFLICT (category_id) DO UPDATE SET workshop_code = EXCLUDED.workshop_code`, [id, code]);
+    }
+
+    // Catégories de fiches (mig 620) : même règle, une catégorie relève d'un seul atelier.
+    if (input.recipeCategoryIds) {
+      await client.query(
+        `DELETE FROM production_workshop_recipe_categories WHERE workshop_code = $1 AND NOT (recipe_category_id = ANY($2::uuid[]))`,
+        [code, input.recipeCategoryIds]);
+      await client.query(
+        `INSERT INTO production_workshop_recipe_categories (recipe_category_id, workshop_code)
+         SELECT unnest($2::uuid[]), $1
+         ON CONFLICT (recipe_category_id) DO UPDATE SET workshop_code = EXCLUDED.workshop_code`,
+        [code, input.recipeCategoryIds]);
     }
 
     const mem = await client.query(`SELECT role_code, user_id FROM production_workshop_members WHERE workshop_code = $1`, [code]);

@@ -14,6 +14,8 @@ import { sectorRepository } from '../repositories/sector.repository.js';
 import { printTemplateRepository } from '../repositories/print-template.repository.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 import { logger } from '../utils/logger.js';
+import { recipeWorkshop, canEditRecipe } from '../services/recipe-workshop.js';
+import { workshopLabel } from '../services/workshops.js';
 
 /** Gabarit « Fiche technique » (M8-04) : titre et mention paramétrables, raison sociale de la fiche société. */
 async function ficheTemplate() {
@@ -49,7 +51,10 @@ export const recipeController = {
   async getById(req: AuthRequest, res: Response) {
     const recipe = await recipeRepository.findById(req.params.id);
     if (!recipe) { res.status(404).json({ success: false, error: { message: 'Recette non trouvée' } }); return; }
-    res.json({ success: true, data: recipe });
+    // Atelier de la fiche et droit de la modifier (constat 106) : l'écran passe en lecture seule.
+    const workshop = await recipeWorkshop(req.params.id as string);
+    const canEdit = await canEditRecipe(req.user!, req.params.id as string);
+    res.json({ success: true, data: { ...recipe, workshop_code: workshop, workshop_label: workshop ? await workshopLabel(workshop) : null, can_edit: canEdit } });
   },
   async getExplosion(req: AuthRequest, res: Response) {
     const data = await recipeRepository.getExplosion(req.params.id as string);

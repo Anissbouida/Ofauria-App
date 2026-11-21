@@ -6,7 +6,8 @@ import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChefHat, Layers, Pencil, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ChefHat, Layers, Pencil, AlertTriangle, Lock } from 'lucide-react';
+import { StatusBanner } from '../../components/ui/StatusBanner';
 import RecipeCreateDialog from './RecipeCreateDialog';
 import { allergenLabel } from '../../constants/allergens';
 import { recipesApi } from '../../api/recipes.api';
@@ -59,6 +60,11 @@ export default function NomenclaturePage() {
     );
   }
 
+  // Fiche d'un autre atelier (constat 106) : consultation seule, le serveur refuse toute écriture.
+  const r = recipe as { can_edit?: boolean; workshop_label?: string | null };
+  const readOnly = r.can_edit === false;
+  const readOnlyReason = readOnly ? `Fiche de l'atelier ${r.workshop_label ?? '?'} : vous n'en êtes pas membre, elle est en lecture seule.` : null;
+
   const margeColor = kpi && kpi.margePct >= 50 ? 'var(--prj-green)' : kpi && kpi.margePct >= 30 ? 'var(--prj-orange)' : 'var(--prj-red)';
 
   return (
@@ -84,9 +90,9 @@ export default function NomenclaturePage() {
             <div style={{ flex: 1, minWidth: 260 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h1>{recipe.name}</h1>
-                <button type="button" onClick={() => setEditIdentity(true)} className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
+                {!readOnly && <button type="button" onClick={() => setEditIdentity(true)} className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
                   <Pencil size={13} />
-                </button>
+                </button>}
               </div>
               <div className="prj-hero-meta">
                 {recipe.product_name && <span>{recipe.product_name}</span>}
@@ -101,6 +107,9 @@ export default function NomenclaturePage() {
             La composition est définie <strong>par format (contenant)</strong> : chaque contenant a sa propre liste de quantités. Sélectionne ou ajoute un format ci-dessous.
           </p>
         </section>
+        {readOnlyReason && (
+          <StatusBanner tone="neutral" icon={Lock} title="Lecture seule">{readOnlyReason} Seuls ses membres, le gérant et l'administrateur la modifient.</StatusBanner>
+        )}
         {editIdentity && (
           <RecipeCreateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null,
             is_base: (recipe as { is_base?: boolean }).is_base ?? false,
@@ -167,20 +176,22 @@ export default function NomenclaturePage() {
         })()}
 
         <BomVersionBanner recipeId={recipe.id} />
-        <AlternativeOfPanel recipe={recipe} />
-        <SubstitutesPanel recipeId={recipe.id} />
-        <RecipeOutputsPanel recipeId={recipe.id} />
+        <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'contents' }}>
+          <AlternativeOfPanel recipe={recipe} />
+          <SubstitutesPanel recipeId={recipe.id} />
+          <RecipeOutputsPanel recipeId={recipe.id} />
+        </fieldset>
         <RecipeRoutingPanel recipeId={recipe.id} recipeName={recipe.name} />
         <CustomFieldsCard entity="recipe" id={recipe.id} />
         <HistoryPanel table="recipes" id={recipe.id} />
 
-        <NomenclatureEditor recipeId={recipe.id} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
+        <NomenclatureEditor recipeId={recipe.id} readOnly={readOnly} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
 
         {/* Explosion à plat (mig 400) : tous les ingrédients élémentaires cumulés sur tous les niveaux. */}
         <ExplosionSection recipeId={recipe.id} />
 
         {/* Mode opératoire : il n'apparaissait jusqu'ici que sur la fiche PDF. */}
-        <EtapesSection etapes={recipe.etapes || []} recipeId={recipe.id} editBlockedReason={etapesStatus?.frozen ? etapesStatus.reason : null} />
+        <EtapesSection etapes={recipe.etapes || []} recipeId={recipe.id} editBlockedReason={readOnlyReason ?? (etapesStatus?.frozen ? etapesStatus.reason : null)} />
 
         {/* Historique des versions + restauration (réintégré, L3). */}
         <VersionsSection recipeId={recipe.id} />

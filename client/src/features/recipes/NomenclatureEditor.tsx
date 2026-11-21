@@ -188,7 +188,9 @@ export interface FormatKpi {
   margePct: number;
 }
 
-export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void }) {
+export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel, readOnly = false }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void;
+  /** Fiche d'un autre atelier (constat 106) : consultation et impression seulement. */
+  readOnly?: boolean }) {
   // M8-03 : terme du lot de fabrication selon le secteur (« fournée » en boulangerie).
   const bLc = useProdTerms().batch.toLowerCase();
   const qc = useQueryClient();
@@ -1068,11 +1070,15 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 className="odoo-btn-secondary inline-flex items-center gap-1" title="Annuler les modifications et quitter">
                 <X size={15} /> Annuler
               </button>
+              {readOnly ? (
+                <span className="odoo-tag" title="Fiche d'un autre atelier : vous ne pouvez pas l'enregistrer">Lecture seule</span>
+              ) : (
               <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !isDirty}
                 className="odoo-btn-primary inline-flex items-center gap-1"
                 title={isDirty ? 'Enregistrer la composition et les paramètres financiers' : 'Aucune modification à enregistrer'}>
                 <Save size={15} /> {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
               </button>
+              )}
             </div>
           </div>
         </>

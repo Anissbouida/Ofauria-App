@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Factory, Pencil, Plus, X } from 'lucide-react';
 import { productionApi, type Workshop } from '../../api/production.api';
 import { categoriesApi } from '../../api/categories.api';
+import { recipesApi, type RecipeCategory } from '../../api/recipes.api';
 import { rolesApi, usersApi } from '../../api/users.api';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { notify } from '../../components/ui/InlineNotification';
@@ -17,7 +18,7 @@ import { SettingsSection } from './SettingsPrimitives';
  * membres. Remplace l'ancien « atelier = rôle du chef » codé en dur.
  */
 type Draft = { code: string; isNew: boolean; label: string; isDefault: boolean; isActive: boolean; sortOrder: number;
-  categoryIds: number[]; memberRoles: string[]; memberUsers: string[] };
+  categoryIds: number[]; recipeCategoryIds: string[]; memberRoles: string[]; memberUsers: string[] };
 
 const slugify = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
   .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^(\d)/, 'a_$1').slice(0, 30);
@@ -27,6 +28,7 @@ export default function WorkshopsCard() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const { data } = useQuery({ queryKey: ['production-workshops'], queryFn: productionApi.workshops });
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list });
+  const { data: recipeCats = [] } = useQuery<RecipeCategory[]>({ queryKey: ['recipe-categories'], queryFn: recipesApi.listCategories });
   const { data: roleRows = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list });
   const { data: userRows = [] } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
   const workshops = data?.workshops ?? [];
@@ -34,11 +36,12 @@ export default function WorkshopsCard() {
   const users = (userRows as { id: string; firstName: string; lastName: string; isActive?: boolean }[]).filter(u => u.isActive !== false);
   const roleLabel = (code: string) => roleRows.find(r => r.code === code)?.label ?? code;
   const ownerOf = (catId: number) => workshops.find(w => w.categoryIds.includes(catId));
+  const recipeOwnerOf = (catId: string) => workshops.find(w => (w.recipeCategoryIds ?? []).includes(catId));
 
   const save = useMutation({
     mutationFn: (d: Draft) => productionApi.saveWorkshop(d.code, {
       label: d.label.trim(), workCenterId: null, isDefault: d.isDefault, isActive: d.isActive, sortOrder: d.sortOrder,
-      categoryIds: d.categoryIds, memberRoles: d.memberRoles, memberUsers: d.memberUsers,
+      categoryIds: d.categoryIds, recipeCategoryIds: d.recipeCategoryIds, memberRoles: d.memberRoles, memberUsers: d.memberUsers,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['production-workshops'] });
@@ -50,11 +53,11 @@ export default function WorkshopsCard() {
 
   const open = (w?: Workshop) => setDraft(w
     ? { code: w.code, isNew: false, label: w.label, isDefault: w.isDefault, isActive: w.isActive, sortOrder: w.sortOrder,
-        categoryIds: [...w.categoryIds], memberRoles: [...w.memberRoles], memberUsers: [...w.memberUsers] }
+        categoryIds: [...w.categoryIds], recipeCategoryIds: [...(w.recipeCategoryIds ?? [])], memberRoles: [...w.memberRoles], memberUsers: [...w.memberUsers] }
     : { code: '', isNew: true, label: '', isDefault: false, isActive: true, sortOrder: (workshops.length + 1) * 10,
-        categoryIds: [], memberRoles: [], memberUsers: [] });
+        categoryIds: [], recipeCategoryIds: [], memberRoles: [], memberUsers: [] });
 
-  const toggle = <K extends 'categoryIds' | 'memberRoles' | 'memberUsers'>(key: K, value: Draft[K][number]) =>
+  const toggle = <K extends 'categoryIds' | 'recipeCategoryIds' | 'memberRoles' | 'memberUsers'>(key: K, value: Draft[K][number]) =>
     setDraft(d => {
       if (!d) return d;
       const list = d[key] as (typeof value)[];
@@ -68,7 +71,7 @@ export default function WorkshopsCard() {
 
   return (
     <SettingsSection title="Ateliers" columns={1}
-      description="Un atelier fabrique des catégories de produits et réunit ses membres (rôles ou utilisateurs). Ses plans de production, ses demandes boutique et ses notifications vont à ses membres.">
+      description="Un atelier fabrique des catégories de produits et réunit ses membres (rôles ou utilisateurs). Ses plans de production, ses demandes boutique et ses notifications vont à ses membres ; ses chefs modifient ses fiches techniques.">
       <div style={{ display: 'grid', gap: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button type="button" className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -133,6 +136,23 @@ export default function WorkshopsCard() {
                       <label key={c.id} style={box} title={elsewhere ? `Actuellement : ${owner!.label}` : undefined}>
                         <input type="checkbox" checked={draft.categoryIds.includes(c.id)} onChange={() => toggle('categoryIds', c.id)} />
                         <span>{c.name}{elsewhere && <span className="odoo-setting-help"> · {owner!.label}</span>}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div className="odoo-setting-label">Catégories de fiches techniques</div>
+                <p className="odoo-setting-help">Atelier des fiches sans produit lié (sinon, c'est la catégorie du produit qui compte). Un chef ne modifie que les fiches de ses ateliers ; une fiche d'une catégorie sans atelier (préparations de base) reste commune.</p>
+                <div style={grid}>
+                  {recipeCats.map(c => {
+                    const owner = recipeOwnerOf(c.id);
+                    const elsewhere = owner && owner.code !== draft.code;
+                    return (
+                      <label key={c.id} style={box} title={elsewhere ? `Actuellement : ${owner!.label}` : undefined}>
+                        <input type="checkbox" checked={draft.recipeCategoryIds.includes(c.id)} onChange={() => toggle('recipeCategoryIds', c.id)} />
+                        <span>{c.label}{elsewhere && <span className="odoo-setting-help"> · {owner!.label}</span>}</span>
                       </label>
                     );
                   })}

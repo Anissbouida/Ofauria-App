@@ -84,11 +84,12 @@ export const productionController = {
     const categoryIds = ints(b.categoryIds ?? []);
     const memberRoles = strs(b.memberRoles ?? []);
     const memberUsers = strs(b.memberUsers ?? []);
-    if (!categoryIds || !memberRoles || !memberUsers) { bad('Catégories ou membres invalides'); return; }
+    const recipeCategoryIds = b.recipeCategoryIds === undefined ? undefined : strs(b.recipeCategoryIds);
+    if (!categoryIds || !memberRoles || !memberUsers || recipeCategoryIds === null) { bad('Catégories ou membres invalides'); return; }
     const workCenterId = typeof b.workCenterId === 'string' && b.workCenterId ? b.workCenterId : null;
     try {
       await saveWorkshop(code, {
-        label, workCenterId, categoryIds, memberRoles, memberUsers,
+        label, workCenterId, categoryIds, recipeCategoryIds, memberRoles, memberUsers,
         isDefault: b.isDefault === true, isActive: b.isActive !== false,
         sortOrder: Number.isInteger(b.sortOrder) ? b.sortOrder as number : 100,
       }, req.user?.userId);

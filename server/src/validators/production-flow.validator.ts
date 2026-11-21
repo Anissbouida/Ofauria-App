@@ -98,6 +98,7 @@ export const saveWorkshopSchema = z.object({
   label: z.string({ error: 'Libellé invalide' }).max(200).optional(),
   workCenterId: z.string().max(80).nullish(),
   categoryIds: z.array(z.number({ error: 'Catégorie invalide' }).int('Catégorie invalide')).max(1000).nullish(),
+  recipeCategoryIds: z.array(z.string().guid('Catégorie de fiche invalide')).max(500).optional(),
   memberRoles: z.array(z.string({ error: 'Rôle invalide' }).max(80)).max(500).nullish(),
   memberUsers: z.array(z.string({ error: 'Utilisateur invalide' }).max(80)).max(1000).nullish(),
   // isDefault === true, isActive !== false, sortOrder entier sinon 100 : le contrôleur tolère
