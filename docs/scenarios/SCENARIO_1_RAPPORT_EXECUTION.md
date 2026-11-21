@@ -874,4 +874,4 @@ possible.
 Partie A : A-12, A-13, A-14 (administrateur). Partie B : B-10, B-18 (non créés pour ne pas polluer). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
 première DLC atteinte). Partie H :
 H-09 (imprimante à configurer). Partie C : C-06, C-09 (fiches manquantes), C-23 (administrateur),
-second volet de C-20 (après une vente). Partie D : D-52 (double rôle, à attribuer par l'administrateur). Partie I : I-01, I-02 (administrateur). Partie E : E-03, E-08 (administrateur).
+second volet de C-20 (administrateur ; une vente existe désormais, VNT-20261121-0001). Partie D : D-52 (double rôle, à attribuer par l'administrateur). Partie I : I-01, I-02 (administrateur). Partie E : E-03, E-08 (administrateur).
