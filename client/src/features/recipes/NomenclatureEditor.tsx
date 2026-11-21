@@ -1040,12 +1040,14 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[
                   { id: 'fin-mo', lbl: "Main d'œuvre", sfx: `${currencySymbol()}/h`, val: tauxMO, set: setTauxMO, ph: 'ex 30', step: 'any' },
-                  { id: 'fin-temps', lbl: `Temps / ${bLc}`, sfx: 'min', val: moMin, set: setMoMin, ph: dureeEtapes > 0 ? `étapes ${dureeEtapes}` : 'ex 90', step: '1' },
+                  { id: 'fin-temps', lbl: `Temps / ${bLc}`, sfx: 'min', val: moMin, set: setMoMin, ph: dureeEtapes > 0 ? `actif ${dureeEtapes}` : 'ex 90', step: '1',
+                    // Constat 110 : vide = temps ACTIF des étapes (hors pointage, apprêt, cuisson, refroidissement).
+                    title: 'Temps de main-d\'œuvre par fournée. Vide : temps actif des étapes, hors temps d\'attente (pointage, apprêt, cuisson, refroidissement).' },
                   { id: 'fin-energie', lbl: 'Énergie', sfx: `${currencySymbol()}/four.`, val: energie, set: setEnergie, ph: 'ex 15', step: 'any' },
                   { id: 'fin-structure', lbl: 'Structure', sfx: '%', val: structPct, set: setStructPct, ph: 'ex 15', step: 'any' },
                   { id: 'fin-mult', lbl: 'Multiplicateur', sfx: '×', val: mult, set: setMult, ph: 'ex 3', step: 'any' },
                 ].map((fld) => (
-                  <label key={fld.lbl} className="block" htmlFor={fld.id}>
+                  <label key={fld.lbl} className="block" htmlFor={fld.id} title={(fld as { title?: string }).title}>
                     <span className="text-[11px] text-gray-500">{fld.lbl}</span>
                     <span className="mt-1 flex items-center gap-1 rounded-md border border-gray-200 bg-white pr-2 focus-within:ring-2 focus-within:ring-primary-200 focus-within:border-primary-400">
                       <input id={fld.id} type="number" step={fld.step} min="0" value={fld.val} onChange={(e) => fld.set(e.target.value)}

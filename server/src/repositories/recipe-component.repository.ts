@@ -159,8 +159,7 @@ export const recipeComponentRepository = {
               r.margin_multiplier, r.taux_main_oeuvre_dh_h, r.main_oeuvre_min,
               r.cout_energie_fournee, r.taux_frais_structure_pct, r.perte_standard_pct,
               r.yield_quantity, pdef.image_url AS product_image,
-              COALESCE((SELECT SUM((s->>'duree_estimee_min')::numeric)
-                        FROM jsonb_array_elements(COALESCE(r.etapes, '[]'::jsonb)) s), 0) AS duree_etapes_min,
+              fn_etapes_duree_active(r.etapes) AS duree_etapes_min /* temps actif, hors attente (constat 110, mig 622) */,
               -- Mig 263 (audit A1) : produit vendu au POS pour ce format + prix pratique.
               -- Voir listFormats() pour la meme regle de resolution (pos_price_source).
               COALESCE(f.product_id, CASE WHEN f.is_default THEN r.product_id END) AS pos_product_id,
@@ -401,8 +400,7 @@ export const recipeComponentRepository = {
               (SELECT rf.nb_par_defaut FROM recipe_formats rf
                WHERE rf.recipe_id = r.id AND rf.is_active = true
                ORDER BY rf.is_default DESC, rf.ordre LIMIT 1) AS format_nb_par_defaut,
-              COALESCE((SELECT SUM((s->>'duree_estimee_min')::numeric)
-                        FROM jsonb_array_elements(COALESCE(r.etapes, '[]'::jsonb)) s), 0) AS duree_etapes_min
+              fn_etapes_duree_active(r.etapes) AS duree_etapes_min /* temps actif, hors attente (constat 110, mig 622) */
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
