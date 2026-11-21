@@ -37,6 +37,16 @@ export default function LoginPage() {
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Constat 121 : retour ici après une session expirée (api/client.ts) — on le dit, et l'on
+  // précise si la dernière modification n'a pas été enregistrée. Lu une seule fois.
+  const [expired] = useState<'read' | 'write' | null>(() => {
+    try {
+      const v = sessionStorage.getItem('kalum_session_expired');
+      return v === 'write' || v === 'read' ? v : null;
+    } catch { return null; }
+  });
+  // Effacée après coup (pas dans l'initialiseur, que React rejoue deux fois en mode strict).
+  useEffect(() => { try { sessionStorage.removeItem('kalum_session_expired'); } catch { /* rien */ } }, []);
 
   // Email form state
   const [email, setEmail] = useState('');
@@ -223,6 +233,16 @@ export default function LoginPage() {
         <h1 className="text-5xl font-bold" style={{ color: 'var(--theme-accent)' }}>{settings.companyName}</h1>
         <p className="mt-1" style={{ color: 'var(--theme-text-muted)' }}>{settings.subtitle}</p>
       </div>
+
+      {expired && (
+        <div role="alert" className="mb-6 max-w-xl text-center text-sm rounded-md px-4 py-3"
+          style={{ background: '#fef3c7', border: '1px solid #fcd34d', color: '#92400e' }}>
+          <strong>Votre session a expiré.</strong>{' '}
+          {expired === 'write'
+            ? 'Votre dernière modification n\'a pas été enregistrée : reconnectez-vous, puis refaites-la.'
+            : 'Reconnectez-vous pour continuer.'}
+        </div>
+      )}
 
       {!selected ? (
         // ── Étape 1 : choisir son nom ──

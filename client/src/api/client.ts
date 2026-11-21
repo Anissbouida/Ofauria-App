@@ -52,6 +52,12 @@ api.interceptors.response.use(
         localStorage.removeItem('ofauria_token');
         localStorage.removeItem('ofauria_user');
         if (!window.location.pathname.startsWith('/login')) {
+          // Constat 121 : la page de connexion dit pourquoi on y revient, et si la dernière
+          // action (une écriture) n'a pas été enregistrée — plus de perte silencieuse.
+          try {
+            const method = String(error.config?.method || 'get').toLowerCase();
+            sessionStorage.setItem('kalum_session_expired', method === 'get' ? 'read' : 'write');
+          } catch { /* stockage indisponible : la redirection suffit */ }
           window.location.href = '/login';
         }
       }
