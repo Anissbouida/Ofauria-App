@@ -107,6 +107,11 @@ export default function NomenclaturePage() {
             La composition est définie <strong>par format (contenant)</strong> : chaque contenant a sa propre liste de quantités. Sélectionne ou ajoute un format ci-dessous.
           </p>
         </section>
+        {(recipe as { compo_vide?: boolean }).compo_vide && (
+          <StatusBanner tone="danger" icon={AlertTriangle} title="Fiche incomplète : aucun composant">
+            Cette fiche n'a encore aucun ingrédient ni préparation de base : son coût est inconnu et elle ne peut pas servir en production. Complète la composition ci-dessous.
+          </StatusBanner>
+        )}
         {readOnlyReason && (
           <StatusBanner tone="neutral" icon={Lock} title="Lecture seule">{readOnlyReason} Seuls ses membres, le gérant et l'administrateur la modifient.</StatusBanner>
         )}

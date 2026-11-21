@@ -92,7 +92,11 @@ export const recipeRepository = {
               sp.prix_kg AS sale_prix_kg,
               dfc.nom AS default_contenant_nom,
               dfc.id IS NOT NULL AND dfc.nom ILIKE '%assemblage%' AS rendement_a_definir,
-              (vtc.total_cost IS NULL OR vtc.total_cost = 0) AS compo_vide,
+              -- Composition vide = aucune ligne (scénario 1, constat 107), et non plus « coût nul » :
+              -- un ingrédient sans prix n'est pas une composition vide (constat 108).
+              NOT EXISTS (SELECT 1 FROM recipe_format_components fc JOIN recipe_formats ff ON ff.id = fc.format_id WHERE ff.recipe_id = r.id)
+                AND NOT EXISTS (SELECT 1 FROM recipe_ingredients li WHERE li.recipe_id = r.id)
+                AND NOT EXISTS (SELECT 1 FROM recipe_sub_recipes ls WHERE ls.recipe_id = r.id) AS compo_vide,
               COALESCE((
                 SELECT jsonb_agg(jsonb_build_object(
                   'id', rf.id,
@@ -152,6 +156,9 @@ export const recipeRepository = {
               r.mode_cout, r.perte_standard_pct, r.pieces_par_fournee, r.compo_par_piece,
               r.created_at, r.updated_at,
               vtc.total_cost,
+              NOT EXISTS (SELECT 1 FROM recipe_format_components fc JOIN recipe_formats ff ON ff.id = fc.format_id WHERE ff.recipe_id = r.id)
+                AND NOT EXISTS (SELECT 1 FROM recipe_ingredients li WHERE li.recipe_id = r.id)
+                AND NOT EXISTS (SELECT 1 FROM recipe_sub_recipes ls WHERE ls.recipe_id = r.id) AS compo_vide,
               vtw.total_weight_kg,
               vfs.poids_utilise_kg AS formats_poids_utilise_kg,
               vfs.perte_kg AS formats_perte_kg,

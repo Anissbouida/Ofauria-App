@@ -634,12 +634,13 @@ export default function RecipesPage() {
                   : (productPrice > 0 ? productPrice : (rMargin > 0 ? costPerUnit * rMargin : 0));
                 const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
                 // Indicateur d'ÉTAT (santé donnée) : vide → rouge, rendement à définir → ambre, sinon vert.
-                const dotClass = r.is_base ? 'neutral'
-                  : r.compo_vide ? 'danger'
+                // Composition vide : signalée aussi sur une préparation de base (constat 107).
+                const dotClass = r.compo_vide ? 'danger'
+                  : r.is_base ? 'neutral'
                   : r.rendement_a_definir ? 'warning'
                   : 'ok';
-                const dotTitle = r.is_base ? T.base
-                  : r.compo_vide ? 'À corriger : composition vide'
+                const dotTitle = r.compo_vide ? 'Fiche incomplète : aucun composant'
+                  : r.is_base ? T.base
                   : r.rendement_a_definir ? 'Rendement à définir (contenant non assigné)'
                   : 'OK';
                 const formatNom = (r.default_contenant_nom as string) || (r.contenant_nom as string) || '';
@@ -663,7 +664,7 @@ export default function RecipesPage() {
                           </span>
                         )}
                         {/* L'état de la donnée n'est pas porté par la seule pastille : libellé visible. */}
-                        {!r.is_base && r.compo_vide && <StatusTag tone="blocked" label="À corriger" title={dotTitle} />}
+                        {r.compo_vide && <StatusTag tone="blocked" label="Composition vide" title={dotTitle} />}
                         {!r.is_base && !r.compo_vide && r.rendement_a_definir && <StatusTag tone="todo" label="Rendement à définir" title={dotTitle} />}
                       </span>
                     </td>

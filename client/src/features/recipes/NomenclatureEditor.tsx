@@ -414,6 +414,19 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   };
   const badConversionCount = rows.filter(isBadConversion).length;
 
+  // Saisie contrôlée (scénario 1, constat 107).
+  //  - une ligne qui désigne un composant doit avoir une quantité > 0 : elle n'est plus
+  //    écartée en silence à l'enregistrement, l'enregistrement est refusé ;
+  //  - un même composant sur plusieurs lignes est signalé (pas additionné : un ajout en
+  //    deux temps, farine du levain puis de la pâte, peut être voulu).
+  const isBadQty = (r: Row): boolean => !!(r.type && r.sourceId) && !(parseFloat(r.quantite) > 0);
+  const badQtyRows = rows.filter(isBadQty);
+  const lineName = (r: Row) => sourceMap[`${r.type}:${r.sourceId}`]?.name ?? 'composant';
+  const dupCounts: Record<string, number> = {};
+  rows.forEach((r) => { if (r.type && r.sourceId) dupCounts[`${r.type}:${r.sourceId}`] = (dupCounts[`${r.type}:${r.sourceId}`] ?? 0) + 1; });
+  const dupKeys = Object.keys(dupCounts).filter((k) => dupCounts[k] > 1);
+  const isDup = (r: Row): boolean => !!(r.type && r.sourceId) && dupCounts[`${r.type}:${r.sourceId}`] > 1;
+
   // Mig 613 : en kg, le rendement est décimal (peut être < 1) et tous les montants
   // « par pièce » ci-dessous deviennent des montants au kilo. Une composition saisie
   // par pièce reste par pièce.
@@ -529,7 +542,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       if (enKg && !(rendementKgNum != null && rendementKgNum > 0)) {
         throw new Error('Saisis le rendement en kg de la fournée.');
       }
-      const components = rows.filter((r) => r.type && r.sourceId && parseFloat(r.quantite) > 0).map((r, i) => {
+      if (badQtyRows.length) {
+        throw new Error(`Quantité nulle, négative ou manquante : ${[...new Set(badQtyRows.map(lineName))].join(', ')}. Saisis une quantité supérieure à 0 ou supprime la ligne.`);
+      }
+      const filled = rows.filter((r) => r.type && r.sourceId);
+      if (!filled.length) throw new Error('Composition vide : ajoute au moins un ingrédient ou une préparation de base avant d\'enregistrer.');
+      const components = filled.map((r, i) => {
         // Mig 265 (audit A5) : envoie la perte % ligne pour majorer matiere et besoins.
         const perte = r.pertePct != null && r.pertePct !== '' ? parseFloat(r.pertePct.replace(',', '.')) : 0;
         return {
@@ -635,6 +653,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     const pp = compoParPiece ? batchRatio(r) : null;
     const aberrant = isAberrant(r);
     const badConv = isBadConversion(r);
+    const badQty = isBadQty(r);
+    const dup = isDup(r);
     const canExpand = r.type === 'recipe' && !!r.sourceId;
     const isOpen = !!expanded[r.key];
     const roleCls = ROLE_COLOR[r.role] || 'bg-gray-100 text-gray-500';
@@ -673,11 +693,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           <div className="min-w-0">
             <SourcePicker options={sourceOpts} value={src ?? null}
               onPick={(o) => setRow(r.key, { type: o.type, sourceId: o.id, unite: o.unit === 'unit' ? r.unite : o.unit })} />
+            {dup && <div className="text-[10px] mt-0.5 text-amber-700"><AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />Saisi sur plusieurs lignes</div>}
           </div>
           <div>
             <input type="number" step="any" min="0"
               aria-label={compoParPiece ? 'Quantité par pièce' : `Quantité par ${bLc}`}
-              className={`h-8 w-full px-2 rounded-md text-sm text-right tabular-nums border focus:outline-none focus:ring-2 ${aberrant ? 'border-red-300 bg-red-50 text-red-700 focus:ring-red-100' : 'border-gray-200 bg-white focus:ring-primary-200 focus:border-primary-400'}`}
+              className={`h-8 w-full px-2 rounded-md text-sm text-right tabular-nums border focus:outline-none focus:ring-2 ${aberrant || badQty ? 'border-red-300 bg-red-50 text-red-700 focus:ring-red-100' : 'border-gray-200 bg-white focus:ring-primary-200 focus:border-primary-400'}`}
               value={r.quantite} onChange={(e) => setRow(r.key, { quantite: e.target.value })} placeholder="0" />
             {pp != null ? (
               <div className={`text-[10px] mt-0.5 text-right ${pp >= 1 ? 'text-red-500' : 'text-gray-400'}`} title="Fournées de la recette de base consommées par pièce">
@@ -919,6 +940,23 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 <span>
                   <strong>{badConversionCount} conversion{badConversionCount > 1 ? 's' : ''} d'unité douteuse{badConversionCount > 1 ? 's' : ''}</strong>
                   {' — '}le coût affiché est peut-être faux. Choisis une unité de la même famille que la source (g/kg/mg entre elles, ml/cl/dl/l entre elles), ou renseigne la densité de l'ingrédient pour un croisement poids ↔ volume.
+                </span>
+              </div>
+            )}
+
+            {badQtyRows.length > 0 && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-[13px] text-red-700">
+                <AlertTriangle size={15} className="shrink-0" />
+                <span><strong>{badQtyRows.length} ligne{badQtyRows.length > 1 ? 's' : ''} sans quantité valide</strong> ({[...new Set(badQtyRows.map(lineName))].join(', ')}) — saisis une quantité supérieure à 0 ou supprime la ligne ; l'enregistrement est bloqué en attendant.</span>
+              </div>
+            )}
+
+            {dupKeys.length > 0 && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-[13px] text-amber-800">
+                <AlertTriangle size={15} className="shrink-0" />
+                <span>
+                  <strong>{dupKeys.map((k) => `${sourceMap[k]?.name ?? 'composant'} (${dupCounts[k]} lignes)`).join(', ')}</strong>
+                  {' — '}saisi plusieurs fois. Les lignes s'ajoutent dans le coût et les besoins ; regroupe-les en une seule, sauf si c'est voulu (ajout en deux temps).
                 </span>
               </div>
             )}
