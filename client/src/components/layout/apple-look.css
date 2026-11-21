@@ -40,7 +40,9 @@
 /* La colonne garde la teinte de la barre jusqu'en bas de page (la barre elle-même est collante). */
 .kl-apple .module-shell-body { grid-template-columns: 236px minmax(0, 1fr); background: linear-gradient(to right, var(--kl-nav) 0 235px, var(--kl-sep) 235px 236px, var(--kl-bg) 236px); }
 .kl-apple .module-shell-nav { background: var(--kl-nav); border-right: 1px solid var(--kl-sep); padding: 12px 10px; }
-@media (max-width: 900px) { .kl-apple .module-shell-body { background: var(--kl-bg); } }
+/* Constat 126 : sous 900 px, le menu du module passe au-dessus (module-shell.css) ; la
+   règle ci-dessus, plus précise, gardait deux colonnes et tronquait les libellés sur tablette. */
+@media (max-width: 900px) { .kl-apple .module-shell-body { grid-template-columns: minmax(0, 1fr); background: var(--kl-bg); } }
 .kl-apple .module-shell-group { padding: 0 0 6px; }
 .kl-apple .module-shell-group + .module-shell-group { border-top: 0; padding-top: 4px; }
 .kl-apple .module-shell-group-title { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--kl-muted); padding: 10px 10px 4px; }

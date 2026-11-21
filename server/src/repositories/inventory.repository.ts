@@ -659,6 +659,20 @@ export const ingredientRepository = {
         };
       }
 
+      // Scénario 1, constat 129 — un consommable du même nom existe déjà : la conversion en
+      // créait un second, sans le signaler. Refus explicite (à fusionner ou renommer d'abord).
+      const twin = await client.query(
+        `SELECT id, name FROM packaging_items WHERE lower(btrim(name)) = lower(btrim($1)) LIMIT 1`,
+        [ing.name]
+      );
+      if (twin.rows[0]) {
+        await client.query('ROLLBACK');
+        return {
+          ok: false,
+          reason: `Un consommable « ${twin.rows[0].name} » existe déjà : la conversion créerait un doublon. Renommez cette matière, ou saisissez directement le consommable existant.`,
+        };
+      }
+
       // Stock actuel = somme des lots actifs (economat + pesage).
       const stockRes = await client.query(
         `SELECT COALESCE(SUM(economat_quantity + pesage_quantity), 0)::numeric AS qty

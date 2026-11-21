@@ -58,6 +58,21 @@ describe.skipIf(!hasTestDb)('Suppression d\'une matière : gardes (constat 128)'
     expect((await p().query(`SELECT 1 FROM purchase_order_items WHERE ingredient_id = $1`, [boughtId])).rowCount).toBe(1);
   });
 
+  it('conversion en consommable : refus si un consommable du même nom existe (constat 129)', async () => {
+    const name = `Sac C129 ${RUN}`;
+    const pkg = (await p().query(`INSERT INTO packaging_items (name, unit, unit_cost, category) VALUES ($1, 'piece', 0.15, 'autre') RETURNING id`, [name])).rows[0].id;
+    const sac = (await p().query(`INSERT INTO ingredients (name, unit, unit_cost, category) VALUES ($1, 'unit', 0.15, 'autre') RETURNING id`, [name])).rows[0].id;
+    try {
+      const r = await ing.convertToConsumable(sac, null, fx.storeId, fx.userId);
+      expect(r.ok).toBe(false);
+      expect((r as { reason: string }).reason).toMatch(/existe déjà/);
+      expect((await p().query(`SELECT count(*)::int n FROM packaging_items WHERE name = $1`, [name])).rows[0].n).toBe(1);
+    } finally {
+      await p().query(`DELETE FROM ingredients WHERE id = $1`, [sac]).catch(() => undefined);
+      await p().query(`DELETE FROM packaging_items WHERE id = $1`, [pkg]).catch(() => undefined);
+    }
+  });
+
   it('sans fiche ni historique : supprimée', async () => {
     const r = await ing.delete(freeId, { force: true });
     expect(r.ok).toBe(true);
