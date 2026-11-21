@@ -117,7 +117,10 @@ export const recipeRepository = {
               pc.quantite_theorique as contenant_quantite_theorique,
               pc.pertes_fixes as contenant_pertes_fixes,
               pc.unite_lancement as contenant_unite_lancement,
-              pc.poids_kg as contenant_poids_kg
+              pc.poids_kg as contenant_poids_kg,
+              -- Coût de revient incomplet (constat 108, mig 621) : ingrédient sans prix,
+              -- conversion douteuse ou préparation vide, directement ou par une base.
+              COALESCE(cg.nb, 0) > 0 AS cout_incomplet
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
@@ -125,6 +128,7 @@ export const recipeRepository = {
        LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
+       LEFT JOIN (SELECT recipe_id, COUNT(*) AS nb FROM v_recipe_cost_gaps GROUP BY recipe_id) cg ON cg.recipe_id = r.id
        LEFT JOIN LATERAL (
          SELECT rf.id, rf.nb_par_defaut, rf.contenant_id, rf.rendement_unite, rf.rendement_kg
          FROM recipe_formats rf
@@ -172,6 +176,10 @@ export const recipeRepository = {
               pc.poids_kg as contenant_poids_kg,
               COALESCE(va.allergens, '{}'::text[]) AS allergens,
               COALESCE(va.nb_allergens, 0) AS nb_allergens,
+              -- Trous du coût de revient (constat 108, mig 621).
+              (SELECT COALESCE(json_agg(json_build_object('composant', g.composant, 'motif', g.motif, 'via', g.via)
+                                        ORDER BY g.via NULLS FIRST, g.composant), '[]'::json)
+                 FROM v_recipe_cost_gaps g WHERE g.recipe_id = r.id) AS cost_gaps,
               r.archived_at, r.archived_by
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id

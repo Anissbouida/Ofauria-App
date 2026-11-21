@@ -413,6 +413,11 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     return true;
   };
   const badConversionCount = rows.filter(isBadConversion).length;
+  // Ingrédients sans prix (constat 108) : comptés 0 DH, le coût de revient est incomplet.
+  const noPriceNames = [...new Set(rows
+    .map((r) => (r.type === 'ingredient' && r.sourceId ? sourceMap[`ingredient:${r.sourceId}`] : null))
+    .filter((s): s is SourceOpt => !!s && !(Number(s.cost) > 0))
+    .map((s) => s.name))];
 
   // Saisie contrôlée (scénario 1, constat 107).
   //  - une ligne qui désigne un composant doit avoir une quantité > 0 : elle n'est plus
@@ -655,6 +660,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     const badConv = isBadConversion(r);
     const badQty = isBadQty(r);
     const dup = isDup(r);
+    // Ingrédient sans prix (constat 108) : il compte pour 0, le coût est incomplet.
+    const noPrice = !!src && src.type === 'ingredient' && !(Number(src.cost) > 0);
     const canExpand = r.type === 'recipe' && !!r.sourceId;
     const isOpen = !!expanded[r.key];
     const roleCls = ROLE_COLOR[r.role] || 'bg-gray-100 text-gray-500';
@@ -694,6 +701,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             <SourcePicker options={sourceOpts} value={src ?? null}
               onPick={(o) => setRow(r.key, { type: o.type, sourceId: o.id, unite: o.unit === 'unit' ? r.unite : o.unit })} />
             {dup && <div className="text-[10px] mt-0.5 text-amber-700"><AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />Saisi sur plusieurs lignes</div>}
+            {noPrice && <div className="text-[10px] mt-0.5 text-amber-700" title="Compté 0 DH : le coût de revient est incomplet"><AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />Sans prix : coût incomplet</div>}
           </div>
           <div>
             <input type="number" step="any" min="0"
@@ -940,6 +948,15 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 <span>
                   <strong>{badConversionCount} conversion{badConversionCount > 1 ? 's' : ''} d'unité douteuse{badConversionCount > 1 ? 's' : ''}</strong>
                   {' — '}le coût affiché est peut-être faux. Choisis une unité de la même famille que la source (g/kg/mg entre elles, ml/cl/dl/l entre elles), ou renseigne la densité de l'ingrédient pour un croisement poids ↔ volume.
+                </span>
+              </div>
+            )}
+
+            {noPriceNames.length > 0 && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-[13px] text-amber-800">
+                <AlertTriangle size={15} className="shrink-0" />
+                <span>
+                  <strong>Coût incomplet</strong> — {noPriceNames.join(', ')} {noPriceNames.length > 1 ? "n'ont" : "n'a"} pas de prix et {noPriceNames.length > 1 ? 'comptent' : 'compte'} pour 0 DH : le coût de revient ci-dessous est trop bas. Renseigne le prix de l'ingrédient (achat ou fiche ingrédient).
                 </span>
               </div>
             )}

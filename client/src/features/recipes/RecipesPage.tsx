@@ -636,10 +636,12 @@ export default function RecipesPage() {
                 // Indicateur d'ÉTAT (santé donnée) : vide → rouge, rendement à définir → ambre, sinon vert.
                 // Composition vide : signalée aussi sur une préparation de base (constat 107).
                 const dotClass = r.compo_vide ? 'danger'
+                  : r.cout_incomplet ? 'warning'
                   : r.is_base ? 'neutral'
                   : r.rendement_a_definir ? 'warning'
                   : 'ok';
                 const dotTitle = r.compo_vide ? 'Fiche incomplète : aucun composant'
+                  : r.cout_incomplet ? 'Coût de revient incomplet : ingrédient sans prix, conversion douteuse ou préparation vide (détail sur la fiche)'
                   : r.is_base ? T.base
                   : r.rendement_a_definir ? 'Rendement à définir (contenant non assigné)'
                   : 'OK';
@@ -665,6 +667,7 @@ export default function RecipesPage() {
                         )}
                         {/* L'état de la donnée n'est pas porté par la seule pastille : libellé visible. */}
                         {r.compo_vide && <StatusTag tone="blocked" label="Composition vide" title={dotTitle} />}
+                        {!r.compo_vide && r.cout_incomplet && <StatusTag tone="todo" label="Coût incomplet" title={dotTitle} />}
                         {!r.is_base && !r.compo_vide && r.rendement_a_definir && <StatusTag tone="todo" label="Rendement à définir" title={dotTitle} />}
                       </span>
                     </td>

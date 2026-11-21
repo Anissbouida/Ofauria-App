@@ -112,6 +112,19 @@ export default function NomenclaturePage() {
             Cette fiche n'a encore aucun ingrédient ni préparation de base : son coût est inconnu et elle ne peut pas servir en production. Complète la composition ci-dessous.
           </StatusBanner>
         )}
+        {(() => {
+          // Coût de revient incomplet (constat 108, mig 621) : détail des trous.
+          const gaps = ((recipe as { cost_gaps?: { composant: string; motif: string; via: string | null }[] }).cost_gaps) ?? [];
+          if (!gaps.length) return null;
+          const motif: Record<string, string> = { sans_prix: 'sans prix', conversion: 'conversion d\'unité douteuse', preparation_vide: 'préparation sans composant' };
+          return (
+            <StatusBanner tone="warning" icon={AlertTriangle} title="Coût de revient incomplet">
+              Le coût affiché est plus bas ou faux tant que ces lignes ne sont pas réglées :{' '}
+              {gaps.map((g) => `${g.composant} (${motif[g.motif] ?? g.motif}${g.via ? `, via ${g.via}` : ''})`).join(' ; ')}.
+              {' '}Renseigne le prix de l'ingrédient (achat ou fiche ingrédient), sa densité, ou complète la préparation.
+            </StatusBanner>
+          );
+        })()}
         {readOnlyReason && (
           <StatusBanner tone="neutral" icon={Lock} title="Lecture seule">{readOnlyReason} Seuls ses membres, le gérant et l'administrateur la modifient.</StatusBanner>
         )}
