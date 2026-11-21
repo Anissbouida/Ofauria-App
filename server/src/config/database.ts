@@ -50,22 +50,47 @@ export function runWithStoreScope<T>(storeId: string, fn: () => T): T {
 }
 export const currentStoreScope = () => storeScope.getStore()?.storeId ?? null;
 
-async function scopedClient(storeId: string): Promise<pg.PoolClient> {
+/**
+ * Auteur de la requête (scénario 1, constat 125). La piste d'audit (mig 578) lit
+ * app.user_id ; seuls quelques dépôts le posaient, si bien que la plupart des
+ * modifications n'avaient pas d'auteur. authenticate exécute la suite de la requête
+ * dans runWithActor : toute connexion empruntée pour écrire porte app.user_id, remis à
+ * zéro avant le retour au pool (comme app.store_scope).
+ */
+const actorScope = new AsyncLocalStorage<{ userId: string }>();
+export function runWithActor<T>(userId: string, fn: () => T): T {
+  return actorScope.run({ userId }, fn);
+}
+export const currentActor = () => actorScope.getStore()?.userId ?? null;
+// Requête simple qui écrit (déclencheurs d'audit) : seule celle-ci mérite une connexion
+// marquée ; une lecture reste sur pool.query, sans aller-retour de plus.
+const WRITE_SQL = /\b(insert|update|delete)\b/i;
+
+async function scopedClient(storeId: string | null, userId: string | null = null): Promise<pg.PoolClient> {
   const client = await pool.connect();
   try {
-    await client.query(`SELECT set_config('app.store_scope', $1, false)`, [storeId]);
+    if (storeId) await client.query(`SELECT set_config('app.store_scope', $1, false)`, [storeId]);
+    if (userId) await client.query(`SELECT set_config('app.user_id', $1, false)`, [userId]);
   } catch (err) {
     client.release(true);
     throw err;
   }
   const release = client.release.bind(client);
+  const reset = [storeId ? 'RESET app.store_scope' : null, userId ? 'RESET app.user_id' : null].filter(Boolean).join('; ');
   // Remise à zéro avant retour au pool ; en cas d'échec, la connexion est détruite.
   client.release = ((err?: Error | boolean) => {
     client.release = release;
     if (err) { release(err); return; }
-    client.query(`RESET app.store_scope`).then(() => release(), () => release(true));
+    client.query(reset).then(() => release(), () => release(true));
   }) as typeof client.release;
   return client;
+}
+
+/** Connexion pour la requête courante : marquée si un magasin ou un auteur est en contexte. */
+function contextClient(): Promise<pg.PoolClient> {
+  const store = storeScope.getStore()?.storeId ?? null;
+  const actor = actorScope.getStore()?.userId ?? null;
+  return store || actor ? scopedClient(store, actor) : pool.connect();
 }
 
 /**
@@ -128,8 +153,7 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
       throw err;
     }
   }
-  const scope = storeScope.getStore();
-  const client = scope ? await scopedClient(scope.storeId) : await pool.connect();
+  const client = await contextClient();
   try {
     await client.query('BEGIN');
     const out = await txContext.run({ client, depth: 0 }, fn);
@@ -168,8 +192,7 @@ export const db = {
   getClient: (): Promise<pg.PoolClient> => {
     const tx = txContext.getStore();
     if (tx) return Promise.resolve(borrowedClient(tx));
-    const scope = storeScope.getStore();
-    return scope ? scopedClient(scope.storeId) : pool.connect();
+    return contextClient();
   },
   pool,
 };
@@ -177,9 +200,12 @@ export const db = {
 async function runQuery(text: string, params?: unknown[]) {
   const tx = txContext.getStore();
   if (tx) return tx.client.query(text, params);
-  const scope = storeScope.getStore();
-  if (!scope) return pool.query(text, params);
-  const client = await scopedClient(scope.storeId);
+  const store = storeScope.getStore()?.storeId ?? null;
+  const actor = actorScope.getStore()?.userId ?? null;
+  // Constat 125 : une écriture porte l'auteur ; une lecture sans magasin reste directe.
+  const needsActor = !!actor && WRITE_SQL.test(text);
+  if (!store && !needsActor) return pool.query(text, params);
+  const client = await scopedClient(store, needsActor ? actor : null);
   try {
     return await client.query(text, params);
   } finally {

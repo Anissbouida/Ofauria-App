@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt.js';
 import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
 import { userRepository } from '../repositories/user.repository.js';
+import { runWithActor } from '../config/database.js';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -77,12 +78,14 @@ export async function resolveRequestUser(req: AuthRequest): Promise<{ user: NonN
 
 export async function authenticate(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   // Deja authentifie par la garde des modules en amont : pas de second controle.
-  if (req.user) { next(); return; }
+  // Constat 125 : la suite de la requête s'exécute avec son auteur (app.user_id pour la
+  // piste d'audit), qu'il ait été résolu ici ou par la garde.
+  if (req.user) { runWithActor(req.user.userId, () => next()); return; }
   const r = await resolveRequestUser(req);
   if ('error' in r) {
     res.status(401).json({ success: false, error: { message: r.error } });
     return;
   }
   req.user = r.user;
-  next();
+  runWithActor(r.user.userId, () => next());
 }

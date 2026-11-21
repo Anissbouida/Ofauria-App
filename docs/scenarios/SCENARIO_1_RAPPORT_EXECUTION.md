@@ -20,7 +20,8 @@ résultat, partie par partie.
 | F. Premier approvisionnement | 58 | 54 | 34 | 20 | 2 | 2 |
 | G. Tenue du stock | 14 | 12 | 8 | 4 | 0 | 2 |
 | H. Caisse | 11 | 10 | 8 | 2 | 0 | 1 |
-| I, T | 23 | 0 | 0 | 0 | 0 | 23 |
+| I. Contrôles de fin de scénario | 10 | 8 | 4 | 4 | 0 | 2 |
+| T. Cas transverses | 13 | 13 | 13 | 0 | 0 | 0 |
 
 ## Partie E — Paramétrage de la production (2026-11-19)
 
@@ -675,6 +676,38 @@ autres sont joués ici.
 Pain rond a été créée (vide d'abord, pour D-09, puis composée), non liée au produit ; la
 ganache de l'Éclair est revenue à 15 g.
 
+## Parties I et T — Contrôles de fin de scénario et cas transverses (2026-11-21, Gérant, Caissier)
+
+Les contrôles réservés à l'administrateur (vue d'ensemble du paramétrage, écran Qualité des
+données) n'ont pas pu être joués à l'écran ; leurs faits ont été vérifiés en base quand c'était
+possible.
+
+| ID | Statut | Constat |
+|---|---|---|
+| I-01 | Non joué | Vue d'ensemble du paramétrage : écran réservé à l'administrateur. |
+| I-02 | Non joué | Qualité des données : écran Paramètres réservé à l'administrateur. La liste des fiches signale désormais elle-même les compositions vides et les coûts incomplets (constats 107, 108). |
+| I-03 | Écart (en partie corrigé) | Marges toutes positives (l'entremets, vendu à la personne, se lit sur 8 parts). Mais le coût matière d'un produit composé était faux d'un facteur 20 à 40 dans la vue qui valorise marges, coût des ventes, pertes et invendus (constat 115, corrigé) et dans la liste des fiches (constat 123, corrigé). Restent : Chebakia et « Produit test suppression » sans fiche, Pain rond non relié à sa fiche (le relier porterait son prix de 3,50 à 5,50 DH) ; le coût affiché sur la fiche produit (`cost_price`) est un instantané qui ne suit pas la fiche (Baguette 0,88 DH contre 1,25 DH). |
+| I-04 | Conforme | Stock valorisé (Stock › Clôtures) : 34 556,99 DH = réceptions acceptées 31 470,49 DH + stock d'ouverture 2 205,00 DH (beurre doux, levure, miel, sel) + réévaluations au prix facturé 1 245,00 DH (chocolat 140 → 180 DH/kg, sucre 5,50 → 5,75) − mouvements de la partie G 363,50 DH (2 kg de beurre, 25 kg de farine, 30 œufs) : réconcilié au centime. |
+| I-05 | Conforme (après correction, constat 116) | Fournisseurs (4411) : 2 631,00 DH = factures validées non payées (36 + 2 100 + 495). Avant correction : 20 715,50 DH, les deux brouillons nés d'une réception (18 084,50 DH) y figuraient déjà ; ils sont désormais en reçu non facturé (4417). |
+| I-06 | Écart | Caisse (5161) −3 132,00 DH et banque (5141) −4 798,10 DH : exactement l'opposé des paiements (espèces 3 132, virements 4 798,10 ; chèque 3 000 en 5111). Aucun compte bancaire ni solde d'ouverture n'est paramétré ; les fonds de caisse des sessions (500, 300, 250 DH) ne sont pas des mouvements comptables. Un paiement en espèces de 3 132 DH a été accepté caisse vide, sans avertissement (constat 117). |
+| I-07 | Conforme (après correction, constat 125) | La piste d'audit (mig 578) trace modifications et suppressions avec date, mais l'auteur manquait presque partout (fiches 66/66, produits 10/10, fournisseurs 7/7 sans auteur). Corrigé : toute requête authentifiée porte son auteur ; vérifié sur une modification de la fiche Pain de mie (« Karim Bennani »). La création n'est pas tracée dans la piste, par choix de la mig 578 (la ligne porte created_at). |
+| I-08 | Écart | Écritures : 41 sur 41 équilibrées. Mais aucune TVA d'achat : toutes les lignes de BC, réceptions et factures fournisseurs sont sans taux, faute de code de TVA par défaut sur les articles et les catégories, alors que les fournisseurs sont assujettis ; aucune TVA récupérable n'est donc enregistrée (constat 124). |
+| I-09 | Écart | 19 produits fabriqués, dont 16 reliés à une fiche (Chebakia sans fiche, Pain rond non relié, produit de test) ; le scénario en prévoyait 23 (macarons, quiche, briouates à la douzaine et les deux plateaux non créés, constats 61 et 62). Étapes saisies sur 3 fiches seulement (Baguette, Pain complet, Msemen). |
+| I-10 | Conforme (sans donnée) | Plan directeur calculé sans erreur, mais vide : ni prévision (aucune vente) ni commande ferme. |
+| T-01 | Conforme | Formulaire produit vide : le navigateur signale le premier champ obligatoire, puis le suivant (message dans la langue du navigateur). |
+| T-02 | Conforme | Nom de 308 caractères : refus net du serveur, « Nom trop long » (le message affichait le nom technique du champ, « name: », retiré). |
+| T-03 | Conforme (partiel) | Darija sur le PDF de la fiche (D-16), apostrophes et « & » conservés à l'écran (« Tranche d'opéra », « Société d'Épices & Cie — شركة التوابل »), accents corrects à l'export CSV. |
+| T-04 | Conforme (après correction, constat 118) | « 1,5 » devenait « 15 » dans un champ numérique d'un navigateur en anglais ; la virgule est désormais comprise partout. L'import CSV lit « 12,50 » (C-24). |
+| T-05 | Conforme (après correction, constat 119) | Double clic sur « Dupliquer » : deux fiches ; désormais une seule. |
+| T-06 | Conforme (après correction, constat 114) | Deux sessions sur la même composition : la seconde est prévenue (D-22). Les autres formulaires (produit, BC) n'ont pas ce contrôle. |
+| T-07 | Conforme (après correction, constat 121) | Session close pendant une saisie : retour à la connexion avec « Votre session a expiré. Votre dernière modification n'a pas été enregistrée… ». |
+| T-08 | Conforme | Après chaque enregistrement de la journée, rechargement et contrôle en base : données présentes. |
+| T-09 | Conforme (après correction, constat 120, éditeur de fiche) | « Retour » en pleine saisie : confirmation demandée, saisie conservée si l'on reste. |
+| T-10 | Conforme (après correction, constat 122) | « eclair » trouve « Éclair au chocolat » (fiches, produits), « opera » trouve « Tranche d'opéra ». |
+| T-11 | Conforme | Export CSV du stock valorisé : BOM UTF-8, séparateur « ; », virgule décimale, accents corrects (« Unité », « Coût unitaire »). |
+| T-12 | Conforme (réserve) | Tablette 768 × 1024 : fiche technique, stock et poste de pesée sans défilement horizontal ; le menu latéral des modules tronque ses libellés (« Registre des… », « Emplaceme… ») (constat 126). |
+| T-13 | Conforme | Caissier sur l'adresse des fiches : « Vous n'avez pas accès aux fiches techniques. » ; gérant sur les paramètres : « Vous n'avez pas accès aux paramètres. » |
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -802,10 +835,13 @@ ganache de l'Éclair est revenue à 15 g.
 | 121 | Corrigée | Corrigé : une session expirée pendant une saisie renvoyait à la connexion sans un mot, la modification en cours étant perdue. Le renvoi (intercepteur `api/client.ts`) note s'il s'agissait d'une écriture ; la page de connexion affiche « Votre session a expiré. Votre dernière modification n'a pas été enregistrée : reconnectez-vous, puis refaites-la. » (ou « Reconnectez-vous pour continuer. » après une simple lecture). Vérifié : session close pendant une saisie dans la fiche Pain de mie, « Enregistrer » → page de connexion avec le message ; rien d'enregistré. | T-07 |
 | 122 | Corrigée | Corrigé : la recherche ne tenait pas compte des accents (« eclair » ne trouvait pas « Éclair au chocolat »). Aide commune `utils/searchText.ts` (casse et accents ignorés) appliquée aux listes des fiches techniques et du stock ; côté serveur, la recherche des produits compare les noms sans accents (`translate`, sans extension). Vérifié : « eclair » trouve l'éclair dans les fiches et dans les produits, « opera » trouve « Tranche d'opéra ». Les sélecteurs (SearchSelect) ignoraient déjà les accents. | T-10 |
 | 123 | Corrigée | Corrigé : la liste des fiches recalculait le coût matière par pièce en divisant le coût de la fournée par le rendement ; pour une composition saisie par pièce (éclair, croissant, pizza), le résultat était faux d'un facteur 30 à 40 (éclair 0,14 DH au lieu de 4,25 DH). La liste lit désormais la matière par pièce de la source unique (`fn_recipe_cost`, format par défaut), en déduit la fournée (pièce × rendement) en saisie par pièce, et trie sur la même valeur. Vérifié : éclair 127,46 DH la fournée / 4,25 DH la pièce, croissant 1,75 DH, pizza 4,17 DH. | T-10, I-03 |
+| 124 | Haute | TVA d'achat absente (I-08) : aucun article ni catégorie n'a de code de TVA par défaut ; les lignes de BC, de réception et de facture fournisseur sont donc sans taux, alors que les fournisseurs sont assujettis (sauf la ferme avicole et la société d'épices). Aucune TVA récupérable n'est enregistrée, les achats sont comptés TTC en charge. À décider puis paramétrer : taux par article (farine, sucre, beurre, chocolat… n'ont pas le même), proposé par défaut sur le BC ; et une alerte à la validation d'une facture d'un fournisseur assujetti sans TVA. | I-08 |
+| 125 | Corrigée | Corrigé : la piste d'audit (mig 578) lit l'auteur dans `app.user_id`, que seuls quelques dépôts posaient ; la plupart des modifications étaient sans auteur (fiches, produits, fournisseurs). `authenticate` exécute désormais la suite de la requête dans `runWithActor` ; toute connexion empruntée pour écrire (requête d'écriture, transaction, connexion explicite) porte l'auteur, remis à zéro au retour au pool ; les lectures restent directes. Test `audit-actor-context.db.test.ts` (écriture simple, transaction, pas de fuite hors requête). Vérifié : modification de la fiche Pain de mie attribuée à Karim Bennani. | I-07 |
+| 126 | Faible | Tablette (768 px) : le menu latéral des modules tronque ses libellés (« Registre des… », « Emplaceme… »). | T-12 |
 
 ## Reste à jouer
 
 Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
 première DLC atteinte), G-14 (second volet : vitrine et vente de l'eau). Partie H :
 H-09 (imprimante à configurer). Partie C : C-06, C-09 (fiches manquantes), C-23 (administrateur),
-second volet de C-20 (après une vente). Partie D : D-52 (double rôle, à attribuer par l'administrateur). Puis E (suite), I (contrôles) et les cas transverses.
+second volet de C-20 (après une vente). Partie D : D-52 (double rôle, à attribuer par l'administrateur). Partie I : I-01, I-02 (administrateur). Puis E (suite).
