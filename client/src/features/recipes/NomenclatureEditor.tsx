@@ -339,6 +339,27 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     return () => window.removeEventListener('beforeunload', h);
   }, [isDirty]);
 
+  // Bouton « Retour » du navigateur en pleine saisie (scénario 1, constat 120) : sans garde,
+  // l'application changeait de page et la saisie disparaissait sans un mot. BrowserRouter
+  // n'offre pas de bloqueur : tant que la saisie n'est pas enregistrée, on empile une entrée
+  // d'historique sur la même adresse ; « Retour » y revient (la page reste montée) et l'on
+  // demande confirmation avant de vraiment repartir.
+  useEffect(() => {
+    if (!isDirty) return;
+    const url = window.location.href;
+    window.history.pushState({ kalumUnsavedGuard: true }, '', url);
+    const onPop = () => {
+      if (window.confirm('Des modifications ne sont pas enregistrées. Quitter la fiche quand même ?')) {
+        window.removeEventListener('popstate', onPop);
+        window.history.back();
+      } else {
+        window.history.pushState({ kalumUnsavedGuard: true }, '', url);
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [isDirty]);
+
   /** Changer de format recharge `rows` : sans garde, la saisie en cours disparaissait. */
   const switchFormat = async (id: string) => {
     if (id === formatId) return;
