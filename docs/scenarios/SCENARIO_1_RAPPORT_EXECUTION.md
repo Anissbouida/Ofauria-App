@@ -16,7 +16,7 @@ résultat, partie par partie.
 | A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
 | B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
 | C. Produits | 24 | 21 | 9 | 12 | 0 | 3 |
-| D. Fiches techniques | 46 | 28 | 18 | 10 | 0 | 18 |
+| D. Fiches techniques | 46 | 43 | 26 | 17 | 0 | 3 |
 | F. Premier approvisionnement | 58 | 54 | 34 | 20 | 2 | 2 |
 | G. Tenue du stock | 14 | 12 | 8 | 4 | 0 | 2 |
 | H. Caisse | 11 | 10 | 8 | 2 | 0 | 1 |
@@ -641,6 +641,39 @@ leur statut ci-dessus ; les autres sont joués ici, au compte du gérant sauf me
 à supprimer par l'administrateur) ; prix de gros du croissant 4,50 DH ; promotion « Croissants
 par 50 » active ; photo du croissant.
 
+## Partie D — Fiches techniques, suite et bilan (2026-11-21, Boulanger matin, Gérant, chefs, Caissier, Économe)
+
+Bilan de la partie : les cas déjà joués avec les chefs gardent leur statut ci-dessus ; les
+autres sont joués ici.
+
+| ID | Statut | Constat |
+|---|---|---|
+| D-02 | Conforme | Rachid (boulanger matin) ajoute à la Baguette cinq étapes, chacune avec un type pris dans le référentiel : Pétrissage 15 min à 24 °C, Pointage 45 min à 24 °C, Façonnage 20 min, Apprêt 60 min à 26 °C, Cuisson 22 min à 250 °C. « Étapes enregistrées », durée totale 2 h 42. |
+| D-03 | Conforme (paramétré) | Cuisson cochée « Contrôle qualité » : la fiche affiche « 1 point de contrôle » et prévient que l'étape bloque la suivante tant qu'elle n'est pas validée. Le blocage lui-même ne se vérifie qu'en production. |
+| D-04 | Conforme | Perte de 2 % sur la farine : le coût passe de 82,50 à 84,18 DH et le détail des besoins demande 15,306 kg de farine. |
+| D-05 | Conforme (réserve) | Le boulanger ne peut pas saisir la partie financière, et le message est clair : « Composition enregistrée (paramètres financiers réservés au gérant, non modifiés) ». Le gérant saisit 45 min de main-d'œuvre et 15 DH d'énergie : par pièce, matière 0,78 + main-d'œuvre et énergie 0,31 + frais indirects 0,16 = 1,25 DH. Ce coût de revient s'affiche à part du coût matière. Réserve : sans « Temps / fournée », la main-d'œuvre vaut la durée totale des étapes, temps d'attente compris (162 min), et le prix calculé monte à 5,01 DH (constat 110). |
+| D-08 | Écart | Une fiche ne se duplique pas en entier. « Dupliquer » ne copie que la composition d'un format, dans la même fiche. Pain complet n'a donc pas été créé par copie (constat 109). |
+| D-09 | Écart | Une fiche sans aucun ingrédient est créée sans avertissement (« Recette créée — complète la composition »). Son coût affiche des tirets, sans signe « incomplète » (constat 107). |
+| D-10 | Écart | Une ligne à 0 g et une ligne à −5 g disparaissent sans message à l'enregistrement (constat 107). |
+| D-11 | Écart (observé) | Le même ingrédient saisi deux fois reste sur deux lignes, sans regroupement ni signalement (constat 107). |
+| D-12 | Écart | Un ingrédient sans coût (Colorant rouge) compte pour 0,00 DH. Le coût de revient paraît donc plus bas qu'il n'est, sans marque « incomplet » (constat 108). |
+| D-13 | Conforme (partiel) | Miel au kilo demandé en litres sans densité : un bandeau signale « 1 conversion d'unité douteuse… renseigne la densité » et la ligne porte un ⚠. Le miel reste pourtant compté dans le total, à 1 l = 1 kg (90 DH) (constat 108). |
+| D-16 | Conforme | « Imprimer la fiche » produit un PDF dans le navigateur, avec le logo, la composition (dont la perte de 2,0 %) et les étapes. Les astuces sont en français, et en darija écrite de droite à gauche, lettres liées. En pied de page : TRIANGLE D'ORIENT SARL. Reste « Poids/pièce 1 g » sur la ligne du format (constat 60). |
+| D-17 | Écart | Le bouton « Archiver la sélection » est montré au gérant, mais le serveur refuse (403) sans message à l'écran. L'archivage et la restauration sont réservés à l'administrateur. Restauration non jouée (constat 111). |
+| D-18 | Conforme | Eau minérale, article de revente : aucune fiche n'est exigée (voir C-10). |
+| D-20 | Écart (2 fiches sur 4) | Baguette complète (D-02 à D-05). Pain rond créé par le gérant : catégorie Boulangerie, format « Pétrin baguettes 100 pièces », rendement 40, perte à la cuisson 15 %. Composition : farine 10 kg, sel 0,2 kg, levure 0,2 kg, eau 6,5 l. Résultat : 1,76 DH la pièce, 8,67 kg cuit. Cette fiche n'est pas encore liée au produit Pain rond. Pain complet et Pain de mie n'ont pas de fiche (pas de duplication, constat 109). |
+| D-22 | Non joué | Deux sessions simultanées du gérant sur la même fiche : non joué. |
+| D-50 | Écart | Fatima-Zahra (cheffe beldi) voit les 17 fiches, y compris celles de la pâtisserie. Elle a modifié l'Éclair au chocolat (ganache de 15 à 16 g, enregistré) : les droits de modification ne tiennent pas compte de l'atelier. Valeur remise à 15 g (constat 106). |
+| D-51 | Conforme (décision révisée) | Modifier sa propre fiche : permis, comme pour D-21 (les chefs composent, le gérant valide par la version). Supprimer : refusé, car seul l'administrateur peut supprimer (`recipes.delete`). |
+| D-52 | Non joué | Le cumul de rôles existe (`user_roles`), mais l'attribution d'un second rôle revient à l'administrateur. |
+| D-54 | Conforme (droits) | L'Économe lit les fiches mais ne peut pas les modifier (pas de `recipes.edit`). Vérifié sur les droits : son compte est inutilisable. |
+| D-55 | Écart | Hamza (caissier) ouvre « Fiches techniques » : il voit la liste des 16 fiches, avec leurs coûts, et le bouton « Nouveau ». La lecture (`GET /recipes`) ne demande aucun droit ; seule la création est refusée (`recipes.create`) (constat 105). |
+| D-56 | Conforme | Baguette : multiplicateur ramené de 3 à 2,4. Prix calculé 3,01 DH, marge 1,76 DH (58 %), écart nul avec le prix de caisse (3,00 DH). Enregistré. |
+
+État en base : la Baguette a ses étapes, sa perte de 2 % et ses paramètres financiers ; une fiche
+Pain rond a été créée (vide d'abord, pour D-09, puis composée), non liée au produit ; la
+ganache de l'Éclair est revenue à 15 g.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -749,11 +782,19 @@ par 50 » active ; photo du croissant.
 | 102 | Corrigée (mig 619) | Corrigé : un BC porte désormais une ligne « produit de revente » (`product_id`, type `product`, désignation et catégorie « Achats de marchandises » figées ; un produit fabriqué est refusé). La réception crée un lot produit en réserve (PA-AAMMJJ-NNNN, DLC, lot fournisseur en note), augmente le stock réserve du magasin et fixe le coût du produit (CMUP) ; la facture issue de la réception porte le produit ; l'écriture de réception débite 6111 (comptes 3111 et 6111 et catégorie créés par la migration). Extourne et correction d'une réception de produit : refus explicite (409), à traiter plus tard. Test `po-resale-product.db.test.ts`. Vérifié à l'écran : BC-2026-0010 chez Rif Boissons, 24 « Eau minérale 50 cl » à 3,00 DH, réception (lot PA-261121-0001, DLC 30/06/2027), facture RIF-F-5521 en brouillon, écritures AC-2026-00034 (6111 / 4417) et AC-2026-00035 (4417 / 4411). Constat d'origine : les produits de revente ne s'achètent pas : une ligne de BC ne porte qu'une matière ou un consommable ; boissons et autres marchandises n'ont aucun chemin d'entrée en stock par achat. | C-10, G-14 |
 | 103 | Moyenne | Prix : les prix par canal (Gros / B2B) ne valent qu'en caisse, pas sur les commandes ni les devis ; prix 0 accepté sans avertissement ; aucune alerte de marge sous le coût d'achat ; prix négatif refusé par le seul navigateur. | C-11, C-14, C-15 |
 | 104 | Faible | Fiche produit et catalogue : catégorie « Pain » présélectionnée (pas de « aucune »), nom et catégorie non repris de la fiche, « Aucune recette disponible » pendant le chargement ; suppression réservée à l'administrateur mais bouton montré, refus 403 muets (gérant, commercial), confirmation sans nom du produit ; import : lignes écartées détaillées en console seulement, produits importés « Fabriqué » sans fiche. | C-02, C-16, C-20, C-22, C-24 |
+| 105 | Moyenne | Lecture des fiches ouverte à tous : `GET /recipes` ne demande aucun droit. Le caissier et l'économe voient toutes les fiches, avec les coûts et les marges, et le bouton « Nouveau » est montré au caissier (la création, elle, est refusée). | D-54, D-55 |
+| 106 | Moyenne | Pas de séparation par atelier : `recipes.edit` vaut pour toutes les fiches. La cheffe beldi lit et modifie une fiche de pâtisserie. | D-50 |
+| 107 | Moyenne | La saisie de la composition n'est pas contrôlée : une fiche sans ingrédient est acceptée sans avertissement, les lignes à zéro ou négatives disparaissent sans message, et un ingrédient saisi deux fois reste sur deux lignes, ni regroupé ni signalé. | D-09, D-10, D-11 |
+| 108 | Moyenne | Un coût incomplet passe pour un coût juste : un ingrédient sans coût compte pour 0 DH, sans marque « incomplet ». Une conversion douteuse (litres sans densité) est signalée mais comptée quand même, à 1 l = 1 kg. | D-12, D-13 |
+| 109 | Moyenne | Une fiche ne se duplique pas en entier : « Dupliquer » copie seulement la composition d'un format, dans la même fiche. Une variante (Pain complet à partir de la Baguette) se ressaisit entièrement. | D-08, D-20 |
+| 110 | Moyenne | Main-d'œuvre par défaut : sans « Temps / fournée », le coût prend la durée totale des étapes, temps d'attente compris (pointage, apprêt). Sur la Baguette, cela fait 162 min et un prix calculé de 5,01 DH au lieu de 3,01 DH. | D-05 |
+| 111 | Faible | Archiver, restaurer et supprimer une fiche sont réservés à l'administrateur. Les boutons sont pourtant montrés au gérant, et le refus (403) n'affiche aucun message. | D-17, D-51 |
 
 ## Reste à jouer
 
 Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
 première DLC atteinte), G-14 (second volet : vitrine et vente de l'eau). Partie H :
 H-09 (imprimante à configurer). Partie C : C-06, C-09 (fiches manquantes), C-23 (administrateur),
-second volet de C-20 (après une vente). Puis D (fiches techniques), E (suite), I (contrôles) et
-les cas transverses.
+second volet de C-20 (après une vente). Partie D : D-06
+(rendement 100 → 250), D-22 (deux sessions), D-52 (double rôle, administrateur), restauration
+de D-17 (administrateur). Puis E (suite), I (contrôles) et les cas transverses.
