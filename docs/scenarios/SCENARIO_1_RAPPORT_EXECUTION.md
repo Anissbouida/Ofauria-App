@@ -13,8 +13,8 @@ résultat, partie par partie.
 | Partie | Cas | Joués | Conformes | Écarts | Sans objet | Non joués |
 |---|---|---|---|---|---|---|
 | E. Paramétrage de la production | 8 | 6 | 4 | 2 | 0 | 2 |
-| A. Fournisseurs | 17 | 11 | 8 | 3 | 1 | 5 |
-| B. Matières premières et emballages | 23 | 16 | 12 | 4 | 0 | 7 |
+| A. Fournisseurs | 17 | 13 | 10 | 3 | 1 | 3 |
+| B. Matières premières et emballages | 23 | 20 | 16 | 4 | 0 | 3 |
 | C. Produits | 24 | 21 | 9 | 12 | 0 | 3 |
 | D. Fiches techniques | 46 | 45 | 31 | 14 | 0 | 1 |
 | F. Premier approvisionnement | 58 | 54 | 34 | 20 | 2 | 2 |
@@ -850,11 +850,12 @@ possible.
 | 125 | Corrigée | Corrigé : la piste d'audit (mig 578) lit l'auteur dans `app.user_id`, que seuls quelques dépôts posaient ; la plupart des modifications étaient sans auteur (fiches, produits, fournisseurs). `authenticate` exécute désormais la suite de la requête dans `runWithActor` ; toute connexion empruntée pour écrire (requête d'écriture, transaction, connexion explicite) porte l'auteur, remis à zéro au retour au pool ; les lectures restent directes. Test `audit-actor-context.db.test.ts` (écriture simple, transaction, pas de fuite hors requête). Vérifié : modification de la fiche Pain de mie attribuée à Karim Bennani. | I-07 |
 | 126 | Faible | Tablette (768 px) : le menu latéral des modules tronque ses libellés (« Registre des… », « Emplaceme… »). | T-12 |
 | 127 | Faible | Paramétrage de la production (E-07) : le gérant l'ouvre et l'enregistre, alors que le scénario le réservait à l'administrateur (à décider : droit « Paramètres › Production » du gérant) ; l'onglet Impressions demande trois fois ses réglages (`/production/print-templates/settings`) et reçoit trois refus 403 sans message. | E-07 |
+| 129 | Faible | Conversion d'une matière en consommable (B-17) : si un consommable du même nom existe déjà, la conversion en crée un second sans le signaler (deux « Sac à baguette », dont un sans catégorie, à fusionner ou retirer). À l'écran, la catégorie choisie n'était pas toujours retenue et « Convertir » ne faisait rien, sans message. | B-17 |
 | 128 | Corrigée | Corrigé : supprimer une matière ne lisait que l'ancienne composition des fiches (`recipe_ingredients`, vide) : la Farine T55, employée dans 14 fiches, passait pour inutilisée ; seul son stock bloquait, et l'écran proposait « Forcer la suppression » (jeter 3 250 kg, 17 875 DH). Pour une matière déjà achetée mais hors fiche, la suppression effaçait ses lignes de réception et de commande (historique d'achat). Désormais : refus si la matière entre dans une fiche (composition par format, fiches nommées), refus si elle a déjà été commandée, reçue ou facturée (« la supprimer effacerait cet historique ») ; seule une matière sans fiche ni historique se supprime. Test `ingredient-delete-guards.db.test.ts`. Vérifié : « Forcer la suppression » sur la Farine T55 → « Cette matière entre dans 14 fiche(s) technique(s)… », farine et stock intacts. | B-19 |
 
 ## Reste à jouer
 
-Partie A : A-09, A-10, A-12, A-13, A-14. Partie B : 7 cas (conversions à voir dans les fiches, conversion en consommable, équipement, suppression). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
+Partie A : A-12, A-13, A-14 (administrateur). Partie B : B-10, B-18 (non créés pour ne pas polluer). Partie F : F-39, F-40 (compte Économe inutilisable). Partie G : G-08, G-09 (à partir du 22/11,
 première DLC atteinte), G-14 (second volet : vitrine et vente de l'eau). Partie H :
 H-09 (imprimante à configurer). Partie C : C-06, C-09 (fiches manquantes), C-23 (administrateur),
 second volet de C-20 (après une vente). Partie D : D-52 (double rôle, à attribuer par l'administrateur). Partie I : I-01, I-02 (administrateur). Partie E : E-03, E-08 (administrateur).
