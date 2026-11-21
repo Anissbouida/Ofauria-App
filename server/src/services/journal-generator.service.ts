@@ -234,6 +234,9 @@ export interface InvoiceRow {
   credited_invoice_id?: string | null;
   /** Ticket de caisse d'origine (phase 5.5, mig 483) : écriture déjà portée par la vente. */
   source_sale_id?: string | null;
+  /** Brouillon / validée (mig 438) et réception d'origine : voir fromInvoice (constat 116). */
+  validation_status?: string | null;
+  reception_voucher_id?: string | null;
 }
 
 export async function fromInvoice(
@@ -241,6 +244,12 @@ export async function fromInvoice(
   inv: InvoiceRow
 ): Promise<GeneratedEntry | null> {
   if (inv.status === 'cancelled') return null;
+
+  // Facture fournisseur pré-remplie depuis une réception, encore en brouillon (scénario 1,
+  // constat 116) : la pièce du fournisseur n'est pas validée, la dette reste en « reçu non
+  // facturé » (GR/IR, 4417) et n'entre pas aux fournisseurs (4411). L'écriture est passée à
+  // la validation (accountingRepository.validateReceived → regenerateInvoiceEntry).
+  if (inv.invoice_type === 'received' && inv.validation_status === 'draft' && inv.reception_voucher_id) return null;
 
   const amount = parseFloat(String(inv.amount)) || 0;
   const tax    = parseFloat(String(inv.tax_amount)) || 0;
@@ -1612,7 +1621,7 @@ async function resolveUserId(client: PoolClient, userId: string | null | undefin
 
 const INVOICE_SELECT = `SELECT id, invoice_number, invoice_type, supplier_id, customer_id,
   category_id, invoice_date, amount, tax_amount, total_amount, store_id, status,
-  kind, credit_reason, credited_invoice_id
+  kind, credit_reason, credited_invoice_id, source_sale_id, validation_status, reception_voucher_id
   FROM invoices WHERE id = $1`;
 
 const PAYMENT_SELECT = `SELECT id, reference, type, category_id, invoice_id, supplier_id,

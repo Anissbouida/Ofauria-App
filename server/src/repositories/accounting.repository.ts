@@ -1454,6 +1454,11 @@ export const invoiceRepository = {
       //    (lot L2 : le valideur ≠ le réceptionnaire, et ≠ le payeur).
       await client.query(`UPDATE invoices SET validation_status = 'validated', validated_by = $2 WHERE id = $1`, [id, userId]);
 
+      // 2 bis. Constat 116 : une facture née d'une réception n'a pas d'écriture tant qu'elle
+      //    est en brouillon (fromInvoice) ; la validation la passe (4417 → 4411). Pour une
+      //    facture ancienne déjà écrite en brouillon, la régénération extourne puis repasse.
+      if (cur.reception_voucher_id) await regenerateInvoiceEntry(client, id, userId);
+
       // 3. Événements IR : quantité facturée par ligne de BC rattachée (une par
       //    ligne de facture, > 0). Idempotent par ref_doc.
       await client.query(
