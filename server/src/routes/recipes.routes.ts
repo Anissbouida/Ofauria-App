@@ -17,7 +17,10 @@ import { activateBomVersion } from '../services/bom-version-activation.js';
 import { recipesForProduct, setAlternative } from '../services/recipe-for.js';
 import { recipeSubstituteRepository } from '../repositories/recipe-substitute.repository.js';
 import { recipeOutputRepository } from '../repositories/recipe-output.repository.js';
-import { recipeWorkshopGuard } from '../services/recipe-workshop.js';
+import { recipeWorkshopGuard, editableWorkshops, workshopFor } from '../services/recipe-workshop.js';
+import { duplicateRecipe, RecipeDuplicateError } from '../services/recipe-duplicate.js';
+import { workshopLabel } from '../services/workshops.js';
+import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { z } from 'zod';
 
 const alternativeSchema = z.object({
@@ -146,6 +149,32 @@ router.get('/by-product/:productId', authenticate, can('recipes.view'), recipeCo
 // Nomenclatures d'un produit (M4-04) — avant /:id.
 router.get('/for-product/:productId', authenticate, can('recipes.view'), validateUuidParams('productId'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await recipesForProduct(req.params.productId as string) });
+}));
+// Dupliquer une fiche entière (scénario 1, constat 109) : copie indépendante, sans produit lié.
+// Droit de créer ; la copie doit tomber dans un atelier de l'auteur (constat 106).
+const duplicateSchema = z.object({
+  name: z.string().trim().min(1, 'Le nom de la copie est requis').max(200),
+  categoryId: z.string().guid().nullable().optional(),
+});
+router.post('/:id/duplicate', authenticate, validateUuidParams('id'), can('recipes.create'), validate(duplicateSchema), asyncHandler(async (req, res) => {
+  const user = (req as AuthRequest).user!;
+  const src = (await recipeRepository.findById(req.params.id as string)) as { category_id?: string | null } | null;
+  if (!src) { res.status(404).json({ success: false, error: { message: 'Fiche introuvable' } }); return; }
+  const categoryId = req.body.categoryId !== undefined ? req.body.categoryId : src.category_id ?? null;
+  const scope = await editableWorkshops(user);
+  const target = await workshopFor(null, categoryId);
+  if (scope !== 'all' && target && !scope.includes(target)) {
+    res.status(403).json({ success: false, error: { code: 'WORKSHOP_FORBIDDEN',
+      message: `La copie relèverait de l'atelier ${await workshopLabel(target)} : vous n'en êtes pas membre. Choisissez une catégorie de votre atelier.` } });
+    return;
+  }
+  try {
+    const id = await duplicateRecipe(req.params.id as string, req.body.name, categoryId, user.userId);
+    res.status(201).json({ success: true, data: { id } });
+  } catch (err) {
+    if (err instanceof RecipeDuplicateError) { res.status(err.statusCode).json({ success: false, error: { message: err.message } }); return; }
+    throw err;
+  }
 }));
 // M4-04 : la nomenclature supplémentaire devient la fiche par défaut de son produit.
 router.post('/:id/make-default', authenticate, validateUuidParams('id'), can('recipes.edit'), recipeWorkshopGuard('recipe'), validate(z.object({}).strict()), asyncHandler(async (req, res) => {

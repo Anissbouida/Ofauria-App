@@ -4189,6 +4189,14 @@
   "admin",
   "manager"
  ],
+ "POST /recipes/:id/duplicate": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "POST /recipes/:id/make-default": [
   "admin",
   "baker",

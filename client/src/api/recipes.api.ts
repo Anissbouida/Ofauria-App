@@ -231,6 +231,9 @@ export const recipesApi = {
     }[]),
   getByProductId: (productId: string) => api.get(`/recipes/by-product/${productId}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/recipes', data).then(r => r.data.data),
+  /** Copie indépendante de la fiche entière, sans produit lié (constat 109). */
+  duplicate: (id: string, data: { name: string; categoryId?: string | null }) =>
+    api.post(`/recipes/${id}/duplicate`, data).then(r => r.data.data as { id: string }),
   update: (id: string, data: Record<string, any>) => api.put(`/recipes/${id}`, data).then(r => r.data.data),
   /** DELETE archive la fiche (mig 346) : plus de suppression physique. */
   remove: (id: string) => api.delete(`/recipes/${id}`),

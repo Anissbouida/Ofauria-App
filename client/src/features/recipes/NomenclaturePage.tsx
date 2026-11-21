@@ -6,7 +6,8 @@ import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChefHat, Layers, Pencil, AlertTriangle, Lock } from 'lucide-react';
+import { ArrowLeft, ChefHat, Layers, Pencil, AlertTriangle, Lock, Copy } from 'lucide-react';
+import RecipeDuplicateDialog from './RecipeDuplicateDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import RecipeCreateDialog from './RecipeCreateDialog';
 import { allergenLabel } from '../../constants/allergens';
@@ -34,6 +35,7 @@ export default function NomenclaturePage() {
   const { sectorLabel } = usePermissions();
   const [kpi, setKpi] = useState<FormatKpi | null>(null);
   const [editIdentity, setEditIdentity] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
 
   const { data: recipe, isLoading, error } = useQuery({
     queryKey: ['recipe', id], queryFn: () => recipesApi.getById(id!), enabled: !!id,
@@ -93,6 +95,10 @@ export default function NomenclaturePage() {
                 {!readOnly && <button type="button" onClick={() => setEditIdentity(true)} className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
                   <Pencil size={13} />
                 </button>}
+                {/* Copie de la fiche entière (constat 109) : permise même en lecture seule. */}
+                <button type="button" onClick={() => setDuplicating(true)} className="odoo-pager-btn" title="Dupliquer la fiche entière (nouvelle fiche indépendante)" aria-label="Dupliquer la fiche">
+                  <Copy size={13} />
+                </button>
               </div>
               <div className="prj-hero-meta">
                 {recipe.product_name && <span>{recipe.product_name}</span>}
@@ -127,6 +133,9 @@ export default function NomenclaturePage() {
         })()}
         {readOnlyReason && (
           <StatusBanner tone="neutral" icon={Lock} title="Lecture seule">{readOnlyReason} Seuls ses membres, le gérant et l'administrateur la modifient.</StatusBanner>
+        )}
+        {duplicating && (
+          <RecipeDuplicateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null }} onClose={() => setDuplicating(false)} />
         )}
         {editIdentity && (
           <RecipeCreateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null,
