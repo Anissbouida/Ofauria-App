@@ -61,7 +61,7 @@ export const orderRepository = {
     if (!orderResult.rows[0]) return null;
 
     const itemsResult = await db.query(
-      `SELECT oi.*, p.name as product_name, p.image_url as product_image,
+      `SELECT oi.*, p.name as product_name, p.image_url as product_image, p.sale_unit as product_sale_unit,
               -- M2-08 : lignes d'ordre de fabrication qui servent cette ligne.
               (SELECT COALESCE(jsonb_agg(jsonb_build_object(
                         'plan_id', pp.id, 'of_number', pp.of_number, 'plan_status', pp.status,

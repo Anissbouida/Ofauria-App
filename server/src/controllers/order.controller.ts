@@ -584,12 +584,20 @@ export const orderController = {
     }
 
     // Vente du RESTE uniquement : l'avance a deja ete comptee le jour de la commande.
-    const saleItems = order.items.map((item: Record<string, unknown>) => ({
-      productId: item.product_id as string,
-      quantity: item.quantity as number,
-      unitPrice: parseFloat(item.unit_price as string),
-      subtotal: parseFloat(item.subtotal as string),
-    }));
+    // Constat 132 (scénario 2) : order_items.quantity est un numeric (« 12.000 ») alors que
+    // sale_items.quantity est un entier — la remise échouait en 500. Pièces et personnes :
+    // entier ; produit au poids : grammes (unité 'g', comme en caisse, stock décompté en kg).
+    const saleItems = order.items.map((item: Record<string, unknown>) => {
+      const qty = Number(item.quantity);
+      const byWeight = item.product_sale_unit === 'weight';
+      return {
+        productId: item.product_id as string,
+        quantity: byWeight ? Math.round(qty * 1000) : Math.round(qty),
+        ...(byWeight ? { unit: 'g' as const } : {}),
+        unitPrice: parseFloat(item.unit_price as string),
+        subtotal: parseFloat(item.subtotal as string),
+      };
+    });
     const hasAdvance = advanceAmount > 0;
 
     // Le sous-total de la vente de remise est ramene au reste (+ remise) : l'avance
