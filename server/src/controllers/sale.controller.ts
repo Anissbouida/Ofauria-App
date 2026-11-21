@@ -124,11 +124,12 @@ export const saleController = {
       }
 
       // Verify sufficient stock in the vitrine before selling.
-      // Pour les produits au poids, item.quantity = poids vendu en grammes
-      // et currentStock = grammes restants en vitrine (stock géré en grammes).
+      // Pour les produits au poids, item.quantity = poids vendu en grammes, mais le stock
+      // vitrine est tenu en kilos (unité de fabrication, constat 131) : on compare en grammes.
       // Entremets par personne : assemblés à la commande, quantity = nombre de
       // personnes (pas des pièces de vitrine) — on n'applique pas le stock vitrine.
-      const currentStock = await getVitrineStock(item.productId, req.user!.storeId);
+      const vitrineStock = await getVitrineStock(item.productId, req.user!.storeId);
+      const currentStock = product.sale_unit === 'weight' ? Math.round(vitrineStock * 1000) : vitrineStock;
       if (currentStock < item.quantity && !sellWithoutStock && product.sale_unit !== 'person') {
         const unitLabel = product.sale_unit === 'weight' ? 'g' : product.sale_unit === 'person' ? 'pers' : 'pièces';
         res.status(400).json({

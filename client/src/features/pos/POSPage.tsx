@@ -1223,8 +1223,9 @@ export default function POSPage() {
     // Conversion en grammes (entier, arrondi) selon l'unité de saisie.
     const weightG = weightInputUnit === 'kg' ? Math.round(raw * 1000) : Math.round(raw);
     const p = weightModal.product;
+    // Stock vitrine d'un produit au poids tenu en kilos (unité de fabrication) : comparaison en grammes.
     const stock = parseFloat(p.stock_quantity as string) || 0;
-    if (weightG > stock && !ALLOW_NEGATIVE_STOCK) { showStockAlert(p.id as string, stock); return; }
+    if (weightG > Math.round(stock * 1000) && !ALLOW_NEGATIVE_STOCK) { showStockAlert(p.id as string, stock); return; }
     const pricePerKg = parseFloat((p.price_per_kg ?? p.price) as string);
     const existing = cart.find(i => i.productId === p.id);
     if (existing) {

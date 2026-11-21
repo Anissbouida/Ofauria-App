@@ -258,9 +258,13 @@ export const saleRepository = {
         // Remise d'une commande (O2C L1, G-GI-01/04) : le produit a été fabriqué pour la
         // commande et rangé en réserve ; il sort de la réserve (puis de la vitrine) avec
         // ses lots FEFO, au lieu de ne rien sortir (avance) ou de taper la vitrine.
+        // Constat 131 (scénario 2) : un produit au poids est vendu en grammes (sale_items.quantity)
+        // mais son stock (vitrine, réserve, lots) est tenu dans l'unité de fabrication, le kilo —
+        // celle que crédite la production et que valorise le coût au kilo (mig 624).
+        const stockQty = item.unit === 'g' ? item.quantity / 1000 : item.quantity;
         if (data.completeOrder && data.orderId && data.storeId && !data.skipStockDeduction && item.unit !== 'person') {
           const shipped = await shipProduct(client, {
-            productId: item.productId, storeId: data.storeId, quantity: item.quantity, strict: false,
+            productId: item.productId, storeId: data.storeId, quantity: stockQty, strict: false,
             ref: { type: 'sale', id: saleResult.rows[0].id }, label: `Remise commande · ${saleNumber}`, userId: data.userId,
           });
           for (const a of shipped.allocations) {
@@ -305,11 +309,11 @@ export const saleRepository = {
             throw err;
           }
 
-          const stockAfter = await adjustVitrineStock(client, item.productId, data.storeId, -item.quantity);
+          const stockAfter = await adjustVitrineStock(client, item.productId, data.storeId, -stockQty);
           await client.query(
             `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
              VALUES ($1, 'sale', $2, $3, $4, $5, $6, $7)`,
-            [item.productId, -item.quantity, stockAfter,
+            [item.productId, -stockQty, stockAfter,
              `Vente ${saleNumber}`, saleResult.rows[0].id, data.userId, data.storeId]
           );
 
@@ -318,7 +322,7 @@ export const saleRepository = {
           // ce qui rendra la tracabilite sortie possible (audit HACCP).
           // FEFO exclut deja les lots expires par defaut (Phase A).
           const fefoPlan = await productLotRepository.planFefoVitrineConsumption(
-            client, item.productId, data.storeId, item.quantity
+            client, item.productId, data.storeId, stockQty
           );
           for (const step of fefoPlan) {
             await productLotRepository.consumeVitrineSold(client, step.lotId, step.qty, { type: 'sale', id: saleResult.rows[0].id });
@@ -830,7 +834,10 @@ export const saleRepository = {
       // Extourne de l'écriture comptable.
       await reverseEntriesForSource(client, { sourceId: saleId, sourceKinds: ['sale', 'backfill'] });
       // Restitution du stock vitrine vendu.
-      const items = (await client.query(`SELECT id, product_id, quantity FROM sale_items WHERE sale_id = $1`, [saleId])).rows;
+      // Quantité en unité de stock : grammes vendus -> kilos (constat 131).
+      const items = (await client.query(
+        `SELECT id, product_id, CASE WHEN unit = 'g' THEN quantity / 1000.0 ELSE quantity END AS quantity
+           FROM sale_items WHERE sale_id = $1`, [saleId])).rows;
       for (const it of items) {
         if (!s.store_id) continue;
         // Plan pilote : le(s) lot(s) d'où l'article est sorti sont recrédités, comme pour un retour
