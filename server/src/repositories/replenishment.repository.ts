@@ -284,7 +284,7 @@ export const replenishmentRepository = {
         items: itemsResult.rows.map((r: Record<string, unknown>) => ({
           itemId: r.id as string,
           productId: r.product_id as string,
-          requestedQuantity: parseInt(r.requested_quantity as string),
+          requestedQuantity: parseFloat(r.requested_quantity as string),
         })),
         storeId: req.store_id,
         createdBy: acknowledgedBy,
@@ -456,9 +456,9 @@ export const replenishmentRepository = {
         if (!itemResult.rows[0]) continue;
 
         const productId = itemResult.rows[0].product_id as string;
-        const expected = parseInt(itemResult.rows[0].qty_to_store, 10) || 0;
+        const expected = parseFloat(itemResult.rows[0].qty_to_store) || 0;
         const received = item.qtyReceived;
-        const itemHasDiscrepancy = received !== expected;
+        const itemHasDiscrepancy = Math.abs(received - expected) > 0.0005;
         if (itemHasDiscrepancy) hasDiscrepancy = true;
 
         // F-024 — Sous-reception (recu < demande) : la/les piece(s) non reçue(s)
@@ -667,7 +667,7 @@ export const replenishmentRepository = {
     const result = await db.query(
       `SELECT ri.product_id,
               MAX(rr.created_at AT TIME ZONE '${tz}') as last_requested_at,
-              COALESCE(pss.stock_quantity, 0)::int as store_stock
+              COALESCE(pss.stock_quantity, 0)::float8 as store_stock
        FROM replenishment_request_items ri
        JOIN replenishment_requests rr ON rr.id = ri.request_id
        LEFT JOIN product_store_stock pss ON pss.product_id = ri.product_id AND pss.store_id = $1
@@ -735,7 +735,7 @@ export const replenishmentRepository = {
         p.is_recyclable,
         p.recycle_ingredient_id,
         p.max_reexpositions,
-        COALESCE(pss.vitrine_quantity, 0)::int as replenished_qty,
+        COALESCE(pss.vitrine_quantity, 0)::float8 as replenished_qty,
         COALESCE(
           (SELECT SUM(si.quantity)
            FROM sale_items si
