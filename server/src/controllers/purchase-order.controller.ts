@@ -146,13 +146,13 @@ export const purchaseOrderController = {
 
   async getById(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouvé' } }); return; }
     const { storeId, createdBy } = await poScope(req);
     if (storeId && po.store_id && po.store_id !== storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     if (createdBy && po.created_by && po.created_by !== createdBy) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     res.json({ success: true, data: po });
   },
@@ -201,9 +201,9 @@ export const purchaseOrderController = {
 
   async send(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouvé' } }); return; }
     if (po.status !== 'en_attente') {
-      res.status(409).json({ success: false, error: { message: 'Le bon doit etre en attente pour etre envoye' } });
+      res.status(409).json({ success: false, error: { message: 'Le bon doit être en attente pour être envoye' } });
       return;
     }
     // F-003 — Un BC sans prix contournait le plafond d'approbation : total_amount
@@ -500,7 +500,7 @@ export const purchaseOrderController = {
 
   async remove(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouvé' } }); return; }
     // Seul un brouillon jamais engagé se supprime ; un BC engagé s'annule (règle aussi en base, mig 307).
     if (po.status !== 'en_attente' || po.locked_at) {
       res.status(409).json({ success: false, error: { message: 'Seul un bon de commande en brouillon peut être supprimé : un BC engagé s\'annule' } });
@@ -527,7 +527,7 @@ export const purchaseOrderController = {
 
   async updatePrices(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouvé' } }); return; }
     const { items } = req.body;
     if (!items || items.length === 0) {
       res.status(400).json({ success: false, error: { message: 'Articles avec prix requis' } });
@@ -543,13 +543,13 @@ export const purchaseOrderController = {
    */
   async updateHeader(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouvé' } }); return; }
     const { storeId, createdBy } = await poScope(req);
     if (storeId && po.store_id && po.store_id !== storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     if (createdBy && po.created_by && po.created_by !== createdBy) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const body = req.body as Record<string, unknown>;
     try {
@@ -576,13 +576,13 @@ export const purchaseOrderController = {
    */
   async replaceItems(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouvé' } }); return; }
     const { storeId, createdBy } = await poScope(req);
     if (storeId && po.store_id && po.store_id !== storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     if (createdBy && po.created_by && po.created_by !== createdBy) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const body = req.body as { items?: unknown };
     if (!Array.isArray(body.items)) {
@@ -640,13 +640,13 @@ export const purchaseOrderController = {
    */
   async generateInvoice(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouvé' } }); return; }
     const { storeId, createdBy } = await poScope(req);
     if (storeId && po.store_id && po.store_id !== storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     if (createdBy && po.created_by && po.created_by !== createdBy) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     try {
       // Store de la facture = store du BC ; fallback sur le store user si BC sans store.
@@ -658,11 +658,11 @@ export const purchaseOrderController = {
       }
       switch (result.code) {
         case 'not_found':
-          res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } });
+          res.status(404).json({ success: false, error: { message: 'Bon de commande non trouvé' } });
           return;
         case 'wrong_status':
           res.status(409).json({ success: false, error: {
-            message: `Le BC doit etre en statut "Livre" pour generer une facture (statut actuel : ${result.status}).`
+            message: `Le BC doit être en statut "Livre" pour generer une facture (statut actuel : ${result.status}).`
           }});
           return;
         case 'missing_prices':
@@ -671,7 +671,7 @@ export const purchaseOrderController = {
           }});
           return;
         case 'invoice_exists':
-          res.status(409).json({ success: false, error: { message: 'Une facture existe deja pour ce BC.' } });
+          res.status(409).json({ success: false, error: { message: 'Une facture existe déjà pour ce BC.' } });
           return;
       }
     } catch (err) {

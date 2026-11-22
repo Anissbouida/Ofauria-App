@@ -54,7 +54,7 @@ export const packagingController = {
     const { quantity, type, note, unitCost } = req.body;
     const storeId = req.user!.storeId;
     if (!storeId) {
-      res.status(400).json({ success: false, error: { message: 'Aucun magasin associe' } });
+      res.status(400).json({ success: false, error: { message: 'Aucun magasin associé' } });
       return;
     }
     // Règle pilote 2026-11 : diminution > stock disponible refusée (400), plus de plancher à 0.

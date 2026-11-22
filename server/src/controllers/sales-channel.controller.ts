@@ -26,7 +26,7 @@ export const salesChannelController = {
       const msg = (err as Error)?.message || 'Erreur';
       // unique violation sur code
       if (msg.includes('sales_channels_code_key') || msg.includes('duplicate')) {
-        res.status(409).json({ success: false, error: { message: `Code "${code}" deja utilise` } });
+        res.status(409).json({ success: false, error: { message: `Code "${code}" déjà utilisé` } });
         return;
       }
       throw err;
@@ -37,7 +37,7 @@ export const salesChannelController = {
     const { label, color, displayOrder, isDefault, isActive } = req.body || {};
     const channel = await salesChannelRepository.update(req.params.id, { label, color, displayOrder, isDefault, isActive }, req.user?.userId);
     if (!channel) {
-      res.status(404).json({ success: false, error: { message: 'Canal non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Canal non trouvé' } });
       return;
     }
     res.json({ success: true, data: channel });

@@ -35,7 +35,7 @@ export const sachetConfigController = {
 
     if (categories !== undefined) {
       if (!Array.isArray(categories)) {
-        res.status(400).json({ success: false, error: { message: 'categories doit être un tableau' } });
+        res.status(400).json({ success: false, error: { message: 'catégories doit être un tableau' } });
         return;
       }
       for (const cat of categories) {

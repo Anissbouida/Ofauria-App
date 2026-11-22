@@ -57,7 +57,7 @@ export async function resolveRequestUser(req: AuthRequest): Promise<{ user: NonN
     if (typeof payload.tokenVersion === 'number') {
       const currentVersion = await userRepository.getTokenVersion(payload.userId);
       if (currentVersion === null) return { error: 'Utilisateur introuvable' };
-      if (payload.tokenVersion !== currentVersion) return { error: 'Token obsolete (privileges modifies)' };
+      if (payload.tokenVersion !== currentVersion) return { error: 'Token obsolete (privileges modifiés)' };
     }
 
     return {
@@ -72,7 +72,7 @@ export async function resolveRequestUser(req: AuthRequest): Promise<{ user: NonN
       },
     };
   } catch {
-    return { error: 'Token invalide ou expire' };
+    return { error: 'Token invalide ou expiré' };
   }
 }
 

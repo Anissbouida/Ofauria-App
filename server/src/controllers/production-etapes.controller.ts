@@ -57,7 +57,7 @@ export const productionEtapesController = {
         good_qty: parsed.data.good_qty, scrap_qty: parsed.data.scrap_qty }
     );
     if (!etape) {
-      res.status(404).json({ success: false, error: { message: 'Etape non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Étape non trouvée' } });
       return;
     }
     res.json({ success: true, data: etape });
@@ -109,7 +109,7 @@ export const productionEtapesController = {
   async startTimer(req: AuthRequest, res: Response) {
     const etape = await productionEtapesRepository.setTimer(req.params.etapeId as string);
     if (!etape) {
-      res.status(400).json({ success: false, error: { message: 'Timer non applicable (pas de duree ou pas timer_auto)' } });
+      res.status(400).json({ success: false, error: { message: 'Timer non applicable (pas de durée ou pas timer_auto)' } });
       return;
     }
     res.json({ success: true, data: etape });
@@ -126,7 +126,7 @@ export const productionEtapesController = {
       req.params.etapeId as string, req.user!.userId, parsed.data.notes
     );
     if (!etape) {
-      res.status(404).json({ success: false, error: { message: 'Etape non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Étape non trouvée' } });
       return;
     }
     res.json({ success: true, data: etape });
@@ -171,7 +171,7 @@ export const productionEtapesController = {
     );
     const planId = planResult.rows[0]?.plan_id;
     if (!planId) {
-      res.status(404).json({ success: false, error: { message: 'Item non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Item non trouvé' } });
       return;
     }
 
@@ -302,17 +302,17 @@ export const productionEtapesController = {
       workCenterId: b.workCenterId !== undefined ? (b.workCenterId ? String(b.workCenterId) : null) : undefined,
       assignedEmployeeId: b.assignedEmployeeId !== undefined ? (b.assignedEmployeeId ? String(b.assignedEmployeeId) : null) : undefined,
     });
-    if (!etape) { res.status(404).json({ success: false, error: { message: 'Etape non trouvee' } }); return; }
+    if (!etape) { res.status(404).json({ success: false, error: { message: 'Étape non trouvée' } }); return; }
     res.json({ success: true, data: etape });
   },
   async pauseEtape(req: AuthRequest, res: Response) {
     const etape = await productionEtapesRepository.pause(req.params.etapeId as string);
-    if (!etape) { res.status(400).json({ success: false, error: { message: 'Etape non en cours ou deja en pause' } }); return; }
+    if (!etape) { res.status(400).json({ success: false, error: { message: 'Étape non en cours ou déjà en pause' } }); return; }
     res.json({ success: true, data: etape });
   },
   async resumeEtape(req: AuthRequest, res: Response) {
     const etape = await productionEtapesRepository.resume(req.params.etapeId as string);
-    if (!etape) { res.status(400).json({ success: false, error: { message: 'Etape non en pause' } }); return; }
+    if (!etape) { res.status(400).json({ success: false, error: { message: 'Étape non en pause' } }); return; }
     res.json({ success: true, data: etape });
   },
   async atelierLive(req: AuthRequest, res: Response) {

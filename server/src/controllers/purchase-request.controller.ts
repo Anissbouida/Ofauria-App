@@ -88,7 +88,7 @@ export const purchaseRequestController = {
   async updateQuantity(req: AuthRequest, res: Response) {
     const updated = await purchaseRequestRepository.updateQuantity(req.params.id, req.body.quantity, req.user!.userId, req.user!.storeId);
     if (!updated) {
-      res.status(404).json({ success: false, error: { message: 'Demande non trouvee ou deja traitee' } });
+      res.status(404).json({ success: false, error: { message: 'Demande non trouvée ou déjà traitée' } });
       return;
     }
     res.json({ success: true, data: updated });
@@ -98,7 +98,7 @@ export const purchaseRequestController = {
     const { supplierId } = req.body;
     const updated = await purchaseRequestRepository.updateSupplier(req.params.id, supplierId || null, req.user!.userId, req.user!.storeId);
     if (!updated) {
-      res.status(404).json({ success: false, error: { message: 'Demande non trouvee ou deja traitee' } });
+      res.status(404).json({ success: false, error: { message: 'Demande non trouvée ou déjà traitée' } });
       return;
     }
     res.json({ success: true, data: updated });

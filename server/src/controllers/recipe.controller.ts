@@ -118,7 +118,7 @@ export const recipeController = {
   async restoreVersion(req: AuthRequest, res: Response) {
     const versionNumber = parseInt(req.params.versionNumber, 10);
     if (!Number.isInteger(versionNumber) || versionNumber < 1) {
-      res.status(400).json({ success: false, error: { message: 'Numero de version invalide' } });
+      res.status(400).json({ success: false, error: { message: 'Numéro de version invalide' } });
       return;
     }
     try {

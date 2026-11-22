@@ -108,7 +108,7 @@ export function computeHrAlerts(input: AlertInput): HrAlert[] {
     if (!name) continue;
     const left = daysBetween(input.today, d.date);
     if (left < 0) out.push({ employeeId: d.employeeId, employeeName: name, kind: 'doc_expired', severity: 'danger', date: d.date, daysLeft: left, message: `${d.label} expiré(e) depuis le ${fr(d.date)}.` });
-    else if (left <= input.horizonDays) out.push({ employeeId: d.employeeId, employeeName: name, kind: 'doc_expiry', severity: 'warning', date: d.date, daysLeft: left, message: `${d.label} expire le ${fr(d.date)} (dans ${left} j).` });
+    else if (left <= input.horizonDays) out.push({ employeeId: d.employeeId, employeeName: name, kind: 'doc_expiry', severity: 'warning', date: d.date, daysLeft: left, message: `${d.label} expiré le ${fr(d.date)} (dans ${left} j).` });
   }
 
   for (const e of input.employees) {

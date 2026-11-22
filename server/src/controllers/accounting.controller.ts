@@ -62,7 +62,7 @@ export const caisseController = {
     if (!y || !m || m < 1 || m > 12) { res.status(400).json({ success: false, error: { message: 'year et month requis' } }); return; }
     const cash = Number(cashNet); const card = Number(cardCumul);
     if (!Number.isFinite(cash) || !Number.isFinite(card)) {
-      res.status(400).json({ success: false, error: { message: 'cashNet et cardCumul doivent etre des nombres' } }); return;
+      res.status(400).json({ success: false, error: { message: 'cashNet et cardCumul doivent être des nombres' } }); return;
     }
     const row = await caisseRepository.saveBalanceOverride({
       year: y, month: m, storeId: req.user!.storeId,
@@ -107,7 +107,7 @@ export const expenseCategoryController = {
     // Check if referenced in payments
     const usage = await db.query('SELECT COUNT(*)::int as count FROM payments WHERE category_id = $1', [req.params.id]);
     if (usage.rows[0].count > 0) {
-      res.status(409).json({ success: false, error: { message: `Impossible : utilisee dans ${usage.rows[0].count} paiement(s)` } });
+      res.status(409).json({ success: false, error: { message: `Impossible : utilisée dans ${usage.rows[0].count} paiement(s)` } });
       return;
     }
     await expenseCategoryRepository.deactivate(req.params.id as string);
@@ -192,9 +192,9 @@ export const invoiceController = {
     const { id } = req.params;
     const { categoryId } = req.body as { categoryId?: string | null };
     const invoice = await invoiceRepository.findById(id);
-    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
     if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const updated = await invoiceRepository.updateCategory(id, categoryId ?? null);
     res.json({ success: true, data: updated });
@@ -206,14 +206,14 @@ export const invoiceController = {
     const { categoryId, source } = req.body as { categoryId?: string | null; source?: string };
     const target = source === 'reception_item' ? 'reception_item' : 'invoice_item';
     const updated = await invoiceRepository.updateLineCategory(id, target, categoryId ?? null, req.user!.userId);
-    if (!updated) { res.status(404).json({ success: false, error: { message: 'Ligne non trouvee' } }); return; }
+    if (!updated) { res.status(404).json({ success: false, error: { message: 'Ligne non trouvée' } }); return; }
     res.json({ success: true, data: updated });
   },
   async getById(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
-    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
     if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     res.json({ success: true, data: invoice });
   },
@@ -249,7 +249,7 @@ export const invoiceController = {
         declaredVat: b.declaredVat ?? null,
         declaredTtc: b.declaredTtc ?? null,
       }, req.user!.userId);
-      if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+      if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
       res.json({ success: true, data: invoice });
     } catch (err) {
       const e = err as { statusCode?: number; code?: string; message?: string };
@@ -298,7 +298,7 @@ export const invoiceController = {
   /** Annulation motivée (mig 309) pour une facture reçue ; inchangé pour une facture émise. */
   async cancel(req: AuthRequest, res: Response) {
     const current = await invoiceRepository.findById(req.params.id);
-    if (!current) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (!current) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
     if (current.invoice_type === 'received') {
       const { reasonCodeId, note } = (req.body ?? {}) as { reasonCodeId?: string; note?: string };
       if (!reasonCodeId) { res.status(400).json({ success: false, error: { message: 'Motif d\'annulation requis' } }); return; }
@@ -344,7 +344,7 @@ export const invoiceController = {
   /** GET /invoices/:id/credit-notes — avoirs de la facture et avoirs non imputés du client. */
   async creditNotes(req: AuthRequest, res: Response) {
     const data = await creditNoteRepository.forInvoice(req.params.id);
-    if (!data) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
     res.json({ success: true, data });
   },
 
@@ -359,7 +359,7 @@ export const invoiceController = {
   /** GET /invoices/:id/control — blocages, mentions légales, rapprochement par ligne (mig 309). */
   async control(req: AuthRequest, res: Response) {
     const data = await invoiceRepository.control(req.params.id, req.query.revalidate === 'true');
-    if (!data) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
     res.json({ success: true, data });
   },
 
@@ -385,18 +385,18 @@ export const invoiceController = {
   async update(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
     if (!invoice) {
-      res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } });
       return;
     }
     if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
 
     const body = req.body as Record<string, unknown>;
     // Validation mode de reglement
     if (body.expectedPaymentMode && !(await isValidPaymentMode(body.expectedPaymentMode as string))) {
-      res.status(400).json({ success: false, error: { message: 'Mode de reglement invalide' } });
+      res.status(400).json({ success: false, error: { message: 'Mode de règlement invalide' } });
       return;
     }
 
@@ -436,11 +436,11 @@ export const invoiceController = {
   async remove(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
     if (!invoice) {
-      res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } });
       return;
     }
     if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
     const force = String(req.query.force || '').toLowerCase() === 'true';
@@ -481,9 +481,9 @@ export const invoiceController = {
    */
   async replaceItems(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
-    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
     if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const body = req.body as { items?: unknown };
     if (!Array.isArray(body.items)) {
@@ -527,13 +527,13 @@ export const invoiceController = {
   },
   async updatePaymentTerms(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
-    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
     if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const { dueDate, expectedPaymentMode, receptionDate } = req.body as Record<string, string | null | undefined>;
     if (expectedPaymentMode && !(await isValidPaymentMode(expectedPaymentMode))) {
-      res.status(400).json({ success: false, error: { message: 'Mode de reglement invalide' } });
+      res.status(400).json({ success: false, error: { message: 'Mode de règlement invalide' } });
       return;
     }
     const updated = await invoiceRepository.updatePaymentTerms(req.params.id, {
@@ -543,9 +543,9 @@ export const invoiceController = {
   },
   async updateStatusManual(req: AuthRequest, res: Response) {
     const invoice = await invoiceRepository.findById(req.params.id);
-    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
     if (req.user!.storeId && invoice.store_id && invoice.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const { status } = req.body as { status?: string };
     // Mig 309 (G-D6-08) : « payée / partiellement payée / à payer » découlent des paiements et ne se
@@ -651,7 +651,7 @@ export const invoiceController = {
       // (invoicePdfById), partagé avec le portail client. ?locale=ar sort la
       // facture en arabe (phase 10.1).
       const built = await invoicePdfById(req.params.id, { locale: req.query.locale === 'ar' ? 'ar' : 'fr' });
-      if (!built) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+      if (!built) { res.status(404).json({ success: false, error: { message: 'Facture non trouvée' } }); return; }
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${built.filename}"`);
       res.setHeader('Content-Length', built.buffer.length);
@@ -820,7 +820,7 @@ export const paymentController = {
     if (data.type === 'expense' && !data.categoryId) {
       res.status(400).json({
         success: false,
-        error: { message: 'Veuillez selectionner une categorie pour cette depense.' }
+        error: { message: 'Veuillez selectionner une catégorie pour cette dépense.' }
       });
       return;
     }

@@ -98,7 +98,7 @@ export const bonSortieController = {
           storeId,
           type: 'bsi_generated',
           title: 'Nouvelle demande d\'ingredients',
-          message: `Bon ${data.numero || ''} a preparer au pesage`,
+          message: `Bon ${data.numero || ''} à préparer au pesage`,
           referenceType: 'bon_sortie',
           referenceId: data.id as string,
           createdBy: userId,

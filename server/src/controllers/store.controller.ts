@@ -81,7 +81,7 @@ export const storeController = {
 
   async getById(req: AuthRequest, res: Response) {
     const store = await storeRepository.findById(req.params.id);
-    if (!store) { res.status(404).json({ success: false, error: { message: 'Point de vente non trouve' } }); return; }
+    if (!store) { res.status(404).json({ success: false, error: { message: 'Point de vente non trouvé' } }); return; }
     res.json({ success: true, data: store });
   },
 
@@ -102,7 +102,7 @@ export const storeController = {
     if (typeof data === 'string') { res.status(400).json({ success: false, error: { message: data } }); return; }
     try {
       const store = await storeRepository.update(req.params.id, data, req.user?.userId);
-      if (!store) { res.status(404).json({ success: false, error: { message: 'Point de vente non trouve' } }); return; }
+      if (!store) { res.status(404).json({ success: false, error: { message: 'Point de vente non trouvé' } }); return; }
       res.json({ success: true, data: store });
     } catch (err) {
       if (!conflict(err, res)) throw err;

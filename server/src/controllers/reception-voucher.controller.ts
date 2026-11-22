@@ -15,9 +15,9 @@ export const receptionVoucherController = {
 
   async getById(req: AuthRequest, res: Response) {
     const rv = await receptionVoucherRepository.findById(req.params.id);
-    if (!rv) { res.status(404).json({ success: false, error: { message: 'Bon de reception non trouve' } }); return; }
+    if (!rv) { res.status(404).json({ success: false, error: { message: 'Bon de réception non trouvé' } }); return; }
     if (req.user!.storeId && rv.store_id && rv.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     res.json({ success: true, data: rv });
   },
@@ -31,7 +31,7 @@ export const receptionVoucherController = {
 
     // Check PO exists and is in valid status
     const po = await purchaseOrderRepository.findById(purchaseOrderId);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
+    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouvé' } }); return; }
     if (!['envoye', 'livre_partiel', 'en_attente'].includes(po.status)) {
       res.status(409).json({ success: false, error: { message: 'Le bon de commande n\'est pas en attente de livraison' } });
       return;

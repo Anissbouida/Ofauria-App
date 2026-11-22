@@ -21,7 +21,7 @@ export const productionCoutController = {
 
   async getEquipement(req: AuthRequest, res: Response) {
     const data = await productionCoutRepository.getEquipement(req.params.id as string);
-    if (!data) { res.status(404).json({ success: false, error: { message: 'Equipement non trouve' } }); return; }
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Equipement non trouvé' } }); return; }
     res.json({ success: true, data });
   },
 
@@ -46,7 +46,7 @@ export const productionCoutController = {
     const badType = await unknownCodes('production_equipment_types', [parsed.data.type]);
     if (badType.length) { res.status(400).json({ success: false, error: { message: unknownCodeMessage("Type d'équipement", badType) } }); return; }
     const data = await productionCoutRepository.updateEquipement(req.params.id as string, parsed.data);
-    if (!data) { res.status(404).json({ success: false, error: { message: 'Equipement non trouve' } }); return; }
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Equipement non trouvé' } }); return; }
     res.json({ success: true, data });
   },
 
@@ -126,7 +126,7 @@ export const productionCoutController = {
 
   async getCost(req: AuthRequest, res: Response) {
     const data = await productionCoutRepository.findByPlan(req.params.planId as string);
-    if (!data) { res.status(404).json({ success: false, error: { message: 'Cout non calcule pour ce plan' } }); return; }
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Coût non calcule pour ce plan' } }); return; }
     res.json({ success: true, data });
   },
 

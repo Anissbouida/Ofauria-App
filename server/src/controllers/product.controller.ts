@@ -182,11 +182,11 @@ export const productController = {
     if (recipeId) {
       const recipeCheck = await db.query('SELECT id, product_id, name FROM recipes WHERE id = $1', [recipeId]);
       if (recipeCheck.rows.length === 0) {
-        res.status(400).json({ success: false, error: { message: 'La recette selectionnee n\'existe pas.' } });
+        res.status(400).json({ success: false, error: { message: 'La recette sélectionnée n\'existe pas.' } });
         return;
       }
       if (recipeCheck.rows[0].product_id) {
-        res.status(400).json({ success: false, error: { message: `Cette recette est deja liee a un autre produit.` } });
+        res.status(400).json({ success: false, error: { message: `Cette recette est déjà liée a un autre produit.` } });
         return;
       }
     }
@@ -303,13 +303,13 @@ export const productController = {
           const recipeCheck = await client.query('SELECT id, product_id FROM recipes WHERE id = $1', [recipeId]);
           if (recipeCheck.rows.length === 0) {
             await client.query('ROLLBACK');
-            res.status(400).json({ success: false, error: { message: 'La recette selectionnee n\'existe pas.' } });
+            res.status(400).json({ success: false, error: { message: 'La recette sélectionnée n\'existe pas.' } });
             return;
           }
           const existingProductId = recipeCheck.rows[0].product_id;
           if (existingProductId && existingProductId !== productId) {
             await client.query('ROLLBACK');
-            res.status(400).json({ success: false, error: { message: 'Cette recette est deja liee a un autre produit.' } });
+            res.status(400).json({ success: false, error: { message: 'Cette recette est déjà liée a un autre produit.' } });
             return;
           }
           // Detacher la recette actuellement liee a ce produit (s'il y en a une differente)
@@ -364,7 +364,7 @@ export const productController = {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('foreign key') || msg.includes('violates') || msg.includes('archiv')) {
-        res.status(409).json({ success: false, error: { message: 'Ce produit est utilise dans des commandes, ventes ou plans de production. Desactivez-le plutot.' } });
+        res.status(409).json({ success: false, error: { message: 'Ce produit est utilisé dans des commandes, ventes ou plans de production. Desactivez-le plutot.' } });
       } else {
         throw err;
       }
@@ -496,12 +496,12 @@ export const productController = {
   async adjustStock(req: AuthRequest, res: Response) {
     const { quantity, type = 'adjustment', note, lotNumber, expiresAt, unitCost } = req.body;
     if (quantity === undefined || quantity === null) {
-      res.status(400).json({ success: false, error: { message: 'Quantite requise' } });
+      res.status(400).json({ success: false, error: { message: 'Quantité requise' } });
       return;
     }
 
     const product = await productRepository.findById(req.params.id);
-    if (!product) { res.status(404).json({ success: false, error: { message: 'Produit non trouve' } }); return; }
+    if (!product) { res.status(404).json({ success: false, error: { message: 'Produit non trouvé' } }); return; }
 
     const change = parseFloat(quantity);
     // Lot optionnel (phase 3.8) : une ENTRÉE de stock (change > 0) d'un article
@@ -623,7 +623,7 @@ export const productController = {
       if (seen.has(it.ingredientId)) {
         res.status(400).json({
           success: false,
-          error: { message: 'Doublon d\'ingredient dans les destinations de recyclage' },
+          error: { message: 'Doublon d\'ingrédient dans les destinations de recyclage' },
         });
         return;
       }
@@ -644,7 +644,7 @@ export const productController = {
           await client.query('ROLLBACK');
           res.status(400).json({
             success: false,
-            error: { message: 'Un ou plusieurs ingredients sont introuvables' },
+            error: { message: 'Un ou plusieurs ingrédients sont introuvables' },
           });
           return;
         }

@@ -200,7 +200,7 @@ async function buildPlan(parsed: ParsedRecipesWorkbook): Promise<RecipePlan> {
           lookupErrors.push({
             sheet: 'Sous-recettes',
             sourceRow: sr.sourceRow,
-            message: `"${sr.subRecipeName}" n'est pas une recette de base (champ Base? = non). Seules les recettes marquees comme base peuvent etre utilisees comme sous-recettes.`,
+            message: `"${sr.subRecipeName}" n'est pas une recette de base (champ Base? = non). Seules les recettes marquees comme base peuvent être utilisees comme sous-recettes.`,
           });
           subError = true;
           continue;
@@ -213,7 +213,7 @@ async function buildPlan(parsed: ParsedRecipesWorkbook): Promise<RecipePlan> {
           lookupErrors.push({
             sheet: 'Sous-recettes',
             sourceRow: sr.sourceRow,
-            message: `"${sr.subRecipeName}" est dans le fichier mais marquee Base? = non. Une sous-recette doit etre une recette de base.`,
+            message: `"${sr.subRecipeName}" est dans le fichier mais marquee Base? = non. Une sous-recette doit être une recette de base.`,
           });
           subError = true;
           continue;
@@ -748,7 +748,7 @@ export const recipeImportController = {
       if (!defaultCategoryId) {
         res.status(500).json({
           success: false,
-          error: { message: 'Aucune categorie produit en DB — creer une categorie avant l\'import' },
+          error: { message: 'Aucune catégorie produit en DB — creer une catégorie avant l\'import' },
         });
         return;
       }
@@ -785,7 +785,7 @@ export const recipeImportController = {
       } catch (err) {
         await client.query('ROLLBACK');
         const msg = err instanceof Error ? err.message : 'Erreur creation produits';
-        res.status(500).json({ success: false, error: { message: `Auto-creation produits : ${msg}` } });
+        res.status(500).json({ success: false, error: { message: `Auto-création produits : ${msg}` } });
         return;
       } finally {
         client.release();
@@ -825,7 +825,7 @@ export const recipeImportController = {
       } catch (err) {
         await client.query('ROLLBACK');
         const msg = err instanceof Error ? err.message : 'Erreur creation ingredients';
-        res.status(500).json({ success: false, error: { message: `Auto-creation ingredients : ${msg}` } });
+        res.status(500).json({ success: false, error: { message: `Auto-création ingrédients : ${msg}` } });
         return;
       } finally {
         client.release();
@@ -841,7 +841,7 @@ export const recipeImportController = {
           errors.push({
             row: planRow.sourceRow,
             sheet: 'Ingredients',
-            message: `Ingredient "${ing.ingredientName}" introuvable apres auto-creation — bug interne`,
+            message: `Ingrédient "${ing.ingredientName}" introuvable après auto-création — bug interne`,
           });
           return false;
         }
@@ -922,7 +922,7 @@ export const recipeImportController = {
         errors.push({
           row: row.sourceRow,
           sheet: 'Sous-recettes',
-          message: `Impossible de resoudre les sous-recettes de "${row.name}" — cycle ou reference invalide`,
+          message: `Impossible de resoudre les sous-recettes de "${row.name}" — cycle ou référence invalide`,
         });
       }
     }

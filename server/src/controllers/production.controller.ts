@@ -31,9 +31,9 @@ import { logger } from '../utils/logger.js';
  */
 async function loadOwnedPlan(req: AuthRequest, res: Response, opts: { read?: boolean } = {}) {
   const plan = await productionRepository.findById(req.params.id);
-  if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return null; }
+  if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouvé' } }); return null; }
   if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
-    res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return null;
+    res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return null;
   }
   if (!opts.read && plan.target_role && !(await hasPermission(req.user!, 'production.all_workshops'))) {
     const mine = await workshopsOf(req.user!);
@@ -287,7 +287,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res, { read: true });
     if (!plan) return;
     if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     // G0-24 : observations et bases saisies aux déclarations de production.
     res.json({ success: true, data: { ...plan, observations: await listPlanObservations(req.params.id) } });
@@ -359,7 +359,7 @@ export const productionController = {
         storeId: req.user!.storeId,
         type: 'production_plan_created',
         title: 'Nouveau plan de production',
-        message: `Un plan de production du ${planDate} vous a ete assigne avec ${items.length} produit(s)`,
+        message: `Un plan de production du ${planDate} vous a été assigne avec ${items.length} produit(s)`,
         referenceType: 'production_plan',
         referenceId: plan.id,
         createdBy: req.user!.userId,
@@ -373,7 +373,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
     if (plan.status !== 'draft') {
-      res.status(409).json({ success: false, error: { message: 'Seuls les brouillons peuvent etre modifies' } });
+      res.status(409).json({ success: false, error: { message: 'Seuls les brouillons peuvent être modifiés' } });
       return;
     }
     await productionRepository.updateItems(req.params.id, req.body.items);
@@ -385,7 +385,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
     if (plan.status !== 'draft') {
-      res.status(409).json({ success: false, error: { message: 'Le plan doit etre en brouillon pour etre confirme' } });
+      res.status(409).json({ success: false, error: { message: 'Le plan doit être en brouillon pour être confirmé' } });
       return;
     }
     // Le repository reverifie le statut sous verrou : un confirm concurrent
@@ -411,7 +411,7 @@ export const productionController = {
             storeId: req.user!.storeId,
             type: 'semi_finished_plan_created',
             title: 'Semi-fini a produire',
-            message: `Un plan de production de semi-fini a ete cree automatiquement. Produisez-le avant le plan principal.`,
+            message: `Un plan de production de semi-fini a été créé automatiquement. Produisez-le avant le plan principal.`,
             referenceType: 'production_plan',
             referenceId: depPlanId,
             createdBy: req.user!.userId,
@@ -460,7 +460,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
     if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const { itemIds } = req.body || {};
     try {
@@ -500,7 +500,7 @@ export const productionController = {
     // ingredient a prelever), 'ready_to_produce' couvre le cas standard avec
     // BSI clôture. La verification BSI=cloture reste effectuee dans repository.start().
     if (!['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status)) {
-      res.status(409).json({ success: false, error: { message: 'Le plan doit etre confirme ou pret a produire pour demarrer' } });
+      res.status(409).json({ success: false, error: { message: 'Le plan doit être confirmé ou pret a produire pour demarrer' } });
       return;
     }
     try {
@@ -517,7 +517,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
     if (plan.status !== 'in_progress') {
-      res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour lancer des productions' } });
+      res.status(409).json({ success: false, error: { message: 'Le plan doit être en cours pour lancer des productions' } });
       return;
     }
     const { itemIds, startedAt } = req.body;
@@ -535,7 +535,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
     if (plan.status !== 'in_progress') {
-      res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour produire des articles' } });
+      res.status(409).json({ success: false, error: { message: 'Le plan doit être en cours pour produire des articles' } });
       return;
     }
     const { items, producedAt, observations, bases, losses } = req.body;
@@ -560,7 +560,7 @@ export const productionController = {
           storeId: req.user!.storeId,
           type: 'production_completed',
           title: 'Production terminee',
-          message: `Le plan de production a ete automatiquement termine — tous les articles ont ete produits.`,
+          message: `Le plan de production a été automatiquement termine — tous les articles ont été produits.`,
           referenceType: 'production_plan',
           referenceId: req.params.id,
           createdBy: req.user!.userId,
@@ -578,7 +578,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
     if (plan.status !== 'in_progress') {
-      res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour transferer' } });
+      res.status(409).json({ success: false, error: { message: 'Le plan doit être en cours pour transferer' } });
       return;
     }
     const { itemIds } = req.body;
@@ -595,7 +595,7 @@ export const productionController = {
         storeId: req.user!.storeId,
         type: 'production_transfer',
         title: 'Transfert de production',
-        message: `${itemIds.length} article(s) produit(s) transfere(s) au magasin. Confirmez la reception.`,
+        message: `${itemIds.length} article(s) produit(s) transfere(s) au magasin. Confirmez la réception.`,
         referenceType: 'production_transfer',
         referenceId: transfer.id,
         createdBy: req.user!.userId,
@@ -613,7 +613,7 @@ export const productionController = {
   async confirmProductionTransfer(req: AuthRequest, res: Response) {
     const { items } = req.body;
     if (!items || items.length === 0) {
-      res.status(400).json({ success: false, error: { message: 'Confirmez les quantites recues' } });
+      res.status(400).json({ success: false, error: { message: 'Confirmez les quantités recues' } });
       return;
     }
     try {
@@ -626,7 +626,7 @@ export const productionController = {
           storeId: req.user!.storeId,
           type: 'production_completed',
           title: 'Production terminee',
-          message: `Le plan de production a ete complete — tous les articles ont ete recus.`,
+          message: `Le plan de production a été complete — tous les articles ont été recus.`,
           referenceType: 'production_plan',
           referenceId: result.planId,
           createdBy: req.user!.userId,
@@ -685,7 +685,7 @@ export const productionController = {
                   storeId: plan.store_id as string,
                   type: 'bsi_generated',
                   title: 'Nouvelle demande d\'ingredients',
-                  message: `BSI ${generated.numero || ''} a preparer en economat`,
+                  message: `BSI ${generated.numero || ''} à préparer en économat`,
                   referenceType: 'bon_sortie',
                   referenceId: generated.id as string,
                   createdBy: req.user!.userId,
@@ -726,7 +726,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
     if (plan.status !== 'in_progress') {
-      res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour etre termine' } });
+      res.status(409).json({ success: false, error: { message: 'Le plan doit être en cours pour être termine' } });
       return;
     }
 
@@ -779,7 +779,7 @@ export const productionController = {
           storeId: req.user!.storeId,
           type: 'order_ready',
           title: 'Commande prete',
-          message: `La commande ${updated.order_number} est prete pour le retrait`,
+          message: `La commande ${updated.order_number} est prête pour le retrait`,
           referenceType: 'order',
           referenceId: updated.order_id,
           createdBy: req.user!.userId,
@@ -793,7 +793,7 @@ export const productionController = {
       storeId: req.user!.storeId,
       type: 'production_completed',
       title: 'Production terminee',
-      message: `Le plan de production du ${updated?.plan_date?.toString().slice(0, 10)} a ete termine${updated?.order_number ? ` (Commande ${updated.order_number})` : ''}`,
+      message: `Le plan de production du ${updated?.plan_date?.toString().slice(0, 10)} a été termine${updated?.order_number ? ` (Commande ${updated.order_number})` : ''}`,
       referenceType: 'production_plan',
       referenceId: req.params.id,
       createdBy: req.user!.userId,
@@ -803,7 +803,7 @@ export const productionController = {
       storeId: req.user!.storeId,
       type: 'production_completed',
       title: 'Production terminee',
-      message: `Le plan de production du ${updated?.plan_date?.toString().slice(0, 10)} a ete termine${updated?.order_number ? ` (Commande ${updated.order_number})` : ''}`,
+      message: `Le plan de production du ${updated?.plan_date?.toString().slice(0, 10)} a été termine${updated?.order_number ? ` (Commande ${updated.order_number})` : ''}`,
       referenceType: 'production_plan',
       referenceId: req.params.id,
       createdBy: req.user!.userId,
@@ -816,7 +816,7 @@ export const productionController = {
         storeId: req.user!.storeId,
         type: 'production_completed_for_replenishment',
         title: 'Production terminee — approvisionnement debloque',
-        message: `La production est terminee. Vous pouvez maintenant preparer les articles pour l'approvisionnement.`,
+        message: `La production est terminée. Vous pouvez maintenant préparer les articles pour l'approvisionnement.`,
         referenceType: 'replenishment_request',
         referenceId: updated.replenishment_request_id,
         createdBy: req.user!.userId,
@@ -837,7 +837,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
     if (!['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status)) {
-      res.status(409).json({ success: false, error: { message: 'Le plan doit etre confirme ou en cours' } });
+      res.status(409).json({ success: false, error: { message: 'Le plan doit être confirmé ou en cours' } });
       return;
     }
     const { itemIds, reason } = req.body;
@@ -858,7 +858,7 @@ export const productionController = {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
     if (plan.status !== 'draft') {
-      res.status(409).json({ success: false, error: { message: 'Seuls les brouillons peuvent etre supprimes' } });
+      res.status(409).json({ success: false, error: { message: 'Seuls les brouillons peuvent être supprimés' } });
       return;
     }
     await productionRepository.remove(req.params.id);
@@ -873,15 +873,15 @@ export const productionController = {
     const { note } = (req.body || {}) as { note?: string };
 
     const plan = await productionRepository.findById(id);
-    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return; }
+    if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouvé' } }); return; }
     if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
 
     const need = (plan.ingredient_needs as Record<string, unknown>[] || [])
       .find(n => n.ingredient_id === ingredientId);
     if (!need) {
-      res.status(404).json({ success: false, error: { message: 'Besoin ingredient non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Besoin ingrédient non trouvé' } });
       return;
     }
 
@@ -923,7 +923,7 @@ export const productionController = {
         ingredientName,
         deficit,
         unit,
-        message: `Demande envoyee au responsable stock pour ${ingredientName}`,
+        message: `Demande envoyée au responsable stock pour ${ingredientName}`,
       },
     });
   },
@@ -947,7 +947,7 @@ export const productionController = {
           storeId: req.user!.storeId,
           type: 'semi_finished_plan_created',
           title: 'Semi-fini a produire',
-          message: `Un plan de production de semi-fini a ete cree automatiquement. Produisez-le avant le plan principal.`,
+          message: `Un plan de production de semi-fini a été créé automatiquement. Produisez-le avant le plan principal.`,
           referenceType: 'production_plan',
           referenceId: depPlanId,
           createdBy: req.user!.userId,

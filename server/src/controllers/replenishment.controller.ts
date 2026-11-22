@@ -43,11 +43,11 @@ export const replenishmentController = {
     }
     const request = await replenishmentRepository.findById(req.params.id);
     if (!request) {
-      res.status(404).json({ success: false, error: { message: 'Demande non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Demande non trouvée' } });
       return;
     }
     if (req.user!.storeId && request.store_id && request.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     res.json({ success: true, data: request });
   },
@@ -78,7 +78,7 @@ export const replenishmentController = {
           deliveredQty: u.delivered_qty,
           soldQty: u.sold_qty,
           unsoldQty: u.unsold_qty,
-          message: `${u.product_name} a encore ${u.unsold_qty} unite(s) non vendue(s) depuis le dernier approvisionnement.`,
+          message: `${u.product_name} a encore ${u.unsold_qty} unité(s) non vendue(s) depuis le dernier approvisionnement.`,
         })),
         eligibleIds,
       },
@@ -130,7 +130,7 @@ export const replenishmentController = {
             targetRole: role,
             type: 'replenishment_request',
             title: 'Nouvelle demande d\'approvisionnement',
-            message: `Demande d'approvisionnement — articles ${roleLabel} a preparer`,
+            message: `Demande d'approvisionnement — articles ${roleLabel} à préparer`,
             referenceType: 'replenishment_request',
             referenceId: reqId,
             createdBy: req.user!.userId,
@@ -145,7 +145,7 @@ export const replenishmentController = {
       storeId: req.user!.storeId,
       type: 'replenishment_request',
       title: 'Nouvelle demande d\'approvisionnement',
-      message: `${Object.keys(requestIds || {}).length} demande(s) d'approvisionnement creee(s) — ${items.length} produit(s) — Priorite: ${priority || 'normal'}`,
+      message: `${Object.keys(requestIds || {}).length} demande(s) d'approvisionnement créée(s) — ${items.length} produit(s) — Priorite: ${priority || 'normal'}`,
       referenceType: 'replenishment_request',
       referenceId: Object.values(requestIds || {})[0] || (result as Record<string, unknown>)?.id as string,
       createdBy: req.user!.userId,
@@ -193,7 +193,7 @@ export const replenishmentController = {
 
       res.json({ success: true, data: result });
     } catch {
-      res.status(409).json({ success: false, error: { message: 'Cette demande ne peut pas etre prise en charge' } });
+      res.status(409).json({ success: false, error: { message: 'Cette demande ne peut pas être prise en charge' } });
     }
   },
 
@@ -201,7 +201,7 @@ export const replenishmentController = {
   async startPreparing(req: AuthRequest, res: Response) {
     const { items } = req.body;
     if (!items || items.length === 0) {
-      res.status(400).json({ success: false, error: { message: 'Renseignez les quantites pour chaque article' } });
+      res.status(400).json({ success: false, error: { message: 'Renseignez les quantités pour chaque article' } });
       return;
     }
 
@@ -227,7 +227,7 @@ export const replenishmentController = {
         storeId: result!.store_id,
         type: 'replenishment_transferred',
         title: 'Transfert pret a recevoir',
-        message: `${result!.assigned_role && result!.assigned_role !== 'general' ? await workshopLabel(result!.assigned_role as string) : 'Section'}: demande ${result!.request_number} transferee. Confirmez la reception.`,
+        message: `${result!.assigned_role && result!.assigned_role !== 'general' ? await workshopLabel(result!.assigned_role as string) : 'Section'}: demande ${result!.request_number} transferee. Confirmez la réception.`,
         referenceType: 'replenishment_request',
         referenceId: req.params.id,
         createdBy: req.user!.userId,
@@ -235,7 +235,7 @@ export const replenishmentController = {
 
       res.json({ success: true, data: result });
     } catch {
-      res.status(409).json({ success: false, error: { message: 'Cette demande ne peut pas etre transferee' } });
+      res.status(409).json({ success: false, error: { message: 'Cette demande ne peut pas être transferee' } });
     }
   },
 
@@ -243,7 +243,7 @@ export const replenishmentController = {
   async confirmReception(req: AuthRequest, res: Response) {
     const { items } = req.body;
     if (!items || items.length === 0) {
-      res.status(400).json({ success: false, error: { message: 'Confirmez les quantites recues' } });
+      res.status(400).json({ success: false, error: { message: 'Confirmez les quantités recues' } });
       return;
     }
 
@@ -257,7 +257,7 @@ export const replenishmentController = {
           storeId: result!.store_id,
           type: 'replenishment_discrepancy',
           title: 'Ecart de reception signale',
-          message: `La demande ${result!.request_number} a ete cloturee avec un ecart. Verification requise.`,
+          message: `La demande ${result!.request_number} a été clôturée avec un écart. Verification requise.`,
           referenceType: 'replenishment_request',
           referenceId: req.params.id,
           createdBy: req.user!.userId,
@@ -277,11 +277,11 @@ export const replenishmentController = {
   async cancel(req: AuthRequest, res: Response) {
     const request = await replenishmentRepository.findById(req.params.id);
     if (!request) {
-      res.status(404).json({ success: false, error: { message: 'Demande non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Demande non trouvée' } });
       return;
     }
     if (!['submitted', 'acknowledged', 'partially_received'].includes(request.status)) {
-      res.status(409).json({ success: false, error: { message: 'Cette demande ne peut plus etre annulee' } });
+      res.status(409).json({ success: false, error: { message: 'Cette demande ne peut plus être annulée' } });
       return;
     }
 
@@ -296,7 +296,7 @@ export const replenishmentController = {
           storeId: plan.storeId,
           type: 'production_cancelled',
           title: 'Plan de production annule',
-          message: "Le plan de production a ete annule suite a l'annulation de la demande d'approvisionnement",
+          message: "Le plan de production a été annule suite a l'annulation de la demande d'approvisionnement",
           referenceType: 'production_plan',
           referenceId: plan.id,
           createdBy: req.user?.userId,
@@ -309,7 +309,7 @@ export const replenishmentController = {
         storeId: plan.storeId,
         type: 'production_cancelled',
         title: 'Plan de production annule',
-        message: "Le plan de production a ete annule suite a l'annulation de la demande d'approvisionnement",
+        message: "Le plan de production a été annule suite a l'annulation de la demande d'approvisionnement",
         referenceType: 'production_plan',
         referenceId: plan.id,
         createdBy: req.user?.userId,

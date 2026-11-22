@@ -74,7 +74,7 @@ export const paymentScheduleController = {
           : (b.expectedPaymentMode as string | null),
         status: b.status === undefined ? undefined : (b.status as 'pending' | 'cancelled'),
       });
-      if (!row) { res.status(404).json({ success: false, error: { message: 'Echeance introuvable' } }); return; }
+      if (!row) { res.status(404).json({ success: false, error: { message: 'Échéance introuvable' } }); return; }
       res.json({ success: true, data: row });
     } catch (err) {
       fail(res, err, 'Erreur lors de la mise a jour de l\'echeance');

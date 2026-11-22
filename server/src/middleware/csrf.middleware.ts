@@ -53,7 +53,7 @@ export function originCheck(allowedOrigins: string[]) {
     );
     res.status(403).json({
       success: false,
-      error: { message: 'Origine requete non autorisee' },
+      error: { message: 'Origine requête non autorisée' },
     });
   };
 }

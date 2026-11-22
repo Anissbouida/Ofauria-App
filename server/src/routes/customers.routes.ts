@@ -23,7 +23,7 @@ const writeLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, error: { message: 'Trop d\'operations d\'ecriture sur les clients' } },
+  message: { success: false, error: { message: 'Trop d\'opérations d\'écriture sur les clients' } },
 });
 
 const router = Router();

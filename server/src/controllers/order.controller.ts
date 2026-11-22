@@ -122,9 +122,9 @@ export async function priceLines(items: InItem[], pro: Record<string, unknown> |
   const products: Record<string, unknown>[] = [];
   for (const item of items) {
     const product = await productRepository.findById(item.productId);
-    if (!product) return { error: `Produit ${item.productId} non trouve` };
+    if (!product) return { error: `Produit ${item.productId} non trouvé` };
     const qty = Number(item.quantity);
-    if (!(qty > 0)) return { error: 'Quantite invalide' };
+    if (!(qty > 0)) return { error: 'Quantité invalide' };
     const given = item.unitPrice != null && item.unitPrice !== '' && Number.isFinite(parseFloat(String(item.unitPrice))) && parseFloat(String(item.unitPrice)) >= 0
       ? parseFloat(String(item.unitPrice)) : null;
     let listPrice = pro ? (defaults[item.productId]?.unitPrice ?? parseFloat(product.price)) : parseFloat(product.price);
@@ -232,9 +232,9 @@ export const orderController = {
 
   async getById(req: AuthRequest, res: Response) {
     const order = await orderRepository.findById(req.params.id);
-    if (!order) { res.status(404).json({ success: false, error: { message: 'Commande non trouvee' } }); return; }
+    if (!order) { res.status(404).json({ success: false, error: { message: 'Commande non trouvée' } }); return; }
     if (req.user!.storeId && order.store_id && order.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     if (isProCustomer(order) && !isDirection(req)) { fail(res, 403, 'Commande de professionnel : réservée à la direction'); return; }
     const reschedules = (await db.query(
@@ -634,17 +634,17 @@ export const orderController = {
       const result = await orderRepository.delete(req.params.id);
       if (!result.deleted) {
         if (result.reason === 'not_found') {
-          res.status(404).json({ success: false, error: { message: 'Commande non trouvee' } });
+          res.status(404).json({ success: false, error: { message: 'Commande non trouvée' } });
           return;
         }
-        res.status(409).json({ success: false, error: { message: 'Seules les commandes annulees peuvent etre supprimees' } });
+        res.status(409).json({ success: false, error: { message: 'Seules les commandes annulées peuvent être supprimées' } });
         return;
       }
       res.json({ success: true, data: null });
     } catch (err: unknown) {
       // FK violation: a facture (or other dependent record) references this order
       if ((err as { code?: string }).code === '23503') {
-        res.status(409).json({ success: false, error: { message: 'Impossible de supprimer cette commande (facture liee)' } });
+        res.status(409).json({ success: false, error: { message: 'Impossible de supprimer cette commande (facture liée)' } });
         return;
       }
       throw err;

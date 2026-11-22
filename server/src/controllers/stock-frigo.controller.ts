@@ -80,7 +80,7 @@ export const stockFrigoController = {
     const parsed = recordLossSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join(', ') });
     await stockFrigoRepository.recordLoss(id, parsed.data.quantity, parsed.data.type, (req as any).user.userId, parsed.data.notes);
-    res.json({ message: 'Perte enregistree' });
+    res.json({ message: 'Perte enregistrée' });
   },
 
   async adjust(req: Request, res: Response) {
@@ -88,7 +88,7 @@ export const stockFrigoController = {
     const parsed = adjustSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join(', ') });
     await stockFrigoRepository.adjust(id, parsed.data.quantity, (req as any).user.userId, parsed.data.notes);
-    res.json({ message: 'Quantite ajustee' });
+    res.json({ message: 'Quantité ajustee' });
   },
 
   async transactions(req: Request, res: Response) {

@@ -687,7 +687,7 @@ export const productionRepository = {
                 storeId,
                 type: 'bsi_generated',
                 title: 'Nouvelle demande d\'ingredients',
-                message: `BSI ${bsi.numero || ''} a preparer en economat`,
+                message: `BSI ${bsi.numero || ''} à préparer en économat`,
                 referenceType: 'bon_sortie',
                 referenceId: bsi.id as string,
                 createdBy: userId,

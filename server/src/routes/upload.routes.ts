@@ -48,7 +48,7 @@ router.post('/logo', authenticate, authorizeSettings('appearance', 'edit'), uplo
 
 const photoHandler = (ownerType: FileOwnerType) => asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.file) {
-    res.status(400).json({ success: false, error: { message: 'Aucune photo envoyee' } });
+    res.status(400).json({ success: false, error: { message: 'Aucune photo envoyée' } });
     return;
   }
   try {

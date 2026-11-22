@@ -172,7 +172,7 @@ export const payrollComplianceController = {
   async attestation(req: AuthRequest, res: Response) {
     const emp = (await db.query('SELECT * FROM employees WHERE id = $1', [req.params.employeeId])).rows[0];
     if (!emp || (emp.store_id !== null && !checkStoreOwnership(emp.store_id, req.user!.storeId))) {
-      res.status(404).json({ success: false, error: { message: 'Employe non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } });
       return;
     }
     await sendAttestation(res, emp, req.params.kind, parseInt(String(req.query.months ?? '3'), 10));

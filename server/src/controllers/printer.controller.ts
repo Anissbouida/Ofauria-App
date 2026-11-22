@@ -41,7 +41,7 @@ export const printerController = {
     const existing = await printerRepository.findById(req.params.id);
     if (!existing) { res.status(404).json({ success: false, error: { message: 'Imprimante introuvable' } }); return; }
     if (existing.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
     const updated = await printerRepository.update(req.params.id, req.body, req.user?.userId);
@@ -52,7 +52,7 @@ export const printerController = {
     const existing = await printerRepository.findById(req.params.id);
     if (!existing) { res.status(404).json({ success: false, error: { message: 'Imprimante introuvable' } }); return; }
     if (existing.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
     await printerRepository.delete(req.params.id, req.user?.userId);
@@ -63,7 +63,7 @@ export const printerController = {
     const existing = await printerRepository.findById(req.params.id);
     if (!existing) { res.status(404).json({ success: false, error: { message: 'Imprimante introuvable' } }); return; }
     if (existing.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
     const result = await printerService.testPrint(req.params.id);
@@ -78,7 +78,7 @@ export const printerController = {
     const existing = await printerRepository.findById(req.params.id);
     if (!existing) { res.status(404).json({ success: false, error: { message: 'Imprimante introuvable' } }); return; }
     if (existing.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
     const result = await printerService.openCashDrawer(req.params.id);
@@ -99,7 +99,7 @@ export const printerController = {
     const sale = await saleRepository.findById(req.params.id);
     if (!sale) { res.status(404).json({ success: false, error: { message: 'Vente introuvable' } }); return; }
     if (sale.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
 

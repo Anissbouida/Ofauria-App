@@ -26,16 +26,16 @@ export const cashRegisterController = {
 
   async getById(req: AuthRequest, res: Response) {
     const session = await cashRegisterRepository.findById(req.params.id);
-    if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvee' } }); return; }
+    if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvée' } }); return; }
     // Verification store (multi-tenant)
     if (req.user!.storeId && session.store_id && session.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     // Verification ownership : admin/manager voient tout dans leur store,
     // cashier/saleswoman uniquement leur propre session
     const isPrivileged = req.user!.role === 'admin' || req.user!.role === 'manager';
     if (!isPrivileged && session.user_id !== req.user!.userId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse a la session d\'un autre utilisateur' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé à la session d\'un autre utilisateur' } });
       return;
     }
     res.json({ success: true, data: session });
@@ -43,13 +43,13 @@ export const cashRegisterController = {
 
   async getInventoryItems(req: AuthRequest, res: Response) {
     const session = await cashRegisterRepository.findById(req.params.id);
-    if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvee' } }); return; }
+    if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvée' } }); return; }
     if (req.user!.storeId && session.store_id && session.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const isPrivileged = req.user!.role === 'admin' || req.user!.role === 'manager';
     if (!isPrivileged && session.user_id !== req.user!.userId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
     const items = await cashRegisterRepository.getInventoryItems(req.params.id);
@@ -71,7 +71,7 @@ export const cashRegisterController = {
     // Check for existing open session
     const existing = await cashRegisterRepository.findOpenSession(req.user!.userId);
     if (existing) {
-      res.status(400).json({ success: false, error: { message: 'Vous avez deja une caisse ouverte' } });
+      res.status(400).json({ success: false, error: { message: 'Vous avez déjà une caisse ouverte' } });
       return;
     }
 
@@ -119,7 +119,7 @@ export const cashRegisterController = {
           success: false,
           error: {
             code: 'EXPIRED_ITEMS_PENDING',
-            message: `${expired.length} produit(s) avec DLC/DLV depassee doivent etre detruits avant la fermeture journee`,
+            message: `${expired.length} produit(s) avec DLC/DLV dépassée doivent être detruits avant la fermeture journee`,
             details: { count: expired.length, items: expired },
           },
         });
@@ -140,7 +140,7 @@ export const cashRegisterController = {
           success: false,
           error: {
             code: 'UNSOLD_DECISIONS_PENDING',
-            message: `Stock vitrine non traite : enregistrez les decisions d'invendus (garder, recycler, don, perte) avant de fermer la journee.`,
+            message: `Stock vitrine non traité : enregistrez les decisions d'invendus (garder, recycler, don, perte) avant de fermer la journee.`,
             details: { vitrineRemaining },
           },
         });
@@ -164,7 +164,7 @@ export const cashRegisterController = {
     // Verify session belongs to the authenticated user
     const session = await cashRegisterRepository.findById(req.params.id);
     if (!session) {
-      res.status(404).json({ success: false, error: { message: 'Session non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Session non trouvée' } });
       return;
     }
     if (session.user_id !== req.user!.userId) {
@@ -183,7 +183,7 @@ export const cashRegisterController = {
         // UPDATE ne retourne 0 ligne = session deja verrouillee entre findById et l'update.
         res.status(409).json({
           success: false,
-          error: { code: 'SESSION_ALREADY_CLOSED', message: 'Session deja cloturee' },
+          error: { code: 'SESSION_ALREADY_CLOSED', message: 'Session déjà clôturée' },
         });
         return;
       }
@@ -222,13 +222,13 @@ export const cashRegisterController = {
     }
 
     const session = await cashRegisterRepository.findById(req.params.id);
-    if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvee' } }); return; }
+    if (!session) { res.status(404).json({ success: false, error: { message: 'Session non trouvée' } }); return; }
     if (session.store_id && session.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const isPrivileged = req.user!.role === 'admin' || req.user!.role === 'manager';
     if (!isPrivileged && session.user_id !== req.user!.userId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse a la session d\'un autre utilisateur' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé à la session d\'un autre utilisateur' } });
       return;
     }
     if (session.expected_cash == null) {

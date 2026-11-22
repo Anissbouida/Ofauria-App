@@ -26,7 +26,7 @@ export const inventoryController = {
   async restock(req: AuthRequest, res: Response) {
     const { ingredientId, quantity, note, supplierLotNumber, expirationDate, manufacturedDate } = req.body;
     if (!ingredientId || !quantity || quantity <= 0) {
-      res.status(400).json({ success: false, error: { message: 'Ingredient et quantite requis' } });
+      res.status(400).json({ success: false, error: { message: 'Ingrédient et quantité requis' } });
       return;
     }
     const client = await db.getClient();
@@ -81,7 +81,7 @@ export const inventoryController = {
     // inventory_transactions_type_check).
     const ALLOWED_TYPES = new Set(['restock', 'usage', 'adjustment', 'waste', 'recycle', 'production']);
     if (!ingredientId || quantity === undefined || Number.isNaN(Number(quantity))) {
-      res.status(400).json({ success: false, error: { message: 'Ingredient et quantite requis' } });
+      res.status(400).json({ success: false, error: { message: 'Ingrédient et quantité requis' } });
       return;
     }
     if (!ALLOWED_TYPES.has(type)) {
@@ -93,7 +93,7 @@ export const inventoryController = {
     }
     const qty = Number(quantity);
     if (Math.abs(qty) > 1_000_000) {
-      res.status(400).json({ success: false, error: { message: 'Quantite demesuree' } });
+      res.status(400).json({ success: false, error: { message: 'Quantité demesuree' } });
       return;
     }
 
@@ -120,7 +120,7 @@ export const inventoryController = {
   async updateThreshold(req: AuthRequest, res: Response) {
     const { ingredientId, threshold } = req.body;
     if (!ingredientId || threshold === undefined) {
-      res.status(400).json({ success: false, error: { message: 'Donnees manquantes' } });
+      res.status(400).json({ success: false, error: { message: 'Données manquantes' } });
       return;
     }
     // Robustesse (bug "seuil non retenu") : l'ancien code faisait un simple

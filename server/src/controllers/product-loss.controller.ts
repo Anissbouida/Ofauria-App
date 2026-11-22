@@ -42,13 +42,13 @@ export const productLossController = {
     }
 
     if (quantity <= 0) {
-      res.status(400).json({ success: false, error: { message: 'La quantite doit etre superieure a 0' } });
+      res.status(400).json({ success: false, error: { message: 'La quantité doit être supérieure à 0' } });
       return;
     }
 
     const product = await productRepository.findById(productId);
     if (!product) {
-      res.status(404).json({ success: false, error: { message: 'Produit non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Produit non trouvé' } });
       return;
     }
 
@@ -70,7 +70,7 @@ export const productLossController = {
     const result = await productLossRepository.remove(req.params.id, req.user!.userId);
     if (!result.ok) {
       if (result.reason === 'not_found') {
-        res.status(404).json({ success: false, error: { message: 'Perte non trouvee' } });
+        res.status(404).json({ success: false, error: { message: 'Perte non trouvée' } });
         return;
       }
       res.status(400).json({ success: false, error: { message: result.reason || 'Suppression refusee' } });

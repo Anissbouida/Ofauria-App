@@ -44,7 +44,7 @@ export const saleController = {
 
   async getById(req: AuthRequest, res: Response) {
     const sale = await saleRepository.findById(req.params.id);
-    if (!sale) { res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } }); return; }
+    if (!sale) { res.status(404).json({ success: false, error: { message: 'Vente non trouvée' } }); return; }
     // Admin global (storeId: null) peut voir toutes les ventes.
     // Utilisateur rattache a un store : acces uniquement a son store.
     // Non-admin sans storeId : refuse (politique explicite, pas d'acces global implicite).
@@ -54,7 +54,7 @@ export const saleController = {
       return;
     }
     if (userStoreId && sale.store_id && sale.store_id !== userStoreId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     res.json({ success: true, data: sale });
   },
@@ -105,7 +105,7 @@ export const saleController = {
     for (const item of items) {
       const product = await productRepository.findById(item.productId);
       if (!product) {
-        res.status(400).json({ success: false, error: { message: `Produit ${item.productId} non trouve` } });
+        res.status(400).json({ success: false, error: { message: `Produit ${item.productId} non trouvé` } });
         return;
       }
 
@@ -187,7 +187,7 @@ export const saleController = {
     if (discountAmount > Math.round((subtotal - promotionAmount) * 100) / 100 + 0.001) {
       res.status(400).json({
         success: false,
-        error: { message: `Remise (${discountAmount}) superieure au montant apres promotions (${(subtotal - promotionAmount).toFixed(2)})` },
+        error: { message: `Remise (${discountAmount}) supérieure au montant après promotions (${(subtotal - promotionAmount).toFixed(2)})` },
       });
       return;
     }
@@ -244,7 +244,7 @@ export const saleController = {
       if (Math.abs(mixedSum - totalRounded) >= 0.01) {
         res.status(400).json({
           success: false,
-          error: { message: `Ventilation mixte incoherente : especes + carte = ${mixedSum.toFixed(2)} ${currencySymbol()}, total = ${totalRounded.toFixed(2)} ${currencySymbol()}` },
+          error: { message: `Ventilation mixte incohérente : espèces + carte = ${mixedSum.toFixed(2)} ${currencySymbol()}, total = ${totalRounded.toFixed(2)} ${currencySymbol()}` },
         });
         return;
       }
@@ -331,11 +331,11 @@ export const saleController = {
 
     const existing = await saleRepository.findById(id);
     if (!existing) {
-      res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Vente non trouvée' } });
       return;
     }
     if (existing.store_id && existing.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
 
@@ -352,7 +352,7 @@ export const saleController = {
         return;
       }
       if (picked.getTime() > now.getTime()) {
-        res.status(400).json({ success: false, error: { message: 'La date d\'encaissement ne peut pas etre dans le futur' } });
+        res.status(400).json({ success: false, error: { message: 'La date d\'encaissement ne peut pas être dans le futur' } });
         return;
       }
       if (picked < new Date(created.toISOString().slice(0, 10) + 'T00:00:00')) {
@@ -374,11 +374,11 @@ export const saleController = {
     });
     if (!result.ok) {
       if (result.reason === 'not_found') {
-        res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+        res.status(404).json({ success: false, error: { message: 'Vente non trouvée' } });
         return;
       }
       if (result.reason === 'already_paid') {
-        res.status(409).json({ success: false, error: { message: 'Cette vente est deja payee' } });
+        res.status(409).json({ success: false, error: { message: 'Cette vente est déjà payée' } });
         return;
       }
     } else {
@@ -478,13 +478,13 @@ export const saleController = {
    */
   async invoice(req: AuthRequest, res: Response) {
     const sale = await saleRepository.findById(req.params.id);
-    if (!sale) { res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } }); return; }
+    if (!sale) { res.status(404).json({ success: false, error: { message: 'Vente non trouvée' } }); return; }
     const userStoreId = req.user!.storeId;
     if (!userStoreId && req.user!.role !== 'admin') {
       res.status(403).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin' } }); return;
     }
     if (userStoreId && sale.store_id && sale.store_id !== userStoreId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     const { customerId } = req.body as { customerId?: string };
     try {

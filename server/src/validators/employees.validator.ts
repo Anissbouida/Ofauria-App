@@ -119,7 +119,7 @@ export const upsertAttendanceSchema = z.object({
   // date : cf. migration TIMESTAMPTZ P2.2).
   if (!v.checkIn || !v.checkOut) return true;
   return v.checkOut >= v.checkIn;
-}, { message: 'checkOut doit etre >= checkIn', path: ['checkOut'] });
+}, { message: 'checkOut doit être >= checkIn', path: ['checkOut'] });
 
 export const bulkAttendanceSchema = z.object({
   records: z.array(upsertAttendanceSchema).min(1).max(500, 'Batch max 500 lignes'),
@@ -144,7 +144,7 @@ export const createLeaveSchema = z.object({
   // Admin : autorise un conge anticipe (solde negatif).
   allowNegative: z.boolean().optional(),
 }).refine(v => v.endDate >= v.startDate, {
-  message: 'endDate doit etre >= startDate', path: ['endDate'],
+  message: 'endDate doit être >= startDate', path: ['endDate'],
 });
 
 // ─── Payroll (mensuel) ────────────────────────────────────────────────────
@@ -416,7 +416,7 @@ export const selfLeaveRequestSchema = z.object({
   startDate: isoDate,
   endDate: isoDate,
   reason: z.string().max(1000).nullable().optional(),
-}).refine(v => v.endDate >= v.startDate, { message: 'endDate doit etre >= startDate', path: ['endDate'] });
+}).refine(v => v.endDate >= v.startDate, { message: 'endDate doit être >= startDate', path: ['endDate'] });
 export const selfAdvanceRequestSchema = z.object({
   amount: z.coerce.number().positive('Montant > 0').max(100000),
   monthlyDeduction: z.coerce.number().positive().max(100000).nullable().optional(),

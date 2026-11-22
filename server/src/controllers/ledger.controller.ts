@@ -177,13 +177,13 @@ export const journalEntryController = {
   async getById(req: AuthRequest, res: Response) {
     const entry = await journalEntryRepository.findById(req.params.id);
     if (!entry) {
-      res.status(404).json({ success: false, error: { message: 'Ecriture introuvable' } });
+      res.status(404).json({ success: false, error: { message: 'Écriture introuvable' } });
       return;
     }
     // Isolation multi-magasin : une ecriture d'un autre magasin ne peut etre vue
     // qu'a condition d'etre transverse (store_id = NULL)
     if (req.user!.storeId && entry.store_id && entry.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } });
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } });
       return;
     }
     res.json({ success: true, data: entry });

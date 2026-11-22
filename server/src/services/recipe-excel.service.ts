@@ -201,7 +201,7 @@ export async function parseRecipeWorkbook(buffer: Buffer, extraUnits: ReadonlySe
 
     const yieldQuantity = toNumber(row[3]);
     if (yieldQuantity === null || yieldQuantity <= 0) {
-      errors.push({ sheet: SHEET_RECIPES, sourceRow, message: `Rendement invalide (colonne D) : "${row[3] ?? ''}". Doit etre un nombre positif.` });
+      errors.push({ sheet: SHEET_RECIPES, sourceRow, message: `Rendement invalide (colonne D) : "${row[3] ?? ''}". Doit être un nombre positif.` });
       continue;
     }
 
@@ -210,7 +210,7 @@ export async function parseRecipeWorkbook(buffer: Buffer, extraUnits: ReadonlySe
     const yieldUnitRaw = toCleanString(row[4]);
     let yieldUnit: string;
     if (!yieldUnitRaw) {
-      errors.push({ sheet: SHEET_RECIPES, sourceRow, message: `Unite de rendement manquante (colonne E)` });
+      errors.push({ sheet: SHEET_RECIPES, sourceRow, message: `Unité de rendement manquante (colonne E)` });
       continue;
     }
     const yieldUnitNormalized = normalizeUnit(yieldUnitRaw, extraUnits);
@@ -264,15 +264,15 @@ export async function parseRecipeWorkbook(buffer: Buffer, extraUnits: ReadonlySe
         continue;
       }
       if (!ingredientName) {
-        errors.push({ sheet: SHEET_INGREDIENTS, sourceRow, message: 'Nom d\'ingredient manquant (colonne B)' });
+        errors.push({ sheet: SHEET_INGREDIENTS, sourceRow, message: 'Nom d\'ingrédient manquant (colonne B)' });
         continue;
       }
       if (quantity === null || quantity <= 0) {
-        errors.push({ sheet: SHEET_INGREDIENTS, sourceRow, message: `Quantite invalide (colonne C) : "${row[2] ?? ''}"` });
+        errors.push({ sheet: SHEET_INGREDIENTS, sourceRow, message: `Quantité invalide (colonne C) : "${row[2] ?? ''}"` });
         continue;
       }
       if (!unit) {
-        errors.push({ sheet: SHEET_INGREDIENTS, sourceRow, message: `Unite invalide (colonne D) : "${row[3] ?? ''}". Valeurs : ${[...new Set([...ALLOWED_UNITS, ...extraUnits])].join(', ')}` });
+        errors.push({ sheet: SHEET_INGREDIENTS, sourceRow, message: `Unité invalide (colonne D) : "${row[3] ?? ''}". Valeurs : ${[...new Set([...ALLOWED_UNITS, ...extraUnits])].join(', ')}` });
         continue;
       }
       ingredients.push({ sourceRow, recipeName, ingredientName, quantity, unit });
@@ -303,7 +303,7 @@ export async function parseRecipeWorkbook(buffer: Buffer, extraUnits: ReadonlySe
         continue;
       }
       if (quantity === null || quantity <= 0) {
-        errors.push({ sheet: SHEET_SUB_RECIPES, sourceRow, message: `Quantite invalide (colonne C) : "${row[2] ?? ''}"` });
+        errors.push({ sheet: SHEET_SUB_RECIPES, sourceRow, message: `Quantité invalide (colonne C) : "${row[2] ?? ''}"` });
         continue;
       }
       subRecipes.push({ sourceRow, recipeName, subRecipeName, quantity });
@@ -335,7 +335,7 @@ export async function parseRecipeWorkbook(buffer: Buffer, extraUnits: ReadonlySe
         continue;
       }
       if (quantity === null || quantity <= 0) {
-        errors.push({ sheet: SHEET_PACKAGING, sourceRow, message: `Quantite invalide (colonne C) : "${row[2] ?? ''}"` });
+        errors.push({ sheet: SHEET_PACKAGING, sourceRow, message: `Quantité invalide (colonne C) : "${row[2] ?? ''}"` });
         continue;
       }
       packaging.push({ sourceRow, recipeName, packagingName, quantity, unit });

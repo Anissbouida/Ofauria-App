@@ -562,7 +562,7 @@ export const replenishmentRepository = {
           storeId: requestStoreId,
           type: 'replenishment_discrepancy',
           title: 'Ecart de reception approvisionnement',
-          message: `${shortfalls.length} produit(s) recu(s) en moins qu'attendu en vitrine (${total} piece(s) restee(s) en reserve) : a verifier, perte eventuelle a declarer.`,
+          message: `${shortfalls.length} produit(s) reçu(s) en moins qu'attendu en vitrine (${total} pièce(s) restee(s) en réservé) : a verifier, perte eventuelle a declarer.`,
           referenceType: 'replenishment_request',
           referenceId: requestId,
           createdBy: closedBy,

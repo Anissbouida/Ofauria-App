@@ -35,7 +35,7 @@ const fail = (res: Response, err: unknown) => {
   }
   res.status(status).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
 };
-const notFound = (res: Response) => res.status(404).json({ success: false, error: { message: 'Employe non trouve' } });
+const notFound = (res: Response) => res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } });
 
 async function loadSettlement(id: string, storeId?: string) {
   const s = (await db.query(

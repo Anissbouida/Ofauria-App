@@ -20,13 +20,13 @@ export const returnController = {
   async searchSale(req: AuthRequest, res: Response) {
     const { saleNumber } = req.query as Record<string, string>;
     if (!saleNumber) {
-      res.status(400).json({ success: false, error: { message: 'Numero de vente requis' } });
+      res.status(400).json({ success: false, error: { message: 'Numéro de vente requis' } });
       return;
     }
 
     const result = await saleRepository.findBySaleNumber(saleNumber.trim());
     if (!result) {
-      res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Vente non trouvée' } });
       return;
     }
 
@@ -62,7 +62,7 @@ export const returnController = {
 
     const sale = await saleRepository.findById(originalSaleId);
     if (!sale) {
-      res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } });
+      res.status(404).json({ success: false, error: { message: 'Vente non trouvée' } });
       return;
     }
 
@@ -112,7 +112,7 @@ export const returnController = {
     for (const item of items) {
       const saleItem = saleItems.find((si) => si.id === item.saleItemId);
       if (!saleItem) {
-        res.status(400).json({ success: false, error: { message: `Article ${item.saleItemId} non trouve dans la vente` } });
+        res.status(400).json({ success: false, error: { message: `Article ${item.saleItemId} non trouvé dans la vente` } });
         return;
       }
       const alreadyReturned = returnedQtys[item.saleItemId] || 0;
@@ -121,7 +121,7 @@ export const returnController = {
       if (item.quantity > maxReturnable + 1e-6) {
         res.status(400).json({
           success: false,
-          error: { message: `L'article "${saleItem.product_name}" a deja ete retourne (${alreadyReturned}/${originalQty}). Maximum retournable: ${maxReturnable}` }
+          error: { message: `L'article "${saleItem.product_name}" a déjà ete retourne (${alreadyReturned}/${originalQty}). Maximum retournable: ${maxReturnable}` }
         });
         return;
       }

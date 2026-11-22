@@ -200,24 +200,24 @@ export async function parseIngredientWorkbook(buffer: Buffer, extraUnits: Readon
     if (!category) {
       errors.push({
         sourceRow,
-        message: `Categorie invalide (colonne B) : "${rawCategory ?? ''}". Valeurs autorisees : ${INGREDIENT_CATEGORIES.map(c => c.value).join(', ')}`,
+        message: `Catégorie invalide (colonne B) : "${rawCategory ?? ''}". Valeurs autorisees : ${INGREDIENT_CATEGORIES.map(c => c.value).join(', ')}`,
       });
       continue;
     }
 
     const unit = normalizeUnit(rawUnit, extraUnits);
     if (!unit) {
-      errors.push({ sourceRow, message: `Unite invalide (colonne C) : "${rawUnit ?? ''}". Valeurs : ${[...new Set([...ALLOWED_UNITS, ...extraUnits])].join(', ')}` });
+      errors.push({ sourceRow, message: `Unité invalide (colonne C) : "${rawUnit ?? ''}". Valeurs : ${[...new Set([...ALLOWED_UNITS, ...extraUnits])].join(', ')}` });
       continue;
     }
 
     const unitCost = toNumber(rawCost);
     if (unitCost === null) {
-      errors.push({ sourceRow, message: `Cout unitaire invalide (colonne D) : "${rawCost ?? ''}"` });
+      errors.push({ sourceRow, message: `Coût unitaire invalide (colonne D) : "${rawCost ?? ''}"` });
       continue;
     }
     if (unitCost < 0) {
-      errors.push({ sourceRow, message: `Cout unitaire negatif (colonne D) : ${unitCost}` });
+      errors.push({ sourceRow, message: `Coût unitaire négatif (colonne D) : ${unitCost}` });
       continue;
     }
     if (unitCost > 1_000_000) {

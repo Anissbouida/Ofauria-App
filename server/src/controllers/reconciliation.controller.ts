@@ -366,7 +366,7 @@ export const reconciliationController = {
   async report(req: AuthRequest, res: Response) {
     const { from, to } = req.query as Record<string, string>;
     if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to)) {
-      res.status(400).json({ success: false, error: { message: 'Periode invalide (from/to en AAAA-MM-JJ)' } }); return;
+      res.status(400).json({ success: false, error: { message: 'Période invalide (from/to en AAAA-MM-JJ)' } }); return;
     }
     const rows = await reconciliationRepository.report({ from, to, storeId: storeOf(req) });
     res.json({ success: true, data: rows });

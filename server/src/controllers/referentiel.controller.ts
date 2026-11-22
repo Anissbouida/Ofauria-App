@@ -33,7 +33,7 @@ export const refEntryController = {
 
     const table = await refTableRepository.findById(tableName);
     if (!table) {
-      res.status(404).json({ success: false, error: { message: `Table "${tableName}" non trouvee` } });
+      res.status(404).json({ success: false, error: { message: `Table "${tableName}" non trouvée` } });
       return;
     }
 
@@ -52,7 +52,7 @@ export const refEntryController = {
     const tableName = req.params.tableName as string;
     const table = await refTableRepository.findById(tableName);
     if (!table) {
-      res.status(404).json({ success: false, error: { message: `Table "${tableName}" non trouvee` } });
+      res.status(404).json({ success: false, error: { message: `Table "${tableName}" non trouvée` } });
       return;
     }
     if (!table.editable) {
@@ -79,7 +79,7 @@ export const refEntryController = {
     const id = req.params.id as string;
     const table = await refTableRepository.findById(tableName);
     if (!table) {
-      res.status(404).json({ success: false, error: { message: `Table "${tableName}" non trouvee` } });
+      res.status(404).json({ success: false, error: { message: `Table "${tableName}" non trouvée` } });
       return;
     }
     if (!table.editable) {
@@ -105,7 +105,7 @@ export const refEntryController = {
     const id = req.params.id as string;
     const table = await refTableRepository.findById(tableName);
     if (!table) {
-      res.status(404).json({ success: false, error: { message: `Table "${tableName}" non trouvee` } });
+      res.status(404).json({ success: false, error: { message: `Table "${tableName}" non trouvée` } });
       return;
     }
 
@@ -116,7 +116,7 @@ export const refEntryController = {
         res.status(409).json({
           success: false,
           error: {
-            message: `Impossible de supprimer : cette entree est utilisee dans ${usageCount} enregistrement(s).`,
+            message: `Impossible de supprimer : cette entrée est utilisée dans ${usageCount} enregistrement(s).`,
             usageCount,
           },
         });

@@ -12,7 +12,7 @@ export const unsoldDecisionController = {
   async suggestions(req: AuthRequest, res: Response) {
     const storeId = req.user!.storeId;
     if (!storeId) {
-      res.status(400).json({ success: false, error: { message: 'Aucun magasin associe a cet utilisateur' } });
+      res.status(400).json({ success: false, error: { message: 'Aucun magasin associé a cet utilisateur' } });
       return;
     }
     const closeType = typeof req.query.closeType === 'string' ? req.query.closeType : undefined;
@@ -35,7 +35,7 @@ export const unsoldDecisionController = {
     }
     const storeId = req.user!.storeId;
     if (!storeId) {
-      res.status(400).json({ success: false, error: { message: 'Aucun magasin associe' } });
+      res.status(400).json({ success: false, error: { message: 'Aucun magasin associé' } });
       return;
     }
 
@@ -44,7 +44,7 @@ export const unsoldDecisionController = {
     if (!sessionId) {
       res.status(400).json({
         success: false,
-        error: { message: 'sessionId requis — les decisions doivent etre rattachees a une session de caisse (passation ou fin de journee)' },
+        error: { message: 'sessionId requis — les decisions doivent être rattachees a une session de caisse (passation ou fin de journee)' },
       });
       return;
     }
@@ -62,7 +62,7 @@ export const unsoldDecisionController = {
     if (session.status !== 'open') {
       res.status(400).json({
         success: false,
-        error: { message: 'Session deja fermee — impossible d\'enregistrer de nouvelles decisions' },
+        error: { message: 'Session déjà fermée — impossible d\'enregistrer de nouvelles decisions' },
       });
       return;
     }
@@ -99,7 +99,7 @@ export const unsoldDecisionController = {
       if (missingMotif) {
         res.status(400).json({
           success: false,
-          error: { message: `Motif obligatoire pour ecart d'inventaire (produit ${(missingMotif as { productName?: string }).productName || 'inconnu'})` },
+          error: { message: `Motif obligatoire pour écart d'inventaire (produit ${(missingMotif as { productName?: string }).productName || 'inconnu'})` },
         });
         return;
       }
@@ -125,7 +125,7 @@ export const unsoldDecisionController = {
           success: false,
           error: {
             code: 'UNSOLD_DECISIONS_ALREADY_SAVED',
-            message: 'Decisions deja enregistrees pour cette session',
+            message: 'Decisions déjà enregistrees pour cette session',
           },
         });
         return;
@@ -189,7 +189,7 @@ export const unsoldDecisionController = {
   async expired(req: AuthRequest, res: Response) {
     const storeId = req.user!.storeId;
     if (!storeId) {
-      res.status(400).json({ success: false, error: { message: 'Aucun magasin associe' } });
+      res.status(400).json({ success: false, error: { message: 'Aucun magasin associé' } });
       return;
     }
     const items = await unsoldDecisionRepository.getExpiredItems(storeId);
@@ -201,7 +201,7 @@ export const unsoldDecisionController = {
   async destroyExpired(req: AuthRequest, res: Response) {
     const storeId = req.user!.storeId;
     if (!storeId) {
-      res.status(400).json({ success: false, error: { message: 'Aucun magasin associe' } });
+      res.status(400).json({ success: false, error: { message: 'Aucun magasin associé' } });
       return;
     }
     const items = Array.isArray(req.body?.items) ? req.body.items : [];

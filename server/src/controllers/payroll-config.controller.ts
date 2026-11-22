@@ -209,11 +209,11 @@ export const payrollConfigController = {
 
   // ─── Elements fixes par employe ───
   async listItems(req: AuthRequest, res: Response) {
-    if (!(await employeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!(await employeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     res.json({ success: true, data: await employeePayrollItemRepository.listByEmployee(req.params.employeeId) });
   },
   async createItem(req: AuthRequest, res: Response) {
-    if (!(await employeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!(await employeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     try {
       const row = await employeePayrollItemRepository.create({ ...req.body, employeeId: req.params.employeeId }, req.user!.userId);
       res.status(201).json({ success: true, data: row });

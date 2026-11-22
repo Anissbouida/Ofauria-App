@@ -84,9 +84,9 @@ export const employeeController = {
     // Scoping store : un manager du magasin A ne doit pas lire les employes
     // du magasin B (IDOR). Un employe sans store_id (global) reste visible.
     const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
-    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const employee = await employeeRepository.findById(req.params.id);
-    if (!employee) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!employee) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     res.json({ success: true, data: employee });
   },
   async create(req: AuthRequest, res: Response) {
@@ -109,7 +109,7 @@ export const employeeController = {
   },
   async update(req: AuthRequest, res: Response) {
     const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
-    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const cur = await employeeRepository.findById(req.params.id);
     const nextType = req.body.contractType ?? cur?.contract_type;
     const nextEnd = req.body.contractEnd !== undefined ? req.body.contractEnd : cur?.contract_end;
@@ -131,7 +131,7 @@ export const employeeController = {
   },
   async remove(req: AuthRequest, res: Response) {
     const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
-    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const hard = String(req.query.hard || '').toLowerCase() === 'true';
     if (hard) {
       try {
@@ -149,13 +149,13 @@ export const employeeController = {
   },
   async dependencies(req: AuthRequest, res: Response) {
     const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
-    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const counts = await employeeRepository.countDependencies(req.params.id);
     res.json({ success: true, data: counts });
   },
   async salaryHistory(req: AuthRequest, res: Response) {
     const scoped = await loadEmployeeInScope(req.params.id, req.user!.storeId);
-    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const rows = await employeeRepository.salaryHistory(req.params.id);
     res.json({ success: true, data: rows });
   },
@@ -180,7 +180,7 @@ export const scheduleController = {
   async create(req: AuthRequest, res: Response) {
     // Bloque la creation pour un employe d'un autre store.
     const scoped = await loadEmployeeInScope(req.body.employeeId, req.user!.storeId);
-    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const schedule = await scheduleRepository.create(req.body);
     res.status(201).json({ success: true, data: schedule });
   },
@@ -191,7 +191,7 @@ export const scheduleController = {
       [req.params.id]
     );
     if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
-      res.status(404).json({ success: false, error: { message: 'Planning non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Planning non trouvé' } });
       return;
     }
     const schedule = await scheduleRepository.update(req.params.id, req.body);
@@ -203,7 +203,7 @@ export const scheduleController = {
       [req.params.id]
     );
     if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
-      res.status(404).json({ success: false, error: { message: 'Planning non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Planning non trouvé' } });
       return;
     }
     await scheduleRepository.delete(req.params.id);
@@ -441,7 +441,7 @@ export const attendanceController = {
   },
   async upsert(req: AuthRequest, res: Response) {
     const scoped = await loadEmployeeInScope(req.body.employeeId, req.user!.storeId);
-    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const record = await attendanceRepository.upsert(req.body, req.user!.userId);
     res.json({ success: true, data: record });
   },
@@ -453,7 +453,7 @@ export const attendanceController = {
     for (const empId of empIds) {
       const scoped = await loadEmployeeInScope(empId, req.user!.storeId);
       if (!scoped) {
-        res.status(404).json({ success: false, error: { message: `Employe ${empId} hors scope` } });
+        res.status(404).json({ success: false, error: { message: `Employé ${empId} hors scope` } });
         return;
       }
     }
@@ -464,7 +464,7 @@ export const attendanceController = {
     const { employeeId, month, year } = req.query as Record<string, string>;
     if (employeeId) {
       const scoped = await loadEmployeeInScope(employeeId, req.user!.storeId);
-      if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+      if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     }
     const summary = await attendanceRepository.monthlySummary(employeeId, parseInt(month), parseInt(year));
     res.json({ success: true, data: summary });
@@ -475,7 +475,7 @@ export const attendanceController = {
       [req.params.id]
     );
     if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
-      res.status(404).json({ success: false, error: { message: 'Pointage non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Pointage non trouvé' } });
       return;
     }
     await attendanceRepository.delete(req.params.id);
@@ -501,7 +501,7 @@ export const leaveController = {
       res.status(400).json({ success: false, error: { message: 'employeeId, type, startDate, endDate requis' } });
       return;
     }
-    if (!(await loadEmployeeInScope(employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!(await loadEmployeeInScope(employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const cfg = await loadLeaveConfig();
     const t = typeOf(cfg, type);
     const days = leaveDayCount(cfg, type, startDate, endDate);
@@ -514,7 +514,7 @@ export const leaveController = {
 
   async create(req: AuthRequest, res: Response) {
     const scoped = await loadEmployeeInScope(req.body.employeeId, req.user!.storeId);
-    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     // `days` recalcule cote SERVEUR : jours ouvrables (hors repos hebdomadaire
     // et feries, art. 232) ou calendaires selon le type de conge. Ne jamais
     // faire confiance au client (gonflement du solde).
@@ -544,7 +544,7 @@ export const leaveController = {
     );
     const l = r.rows[0];
     if (!l || (l.store_id !== null && !checkStoreOwnership(l.store_id, req.user!.storeId))) {
-      res.status(404).json({ success: false, error: { message: 'Conge non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Congé non trouvé' } });
       return;
     }
     if (l.status === 'approved') { res.json({ success: true, data: l }); return; }
@@ -580,7 +580,7 @@ export const leaveController = {
       [req.params.id]
     );
     if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
-      res.status(404).json({ success: false, error: { message: 'Conge non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Congé non trouvé' } });
       return;
     }
     const leave = await leaveRepository.updateStatus(req.params.id, 'rejected', req.user!.userId);
@@ -591,7 +591,7 @@ export const leaveController = {
   async balance(req: AuthRequest, res: Response) {
     const { employeeId, asOf } = req.query as Record<string, string>;
     if (!employeeId) { res.status(400).json({ success: false, error: { message: 'employeeId requis' } }); return; }
-    if (!(await loadEmployeeInScope(employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!(await loadEmployeeInScope(employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const b = await leaveBalanceRepository.forEmployee(employeeId, /^\d{4}-\d{2}-\d{2}$/.test(asOf ?? '') ? asOf : undefined);
     res.json({ success: true, data: b });
   },
@@ -608,7 +608,7 @@ export const leaveController = {
       [req.params.id]
     );
     if (!r.rows[0] || (r.rows[0].store_id !== null && !checkStoreOwnership(r.rows[0].store_id, req.user!.storeId))) {
-      res.status(404).json({ success: false, error: { message: 'Conge non trouve' } });
+      res.status(404).json({ success: false, error: { message: 'Congé non trouvé' } });
       return;
     }
     await leaveRepository.delete(req.params.id);
@@ -631,11 +631,11 @@ export const leaveController = {
 
   // ─── Ajustements de solde ───
   async adjustments(req: AuthRequest, res: Response) {
-    if (!(await loadEmployeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!(await loadEmployeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     res.json({ success: true, data: await leaveAdjustmentRepository.list(req.params.employeeId) });
   },
   async createAdjustment(req: AuthRequest, res: Response) {
-    if (!(await loadEmployeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
+    if (!(await loadEmployeeInScope(req.params.employeeId, req.user!.storeId))) { res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } }); return; }
     const row = await leaveAdjustmentRepository.create({ ...req.body, employeeId: req.params.employeeId }, req.user!.userId);
     res.status(201).json({ success: true, data: row });
   },

@@ -14,7 +14,7 @@ async function inScope(employeeId: string, userStoreId?: string) {
   if (row.store_id !== null && !checkStoreOwnership(row.store_id, userStoreId)) return null;
   return row;
 }
-const notFound = (res: Response) => res.status(404).json({ success: false, error: { message: 'Employe non trouve' } });
+const notFound = (res: Response) => res.status(404).json({ success: false, error: { message: 'Employé non trouvé' } });
 const fail = (res: Response, err: unknown) => {
   const status = (err as { statusCode?: number }).statusCode
     ?? ((err as { code?: string }).code === '23505' ? 409 : (err as { code?: string }).code === '23514' ? 400 : 500);

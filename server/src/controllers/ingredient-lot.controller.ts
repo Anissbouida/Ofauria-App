@@ -19,9 +19,9 @@ export const ingredientLotController = {
 
   async getById(req: AuthRequest, res: Response) {
     const lot = await ingredientLotRepository.findById(req.params.id);
-    if (!lot) { res.status(404).json({ success: false, error: { message: 'Lot non trouve' } }); return; }
+    if (!lot) { res.status(404).json({ success: false, error: { message: 'Lot non trouvé' } }); return; }
     if (req.user!.storeId && lot.store_id && lot.store_id !== req.user!.storeId) {
-      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+      res.status(403).json({ success: false, error: { message: 'Accès refusé' } }); return;
     }
     res.json({ success: true, data: lot });
   },
@@ -56,7 +56,7 @@ export const ingredientLotController = {
   async quarantine(req: AuthRequest, res: Response) {
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) || undefined : undefined;
     const lot = await ingredientLotRepository.quarantine(req.params.id, req.user!.userId, reason);
-    if (!lot) { res.status(404).json({ success: false, error: { message: 'Lot non trouve' } }); return; }
+    if (!lot) { res.status(404).json({ success: false, error: { message: 'Lot non trouvé' } }); return; }
     res.json({ success: true, data: lot });
   },
 
@@ -103,7 +103,7 @@ export const ingredientLotController = {
     const qty = parseFloat(req.body?.quantity);
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : undefined;
     if (!qty || qty <= 0) {
-      res.status(400).json({ success: false, error: { message: 'Quantite a retourner requise et > 0' } });
+      res.status(400).json({ success: false, error: { message: 'Quantité a retourner requise et > 0' } });
       return;
     }
     try {
@@ -120,7 +120,7 @@ export const ingredientLotController = {
     const containerCount = Number.isFinite(Number(req.body?.containerCount)) && Number(req.body?.containerCount) > 0 ? Math.floor(Number(req.body.containerCount)) : null;
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : undefined;
     if (!qty || qty <= 0) {
-      res.status(400).json({ success: false, error: { message: 'Quantite a ouvrir requise et > 0' } });
+      res.status(400).json({ success: false, error: { message: 'Quantité a ouvrir requise et > 0' } });
       return;
     }
     try {
@@ -136,7 +136,7 @@ export const ingredientLotController = {
     const qty = parseFloat(req.body?.quantity);
     const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : '';
     if (!qty || qty <= 0) {
-      res.status(400).json({ success: false, error: { message: 'Quantite perdue requise et > 0' } });
+      res.status(400).json({ success: false, error: { message: 'Quantité perdue requise et > 0' } });
       return;
     }
     if (!reason) {
@@ -198,7 +198,7 @@ export const ingredientLotController = {
     const lotId = req.params.id;
     const needQty = type === 'open' || type === 'return' || type === 'waste';
     if (needQty && (!qty || qty <= 0)) {
-      res.status(400).json({ success: false, error: { message: 'Quantite requise et > 0' } });
+      res.status(400).json({ success: false, error: { message: 'Quantité requise et > 0' } });
       return;
     }
     try {
@@ -220,11 +220,11 @@ export const ingredientLotController = {
           break;
         case 'quarantine':
           if (!['admin', 'manager'].includes(req.user!.role)) {
-            res.status(403).json({ success: false, error: { message: 'Quarantaine reservee admin/gerant' } });
+            res.status(403).json({ success: false, error: { message: 'Quarantaine réservée admin/gérant' } });
             return;
           }
           data = await ingredientLotRepository.quarantine(lotId, userId, note || undefined);
-          if (!data) { res.status(404).json({ success: false, error: { message: 'Lot non trouve' } }); return; }
+          if (!data) { res.status(404).json({ success: false, error: { message: 'Lot non trouvé' } }); return; }
           break;
         default:
           res.status(400).json({ success: false, error: { message: `Type de mouvement inconnu : ${type}` } });

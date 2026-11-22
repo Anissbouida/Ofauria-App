@@ -38,14 +38,14 @@ export const productionMarkupController = {
       for (const c of body.categories as Array<{ categoryId: unknown; percent: unknown }>) {
         const categoryId = parseInt(String(c.categoryId), 10);
         if (!Number.isInteger(categoryId)) {
-          res.status(400).json({ success: false, error: { message: 'Categorie invalide' } });
+          res.status(400).json({ success: false, error: { message: 'Catégorie invalide' } });
           return;
         }
         let percent: number | null = null;
         if (c.percent !== null && c.percent !== undefined && c.percent !== '') {
           percent = parsePercent(c.percent);
           if (percent === null) {
-            res.status(400).json({ success: false, error: { message: 'Majoration de categorie invalide (0 a 100 %)' } });
+            res.status(400).json({ success: false, error: { message: 'Majoration de catégorie invalide (0 a 100 %)' } });
             return;
           }
         }

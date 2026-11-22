@@ -159,7 +159,7 @@ export const userController = {
     if (req.user?.role !== 'admin' && (role !== undefined || rolesInput !== undefined || storeId !== undefined)) {
       res.status(403).json({
         success: false,
-        error: { message: 'Modification de role ou magasin reservee aux administrateurs' },
+        error: { message: 'Modification de rôle ou magasin réservée aux administrateurs' },
       });
       return;
     }
