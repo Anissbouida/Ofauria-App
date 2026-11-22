@@ -58,15 +58,22 @@ livré a sa facture ; prix d'achat dans la grille ; bulletins tous payés.
 | 139 | Journées, numérotation et reçu au fuseau du navigateur (ou du serveur) au lieu de celui de la boutique | 80780783 |
 | 140 | Totaux différents selon la vue de l'écran Tickets | 6a8b9aa2 |
 
-## Reste à corriger avant une vraie exploitation (par priorité)
+## Corrigés après la simulation (2026-11-22)
 
-1. **142 — pesée mono-lot** : plus de 400 pesées refusées ; à remplacer par une pesée multi-lots en FEFO.
-2. **141 — lot de bon de sortie non réservé** : 142 pesées refusées ; réserver le lot à la génération.
-3. **133 — inventaire sans écriture** : stock d'ouverture et écarts d'inventaire absents de la comptabilité.
-4. **138 — BC > 5 000 DH approuvés par l'administrateur seul** : décision du 25/10 à confirmer ; en attendant, commandes fractionnées.
-5. **134 — eau non déclarable « non stockée »** : rupture et anomalie à chaque bon.
-6. **124 (scénario 1) — pas de TVA d'achat** : écart de TVA non bloquant sur les factures fournisseurs.
-7. **135, 136** : RIB de la société (administrateur) ; fiches Pain rond et Chebakia manquantes.
+| N° | Correction | Commit |
+|---|---|---|
+| 141 | Lot proposé par un bon de sortie réservé (quantités promises aux autres bons déduites) | 4c0507d6 |
+| 142 | Pesée d'une ligne sur plusieurs lots en FEFO, consommation et traçabilité par lot | b9751c40 (mig 626) |
+| 133 | Variation de stock comptabilisée à l'inventaire complet ; reprise des 5 inventaires mensuels | mig 627 |
+| 134 | Matière « non stockée » réglable depuis la fiche ; l'eau est déclarée non stockée | 93eccc3b |
+
+## Reste à corriger avant une vraie exploitation
+
+1. **143 — écriture des pertes de produits finis** : compte 6114 absent du plan, crédit sur le compte clients.
+2. **138 — BC > 5 000 DH approuvés par l'administrateur seul** : décision du 25/10 à confirmer.
+3. **124 (scénario 1) — pas de TVA d'achat** : écart de TVA non bloquant sur les factures fournisseurs.
+4. **135, 136** : RIB de la société (administrateur) ; fiches Pain rond et Chebakia manquantes.
+5. Suites de 141 : « Re-vérifier dispo » et l'ouverture depuis l'économat ne tiennent pas encore compte des autres bons ; l'écran du bon n'affiche pas encore le détail des lots pesés.
 
 ## Limites de la simulation
 
