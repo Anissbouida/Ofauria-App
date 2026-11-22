@@ -145,6 +145,23 @@ input::placeholder, textarea::placeholder { color: var(--kl-read-placeholder); o
    professionnel Odoo (blanc, violet #714B67, tableaux denses).
    ═══════════════════════════════════════════════════════════════════════ */
 
+/* Mêmes variables au niveau de la page : les éléments posés hors d'un écran (boîtes de
+   confirmation, listes en portail, notifications) gardent des boutons et bordures visibles
+   (sans elles, le bouton principal d'une confirmation était blanc sur blanc). */
+:root {
+  --odoo-purple: var(--theme-accent);
+  --odoo-purple-hover: var(--theme-accent-hover);
+  --odoo-purple-light: var(--theme-accent-light);
+  --odoo-bg: var(--theme-bg-card);
+  --odoo-bg-alt: var(--theme-bg-page);
+  --odoo-bg-hover: var(--theme-bg-secondary);
+  --odoo-border: var(--theme-bg-separator);
+  --odoo-border-strong: color-mix(in srgb, var(--theme-bg-separator) 60%, var(--theme-text-muted) 40%);
+  --odoo-text: var(--theme-text-strong);
+  --odoo-text-muted: var(--theme-text-muted);
+  --odoo-text-light: color-mix(in srgb, var(--theme-text-muted) 60%, var(--theme-bg-separator) 40%);
+}
+
 .odoo-scope {
   /* Accent (boutons primaires, hover, focus) — pris depuis le theme actif */
   --odoo-purple: var(--theme-accent);
