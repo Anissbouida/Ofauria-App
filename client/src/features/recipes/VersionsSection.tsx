@@ -67,7 +67,7 @@ export default function VersionsSection({ recipeId }: { recipeId: string }) {
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <History size={12} /> Historique des versions
         {open && versions.length > 0 && (
-          <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.78rem', fontWeight: 400 }}>{versions.length} version(s)</span>
+          <span style={{ marginLeft: 8, color: 'var(--ds-muted)', fontSize: '0.78rem', fontWeight: 400 }}>{versions.length} version(s)</span>
         )}
       </button>
 
@@ -100,7 +100,7 @@ export default function VersionsSection({ recipeId }: { recipeId: string }) {
                       <td className="ds-num ds-strong">{v.version_number}</td>
                       <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(v.changed_at)}</td>
                       <td>{v.changed_by_name || '—'}</td>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>{v.change_note || '—'}</td>
+                      <td style={{ color: 'var(--ds-muted)' }}>{v.change_note || '—'}</td>
                       <td className="ds-actions">
                         <button
                           type="button"
@@ -117,7 +117,7 @@ export default function VersionsSection({ recipeId }: { recipeId: string }) {
               </table>
             </div>
           )}
-          <p style={{ fontSize: '0.72rem', color: 'var(--theme-text-muted)', padding: '6px 2px 0' }}>
+          <p style={{ fontSize: '0.72rem', color: 'var(--ds-muted)', padding: '6px 2px 0' }}>
             Chaque modification de composition ou de finance, et chaque restauration, crée une version. Restaurer remplace l'état actuel.
           </p>
         </div>

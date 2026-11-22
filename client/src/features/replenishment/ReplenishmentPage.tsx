@@ -206,26 +206,26 @@ export default function ReplenishmentPage() {
                         <span className="odoo-tag odoo-tag-purple">
                           {r.assigned_role === 'general' ? 'Général' : ws.label(r.assigned_role as string)}
                         </span>
-                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                      ) : <span style={{ color: 'var(--ds-sep)' }}>—</span>}
                     </td>
-                    <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>
+                    <td style={{ whiteSpace: 'nowrap', color: 'var(--ds-muted)' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <Calendar size={11} />
                         {format(new Date(r.created_at as string), 'dd MMM HH:mm', { locale: fr })}
                       </span>
                     </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>
+                    <td style={{ color: 'var(--ds-muted)' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <User size={11} />
                         {r.requested_by_name as string || '—'}
                       </span>
                     </td>
                     <td className="ds-num">
-                      <span style={{ fontWeight: 600, fontSize: '0.75rem' }}>{completedCount}/{itemCount}</span>
-                      <div style={{ width: 60, height: 3, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden', marginTop: 3, marginLeft: 'auto' }}>
+                      <span style={{ fontWeight: 600, fontSize: '12px' }}>{completedCount}/{itemCount}</span>
+                      <div style={{ width: 60, height: 3, backgroundColor: 'var(--ds-sep)', borderRadius: 2, overflow: 'hidden', marginTop: 3, marginLeft: 'auto' }}>
                         <div style={{
                           height: '100%', width: `${progress}%`,
-                          backgroundColor: progress >= 100 ? 'var(--ds-success)' : 'var(--theme-accent)',
+                          backgroundColor: progress >= 100 ? 'var(--ds-success)' : 'var(--ds-accent)',
                         }} />
                       </div>
                     </td>

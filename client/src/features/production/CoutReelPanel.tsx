@@ -178,15 +178,15 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
       <div className="pd-section-head">
         <Calculator size={12} /> Coût de revient
         {cout && (
-          <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--ds-success)' }}>
+          <span style={{ marginLeft: 'auto', fontSize: '13px', fontWeight: 600, color: 'var(--ds-success)' }}>
             {fmtMoney(coutRevient)}
           </span>
         )}
       </div>
 
       {!cout && !isLoading && (
-        <div style={{ padding: '1rem', textAlign: 'center', backgroundColor: 'var(--theme-bg-card)' }}>
-          <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', marginBottom: '0.5rem' }}>Le coût de revient n'a pas encore été calculé.</p>
+        <div style={{ padding: '1rem', textAlign: 'center', backgroundColor: 'var(--ds-card)' }}>
+          <p style={{ fontSize: '13px', color: 'var(--ds-muted)', marginBottom: '0.5rem' }}>Le coût de revient n'a pas encore été calculé.</p>
           {isChef && planStatus === 'completed' && (
             <button onClick={() => calculateMutation.mutate()} disabled={calculateMutation.isPending}
               className="odoo-btn-primary">
@@ -204,50 +204,50 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
       {cout && (
         <>
           {/* Breakdown : Matières + M.O. + Charges = Revient */}
-          <div className="odoo-stat-grid" style={{ borderBottom: '1px solid var(--theme-bg-separator)' }}>
+          <div className="odoo-stat-grid" style={{ borderBottom: '1px solid var(--ds-sep)' }}>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Matières
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutMat)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutMat)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Emballages
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutEmballages)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutEmballages)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Users size={11} style={{ display: 'inline', marginRight: 4 }} />M.O.
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutMO)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutMO)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Zap size={11} style={{ display: 'inline', marginRight: 4 }} />Énergie
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutEnergie)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutEnergie)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Building2 size={11} style={{ display: 'inline', marginRight: 4 }} />Charges
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutCharges)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutCharges)}</div>
             </div>
             {coutFacon > 0 && (
               <div className="odoo-stat-card" style={{ cursor: 'default' }}>
                 <div className="odoo-stat-card-label">
                   <Building2 size={11} style={{ display: 'inline', marginRight: 4 }} />Façon
                 </div>
-                <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutFacon)}</div>
+                <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutFacon)}</div>
               </div>
             )}
-            <div className="odoo-stat-card" style={{ cursor: 'default', backgroundColor: 'var(--theme-bg-secondary)' }}>
+            <div className="odoo-stat-card" style={{ cursor: 'default', backgroundColor: 'var(--ds-hair)' }}>
               <div className="odoo-stat-card-label">
                 <DollarSign size={11} style={{ display: 'inline', marginRight: 4, color: 'var(--ds-success)' }} />Revient
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem', color: 'var(--ds-success)' }}>{fmtMoney(coutRevient)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '16px', color: 'var(--ds-success)' }}>{fmtMoney(coutRevient)}</div>
             </div>
           </div>
 
@@ -255,12 +255,12 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
           {coutPertes > 0 && (
             <div style={{
               padding: '0.4rem 1rem',
-              backgroundColor: 'var(--theme-bg-card)',
-              borderBottom: '1px solid var(--theme-bg-separator)',
+              backgroundColor: 'var(--ds-card)',
+              borderBottom: '1px solid var(--ds-sep)',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              fontSize: '0.8125rem',
+              fontSize: '13px',
             }}>
-              <span style={{ color: 'var(--theme-text-muted)' }}>
+              <span style={{ color: 'var(--ds-muted)' }}>
                 <TrendingDown size={11} style={{ display: 'inline', marginRight: 4, color: 'var(--ds-danger)' }} />
                 dont pertes (matière perdue, déjà comptée dans Matières)
               </span>
@@ -274,12 +274,12 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
           {totalQuantity && totalQuantity > 0 && perUnit != null && (
             <div style={{
               padding: '0.5rem 1rem',
-              backgroundColor: 'var(--theme-bg-card)',
-              borderBottom: '1px solid var(--theme-bg-separator)',
+              backgroundColor: 'var(--ds-card)',
+              borderBottom: '1px solid var(--ds-sep)',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              fontSize: '0.8125rem',
+              fontSize: '13px',
             }}>
-              <span style={{ color: 'var(--theme-text-muted)' }}>Prix de revient par unité ({totalQuantity} unités)</span>
+              <span style={{ color: 'var(--ds-muted)' }}>Prix de revient par unité ({totalQuantity} unités)</span>
               <span style={{ fontWeight: 600 }}>{money(perUnit)}</span>
             </div>
           )}
@@ -294,21 +294,21 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             const ecartMix = cout.ecart_mix != null ? toNum(cout.ecart_mix)
               : (prevuMix != null ? prevu - prevuMix : null);
             const ecartPrix = prevuMix != null ? coutRevient - prevuMix : null;
-            const color = (v: number) => v > 0 ? 'var(--ds-danger)' : v < 0 ? 'var(--ds-success)' : 'var(--theme-text-muted)';
+            const color = (v: number) => v > 0 ? 'var(--ds-danger)' : v < 0 ? 'var(--ds-success)' : 'var(--ds-muted)';
             const sign = (v: number) => (v > 0 ? '+' : '');
             return (
               <div style={{
-                padding: '0.75rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)',
-                backgroundColor: 'var(--theme-bg-card)', fontSize: '0.8125rem',
+                padding: '0.75rem 1rem', borderBottom: '1px solid var(--ds-sep)',
+                backgroundColor: 'var(--ds-card)', fontSize: '13px',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ color: 'var(--theme-text-muted)' }}>Coût prévu (mix standard)</span>
+                  <span style={{ color: 'var(--ds-muted)' }}>Coût prévu (mix standard)</span>
                   <span style={{ fontWeight: 500 }}>{fmtMoney(prevu)}</span>
                 </div>
                 {prevuMix != null && Math.abs((ecartMix ?? 0)) > 0.01 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
                     title="Différence due au mix réellement produit (ex : 6 moyens au lieu de 3+3). N'implique aucune sur/sous-consommation de matière — c'est un effet volume par format.">
-                    <span style={{ color: 'var(--theme-text-muted)' }}>Écart de mix</span>
+                    <span style={{ color: 'var(--ds-muted)' }}>Écart de mix</span>
                     <span style={{ fontWeight: 500, color: color(-(ecartMix ?? 0)) }}>
                       {money(-(ecartMix ?? 0), { signed: true })}
                     </span>
@@ -317,20 +317,20 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 {prevuMix != null && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
                     title="Coût prévu recalculé sur les quantités réellement produites (le mix standard ne compte plus).">
-                    <span style={{ color: 'var(--theme-text-muted)' }}>Prévu au mix réel</span>
+                    <span style={{ color: 'var(--ds-muted)' }}>Prévu au mix réel</span>
                     <span style={{ fontWeight: 500 }}>{fmtMoney(prevuMix)}</span>
                   </div>
                 )}
                 {ecartPrix != null && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
                     title="Ce qui reste de l'écart après avoir absorbé le mix : sur/sous-consommation matière + pertes + variation de prix des ingrédients.">
-                    <span style={{ color: 'var(--theme-text-muted)' }}>Écart prix / pertes</span>
+                    <span style={{ color: 'var(--ds-muted)' }}>Écart prix / pertes</span>
                     <span style={{ fontWeight: 500, color: color(ecartPrix) }}>
                       {money(ecartPrix, { signed: true })}
                     </span>
                   </div>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px dashed var(--theme-bg-separator)', fontWeight: 600 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px dashed var(--ds-sep)', fontWeight: 600 }}>
                   <span>Écart total (Réel − Prévu)</span>
                   <span style={{ color: color(ecartTot) }}>
                     {money(ecartTot, { signed: true })}

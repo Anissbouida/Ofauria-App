@@ -15,9 +15,9 @@ const nowLocal = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.g
 
 function Tile({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div style={{ flex: 1, minWidth: 90, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
+    <div style={{ flex: 1, minWidth: 90, border: '1px solid var(--ds-sep)', borderRadius: 6, padding: '8px 10px', textAlign: 'center' }}>
       <div style={{ fontSize: '1.1rem', fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-      <div style={{ fontSize: '0.72rem', color: 'var(--theme-text-muted)' }}>{label}</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--ds-muted)' }}>{label}</div>
     </div>
   );
 }

@@ -25,25 +25,25 @@ const STEPS = [
 
 function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="shrink-0" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '0.5rem 1.25rem', borderBottom: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+    <div className="shrink-0" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '0.5rem 1.25rem', borderBottom: '1px solid var(--ds-sep)', background: 'var(--ds-bg)' }}>
       {STEPS.map((step, i) => {
         const done = current > step.num;
         const active = current === step.num;
         return (
           <div key={step.num} style={{ display: 'flex', alignItems: 'center' }}>
             <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.25rem 0.625rem', borderRadius: 999, fontSize: '0.75rem',
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.25rem 0.625rem', borderRadius: 999, fontSize: '12px',
               fontWeight: active ? 600 : 500,
-              background: active ? 'var(--odoo-purple)' : done ? 'var(--ds-success-bg)' : 'var(--odoo-border)',
-              color: active ? '#fff' : done ? 'var(--ds-success)' : 'var(--odoo-text-muted)',
+              background: active ? 'var(--ds-accent)' : done ? 'var(--ds-success-bg)' : 'var(--ds-sep)',
+              color: active ? '#fff' : done ? 'var(--ds-success)' : 'var(--ds-muted)',
             }}>
-              <span style={{ width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700, background: 'rgba(255,255,255,0.35)' }}>
+              <span style={{ width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, background: 'rgba(255,255,255,0.35)' }}>
                 {done ? '✓' : step.num}
               </span>
               <span className="hidden sm:inline">{step.label}</span>
             </div>
             {i < STEPS.length - 1 && (
-              <div style={{ width: 28, height: 2, margin: '0 4px', background: done ? 'var(--ds-success)' : 'var(--odoo-border)' }} />
+              <div style={{ width: 28, height: 2, margin: '0 4px', background: done ? 'var(--ds-success)' : 'var(--ds-sep)' }} />
             )}
           </div>
         );
@@ -802,7 +802,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                         <span key={item.productId} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-100 text-primary-800 text-sm font-medium">
                           {prod ? prod.name as string : item.productId} <strong>&times;{item.quantity}</strong>
                           {(() => { const pl = promiseLabel(item.productId); return pl && (
-                            <span title="Date de disponibilité promise" className={pl.late ? 'text-red-600' : 'text-gray-500'} style={{ fontWeight: 400, fontSize: '0.75rem' }}>
+                            <span title="Date de disponibilité promise" className={pl.late ? 'text-red-600' : 'text-gray-500'} style={{ fontWeight: 400, fontSize: '12px' }}>
                               · {pl.text}{pl.late ? ' (après le retrait)' : ''}
                             </span>
                           ); })()}

@@ -135,14 +135,14 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
             <div className="odoo-view-switcher" style={{ display: 'flex', width: '100%' }}>
               {available.map(t => (
                 <button key={t} type="button" onClick={() => switchType(t)} className={type === t ? 'active' : ''}
-                  style={{ flex: 1, padding: '0.375rem 0.5rem', fontSize: '0.75rem' }}>
+                  style={{ flex: 1, padding: '0.375rem 0.5rem', fontSize: '12px' }}>
                   {TYPE_META[t].label}
                 </button>
               ))}
             </div>
           )}
 
-          <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, backgroundColor: 'var(--ds-bg)', padding: '0.5rem 0.75rem', fontSize: '0.75rem', display: 'flex', gap: '1rem' }}>
+          <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, backgroundColor: 'var(--ds-bg)', padding: '0.5rem 0.75rem', fontSize: '12px', display: 'flex', gap: '1rem' }}>
             <div>En réserve : <strong style={{ fontFamily: 'monospace' }}>{fmt(scelle)} {lot.unit}</strong></div>
             <div>Au pesage : <strong style={{ fontFamily: 'monospace' }}>{fmt(entame)} {lot.unit}</strong></div>
             {expired && <span style={{ marginLeft: 'auto' }}><StatusTag tone="late" label="Lot périmé" /></span>}
@@ -159,7 +159,7 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
                 <input id="lot-move-qty" type="text" inputMode="decimal" value={quantity} autoFocus
                   onChange={(e) => setQuantity(e.target.value.replace(/[^0-9.,]/g, ''))}
                   className="ds-input ds-num" style={{ flex: 1 }} aria-invalid={!qtyOk && !!quantity || undefined} />
-                <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{lot.unit}</span>
+                <span style={{ fontSize: '13px', color: 'var(--ds-muted)', fontWeight: 500 }}>{lot.unit}</span>
                 <button type="button" className="odoo-btn-secondary" onClick={() => setQuantity(fmt(zoneQty))}>Tout</button>
               </div>
             </FormField>
@@ -168,18 +168,18 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
           {type === 'losses' ? (
             <>
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 }}>Motif</label>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 }}>Motif</label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.375rem' }}>
                   {LOSS_REASONS.map(opt => (
                     <button key={opt.v} type="button" onClick={() => setLossReason(opt.v)}
                       style={{
                         padding: '0.5rem 0.625rem', borderRadius: 3, textAlign: 'left',
-                        border: `1px solid ${lossReason === opt.v ? 'var(--theme-accent)' : 'var(--theme-bg-separator)'}`,
+                        border: `1px solid ${lossReason === opt.v ? 'var(--ds-accent)' : 'var(--ds-sep)'}`,
                         backgroundColor: lossReason === opt.v ? 'var(--ds-tint)' : 'var(--ds-card)',
-                        boxShadow: lossReason === opt.v ? 'inset 0 0 0 1px var(--theme-accent)' : 'none',
+                        boxShadow: lossReason === opt.v ? 'inset 0 0 0 1px var(--ds-accent)' : 'none',
                       }}>
-                      <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>{opt.label}</div>
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{opt.sub}</div>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ds-ink)' }}>{opt.label}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--ds-muted)', marginTop: 1 }}>{opt.sub}</div>
                     </button>
                   ))}
                 </div>
@@ -197,15 +197,15 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
             <div>
               {type === 'waste' && (
                 <>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 }}>Motif</label>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 }}>Motif</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', marginBottom: '0.75rem' }}>
                     {wasteReasons.map(r => (
                       <button key={r.code} type="button" onClick={() => setWasteCode(r.code)} title={r.description ?? undefined}
                         style={{
-                          padding: '0.375rem 0.625rem', borderRadius: 3, fontSize: '0.75rem',
-                          border: `1px solid ${wasteCode === r.code ? 'var(--theme-accent)' : 'var(--theme-bg-separator)'}`,
+                          padding: '0.375rem 0.625rem', borderRadius: 3, fontSize: '12px',
+                          border: `1px solid ${wasteCode === r.code ? 'var(--ds-accent)' : 'var(--ds-sep)'}`,
                           backgroundColor: wasteCode === r.code ? 'var(--ds-tint)' : 'var(--ds-card)',
-                          fontWeight: wasteCode === r.code ? 600 : 400, color: 'var(--theme-text-strong)',
+                          fontWeight: wasteCode === r.code ? 600 : 400, color: 'var(--ds-ink)',
                         }}>
                         {r.label}
                       </button>

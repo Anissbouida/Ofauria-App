@@ -280,7 +280,7 @@ export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: {
                 </div>
                 {ops.map((o, i) => (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: OPS_GRID, gap: 8, alignItems: 'center' }}>
-                    <span style={{ textAlign: 'center', fontWeight: 600, color: 'var(--ds-muted)' }}>{i + 1}</span>
+                    <span aria-hidden="true" style={{ justifySelf: 'center', width: 8, height: 8, borderRadius: '50%', background: 'var(--ds-accent)' }} />
                     <input type="text" className="ds-input" aria-label={`Nom de l'opération ${i + 1}`} value={o.operationName} onChange={e => setOp(i, { operationName: e.target.value })} placeholder="Ex. : pétrissage" />
                     <SearchSelect value={o.workCenterId != null ? String(o.workCenterId) : ''} onChange={id => setOp(i, { workCenterId: id || null })}
                       placeholder="Choisir" width="100%" size="md" ariaLabel={`Poste de travail de l'opération ${i + 1}`}
@@ -288,7 +288,7 @@ export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: {
                     <input type="number" min="0" className="ds-input" aria-label={`Durée de l'opération ${i + 1} en minutes`} value={o.durationMin || ''} onChange={e => setOp(i, { durationMin: Number(e.target.value) || 0 })} placeholder="0" style={{ textAlign: 'center' }} />
                     <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 14 }}>{money(opCost(o))}</span>
                     <button type="button" className="ds-icon-btn" aria-label={`Retirer l'opération ${i + 1}`} title="Retirer l'opération" disabled={ops.length <= 1} onClick={() => setOps(a => a.filter((_, j) => j !== i))}><Trash2 size={14} aria-hidden="true" /></button>
-                    <div style={{ gridColumn: '2 / -1', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.75rem' }}>
+                    <div style={{ gridColumn: '2 / -1', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: '12px' }}>
                       <button type="button" className="bsi-link-btn" onClick={() => setOpenOp(openOp === i ? null : i)}>
                         {OP_TYPE_LABELS[o.opType ?? 'execution']}{o.isBlocking ? ' · bloquante' : ''}{(o.setupMin || o.laborMinPerUnit || o.machineMinPerUnit) ? ' · temps détaillés' : ''} {openOp === i ? '▲' : '▼'}
                       </button>

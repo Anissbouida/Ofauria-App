@@ -30,7 +30,7 @@ export default function LineSubstitute({ ligneId, onDone }: { ligneId: string; o
   });
   if (!open) return <button type="button" className="bsi-link-btn" onClick={() => setOpen(true)}><Replace size={11} /> Substitut</button>;
   return (
-    <div style={{ marginTop: 4, padding: 6, border: '1px solid var(--ds-sep)', borderRadius: 6, display: 'grid', gap: 4, fontSize: '0.75rem' }}>
+    <div style={{ marginTop: 4, padding: 6, border: '1px solid var(--ds-sep)', borderRadius: 6, display: 'grid', gap: 4, fontSize: '12px' }}>
       {isLoading ? 'Chargement…' : data.length === 0 ? <span>Aucun substitut déclaré sur la fiche pour cet article.</span> : data.map(s => (
         <label key={s.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input type="radio" name={`sub-${ligneId}`} checked={choice === s.id} onChange={() => setChoice(s.id)} disabled={s.needed_quantity == null || s.available < (s.needed_quantity ?? 0)} />

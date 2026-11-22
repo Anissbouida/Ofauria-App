@@ -67,7 +67,7 @@ export default function SalesChannelsManager() {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       {channels.map(c => (
-        <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.625rem 0.75rem', borderRadius: 4, border: '1px solid var(--odoo-border)', background: c.is_active ? 'var(--odoo-bg)' : 'var(--odoo-bg-alt)', opacity: c.is_active ? 1 : 0.6 }}>
+        <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.625rem 0.75rem', borderRadius: 4, border: '1px solid var(--ds-sep)', background: c.is_active ? 'var(--ds-card)' : 'var(--ds-bg)', opacity: c.is_active ? 1 : 0.6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: c.color }} />
             <div>
@@ -101,7 +101,7 @@ export default function SalesChannelsManager() {
       ))}
 
       {showAddForm ? (
-        <div style={{ padding: '0.75rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg-alt)', display: 'grid', gap: 8 }}>
+        <div style={{ padding: '0.75rem', border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-bg)', display: 'grid', gap: 8 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 64px', gap: 8 }}>
             <input id="channel-code" type="text" placeholder="code (ex. pro_b2b)" aria-label="Code du canal"
               value={newCode} onChange={e => setNewCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}

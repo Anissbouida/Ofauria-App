@@ -52,7 +52,7 @@ export default function WorkCenterCalendarModal({ workCenter, onClose }: { workC
           <FormSection title="Plages d'ouverture">
             {slots.length === 0 && <span className="text-xs text-gray-500">Aucune plage : la capacité journalière du poste s'applique tous les jours.</span>}
             {slots.map((s, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '13px' }}>
                 <select className="ds-input sm" style={{ width: 'auto' }} value={s.isoWeekday} aria-label="Jour" onChange={e => set(i, { isoWeekday: Number(e.target.value) })}>
                   {DAYS.map((d, k) => <option key={d} value={k + 1}>{d}</option>)}
                 </select>
@@ -73,13 +73,13 @@ export default function WorkCenterCalendarModal({ workCenter, onClose }: { workC
           </FormSection>
           <FormSection title="Jours fermés">
             {(data?.closures ?? []).map(c => (
-              <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '0.8125rem' }}>
+              <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '13px' }}>
                 <span>{c.closed_on.split('-').reverse().join('/')}</span>
                 <span className="text-gray-500">{c.reason ?? ''}{c.work_center_id ? '' : ' (tous les postes)'}</span>
                 <button type="button" className="ds-icon-btn" style={{ marginLeft: 'auto' }} aria-label="Rouvrir ce jour" onClick={() => removeClosure.mutate(c.id)}><Trash2 size={14} /></button>
               </div>
             ))}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '13px' }}>
               <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={closure.closedOn} aria-label="Jour fermé" onChange={e => setClosure(c => ({ ...c, closedOn: e.target.value }))} />
               <input type="text" className="ds-input sm" style={{ width: 200 }} placeholder="Motif (férié, maintenance…)" aria-label="Motif de fermeture" value={closure.reason} onChange={e => setClosure(c => ({ ...c, reason: e.target.value }))} />
               <label><input type="checkbox" checked={closure.allCenters} onChange={e => setClosure(c => ({ ...c, allCenters: e.target.checked }))} /> Tous les postes</label>

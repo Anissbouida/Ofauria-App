@@ -176,7 +176,7 @@ export default function OpeningInventoryCheckPage() {
         <div>
           <div className="odoo-section" style={{ margin: 0 }}>
             <div className="odoo-section-header">Statut du contrôle</div>
-            <div style={{ padding: '1rem', fontSize: '0.875rem', color: 'var(--odoo-text)' }}>
+            <div style={{ padding: '1rem', fontSize: '14px', color: 'var(--ds-ink)' }}>
               {existingCheck.status === 'awaiting_validation' && (
                 <p>Votre contrôle a été soumis. Un responsable doit valider les écarts avant l'ouverture de la caisse.</p>
               )}
@@ -268,11 +268,11 @@ export default function OpeningInventoryCheckPage() {
             <div className="prj-panel-head" style={{ justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span>{catName}</span>
-                <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400, fontSize: '0.75rem', color: 'var(--odoo-text-light)' }}>
+                <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400, fontSize: '12px', color: 'var(--ds-muted)' }}>
                   {catItems.length} article{catItems.length > 1 ? 's' : ''}
                 </span>
               </div>
-              <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+              <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500, fontSize: '12px', color: 'var(--ds-muted)' }}>
                 {catTotalExpected} attendu{catTotalExpected > 1 ? 's' : ''}
               </span>
             </div>
@@ -300,7 +300,7 @@ export default function OpeningInventoryCheckPage() {
                       <td>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
                           <span className={`odoo-status-dot ${hasDiscrepancy ? (discrepancy < 0 ? 'danger' : 'warning') : 'ok'}`} />
-                          <span style={{ fontWeight: 500, color: 'var(--odoo-text)' }}>{it.product_name}</span>
+                          <span style={{ fontWeight: 500, color: 'var(--ds-ink)' }}>{it.product_name}</span>
                         </span>
                       </td>
                       <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
@@ -328,11 +328,11 @@ export default function OpeningInventoryCheckPage() {
                             }}
                             style={{
                               width: '52px', height: '26px', textAlign: 'center',
-                              fontSize: '0.8125rem', fontWeight: 500,
+                              fontSize: '13px', fontWeight: 500,
                               fontVariantNumeric: 'tabular-nums',
-                              border: '1px solid var(--odoo-border-strong)',
-                              borderRadius: '3px', backgroundColor: 'var(--odoo-bg)',
-                              color: 'var(--odoo-text)', outline: 'none',
+                              border: '1px solid var(--ds-line)',
+                              borderRadius: '3px', backgroundColor: 'var(--ds-card)',
+                              color: 'var(--ds-ink)', outline: 'none',
                             }} />
                           <button onClick={() => incCount(pid, it.expected_qty)}
                             className="odoo-pager-btn" title="Augmenter" aria-label="Augmenter">
@@ -341,7 +341,7 @@ export default function OpeningInventoryCheckPage() {
                         </div>
                       </td>
                       <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 600,
-                        color: hasDiscrepancy ? (discrepancy < 0 ? 'var(--ds-danger)' : 'var(--ds-info)') : 'var(--odoo-text-light)',
+                        color: hasDiscrepancy ? (discrepancy < 0 ? 'var(--ds-danger)' : 'var(--ds-info)') : 'var(--ds-muted)',
                       }}>
                         {hasDiscrepancy ? (discrepancy > 0 ? `+${discrepancy}` : discrepancy) : '0'}
                       </td>
@@ -350,11 +350,11 @@ export default function OpeningInventoryCheckPage() {
                           <select value={c?.reason || ''}
                             onChange={(e) => updateReason(pid, e.target.value as MissingReason)}
                             style={{
-                              fontSize: '0.75rem', padding: '0.125rem 0.375rem',
-                              border: c?.reason ? '1px solid var(--odoo-border-strong)' : '1px solid var(--ds-danger)',
+                              fontSize: '12px', padding: '0.125rem 0.375rem',
+                              border: c?.reason ? '1px solid var(--ds-line)' : '1px solid var(--ds-danger)',
                               borderRadius: '6px',
-                              backgroundColor: c?.reason ? 'var(--odoo-bg)' : 'color-mix(in srgb, var(--ds-danger) 8%, transparent)',
-                              color: c?.reason ? 'var(--odoo-text)' : 'var(--ds-danger)',
+                              backgroundColor: c?.reason ? 'var(--ds-card)' : 'color-mix(in srgb, var(--ds-danger) 8%, transparent)',
+                              color: c?.reason ? 'var(--ds-ink)' : 'var(--ds-danger)',
                               fontWeight: c?.reason ? 400 : 500, outline: 'none',
                             }}>
                             <option value="">Motif obligatoire</option>
@@ -382,9 +382,9 @@ export default function OpeningInventoryCheckPage() {
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
             placeholder="Observations particulières..."
             style={{
-              width: '100%', padding: '0.5rem', fontSize: '0.875rem',
-              border: '1px solid var(--odoo-border-strong)', borderRadius: '3px',
-              backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)',
+              width: '100%', padding: '0.5rem', fontSize: '14px',
+              border: '1px solid var(--ds-line)', borderRadius: '3px',
+              backgroundColor: 'var(--ds-card)', color: 'var(--ds-ink)',
               outline: 'none', resize: 'vertical', fontFamily: 'inherit',
             }} />
         </div>

@@ -24,7 +24,7 @@ export const muted: CSSProperties = { fontSize: 12, color: 'var(--ds-muted)' };
 /** Intertitre de section (design Ventes) : pas de capitales forcées. */
 export const sectionTitle: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6,
-  fontSize: 17, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--theme-text-strong)', margin: '4px 4px 0',
+  fontSize: 17, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--ds-ink)', margin: '4px 4px 0',
 };
 
 export function Dot({ color }: { color: string }) {

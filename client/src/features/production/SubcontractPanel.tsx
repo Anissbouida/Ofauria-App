@@ -74,12 +74,12 @@ export default function SubcontractPanel({ planId, planStatus, canEdit }: { plan
             {canEdit && !locked
               ? <SearchSelect options={(suppliers as { id: string; name: string }[]).map(s => ({ id: s.id, label: s.name }))}
                   value={supplierId} onChange={setSupplierId} placeholder="Choisir le sous-traitant" width={260} ariaLabel="Sous-traitant" clearable={false} />
-              : <div style={{ fontWeight: 500, color: 'var(--odoo-text)' }}>{data.subcontractorName ?? '—'}</div>}
+              : <div style={{ fontWeight: 500, color: 'var(--ds-ink)' }}>{data.subcontractorName ?? '—'}</div>}
           </label>
           <label className="block text-xs font-medium text-gray-500">Prix de façon par unité
             {canEdit && !locked
               ? <input className="ds-input sm" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} style={{ width: 120 }} aria-label="Prix de façon par unité" />
-              : <div style={{ fontWeight: 500, color: 'var(--odoo-text)' }}>{data.unitFee != null ? money(data.unitFee) : '—'}</div>}
+              : <div style={{ fontWeight: 500, color: 'var(--ds-ink)' }}>{data.unitFee != null ? money(data.unitFee) : '—'}</div>}
           </label>
           {canEdit && !locked && (
             <button type="button" className="odoo-btn-secondary" disabled={!supplierId || save.isPending} onClick={() => save.mutate()}>
@@ -114,7 +114,7 @@ export default function SubcontractPanel({ planId, planStatus, canEdit }: { plan
             <table className="odoo-table ds-dense">
               <thead><tr><th>Composant</th><th className="ds-num">Quantité envoyée</th></tr></thead>
               <tbody>
-                {s.lines.length === 0 && <tr><td colSpan={2} style={{ color: 'var(--odoo-text-muted)' }}>Aucun composant calculé</td></tr>}
+                {s.lines.length === 0 && <tr><td colSpan={2} style={{ color: 'var(--ds-muted)' }}>Aucun composant calculé</td></tr>}
                 {s.lines.map((l, i) => <tr key={i}><td className="ds-strong">{l.label}</td><td className="ds-num">{l.quantity} {l.unit ?? ''}</td></tr>)}
               </tbody>
             </table>

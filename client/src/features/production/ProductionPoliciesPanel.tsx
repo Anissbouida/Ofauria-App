@@ -192,7 +192,7 @@ export default function ProductionPoliciesPanel() {
                             {save.isPending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Save size={13} aria-hidden="true" />} Enregistrer
                           </button>
                           {impact && (impact.draft + impact.underway > 0) && (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', alignSelf: 'center' }}
+                            <span style={{ fontSize: '12px', color: 'var(--ds-muted)', alignSelf: 'center' }}
                               title="Les ordres en cours gardent ce qui a déjà été calculé ; le nouveau réglage s'applique aux calculs à venir.">
                               S'applique à {impact.draft + impact.underway} ordre(s) non terminé(s){impact.underway ? `, dont ${impact.underway} en cours` : ''}
                             </span>

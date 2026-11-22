@@ -227,10 +227,10 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
             <>
               <input className="ds-input" value={customerQuery} onChange={e => setCustomerQuery(e.target.value)} placeholder="Rechercher une fiche (ou interne)" />
               {customers.length > 0 && customerQuery.trim().length >= 2 && (
-                <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 4, maxHeight: 140, overflowY: 'auto' }}>
+                <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, marginTop: 4, maxHeight: 140, overflowY: 'auto' }}>
                   {customers.slice(0, 8).map(c => (
                     <button key={c.id} type="button" onClick={() => { set('customerId', c.id); setCustomerName(customerLabel(c)); setCustomerQuery(''); }}
-                      style={{ display: 'block', width: '100%', padding: '6px 10px', fontSize: '0.8125rem', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>
+                      style={{ display: 'block', width: '100%', padding: '6px 10px', fontSize: '13px', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>
                       {customerLabel(c)}
                     </button>
                   ))}
@@ -357,7 +357,7 @@ export function TimeEntryForm({ projectId, tasks, onSaved, compact, bare }: { pr
   const cols = compact ? '1fr 1fr 110px 90px 1fr auto' : '1.2fr 1fr 1fr 120px 90px 1fr auto';
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, alignItems: 'end', ...(bare ? {} : { padding: 12, border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg-alt)' }) }}>
+    <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, alignItems: 'end', ...(bare ? {} : { padding: 12, border: '1px solid var(--ds-sep)', borderRadius: 6, background: 'var(--ds-bg)' }) }}>
       {!projectId && (
         <div>
           <span style={label}>Projet</span>
@@ -391,7 +391,7 @@ export function TimeEntryForm({ projectId, tasks, onSaved, compact, bare }: { pr
         <input className="ds-input" value={note} onChange={e => setNote(e.target.value)} placeholder="Ce qui a été fait" onKeyDown={e => { if (e.key === 'Enter' && can) add.mutate(); }} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', whiteSpace: 'nowrap' }} title="Compté dans le facturable">
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '12px', whiteSpace: 'nowrap' }} title="Compté dans le facturable">
           <input type="checkbox" checked={billable} onChange={e => setBillable(e.target.checked)} /> Fact.
         </label>
         <button className="odoo-btn-primary" disabled={!can} onClick={() => add.mutate()}>{add.isPending ? <Loader2 size={13} className="animate-spin" /> : 'Ajouter'}</button>

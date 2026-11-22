@@ -86,7 +86,7 @@ export default function CountryPackTab() {
                     <td>
                       {formatValue(p.key, p.value)}
                       {p.upcoming.map(u => (
-                        <div key={u.effectiveFrom} style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+                        <div key={u.effectiveFrom} style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
                           À partir du {d(u.effectiveFrom)} : {formatValue(p.key, u.value)}
                         </div>
                       ))}
@@ -130,7 +130,7 @@ export default function CountryPackTab() {
         <section style={{ display: 'grid', gap: 6 }}>
           <SectionHeader title={<>Formats déclaratifs du pays</>} />
           <PageNote>Ces fichiers suivent le format de l'administration du pays ({data.pack.name}) : ils ne sont pas produits pour une société d'un autre pays.</PageNote>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.875rem' }}>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: '14px' }}>
             {data.pack.declarativeFormats.map(f => <li key={f}>{FORMAT_LABELS[f] ?? f}</li>)}
           </ul>
         </section>

@@ -128,7 +128,7 @@ export default function CompanyLegalEntities() {
                   <td><StatusTag tone={e.is_active ? 'done' : 'cancelled'} label={e.is_active ? 'Active' : 'Désactivée'} /></td>
                   <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
                     {e.is_default
-                      ? <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>Fiche ci-dessus</span>
+                      ? <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>Fiche ci-dessus</span>
                       : <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
                         <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => open(e)} aria-label={`Modifier ${e.legal_name}`}>Modifier</button>
                         {e.is_active && (
@@ -157,7 +157,7 @@ export default function CompanyLegalEntities() {
             ))}
           </div>
           {editing.id && (
-            <label htmlFor="entity-isActive" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
+            <label htmlFor="entity-isActive" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '14px' }}>
               <input id="entity-isActive" type="checkbox" checked={editing.draft.isActive} onChange={ev => set('isActive', ev.target.checked)} /> Entité active
             </label>
           )}
@@ -199,14 +199,14 @@ export default function CompanyLegalEntities() {
             </table>
           </DataPanel>
           {stores.length > shownStores.length && (
-            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--ds-muted)' }}>
               {shownStores.length} établissements affichés sur {stores.length} : précisez la recherche.
             </p>
           )}
         </div>
       )}
       {available && entities.length === 1 && activeEntities.length === 1 && (
-        <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+        <p style={{ margin: 0, fontSize: '13px', color: 'var(--ds-muted)' }}>
           Une seule société : tous les établissements ({stores.length}) émettent leurs pièces sous la fiche ci-dessus.
           Ajoutez une entité pour rattacher un établissement à une autre société.
         </p>

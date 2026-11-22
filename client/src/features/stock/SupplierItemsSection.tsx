@@ -11,7 +11,7 @@ import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, Modal } fro
 import { RowMenu } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
-const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit', fontSize: '0.85rem', width: '100%' };
+const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--ds-sep)', borderRadius: 6, background: 'var(--ds-card)', color: 'inherit', font: 'inherit', fontSize: '0.85rem', width: '100%' };
 
 /**
  * Fiche article × fournisseur (mig 404/405) — Achats lot prix P1/P2.
@@ -45,8 +45,8 @@ export default function SupplierItemsSection({ kind, purchasableId, unit }: { ki
     <div className="odoo-scope" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 600, fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Truck size={16} /> Fournisseurs <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}>({items.length})</span></div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>Le fournisseur <b>préféré</b> (⭐) est proposé par défaut à l'achat. Le prix se remplit aussi tout seul à la réception.</div>
+          <div style={{ fontWeight: 600, fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Truck size={16} /> Fournisseurs <span style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>({items.length})</span></div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--ds-muted)', marginTop: 2 }}>Le fournisseur <b>préféré</b> (⭐) est proposé par défaut à l'achat. Le prix se remplit aussi tout seul à la réception.</div>
         </div>
         {avail.length > 0 && <button type="button" className="odoo-btn-secondary" onClick={() => setShowAdd(true)}><Plus size={14} aria-hidden="true" /> Ajouter un fournisseur</button>}
       </div>
@@ -73,7 +73,7 @@ export default function SupplierItemsSection({ kind, purchasableId, unit }: { ki
             <tbody>
               {items.map(it => (
                 <Fragment key={it.id}>
-                  <tr style={{ opacity: it.is_blocked ? 0.5 : 1, background: it.is_preferred ? 'rgba(245,158,11,0.06)' : undefined }}>
+                  <tr style={{ opacity: it.is_blocked ? 0.5 : 1, background: it.is_preferred ? 'var(--ds-warning-bg)' : undefined }}>
                     <td className="ds-strong">
                       {it.is_preferred && <Star size={13} aria-label="Fournisseur préféré" style={{ display: 'inline', color: 'var(--ds-warning)', fill: 'var(--ds-warning)', marginRight: 5, verticalAlign: '-2px' }} />}
                       {it.supplier_name}
@@ -93,7 +93,7 @@ export default function SupplierItemsSection({ kind, purchasableId, unit }: { ki
                         <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
                           {it.current_price != null
                             ? <b>{money(Number(it.current_price))}</b>
-                            : <span style={{ color: 'var(--theme-text-muted)' }}>à saisir</span>}
+                            : <span style={{ color: 'var(--ds-muted)' }}>à saisir</span>}
                           {it.current_price_source === 'reception' && <span className="odoo-tag odoo-tag-grey" style={{ fontSize: '0.62rem' }} title="Dernier prix relevé à la réception">auto</span>}
                           <button type="button" aria-label="Saisir ou modifier le prix" className="ds-icon-btn" title="Saisir ou modifier le prix" onClick={() => setPriceEdit({ id: it.id, val: it.current_price != null ? String(it.current_price) : '' })}><Pencil size={11} /></button>
                         </span>
@@ -102,7 +102,7 @@ export default function SupplierItemsSection({ kind, purchasableId, unit }: { ki
                     <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{it.qty_per_container != null ? `${it.qty_per_container}${unit ? ' ' + unit : ''}` : '—'}</td>
                     <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{it.lead_time_days != null ? it.lead_time_days : '—'}</td>
                     <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{it.moq != null ? it.moq : '—'}</td>
-                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.82rem' }}>{it.supplier_reference || '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)', fontSize: '0.82rem' }}>{it.supplier_reference || '—'}</td>
                     <td className="ds-actions">
                       <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-expanded={histId === it.id} onClick={() => setHistId(histId === it.id ? null : it.id)}>
                         {histId === it.id ? <ChevronDown size={12} aria-hidden="true" /> : <Clock size={12} aria-hidden="true" />} Historique
@@ -187,12 +187,12 @@ function PriceHistoryRow({ supplierItemId, colSpan }: { supplierItemId: string; 
   const sourceLabel: Record<string, string> = { manual: 'Saisi', reception: 'Réception', po: 'Commande', invoice: 'Facture', quote: 'Devis' };
   return (
     <tr>
-      <td colSpan={colSpan} style={{ background: 'rgba(127,127,127,0.05)', padding: '8px 14px' }}>
-        <div style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Historique des prix</div>
+      <td colSpan={colSpan} style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))', padding: '8px 14px' }}>
+        <div style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4 }}>Historique des prix</div>
         {isLoading ? (
-          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8rem' }}><Loader2 size={12} className="animate-spin" style={{ display: 'inline' }} /> …</span>
+          <span style={{ color: 'var(--ds-muted)', fontSize: '0.8rem' }}><Loader2 size={12} className="animate-spin" style={{ display: 'inline' }} /> …</span>
         ) : prices.length === 0 ? (
-          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8rem' }}>Aucun prix enregistré pour l'instant.</span>
+          <span style={{ color: 'var(--ds-muted)', fontSize: '0.8rem' }}>Aucun prix enregistré pour l'instant.</span>
         ) : (
           <DataPanel label="Historique des prix">
           <table className="odoo-table ds-dense">

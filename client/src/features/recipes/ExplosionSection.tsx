@@ -30,7 +30,7 @@ export default function ExplosionSection({ recipeId }: { recipeId: string }) {
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <Layers size={12} /> Explosion — ingrédients à plat
-        <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.78rem', fontWeight: 400 }}>tous niveaux cumulés</span>
+        <span style={{ marginLeft: 8, color: 'var(--ds-muted)', fontSize: '0.78rem', fontWeight: 400 }}>tous niveaux cumulés</span>
       </button>
 
       {open && (
@@ -75,7 +75,7 @@ export default function ExplosionSection({ recipeId }: { recipeId: string }) {
               </table>
             </div>
           )}
-          <p style={{ fontSize: '0.72rem', color: 'var(--theme-text-muted)', padding: '6px 2px 0' }}>
+          <p style={{ fontSize: '0.72rem', color: 'var(--ds-muted)', padding: '6px 2px 0' }}>
             Déplie la nomenclature sur tous les niveaux (sous-recettes incluses) et cumule chaque
             ingrédient élémentaire. Coût matière uniquement (hors emballage).
           </p>

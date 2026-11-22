@@ -98,8 +98,8 @@ export default function CustomFieldsTab() {
                   </>}
                 </td>
                 <td><span className="ds-strong">{d.label}</span><div style={{ fontSize: 12, color: 'var(--ds-muted)', fontFamily: 'ui-monospace, monospace' }}>{d.code}</div>
-                  {d.help && <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{d.help}</div>}</td>
-                <td>{CF_TYPE_LABELS[d.field_type]}{d.field_type === 'select' && <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{d.options.join(' · ')}</div>}</td>
+                  {d.help && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{d.help}</div>}</td>
+                <td>{CF_TYPE_LABELS[d.field_type]}{d.field_type === 'select' && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{d.options.join(' · ')}</div>}</td>
                 <td>{d.required ? 'Oui' : 'Non'}</td>
                 <td>{d.show_in_list ? 'Oui' : 'Non'}</td>
                 <td>{d.is_active ? <StatusTag tone="done" label="Actif" /> : <StatusTag tone="cancelled" label="Désactivé" />}</td>
@@ -141,11 +141,11 @@ export default function CustomFieldsTab() {
               <textarea id="cf-options" className="ds-input" style={{ minHeight: 90 }} value={draft.options} onChange={e => setDraft({ ...draft, options: e.target.value })} placeholder={'S\nM\nL\nXL'} />
             </FormField>
           )}
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '13px' }}>
             <label htmlFor="cf-required" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input id="cf-required" type="checkbox" checked={draft.required} onChange={e => setDraft({ ...draft, required: e.target.checked })} /> Obligatoire</label>
             <label htmlFor="cf-in-list" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input id="cf-in-list" type="checkbox" checked={draft.showInList} onChange={e => setDraft({ ...draft, showInList: e.target.checked })} /> Afficher dans la liste</label>
           </div>
-          {draft.required && !draft.id && <p style={{ fontSize: '0.75rem', color: 'var(--ds-warning)', margin: 0 }}>Un champ obligatoire sera exigé à la prochaine modification de chaque fiche existante.</p>}
+          {draft.required && !draft.id && <p style={{ fontSize: '12px', color: 'var(--ds-warning)', margin: 0 }}>Un champ obligatoire sera exigé à la prochaine modification de chaque fiche existante.</p>}
           <FormFooter onCancel={() => setDraft(null)} busy={save.isPending}
             disabled={draft.label.trim().length < 2 || (draft.fieldType === 'select' && !draft.options.trim())} onSubmit={() => save.mutate(draft)} />
         </section>

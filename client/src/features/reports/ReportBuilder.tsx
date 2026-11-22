@@ -112,7 +112,7 @@ function BuilderView() {
                 <span className="k">Période</span>
                 <span className="v">
                   <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} aria-label="Du" />
-                  <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
+                  <span style={{ color: 'var(--ds-muted)' }}>→</span>
                   <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} aria-label="Au" />
                 </span>
               </div>
@@ -278,7 +278,7 @@ function Dashboards() {
   if (!dashboards.length) return (
     <div className="kl-ar-empty" style={{ display: 'grid', justifyItems: 'center', gap: 6, padding: '40px 16px' }}>
       <LayoutGrid size={28} style={{ opacity: .35 }} />
-      <b style={{ color: 'var(--theme-text-strong)', fontSize: 16 }}>Aucun tableau de bord</b>
+      <b style={{ color: 'var(--ds-ink)', fontSize: 16 }}>Aucun tableau de bord</b>
       <span>Créez un rapport dans le Constructeur, puis « Ajouter à un tableau de bord ».</span>
     </div>
   );

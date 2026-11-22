@@ -121,7 +121,7 @@ export default function GoodsEntryRegisterTab({ bare = false }: {
       </ChipsRow>
 
       <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher par article, fournisseur, N° de lot, bon ou BC…">
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--ds-muted)' }} />}
         <PeriodFilter label="Entrée" title="Filtre sur la date d'entrée en stock"
           period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
         <SearchSelect options={supplierOptions} value={supplierId} onChange={setSupplierId} placeholder="Tous les fournisseurs" />
@@ -151,33 +151,33 @@ export default function GoodsEntryRegisterTab({ bare = false }: {
             <tbody>
               {rows.map((r, i) => (
                 <tr key={`${r.voucher_number ?? 'hb'}-${r.internal_lot ?? ''}-${i}`}>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{date(r.entry_date)}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>{date(r.entry_date)}</td>
                   <td className="ds-ref">
                     {r.source === 'hors_bc' ? <span style={{ color: 'var(--ds-warning)', fontWeight: 600, fontFamily: 'inherit' }}>hors BC</span> : (
                       <>
                         <div>{r.voucher_number}</div>
-                        {r.order_number && <div style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}>{r.order_number}</div>}
+                        {r.order_number && <div style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>{r.order_number}</div>}
                       </>
                     )}
                   </td>
                   <td>{r.supplier_name ?? '—'}</td>
                   <td className="ds-strong">
                     {r.item_name ?? '—'}
-                    {r.line_kind && r.line_kind !== 'receive' && r.source === 'bc' && <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', fontWeight: 400, marginLeft: 6 }}>{r.line_kind}</span>}
+                    {r.line_kind && r.line_kind !== 'receive' && r.source === 'bc' && <span style={{ color: 'var(--ds-muted)', fontSize: '12px', fontWeight: 400, marginLeft: 6 }}>{r.line_kind}</span>}
                   </td>
                   <td className="ds-num">
-                    {qty(r.quantity)} <span style={{ color: 'var(--theme-text-muted)' }}>{r.unit ?? ''}</span>
-                    {r.container_label ? <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.container_label}</div> : null}
+                    {qty(r.quantity)} <span style={{ color: 'var(--ds-muted)' }}>{r.unit ?? ''}</span>
+                    {r.container_label ? <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{r.container_label}</div> : null}
                   </td>
                   <td>{r.supplier_lot ?? (r.incomplete ? <Missing label="manquant" /> : '—')}</td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.internal_lot ?? '—'}</td>
+                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--ds-muted)' }}>{r.internal_lot ?? '—'}</td>
                   <td>{r.dlc ? date(r.dlc) : (r.incomplete ? <Missing label="manquante" /> : '—')}</td>
                   <td>
-                    {r.overall_conformity == null ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
+                    {r.overall_conformity == null ? <span style={{ color: 'var(--ds-muted)' }}>—</span>
                       : <Dot ok={r.overall_conformity} label={r.overall_conformity ? 'conforme' : 'non conforme'} />}
                   </td>
-                  <td style={{ fontSize: '0.75rem' }}>{r.supplier_invoice_number ?? '—'}</td>
-                  <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{r.received_by ?? '—'}</td>
+                  <td style={{ fontSize: '12px' }}>{r.supplier_invoice_number ?? '—'}</td>
+                  <td style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{r.received_by ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -192,7 +192,7 @@ export default function GoodsEntryRegisterTab({ bare = false }: {
 /** Donnée de traçabilité absente : texte orange discret plutôt qu'une pastille rouge par cellule. */
 function Missing({ label }: { label: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-warning)', fontSize: '0.75rem', fontWeight: 600 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-warning)', fontSize: '12px', fontWeight: 600 }}>
       <AlertTriangle size={11} /> {label}
     </span>
   );
@@ -200,7 +200,7 @@ function Missing({ label }: { label: string }) {
 
 function Dot({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: ok ? 'var(--odoo-text)' : 'var(--ds-danger)', fontWeight: ok ? 400 : 600 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '12px', color: ok ? 'var(--ds-ink)' : 'var(--ds-danger)', fontWeight: ok ? 400 : 600 }}>
       <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: ok ? 'var(--ds-success)' : 'var(--ds-danger)' }} />
       {label}
     </span>

@@ -20,7 +20,7 @@ const CHANGE = { ajout: 'Ajout', retrait: 'Retrait', quantite: 'Modifié' } as c
 const fr = (d: string | null) => (d ? new Date(`${d}T12:00`).toLocaleDateString('fr-FR') : '—');
 
 function DiffTable({ rows }: { rows: Diff[] }) {
-  if (!rows.length) return <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Aucune différence.</div>;
+  if (!rows.length) return <div style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>Aucune différence.</div>;
   return (
     <DataPanel><table className="odoo-table ds-dense">
       <thead><tr><th>Partie</th><th>Ligne</th><th>Avant</th><th>Après</th><th>Changement</th></tr></thead>
@@ -66,7 +66,7 @@ export default function BomVersionBanner({ recipeId }: { recipeId: string }) {
       </StatusBanner>
 
       {showPending && data.pendingChanges && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 10, display: 'grid', gap: 8 }}>
+        <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 6, padding: 10, display: 'grid', gap: 8 }}>
           {pending ? <DiffTable rows={pending} /> : <Loader2 size={14} className="animate-spin" />}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input className="ds-input sm" value={reason} onChange={e => setReason(e.target.value)} placeholder="Motif de la nouvelle version" aria-label="Motif de la nouvelle version" style={{ flex: '1 1 260px' }} />
@@ -78,7 +78,7 @@ export default function BomVersionBanner({ recipeId }: { recipeId: string }) {
       )}
 
       {showList && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 10, display: 'grid', gap: 8 }}>
+        <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 6, padding: 10, display: 'grid', gap: 8 }}>
           <DataPanel><table className="odoo-table ds-dense">
             <thead><tr><th>Version</th><th>Statut</th><th>Valide du</th><th>au</th><th>Motif</th><th className="ds-num">Coût unitaire</th><th /></tr></thead>
             <tbody>{data.versions.map(v => (
@@ -91,7 +91,7 @@ export default function BomVersionBanner({ recipeId }: { recipeId: string }) {
               </tr>
             ))}</tbody>
           </table></DataPanel>
-          {cmp && <><strong style={{ fontSize: '0.8125rem' }}>Version {cmp.a} → {cmp.b}</strong>{diff ? <DiffTable rows={diff} /> : <Loader2 size={14} className="animate-spin" />}</>}
+          {cmp && <><strong style={{ fontSize: '13px' }}>Version {cmp.a} → {cmp.b}</strong>{diff ? <DiffTable rows={diff} /> : <Loader2 size={14} className="animate-spin" />}</>}
         </div>
       )}
     </div>

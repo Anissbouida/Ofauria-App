@@ -134,10 +134,10 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
                 return (
                   <button key={c.code} type="button" onClick={() => setCategoryCode(c.code)} aria-pressed={active}
                     style={{
-                      padding: '6px 12px', borderRadius: 999, fontSize: '0.8125rem', cursor: 'pointer',
-                      border: `1px solid ${active ? (c.color || 'var(--odoo-purple)') : 'var(--odoo-border)'}`,
-                      background: active ? (c.color || 'var(--odoo-purple)') : 'transparent',
-                      color: active ? '#fff' : 'var(--odoo-text)', fontWeight: active ? 600 : 400,
+                      padding: '6px 12px', borderRadius: 999, fontSize: '13px', cursor: 'pointer',
+                      border: `1px solid ${active ? (c.color || 'var(--ds-accent)') : 'var(--ds-sep)'}`,
+                      background: active ? (c.color || 'var(--ds-accent)') : 'transparent',
+                      color: active ? '#fff' : 'var(--ds-ink)', fontWeight: active ? 600 : 400,
                     }}>
                     {c.label}
                   </button>
@@ -188,10 +188,10 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
                   <input id="complaint-customer" className="ds-input" value={customerName} maxLength={160}
                     onChange={e => { setCustomerName(e.target.value); setCustomerQuery(e.target.value); }} placeholder="Nom du client (ou rechercher une fiche)" />
                   {customers.length > 0 && customerQuery.trim().length >= 2 && (
-                    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 4, maxHeight: 140, overflowY: 'auto' }}>
+                    <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, marginTop: 4, maxHeight: 140, overflowY: 'auto' }}>
                       {customers.slice(0, 8).map(c => (
                         <button key={c.id} type="button" onClick={() => { setCustomerId(c.id); setCustomerQuery(''); }}
-                          style={{ display: 'flex', width: '100%', justifyContent: 'space-between', padding: '6px 10px', fontSize: '0.8125rem', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>
+                          style={{ display: 'flex', width: '100%', justifyContent: 'space-between', padding: '6px 10px', fontSize: '13px', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>
                           <span>{customerLabel(c)}</span>
                           <span style={{ color: 'var(--ds-muted)' }}>{c.phone || ''}</span>
                         </button>
@@ -233,10 +233,10 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
                     placeholder="N° de ticket (VNT-…)" />
                 </div>
                 {sales.length > 0 && !saleId && (
-                  <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 4, maxHeight: 140, overflowY: 'auto' }}>
+                  <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, marginTop: 4, maxHeight: 140, overflowY: 'auto' }}>
                     {sales.map(s => (
                       <button key={s.id} type="button" onClick={() => { setSaleId(s.id); setSaleQuery(s.sale_number); if (s.customer_id && !customerId) setCustomerId(s.customer_id); }}
-                        style={{ display: 'flex', width: '100%', justifyContent: 'space-between', padding: '6px 10px', fontSize: '0.8125rem', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>
+                        style={{ display: 'flex', width: '100%', justifyContent: 'space-between', padding: '6px 10px', fontSize: '13px', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>
                         <span className="ds-ref">{s.sale_number}</span>
                         <span style={{ color: 'var(--ds-muted)' }}>{new Date(s.created_at).toLocaleDateString('fr-FR')} · {money(Number(s.total))}</span>
                       </button>
@@ -259,7 +259,7 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
           <button type="button" className="odoo-btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading}>
             {uploading ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />} {photoUrl ? 'Changer la photo' : 'Photo'}
           </button>
-          {photoUrl && <img src={serverUrl(photoUrl)} alt="" style={{ height: 44, borderRadius: 4, border: '1px solid var(--odoo-border)' }} />}
+          {photoUrl && <img src={serverUrl(photoUrl)} alt="" style={{ height: 44, borderRadius: 4, border: '1px solid var(--ds-sep)' }} />}
           {photoUrl && <button type="button" className="odoo-btn-secondary" onClick={() => setPhotoUrl(null)} aria-label="Retirer la photo"><X size={12} /></button>}
         </div>
       </div>

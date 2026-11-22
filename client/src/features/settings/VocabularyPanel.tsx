@@ -72,8 +72,8 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
         pour toute la société, menus et écrans compris. « Rétablir » rend le terme du secteur.
       </StatusBanner>
 
-      <div className="ds-panel" style={{ padding: '14px 18px', fontSize: '0.875rem' }} aria-label="Aperçu">
-        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4 }}>Aperçu</div>
+      <div className="ds-panel" style={{ padding: '14px 18px', fontSize: '14px' }} aria-label="Aperçu">
+        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4 }}>Aperçu</div>
         Menu « {term('production')} » › « {term('production_plans')} » › bouton « {term('new_plan')} ».
         Chaque {term('production_plan').toLowerCase()} suit une {term('recipe').toLowerCase()} :
         {' '}{term('base_preps').toLowerCase()} puis {term('finished_product').toLowerCase()},

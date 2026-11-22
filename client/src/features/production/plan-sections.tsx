@@ -20,7 +20,7 @@ export function PlanJournal({ events }: { events: ProductionPlanEvent[] }) {
     <details className="ds-panel pd-section">
       <summary className="pd-section-head" style={{ cursor: 'pointer', listStyle: 'none' }}>
         <History size={12} /> Journal du plan
-        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
           {planEvents.length} transition{planEvents.length > 1 ? 's' : ''}
         </span>
       </summary>
@@ -43,12 +43,12 @@ export function PlanJournal({ events }: { events: ProductionPlanEvent[] }) {
               const to = isBon ? bonStatusTag(ev.to_status) : planStatusTag(ev.to_status);
               return (
                 <tr key={ev.id} style={{ cursor: 'default' }}>
-                  <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>{format(new Date(ev.created_at as string), 'dd/MM/yyyy HH:mm', { locale: fr })}</td>
+                  <td style={{ whiteSpace: 'nowrap', color: 'var(--ds-muted)' }}>{format(new Date(ev.created_at as string), 'dd/MM/yyyy HH:mm', { locale: fr })}</td>
                   <td>{isBon ? <span style={{ fontFamily: 'ui-monospace, monospace' }}>{ev.bon_numero as string}</span> : 'Plan'}</td>
-                  <td>{from ? <StatusTag tone={from.tone} icon={from.icon} label={from.label} /> : <span style={{ color: 'var(--theme-text-muted)' }}>création</span>}</td>
+                  <td>{from ? <StatusTag tone={from.tone} icon={from.icon} label={from.label} /> : <span style={{ color: 'var(--ds-muted)' }}>création</span>}</td>
                   <td><StatusTag tone={to.tone} icon={to.icon} label={to.label} /></td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{(ev.actor_name as string) || '—'}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{(ev.reason as string) || ''}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>{(ev.actor_name as string) || '—'}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>{(ev.reason as string) || ''}</td>
                 </tr>
               );
             })}
@@ -66,7 +66,7 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
     <div className="ds-panel pd-section">
       <div className="pd-section-head">
         <Layers size={12} /> Traçabilité des lots
-        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
           {(productionLotUsage as Record<string, any>[]).length} lot(s) d'ingrédients utilisé(s)
         </span>
       </div>
@@ -95,17 +95,17 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
                   {/* Lot interne = celui affiche sur le bon de sortie ; le lot fournisseur
                       (etiquette du sac) n'est pas toujours saisi a la reception. */}
                   <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(usage.lot_number as string) || '—'}</td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(usage.supplier_lot_number as string) || <span style={{ color: 'var(--theme-text-muted)', fontFamily: 'inherit' }}>non renseigné</span>}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{usage.supplier_name ? String(usage.supplier_name) : '—'}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{usage.received_at ? format(new Date(usage.received_at as string), 'dd/MM/yyyy') : '—'}</td>
+                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(usage.supplier_lot_number as string) || <span style={{ color: 'var(--ds-muted)', fontFamily: 'inherit' }}>non renseigné</span>}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>{usage.supplier_name ? String(usage.supplier_name) : '—'}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>{usage.received_at ? format(new Date(usage.received_at as string), 'dd/MM/yyyy') : '—'}</td>
                   <td>
                     {expDate
-                      ? (isExpired ? <StatusTag tone="late" label={`Expiré ${format(expDate, 'dd/MM/yyyy')}`} /> : <span style={{ color: 'var(--theme-text-muted)' }}>{format(expDate, 'dd/MM/yyyy')}</span>)
+                      ? (isExpired ? <StatusTag tone="late" label={`Expiré ${format(expDate, 'dd/MM/yyyy')}`} /> : <span style={{ color: 'var(--ds-muted)' }}>{format(expDate, 'dd/MM/yyyy')}</span>)
                       : '—'}
                   </td>
                   <td className="ds-num">
                     <strong>{parseFloat(usage.quantity_used as string).toFixed(2)}</strong>
-                    <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{(usage.ingredient_unit as string) || ''}</span>
+                    <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 2 }}>{(usage.ingredient_unit as string) || ''}</span>
                   </td>
                 </tr>
               );
@@ -131,7 +131,7 @@ export function PlanLinkedOrder({ plan }: { plan: Record<string, any> }) {
   const cell = (label: string, value: ReactNode) => (
     <div>
       <div className="odoo-stat-card-label">{label}</div>
-      <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--theme-text-strong)' }}>{value}</div>
+      <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--ds-ink)' }}>{value}</div>
     </div>
   );
   return (
@@ -141,14 +141,14 @@ export function PlanLinkedOrder({ plan }: { plan: Record<string, any> }) {
         <span style={{ marginLeft: 4, fontFamily: 'ui-monospace, monospace', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{plan.order_number}</span>
         <span style={{ marginLeft: 'auto' }}><StatusTag tone={orderTone.tone} icon={orderTone.icon} label={orderLabel} /></span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-card)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', padding: '0.75rem 1rem', backgroundColor: 'var(--ds-card)' }}>
         {plan.order_customer_first_name && cell('Client', `${plan.order_customer_first_name} ${plan.order_customer_last_name || ''}`)}
         {plan.order_customer_phone && cell('Téléphone', plan.order_customer_phone)}
         {plan.order_pickup_date && cell('Retrait', format(new Date(plan.order_pickup_date), 'dd/MM/yyyy', { locale: fr }))}
         {plan.order_total && cell('Total', <>
           {money(parseFloat(plan.order_total))}
           {parseFloat(plan.order_advance_amount) > 0 && (
-            <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 4 }}>(avance {parseFloat(plan.order_advance_amount).toFixed(2)})</span>
+            <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 4 }}>(avance {parseFloat(plan.order_advance_amount).toFixed(2)})</span>
           )}
         </>)}
       </div>

@@ -76,11 +76,11 @@ export function ReportViz({ columns, rows, viz, measureKey }: { columns: ReportC
     const area = `${x(0)},${H - pad} ${pts} ${x(n - 1)},${H - pad}`;
     return (
       <div style={{ padding: '8px 4px' }}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: 200, color: 'var(--theme-accent)' }} preserveAspectRatio="none">
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: 200, color: 'var(--ds-accent)' }} preserveAspectRatio="none">
           <polygon points={area} fill="currentColor" opacity="0.1" />
           <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
         </svg>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--theme-text-muted)', marginTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--ds-muted)', marginTop: 4 }}>
           <span>{data[0]?.label}</span><span>{measure.label}</span><span>{data[n - 1]?.label}</span>
         </div>
       </div>

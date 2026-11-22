@@ -64,7 +64,7 @@ export default function WorkshopsCard() {
       return { ...d, [key]: list.includes(value) ? list.filter(x => x !== value) : [...list, value] };
     });
 
-  const box: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' };
+  const box: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', cursor: 'pointer' };
   const grid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 6, maxHeight: 200, overflowY: 'auto' };
   const codeValid = !draft || /^[a-z][a-z0-9_]{1,29}$/.test(draft.code);
 

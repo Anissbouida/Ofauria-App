@@ -146,7 +146,7 @@ export default function PayrollSettingsView() {
   const suffixed = (input: ReactNode, suffix?: string) => (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
       {input}
-      {suffix && <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{suffix}</span>}
+      {suffix && <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{suffix}</span>}
     </span>
   );
   const field = (key: string, label: string, suffix?: string) => (
@@ -276,7 +276,7 @@ export default function PayrollSettingsView() {
             </table>
             </DataPanel>
           </FormSection>
-          {scale.notes && <p style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{scale.notes}</p>}
+          {scale.notes && <p style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{scale.notes}</p>}
           {isAdmin && (
             <div><SubmitButton pending={saveScale.isPending} onClick={async () => {
               if (!(await confirm('Modifier le barème légal ?\n\nLes bulletins payés gardent leurs montants. Les autres seront recalculés à la prochaine génération.',
@@ -288,7 +288,7 @@ export default function PayrollSettingsView() {
               barème déjà utilisé par des bulletins ne se modifie plus. */}
           {isAdmin && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+              <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
                 {Number(scale.payslip_count) > 0
                   ? `${scale.payslip_count} bulletin(s) calculé(s) avec ce barème : ses taux ne sont plus modifiables.`
                   : 'Aucun bulletin calculé avec ce barème : il reste modifiable.'}

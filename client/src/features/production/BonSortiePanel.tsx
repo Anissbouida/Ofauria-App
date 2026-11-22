@@ -383,7 +383,7 @@ export function BonSortiePanel({
         <div className="kl-sec" style={{ margin: '0 4px', alignItems: 'center' }}>
           <h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <Truck size={18} /> Bon de sortie
-            <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 15, fontWeight: 500, color: 'var(--theme-text-muted)' }}>{bon.numero as string}</span>
+            <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 15, fontWeight: 500, color: 'var(--ds-muted)' }}>{bon.numero as string}</span>
           </h2>
           {isClosed && <StatusTag tone="done" icon={Truck} label="Livré" />}
         </div>
@@ -556,7 +556,7 @@ export function BonSortiePanel({
             <tr className={`${kind === 'lot_perime' ? 'bsi-row-muted' : ''} ${isDone ? 'bsi-row-done' : ''}`}>
               <td><span className={`odoo-status-dot ${rowDot}`} /></td>
               <td>
-                <div style={{ fontWeight: 600, color: 'var(--theme-text-strong)' }}>{line.ingredient_name as string}</div>
+                <div style={{ fontWeight: 600, color: 'var(--ds-ink)' }}>{line.ingredient_name as string}</div>
                 {isMagasinier && (
                   <div className="bsi-sub">
                     {kind === 'a_ouvrir' && suggestedLabel && <>Ouvrir le lot <span style={{ fontFamily: 'ui-monospace, monospace' }}>{suggestedLabel}</span>{containerSize > 0 && <> · {line.container_type_label ? `${line.container_type_label} de ` : 'contenant de '}{fmtQty(containerSize, unit).v} {fmtQty(containerSize, unit).u}</>}</>}
@@ -722,7 +722,7 @@ export function BonSortiePanel({
           <div className="bsi-packaging">
             <div className="pd-section-head" style={{ border: 'none' }}>
               <Package size={12} /> Emballages
-              <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--theme-text-muted)' }}>— consommés automatiquement à la remise, rien à peser</span>
+              <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--ds-muted)' }}>— consommés automatiquement à la remise, rien à peser</span>
             </div>
             <table className="odoo-table bsi-lines-table">
               <tbody>
@@ -753,7 +753,7 @@ export function BonSortiePanel({
           Historique du bon
         </button>
         {showDetails && (
-          <div style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ padding: '0.75rem 1rem', fontSize: '12px', color: 'var(--ds-muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {bon.generated_at && <p>Demandé le {format(new Date(bon.generated_at as string), 'dd/MM/yyyy à HH:mm')}{bon.generated_by_name ? ` par ${bon.generated_by_name as string}` : ''}</p>}
             {bon.preparation_at && <p>Pris en charge le {format(new Date(bon.preparation_at as string), 'dd/MM/yyyy à HH:mm')}{bon.preparation_by_name ? ` par ${bon.preparation_by_name as string}` : ''}</p>}
             {bon.ready_at && <p>Remis au chef le {format(new Date(bon.ready_at as string), 'dd/MM/yyyy à HH:mm')}{bon.ready_by_name ? ` par ${bon.ready_by_name as string}` : ''}</p>}
@@ -771,7 +771,7 @@ export function BonSortiePanel({
                     <RefreshCw size={13} /> Régénérer le bon
                   </button>
                   {!showDerog && (
-                    <button onClick={() => setShowDerog(true)} disabled={regenerateMutation.isPending} className="odoo-btn-secondary" style={{ color: 'var(--ds-warning)', borderColor: '#fcd34d' }}>
+                    <button onClick={() => setShowDerog(true)} disabled={regenerateMutation.isPending} className="odoo-btn-secondary" style={{ color: 'var(--ds-warning)', borderColor: 'color-mix(in srgb, var(--ds-warning) 32%, var(--ds-card))' }}>
                       ⚠ Régénérer avec dérogation DLC
                     </button>
                   )}
@@ -781,7 +781,7 @@ export function BonSortiePanel({
                     <span style={{ color: 'var(--ds-warning)' }}>Les lots à DLC dépassée seront alloués. Cette décision est tracée (auteur, date, motif) sur le bon.</span>
                     <textarea value={derogMotif} onChange={(e) => setDerogMotif(e.target.value)} rows={2}
                       placeholder="Motif de la dérogation (obligatoire, 5 caractères min.) — ex. : contrôle organoleptique OK, DLC à J+1, utilisation en cuisson"
-                      style={{ width: '100%', fontSize: '0.75rem', border: '1px solid var(--ds-line)', borderRadius: 6, padding: '4px 8px', background: 'var(--ds-card)' }} />
+                      style={{ width: '100%', fontSize: '12px', border: '1px solid var(--ds-line)', borderRadius: 6, padding: '4px 8px', background: 'var(--ds-card)' }} />
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => regenerateMutation.mutate(derogMotif.trim())} disabled={regenerateMutation.isPending || derogMotif.trim().length < 5} className="odoo-btn-primary">
                         Confirmer la dérogation

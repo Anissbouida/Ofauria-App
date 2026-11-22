@@ -148,7 +148,7 @@ function ClosedYear({ fy }: { fy: FiscalYear }) {
       {fy.chain_hash && (
         <>
           <br />
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'ui-monospace, monospace', fontSize: '12px' }}
             title={fy.chain_hash}>
             <Fingerprint size={11} /> Empreinte de clôture n° {fy.chain_seq} : {fy.chain_hash}
           </span>

@@ -89,7 +89,7 @@ export default function CurrenciesTab() {
                     {c.is_base ? '1' : c.rate ? <>1 {c.code} = <strong>{Number(c.rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</strong></> : <span style={{ color: 'var(--ds-warning)' }}>aucun taux</span>}
                   </td>
                   <td>{c.is_base ? '—' : d(c.rate_date)}</td>
-                  <td style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>{c.rate_source ?? ''}</td>
+                  <td style={{ color: 'var(--ds-muted)', fontSize: '13px' }}>{c.rate_source ?? ''}</td>
                   <td>{c.is_active ? <StatusTag tone="done" label="Active" /> : <StatusTag tone="cancelled" label="Inactive" />}</td>
                   <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
                     {!c.is_base && (
@@ -129,7 +129,7 @@ export default function CurrenciesTab() {
       {historyFor && (
         <div>
           <SectionHeader title={`Historique des taux ${historyFor}`} />
-          {history.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucun taux saisi.</p> : (
+          {history.length === 0 ? <p style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>Aucun taux saisi.</p> : (
             <DataPanel>
             <table className="odoo-table">
               <thead><tr><th>Date</th><th className="ds-num">1 {historyFor} = ({currencySymbol()})</th><th>Source</th><th>Saisi par</th></tr></thead>
@@ -154,14 +154,14 @@ function Revaluation() {
   return (
     <section style={{ display: 'grid', gap: 8 }}>
       <SectionHeader title="Écarts de change latents sur factures fournisseurs ouvertes">
-        <label htmlFor="cur-reval-date" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>au
+        <label htmlFor="cur-reval-date" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '13px', color: 'var(--ds-muted)' }}>au
           <input id="cur-reval-date" type="date" className="ds-input sm" style={{ width: 160 }} value={date} onChange={e => setDate(e.target.value)} /></label>
       </SectionHeader>
-      <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', margin: 0 }}>
+      <p style={{ fontSize: '13px', color: 'var(--ds-muted)', margin: 0 }}>
         Reste dû en devise revalorisé au taux de la date. Pour information : l'écart n'est comptabilisé qu'au règlement (6331 / 7331).
         {data.missingRates.length > 0 && <span style={{ color: 'var(--ds-warning)' }}> Taux manquant : {data.missingRates.join(', ')}.</span>}
       </p>
-      {data.rows.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', margin: 0 }}>Aucune facture en devise à régler.</p> : (
+      {data.rows.length === 0 ? <p style={{ fontSize: '13px', color: 'var(--ds-muted)', margin: 0 }}>Aucune facture en devise à régler.</p> : (
         <DataPanel>
           <table className="odoo-table">
             <thead><tr><th>Facture</th><th>Fournisseur</th><th className="ds-num">Reste dû</th><th className="ds-num">Taux facture</th><th className="ds-num">Taux au {d(data.date)}</th><th className="ds-num">Écart latent ({currencySymbol()})</th></tr></thead>

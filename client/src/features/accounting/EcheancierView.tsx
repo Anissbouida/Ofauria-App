@@ -355,7 +355,7 @@ function PayEcheanceModal({ echeance, pending, onClose, onSubmit }: {
   const isEffect = legacy === 'check' || legacy === 'traite';
 
   return (
-    <Modal title={<><Coins size={16} aria-hidden="true" style={{ color: 'var(--theme-accent)', verticalAlign: '-2px' }} /> Régler une échéance</>}
+    <Modal title={<><Coins size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)', verticalAlign: '-2px' }} /> Régler une échéance</>}
       subtitle={`${echeance.label} · ${fmtDate(echeance.due_date)}`} onClose={onClose} width={480} locked={pending}
       footer={<FormFooter onCancel={onClose} onSubmit={() => formRef.current?.requestSubmit()} busy={pending} submitLabel={pending ? 'Enregistrement...' : 'Enregistrer'} />}>
       <form ref={formRef} onSubmit={ev => {
@@ -514,7 +514,7 @@ function DebtFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const formRef = useRef<HTMLFormElement>(null);
 
   return (
-    <Modal title={<><Building2 size={16} aria-hidden="true" style={{ color: 'var(--theme-accent)', verticalAlign: '-2px' }} /> Dette à crédit</>}
+    <Modal title={<><Building2 size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)', verticalAlign: '-2px' }} /> Dette à crédit</>}
       subtitle="Matériel ou équipement acheté en plusieurs fois" onClose={onClose} width={560} locked={create.isPending}
       footer={<FormFooter onCancel={onClose} onSubmit={() => formRef.current?.requestSubmit()} busy={create.isPending} submitLabel={create.isPending ? 'Création...' : 'Créer la dette'} />}>
       <form ref={formRef} onSubmit={ev => {
@@ -745,7 +745,7 @@ function RecurringChargeForm({ charge, onClose, onSaved }: {
   const formRef = useRef<HTMLFormElement>(null);
 
   return (
-    <Modal title={<><Repeat size={16} aria-hidden="true" style={{ color: 'var(--theme-accent)', verticalAlign: '-2px' }} /> {charge ? 'Modifier la charge fixe' : 'Nouvelle charge fixe'}</>}
+    <Modal title={<><Repeat size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)', verticalAlign: '-2px' }} /> {charge ? 'Modifier la charge fixe' : 'Nouvelle charge fixe'}</>}
       subtitle="Loyer, électricité, eau, internet..." onClose={onClose} width={560} locked={save.isPending}
       footer={<FormFooter onCancel={onClose} onSubmit={() => formRef.current?.requestSubmit()} busy={save.isPending} submitLabel={save.isPending ? 'Enregistrement...' : 'Enregistrer'} />}>
       <form ref={formRef} onSubmit={ev => {

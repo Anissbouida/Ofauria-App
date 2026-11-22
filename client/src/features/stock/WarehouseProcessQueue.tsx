@@ -177,19 +177,19 @@ export function WarehouseQueueList({
                     <td>
                       <span className="ds-strong">Plan du {fmtDate(bon.plan_date, 'dd MMM yyyy') ?? '—'}</span>
                       {bon.chef_reject_reason && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--ds-danger)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <div style={{ fontSize: '12px', color: 'var(--ds-danger)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                           <AlertTriangle size={10} /> Refusé par le chef : {bon.chef_reject_reason as string}
                         </div>
                       )}
                     </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.generated_by_name as string) || '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{(bon.generated_by_name as string) || '—'}</td>
                     <td className="ds-num" style={{ fontWeight: 600 }}>{bon.total_lines as number}</td>
                     <td>
                       <StageProgress count={PIPE_STAGES.length} current={['recue', 'preparation', 'pret'].indexOf(STEP_OF_STATUS[status] ?? 'recue')} late={!!bon.chef_reject_reason} />
                       <StatusTag tone={tag.tone} icon={tag.icon} label={tag.label} />
                     </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{(responsible as string) || '—'}</td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{waitingSince(bon) ?? '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{(responsible as string) || '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{waitingSince(bon) ?? '—'}</td>
                     <td className="ds-actions" onClick={e => e.stopPropagation()}>
                       {status === 'genere' ? (
                         <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={isTaking}

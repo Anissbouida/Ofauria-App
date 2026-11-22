@@ -31,7 +31,7 @@ function costTone(v: number, max: number, min = 0): 'red' | 'orange' | 'green' {
   if (v > max * 0.9 || (min && v < min)) return 'orange';
   return 'green';
 }
-const TONE_VAR = { red: 'var(--prj-red)', orange: 'var(--prj-orange)', green: 'var(--prj-green)', muted: 'var(--theme-text-muted)' } as const;
+const TONE_VAR = { red: 'var(--prj-red)', orange: 'var(--prj-orange)', green: 'var(--prj-green)', muted: 'var(--ds-muted)' } as const;
 
 type Props = {
   d: any; dashLoading: boolean;
@@ -161,16 +161,16 @@ export default function ReportsOverview(p: Props) {
                   <AreaChart data={trend} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="repArea" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--theme-accent)" stopOpacity={0.22} />
-                        <stop offset="100%" stopColor="var(--theme-accent)" stopOpacity={0} />
+                        <stop offset="0%" stopColor="var(--ds-accent)" stopOpacity={0.22} />
+                        <stop offset="100%" stopColor="var(--ds-accent)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--theme-bg-separator)" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'var(--theme-text-muted)' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 12, fill: 'var(--theme-text-muted)' }} axisLine={false} tickLine={false} width={46} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--ds-sep)" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'var(--ds-muted)' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 12, fill: 'var(--ds-muted)' }} axisLine={false} tickLine={false} width={46} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
                     <Tooltip contentStyle={{ borderRadius: 12, border: 0, fontSize: 13, boxShadow: '0 8px 24px rgba(15,23,42,.12)' }} formatter={(v: number, n) => [dh2(v), n === 'actuel' ? 'Actuel' : 'Précédent']} />
-                    <Line type="monotone" dataKey="precedent" stroke="var(--theme-text-muted)" strokeOpacity={0.5} strokeWidth={2} strokeDasharray="5 4" dot={false} />
-                    <Area type="monotone" dataKey="actuel" stroke="var(--theme-accent)" strokeWidth={2.5} fill="url(#repArea)" dot={false} activeDot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="precedent" stroke="var(--ds-muted)" strokeOpacity={0.5} strokeWidth={2} strokeDasharray="5 4" dot={false} />
+                    <Area type="monotone" dataKey="actuel" stroke="var(--ds-accent)" strokeWidth={2.5} fill="url(#repArea)" dot={false} activeDot={{ r: 4 }} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -210,7 +210,7 @@ export default function ReportsOverview(p: Props) {
                 ))}
                 <div className="kl-rep-total">
                   <span>Marge d'exploitation</span>
-                  <b className={operatingMargin >= 0 ? 'kl-rep-tone-g' : 'kl-rep-tone-r'}>{dh(operatingMargin)} <small style={{ fontWeight: 400, color: 'var(--theme-text-muted)' }}>{pct(operatingMarginPct)}</small></b>
+                  <b className={operatingMargin >= 0 ? 'kl-rep-tone-g' : 'kl-rep-tone-r'}>{dh(operatingMargin)} <small style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>{pct(operatingMarginPct)}</small></b>
                 </div>
               </div>
             )}
@@ -225,8 +225,8 @@ export default function ReportsOverview(p: Props) {
                 <Stat label="Chèques à encaisser" value={dh(fin.pipeline.uncashedChecks.total)} sub={fin.pipeline.uncashedChecks.overdue > 0 ? `dont ${dh(fin.pipeline.uncashedChecks.overdue)} échus` : `${fin.pipeline.uncashedChecks.count} chèques`} tone={fin.pipeline.uncashedChecks.overdue > 0 ? 'r' : 'g'} />
                 <Stat label="Reçu non facturé" value={dh(fin.kpis.receivedNotInvoiced.total)} sub={`${fin.kpis.receivedNotInvoiced.count} réceptions`} tone="o" />
                 {fin.topSuppliers?.length > 0 && (
-                  <div style={{ padding: '10px 20px 16px', borderTop: '1px solid var(--theme-bg-separator)' }}>
-                    <div style={{ fontSize: 13, color: 'var(--theme-text-muted)', marginBottom: 6 }}>Principaux fournisseurs créditeurs</div>
+                  <div style={{ padding: '10px 20px 16px', borderTop: '1px solid var(--ds-sep)' }}>
+                    <div style={{ fontSize: 13, color: 'var(--ds-muted)', marginBottom: 6 }}>Principaux fournisseurs créditeurs</div>
                     {fin.topSuppliers.slice(0, 3).map(s => (
                       <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, padding: '3px 0' }}>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
@@ -279,7 +279,7 @@ export default function ReportsOverview(p: Props) {
                 <div className="kl-rep-figs" style={{ padding: '0 20px' }}>
                   <div><b className="kl-rep-tone-r">{dh(losses.reduce((s, r) => s + (parseFloat(r.total_cost) || 0), 0))}</b><small>coût total des pertes</small></div>
                 </div>
-                <div className="kl-group" style={{ boxShadow: 'none', borderRadius: 0, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                <div className="kl-group" style={{ boxShadow: 'none', borderRadius: 0, borderTop: '1px solid var(--ds-sep)' }}>
                   {losses.slice(0, 6).map((r, i) => (
                     <div key={i} className="kl-cell" style={{ cursor: 'default', minHeight: 48 }}>
                       <span className="tx"><span className="t1">{String(r.reason)}</span><span className="t2">{String(r.loss_type)} · {r.count}×</span></span>

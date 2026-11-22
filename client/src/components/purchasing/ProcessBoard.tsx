@@ -68,8 +68,8 @@ export function periodLabel(p: PeriodKey, from: string, to: string): string {
   return 'toutes les dates';
 }
 
-const filterLabelStyle = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' } as const;
-const activeSelect = { color: 'var(--odoo-purple)', fontWeight: 600 } as const;
+const filterLabelStyle = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '13px', color: 'var(--ds-muted)' } as const;
+const activeSelect = { color: 'var(--ds-accent)', fontWeight: 600 } as const;
 
 export function PeriodFilter({ label, title, period, onPeriod, from, onFrom, to, onTo }: {
   label: string; title?: string;
@@ -150,12 +150,12 @@ export function StagePipeline({ title, summary, stages, stats, isActive, onPick 
     );
   }
   return (
-    <div className="pb-pipeline" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)' }}>
+    <div className="pb-pipeline" style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-card)' }}>
       <div className="pb-pipeline-head" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '10px 16px 0' }}>
-        <span className="pb-pipeline-title" style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--odoo-text-muted)' }}>
+        <span className="pb-pipeline-title" style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ds-muted)' }}>
           {title}
         </span>
-        <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{summary}</span>
+        <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{summary}</span>
       </div>
       <div className="odoo-stat-grid" style={{ borderBottom: 'none' }}>
         {stages.map((s, idx) => {
@@ -169,8 +169,8 @@ export function StagePipeline({ title, summary, stages, stats, isActive, onPick 
               <div className="odoo-stat-card-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="pb-stage-num" style={{
                   width: 18, height: 18, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '0.625rem', fontWeight: 700,
-                  background: active ? 'var(--odoo-purple)' : 'var(--odoo-border)', color: active ? '#fff' : 'var(--odoo-text)',
+                  fontSize: '11px', fontWeight: 700,
+                  background: active ? 'var(--ds-accent)' : 'var(--ds-sep)', color: active ? '#fff' : 'var(--ds-ink)',
                 }}>{idx + 1}</span>
                 <Icon size={11} /> {s.label}
               </div>
@@ -196,9 +196,9 @@ export function StageProgress({ count, current, done, late }: { count: number; c
       {Array.from({ length: count }, (_, k) => (
         <span key={k} style={{
           height: 5, flex: '1 1 0', maxWidth: 30, borderRadius: 3,
-          background: k < current || done ? 'var(--odoo-purple)'
-            : k === current ? (late ? 'var(--ds-danger)' : 'color-mix(in srgb, var(--odoo-purple) 40%, transparent)')
-            : 'var(--odoo-border)',
+          background: k < current || done ? 'var(--ds-accent)'
+            : k === current ? (late ? 'var(--ds-danger)' : 'color-mix(in srgb, var(--ds-accent) 40%, transparent)')
+            : 'var(--ds-sep)',
         }} />
       ))}
     </div>
@@ -225,9 +225,9 @@ export function ViewSwitch({ view, onChange, openLabel, historyLabel, ariaLabel 
       {([['open', openLabel], ['history', historyLabel]] as const).map(([key, label]) => (
         <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => onChange(key)}
           style={{
-            padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
-            background: view === key ? 'var(--odoo-purple-light)' : 'transparent',
-            color: view === key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
+            padding: '0.3rem 0.75rem', fontSize: '13px',
+            background: view === key ? 'var(--ds-tint)' : 'transparent',
+            color: view === key ? 'var(--ds-accent)' : 'var(--ds-muted)',
             fontWeight: view === key ? 600 : 400,
           }}>
           {label}

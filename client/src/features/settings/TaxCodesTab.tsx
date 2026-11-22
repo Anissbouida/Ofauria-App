@@ -95,7 +95,7 @@ export default function TaxCodesTab() {
                   <td style={{ whiteSpace: 'nowrap' }}>{d(c.valid_from)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{d(c.valid_to)}</td>
                   <td><StatusTag tone={STATUS[c.status].tone} icon={STATUS[c.status].icon} label={STATUS[c.status].label} /></td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{c.legal_ref ?? ''}</td>
+                  <td style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>{c.legal_ref ?? ''}</td>
                   <td className="ds-actions">
                     {c.status !== 'past' && !draft && canCreate('settings') && (
                       <button type="button" className="odoo-btn-secondary ds-btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => newRateFor(c)}>Changer le taux</button>
@@ -146,12 +146,12 @@ export default function TaxCodesTab() {
               <input id="tax-ref" className="ds-input" value={draft.legalRef} onChange={e => setDraft({ ...draft, legalRef: e.target.value })} placeholder="CGI art. 98, LF 2026…" />
               </FormField>
             </div>
-            <label htmlFor="tax-recoverable" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
+            <label htmlFor="tax-recoverable" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '14px' }}>
               <input id="tax-recoverable" type="checkbox" checked={draft.recoverable} onChange={e => setDraft({ ...draft, recoverable: e.target.checked })} /> TVA déductible
             </label>
           </div>
           {replacing && replacing.status === 'current' && (
-            <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+            <div style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
               Le taux actuel ({Number(replacing.rate).toLocaleString('fr-FR')} %) s'arrêtera le {draft.validFrom ? d(dayBefore(draft.validFrom)) : '…'}.
             </div>
           )}

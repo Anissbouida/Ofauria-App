@@ -63,8 +63,8 @@ export default function DataTab() {
         <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Download size={15} aria-hidden="true" /> Exporter</span>} />
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 260px', display: 'grid', gap: 6, alignContent: 'start' }}>
-            <div style={{ fontSize: '0.875rem' }}><strong>Configuration</strong> (fichier JSON)</div>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+            <div style={{ fontSize: '14px' }}><strong>Configuration</strong> (fichier JSON)</div>
+            <div style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
               Société, établissements, rôles et droits, séries de numéros, modèles, notifications, TVA, référentiel. Sans mot de passe ni code PIN.
             </div>
             <button type="button" className="odoo-btn-secondary" style={{ justifySelf: 'start' }} disabled={busy !== null} onClick={() => doExport('export/configuration', 'Configuration')}>
@@ -72,8 +72,8 @@ export default function DataTab() {
             </button>
           </div>
           <div style={{ flex: '1 1 260px', display: 'grid', gap: 6, alignContent: 'start' }}>
-            <div style={{ fontSize: '0.875rem' }}><strong>Données de base</strong> (classeur Excel)</div>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+            <div style={{ fontSize: '14px' }}><strong>Données de base</strong> (classeur Excel)</div>
+            <div style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
               Produits, ingrédients, fournisseurs, clients, personnel, établissements : une feuille chacun. Contient des données personnelles.
             </div>
             <button type="button" className="odoo-btn-secondary" style={{ justifySelf: 'start' }} disabled={busy !== null} onClick={() => doExport('export/base', 'Export des données')}>
@@ -89,7 +89,7 @@ export default function DataTab() {
         <PageNote help="Les sauvegardes automatiques de la base sont faites par l'hébergeur et ne sont pas visibles ici. Gardez en plus un export mensuel des données et de la configuration.">
           Sauvegardes assurées par l'hébergeur ; exportez aussi chaque mois.
         </PageNote>
-        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: '0.875rem' }}>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: '14px' }}>
           <span>Taille : <strong>{status.size}</strong></span>
           {status.lastMigration && <span>Version de la base : <strong>{status.lastMigration.name.replace(/\.sql$/, '')}</strong></span>}
         </div>
@@ -108,7 +108,7 @@ export default function DataTab() {
                   <td style={{ whiteSpace: 'nowrap' }}>{new Date(e.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
                   <td className="ds-strong">{EVENT_LABELS[e.event_type]}</td>
                   <td>{e.by_name || '—'}</td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+                  <td style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
                     {e.event_type === 'data_import' && e.details ? `${String(e.details.entity)} · ${String(e.details.created)} créé(s), ${String(e.details.updated)} mis à jour` : ''}
                   </td>
                 </tr>

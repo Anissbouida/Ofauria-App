@@ -71,7 +71,7 @@ export default function UnitsTab() {
           </DataPanel>
         </>
       ) : (
-        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--ds-muted)' }}>Toutes les fiches ont une unité rattachée au référentiel.</p>
+        <p style={{ margin: 0, fontSize: '14px', color: 'var(--ds-muted)' }}>Toutes les fiches ont une unité rattachée au référentiel.</p>
       )}
     </div>
   );

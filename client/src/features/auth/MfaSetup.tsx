@@ -31,8 +31,8 @@ export default function MfaSetup({ onDone, forced = false }: { onDone: () => voi
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
-      <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--theme-bg-card)', display: 'grid', gap: 14 }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
+      <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--ds-card)', display: 'grid', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: '1.1rem' }}><ShieldCheck size={20} /> Double authentification</div>
         {forced && !backup && <p className="text-sm text-gray-600">Votre rôle exige un second facteur. Activez-le pour continuer.</p>}
         {!backup ? (

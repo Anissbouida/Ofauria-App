@@ -35,15 +35,15 @@ import { Tabs, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, 
 const n2 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const n0 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 const fr = (v: string | null | undefined) => (v ? format(new Date(`${String(v).slice(0, 10)}T00:00:00`), 'dd/MM/yyyy') : '');
-const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
-const muted: React.CSSProperties = { color: 'var(--odoo-text-muted)', fontSize: '0.75rem' };
+const field: React.CSSProperties = { fontSize: '14px', padding: '6px 8px', border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-card)', color: 'var(--ds-ink)', width: '100%' };
+const muted: React.CSSProperties = { color: 'var(--ds-muted)', fontSize: '12px' };
 const chip = (on: boolean): React.CSSProperties => ({
-  padding: '3px 10px', borderRadius: 999, fontSize: '0.75rem', cursor: 'pointer',
-  border: `1px solid ${on ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`,
-  background: on ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)', color: on ? 'var(--odoo-purple)' : 'var(--odoo-text)', fontWeight: on ? 600 : 400,
+  padding: '3px 10px', borderRadius: 999, fontSize: '12px', cursor: 'pointer',
+  border: `1px solid ${on ? 'var(--ds-accent)' : 'var(--ds-sep)'}`,
+  background: on ? 'var(--ds-tint)' : 'var(--ds-card)', color: on ? 'var(--ds-accent)' : 'var(--ds-ink)', fontWeight: on ? 600 : 400,
 });
 /** Signal d'état : point de couleur + texte (couleurs de la palette odoo-tag). */
-const DOT: Record<string, string> = { green: 'var(--ds-success)', blue: 'var(--ds-cat-blue)', orange: 'var(--ds-warning)', grey: 'var(--ds-muted)', red: 'var(--ds-danger)', purple: 'var(--odoo-purple)' };
+const DOT: Record<string, string> = { green: 'var(--ds-success)', blue: 'var(--ds-cat-blue)', orange: 'var(--ds-warning)', grey: 'var(--ds-muted)', red: 'var(--ds-danger)', purple: 'var(--ds-accent)' };
 function Dot({ color, children }: { color: keyof typeof DOT; children: React.ReactNode }) {
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
     <span style={{ width: 8, height: 8, borderRadius: 999, background: DOT[color], flexShrink: 0 }} />{children}</span>;
@@ -186,7 +186,7 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
               const when = [p.days_of_week.length ? p.days_of_week.map(d => DAYS[d - 1]).join(' ') : null, p.time_from && p.time_to ? `${p.time_from.slice(0, 5)}–${p.time_to.slice(0, 5)}` : null].filter(Boolean).join(' · ');
               return (
                 <Fragment key={p.id}>
-                  <tr onClick={() => setOpen(expanded ? null : p.id)} style={{ cursor: 'pointer', height: 68, background: expanded ? 'var(--odoo-purple-light)' : undefined }}>
+                  <tr onClick={() => setOpen(expanded ? null : p.id)} style={{ cursor: 'pointer', height: 68, background: expanded ? 'var(--ds-tint)' : undefined }}>
                     <td style={{ color: 'var(--ds-muted)', textAlign: 'center' }}>{expanded ? <ChevronDown size={14} aria-label="Replier" /> : <ChevronRight size={14} aria-label="Déplier" />}</td>
                     <td>
                       <div className="ds-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.name}>{p.name}</div>
@@ -199,22 +199,22 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
                       <span className={`odoo-tag ${KIND_TAG[p.kind]}`} style={{ fontWeight: 600 }}>{ruleText(p)}</span>
                       <div style={{ ...muted, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scopeShort(p)}{p.min_amount ? ` · dès ${money(p.min_amount)}` : ''}</div>
                     </td>
-                    <td style={{ fontSize: '0.8125rem' }}>
+                    <td style={{ fontSize: '13px' }}>
                       <div style={{ whiteSpace: 'nowrap' }}>{periodText(p)}</div>
                       {progress != null && p.state === 'running' && (
-                        <div style={{ height: 4, borderRadius: 2, background: 'var(--odoo-border)', overflow: 'hidden', margin: '5px 0 3px', width: 180 }}>
-                          <div style={{ width: `${progress}%`, height: '100%', background: isEnding(p) ? 'var(--ds-warning)' : 'var(--odoo-purple)' }} />
+                        <div style={{ height: 4, borderRadius: 2, background: 'var(--ds-sep)', overflow: 'hidden', margin: '5px 0 3px', width: 180 }}>
+                          <div style={{ width: `${progress}%`, height: '100%', background: isEnding(p) ? 'var(--ds-warning)' : 'var(--ds-accent)' }} />
                         </div>
                       )}
                       {p.state === 'running' && left != null && left <= 7
-                        ? <div style={{ fontSize: '0.75rem', color: 'var(--ds-warning)' }}>{left <= 0 ? 'se termine aujourd\'hui' : `se termine dans ${left} j`}</div>
+                        ? <div style={{ fontSize: '12px', color: 'var(--ds-warning)' }}>{left <= 0 ? 'se termine aujourd\'hui' : `se termine dans ${left} j`}</div>
                         : p.state === 'scheduled' && p.starts_on ? <div style={{ ...muted }}>démarre dans {Math.max(1, Math.round((dateMs(p.starts_on) - todayMs()) / DAY))} j</div>
                         : when ? <div style={muted}>{when}</div> : null}
                     </td>
                     <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
                       {n0(p.uses_count)}{p.max_uses ? <span style={muted}> / {n0(p.max_uses)}</span> : ''}
-                      {p.max_uses ? <div style={{ height: 3, borderRadius: 2, background: 'var(--odoo-border)', overflow: 'hidden', marginTop: 4, width: 70, marginLeft: 'auto' }}>
-                        <div style={{ width: `${Math.min(100, p.uses_count / p.max_uses * 100)}%`, height: '100%', background: 'var(--odoo-purple)' }} /></div> : null}
+                      {p.max_uses ? <div style={{ height: 3, borderRadius: 2, background: 'var(--ds-sep)', overflow: 'hidden', marginTop: 4, width: 70, marginLeft: 'auto' }}>
+                        <div style={{ width: `${Math.min(100, p.uses_count / p.max_uses * 100)}%`, height: '100%', background: 'var(--ds-accent)' }} /></div> : null}
                     </td>
                     <td className="ds-num ds-strong" style={{ whiteSpace: 'nowrap' }}>{n2(p.granted_amount)}</td>
                     <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
@@ -236,8 +236,8 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
                     <tr style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
                       <td></td>
                       <td colSpan={7} style={{ padding: '12px 12px 14px' }}>
-                        <div style={{ fontSize: '0.875rem', marginBottom: 10 }}>{sentence(p, targets(p))}</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, fontSize: '0.8125rem' }}>
+                        <div style={{ fontSize: '14px', marginBottom: 10 }}>{sentence(p, targets(p))}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, fontSize: '13px' }}>
                           <div><div style={muted}>Articles</div>{p.target === 'cart' ? 'Tout le panier' : targets(p).length ? targets(p).join(', ') : 'Tout le catalogue'}</div>
                           <div><div style={muted}>Pour qui, où</div>{conditions.length ? conditions.join(' · ') : 'Tous les clients, tous les magasins'}</div>
                           <div><div style={muted}>Quand</div>{periodText(p)}{when ? ` · ${when}` : ''}</div>
@@ -392,7 +392,7 @@ function PromotionForm({ promo, copyOf, onClose, onSaved, onGone }: { promo: Pro
             </FormField>
           )}
         </div>
-        {f.kind === 'buy_x_get_y' && <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>Pour {Number(f.buyQty) || 0} achetés, {Number(f.getQty) || 0} offert(s) : les articles offerts sont les moins chers des articles concernés. Produits à l'unité seulement.</p>}
+        {f.kind === 'buy_x_get_y' && <p style={{ margin: 0, fontSize: '12px', color: 'var(--ds-muted)' }}>Pour {Number(f.buyQty) || 0} achetés, {Number(f.getQty) || 0} offert(s) : les articles offerts sont les moins chers des articles concernés. Produits à l'unité seulement.</p>}
 
         {!isCart && (
           <FormField label="Articles concernés" hint="Rien de choisi = tout le catalogue.">
@@ -460,16 +460,16 @@ function PromotionForm({ promo, copyOf, onClose, onSaved, onGone }: { promo: Pro
             <option value="">Tous</option>{(stores as { id: string; name: string }[]).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
         </FormField>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', marginRight: 4 }}>Jours (aucun = tous) :</span>
+          <span style={{ fontSize: '13px', color: 'var(--ds-muted)', marginRight: 4 }}>Jours (aucun = tous) :</span>
           {DAYS.map((d, i) => { const on = f.daysOfWeek.includes(i + 1); return <span key={d} style={chip(on)} onClick={() => set('daysOfWeek', on ? f.daysOfWeek.filter(x => x !== i + 1) : [...f.daysOfWeek, i + 1].sort())}>{d}</span>; })}
         </div>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.875rem' }}>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '14px' }}>
           {([['onPos', 'Caisse'], ['onOrders', 'Commandes'], ['onQuotes', 'Devis']] as const).map(([k, l]) => (
             <label key={k} htmlFor={`pr-${k}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input id={`pr-${k}`} type="checkbox" checked={f[k]} onChange={e => set(k, e.target.checked)} /> {l}</label>
           ))}
           <label htmlFor="pr-active" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input id="pr-active" type="checkbox" checked={f.isActive} onChange={e => set('isActive', e.target.checked)} /> Active</label>
         </div>
-        {(f.onOrders || f.onQuotes) && f.couponCode && <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>Les commandes et devis n'utilisent pas de code promo : une promotion à code ne s'applique qu'en caisse.</p>}
+        {(f.onOrders || f.onQuotes) && f.couponCode && <p style={{ margin: 0, fontSize: '12px', color: 'var(--ds-muted)' }}>Les commandes et devis n'utilisent pas de code promo : une promotion à code ne s'applique qu'en caisse.</p>}
       </FormSection>
 
       <FormField label="Note interne" htmlFor="pr-desc">
@@ -487,7 +487,7 @@ const pctTxt = (n: number) => `${n.toLocaleString('fr-FR', { maximumFractionDigi
 /** Couleur d'un niveau (champ color, sinon par rang) ; uniquement des teintes de la palette odoo-tag. */
 const TIER_COLORS: Record<string, { bar: string; tag: string }> = {
   orange: { bar: 'var(--ds-cat-brown)', tag: 'odoo-tag-orange' }, grey: { bar: 'var(--ds-muted)', tag: 'odoo-tag-grey' }, yellow: { bar: 'var(--ds-cat-gold)', tag: 'odoo-tag-yellow' },
-  blue: { bar: 'var(--ds-cat-blue)', tag: 'odoo-tag-blue' }, green: { bar: 'var(--ds-cat-olive)', tag: 'odoo-tag-green' }, purple: { bar: 'var(--odoo-purple)', tag: 'odoo-tag-purple' },
+  blue: { bar: 'var(--ds-cat-blue)', tag: 'odoo-tag-blue' }, green: { bar: 'var(--ds-cat-olive)', tag: 'odoo-tag-green' }, purple: { bar: 'var(--ds-accent)', tag: 'odoo-tag-purple' },
 };
 const tierColor = (t: TierForm, i: number) => TIER_COLORS[t.color ?? ''] ?? Object.values(TIER_COLORS)[i % 6];
 
@@ -497,9 +497,9 @@ const H = 36;
 const ctrl: React.CSSProperties = { ...field, height: H, boxSizing: 'border-box' };
 function SettingRow({ label, hint, children, last }: { label: string; hint?: React.ReactNode; children: React.ReactNode; last?: boolean }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) ${CONTROL_W}px`, gap: 16, alignItems: 'center', padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--odoo-border)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) ${CONTROL_W}px`, gap: 16, alignItems: 'center', padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--ds-sep)' }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: '0.875rem' }}>{label}</div>
+        <div style={{ fontSize: '14px' }}>{label}</div>
         {hint && <div style={{ ...muted, marginTop: 2 }}>{hint}</div>}
       </div>
       <div>{children}</div>
@@ -510,13 +510,13 @@ function SettingRow({ label, hint, children, last }: { label: string; hint?: Rea
 function UnitInput({ value, onChange, unit, prefix, step = '1', min = 0, max }: {
   value: string; onChange: (v: string) => void; unit?: string; prefix?: string; step?: string; min?: number; max?: number;
 }) {
-  const side: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 44, padding: '0 8px', ...muted, fontSize: '0.8125rem', background: 'var(--odoo-bg-alt)' };
+  const side: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 44, padding: '0 8px', ...muted, fontSize: '13px', background: 'var(--ds-bg)' };
   return (
-    <span style={{ display: 'flex', alignItems: 'stretch', height: H, boxSizing: 'border-box', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', overflow: 'hidden', width: '100%' }}>
-      {prefix && <span style={{ ...side, borderRight: '1px solid var(--odoo-border)' }}>{prefix}</span>}
+    <span style={{ display: 'flex', alignItems: 'stretch', height: H, boxSizing: 'border-box', border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-card)', overflow: 'hidden', width: '100%' }}>
+      {prefix && <span style={{ ...side, borderRight: '1px solid var(--ds-sep)' }}>{prefix}</span>}
       <input type="number" step={step} min={min} max={max} value={value} onChange={e => onChange(e.target.value)}
         style={{ ...field, height: '100%', border: 'none', borderRadius: 0, textAlign: 'right', minWidth: 0, flex: 1 }} />
-      {unit && <span style={{ ...side, borderLeft: '1px solid var(--odoo-border)' }}>{unit}</span>}
+      {unit && <span style={{ ...side, borderLeft: '1px solid var(--ds-sep)' }}>{unit}</span>}
     </span>
   );
 }
@@ -527,8 +527,8 @@ function SliderControl({ value, min, max, step, onChange, display, label }: {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: H }}>
       <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))}
-        style={{ flex: 1, accentColor: 'var(--odoo-purple)' }} aria-label={label} />
-      <span style={{ width: 56, textAlign: 'right', fontWeight: 600, color: 'var(--odoo-purple)', fontVariantNumeric: 'tabular-nums' }}>{display}</span>
+        style={{ flex: 1, accentColor: 'var(--ds-accent)' }} aria-label={label} />
+      <span style={{ width: 56, textAlign: 'right', fontWeight: 600, color: 'var(--ds-accent)', fontVariantNumeric: 'tabular-nums' }}>{display}</span>
     </div>
   );
 }
@@ -597,10 +597,10 @@ function LoyaltyTab() {
         <KpiCard label="Expirés sur 30 j" value={n0(Math.abs(ov.last30.expire?.points ?? 0))} />
       </KpiGrid>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-card)' }}>
         <OdooToggle checked={s.enabled} onChange={v => set('enabled', v)} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{s.enabled ? 'Programme actif' : 'Programme arrêté'}</div>
+          <div style={{ fontWeight: 600, fontSize: '14px' }}>{s.enabled ? 'Programme actif' : 'Programme arrêté'}</div>
           <div style={muted}>{s.enabled ? 'Les clients identifiés gagnent des points à chaque vente payée et peuvent les utiliser en caisse.' : 'Aucun point n\'est gagné ni utilisé ; les soldes sont conservés.'}</div>
         </div>
       </div>
@@ -630,7 +630,7 @@ function LoyaltyTab() {
             </>}
           </div>
           <button type="button" onClick={() => setDetails(!details)}
-            style={{ ...muted, width: '100%', textAlign: 'left', background: 'var(--odoo-bg-alt)', border: 'none', borderTop: '1px solid var(--odoo-border)', padding: '8px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+            style={{ ...muted, width: '100%', textAlign: 'left', background: 'var(--ds-bg)', border: 'none', borderTop: '1px solid var(--ds-sep)', padding: '8px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
             {details ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {details ? 'Masquer les réglages détaillés' : 'Réglages détaillés (points, tranche, valeur du point)'}
           </button>
         </div>
@@ -655,7 +655,7 @@ function LoyaltyTab() {
               ); })}
             </tbody>
           </table>
-          <div style={{ marginTop: 'auto', padding: '10px 16px', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', fontSize: '0.8125rem' }}>
+          <div style={{ marginTop: 'auto', padding: '10px 16px', borderTop: '1px solid var(--ds-sep)', background: 'var(--ds-bg)', fontSize: '13px' }}>
             Payable en points sur ce ticket : <strong>{money(t * cap / 100)}</strong>{pv > 0 && <> ({n0(Math.floor(t * cap / 100 / pv))} points)</>}, dès {n0(minPts)} points.
           </div>
         </div>
@@ -671,7 +671,7 @@ function LoyaltyTab() {
 
         {/* Frise à l'échelle : étiquettes, barre et seuils sur trois rangées fixes. */}
         <div style={{ position: 'relative', height: 78, margin: '16px 40px 8px' }}>
-          <div style={{ position: 'absolute', top: 34, left: 0, right: 0, height: 8, borderRadius: 4, background: 'var(--odoo-border)' }} />
+          <div style={{ position: 'absolute', top: 34, left: 0, right: 0, height: 8, borderRadius: 4, background: 'var(--ds-sep)' }} />
           {sorted.map((x, k) => {
             const from = (Number(x.minPoints) || 0) / top * 100;
             const to = k + 1 < sorted.length ? (Number(sorted[k + 1].minPoints) || 0) / top * 100 : 100;
@@ -683,10 +683,10 @@ function LoyaltyTab() {
             return (
               <Fragment key={`mk-${x.i}`}>
                 <button type="button" onClick={() => setSelected(on ? null : x.i)} className={`odoo-tag ${tierColor(x, x.i).tag}`}
-                  style={{ position: 'absolute', top: 0, left: pos, transform: 'translateX(-50%)', whiteSpace: 'nowrap', cursor: 'pointer', border: 'none', outline: on ? '2px solid var(--odoo-purple)' : 'none', outlineOffset: 1 }}>
+                  style={{ position: 'absolute', top: 0, left: pos, transform: 'translateX(-50%)', whiteSpace: 'nowrap', cursor: 'pointer', border: 'none', outline: on ? '2px solid var(--ds-accent)' : 'none', outlineOffset: 1 }}>
                   {x.label || 'Nouveau'} · {fmtMult(x.earnMultiplier)}
                 </button>
-                <span style={{ position: 'absolute', top: 31, left: pos, transform: 'translateX(-50%)', width: 14, height: 14, borderRadius: 999, background: 'var(--odoo-bg)', border: `3px solid ${tierColor(x, x.i).bar}`, boxSizing: 'border-box' }} />
+                <span style={{ position: 'absolute', top: 31, left: pos, transform: 'translateX(-50%)', width: 14, height: 14, borderRadius: 999, background: 'var(--ds-card)', border: `3px solid ${tierColor(x, x.i).bar}`, boxSizing: 'border-box' }} />
                 <span style={{ position: 'absolute', top: 54, left: pos, transform: 'translateX(-50%)', ...muted, whiteSpace: 'nowrap' }}>{n0(x.minPoints)} pts</span>
               </Fragment>
             );
@@ -702,7 +702,7 @@ function LoyaltyTab() {
             const editing = selected === i;
             const customers = x.isNew ? null : ov.tiers.find(c => c.code === x.code)?.customers ?? 0;
             return (
-              <tr key={i} onClick={() => !editing && setSelected(i)} style={{ cursor: editing ? 'default' : 'pointer', background: editing ? 'var(--odoo-purple-light)' : undefined, height: 52 }}>
+              <tr key={i} onClick={() => !editing && setSelected(i)} style={{ cursor: editing ? 'default' : 'pointer', background: editing ? 'var(--ds-tint)' : undefined, height: 52 }}>
                 <td>{editing
                   ? <input style={ctrl} value={x.label} placeholder="Platine" onChange={e => setTier(i, { label: e.target.value })} autoFocus={x.isNew} />
                   : <span className={`odoo-tag ${tierColor(x, i).tag}`}>{x.label}</span>}</td>
@@ -732,7 +732,7 @@ function LoyaltyTab() {
         <div style={{ position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
           border: '1px solid color-mix(in srgb, var(--ds-warning) 30%, var(--ds-card))', borderRadius: 12, background: 'var(--ds-warning-bg)', boxShadow: '0 -2px 8px rgba(0,0,0,0.06)' }}>
           <Info size={14} style={{ color: 'var(--ds-warning)' }} />
-          <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--ds-warning)' }}>
+          <span style={{ flex: 1, fontSize: '14px', color: 'var(--ds-warning)' }}>
             {tiersInvalid ? 'Complétez le nom, le code et le seuil de chaque niveau avant d\'enregistrer.' : 'Modifications non enregistrées'}
           </span>
           <button className="odoo-btn-secondary" onClick={() => { setS(initial.s); setTiers(initial.tiers); setSelected(null); }}>Annuler</button>
@@ -773,7 +773,7 @@ function HistoryTab() {
                 <td><Dot color={KIND_DOT[t.kind]}>{LOYALTY_KIND_LABEL[t.kind]}</Dot></td>
                 <td className="ds-num" style={{ fontWeight: 600, color: t.points < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{t.points > 0 ? '+' : '−'}{n0(Math.abs(t.points))}</td>
                 <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{n2(t.amount)}</td>
-                <td style={{ fontSize: '0.8125rem' }}>{t.note}{t.created_by_name && <div style={muted}>{t.created_by_name}</div>}</td>
+                <td style={{ fontSize: '13px' }}>{t.note}{t.created_by_name && <div style={muted}>{t.created_by_name}</div>}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{t.remaining && t.expires_at ? <>{fr(t.expires_at)}{t.remaining < t.points && <div style={muted}>{n0(t.remaining)} restants</div>}</> : <span style={muted}>—</span>}</td>
               </tr>
             ))}</tbody>

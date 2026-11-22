@@ -80,7 +80,7 @@ export default function StockClosingTab() {
                 <td style={{ fontSize: '0.85rem' }}>{day(c.closing_date)}</td>
                 <td className="ds-num" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(Number(c.total_value))}</td>
                 <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{c.lines_count}</td>
-                <td style={{ fontSize: '0.85rem', color: 'var(--theme-text-muted)' }}>{c.closed_by_name || '—'}</td>
+                <td style={{ fontSize: '0.85rem', color: 'var(--ds-muted)' }}>{c.closed_by_name || '—'}</td>
                 <td className="ds-actions">
                   <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDetailId(c.id)}>
                     <Eye size={12} aria-hidden="true" /> Détail
@@ -116,12 +116,12 @@ function ClosingForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
     <Modal title="Clôturer une période" onClose={onClose} locked={save.isPending} width={460}
       footer={<FormFooter onCancel={onClose} submitLabel="Clôturer" busy={save.isPending} disabled={!periodLabel.trim()} onSubmit={() => save.mutate()} />}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ background: 'var(--theme-bg-secondary)', borderRadius: 6, padding: 12, textAlign: 'center' }}>
-            <div style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>Valeur du stock à figer</div>
+          <div style={{ background: 'var(--ds-hair)', borderRadius: 6, padding: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: '0.78rem', color: 'var(--ds-muted)' }}>Valeur du stock à figer</div>
             {isLoading ? <Loader2 size={16} className="animate-spin" style={{ display: 'inline', marginTop: 4 }} /> : (
               <>
                 <div style={{ fontSize: '1.4rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(preview?.total ?? 0)}</div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>{preview?.count ?? 0} article(s)</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--ds-muted)' }}>{preview?.count ?? 0} article(s)</div>
               </>
             )}
           </div>
@@ -201,7 +201,7 @@ function StockAtDatePanel() {
   return (
     <section className="prj-panel" style={{ padding: '14px 18px 16px', display: 'grid', gap: 12 }} aria-label="Stock valorisé à une date">
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <CalendarClock size={16} aria-hidden style={{ color: 'var(--theme-accent)' }} />
+        <CalendarClock size={16} aria-hidden style={{ color: 'var(--ds-accent)' }} />
         <h2 className="ds-subhead" style={{ fontSize: 'var(--ds-t-section)', fontWeight: 700 }}>Stock valorisé au</h2>
         <input type="date" className="ds-input" value={date} max={today} onChange={e => setDate(e.target.value)} aria-label="Date du stock" style={{ width: 'auto' }} />
         {data && <span>{data.lines.length} article(s) · <strong>{money(data.total)}</strong></span>}

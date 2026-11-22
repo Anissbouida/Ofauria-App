@@ -29,7 +29,7 @@ import { Segmented, DataPanel, TableFooter, EmptyState, NoResultState, LoadingSt
 const n0 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 const fr = (v: string | null | undefined) => (v ? format(new Date(`${String(v).slice(0, 10)}T00:00:00`), 'dd/MM/yyyy') : '—');
 const frt = (v: string | null | undefined) => (v ? format(new Date(v), 'dd/MM HH:mm') : '');
-const lab: React.CSSProperties = { fontSize: '0.8125rem', color: 'var(--ds-muted)' };
+const lab: React.CSSProperties = { fontSize: '13px', color: 'var(--ds-muted)' };
 const STAGE_COLOR: Record<Stage, string> = { new: 'var(--ds-muted)', qualified: 'var(--ds-info)', proposal: 'var(--ds-cat-purple)', negotiation: 'var(--ds-warning)', won: 'var(--ds-success)', lost: 'var(--ds-danger)' };
 /** Étape d'une opportunité en étiquette commune (gagné = terminé, perdu = clos sans suite). */
 const STAGE_TONE: Record<Stage, { tone: StatusTone; icon?: LucideIcon }> = {
@@ -98,7 +98,7 @@ export default function CrmPage() {
 
       <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="N°, affaire, client, prospect…">
         <label className="prj-chip" style={{ cursor: 'pointer' }}>
-          <input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)} style={{ accentColor: 'var(--odoo-purple)' }} /> Mes affaires
+          <input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)} style={{ accentColor: 'var(--ds-accent)' }} /> Mes affaires
         </label>
         <Segmented label="Affichage" value={view} onChange={setView} options={[
           { key: 'list', label: 'Tableau', icon: List },
@@ -121,7 +121,7 @@ export default function CrmPage() {
                   <td className="ds-num">{o.expected_amount ? Number(o.expected_amount).toLocaleString('fr-FR', { maximumFractionDigits: 0 }) : '—'}</td>
                   <td className="ds-num">{o.probability} %</td>
                   <td>{fr(o.expected_close_date)}</td>
-                  <td style={{ color: o.activity_overdue ? 'var(--ds-danger)' : undefined, fontSize: '0.8125rem' }}>{o.next_activity_subject ? `${frt(o.next_activity_due)} ${o.next_activity_subject}` : '—'}</td>
+                  <td style={{ color: o.activity_overdue ? 'var(--ds-danger)' : undefined, fontSize: '13px' }}>{o.next_activity_subject ? `${frt(o.next_activity_due)} ${o.next_activity_subject}` : '—'}</td>
                   <td>{o.owner_name ?? '—'}</td>
                 </tr>
               ))}</tbody>
@@ -146,16 +146,16 @@ export default function CrmPage() {
                   {!cards.length && <div className="prj-lane-empty">Aucune affaire</div>}
                   {cards.map(o => (
                     <button type="button" key={o.id} className="prj-task" draggable onDragStart={e => e.dataTransfer.setData('text/plain', o.id)} onClick={() => setOpenId(o.id)}
-                      style={{ gap: 3, fontSize: '0.8125rem' }}>
+                      style={{ gap: 3, fontSize: '13px' }}>
                       <span className="prj-task-title">{o.title}</span>
-                      <span style={{ color: 'var(--theme-text-muted)' }}>{o.client_label}{!o.customer_id ? ' · prospect' : ''}</span>
+                      <span style={{ color: 'var(--ds-muted)' }}>{o.client_label}{!o.customer_id ? ' · prospect' : ''}</span>
                       <span>{o.expected_amount ? `${moneyFmt(o.expected_amount, { decimals: 0 })}` : 'montant à estimer'}{o.expected_close_date ? ` · ${fr(o.expected_close_date)}` : ''}</span>
                       {o.next_activity_subject && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: o.activity_overdue ? 'var(--ds-danger)' : 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: o.activity_overdue ? 'var(--ds-danger)' : 'var(--ds-muted)', fontSize: '12px' }}>
                           {o.activity_overdue && <AlertTriangle size={11} />}{ACTIVITY_LABEL[o.next_activity_kind!]} {frt(o.next_activity_due)} : {o.next_activity_subject}
                         </span>
                       )}
-                      {o.owner_name && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{o.owner_name}</span>}
+                      {o.owner_name && <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{o.owner_name}</span>}
                     </button>
                   ))}
                 </div>
@@ -362,8 +362,8 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
                 const active = s.key === o.stage;
                 return (
                   <button key={s.key} disabled={stage.isPending || active || s.key === 'lost'} onClick={() => stage.mutate(s.key)}
-                    style={{ flex: '1 1 110px', padding: '6px 8px', borderRadius: 4, border: `1px solid ${active ? STAGE_COLOR[s.key] : 'var(--odoo-border)'}`,
-                      background: active ? STAGE_COLOR[s.key] : 'var(--odoo-bg)', color: active ? '#fff' : 'var(--odoo-text)', fontSize: '0.8125rem', fontWeight: active ? 600 : 400, cursor: active ? 'default' : 'pointer' }}>
+                    style={{ flex: '1 1 110px', padding: '6px 8px', borderRadius: 4, border: `1px solid ${active ? STAGE_COLOR[s.key] : 'var(--ds-sep)'}`,
+                      background: active ? STAGE_COLOR[s.key] : 'var(--ds-card)', color: active ? '#fff' : 'var(--ds-ink)', fontSize: '13px', fontWeight: active ? 600 : 400, cursor: active ? 'default' : 'pointer' }}>
                     {s.label}
                   </button>
                 );
@@ -372,16 +372,16 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
             {o.stage === 'lost' && <StatusBanner tone="warning" icon={XCircle} title={`Perdue${o.lost_reason_label ? ` · ${o.lost_reason_label}` : ''}`}>{o.lost_note || 'Le motif alimente l\'analyse des affaires perdues.'}</StatusBanner>}
             {o.stage === 'won' && <StatusBanner tone="success" icon={Trophy} title="Affaire gagnée">Conclue le {fr(o.closed_at)}.</StatusBanner>}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, fontSize: '0.875rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, fontSize: '14px' }}>
               <div><div style={lab}>Client</div><strong>{o.client_label}</strong>{!o.customer_id && <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 6 }}>prospect</span>}
-                <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{[o.customer_phone ?? o.prospect_phone, o.customer_email ?? o.prospect_email, o.prospect_city].filter(Boolean).join(' · ')}</div>
+                <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{[o.customer_phone ?? o.prospect_phone, o.customer_email ?? o.prospect_email, o.prospect_city].filter(Boolean).join(' · ')}</div>
                 {!o.customer_id && <button className="odoo-btn-secondary" style={{ padding: '2px 8px', marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={toCustomer.isPending} onClick={() => toCustomer.mutate()}><UserPlus size={12} /> Créer la fiche client</button>}
               </div>
-              <div><div style={lab}>Montant espéré · probabilité</div>{o.expected_amount ? `${moneyFmt(o.expected_amount, { decimals: 0 })}` : '—'} · {o.probability} %<div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>pondéré {moneyFmt(o.weighted_amount, { decimals: 0 })}</div></div>
+              <div><div style={lab}>Montant espéré · probabilité</div>{o.expected_amount ? `${moneyFmt(o.expected_amount, { decimals: 0 })}` : '—'} · {o.probability} %<div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>pondéré {moneyFmt(o.weighted_amount, { decimals: 0 })}</div></div>
               <div><div style={lab}>Conclusion prévue</div>{fr(o.expected_close_date)}</div>
-              <div><div style={lab}>Responsable · source</div>{o.owner_name ?? '—'}<div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{o.source_label ?? 'source non renseignée'}</div></div>
+              <div><div style={lab}>Responsable · source</div>{o.owner_name ?? '—'}<div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{o.source_label ?? 'source non renseignée'}</div></div>
             </div>
-            {o.description && <div style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{o.description}</div>}
+            {o.description && <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap' }}>{o.description}</div>}
             {cfDefs.length > 0 && <CustomFieldsEditor entity="opportunity" values={o.custom_fields ?? {}} onChange={() => {}} readOnly />}
 
             {(o.quotes?.length ?? 0) > 0 && (
@@ -422,22 +422,22 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
                   <button type="button" className="odoo-btn-primary" disabled={act.subject.trim().length < 2 || add.isPending} onClick={() => add.mutate()}>Ajouter</button>
                 </div>
               )}
-              {(o.activities ?? []).length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>Aucune activité.</p> : (
+              {(o.activities ?? []).length === 0 ? <p style={{ fontSize: '13px', color: 'var(--ds-muted)', margin: 0 }}>Aucune activité.</p> : (
                 <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
                   {o.activities!.map(a => {
                     const Icon = KIND_ICON[a.kind];
                     const open = !a.done_at;
                     const overdue = open && a.due_at && new Date(a.due_at) < new Date();
                     return (
-                      <li key={a.id} style={{ fontSize: '0.8125rem', padding: '6px 10px', borderLeft: `3px solid ${overdue ? 'var(--ds-danger)' : open ? 'var(--ds-accent)' : 'var(--odoo-border)'}`, background: open ? 'var(--odoo-bg-alt, #f8f9fa)' : undefined }}>
+                      <li key={a.id} style={{ fontSize: '13px', padding: '6px 10px', borderLeft: `3px solid ${overdue ? 'var(--ds-danger)' : open ? 'var(--ds-accent)' : 'var(--ds-sep)'}`, background: open ? 'var(--odoo-bg-alt, #f8f9fa)' : undefined }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: open ? 600 : 400, color: overdue ? 'var(--ds-danger)' : undefined }}>
                           <Icon size={13} /> {ACTIVITY_LABEL[a.kind]} · {a.subject}
                         </span>
-                        <span style={{ color: 'var(--theme-text-muted)' }}>
+                        <span style={{ color: 'var(--ds-muted)' }}>
                           {' · '}{open ? (a.due_at ? `à faire le ${format(new Date(a.due_at), 'dd/MM/yyyy HH:mm')}` : 'à faire') : `fait le ${format(new Date(a.done_at!), 'dd/MM/yyyy HH:mm')}`}
                           {a.assigned_name ? ` · ${a.assigned_name}` : a.created_by_name ? ` · ${a.created_by_name}` : ''}
                         </span>
-                        {a.outcome && <div style={{ color: 'var(--theme-text-muted)' }}>{a.outcome}</div>}
+                        {a.outcome && <div style={{ color: 'var(--ds-muted)' }}>{a.outcome}</div>}
                         {open && <span style={{ marginLeft: 8 }}>
                           <button className="odoo-btn-secondary" style={{ padding: '0 6px' }} onClick={() => done.mutate(a.id)}><Check size={11} /> Fait</button>{' '}
                           <button className="odoo-pager-btn" aria-label="Supprimer l'activité" onClick={() => del.mutate(a.id)}><Trash2 size={11} /></button>

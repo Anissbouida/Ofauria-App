@@ -73,15 +73,15 @@ export default function PriceCorrectionsCard() {
                   <tr key={s.ingredientId} style={{ verticalAlign: 'top' }}>
                     <td>
                       <div className="ds-strong">{s.name}</div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--theme-text-muted)' }}>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--ds-muted)' }}>
                         {s.category ?? 'Sans catégorie'}{s.usedInRecipes > 0 ? ` · ${s.usedInRecipes} fiche${s.usedInRecipes > 1 ? 's' : ''} technique${s.usedInRecipes > 1 ? 's' : ''}` : ''}
                       </div>
                     </td>
                     <td><StatusTag tone={s.reason === 'sans_prix' ? 'todo' : 'late'} label={s.reason === 'sans_prix' ? 'Sans prix' : 'Prix aberrant'} /></td>
                     <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{price(s.unitCost)} {currencySymbol()} / {s.unit}</td>
-                    <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{s.median !== null ? `${price(Math.round(s.median * 100) / 100)} ${currencySymbol()} / ${s.unit}` : '—'}</td>
+                    <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--ds-muted)' }}>{s.median !== null ? `${price(Math.round(s.median * 100) / 100)} ${currencySymbol()} / ${s.unit}` : '—'}</td>
                     <td style={{ fontSize: '0.78rem' }}>
-                      {s.receptions.length === 0 && <span style={{ color: 'var(--theme-text-muted)' }}>Aucune réception</span>}
+                      {s.receptions.length === 0 && <span style={{ color: 'var(--ds-muted)' }}>Aucune réception</span>}
                       {s.receptions.map((r, n) => (
                         <div key={n} style={{ fontVariantNumeric: 'tabular-nums' }}>{shortDate(r.date)} · {price(r.quantity)} {s.unit} à {price(r.unitPrice)} {currencySymbol()}</div>
                       ))}
@@ -92,7 +92,7 @@ export default function PriceCorrectionsCard() {
                           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 400 }}>
                             <input className="ds-input sm ds-num" type="number" step="any" min="0" aria-label="Nouveau coût" style={{ width: 110 }}
                               value={editing!.cost} onChange={e => setEditing(ed => ed && { ...ed, cost: e.target.value })} />
-                            <span style={{ color: 'var(--theme-text-muted)' }}>{currencySymbol()} / {s.unit}</span>
+                            <span style={{ color: 'var(--ds-muted)' }}>{currencySymbol()} / {s.unit}</span>
                           </label>
                           <input className="ds-input sm" type="text" aria-label="Motif de la correction" placeholder="Motif de la correction (5 caractères au moins)" style={{ width: 260, fontWeight: 400 }}
                             value={editing!.reason} onChange={e => setEditing(ed => ed && { ...ed, reason: e.target.value })} />

@@ -43,7 +43,7 @@
 
 /* Tuiles cliquables de la fiche ingrédient (ouvrent l'onglet Lots ou la modification). */
 .kl-apple button.prj-kpi { text-align: left; font: inherit; color: inherit; cursor: pointer; }
-.kl-apple button.prj-kpi:hover { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--theme-accent) 45%, transparent), var(--kl-shadow); }
+.kl-apple button.prj-kpi:hover { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ds-accent) 45%, transparent), var(--kl-shadow); }
 .kl-apple button.prj-kpi:disabled { cursor: default; }
 .kl-apple button.prj-kpi:disabled:hover { box-shadow: var(--kl-shadow); }
 .kl-apple .stk-kpis { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }

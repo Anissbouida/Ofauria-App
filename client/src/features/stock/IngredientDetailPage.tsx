@@ -439,7 +439,7 @@ export default function IngredientDetailPage() {
                 <Boxes size={14} style={{ color: 'var(--ds-success)' }} /> Lots actifs ({activeLots.length})
               </div>
               {activeLots.map((lot, i) => (
-                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--ds-sep)' : 'none' }}>
                   <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
@@ -462,7 +462,7 @@ export default function IngredientDetailPage() {
                 <Ban size={14} style={{ color: 'var(--ds-danger)' }} /> Bloqués — contrôle réception non conforme ({blockedLots.length})
               </div>
               {blockedLots.map((lot, i) => (
-                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--ds-sep)' : 'none' }}>
                   <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
@@ -480,7 +480,7 @@ export default function IngredientDetailPage() {
                 <Shield size={14} style={{ color: 'var(--ds-warning)' }} /> Quarantaine ({quarantinedLots.length})
               </div>
               {quarantinedLots.map((lot, i) => (
-                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--ds-sep)' : 'none' }}>
                   <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
@@ -498,7 +498,7 @@ export default function IngredientDetailPage() {
                 <Package size={12} /> Lots épuisés ({depletedLots.length})
               </div>
               {depletedLots.slice(0, 10).map((lot, i) => (
-                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--ds-sep)' : 'none' }}>
                   <LotRow lot={lot}
                     isExpanded={expandedLot === lot.id}
                     onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
@@ -507,7 +507,7 @@ export default function IngredientDetailPage() {
                 </div>
               ))}
               {depletedLots.length > 10 && (
-                <div style={{ padding: '0.5rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'center', borderTop: '1px solid var(--theme-bg-separator)' }}>
+                <div style={{ padding: '0.5rem', fontSize: '12px', color: 'var(--ds-muted)', textAlign: 'center', borderTop: '1px solid var(--ds-sep)' }}>
                   + {depletedLots.length - 10} lots épuisés supplémentaires
                 </div>
               )}
@@ -542,7 +542,7 @@ export default function IngredientDetailPage() {
                 return (
                   <div key={tx.id} style={{
                     padding: '0.5rem 0.875rem', display: 'flex', alignItems: 'center', gap: '0.625rem',
-                    borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none', fontSize: '0.8125rem',
+                    borderTop: i > 0 ? '1px solid var(--ds-sep)' : 'none', fontSize: '13px',
                   }}>
                     <div style={{
                       width: 24, height: 24, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -554,10 +554,10 @@ export default function IngredientDetailPage() {
                        tx.type === 'adjustment' ? <TrendingDown size={12} style={{ color: 'var(--ds-warning)' }} /> :
                        tx.type === 'waste' ? <Ban size={12} style={{ color: 'var(--ds-danger)' }} /> :
                        tx.type === 'usage' ? <Beaker size={12} style={{ color: 'var(--ds-warning)' }} /> :
-                       <Beaker size={12} style={{ color: 'var(--theme-text-muted)' }} />}
+                       <Beaker size={12} style={{ color: 'var(--ds-muted)' }} />}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, color: 'var(--theme-text-strong)' }}>
+                      <div style={{ fontWeight: 500, color: 'var(--ds-ink)' }}>
                         {tx.type === 'restock' ? 'Réapprovisionnement' :
                          tx.type === 'purchase_order' ? 'Bon de commande' :
                          tx.type === 'production' ? 'Production' :
@@ -565,18 +565,18 @@ export default function IngredientDetailPage() {
                          tx.type === 'waste' ? 'Perte' :
                          tx.type === 'usage' ? 'Utilisation' : tx.type}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: 1, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
-                        <span className="odoo-tag odoo-tag-purple" style={{ fontSize: '0.625rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: 1, fontSize: '12px', color: 'var(--ds-muted)' }}>
+                        <span className="odoo-tag odoo-tag-purple" style={{ fontSize: '11px' }}>
                           <span style={{
                             width: 12, height: 12, borderRadius: '50%', backgroundColor: 'var(--ds-tint)',
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 700,
                           }}>{initials}</span>
                           {tx.performed_by_name || 'Système'}
                         </span>
-                        {roleLabel && <span className="odoo-tag odoo-tag-grey" style={{ fontSize: '0.625rem' }}>{roleLabel}</span>}
+                        {roleLabel && <span className="odoo-tag odoo-tag-grey" style={{ fontSize: '11px' }}>{roleLabel}</span>}
                         <span>{format(new Date(tx.created_at), 'dd/MM/yyyy HH:mm')}</span>
                       </div>
-                      {tx.note && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontStyle: 'italic', marginTop: 2 }}>{tx.note}</div>}
+                      {tx.note && <div style={{ fontSize: '12px', color: 'var(--ds-muted)', fontStyle: 'italic', marginTop: 2 }}>{tx.note}</div>}
                     </div>
                     <span style={{ fontWeight: 600, color: isPositive ? 'var(--ds-success)' : 'var(--ds-danger)', flexShrink: 0 }}>
                       {isPositive ? '+' : ''}{parseFloat(tx.quantity_change).toFixed(1)} {unit}
@@ -641,7 +641,7 @@ export default function IngredientDetailPage() {
               )}
             </div>
           }>
-          <p style={{ fontSize: '0.8125rem', color: 'var(--ds-ink)', marginBottom: '0.75rem' }}>
+          <p style={{ fontSize: '13px', color: 'var(--ds-ink)', marginBottom: '0.75rem' }}>
             Voulez-vous vraiment supprimer <strong>{ingredientName}</strong> ? Cette action est irréversible et supprimera toutes les données associées.
           </p>
           {qty > 0 && (
@@ -657,7 +657,7 @@ export default function IngredientDetailPage() {
         <Modal title="Convertir en consommable" subtitle={ingredientName} onClose={() => setShowConvert(false)} locked={convertMutation.isPending} width={480}
           footer={<FormFooter onCancel={() => setShowConvert(false)} submitLabel={convertMutation.isPending ? 'Conversion…' : 'Convertir'} busy={convertMutation.isPending} disabled={!convertCategoryId}
             onSubmit={() => { if (!convertCategoryId) { notify.error('Choisissez une catégorie'); return; } convertMutation.mutate(); }} />}>
-          <p style={{ fontSize: '0.8125rem', color: 'var(--ds-ink)', marginBottom: '0.75rem' }}>
+          <p style={{ fontSize: '13px', color: 'var(--ds-ink)', marginBottom: '0.75rem' }}>
             <strong>{ingredientName}</strong> sera déplacé vers l'onglet <strong>Consommables</strong> avec la catégorie choisie.
             {qty > 0 && <> Son stock (<strong>{qty.toFixed(2)} {unit}</strong>) est transféré.</>} La ligne ingrédient est ensuite supprimée.
             {' '}Bloqué si l'article est utilisé dans une recette.
@@ -822,7 +822,7 @@ function OrderRequestModal({ ingredientName, unit, container, isLow, supplierHin
                       setForm({ ...form, quantity: String(c * container.size) });
                     }}
                     required autoFocus />
-                  <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
                     × {containerLabel(container, unit)} = <strong style={{ color: 'var(--ds-ink)' }}>{form.quantity || container.size} {unit}</strong>
                   </span>
                 </div>
@@ -894,13 +894,13 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
       <div onClick={onToggle}
         style={{
           padding: '0.5rem 0.875rem', display: 'flex', alignItems: 'center', gap: '0.625rem',
-          cursor: 'pointer', backgroundColor: 'var(--ds-card)', fontSize: '0.8125rem',
+          cursor: 'pointer', backgroundColor: 'var(--ds-card)', fontSize: '13px',
         }}>
         <span className={`odoo-status-dot ${dotClass}`} role="img" title={dotLabel} aria-label={dotLabel} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--theme-text-strong)' }}>
+            <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--ds-ink)' }}>
               {lot.supplier_lot_number || lot.lot_number || '—'}
             </span>
             {lot.status === 'quarantine' && <StatusTag tone="blocked" label="QUARANTAINE" />}
@@ -913,11 +913,11 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
               <StatusTag tone="todo" label={`${daysUntil}j`} title={`DLC dans ${daysUntil} jour(s)`} />
             )}
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+          <div style={{ display: 'flex', gap: '0.75rem', fontSize: '12px', color: 'var(--ds-muted)', marginTop: 2 }}>
             {lot.supplier_name && <span>{lot.supplier_name}</span>}
             {lot.location_code && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }} title={lot.location_name || undefined}>
-                <MapPin size={10} style={{ color: 'var(--theme-primary, var(--ds-info))' }} /> {lot.location_code}
+                <MapPin size={10} style={{ color: 'var(--ds-info)' }} /> {lot.location_code}
               </span>
             )}
             {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && (
@@ -929,11 +929,11 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
         </div>
 
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontWeight: 600, color: 'var(--theme-text-strong)' }}>
+          <div style={{ fontWeight: 600, color: 'var(--ds-ink)' }}>
             {remaining.toFixed(1)} / {received.toFixed(1)} {lot.ingredient_unit}
           </div>
           {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && remaining > 0 && (
-            <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
+            <div style={{ fontSize: '11px', color: 'var(--ds-muted)', marginTop: 2 }}>
               Valeur : {money(remaining * parseFloat(lot.unit_cost))}
             </div>
           )}
@@ -945,37 +945,37 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           </div>
         </div>
 
-        <div style={{ flexShrink: 0, color: 'var(--theme-text-muted)' }}>
+        <div style={{ flexShrink: 0, color: 'var(--ds-muted)' }}>
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
       </div>
 
       {isExpanded && (
-        <div style={{ padding: '0.5rem 0.875rem 0.875rem', backgroundColor: 'var(--ds-bg)', borderTop: '1px solid var(--theme-bg-separator)' }}>
+        <div style={{ padding: '0.5rem 0.875rem 0.875rem', backgroundColor: 'var(--ds-bg)', borderTop: '1px solid var(--ds-sep)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
             {/* Supply chain */}
-            <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
-              <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-accent)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <ShieldCheck size={11} /> Chaîne d'approvisionnement
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                 {lot.purchase_order_number && (
                   <>
                     <span className="odoo-tag odoo-tag-purple"><FileText size={9} /> BC : {lot.purchase_order_number}</span>
-                    <ChevronRight size={10} style={{ color: 'var(--theme-bg-separator)' }} />
+                    <ChevronRight size={10} style={{ color: 'var(--ds-sep)' }} />
                   </>
                 )}
                 {lot.reception_voucher_number && (
                   <>
                     <span className="odoo-tag odoo-tag-purple"><Truck size={9} /> BR : {lot.reception_voucher_number}</span>
-                    <ChevronRight size={10} style={{ color: 'var(--theme-bg-separator)' }} />
+                    <ChevronRight size={10} style={{ color: 'var(--ds-sep)' }} />
                   </>
                 )}
                 <span className="odoo-tag odoo-tag-purple"><Hash size={9} /> Lot : {lot.supplier_lot_number || lot.lot_number || '—'}</span>
               </div>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: 6, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: 6, fontSize: '12px', color: 'var(--ds-muted)' }}>
                 {lot.expiration_date && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: isExpired ? 'var(--ds-danger)' : 'var(--theme-text-muted)', fontWeight: isExpired ? 600 : 400 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: isExpired ? 'var(--ds-danger)' : 'var(--ds-muted)', fontWeight: isExpired ? 600 : 400 }}>
                     <CalendarClock size={10} /> DLC : {format(new Date(lot.expiration_date), 'dd/MM/yyyy')}
                   </span>
                 )}
@@ -992,8 +992,8 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
 
             {/* Forward traceability */}
             {traceability.length > 0 && (
-              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
-                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--ds-info)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-info)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Factory size={11} /> Productions utilisant ce lot ({traceability.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1002,8 +1002,8 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
                       onClick={(e) => { e.stopPropagation(); window.location.href = `/production/${t.production_plan_id}`; }}
                       style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '0.25rem 0.5rem', borderRadius: 3, border: '1px solid var(--theme-bg-separator)',
-                        cursor: 'pointer', fontSize: '0.75rem',
+                        padding: '0.25rem 0.5rem', borderRadius: 3, border: '1px solid var(--ds-sep)',
+                        cursor: 'pointer', fontSize: '12px',
                       }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Factory size={11} style={{ color: 'var(--ds-info)' }} />
@@ -1023,24 +1023,24 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
             )}
 
             {traceability.length === 0 && (
-              <div style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--theme-text-muted)', backgroundColor: 'var(--ds-card)', border: '1px solid var(--theme-bg-separator)', borderRadius: 3 }}>
+              <div style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontSize: '12px', color: 'var(--ds-muted)', backgroundColor: 'var(--ds-card)', border: '1px solid var(--ds-sep)', borderRadius: 3 }}>
                 Aucune production liée à ce lot
               </div>
             )}
 
             {/* Repartition Economat / Pesage */}
             {(economat > 0 || pesage > 0) && (
-              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
-                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Package size={11} /> Répartition par zone
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <div style={{ flex: 1, border: '1px solid var(--ds-warning-bg)', borderRadius: 3, padding: '0.375rem 0.5rem' }}>
-                    <div style={{ fontSize: '0.625rem', color: 'var(--ds-warning)', fontWeight: 600 }}>En réserve</div>
+                    <div style={{ fontSize: '11px', color: 'var(--ds-warning)', fontWeight: 600 }}>En réserve</div>
                     <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--ds-warning)' }}>{economat.toFixed(2)} {lot.ingredient_unit}</div>
                   </div>
                   <div style={{ flex: 1, border: '1px solid var(--ds-success-bg)', borderRadius: 3, padding: '0.375rem 0.5rem' }}>
-                    <div style={{ fontSize: '0.625rem', color: 'var(--ds-success)', fontWeight: 600 }}>Au pesage</div>
+                    <div style={{ fontSize: '11px', color: 'var(--ds-success)', fontWeight: 600 }}>Au pesage</div>
                     <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--ds-success)' }}>{pesage.toFixed(2)} {lot.ingredient_unit}</div>
                   </div>
                 </div>
@@ -1082,7 +1082,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
             {/* Déplacement physique vers un emplacement (épic labo L1) */}
             {onMove && locations && locations.length > 0 && lot.status === 'active' && remaining > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
-                <MapPin size={12} style={{ color: 'var(--theme-text-muted)' }} />
+                <MapPin size={12} style={{ color: 'var(--ds-muted)' }} />
                 <SearchSelect value={moveTo} onChange={setMoveTo}
                   placeholder="Déplacer vers…" width={200} ariaLabel="Déplacer vers un emplacement"
                   options={locations.filter(l => l.id !== lot.location_id).map(l => ({ id: l.id, label: `${l.code} — ${l.name}` }))} />

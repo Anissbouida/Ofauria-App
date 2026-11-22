@@ -30,8 +30,8 @@ function MasseLines({ lines }: { lines: BilanLine[] }) {
     <>
       {lines.map(l => (
         <tr key={l.code}>
-          <td className="ds-ref" style={{ color: 'var(--theme-text-muted)', width: 60, paddingLeft: 20 }}>{l.code}</td>
-          <td style={{ fontSize: '0.8125rem' }}>{l.label}</td>
+          <td className="ds-ref" style={{ color: 'var(--ds-muted)', width: 60, paddingLeft: 20 }}>{l.code}</td>
+          <td style={{ fontSize: '13px' }}>{l.label}</td>
           <td className="ds-num" style={{ color: l.amount < 0 ? 'var(--ds-danger)' : undefined }}>{n(l.amount)}</td>
         </tr>
       ))}

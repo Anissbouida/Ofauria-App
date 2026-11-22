@@ -309,7 +309,7 @@ export default function EmployeeDetailPage() {
       {/* ── En-tête de fiche : identité, étiquettes, puis compteurs ── */}
       <section className="prj-panel prj-hero">
         <div className="prj-hero-top">
-          <span className="prj-hero-icon" aria-hidden="true" style={{ borderRadius: '50%', color: '#fff', background: color, fontSize: '1.125rem', fontWeight: 700 }}>{initials}</span>
+          <span className="prj-hero-icon" aria-hidden="true" style={{ borderRadius: '50%', color: '#fff', background: color, fontSize: '17px', fontWeight: 700 }}>{initials}</span>
           <div style={{ flex: 1, minWidth: 240 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h1>{isNew && !form.firstName ? 'Nouvel employé' : `${form.firstName} ${form.lastName}`}</h1>

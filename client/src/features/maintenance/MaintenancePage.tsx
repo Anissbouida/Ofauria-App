@@ -105,7 +105,7 @@ function Row({ i, onOpen }: { i: Intervention; onOpen: (id: string) => void }) {
     <tr onClick={() => onOpen(i.id)} style={{ cursor: 'pointer' }}>
       <td className="ds-ref" style={{ whiteSpace: 'nowrap' }}>{i.number}</td>
       <td><span className="ds-strong">{i.title}</span><div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{KIND_LABELS[i.kind]}{i.under_warranty ? ' · garantie' : ''}</div></td>
-      <td>{i.equipment_name}{i.serial_no ? <span style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}> · {i.serial_no}</span> : null}</td>
+      <td>{i.equipment_name}{i.serial_no ? <span style={{ color: 'var(--ds-muted)', fontSize: '12px' }}> · {i.serial_no}</span> : null}</td>
       <td>{i.customer_label || <span style={{ color: 'var(--ds-muted)' }}>interne</span>}</td>
       <td><span className={`odoo-tag ${PRIORITY_TAG[i.priority]}`}>{PRIORITY_LABELS[i.priority]}</span></td>
       <td><InterventionStatusTag status={i.status} /></td>
@@ -245,7 +245,7 @@ function Plans({ onOpen, onEdit }: { onOpen: (id: string) => void; onEdit: (plan
           <tbody>{plans.map(pl => (
             <tr key={pl.id} style={{ opacity: pl.is_active ? 1 : 0.5 }}>
               <td><span className="ds-strong">{pl.label}</span>{!pl.is_active && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="inactif" /></span>}</td>
-              <td>{pl.equipment_name}{pl.serial_no ? <span style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}> · {pl.serial_no}</span> : null}</td>
+              <td>{pl.equipment_name}{pl.serial_no ? <span style={{ color: 'var(--ds-muted)', fontSize: '12px' }}> · {pl.serial_no}</span> : null}</td>
               <td>{pl.customer_label || <span style={{ color: 'var(--ds-muted)' }}>interne</span>}</td>
               <td>tous les {pl.frequency_days} j</td>
               <td>{pl.last_done_on ? format(new Date(pl.last_done_on), 'd MMM yyyy', { locale: fr }) : '—'}</td>
@@ -323,7 +323,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
   const update = useMutation({ mutationFn: (p: Parameters<typeof maintenanceApi.update>[1]) => maintenanceApi.update(id, p), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
   const comment = useMutation({ mutationFn: () => maintenanceApi.comment(id, note.trim()), onSuccess: () => { refresh(); setNote(''); }, onError: e => notify.error(apiErrorMessage(e)) });
   const row = (k: string, v: React.ReactNode) => (
-    <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 8, fontSize: '0.8125rem', padding: '3px 0' }}><span style={{ color: 'var(--ds-muted)' }}>{k}</span><span>{v ?? '—'}</span></div>
+    <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 8, fontSize: '13px', padding: '3px 0' }}><span style={{ color: 'var(--ds-muted)' }}>{k}</span><span>{v ?? '—'}</span></div>
   );
   const assigneeRate = people.find(p => p.id === i?.assignee_id)?.cost_rate;
 
@@ -385,7 +385,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
                 </div>
               )}
 
-              {i.reported_problem && <div className="kl-widget" style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{i.reported_problem}</div>}
+              {i.reported_problem && <div className="kl-widget" style={{ fontSize: '14px', whiteSpace: 'pre-wrap' }}>{i.reported_problem}</div>}
               <div className="kl-widget" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0 24px' }}>
                 <div>
                   {row('Équipement', <>{i.equipment_name}{i.asset_label && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>immobilisation</span>}</>)}
@@ -407,7 +407,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
               {i.status === 'done' && (
                 <StatusBanner tone="success" icon={CheckCircle2} title={`Terminée · coût ${money(i.total_cost)}`}>
                   {i.work_done}<br />
-                  <span style={{ fontSize: '0.75rem' }}>{Number(i.labor_hours ?? 0).toLocaleString('fr-FR')} h × {money(i.labor_rate)} + pièces {money(i.parts_cost)}{i.downtime_hours ? ` · arrêt ${Number(i.downtime_hours).toLocaleString('fr-FR')} h` : ''}</span>
+                  <span style={{ fontSize: '12px' }}>{Number(i.labor_hours ?? 0).toLocaleString('fr-FR')} h × {money(i.labor_rate)} + pièces {money(i.parts_cost)}{i.downtime_hours ? ` · arrêt ${Number(i.downtime_hours).toLocaleString('fr-FR')} h` : ''}</span>
                 </StatusBanner>
               )}
 
@@ -415,7 +415,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
                 <SectionHeader title="Journal" />
                 <ol className="kl-widget" style={{ listStyle: 'none', margin: 0, display: 'grid', gap: 6 }}>
                   {(i.events ?? []).map(e => (
-                    <li key={e.id} style={{ fontSize: '0.8125rem', display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8 }}>
+                    <li key={e.id} style={{ fontSize: '13px', display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8 }}>
                       <span style={{ color: 'var(--ds-muted)' }}>{format(new Date(e.created_at), 'dd/MM HH:mm')}</span>
                       <span><strong>{e.by_name || '—'}</strong> · {eventLabel(e.event_type, e.from_value, e.to_value)}{e.note && <span style={{ display: 'block', whiteSpace: 'pre-wrap' }}>{e.note}</span>}</span>
                     </li>

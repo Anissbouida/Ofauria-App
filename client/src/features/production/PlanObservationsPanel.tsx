@@ -23,14 +23,14 @@ export default function PlanObservationsPanel({ observations }: { observations: 
     <div className="ds-panel pd-section" style={{ margin: '1rem' }}>
       <div className="pd-section-head">
         <MessageSquareText size={12} /> Observations du lancement
-        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
           {observations.length} déclaration{observations.length > 1 ? 's' : ''}
         </span>
       </div>
       <div>
         {observations.map(o => (
-          <div key={o.id} style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--theme-border, #eee)' }}>
-            <div style={{ fontSize: 12, color: 'var(--theme-text-muted)' }}>
+          <div key={o.id} style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--ds-sep)' }}>
+            <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
               {format(new Date(o.created_at), 'dd/MM/yyyy HH:mm')}{o.created_by_name ? ` · ${o.created_by_name}` : ''}
             </div>
             {o.note && <p style={{ margin: '0.35rem 0 0', whiteSpace: 'pre-wrap' }}>{o.note}</p>}
@@ -40,7 +40,7 @@ export default function PlanObservationsPanel({ observations }: { observations: 
                 <tbody>
                   {o.bases.map((b, i) => (
                     <tr key={`${b.subRecipeId}-${i}`}>
-                      <td style={{ fontWeight: 500 }}>{b.name ?? <span style={{ color: 'var(--theme-text-muted)' }}>Fiche supprimée</span>}</td>
+                      <td style={{ fontWeight: 500 }}>{b.name ?? <span style={{ color: 'var(--ds-muted)' }}>Fiche supprimée</span>}</td>
                       {/* « Déjà produite » : aucune quantité saisie au lancement (champ masqué). */}
                       <td className="ds-num">{b.alreadyProduced ? '—' : `${qty(b.actualQuantity)}${b.unit ? ` ${b.unit}` : ''}`}</td>
                       <td>{b.alreadyProduced ? 'Déjà produite' : 'Produite au lancement'}</td>

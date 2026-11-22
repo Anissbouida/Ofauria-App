@@ -103,7 +103,7 @@ const TONE_STYLE: Record<string, { background: string; color: string }> = {
   orange: { background: 'var(--ds-cat-brown-bg)', color: 'var(--ds-cat-brown)' },
   green: { background: 'var(--ds-cat-olive-bg)', color: 'var(--ds-cat-olive)' },
   blue: { background: 'var(--ds-cat-blue-bg)', color: 'var(--ds-cat-blue)' },
-  purple: { background: 'var(--theme-accent-light)', color: 'var(--theme-accent)' },
+  purple: { background: 'var(--ds-tint)', color: 'var(--ds-accent)' },
   grey: { background: 'var(--ds-cat-slate-bg)', color: 'var(--ds-cat-slate)' },
 };
 /** Classe d'etiquette d'un shift (`odoo-tag ${shiftTag(code)}`). */

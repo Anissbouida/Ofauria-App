@@ -65,7 +65,7 @@ export default function SalesTargetsPage() {
       <div className="kl-rep-period">
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <input type="date" value={start} onChange={e => setStart(e.target.value)} aria-label="Du" />
-          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
+          <span style={{ color: 'var(--ds-muted)' }}>→</span>
           <input type="date" value={end} onChange={e => setEnd(e.target.value)} aria-label="Au" />
         </span>
         <small>Réalisé = factures émises attribuées au vendeur, net des avoirs.</small>
@@ -116,7 +116,7 @@ export default function SalesTargetsPage() {
                       {pct != null ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span className={`prj-bar ${pct >= 100 ? 'green' : pct < 50 ? 'orange' : ''}`} style={{ flex: 1 }}><span style={{ width: `${Math.min(100, pct)}%` }} /></span>
-                          <span style={{ fontSize: '0.75rem', fontVariantNumeric: 'tabular-nums' }}>{pct} %</span>
+                          <span style={{ fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>{pct} %</span>
                         </div>
                       ) : '—'}
                     </td>

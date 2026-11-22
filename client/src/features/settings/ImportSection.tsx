@@ -114,7 +114,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
           )}
           {busy === 'preview' && <Loader2 className="animate-spin" size={16} />}
         </div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{MODE_LABELS[mode].hint}{def?.note ? ` · ${def.note}` : ''}</div>
+        <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{MODE_LABELS[mode].hint}{def?.note ? ` · ${def.note}` : ''}</div>
 
         {preview && mapping && (
           <div style={{ display: 'grid', gap: 10 }}>
@@ -175,8 +175,8 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                       <tr key={r.line}>
                         <td className="ds-num">{r.line}</td>
                         <td><StatusTag tone={ACTION_TAG[r.action].tone} label={ACTION_TAG[r.action].label} /></td>
-                        <td style={{ fontSize: '0.8125rem' }}>{Object.values(r.values).filter(v => v !== null && v !== '').slice(0, 4).map(String).join(' · ')}</td>
-                        <td style={{ fontSize: '0.8125rem', color: r.action === 'error' ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>
+                        <td style={{ fontSize: '13px' }}>{Object.values(r.values).filter(v => v !== null && v !== '').slice(0, 4).map(String).join(' · ')}</td>
+                        <td style={{ fontSize: '13px', color: r.action === 'error' ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>
                           {r.errors.length ? r.errors.map(e => `${e.column} : ${e.message}`).join(' ; ') : r.reason ?? ''}
                         </td>
                       </tr>
@@ -198,7 +198,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
 
       <section className="ds-panel" style={card}>
         <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><History size={15} aria-hidden="true" /> Journal des imports</span>} />
-        {imports.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', margin: 0 }}>Aucun import enregistré.</p> : (
+        {imports.length === 0 ? <p style={{ fontSize: '13px', color: 'var(--ds-muted)', margin: 0 }}>Aucun import enregistré.</p> : (
           <DataPanel label="Journal des imports">
             <table className="odoo-table">
               <thead><tr><th>Date</th><th>Données</th><th>Fichier</th><th>Mode</th><th className="ds-num">Créées</th><th className="ds-num">Mises à jour</th><th>Par</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
@@ -206,8 +206,8 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                 <tr key={i.id} style={{ opacity: i.status === 'undone' ? 0.6 : 1 }}>
                   <td style={{ whiteSpace: 'nowrap' }}>{new Date(i.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
                   <td className="ds-strong">{i.entity_label}</td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{i.file_name ?? '—'}</td>
-                  <td style={{ fontSize: '0.8125rem' }}>{MODE_LABELS[i.mode].label}</td>
+                  <td style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>{i.file_name ?? '—'}</td>
+                  <td style={{ fontSize: '13px' }}>{MODE_LABELS[i.mode].label}</td>
                   <td className="ds-num">{i.created_count}</td>
                   <td className="ds-num">{i.updated_count}</td>
                   <td>{i.by_name ?? '—'}</td>

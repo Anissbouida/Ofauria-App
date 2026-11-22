@@ -43,11 +43,11 @@ function EquipmentFields({ value, onChange, withProductionEquipment = false }: {
   const customers: Record<string, any>[] = customersData?.data ?? [];
   return (
     <>
-      <div style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--theme-bg-secondary)', borderRadius: 8, width: 'fit-content' }}>
+      <div style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--ds-hair)', borderRadius: 8, width: 'fit-content' }}>
         {([['asset', 'Matériel interne'], ['customer', 'Chez un client']] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => { setMode(k); onChange(k === 'asset' ? { customerId: null, customerName: '' } : { fixedAssetId: null }); }}
             style={{ padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: mode === k ? 600 : 400,
-              background: mode === k ? 'var(--theme-bg-card)' : 'transparent', color: mode === k ? 'var(--theme-text)' : 'var(--ds-muted)' }}>{l}</button>
+              background: mode === k ? 'var(--ds-card)' : 'transparent', color: mode === k ? 'var(--ds-ink)' : 'var(--ds-muted)' }}>{l}</button>
         ))}
       </div>
       {mode === 'asset' && withProductionEquipment && (
@@ -90,7 +90,7 @@ function EquipmentFields({ value, onChange, withProductionEquipment = false }: {
               <>
                 <input className="ds-input" value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher une fiche" />
                 {customers.length > 0 && q.trim().length >= 2 && (
-                  <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 4, maxHeight: 120, overflowY: 'auto' }}>
+                  <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, marginTop: 4, maxHeight: 120, overflowY: 'auto' }}>
                     {customers.slice(0, 8).map(c => (
                       <button key={c.id} type="button" onClick={() => { onChange({ customerId: c.id, customerName: customerLabel(c) }); setQ(''); }}
                         style={{ display: 'block', width: '100%', padding: '6px 10px', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>{customerLabel(c)}</button>

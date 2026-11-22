@@ -61,16 +61,16 @@ export default function CustomerAddressesPanel({ customerId }: { customerId: str
       </div>
 
       {addresses.length === 0 && !form && (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', padding: '6px 0' }}>Aucune adresse enregistrée.</div>
+        <div style={{ fontSize: '13px', color: 'var(--ds-muted)', padding: '6px 0' }}>Aucune adresse enregistrée.</div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {addresses.map(a => (
-          <div key={a.id} style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+          <div key={a.id} style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>{a.label || a.address_line}</div>
-              {a.label && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{a.address_line}</div>}
-              <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{[a.postal_code, a.city].filter(Boolean).join(' ')}{a.country_code && a.country_code !== 'MA' ? ` · ${a.country_code}` : ''}</div>
+              <div style={{ fontSize: '13px', fontWeight: 600 }}>{a.label || a.address_line}</div>
+              {a.label && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{a.address_line}</div>}
+              <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{[a.postal_code, a.city].filter(Boolean).join(' ')}{a.country_code && a.country_code !== 'MA' ? ` · ${a.country_code}` : ''}</div>
               <div style={{ display: 'inline-flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
                 {a.is_default_delivery && <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Truck size={10} /> Livraison</span>}
                 {a.is_default_billing && <span className="odoo-tag odoo-tag-purple" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Receipt size={10} /> Facturation</span>}
@@ -115,7 +115,7 @@ export default function CustomerAddressesPanel({ customerId }: { customerId: str
             </div>
           </FormSection>
           <FormSection title="Usage par défaut">
-            <div style={{ display: 'flex', gap: 16, fontSize: '0.8125rem' }}>
+            <div style={{ display: 'flex', gap: 16, fontSize: '13px' }}>
               <label htmlFor="ca-def-del" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><input id="ca-def-del" type="checkbox" checked={form.isDefaultDelivery} onChange={e => setForm({ ...form, isDefaultDelivery: e.target.checked })} /> Livraison par défaut</label>
               <label htmlFor="ca-def-bill" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><input id="ca-def-bill" type="checkbox" checked={form.isDefaultBilling} onChange={e => setForm({ ...form, isDefaultBilling: e.target.checked })} /> Facturation par défaut</label>
             </div>

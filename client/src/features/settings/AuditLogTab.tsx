@@ -103,7 +103,7 @@ function rowTitle(e: AuditLogEntry): string {
 }
 
 function Pager({ offset, total, onChange }: { offset: number; total: number; onChange: (o: number) => void }) {
-  if (total <= PAGE) return <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{total} ligne{total > 1 ? 's' : ''}</span>;
+  if (total <= PAGE) return <span style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>{total} ligne{total > 1 ? 's' : ''}</span>;
   return (
     <span className="odoo-pager">
       {offset + 1}-{Math.min(offset + PAGE, total)} / {total}
@@ -232,7 +232,7 @@ function ChangeDetail({ e }: { e: AuditLogEntry }) {
     : Object.entries((e.new_row ?? e.old_row) ?? {})
         .filter(([k]) => !['id', 'created_at', 'updated_at', 'updated_by'].includes(k))
         .map(([k, v]) => [k, e.operation === 'DELETE' ? v : undefined, e.operation === 'DELETE' ? undefined : v]);
-  if (!pairs.length) return <span style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>Aucun détail.</span>;
+  if (!pairs.length) return <span style={{ color: 'var(--ds-muted)', fontSize: '13px' }}>Aucun détail.</span>;
   return (
     <table className="odoo-table ds-dense ds-nested">
       <thead><tr><th>Champ</th><th>Avant</th><th>Après</th></tr></thead>

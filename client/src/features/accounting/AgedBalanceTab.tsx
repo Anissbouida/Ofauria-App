@@ -183,12 +183,12 @@ export default function AgedBalanceTab() {
                           )}
                         </tr>
                         {open && tr.items.map(i => (
-                          <tr key={i.key} style={{ background: 'var(--theme-bg-tertiary)', fontSize: '0.75rem' }}>
+                          <tr key={i.key} style={{ background: 'var(--ds-hair)', fontSize: '12px' }}>
                             <td style={{ paddingLeft: 32 }}>
-                              <span style={{ color: 'var(--theme-text-muted)' }}>{KIND_LABELS[i.kind]}</span>{' '}
+                              <span style={{ color: 'var(--ds-muted)' }}>{KIND_LABELS[i.kind]}</span>{' '}
                               <span style={{ ...mono, color: 'var(--ds-info)' }}>{i.reference}</span>
                               {i.partial && <span style={{ marginLeft: 4 }}><StatusTag tone="progress" label="pré-lettré" title="Pièce et acomptes pré-lettrés : le montant est le reste dû" /></span>}
-                              <span style={{ color: 'var(--theme-text-muted)' }}> · du {fmtDate(i.doc_date)} · échéance {fmtDate(i.due_date)}{i.days_late > 0 ? ` · ${i.days_late} j de retard` : ''}</span>
+                              <span style={{ color: 'var(--ds-muted)' }}> · du {fmtDate(i.doc_date)} · échéance {fmtDate(i.due_date)}{i.days_late > 0 ? ` · ${i.days_late} j de retard` : ''}</span>
                             </td>
                             {BUCKETS.map(b => <td className="ds-num" key={b.key}>{b.key === i.bucket ? n(i.amount) : ''}</td>)}
                             <td className="ds-num">{n(i.amount)}</td>

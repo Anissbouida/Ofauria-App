@@ -125,7 +125,7 @@ export default function LotsThermalTab() {
         </table>
         </DataPanel>
       )}
-      <p className="prj-note" style={{ display: 'flex', alignItems: 'center', gap: 4, margin: 0, color: 'var(--theme-text-muted)' }}>
+      <p className="prj-note" style={{ display: 'flex', alignItems: 'center', gap: 4, margin: 0, color: 'var(--ds-muted)' }}>
         <Package size={11} /> La DLC d'un lot décongelé est recalculée ({DEFAULT_THAW_HOURS} h) et prime au FEFO. La recongélation est interdite.
       </p>
     </div>

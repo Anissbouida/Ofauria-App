@@ -108,7 +108,7 @@ type SortKey = 'name' | 'city' | 'last_purchase' | 'purchases' | 'loyalty_points
 
 export const PAYMENT_LABELS: Record<string, string> = { cash: 'Espèces', card: 'Carte', mixed: 'Mixte', transfer: 'Virement', check: 'Chèque' };
 
-const muted: React.CSSProperties = { color: 'var(--theme-text-muted)' };
+const muted: React.CSSProperties = { color: 'var(--ds-muted)' };
 const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd MMM yyyy', { locale: fr }) : null);
 
 export default function CustomersPage() {
@@ -376,32 +376,32 @@ export default function CustomersPage() {
                     <tr key={c.id as string} onClick={() => navigate(`/customers/${c.id as string}`)} style={{ cursor: 'pointer' }}>
                       <td>
                         <span className="ds-strong">{primary}</span>
-                        {secondary && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{secondary}{c.contact_role ? ` · ${c.contact_role}` : ''}</div>}
+                        {secondary && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{secondary}{c.contact_role ? ` · ${c.contact_role}` : ''}</div>}
                       </td>
                       <td style={{ whiteSpace: 'nowrap', ...muted }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><TypeIcon size={11} /> {meta.label}</span>
                       </td>
                       <td style={muted}>
                         {c.phone && <div>{c.phone}</div>}
-                        {c.email && <div style={{ fontSize: '0.6875rem' }}>{c.email}</div>}
+                        {c.email && <div style={{ fontSize: '12px' }}>{c.email}</div>}
                         {!c.phone && !c.email && '—'}
                       </td>
                       <td style={muted}>{c.city || '—'}</td>
-                      <td style={{ fontSize: '0.6875rem' }}>
+                      <td style={{ fontSize: '12px' }}>
                         {c.ice ? (
-                          <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--odoo-text)' }}>{c.ice}</span>
+                          <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--ds-ink)' }}>{c.ice}</span>
                         ) : needsIce(c) ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-warning)', fontWeight: 600, fontSize: '0.75rem' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-warning)', fontWeight: 600, fontSize: '12px' }}>
                             <AlertTriangle size={11} /> À saisir
                           </span>
                         ) : <span style={muted}>—</span>}
                       </td>
                       <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', fontWeight: 500, color: 'var(--odoo-text)' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '13px', fontWeight: 500, color: 'var(--ds-ink)' }}>
                           <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, flexShrink: 0, background: STAGE_DOT[c._stage] }} />
                           {CUS_STAGES.find(s => s.key === c._stage)?.label}
                         </span>
-                        {detail && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 2, marginLeft: 14 }}>{detail}</div>}
+                        {detail && <div style={{ fontSize: '12px', color: 'var(--ds-muted)', marginTop: 2, marginLeft: 14 }}>{detail}</div>}
                       </td>
                       <td style={{ whiteSpace: 'nowrap', ...muted }}>
                         {fmtDate(c.last_purchase_at) ?? <span style={{ fontStyle: 'italic' }}>jamais</span>}
@@ -528,9 +528,9 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                   else if (t === 'particulier') setTvaExonere(false);
                 }}
                 style={{
-                  padding: '0.35rem 0.85rem', fontSize: '0.8125rem', display: 'inline-flex', alignItems: 'center', gap: 5,
-                  background: selected ? 'var(--odoo-purple-light)' : 'transparent',
-                  color: selected ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
+                  padding: '0.35rem 0.85rem', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: 5,
+                  background: selected ? 'var(--ds-tint)' : 'transparent',
+                  color: selected ? 'var(--ds-accent)' : 'var(--ds-muted)',
                   fontWeight: selected ? 600 : 400,
                 }}>
                 <Icon size={13} /> {TYPE_META[t].label}
@@ -626,7 +626,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
               placeholder="— Aucun" width="100%" size="md" ariaLabel="Commercial attitré"
               options={salespeople.map(u => ({ id: u.id as string, label: `${u.firstName as string} ${u.lastName as string}` }))} />
           </FormField>
-          <label htmlFor="cf-tva-exo" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' }}>
+          <label htmlFor="cf-tva-exo" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '13px', cursor: 'pointer' }}>
             <input id="cf-tva-exo" type="checkbox" checked={tvaExonere} disabled={!direction} onChange={(e) => setTvaExonere(e.target.checked)} />
             Client exonéré de TVA
           </label>
@@ -665,7 +665,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
         </div>
         <div className="ds-field" role="radiogroup" aria-labelledby="cf-pref-label">
           <span id="cf-pref-label" className="ds-field-label">Contact préféré</span>
-          <div style={{ display: 'flex', gap: 16, fontSize: '0.8125rem' }}>
+          <div style={{ display: 'flex', gap: 16, fontSize: '13px' }}>
             {(['phone', 'email', 'whatsapp'] as const).map(m => (
               <label key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                 <input type="radio" name="preferredContact" value={m}

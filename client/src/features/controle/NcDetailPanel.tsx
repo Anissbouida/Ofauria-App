@@ -43,7 +43,7 @@ export default function NcDetailPanel({ ncId, onClose }: { ncId: string; onClose
   return (
     <Drawer title={nc?.title ?? 'Non-conformité'} subtitle="Fiche de non-conformité" onClose={onClose} width={720}>
       {nc && (
-        <div style={{ display: 'grid', gap: 16, fontSize: '0.8125rem' }}>
+        <div style={{ display: 'grid', gap: 16, fontSize: '13px' }}>
           <FormSection title="Analyse">
             <div className="ds-form-grid">
               <FormField label="Cause" htmlFor="nc-detail-cause">

@@ -146,15 +146,15 @@ function RouteDetail({ id, onClose }: { id: string; onClose: () => void }) {
 function StopRow({ s, i, count, onMove, onToggle, onRemove }: { s: RouteStop; i: number; count: number; onMove: (i: number, dir: -1 | 1) => void; onToggle: () => void; onRemove: () => void }) {
   const done = !!s.delivered_at;
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', border: '1px solid var(--odoo-border)', borderRadius: 8, padding: '8px 12px', background: done ? 'var(--theme-bg-secondary)' : 'var(--odoo-bg)' }}>
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', border: '1px solid var(--ds-sep)', borderRadius: 8, padding: '8px 12px', background: done ? 'var(--ds-hair)' : 'var(--ds-card)' }}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <button className="odoo-pager-btn" style={{ padding: 2 }} aria-label="Monter l'arrêt" disabled={i === 0} onClick={onMove.bind(null, i, -1)}><ChevronUp size={12} /></button>
         <button className="odoo-pager-btn" style={{ padding: 2 }} aria-label="Descendre l'arrêt" disabled={i === count - 1} onClick={onMove.bind(null, i, 1)}><ChevronDown size={12} /></button>
       </div>
-      <div style={{ width: 22, textAlign: 'center', fontWeight: 700, color: 'var(--theme-text-muted)' }}>{i + 1}</div>
+      <div style={{ width: 22, textAlign: 'center', fontWeight: 700, color: 'var(--ds-muted)' }}>{i + 1}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 500 }}>{s.customer_name} <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>{s.delivery_number}</span></div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 500 }}>{s.customer_name} <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.78rem', color: 'var(--ds-muted)' }}>{s.delivery_number}</span></div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--ds-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {s.customer_address && <span><MapPin size={10} style={{ display: 'inline', verticalAlign: -1 }} /> {s.customer_address}{s.customer_city ? `, ${s.customer_city}` : ''}</span>}
           {s.customer_phone && <span><Phone size={10} style={{ display: 'inline', verticalAlign: -1 }} /> {s.customer_phone}</span>}
         </div>

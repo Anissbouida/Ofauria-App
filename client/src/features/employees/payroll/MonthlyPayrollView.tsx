@@ -42,7 +42,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
   };
   const PaySortIcon = ({ col }: { col: string }) => {
     if (paySortKey !== col) return <ArrowUpDown size={13} style={{ display: "inline", marginLeft: 4, color: "var(--ds-muted)" }} />;
-    return paySortDir === 'asc' ? <ArrowUp size={13} style={{ display: "inline", marginLeft: 4, color: "var(--theme-accent)" }} /> : <ArrowDown size={13} style={{ display: "inline", marginLeft: 4, color: "var(--theme-accent)" }} />;
+    return paySortDir === 'asc' ? <ArrowUp size={13} style={{ display: "inline", marginLeft: 4, color: "var(--ds-accent)" }} /> : <ArrowDown size={13} style={{ display: "inline", marginLeft: 4, color: "var(--ds-accent)" }} />;
   };
 
   const { data: payrolls = [], isLoading, isError, error, refetch } = useQuery({
@@ -521,8 +521,8 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                 <Download size={13} aria-hidden="true" /> Télécharger le bulletin PDF
               </button>
             </>}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: '0.8125rem' }}>
-              <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--ds-ink)' }}>{p.first_name as string} {p.last_name as string}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: '13px' }}>
+              <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--ds-ink)' }}>{p.first_name as string} {p.last_name as string}</span>
               <span style={{ color: 'var(--ds-muted)' }}>
                 {getRoleLabel(p.employee_role as string)} · <strong style={{ color: 'var(--ds-ink)' }}>{money(pf(p.net_salary))}</strong> net
               </span>

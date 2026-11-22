@@ -114,7 +114,7 @@ export default function ComplaintsTab({ range, periodText, creating, onCreatingC
                   <td className="ds-strong">{c.customer_label || '—'}</td>
                   <td><span className="odoo-tag" style={{ background: c.category_color ? `${c.category_color}22` : undefined, color: c.category_color || undefined }}>{c.category_label || c.category_code}</span></td>
                   <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.subject}>{c.subject}</td>
-                  <td>{c.product_name || '—'}{c.lot_number ? <span style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}> · {c.lot_number}</span> : null}</td>
+                  <td>{c.product_name || '—'}{c.lot_number ? <span style={{ color: 'var(--ds-muted)', fontSize: '12px' }}> · {c.lot_number}</span> : null}</td>
                   <td><span className={`odoo-tag ${PRIORITY_TAG[c.priority]}`}>{PRIORITY_LABELS[c.priority]}</span></td>
                   <td><StatusTag tone={STATUS_TONE[c.status] ?? 'draft'} label={STATUS_LABELS[c.status]} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}><Due c={c} /></td>
@@ -176,7 +176,7 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   });
 
   const row = (k: string, v: React.ReactNode) => (
-    <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 8, fontSize: '0.8125rem', padding: '4px 0' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 8, fontSize: '13px', padding: '4px 0' }}>
       <span style={{ color: 'var(--ds-muted)' }}>{k}</span><span>{v ?? '—'}</span>
     </div>
   );
@@ -266,7 +266,7 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                 </div>
               )}
 
-              {c.description && <div className="kl-widget" style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{c.description}</div>}
+              {c.description && <div className="kl-widget" style={{ fontSize: '14px', whiteSpace: 'pre-wrap' }}>{c.description}</div>}
 
               <div className="kl-widget" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0 24px' }}>
                 <div>
@@ -294,14 +294,14 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                 </StatusBanner>
               )}
 
-              {c.photo_url && <img src={serverUrl(c.photo_url)} alt="Photo jointe" style={{ maxHeight: 240, borderRadius: 6, border: '1px solid var(--odoo-border)', objectFit: 'contain', alignSelf: 'start' }} />}
+              {c.photo_url && <img src={serverUrl(c.photo_url)} alt="Photo jointe" style={{ maxHeight: 240, borderRadius: 6, border: '1px solid var(--ds-sep)', objectFit: 'contain', alignSelf: 'start' }} />}
 
               {/* Journal */}
               <div>
                 <SectionHeader title="Journal" />
                 <ol className="kl-widget" style={{ listStyle: 'none', margin: 0, display: 'grid', gap: 6 }}>
                   {(c.events ?? []).map(e => (
-                    <li key={e.id} style={{ fontSize: '0.8125rem', display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8 }}>
+                    <li key={e.id} style={{ fontSize: '13px', display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8 }}>
                       <span style={{ color: 'var(--ds-muted)' }}>{format(new Date(e.created_at), 'dd/MM HH:mm')}</span>
                       <span>
                         <strong>{e.by_name || '—'}</strong> · {eventLabel(e.event_type, e.from_value, e.to_value)}

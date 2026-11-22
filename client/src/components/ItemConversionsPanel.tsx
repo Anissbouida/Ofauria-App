@@ -43,7 +43,7 @@ export default function ItemConversionsPanel({ kind, itemId, canEdit = true }: {
       <h3 className="ds-subhead">Unités et conversions</h3>
       {data.length === 0 && <div style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Aucune conversion saisie pour cet article.</div>}
       {data.map(c => (
-        <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem' }}>
+        <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '14px' }}>
           <span>1 {c.from_container ?? c.from_unit_label ?? c.from_unit} = <strong>{c.factor.toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</strong> {c.to_unit_label}</span>
           <span className="odoo-tag odoo-tag-grey">{ORIGIN[c.origin]}</span>
           {canEdit && c.origin === 'saisie' && (
@@ -52,7 +52,7 @@ export default function ItemConversionsPanel({ kind, itemId, canEdit = true }: {
         </div>
       ))}
       {canEdit && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.875rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '14px' }}>
           1
           <select className="ds-input sm" value={draft.fromUnit} onChange={e => setDraft(d => ({ ...d, fromUnit: e.target.value }))} aria-label="Unité source" style={{ width: 'auto' }}>
             <option value="">unité…</option>{units.map(u => <option key={u.code} value={u.code}>{u.label}</option>)}

@@ -620,7 +620,7 @@ export function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow;
             <div className="odoo-view-switcher" role="radiogroup" aria-labelledby="dlv-method-label" style={{ width: '100%' }}>
               {([['cash', 'Espèces', Banknote], ['card', 'Carte', CreditCard]] as const).map(([key, label, Icon]) => (
                 <button key={key} type="button" role="radio" aria-checked={payment === key} onClick={() => { setPayment(key); if (key === 'card') setAmount(remaining.toFixed(2)); }}
-                  className={payment === key ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', gap: 4, fontWeight: payment === key ? 600 : 400 }}>
+                  className={payment === key ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '13px', gap: 4, fontWeight: payment === key ? 600 : 400 }}>
                   <Icon size={13} /> {label}
                 </button>
               ))}
@@ -768,7 +768,7 @@ export function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderR
           </StatusBanner>
         )}
         {short && (
-          <label htmlFor="pdl-close" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem' }}>
+          <label htmlFor="pdl-close" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
             <input id="pdl-close" type="checkbox" checked={closeRemainder} onChange={e => setCloseRemainder(e.target.checked)} />
             Solder le reliquat : rien d'autre ne sera livré, la commande est terminée
           </label>

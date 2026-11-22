@@ -163,7 +163,7 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
   const fresh = pv ? pv.stats.count - pv.stats.duplicates : 0;
 
   return (
-    <Modal title={<><Landmark size={16} aria-hidden="true" style={{ color: 'var(--theme-accent)', verticalAlign: '-2px' }} /> Importer un relevé bancaire</>}
+    <Modal title={<><Landmark size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)', verticalAlign: '-2px' }} /> Importer un relevé bancaire</>}
       onClose={onClose} width={960} locked={doImport.isPending}
       footer={
         <FormFooter onCancel={onClose} onSubmit={() => doImport.mutate()} busy={doImport.isPending} disabled={!pv || fresh === 0}

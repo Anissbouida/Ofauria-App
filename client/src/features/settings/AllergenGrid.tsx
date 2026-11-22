@@ -131,7 +131,7 @@ export default function AllergenGrid() {
                       return (
                         <td key={a.code} style={{ textAlign: 'center', padding: 2 }}>
                           <button type="button" onClick={() => toggle(r, a.code)} aria-label={`${r.name}, ${a.short} : ${cell.title}`} title={`${a.short} : ${cell.title}`}
-                            style={{ width: 28, height: 26, borderRadius: 4, cursor: 'pointer', fontSize: '0.75rem',
+                            style={{ width: 28, height: 26, borderRadius: 4, cursor: 'pointer', fontSize: '12px',
                               border: `1px ${proposed && state !== 'absent' ? 'dashed' : 'solid'} var(--ds-line)`, ...cell.style }}>
                             {cell.text}
                           </button>

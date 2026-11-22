@@ -36,7 +36,7 @@ const tabs: { key: Tab; label: string; subtitle: string }[] = [
 
 const CLASS_META: Record<MenuEngineeringClass, { label: string; dot: string; advice: string }> = {
   STAR:   { label: 'Étoiles',     dot: 'var(--ds-success)', advice: 'Mettre en avant, ne pas changer le prix' },
-  PUZZLE: { label: 'Énigmes',     dot: 'var(--theme-accent)', advice: 'Repositionner : visibilité, photo, suggestion en caisse' },
+  PUZZLE: { label: 'Énigmes',     dot: 'var(--ds-accent)', advice: 'Repositionner : visibilité, photo, suggestion en caisse' },
   HORSE:  { label: 'Chevaux',     dot: 'var(--ds-warning)', advice: 'Réduire le coût matière ou augmenter le prix' },
   DOG:    { label: 'Poids morts', dot: 'var(--ds-muted)', advice: 'Refondre ou retirer de la carte' },
 };
@@ -176,7 +176,7 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
       {activePreset === 'custom' && (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} aria-label="Du" />
-          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
+          <span style={{ color: 'var(--ds-muted)' }}>→</span>
           <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} aria-label="Au" />
         </span>
       )}
@@ -251,7 +251,7 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
   const [menuSortCol, setMenuSortCol] = useState<string>('contribution');
   const [menuSortDir, setMenuSortDir] = useState<'asc' | 'desc'>('desc');
   const toggleMenuSort = (col: string) => { if (menuSortCol === col) setMenuSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setMenuSortCol(col); setMenuSortDir('desc'); } };
-  const MenuSortIcon = ({ col }: { col: string }) => menuSortCol === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '0.625rem' }}>{menuSortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '0.625rem' }}>▼</span>;
+  const MenuSortIcon = ({ col }: { col: string }) => menuSortCol === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '11px' }}>{menuSortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '11px' }}>▼</span>;
 
   const items = menuData?.items ?? [];
   const counts = menuData?.counts ?? { STAR: 0, PUZZLE: 0, HORSE: 0, DOG: 0 };
@@ -328,10 +328,10 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
               const active = filterClass === cls;
               return (
                 <button key={cls} type="button" aria-pressed={active} onClick={() => setFilterClass(active ? 'ALL' : cls)}
-                  style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', ...(active ? { background: 'var(--theme-accent-light)' } : {}) }}>
+                  style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', ...(active ? { background: 'var(--ds-tint)' } : {}) }}>
                   <span className="l"><i style={{ background: meta.dot }} />{meta.label}</span>
                   <b style={{ display: 'block', fontSize: 24, fontWeight: 700, letterSpacing: '-.02em', marginTop: 2 }}>{counts[cls] || 0}</b>
-                  <small style={{ fontSize: 12, color: 'var(--theme-text-muted)', lineHeight: 1.35, display: 'block' }}>{meta.advice}</small>
+                  <small style={{ fontSize: 12, color: 'var(--ds-muted)', lineHeight: 1.35, display: 'block' }}>{meta.advice}</small>
                 </button>
               );
             })}
@@ -344,26 +344,26 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <ScatterChart margin={{ top: 16, right: 24, bottom: 28, left: 12 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--theme-bg-separator)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--ds-sep)" />
                   <XAxis type="number" dataKey="x" name="Quantité vendue"
-                    tick={{ fontSize: 12, fill: 'var(--theme-text-muted)' }} axisLine={false} tickLine={false}
-                    label={{ value: 'Quantité vendue', position: 'insideBottom', offset: -12, style: { fontSize: 12, fill: 'var(--theme-text-muted)' } }} />
+                    tick={{ fontSize: 12, fill: 'var(--ds-muted)' }} axisLine={false} tickLine={false}
+                    label={{ value: 'Quantité vendue', position: 'insideBottom', offset: -12, style: { fontSize: 12, fill: 'var(--ds-muted)' } }} />
                   <YAxis type="number" dataKey="y" name="Contribution" width={56}
-                    tick={{ fontSize: 12, fill: 'var(--theme-text-muted)' }} axisLine={false} tickLine={false}
+                    tick={{ fontSize: 12, fill: 'var(--ds-muted)' }} axisLine={false} tickLine={false}
                     tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-                    label={{ value: `Contribution (${currencySymbol()})`, angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: 'var(--theme-text-muted)' } }} />
+                    label={{ value: `Contribution (${currencySymbol()})`, angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: 'var(--ds-muted)' } }} />
                   <ZAxis range={[90, 90]} />
-                  <ReferenceLine x={median.medianQty} stroke="var(--theme-text-muted)" strokeOpacity={0.4} strokeDasharray="4 4" />
-                  <ReferenceLine y={median.medianContribution} stroke="var(--theme-text-muted)" strokeOpacity={0.4} strokeDasharray="4 4" />
+                  <ReferenceLine x={median.medianQty} stroke="var(--ds-muted)" strokeOpacity={0.4} strokeDasharray="4 4" />
+                  <ReferenceLine y={median.medianContribution} stroke="var(--ds-muted)" strokeOpacity={0.4} strokeDasharray="4 4" />
                   <Tooltip
                     cursor={{ strokeDasharray: '3 3' }}
                     content={({ active, payload }) => {
                       if (!active || !payload || !payload.length) return null;
                       const p = payload[0].payload;
                       return (
-                        <div style={{ background: 'var(--theme-bg-card)', borderRadius: 12, padding: '8px 12px', boxShadow: '0 8px 24px rgba(15,23,42,.12)', fontSize: 13 }}>
+                        <div style={{ background: 'var(--ds-card)', borderRadius: 12, padding: '8px 12px', boxShadow: '0 8px 24px rgba(15,23,42,.12)', fontSize: 13 }}>
                           <b style={{ display: 'block' }}>{p.name}</b>
-                          <span style={{ color: 'var(--theme-text-muted)' }}>{p.qty} vendus · {formatCurrency(p.contribution)}</span>
+                          <span style={{ color: 'var(--ds-muted)' }}>{p.qty} vendus · {formatCurrency(p.contribution)}</span>
                         </div>
                       );
                     }}
@@ -415,7 +415,7 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
                           {!it.has_cost_data && <span title="Aucun coût défini (ni recette ni coût d'achat)"><AlertTriangle size={14} style={{ color: 'var(--prj-orange)' }} /></span>}
                           <span>
                             <span className="ds-strong" style={{ display: 'block' }}>{it.name}</span>
-                            {it.category && <small style={{ color: 'var(--theme-text-muted)' }}>{it.category}</small>}
+                            {it.category && <small style={{ color: 'var(--ds-muted)' }}>{it.category}</small>}
                           </span>
                         </span>
                       </td>
@@ -424,12 +424,12 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
                       <td className="ds-num">{amount(parseFloat(it.revenue) || 0)}</td>
                       <td className="ds-num">
                         {amount(parseFloat(it.total_food_cost) || 0)}
-                        {it.has_cost_data && <small style={{ display: 'block', color: 'var(--theme-text-muted)' }}>{it.cost_from_production ? 'production réelle' : it.cost_from_recipe ? 'recette théorique' : 'coût manuel'}</small>}
+                        {it.has_cost_data && <small style={{ display: 'block', color: 'var(--ds-muted)' }}>{it.cost_from_production ? 'production réelle' : it.cost_from_recipe ? 'recette théorique' : 'coût manuel'}</small>}
                       </td>
                       <td className="ds-num">
                         {it.has_cost_data
                           ? <span className={foodPct > 35 ? 'kl-rep-tone-r' : foodPct > 30 ? 'kl-rep-tone-o' : 'kl-rep-tone-g'} style={{ fontWeight: 600 }}>{foodPct.toFixed(1)} %</span>
-                          : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                          : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
                       <td className="ds-num ds-strong">{amount(parseFloat(it.total_contribution) || 0)}</td>
                     </tr>
@@ -465,7 +465,7 @@ function CostTab({ costData, costLoading, lossStats }: {
   const [cbSort, setCbSort] = useState<string>('revenue');
   const [cbSortDir, setCbSortDir] = useState<'asc' | 'desc'>('desc');
   const toggleCbSort = (col: string) => { if (cbSort === col) setCbSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setCbSort(col); setCbSortDir('desc'); } };
-  const CbSortIcon = ({ col }: { col: string }) => cbSort === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '0.625rem' }}>{cbSortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '0.625rem' }}>▼</span>;
+  const CbSortIcon = ({ col }: { col: string }) => cbSort === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '11px' }}>{cbSortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '11px' }}>▼</span>;
 
   const displayedBreakdown = useMemo(() => {
     if (!costData) return [];

@@ -251,7 +251,7 @@ function DecisionPanel() {
                             style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 6, textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}>
                             {open ? <ChevronDown size={14} style={{ marginTop: 2 }} /> : <ChevronRight size={14} style={{ marginTop: 2 }} />}
                             <span>
-                              <span style={{ fontWeight: 600, color: 'var(--odoo-text)' }}>{p.product_name}</span>
+                              <span style={{ fontWeight: 600, color: 'var(--ds-ink)' }}>{p.product_name}</span>
                               <div style={muted}>{p.category_name || 'Sans catégorie'}</div>
                             </span>
                           </button>
@@ -276,10 +276,10 @@ function DecisionPanel() {
                                     onClick={() => setChoices(prev => ({ ...prev, [pid]: d }))}
                                     className={active ? `odoo-tag ${DEST[d].tag}` : undefined}
                                     style={{
-                                      padding: '2px 8px', fontSize: '0.75rem', borderRadius: 3, cursor: blocked ? 'not-allowed' : 'pointer',
-                                      border: `1px solid ${active ? 'transparent' : 'var(--odoo-border)'}`,
-                                      background: active ? undefined : 'var(--odoo-bg)',
-                                      color: active ? undefined : blocked ? 'var(--odoo-text-light)' : 'var(--ds-muted)',
+                                      padding: '2px 8px', fontSize: '12px', borderRadius: 3, cursor: blocked ? 'not-allowed' : 'pointer',
+                                      border: `1px solid ${active ? 'transparent' : 'var(--ds-sep)'}`,
+                                      background: active ? undefined : 'var(--ds-card)',
+                                      color: active ? undefined : blocked ? 'var(--ds-muted)' : 'var(--ds-muted)',
                                       fontWeight: active ? 600 : 400, opacity: blocked ? 0.5 : 1,
                                     }}>
                                     {destLabel(d)}
@@ -290,27 +290,27 @@ function DecisionPanel() {
                             </span>
                           ) : <span style={muted}>Tout vendu</span>}
                         </td>
-                        <td className="ds-num" style={{ color: dest === 'waste' && remaining > 0 ? 'var(--ds-danger)' : 'var(--odoo-text)' }}>
+                        <td className="ds-num" style={{ color: dest === 'waste' && remaining > 0 ? 'var(--ds-danger)' : 'var(--ds-ink)' }}>
                           {remaining > 0 ? n2(unitCost * remaining) : '—'}
                         </td>
                       </tr>
                       {remaining > 0 && over && (
                         <tr>
-                          <td colSpan={7} style={{ background: 'var(--odoo-bg-alt)' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem' }}>
+                          <td colSpan={7} style={{ background: 'var(--ds-bg)' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px' }}>
                               <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Motif du changement *</span>
                               <input type="text" value={reasons[pid] || ''} autoFocus={open}
                                 onChange={e => setReasons(prev => ({ ...prev, [pid]: e.target.value }))}
                                 placeholder="Ex. aspect encore correct, commande client demain..."
-                                style={{ ...inputStyle, flex: 1, borderColor: reasons[pid]?.trim() ? 'var(--odoo-border)' : 'var(--ds-warning)' }} />
+                                style={{ ...inputStyle, flex: 1, borderColor: reasons[pid]?.trim() ? 'var(--ds-sep)' : 'var(--ds-warning)' }} />
                             </label>
                           </td>
                         </tr>
                       )}
                       {open && (
                         <tr>
-                          <td colSpan={7} style={{ background: 'var(--odoo-bg-alt)' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px 16px', fontSize: '0.8125rem' }}>
+                          <td colSpan={7} style={{ background: 'var(--ds-bg)' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px 16px', fontSize: '13px' }}>
                               <Detail label="Type de vente" value={p.sale_type === 'jour' ? 'Vente du jour' : p.sale_type === 'dlv' ? 'Multi-jours (DLC)' : 'Sur commande'} />
                               <Detail label="DLC" value={`${p.shelf_life_days || '—'} jour(s)`} />
                               <Detail label="Exposition max" value={`${p.display_life_hours || '—'} h`} />
@@ -320,7 +320,7 @@ function DecisionPanel() {
                               {p.expires_at && <Detail label="Expiration" value={format(new Date(p.expires_at), 'dd MMM yyyy HH:mm', { locale: fr })}
                                 danger={new Date(p.expires_at) <= new Date()} />}
                             </div>
-                            <div style={{ ...muted, marginTop: 8, fontSize: '0.75rem' }}>
+                            <div style={{ ...muted, marginTop: 8, fontSize: '12px' }}>
                               <strong>Pourquoi cette proposition :</strong> {p.suggested_reason || '—'}
                             </div>
                           </td>
@@ -334,7 +334,7 @@ function DecisionPanel() {
           </DataPanel>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+            <span style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
               {summary.all.n} produit{summary.all.n > 1 ? 's' : ''} à traiter
               {missingReason && <> · <span style={{ color: 'var(--ds-warning)', fontWeight: 600 }}>motif manquant</span></>}
             </span>
@@ -353,7 +353,7 @@ function Detail({ label, value, danger }: { label: string; value: string; danger
   return (
     <div>
       <div style={muted}>{label}</div>
-      <div style={{ fontWeight: 600, color: danger ? 'var(--ds-danger)' : 'var(--odoo-text)' }}>{value}</div>
+      <div style={{ fontWeight: 600, color: danger ? 'var(--ds-danger)' : 'var(--ds-ink)' }}>{value}</div>
     </div>
   );
 }
@@ -461,7 +461,7 @@ export function InvendusDashboard() {
   return (
     <>
       <div className="prj-toolbar">
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '13px', color: 'var(--ds-muted)' }}>
           Mois
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className="odoo-filter-dropdown">
             {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
@@ -522,7 +522,7 @@ export function InvendusDashboard() {
                     {byCategory.map(([cat, v]) => (
                       <tr key={cat}>
                         <td>{cat}</td>
-                        {DESTS.map(d => <td key={d} style={{ textAlign: 'right', color: v[d] ? 'var(--odoo-text)' : 'var(--ds-muted)' }}>{v[d] ? n0(v[d]) : '—'}</td>)}
+                        {DESTS.map(d => <td key={d} style={{ textAlign: 'right', color: v[d] ? 'var(--ds-ink)' : 'var(--ds-muted)' }}>{v[d] ? n0(v[d]) : '—'}</td>)}
                       </tr>
                     ))}
                   </tbody>

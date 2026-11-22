@@ -368,12 +368,12 @@ export default function ConsommationTab() {
           <>
             <input type="date" value={customFrom} max={customTo} onChange={e => setCustomFrom(e.target.value)}
               className="ds-input sm" style={{ width: 150 }} aria-label="Du" />
-            <span style={{ color: 'var(--theme-text-muted)' }} aria-hidden="true">→</span>
+            <span style={{ color: 'var(--ds-muted)' }} aria-hidden="true">→</span>
             <input type="date" value={customTo} min={customFrom} onChange={e => setCustomTo(e.target.value)}
               className="ds-input sm" style={{ width: 150 }} aria-label="Au" />
           </>
         )}
-        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+        <span style={{ color: 'var(--ds-muted)', fontSize: '13px' }}>
           Période : <strong style={{ textTransform: 'capitalize' }}>{periodLabel}</strong>
         </span>
         <span className="stk-grow" />
@@ -398,13 +398,13 @@ export default function ConsommationTab() {
             return (
               <section key={cat.name} className="ds-panel" aria-label={cat.name}>
                 <button type="button" onClick={() => setExpandedCats(s => ({ ...s, [cat.name]: !isOpen }))} aria-expanded={isOpen}
-                  style={{ width: '100%', padding: '14px 18px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9375rem' }}>
+                  style={{ width: '100%', padding: '14px 18px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: '14px' }}>
                   {isOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
                   <strong className="ds-strong" style={{ textTransform: 'capitalize' }}>{cat.name}</strong>
-                  <span style={{ color: 'var(--theme-text-muted)' }}>({cat.ingredients.length} article{cat.ingredients.length > 1 ? 's' : ''})</span>
+                  <span style={{ color: 'var(--ds-muted)' }}>({cat.ingredients.length} article{cat.ingredients.length > 1 ? 's' : ''})</span>
                   <div style={{ flex: 1 }} />
                   <strong className="ds-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>{money(cat.total)}</strong>
-                  <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
+                  <span style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>
                     {grandTotal > 0 ? Math.round((cat.total / grandTotal) * 100) : 0}%
                   </span>
                 </button>
@@ -428,15 +428,15 @@ export default function ConsommationTab() {
                           <tr key={it.ingredient_id}>
                             <td className="ds-strong">{it.ingredient_name}</td>
                             <td className="ds-num">
-                              {it.total_qty.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{it.ingredient_unit}</span>
+                              {it.total_qty.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} <span style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>{it.ingredient_unit}</span>
                             </td>
-                            <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>
                               {n(it.unit_cost)}
                             </td>
-                            <td className="ds-num" style={{ color: bc > 0 ? undefined : 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: bc > 0 ? undefined : 'var(--ds-muted)' }}>
                               {bc > 0 ? n(bc) : '—'}
                             </td>
-                            <td className="ds-num" style={{ color: direct > 0 ? undefined : 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: direct > 0 ? undefined : 'var(--ds-muted)' }}>
                               {direct > 0 ? n(direct) : '—'}
                             </td>
                             <td className="ds-num ds-strong">
@@ -469,18 +469,18 @@ export default function ConsommationTab() {
                           <tr key={ing.ingredient_id}>
                             <td className="ds-strong">{ing.ingredient_name}</td>
                             <td className="ds-num">
-                              {ing.total_qty.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{ing.ingredient_unit}</span>
+                              {ing.total_qty.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} <span style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>{ing.ingredient_unit}</span>
                             </td>
-                            <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>
                               {n(ing.unit_cost)}
                             </td>
-                            <td className="ds-num" style={{ color: prod > 0 ? undefined : 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: prod > 0 ? undefined : 'var(--ds-muted)' }}>
                               {prod > 0 ? n(prod) : '—'}
                             </td>
-                            <td className="ds-num" style={{ color: waste > 0 ? 'var(--ds-danger)' : 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: waste > 0 ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>
                               {waste > 0 ? n(waste) : '—'}
                             </td>
-                            <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>
                               {adj > 0 ? n(adj) : '—'}
                             </td>
                             <td className="ds-num ds-strong">

@@ -153,15 +153,15 @@ export default function LoginPage() {
       } finally { setLoading(false); }
     };
     return (
-      <div className="kl-ds min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
-        <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
-          <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--theme-accent)' }}>{t('auth.mfaTitle')}</h1>
+      <div className="kl-ds min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
+        <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--ds-card)' }}>
+          <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--ds-accent)' }}>{t('auth.mfaTitle')}</h1>
           <p className="text-sm mb-4" style={{ color: 'var(--ds-muted)' }}>{t('auth.mfaHelp')}</p>
           <form onSubmit={submitCode} className="space-y-4">
             <input className="input" autoFocus autoComplete="one-time-code" inputMode="text" maxLength={12} placeholder="123456"
               aria-label={t('auth.mfaCodeLabel')} dir="ltr" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} />
             <button type="submit" disabled={loading || mfaCode.trim().length < 6} className="btn-primary w-full py-3">{loading ? t('auth.verifying') : t('common.validate')}</button>
-            <button type="button" className="text-sm w-full" style={{ color: 'var(--theme-accent)' }} onClick={() => { setMfaToken(null); setMfaCode(''); }}>{t('common.back')}</button>
+            <button type="button" className="text-sm w-full" style={{ color: 'var(--ds-accent)' }} onClick={() => { setMfaToken(null); setMfaCode(''); }}>{t('common.back')}</button>
           </form>
         </div>
       </div>
@@ -171,11 +171,11 @@ export default function LoginPage() {
   // ═══════ EMAIL MODE ═══════
   if (mode === 'email') {
     return (
-      <div className="kl-ds relative min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+      <div className="kl-ds relative min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
         <LanguageSelect className="absolute top-4 end-4" />
-        <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
+        <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--ds-card)' }}>
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold" style={{ color: 'var(--theme-accent)' }}>{settings.companyName}</h1>
+            <h1 className="text-3xl font-bold" style={{ color: 'var(--ds-accent)' }}>{settings.companyName}</h1>
             <p className="mt-1" style={{ color: 'var(--ds-muted)' }}>{settings.subtitle}</p>
           </div>
 
@@ -216,7 +216,7 @@ export default function LoginPage() {
           <div className="text-center mt-6">
             <button type="button" onClick={() => setSearchParams({})}
               className="text-sm font-medium flex items-center gap-2 mx-auto"
-              style={{ color: 'var(--theme-accent)' }}>
+              style={{ color: 'var(--ds-accent)' }}>
               <Lock size={14} /> {t('auth.pinLogin')}
             </button>
           </div>
@@ -227,10 +227,10 @@ export default function LoginPage() {
 
   // ═══════ PIN MODE ═══════
   return (
-    <div className="kl-ds relative min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+    <div className="kl-ds relative min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
       <LanguageSelect className="absolute top-4 end-4" />
       <div className="text-center mb-10">
-        <h1 className="text-5xl font-bold" style={{ color: 'var(--theme-accent)' }}>{settings.companyName}</h1>
+        <h1 className="text-5xl font-bold" style={{ color: 'var(--ds-accent)' }}>{settings.companyName}</h1>
         <p className="mt-1" style={{ color: 'var(--ds-muted)' }}>{settings.subtitle}</p>
       </div>
 
@@ -262,9 +262,9 @@ export default function LoginPage() {
               {pinUsers.map(u => (
                 <button key={u.id} type="button" onClick={() => { setSelected(u); setPin(''); setError(''); }}
                   className="rounded-2xl shadow p-4 flex flex-col items-center gap-2 transition-all active:scale-95 hover:shadow-md"
-                  style={{ backgroundColor: 'var(--theme-bg-card)' }}>
+                  style={{ backgroundColor: 'var(--ds-card)' }}>
                   <span className="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-semibold"
-                    style={{ backgroundColor: 'var(--theme-accent)' }}>
+                    style={{ backgroundColor: 'var(--ds-accent)' }}>
                     {(u.firstName[0] ?? '?').toUpperCase()}{u.lastInitial}
                   </span>
                   <span className="text-sm font-medium text-gray-800 text-center leading-tight">
@@ -298,14 +298,14 @@ export default function LoginPage() {
             ? <span className="text-sm text-gray-300">• • • •</span>
             : Array.from({ length: pin.length }, (_, i) => (
               <div key={i} className="w-4 h-4 rounded-full"
-                style={{ backgroundColor: error ? 'var(--ds-danger)' : 'var(--theme-accent)' }} />
+                style={{ backgroundColor: error ? 'var(--ds-danger)' : 'var(--ds-accent)' }} />
             ))}
         </div>
 
         {error && <div role="alert" className="text-sm font-semibold mb-4" style={{ color: 'var(--ds-danger)' }}>{error}</div>}
-        {loading && <div role="status" className="text-sm font-medium mb-4" style={{ color: 'var(--theme-accent)' }}>{t('auth.verifying')}</div>}
+        {loading && <div role="status" className="text-sm font-medium mb-4" style={{ color: 'var(--ds-accent)' }}>{t('auth.verifying')}</div>}
 
-        <div className="rounded-2xl shadow-lg p-5 w-full max-w-xs" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
+        <div className="rounded-2xl shadow-lg p-5 w-full max-w-xs" style={{ backgroundColor: 'var(--ds-card)' }}>
           <div className="grid grid-cols-3 gap-3">
             {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
               <button key={digit} type="button" onClick={() => handleDigit(digit)} disabled={loading}

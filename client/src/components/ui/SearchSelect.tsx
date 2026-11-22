@@ -162,7 +162,7 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
           boxShadow: '0 8px 24px rgba(15,23,42,0.14)',
         }}>
           {filtered.length === 0 && (
-            <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', padding: '0.5rem 0.75rem', margin: 0 }}>Aucun résultat</p>
+            <p style={{ fontSize: '13px', color: 'var(--ds-muted)', padding: '0.5rem 0.75rem', margin: 0 }}>Aucun résultat</p>
           )}
           {filtered.map((o, i) => (
             <button
@@ -183,11 +183,11 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
                   {o.label}
                 </span>
                 {o.sublabel && (
-                  <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{o.sublabel}</span>
+                  <span style={{ display: 'block', fontSize: '12px', color: 'var(--ds-muted)' }}>{o.sublabel}</span>
                 )}
               </span>
               {o.detail && (
-                <span style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)', flexShrink: 0 }}>{o.detail}</span>
+                <span style={{ fontSize: '12px', color: 'var(--ds-muted)', flexShrink: 0 }}>{o.detail}</span>
               )}
             </button>
           ))}

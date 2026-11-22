@@ -135,7 +135,7 @@ export default function ReorderPointsTab() {
                 </td>
                 <td className="ds-num">{numberCell(r, 'safetyStock', r.safety_stock, r.replenish_mode === 'calcule')}</td>
                 <td className="ds-num">{numberCell(r, 'reorderPoint', r.reorder_point, r.replenish_mode === 'calcule')}</td>
-                <td className="ds-num" style={{ color: hasProposal(r) ? 'var(--odoo-text)' : 'var(--odoo-text-muted)' }}>{n(r.proposed_reorder_point ?? r.live_reorder_point)}</td>
+                <td className="ds-num" style={{ color: hasProposal(r) ? 'var(--ds-ink)' : 'var(--ds-muted)' }}>{n(r.proposed_reorder_point ?? r.live_reorder_point)}</td>
                 <td className="ds-num">{numberCell(r, 'maxStock', r.max_stock)}</td>
                 <td>
                   <select className="ds-input sm" value={r.replenish_mode} aria-label={`Mode de ${r.ingredient_name}`} style={{ width: 'auto' }}
@@ -150,7 +150,7 @@ export default function ReorderPointsTab() {
         </table>
       </DataPanel>
       )}
-      <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+      <p style={{ margin: 0, fontSize: '13px', color: 'var(--ds-muted)' }}>
         * Délai par défaut ({data.params.default_lead_days} j) : renseignez le délai sur la fiche article × fournisseur pour un calcul juste.
       </p>
     </div>

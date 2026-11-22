@@ -69,13 +69,13 @@ export default function LossDeclare({ onClose }: { onClose: () => void }) {
 function KindCard({ icon: Icon, title, text, onClick }: { icon: typeof Trash2; title: string; text: string; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick}
-      style={{ textAlign: 'left', padding: '14px 14px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--theme-bg-card)', display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer' }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--theme-accent)'; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--odoo-border)'; }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '0.875rem', color: 'var(--odoo-text)' }}>
-        <Icon size={16} style={{ color: 'var(--theme-accent)' }} /> {title}
+      style={{ textAlign: 'left', padding: '14px 14px', border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-card)', display: 'flex', flexDirection: 'column', gap: 6, cursor: 'pointer' }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--ds-accent)'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--ds-sep)'; }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '14px', color: 'var(--ds-ink)' }}>
+        <Icon size={16} style={{ color: 'var(--ds-accent)' }} /> {title}
       </span>
-      <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', lineHeight: 1.45 }}>{text}</span>
+      <span style={{ fontSize: '12px', color: 'var(--ds-muted)', lineHeight: 1.45 }}>{text}</span>
     </button>
   );
 }
@@ -125,7 +125,7 @@ function LotPicker({ onPick }: { onPick: (lot: LotMovementLot) => void }) {
                     <span className="ds-strong">{l.ingredient_name}</span>
                     {(l.lot_number || l.supplier_lot_number) && <div className="ds-ref" style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{l.lot_number ?? l.supplier_lot_number}</div>}
                   </td>
-                  <td style={{ fontSize: '0.75rem', color: expired ? 'var(--ds-danger)' : 'var(--ds-muted)', fontWeight: expired ? 600 : 400, whiteSpace: 'nowrap' }}>
+                  <td style={{ fontSize: '12px', color: expired ? 'var(--ds-danger)' : 'var(--ds-muted)', fontWeight: expired ? 600 : 400, whiteSpace: 'nowrap' }}>
                     {expired && <AlertTriangle size={11} style={{ verticalAlign: -1, marginRight: 3 }} />}
                     {l.expiration_date ? format(new Date(l.expiration_date), 'dd/MM/yyyy') : '—'}
                   </td>

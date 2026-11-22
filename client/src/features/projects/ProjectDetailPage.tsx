@@ -195,7 +195,7 @@ export default function ProjectDetailPage() {
 
             <div className="prj-tab-body">
               {tab === 'tasks' && (tasks.length === 0 ? (
-                <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucune tâche. Découpez le projet en étapes à affecter.</p>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--ds-muted)' }}>Aucune tâche. Découpez le projet en étapes à affecter.</p>
               ) : taskLayout === 'board' ? (
                 <TaskBoard tasks={tasks} editable={editable} onMove={(taskId, status) => setTaskStatus.mutate({ taskId, status })}
                   onOpen={t => editable && setTaskModal({ task: t })} />
@@ -208,7 +208,7 @@ export default function ProjectDetailPage() {
                         <td><input type="checkbox" aria-label={`Fait : ${t.title}`} checked={t.status === 'done'} disabled={!editable} onChange={e => setTaskStatus.mutate({ taskId: t.id, status: e.target.checked ? 'done' : 'todo' })} /></td>
                         <td onClick={() => editable && setTaskModal({ task: t })} style={{ cursor: editable ? 'pointer' : 'default' }}>
                           <span className="ds-strong" style={{ textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}</span>
-                          {t.description && <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{t.description}</div>}
+                          {t.description && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{t.description}</div>}
                         </td>
                         <td>{t.assignee_name || '—'}</td>
                         <td><span className={`odoo-tag ${PRIORITY_TAG[t.priority]}`}>{PRIORITY_LABELS[t.priority]}</span></td>
@@ -263,7 +263,7 @@ export default function ProjectDetailPage() {
                         <td><span className={`odoo-tag ${inv.invoice_type === 'received' ? 'odoo-tag-orange' : 'odoo-tag-blue'}`}>{inv.invoice_type === 'received' ? 'Coût' : 'Produit'}</span></td>
                         <td>{inv.supplier_name || inv.category_name || '—'}</td>
                         <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(inv.invoice_date), 'd MMM yyyy', { locale: fr })}</td>
-                        <td>{inv.status === 'cancelled' ? <StatusTag tone="cancelled" label="Annulée" /> : <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{inv.status}</span>}</td>
+                        <td>{inv.status === 'cancelled' ? <StatusTag tone="cancelled" label="Annulée" /> : <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{inv.status}</span>}</td>
                         <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{n2(inv.amount)}</td>
                         <td className="ds-actions">{editable && <button type="button" className="ds-icon-btn" title="Détacher" aria-label={`Détacher ${inv.invoice_number}`} onClick={async () => { if (await confirm(`Détacher la facture ${inv.invoice_number} du projet ?`)) unlinkInvoice.mutate(inv.id); }}><Trash2 size={15} aria-hidden="true" /></button>}</td>
                       </tr>
@@ -273,7 +273,7 @@ export default function ProjectDetailPage() {
               ))}
 
               {tab === 'notes' && (
-                <div style={{ display: 'grid', gap: 12, fontSize: '0.875rem' }}>
+                <div style={{ display: 'grid', gap: 12, fontSize: '14px' }}>
                   {p.description && <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{p.description}</p>}
                   {p.notes && <p style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ds-muted)' }}>{p.notes}</p>}
                 </div>
@@ -285,19 +285,19 @@ export default function ProjectDetailPage() {
             <section className="prj-panel">
               <h2>Rentabilité</h2>
               <div className="prj-stack" aria-hidden="true">
-                <span style={{ width: seg(externalCost), background: 'var(--odoo-purple)' }} />
-                <span style={{ width: seg(laborCost), background: 'color-mix(in srgb, var(--odoo-purple) 45%, transparent)' }} />
+                <span style={{ width: seg(externalCost), background: 'var(--ds-accent)' }} />
+                <span style={{ width: seg(laborCost), background: 'color-mix(in srgb, var(--ds-accent) 45%, transparent)' }} />
                 {margin > 0 && <span style={{ width: seg(margin), background: 'var(--ds-success)' }} />}
               </div>
               <dl className="prj-legend">
-                <dt><span className="prj-swatch" style={{ background: 'var(--odoo-purple)' }} />Achats rattachés</dt><dd>{money(externalCost, { decimals: 0 })}</dd>
-                <dt><span className="prj-swatch" style={{ background: 'color-mix(in srgb, var(--odoo-purple) 45%, transparent)' }} />Main-d’œuvre ({h1(p.hours_spent)} h)</dt><dd>{money(laborCost, { decimals: 0 })}</dd>
+                <dt><span className="prj-swatch" style={{ background: 'var(--ds-accent)' }} />Achats rattachés</dt><dd>{money(externalCost, { decimals: 0 })}</dd>
+                <dt><span className="prj-swatch" style={{ background: 'color-mix(in srgb, var(--ds-accent) 45%, transparent)' }} />Main-d’œuvre ({h1(p.hours_spent)} h)</dt><dd>{money(laborCost, { decimals: 0 })}</dd>
                 {revenue > 0 && <>
                   <dt><span className="prj-swatch" style={{ background: margin < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }} />{margin < 0 ? 'Perte' : 'Marge'}</dt>
                   <dd style={{ color: margin < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{money(margin, { decimals: 0 })}</dd>
                 </>}
               </dl>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', borderTop: '1px solid var(--odoo-border)', paddingTop: 10 }}>
+              <div style={{ fontSize: '13px', color: 'var(--ds-muted)', borderTop: '1px solid var(--ds-sep)', paddingTop: 10 }}>
                 {revenue > 0 ? `${p.billing_type === 'fixed' ? 'Forfait' : 'Facturable'} ${money(revenue, { decimals: 0 })}` : 'Projet non facturé'}
                 {p.billing_type === 'time' && Number(p.unbilled_amount) > 0 ? ` · reste à facturer ${money(p.unbilled_amount, { decimals: 0 })}` : ''}
               </div>

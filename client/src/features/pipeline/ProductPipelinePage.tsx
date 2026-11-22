@@ -52,7 +52,7 @@ const STAGE_STAT_KEY: Record<string, string> = {
 };
 const STAGE_DEFS: StageDef[] = STAGES.map(s => ({ key: s.key, label: s.label, hint: STAGE_HINTS[s.key], icon: s.icon }));
 
-const odooTile: React.CSSProperties = { background: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 12 };
+const odooTile: React.CSSProperties = { background: 'var(--ds-bg)', border: '1px solid var(--ds-sep)', borderRadius: 4, padding: 12 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   active: { label: 'En cours', color: 'blue', icon: Clock },
@@ -202,7 +202,7 @@ export default function ProductPipelinePage() {
                     <td>
                       <div className="ds-strong">{String(p.name)}</div>
                       {Boolean(p.description) && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: '12px', color: 'var(--ds-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {String(p.description)}
                         </div>
                       )}
@@ -210,11 +210,11 @@ export default function ProductPipelinePage() {
                     <td>
                       {Boolean(p.category_name)
                         ? <span className="odoo-tag odoo-tag-grey">{String(p.category_name)}</span>
-                        : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}
+                        : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                     </td>
                     <td style={{ minWidth: 160 }}>
                       <StageProgress count={STAGES.length} current={stageIdx} done={p.status === 'completed'} />
-                      <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
                         Étape {stageIdx + 1}/7 — {STAGES[stageIdx]?.label || ''}
                       </span>
                     </td>
@@ -222,7 +222,7 @@ export default function ProductPipelinePage() {
                     <td>
                       {Boolean(p.responsible_first_name)
                         ? `${String(p.responsible_first_name)} ${String(p.responsible_last_name || '')}`.trim()
-                        : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}
+                        : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                     </td>
                     <td style={{ color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
                       {Boolean(p.created_at) ? format(new Date(String(p.created_at)), 'dd MMM yyyy', { locale: fr }) : '—'}
@@ -317,7 +317,7 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
       <div className="odoo-control-bar">
         <button onClick={onBack} className="odoo-pager-btn" title="Retour à la liste" aria-label="Retour à la liste"><ChevronLeft size={16} /></button>
         <div className="odoo-breadcrumb">
-          <GitBranch size={14} style={{ color: 'var(--theme-accent)' }} />
+          <GitBranch size={14} style={{ color: 'var(--ds-accent)' }} />
           <span>Pipeline</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">{String(p.name)}</span>
@@ -333,24 +333,24 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
       </div>
 
       {/* Frise des étapes */}
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: 20 }}>
+      <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-card)', padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {STAGES.map((stage, idx) => {
             const isCompleted = idx < currentStageIdx || p.status === 'completed';
             const isCurrent = idx === currentStageIdx && isActive;
             const StageIcon = stage.icon;
-            const circleBg = isCompleted ? 'var(--odoo-purple)' : isCurrent ? 'var(--odoo-purple-light)' : 'var(--odoo-border)';
-            const circleColor = isCompleted ? '#fff' : isCurrent ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)';
+            const circleBg = isCompleted ? 'var(--ds-accent)' : isCurrent ? 'var(--ds-tint)' : 'var(--ds-sep)';
+            const circleColor = isCompleted ? '#fff' : isCurrent ? 'var(--ds-accent)' : 'var(--ds-muted)';
             return (
               <div key={stage.key} style={{ display: 'flex', alignItems: 'center', flex: idx < STAGES.length - 1 ? 1 : '0 0 auto' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: circleBg, color: circleColor, boxShadow: isCurrent ? '0 0 0 2px var(--odoo-purple)' : 'none' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: circleBg, color: circleColor, boxShadow: isCurrent ? '0 0 0 2px var(--ds-accent)' : 'none' }}>
                     {isCompleted ? <CheckCircle2 size={18} /> : <StageIcon size={16} />}
                   </div>
-                  <span style={{ fontSize: '0.6875rem', marginTop: 6, fontWeight: 600, color: isCurrent ? 'var(--odoo-purple)' : isCompleted ? 'var(--odoo-text)' : 'var(--odoo-text-muted)' }}>{stage.label}</span>
+                  <span style={{ fontSize: '12px', marginTop: 6, fontWeight: 600, color: isCurrent ? 'var(--ds-accent)' : isCompleted ? 'var(--ds-ink)' : 'var(--ds-muted)' }}>{stage.label}</span>
                 </div>
                 {idx < STAGES.length - 1 && (
-                  <div style={{ flex: 1, height: 2, margin: '-18px 8px 0', background: idx < currentStageIdx ? 'var(--odoo-purple)' : 'var(--odoo-border)' }} />
+                  <div style={{ flex: 1, height: 2, margin: '-18px 8px 0', background: idx < currentStageIdx ? 'var(--ds-accent)' : 'var(--ds-sep)' }} />
                 )}
               </div>
             );
@@ -383,7 +383,7 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
           {/* Info card */}
           <div className="odoo-section">
             <div className="odoo-section-header">Informations</div>
-            <div style={{ padding: 12, display: 'grid', gap: 8, fontSize: '0.8125rem' }}>
+            <div style={{ padding: 12, display: 'grid', gap: 8, fontSize: '13px' }}>
               <InfoRow label="Catégorie" value={String(p.category_name || '—')} />
               <InfoRow label="Responsable" value={p.responsible_first_name ? `${String(p.responsible_first_name)} ${String(p.responsible_last_name)}` : '—'} />
               <InfoRow label="Date cible" value={p.target_date ? format(new Date(String(p.target_date)), 'dd MMM yyyy', { locale: fr }) : '—'} />
@@ -398,7 +398,7 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
           {/* Action button */}
           {isActive && (
-            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: 14 }}>
+            <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-card)', padding: 14 }}>
               {p.current_stage === 'catalog_integration' ? (
                 <button
                   onClick={() => integrateMutation.mutate()}
@@ -485,11 +485,11 @@ function StageContent({ pipeline: p, onRefresh }: { pipeline: Pipeline; onRefres
         if (!isCompleted && !isCurrent) return null;
 
         return (
-          <div key={s.key} style={{ border: `1px solid ${isCurrent ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4, background: 'var(--odoo-bg)', padding: 16, boxShadow: isCurrent ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none' }}>
+          <div key={s.key} style={{ border: `1px solid ${isCurrent ? 'var(--ds-accent)' : 'var(--ds-sep)'}`, borderRadius: 4, background: 'var(--ds-card)', padding: 16, boxShadow: isCurrent ? 'inset 0 0 0 1px var(--ds-accent)' : 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <s.icon size={16} style={{ color: isCurrent ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)' }} />
-              <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>{s.label}</h3>
-              {isCompleted && !isCurrent && <CheckCircle2 size={14} style={{ color: 'var(--odoo-purple)' }} />}
+              <s.icon size={16} style={{ color: isCurrent ? 'var(--ds-accent)' : 'var(--ds-muted)' }} />
+              <h3 style={{ fontWeight: 600, fontSize: '14px' }}>{s.label}</h3>
+              {isCompleted && !isCurrent && <CheckCircle2 size={14} style={{ color: 'var(--ds-accent)' }} />}
               {isCurrent && <span className="odoo-tag odoo-tag-purple">Étape actuelle</span>}
             </div>
 
@@ -532,7 +532,7 @@ function PropositionStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipe
         <p><span className="text-gray-500">Responsable:</span> {p.responsible_first_name ? `${String(p.responsible_first_name)} ${String(p.responsible_last_name)}` : '—'}</p>
         <p><span className="text-gray-500">Date cible:</span> {p.target_date ? format(new Date(String(p.target_date)), 'dd MMM yyyy', { locale: fr }) : '—'}</p>
         {editable && (
-          <button onClick={() => setEditing(true)} className="odoo-btn-secondary" style={{ marginTop: 8, padding: '4px 8px', fontSize: '0.75rem' }}>
+          <button onClick={() => setEditing(true)} className="odoo-btn-secondary" style={{ marginTop: 8, padding: '4px 8px', fontSize: '12px' }}>
             Modifier
           </button>
         )}
@@ -817,7 +817,7 @@ function TastingStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline
               <input
                 type="number" min="0" max="10" step="0.5" aria-label={`Note ${c.label} sur 10`}
                 value={c.value || ''} onChange={e => c.setter(parseFloat(e.target.value) || 0)}
-                className="ds-input" style={{ width: 72, margin: '4px auto 0', textAlign: 'center', fontSize: '1.125rem', fontWeight: 700 }}
+                className="ds-input" style={{ width: 72, margin: '4px auto 0', textAlign: 'center', fontSize: '17px', fontWeight: 700 }}
               />
             ) : (
               <p className="text-xl font-bold text-gray-900 mt-1">{c.value || '—'}</p>

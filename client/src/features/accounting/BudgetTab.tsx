@@ -219,7 +219,7 @@ function Variance({ budget, actual, cls }: { budget: number; actual: number; cls
   if (budget === 0 && actual === 0) return <span style={{ color: 'var(--ds-muted)' }}>—</span>;
   return (
     <span style={{ color: favorable ? 'var(--ds-success)' : 'var(--ds-danger)', fontWeight: 600 }}>
-      {diff >= 0 ? '+' : ''}{dh(diff)}{pct != null && <span style={{ fontWeight: 400, fontSize: '0.6875rem' }}> ({pct >= 0 ? '+' : ''}{pct} %)</span>}
+      {diff >= 0 ? '+' : ''}{dh(diff)}{pct != null && <span style={{ fontWeight: 400, fontSize: '12px' }}> ({pct >= 0 ? '+' : ''}{pct} %)</span>}
     </span>
   );
 }
@@ -258,7 +258,7 @@ function Comparison({ data }: { data: BudgetComparison }) {
         </p>
       )}
       <div className="ds-panel" style={{ padding: '16px 16px 8px' }}>
-        <div style={{ fontSize: '0.8125rem', fontWeight: 600, marginBottom: 6 }}>Résultat mensuel ({currencySymbol()}) — budget et réel</div>
+        <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: 6 }}>Résultat mensuel ({currencySymbol()}) — budget et réel</div>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={chart} barGap={2} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
             <CartesianGrid vertical={false} stroke="var(--ds-hair)" />

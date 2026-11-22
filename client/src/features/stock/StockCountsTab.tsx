@@ -106,15 +106,15 @@ function NewCount({ onCancel, onCreated }: { onCancel: () => void; onCreated: (c
           <option value="both">Matières et consommables</option><option value="ingredient">Matières premières</option><option value="packaging">Consommables (emballages…)</option>
         </select></FormField>
       </div>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '13px' }}>
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.blind} onChange={e => setF({ ...f, blind: e.target.checked })} /> Comptage à l'aveugle (le compteur ne voit pas le stock théorique)</label>
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.includeInactive} onChange={e => setF({ ...f, includeInactive: e.target.checked })} /> Inclure les articles sans stock ni mouvement depuis 6 mois</label>
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.partial} onChange={e => setF({ ...f, partial: e.target.checked })} /> Seulement certaines catégories (inventaire tournant)</label>
       </div>
       {f.partial && (
-        <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 8, background: 'var(--odoo-bg)' }}>
+        <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--ds-sep)', borderRadius: 4, padding: 8, background: 'var(--ds-card)' }}>
           {branches.map(b => (
-            <label key={b.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '0.8125rem', paddingLeft: b.depth * 16 }}>
+            <label key={b.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '13px', paddingLeft: b.depth * 16 }}>
               <input type="checkbox" checked={cats.has(b.id)} onChange={e => { const s = new Set(cats); if (e.target.checked) s.add(b.id); else s.delete(b.id); setCats(s); }} />
               {b.name}
             </label>
@@ -208,10 +208,10 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
       </HeaderActions>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ flex: 1, height: 8, borderRadius: 999, background: 'var(--theme-bg-separator)' }}>
-          <div style={{ width: `${c.lines_total ? Math.round(c.lines_counted / c.lines_total * 100) : 0}%`, height: '100%', borderRadius: 999, background: c.lines_counted === c.lines_total ? 'var(--ds-success)' : 'var(--theme-accent)' }} />
+        <div style={{ flex: 1, height: 8, borderRadius: 999, background: 'var(--ds-sep)' }}>
+          <div style={{ width: `${c.lines_total ? Math.round(c.lines_counted / c.lines_total * 100) : 0}%`, height: '100%', borderRadius: 999, background: c.lines_counted === c.lines_total ? 'var(--ds-success)' : 'var(--ds-accent)' }} />
         </div>
-        <span style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>{c.lines_counted}/{c.lines_total} compté(s)</span>
+        <span style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>{c.lines_counted}/{c.lines_total} compté(s)</span>
       </div>
 
       {c.status === 'counting' && (
@@ -225,7 +225,7 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
       )}
       {isDirection && (c.status === 'review' || c.status === 'counting') && (
         <section className="prj-panel" style={{ padding: '14px 18px', display: 'grid', gap: 10 }} aria-label="Écarts et validation">
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: '0.875rem' }}>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: '14px' }}>
             <span>Écarts : <strong>{totals.gaps}</strong></span>
             <span>Excédents : <strong style={{ color: 'var(--ds-success)' }}>+{money(totals.gain)}</strong></span>
             <span>Manquants : <strong style={{ color: 'var(--ds-danger)' }}>{money(totals.loss)}</strong></span>
@@ -233,7 +233,7 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
             <span>Non comptés : <strong>{totals.uncounted}</strong></span>
           </div>
           {totals.uncounted > 0 && (
-            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.8125rem' }}>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '13px' }}>
               <input type="checkbox" checked={zeroUncounted} onChange={e => setZeroUncounted(e.target.checked)} />
               Mettre à zéro les {totals.uncounted} article(s) non compté(s) (inventaire complet : ce qui n'a pas été trouvé n'existe plus)
             </label>
@@ -286,7 +286,7 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
               <tr key={l.id}>
                 <td><span className="ds-strong">{l.item_name}</span><div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{l.category_name ?? (l.item_kind === 'packaging' ? 'Consommable' : '')}{l.container_size ? ` · contenant ${qty(l.container_size)} ${l.unit ?? ''}` : ''}</div></td>
                 <td>{l.unit}</td>
-                {showTh && <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{qty(th)}</td>}
+                {showTh && <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{qty(th)}</td>}
                 <td className="ds-num">
                   {editable ? (
                     <input className="ds-input ds-num" style={{ borderColor: l.counted_qty != null ? 'var(--ds-success)' : undefined }} inputMode="decimal"
@@ -294,14 +294,14 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
                       onChange={e => setDrafts({ ...drafts, [l.id]: e.target.value })}
                       onBlur={() => commit(l)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                       aria-label={`Quantité comptée ${l.item_name}`} placeholder="—" />
-                  ) : <span style={{ fontWeight: 600 }}>{l.counted_qty != null ? qty(l.counted_qty) : <span style={{ color: 'var(--theme-text-muted)' }}>non compté</span>}</span>}
+                  ) : <span style={{ fontWeight: 600 }}>{l.counted_qty != null ? qty(l.counted_qty) : <span style={{ color: 'var(--ds-muted)' }}>non compté</span>}</span>}
                 </td>
-                {showTh && <td className="ds-num" style={{ fontWeight: g && Math.abs(g) > 0.0005 ? 600 : 400, color: g == null ? undefined : g < -0.0005 ? 'var(--ds-danger)' : g > 0.0005 ? 'var(--ds-success)' : 'var(--theme-text-muted)' }}>
+                {showTh && <td className="ds-num" style={{ fontWeight: g && Math.abs(g) > 0.0005 ? 600 : 400, color: g == null ? undefined : g < -0.0005 ? 'var(--ds-danger)' : g > 0.0005 ? 'var(--ds-success)' : 'var(--ds-muted)' }}>
                   {g == null ? '' : `${g > 0 ? '+' : ''}${qty(g)}`}{g != null && Number(th) > 0 && Math.abs(g) / Number(th) > 0.2 && <AlertTriangle size={11} style={{ marginLeft: 4, color: 'var(--ds-warning)' }} aria-label="Écart supérieur à 20 %" />}
                 </td>}
                 {showTh && isDirection && <td className="ds-num">{g == null || Math.abs(g) < 0.0005 ? '' : n2(g * Number(l.cost ?? 0))}</td>}
                 {c.status === 'validated' && <td className="ds-num">{l.applied_qty != null && Math.abs(Number(l.applied_qty)) > 0.0005 ? `${Number(l.applied_qty) > 0 ? '+' : ''}${qty(l.applied_qty)}` : '—'}</td>}
-                <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{l.counted_by_name ?? ''}{l.counted_at ? ` · ${format(new Date(l.counted_at), 'dd/MM HH:mm')}` : ''}</td>
+                <td style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{l.counted_by_name ?? ''}{l.counted_at ? ` · ${format(new Date(l.counted_at), 'dd/MM HH:mm')}` : ''}</td>
               </tr>
             );
           })}</tbody>
@@ -358,7 +358,7 @@ function CycleCountPanel({ canOpen, onOpened }: { canOpen: boolean; onOpened: (i
     <section className="prj-panel" style={{ padding: '14px 18px', display: 'grid', gap: 10 }} aria-label="Inventaire tournant">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <h2 className="ds-subhead" style={{ fontSize: 'var(--ds-t-section)', fontWeight: 700 }}>Inventaire tournant</h2>
-        <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        <span style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
           Classes par valeur consommée sur 12 mois ; A compté tous les {days.A} j, B tous les {days.B} j, C tous les {days.C} j.
         </span>
         <div style={{ flex: 1 }} />

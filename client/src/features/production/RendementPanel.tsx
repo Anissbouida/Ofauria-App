@@ -192,7 +192,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
     <div className="ds-panel pd-section">
       <div className="pd-section-head">
         <Scale size={12} /> Rendement de production
-        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{rendements.length}/{producedItems.length} enregistrés</span>
+        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400 }}>{rendements.length}/{producedItems.length} enregistrés</span>
       </div>
 
       {/* Summary bar */}

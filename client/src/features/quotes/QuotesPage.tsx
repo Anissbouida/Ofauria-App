@@ -33,7 +33,7 @@ import SalesPageShell from '../sales/SalesPageShell';
 const n2 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const d10 = (v: string | null | undefined) => (v ? String(v).slice(0, 10) : '');
 const fr = (v: string | null | undefined) => (v ? format(new Date(`${d10(v)}T00:00:00`), 'dd/MM/yyyy') : '—');
-const lab: React.CSSProperties = { fontSize: '0.8125rem', color: 'var(--ds-muted)' };
+const lab: React.CSSProperties = { fontSize: '13px', color: 'var(--ds-muted)' };
 const TVA_RATES = ['', '0', '7', '10', '14', '20'];
 /** Statut d'un devis en étiquette commune (perdu = clos sans suite, expiré = échéance dépassée). */
 export const QUOTE_TONE: Record<QuoteStatus, { tone: StatusTone; icon?: LucideIcon }> = {
@@ -565,9 +565,9 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
               </FormSection>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, fontSize: '0.875rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, fontSize: '14px' }}>
               <div><div style={lab}>Client</div><strong>{q.client_label}</strong>{!q.customer_id && <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 6 }}>prospect</span>}
-                <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{[q.customer_phone ?? q.prospect_phone, q.customer_email ?? q.prospect_email].filter(Boolean).join(' · ')}</div></div>
+                <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{[q.customer_phone ?? q.prospect_phone, q.customer_email ?? q.prospect_email].filter(Boolean).join(' · ')}</div></div>
               <div><div style={lab}>Objet</div>{q.title || '—'}</div>
               <div><div style={lab}>Date · validité</div>{fr(q.quote_date)} → <span style={{ color: q.is_overdue ? 'var(--ds-danger)' : undefined }}>{fr(q.valid_until)}</span></div>
               <div><div style={lab}>Proforma</div>{q.proforma_number ?? '—'}</div>
@@ -585,7 +585,7 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
                 );
                 return (
                   <tr key={i.id}>
-                    <td>{i.product_name || i.description}{i.product_name && i.description && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{i.description}</div>}</td>
+                    <td>{i.product_name || i.description}{i.product_name && i.description && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{i.description}</div>}</td>
                     <td className="ds-num">{i.quantity}</td>
                     <td className="ds-num">{i.unit_price != null ? n2(i.unit_price) : '—'}</td>
                     {q.with_tax && <td className="ds-num">{i.tva_rate != null ? `${Number(i.tva_rate)} %` : '—'}</td>}
@@ -603,10 +603,10 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
             </table>
             </DataPanel>
             {(q.delivery_terms || q.notes || q.internal_notes) && (
-              <div style={{ fontSize: '0.8125rem', display: 'grid', gap: 4 }}>
+              <div style={{ fontSize: '13px', display: 'grid', gap: 4 }}>
                 {q.delivery_terms && <div><strong>Livraison :</strong> {q.delivery_terms}</div>}
                 {q.notes && <div><strong>Conditions :</strong> {q.notes}</div>}
-                {q.internal_notes && <div style={{ color: 'var(--theme-text-muted)' }}><strong>Note interne :</strong> {q.internal_notes}</div>}
+                {q.internal_notes && <div style={{ color: 'var(--ds-muted)' }}><strong>Note interne :</strong> {q.internal_notes}</div>}
               </div>
             )}
 
@@ -614,9 +614,9 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
               <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Historique</div>
               <ul className="ui-timeline" style={{ margin: 0 }}>
                 {(q.events ?? []).map(e => (
-                  <li key={e.id} style={{ fontSize: '0.8125rem' }}>
-                    <strong>{EVENT_LABEL(e)}</strong> <span style={{ color: 'var(--theme-text-muted)' }}>· {format(new Date(e.created_at), 'dd/MM/yyyy HH:mm')}{e.by_name ? ` · ${e.by_name}` : ''}</span>
-                    {e.note && e.event_type !== 'edited' && <div style={{ color: 'var(--theme-text-muted)' }}>{reasons.find(r => r.code === e.note)?.label ?? e.note}</div>}
+                  <li key={e.id} style={{ fontSize: '13px' }}>
+                    <strong>{EVENT_LABEL(e)}</strong> <span style={{ color: 'var(--ds-muted)' }}>· {format(new Date(e.created_at), 'dd/MM/yyyy HH:mm')}{e.by_name ? ` · ${e.by_name}` : ''}</span>
+                    {e.note && e.event_type !== 'edited' && <div style={{ color: 'var(--ds-muted)' }}>{reasons.find(r => r.code === e.note)?.label ?? e.note}</div>}
                   </li>
                 ))}
               </ul>

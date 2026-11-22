@@ -19,7 +19,7 @@ export default function SerialsPanel({ planId }: { planId: string }) {
   return (
     <div className="ds-panel pd-section" style={{ margin: '1rem' }}>
       <div className="pd-section-head"><Hash size={12} /> Numéros de série
-        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{data.length}</span>
+        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400 }}>{data.length}</span>
       </div>
       {isLoading ? <LoadingState bare /> : data.length === 0 ? (
         <p className="text-xs text-gray-500" style={{ padding: '0.75rem 1rem' }}>

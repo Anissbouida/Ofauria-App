@@ -53,9 +53,9 @@ export default function HaccpManagerTab() {
 function Range({ from, to, onFrom, onTo, children }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void; children?: React.ReactNode }) {
   return (
     <div className="prj-toolbar">
-      <span style={{ fontSize: '0.8125rem' }}>Du</span>
+      <span style={{ fontSize: '13px' }}>Du</span>
       <input type="date" value={from} onChange={e => onFrom(e.target.value)} className="ds-input sm" style={{ width: 150 }} aria-label="Du" />
-      <span style={{ fontSize: '0.8125rem' }}>au</span>
+      <span style={{ fontSize: '13px' }}>au</span>
       <input type="date" value={to} onChange={e => onTo(e.target.value)} className="ds-input sm" style={{ width: 150 }} aria-label="Au" />
       {children}
       <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => window.print()}>
@@ -108,16 +108,16 @@ function ActionsView() {
             <tbody>
               {data.map(a => (
                 <tr key={a.id} className={a.status === 'open' ? 'row-danger' : undefined}>
-                  <td style={{ whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{dt(a.created_at)}<div style={{ color: 'var(--ds-muted)' }}>{a.created_by_name}</div></td>
+                  <td style={{ whiteSpace: 'nowrap', fontSize: '12px' }}>{dt(a.created_at)}<div style={{ color: 'var(--ds-muted)' }}>{a.created_by_name}</div></td>
                   <td><span className="odoo-tag odoo-tag-grey">{ACTION_SOURCE_LABELS[a.source_kind]}</span></td>
                   <td style={{ maxWidth: 320 }}>{a.problem}</td>
-                  <td style={{ maxWidth: 320, fontSize: '0.8125rem' }}>
+                  <td style={{ maxWidth: 320, fontSize: '13px' }}>
                     {a.action_taken ?? <span style={{ color: 'var(--ds-danger)' }}>—</span>}
-                    {a.done_by_name && <div style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{a.done_by_name} · {dt(a.done_at)}</div>}
-                    {a.validation_note && <div style={{ fontSize: '0.6875rem', color: 'var(--ds-warning)' }}>Gérant : {a.validation_note}</div>}
+                    {a.done_by_name && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{a.done_by_name} · {dt(a.done_at)}</div>}
+                    {a.validation_note && <div style={{ fontSize: '12px', color: 'var(--ds-warning)' }}>Gérant : {a.validation_note}</div>}
                   </td>
                   <td><StatusTag tone={STATUS_TONE[a.status] ?? 'draft'} label={ACTION_STATUS_LABELS[a.status]} />
-                    {a.validated_by_name && a.status === 'validated' && <div style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{a.validated_by_name}</div>}
+                    {a.validated_by_name && a.status === 'validated' && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{a.validated_by_name}</div>}
                   </td>
                   <td className="ds-actions">
                     {a.status === 'done' && (
@@ -150,7 +150,7 @@ function TemperaturesView() {
   return (
     <>
       <Range from={from} to={to} onFrom={setFrom} onTo={setTo}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '13px' }}>
           <input type="checkbox" checked={outOnly} onChange={e => setOutOnly(e.target.checked)} /> Hors plage seulement
         </label>
       </Range>
@@ -166,9 +166,9 @@ function TemperaturesView() {
                   <td style={{ whiteSpace: 'nowrap' }}>{dt(r.read_at)}</td>
                   <td>{r.equipment_name}</td>
                   <td className="ds-num ds-strong" style={{ color: r.in_range ? undefined : 'var(--ds-danger)' }}>{t(r.value)}</td>
-                  <td style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{t(r.temp_min)} à {t(r.temp_max)}</td>
-                  <td style={{ fontSize: '0.75rem' }}>{r.read_by_name ?? '—'}</td>
-                  <td style={{ fontSize: '0.75rem' }}>
+                  <td style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{t(r.temp_min)} à {t(r.temp_max)}</td>
+                  <td style={{ fontSize: '12px' }}>{r.read_by_name ?? '—'}</td>
+                  <td style={{ fontSize: '12px' }}>
                     {r.action_status ? <><StatusTag tone={STATUS_TONE[r.action_status] ?? 'draft'} label={ACTION_STATUS_LABELS[r.action_status]} /> {r.action_taken}</> : '—'}
                   </td>
                 </tr>
@@ -201,8 +201,8 @@ function CleaningView() {
                   <td>{l.zone}</td>
                   <td>{l.label}</td>
                   <td>{FREQUENCY_LABELS[l.frequency]}</td>
-                  <td style={{ fontSize: '0.75rem' }}>{l.done_by_name ?? '—'}</td>
-                  <td style={{ fontSize: '0.75rem' }}>
+                  <td style={{ fontSize: '12px' }}>{l.done_by_name ?? '—'}</td>
+                  <td style={{ fontSize: '12px' }}>
                     {l.conforme ? <StatusTag tone="done" label="Conforme" /> : <><StatusTag tone="blocked" label="Non conforme" /> {l.note}</>}
                   </td>
                 </tr>
@@ -220,7 +220,7 @@ function CleaningView() {
 type Tri = boolean | null;
 function TriToggle({ label, value, onChange }: { label: string; value: Tri; onChange: (v: Tri) => void }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '12px', color: 'var(--ds-muted)' }}>
       {label}
       <select value={value == null ? '' : value ? 'ok' : 'ko'} onChange={e => onChange(e.target.value === '' ? null : e.target.value === 'ok')} className="ds-input sm">
         <option value="">Non vérifié</option>
@@ -251,19 +251,19 @@ function ReceptionCheckForm({ r, onDone }: { r: ReceptionRow; onDone: () => void
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
       <TriToggle label="Température" value={temperatureOk} onChange={setTemperatureOk} />
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '12px', color: 'var(--ds-muted)' }}>
         Relevé (°C)
         <input type="text" inputMode="decimal" value={temperatureValue} onChange={e => setTemperatureValue(e.target.value)} className="ds-input sm" />
       </label>
       <TriToggle label="Aspect" value={visualOk} onChange={setVisualOk} />
       <TriToggle label="Emballage" value={packagingOk} onChange={setPackagingOk} />
       <TriToggle label="Étiquetage / DLC" value={labelsOk} onChange={setLabelsOk} />
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--ds-muted)', gridColumn: 'span 2' }}>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '12px', color: 'var(--ds-muted)', gridColumn: 'span 2' }}>
         Observations
         <input value={notes} onChange={e => setNotes(e.target.value)} className="ds-input sm" />
       </label>
       {anyKo && (
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--ds-danger)', gridColumn: 'span 2' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '12px', color: 'var(--ds-danger)', gridColumn: 'span 2' }}>
           Action réalisée (refus, avoir demandé…), facultatif
           <input value={actionTaken} onChange={e => setActionTaken(e.target.value)} className="ds-input sm" />
         </label>
@@ -290,7 +290,7 @@ function ReceptionsView() {
   return (
     <>
       <Range from={from} to={to} onFrom={setFrom} onTo={setTo}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '13px' }}>
           <input type="checkbox" checked={onlyMissing} onChange={e => setOnlyMissing(e.target.checked)} /> Non contrôlées ou non conformes
         </label>
       </Range>
@@ -306,8 +306,8 @@ function ReceptionsView() {
                   <td>{format(new Date(`${r.reception_date}T00:00:00`), 'd MMM yyyy', { locale: fr })}</td>
                   <td><span className="ds-ref">{r.voucher_number}</span></td>
                   <td>{r.supplier_name ?? '—'}</td>
-                  <td style={{ fontSize: '0.75rem' }}>{r.received_by_name ?? '—'}</td>
-                  <td style={{ fontSize: '0.75rem' }}>
+                  <td style={{ fontSize: '12px' }}>{r.received_by_name ?? '—'}</td>
+                  <td style={{ fontSize: '12px' }}>
                     {r.overall_conformity == null ? <StatusTag tone="todo" label="Non contrôlée" />
                       : r.overall_conformity ? <StatusTag tone="done" label="Conforme" />
                         : <StatusTag tone="blocked" label="Non conforme" />}
@@ -459,7 +459,7 @@ function TasksConfigTable() {
                   <td>{k.zone}</td>
                   <td className="ds-strong">{k.label}</td>
                   <td>{FREQUENCY_LABELS[k.frequency]}</td>
-                  <td style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{k.method ?? '—'}</td>
+                  <td style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{k.method ?? '—'}</td>
                   <td><input type="checkbox" checked={k.is_active} aria-label={`Activer ${k.label}`} onChange={e => save.mutate({ ...k, is_active: e.target.checked })} /></td>
                   <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDraft({ ...k })}>Modifier</button></td>
                 </tr>

@@ -16,9 +16,9 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-const secHeader: React.CSSProperties = { fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 8 };
-const emptyTxt: React.CSSProperties = { fontSize: '0.75rem', color: 'var(--theme-text-muted)' };
-const tileBox: React.CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: '8px 10px', fontSize: '0.8125rem', display: 'grid', gap: 4 };
+const secHeader: React.CSSProperties = { fontSize: '12px', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 8 };
+const emptyTxt: React.CSSProperties = { fontSize: '12px', color: 'var(--ds-muted)' };
+const tileBox: React.CSSProperties = { border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-card)', padding: '8px 10px', fontSize: '13px', display: 'grid', gap: 4 };
 
 function CollapsibleSection({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -426,19 +426,19 @@ function SemiFiniRow({
                       {((fullRecipe as Record<string, any>).ingredients as Record<string, any>[] ?? []).map((ing, i) => (
                         <tr key={`ing-${i}`}>
                           <td>{ing.ingredient_name as string}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{ing.quantity as string} {ing.unit as string}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--ds-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{ing.quantity as string} {ing.unit as string}</td>
                         </tr>
                       ))}
                       {((fullRecipe as Record<string, any>).sub_recipes as Record<string, any>[] ?? []).map((sr, i) => (
                         <tr key={`sr-${i}`}>
                           <td>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                              <Layers size={11} style={{ color: 'var(--theme-accent)' }} />
+                              <Layers size={11} style={{ color: 'var(--ds-accent)' }} />
                               {sr.sub_recipe_name as string}
                               <span className="odoo-tag odoo-tag-purple">base</span>
                             </span>
                           </td>
-                          <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{sr.quantity as string} {sr.sub_yield_unit as string}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--ds-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{sr.quantity as string} {sr.sub_yield_unit as string}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -447,7 +447,7 @@ function SemiFiniRow({
                 {recipe.instructions && (
                   <div style={{ marginTop: 12 }}>
                     <div style={secHeader}>Instructions</div>
-                    <div style={{ ...tileBox, whiteSpace: 'pre-wrap', color: 'var(--theme-text)' }}>{recipe.instructions}</div>
+                    <div style={{ ...tileBox, whiteSpace: 'pre-wrap', color: 'var(--ds-ink)' }}>{recipe.instructions}</div>
                   </div>
                 )}
               </div>
@@ -459,19 +459,19 @@ function SemiFiniRow({
                   <div style={secHeader}>État actuel</div>
                   <div style={tileBox}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--theme-text-muted)' }}>Stock libre</span>
+                      <span style={{ color: 'var(--ds-muted)' }}>Stock libre</span>
                       <span style={{ fontWeight: 600 }}>{stockQty.toFixed(2)} {recipe.yield_unit}</span>
                     </div>
                     {reservedQty > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--theme-text-muted)' }}>Réservé par plans en cours</span>
+                        <span style={{ color: 'var(--ds-muted)' }}>Réservé par plans en cours</span>
                         <span style={{ fontWeight: 600, color: 'var(--ds-warning)' }}>{reservedQty.toFixed(2)} {recipe.yield_unit}</span>
                       </div>
                     )}
                     {lineage?.current?.last_produced_at && (
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--theme-text-muted)' }}>Dernière production</span>
-                        <span style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(lineage.current.last_produced_at), 'dd/MM HH:mm', { locale: fr })}</span>
+                        <span style={{ color: 'var(--ds-muted)' }}>Dernière production</span>
+                        <span style={{ color: 'var(--ds-muted)' }}>{format(new Date(lineage.current.last_produced_at), 'dd/MM HH:mm', { locale: fr })}</span>
                       </div>
                     )}
                   </div>
@@ -490,11 +490,11 @@ function SemiFiniRow({
                           <tr key={r.id} onClick={() => navigate(`/production/${r.parent_plan_id}`)} style={{ cursor: 'pointer' }} title="Voir la fiche du plan">
                             <td>
                               <div style={{ fontWeight: 600 }}>{r.plan_notes || `Plan du ${format(new Date(r.plan_date), 'dd/MM', { locale: fr })}`}</div>
-                              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{format(new Date(r.plan_date), 'dd MMM yyyy', { locale: fr })} · {r.plan_status} · {r.target_role}</div>
+                              <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{format(new Date(r.plan_date), 'dd MMM yyyy', { locale: fr })} · {r.plan_status} · {r.target_role}</div>
                             </td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <span style={{ fontWeight: 600, color: 'var(--ds-warning)', fontVariantNumeric: 'tabular-nums' }}>{parseFloat(r.quantity_from_stock).toFixed(2)} {recipe.yield_unit}</span>
-                              <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)', marginLeft: 6, verticalAlign: 'middle' }} />
+                              <ChevronRight size={13} style={{ color: 'var(--ds-muted)', marginLeft: 6, verticalAlign: 'middle' }} />
                             </td>
                           </tr>
                         ))}
@@ -514,11 +514,11 @@ function SemiFiniRow({
                           <tr key={p.id} onClick={() => navigate(`/production/${p.id}`)} style={{ cursor: 'pointer' }} title="Voir la fiche du plan">
                             <td>
                               <div style={{ fontWeight: 500 }}>{p.notes || `Plan ${format(new Date(p.plan_date), 'dd/MM', { locale: fr })}`}</div>
-                              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{format(new Date(p.plan_date), 'dd MMM yyyy', { locale: fr })} · {p.status}{p.completed_at && ` · Terminé ${format(new Date(p.completed_at), 'dd/MM HH:mm', { locale: fr })}`}</div>
+                              <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{format(new Date(p.plan_date), 'dd MMM yyyy', { locale: fr })} · {p.status}{p.completed_at && ` · Terminé ${format(new Date(p.completed_at), 'dd/MM HH:mm', { locale: fr })}`}</div>
                             </td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{(p.actual_quantity != null ? parseFloat(String(p.actual_quantity)) : parseFloat(String(p.planned_quantity))).toFixed(2)} batch{parseFloat(String(p.actual_quantity ?? p.planned_quantity)) > 1 ? 'es' : ''}</span>
-                              <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)', marginLeft: 6, verticalAlign: 'middle' }} />
+                              <ChevronRight size={13} style={{ color: 'var(--ds-muted)', marginLeft: 6, verticalAlign: 'middle' }} />
                             </td>
                           </tr>
                         ))}
@@ -545,12 +545,12 @@ function SemiFiniRow({
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                                   <span style={{ width: 6, height: 6, borderRadius: 999, background: positive ? 'var(--ds-success)' : 'var(--ds-warning)', flexShrink: 0 }} />
                                   {typeLabel[tx.type] || tx.type}
-                                  {tx.plan_notes && <span style={{ color: 'var(--theme-text-muted)' }}>· {tx.plan_notes}</span>}
+                                  {tx.plan_notes && <span style={{ color: 'var(--ds-muted)' }}>· {tx.plan_notes}</span>}
                                 </span>
                               </td>
                               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                                 <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: positive ? 'var(--ds-success)' : 'var(--ds-warning)' }}>{positive ? '+' : ''}{qty.toFixed(2)}</span>
-                                <span style={{ color: 'var(--theme-text-muted)', marginLeft: 8 }}>{format(new Date(tx.created_at), 'dd/MM HH:mm', { locale: fr })}</span>
+                                <span style={{ color: 'var(--ds-muted)', marginLeft: 8 }}>{format(new Date(tx.created_at), 'dd/MM HH:mm', { locale: fr })}</span>
                               </td>
                             </tr>
                           );
@@ -572,9 +572,9 @@ function SemiFiniRow({
                             <tr key={lot.id}>
                               <td>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                                  <Snowflake size={12} style={{ color: 'var(--theme-accent)', flexShrink: 0 }} />
-                                  <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{lot.lot_number || 'sans lot'}</span>
-                                  {lot.contenant_nom && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>· {lot.contenant_nom}</span>}
+                                  <Snowflake size={12} style={{ color: 'var(--ds-accent)', flexShrink: 0 }} />
+                                  <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{lot.lot_number || 'sans lot'}</span>
+                                  {lot.contenant_nom && <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>· {lot.contenant_nom}</span>}
                                 </span>
                               </td>
                               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -584,7 +584,7 @@ function SemiFiniRow({
                                     <StatusTag tone="late" label={format(expires, 'dd/MM/yy', { locale: fr })} title="DLC dépassée ou sous 24 h" />
                                   </span>
                                 ) : (
-                                  <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)' }}>
+                                  <span style={{ marginLeft: 8, color: 'var(--ds-muted)' }}>
                                     <Clock size={10} /> {format(expires, 'dd/MM/yy', { locale: fr })}
                                   </span>
                                 ))}

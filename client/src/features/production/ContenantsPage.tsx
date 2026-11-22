@@ -459,8 +459,8 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelec
                   {linkedRecipes.map((r) => (
                     <div key={r.id} className="flex items-center gap-2 bg-white rounded px-3 py-1.5 border border-gray-200">
                       {r.is_base
-                        ? <Layers size={12} style={{ color: 'var(--theme-accent)' }} />
-                        : <ChefHat size={12} style={{ color: 'var(--theme-accent)' }} />}
+                        ? <Layers size={12} style={{ color: 'var(--ds-accent)' }} />
+                        : <ChefHat size={12} style={{ color: 'var(--ds-accent)' }} />}
                       <span className="flex-1 text-sm">{r.name}</span>
                       <span className={`odoo-tag ${r.is_base ? 'odoo-tag-purple' : 'odoo-tag-green'}`}>
                         {r.is_base ? 'Base' : 'Produit'}
@@ -581,7 +581,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
           </button>
         </div>
 
-        <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
+        <div className="p-4 space-y-4" style={{ backgroundColor: 'var(--ds-card)' }}>
           {/* Row 1: Nom + Type + Unite */}
           <div className="grid grid-cols-3 gap-3">
             <div>
@@ -669,7 +669,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
           </div>
 
           {/* Dimensions physiques (mig 167) — sert au libelle, au rendement decoupe et a la comparaison */}
-          <div className="border border-gray-200 rounded p-3 space-y-3" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+          <div className="border border-gray-200 rounded p-3 space-y-3" style={{ backgroundColor: 'var(--ds-bg)' }}>
             <div className="text-sm font-semibold text-gray-600 flex items-center gap-2">
               📐 Dimensions physiques <span className="font-normal normal-case tracking-normal text-gray-400">(optionnel)</span>
             </div>
@@ -732,10 +732,10 @@ function ContenantForm({ contenant, onClose, onSaved }: {
 
           {/* Info: étapes gérées dans les recettes */}
           <div className="rounded p-3 flex items-start gap-2.5 border"
-            style={{ backgroundColor: 'var(--theme-accent-light)', borderColor: 'var(--theme-accent)' }}>
-            <ListChecks size={16} style={{ color: 'var(--theme-accent)', marginTop: 2, flexShrink: 0 }} />
+            style={{ backgroundColor: 'var(--ds-tint)', borderColor: 'var(--ds-accent)' }}>
+            <ListChecks size={16} style={{ color: 'var(--ds-accent)', marginTop: 2, flexShrink: 0 }} />
             <div>
-              <p className="text-sm font-medium" style={{ color: 'var(--theme-text-strong)' }}>
+              <p className="text-sm font-medium" style={{ color: 'var(--ds-ink)' }}>
                 Les étapes de production sont gérées dans les recettes
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
@@ -747,7 +747,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-end gap-2"
-          style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+          style={{ backgroundColor: 'var(--ds-bg)' }}>
           <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
           <button type="submit" disabled={saveMutation.isPending} aria-busy={saveMutation.isPending || undefined} className="odoo-btn-primary">
             <Check size={14} aria-hidden="true" /> {saveMutation.isPending ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer')}

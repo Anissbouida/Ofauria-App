@@ -562,7 +562,7 @@ export default function SalesPage() {
       {/* Control bar */}
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
-          <Receipt size={14} style={{ color: 'var(--theme-accent)' }} />
+          <Receipt size={14} style={{ color: 'var(--ds-accent)' }} />
           <span>Ventes</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span>Opérations</span>
@@ -693,7 +693,7 @@ export default function SalesPage() {
                   </thead>
                   <tbody>
                     {sortedSales.length === 0 ? (
-                      <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+                      <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--ds-muted)' }}>
                         {searchQuery ? 'Aucun résultat pour cette recherche' : 'Aucune vente pour cette période'}
                       </td></tr>
                     ) : sortedSales.map((s: Record<string, any>) => {
@@ -714,11 +714,11 @@ export default function SalesPage() {
                           </span>
                         </td>
                         <td>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-muted)' }}>
                             <User size={11} /> {beneficiary}
                           </span>
                         </td>
-                        <td style={{ color: 'var(--theme-text-muted)' }}>{s.cashier_first_name as string} {s.cashier_last_name as string}</td>
+                        <td style={{ color: 'var(--ds-muted)' }}>{s.cashier_first_name as string} {s.cashier_last_name as string}</td>
                         <td>
                           {isUnpaid ? (
                             <StatusTag tone="todo" icon={Clock} label="À encaisser" />
@@ -730,7 +730,7 @@ export default function SalesPage() {
                           )}
                         </td>
                         <td className="ds-num ds-strong">{n2(parseFloat(s.total as string))}</td>
-                        <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
+                        <td style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>
                           {format(new Date(s.created_at as string), 'HH:mm', { locale: fr })}
                         </td>
                         <td className="ds-actions">
@@ -785,7 +785,7 @@ export default function SalesPage() {
                         <tr key={row.id as string}>
                           <td>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                              <LayoutGrid size={11} style={{ color: 'var(--theme-accent)' }} />
+                              <LayoutGrid size={11} style={{ color: 'var(--ds-accent)' }} />
                               {row.label as string}
                             </span>
                           </td>
@@ -794,10 +794,10 @@ export default function SalesPage() {
                           <td className="ds-num ds-strong">{n2(rev)}</td>
                           <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ width: 60, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-                                <span style={{ display: 'block', height: '100%', background: 'var(--theme-accent)', width: `${pct}%` }} />
+                              <span style={{ width: 60, height: 4, background: 'var(--ds-sep)', borderRadius: 2, overflow: 'hidden' }}>
+                                <span style={{ display: 'block', height: '100%', background: 'var(--ds-accent)', width: `${pct}%` }} />
                               </span>
-                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', minWidth: 36, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
+                              <span style={{ color: 'var(--ds-muted)', fontSize: '12px', minWidth: 36, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
                             </span>
                           </td>
                         </tr>
@@ -806,7 +806,7 @@ export default function SalesPage() {
                   </tbody>
                 </table>
                 {itemsGap > 0.5 && (
-                  <div style={{ padding: '10px 16px', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                  <div style={{ padding: '10px 16px', fontSize: '13px', color: 'var(--ds-muted)' }}>
                     Total des articles : {formatCurrency(itemsRevenue)} — écart de {formatCurrency(itemsGap)} avec le CA encaissé :
                     acomptes de commandes encaissés sans article (les articles comptent à la remise de la commande).
                   </div>
@@ -841,24 +841,24 @@ export default function SalesPage() {
                       const rankTag = idx === 0 ? 'odoo-tag-yellow' : idx === 1 ? 'odoo-tag-grey' : idx === 2 ? 'odoo-tag-orange' : '';
                       return (
                         <tr key={row.id as string}>
-                          <td style={{ color: 'var(--theme-text-muted)' }}>
-                            {idx < 3 ? <span className={`odoo-tag ${rankTag}`}>{idx + 1}</span> : <span style={{ fontSize: '0.6875rem' }}>{idx + 1}</span>}
+                          <td style={{ color: 'var(--ds-muted)' }}>
+                            {idx < 3 ? <span className={`odoo-tag ${rankTag}`}>{idx + 1}</span> : <span style={{ fontSize: '12px' }}>{idx + 1}</span>}
                           </td>
                           <td className="ds-strong">{row.label as string}</td>
                           <td>
                             {row.category_name ? (
                               <span className="odoo-tag odoo-tag-grey">{row.category_name as string}</span>
-                            ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                            ) : <span style={{ color: 'var(--ds-sep)' }}>—</span>}
                           </td>
                           <td className="ds-num ds-strong">{row.total_quantity as string}</td>
                           <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{row.sale_count as string}</td>
                           <td className="ds-num ds-strong">{n2(rev)}</td>
                           <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ width: 60, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-                                <span style={{ display: 'block', height: '100%', background: 'var(--theme-accent)', width: `${pct}%` }} />
+                              <span style={{ width: 60, height: 4, background: 'var(--ds-sep)', borderRadius: 2, overflow: 'hidden' }}>
+                                <span style={{ display: 'block', height: '100%', background: 'var(--ds-accent)', width: `${pct}%` }} />
                               </span>
-                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', minWidth: 36, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
+                              <span style={{ color: 'var(--ds-muted)', fontSize: '12px', minWidth: 36, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
                             </span>
                           </td>
                         </tr>
@@ -867,7 +867,7 @@ export default function SalesPage() {
                   </tbody>
                 </table>
                 {itemsGap > 0.5 && (
-                  <div style={{ padding: '10px 16px', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                  <div style={{ padding: '10px 16px', fontSize: '13px', color: 'var(--ds-muted)' }}>
                     Total des articles : {formatCurrency(itemsRevenue)} — écart de {formatCurrency(itemsGap)} avec le CA encaissé :
                     acomptes de commandes encaissés sans article (les articles comptent à la remise de la commande).
                   </div>
@@ -901,7 +901,7 @@ export default function SalesPage() {
                         <tr key={row.id as string}>
                           <td>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                              <User size={11} style={{ color: 'var(--theme-accent)' }} />
+                              <User size={11} style={{ color: 'var(--ds-accent)' }} />
                               {row.label as string}
                             </span>
                           </td>
@@ -912,10 +912,10 @@ export default function SalesPage() {
                           <td className="ds-num ds-strong">{n2(rev)}</td>
                           <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ width: 60, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-                                <span style={{ display: 'block', height: '100%', background: 'var(--theme-accent)', width: `${pct}%` }} />
+                              <span style={{ width: 60, height: 4, background: 'var(--ds-sep)', borderRadius: 2, overflow: 'hidden' }}>
+                                <span style={{ display: 'block', height: '100%', background: 'var(--ds-accent)', width: `${pct}%` }} />
                               </span>
-                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', minWidth: 36, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
+                              <span style={{ color: 'var(--ds-muted)', fontSize: '12px', minWidth: 36, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
                             </span>
                           </td>
                         </tr>
@@ -951,7 +951,7 @@ export default function SalesPage() {
                       const isCash = row.label === 'cash';
                       return (
                         <tr key={row.label as string}>
-                          <td>{isCash ? <Banknote size={13} style={{ color: 'var(--ds-success)' }} /> : <CreditCard size={13} style={{ color: 'var(--theme-accent)' }} />}</td>
+                          <td>{isCash ? <Banknote size={13} style={{ color: 'var(--ds-success)' }} /> : <CreditCard size={13} style={{ color: 'var(--ds-accent)' }} />}</td>
                           <td>
                             <span className={`odoo-tag ${isCash ? 'odoo-tag-green' : 'odoo-tag-blue'}`}>{label as string}</span>
                           </td>
@@ -959,10 +959,10 @@ export default function SalesPage() {
                           <td className="ds-num ds-strong">{n2(rev)}</td>
                           <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <span style={{ width: 80, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-                                <span style={{ display: 'block', height: '100%', background: isCash ? 'var(--ds-success)' : 'var(--theme-accent)', width: `${pct}%` }} />
+                              <span style={{ width: 80, height: 4, background: 'var(--ds-sep)', borderRadius: 2, overflow: 'hidden' }}>
+                                <span style={{ display: 'block', height: '100%', background: isCash ? 'var(--ds-success)' : 'var(--ds-accent)', width: `${pct}%` }} />
                               </span>
-                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', minWidth: 36, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
+                              <span style={{ color: 'var(--ds-muted)', fontSize: '12px', minWidth: 36, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
                             </span>
                           </td>
                         </tr>
@@ -1023,21 +1023,21 @@ export default function SalesPage() {
                     const isReturn = r.type === 'return';
                     return (
                       <tr key={r.id as string}>
-                        <td>{isReturn ? <RotateCcw size={13} style={{ color: 'var(--ds-danger)' }} /> : <ArrowLeftRight size={13} style={{ color: 'var(--theme-accent)' }} />}</td>
+                        <td>{isReturn ? <RotateCcw size={13} style={{ color: 'var(--ds-danger)' }} /> : <ArrowLeftRight size={13} style={{ color: 'var(--ds-accent)' }} />}</td>
                         <td><span className="ds-ref">{r.return_number as string}</span></td>
                         <td><span className="ds-ref">{r.original_sale_number as string}</span></td>
                         <td><span className={`odoo-tag ${isReturn ? 'odoo-tag-red' : 'odoo-tag-blue'}`}>{isReturn ? 'Retour' : 'Échange'}</span></td>
-                        <td style={{ color: 'var(--theme-text-muted)' }}>
+                        <td style={{ color: 'var(--ds-muted)' }}>
                           {items.map((it, idx) => (
                             <div key={idx}>
-                              {it.product_name as string} <span style={{ color: 'var(--theme-bg-separator)' }}>×{it.quantity as number}</span>
+                              {it.product_name as string} <span style={{ color: 'var(--ds-sep)' }}>×{it.quantity as number}</span>
                             </div>
                           ))}
                         </td>
                         <td className="ds-num ds-strong" style={{ color: 'var(--ds-danger)' }}>{n2(parseFloat(r.refund_amount as string))}</td>
-                        <td style={{ color: 'var(--theme-text-muted)' }}>{r.user_first_name as string} {r.user_last_name as string}</td>
-                        <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{format(new Date(r.created_at as string), 'dd/MM HH:mm', { locale: fr })}</td>
-                        <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(r.reason as string) || '—'}</td>
+                        <td style={{ color: 'var(--ds-muted)' }}>{r.user_first_name as string} {r.user_last_name as string}</td>
+                        <td style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>{format(new Date(r.created_at as string), 'dd/MM HH:mm', { locale: fr })}</td>
+                        <td style={{ color: 'var(--ds-muted)', fontSize: '12px', maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(r.reason as string) || '—'}</td>
                       </tr>
                     );
                   })}
@@ -1224,7 +1224,7 @@ export default function SalesPage() {
               <div className="odoo-view-switcher" role="radiogroup" aria-labelledby="sp-pay-method" style={{ width: '100%' }}>
                 {([['cash', 'Espèces', Banknote], ['card', 'Carte', CreditCard]] as const).map(([key, label, Icon]) => (
                   <button key={key} type="button" role="radio" aria-checked={payPaymentMethod === key} onClick={() => setPayPaymentMethod(key)}
-                    className={payPaymentMethod === key ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', gap: 4, fontWeight: payPaymentMethod === key ? 600 : 400 }}>
+                    className={payPaymentMethod === key ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '13px', gap: 4, fontWeight: payPaymentMethod === key ? 600 : 400 }}>
                     <Icon size={13} /> {label}
                   </button>
                 ))}
@@ -1418,7 +1418,7 @@ function InventoryBilan({ session }: { session: Record<string, any> }) {
         </span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span className={`kl-pill ${ecartTag}`}>{ecartLabel}</span>
-          {expanded ? <ChevronUp size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+          {expanded ? <ChevronUp size={13} style={{ color: 'var(--ds-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--ds-muted)' }} />}
         </span>
       </button>
 
@@ -1447,7 +1447,7 @@ function InventoryBilan({ session }: { session: Record<string, any> }) {
                   <td className="ds-num ds-strong">{rep}</td>
                   <td className="ds-num ds-strong">{sold}</td>
                   <td className="ds-num ds-strong">{rem}</td>
-                  <td className="ds-num ds-strong" style={{ color: disc > 0 ? 'var(--ds-danger)' : disc < 0 ? 'var(--theme-accent)' : 'var(--ds-success)' }}>
+                  <td className="ds-num ds-strong" style={{ color: disc > 0 ? 'var(--ds-danger)' : disc < 0 ? 'var(--ds-accent)' : 'var(--ds-success)' }}>
                     {disc === 0 ? '✓' : disc > 0 ? `−${disc}` : `+${Math.abs(disc)}`}
                   </td>
                 </tr>
@@ -1458,7 +1458,7 @@ function InventoryBilan({ session }: { session: Record<string, any> }) {
         </DataPanel>
       )}
       {expanded && items && items.length === 0 && (
-        <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textAlign: 'center', padding: '8px 0' }}>Aucun détail d'inventaire disponible</p>
+        <p style={{ fontSize: '12px', color: 'var(--ds-muted)', textAlign: 'center', padding: '8px 0' }}>Aucun détail d'inventaire disponible</p>
       )}
     </div>
   );

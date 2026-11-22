@@ -80,10 +80,10 @@ function Progress({ p }: { p: Project }) {
   const pct = p.task_count ? Math.round((p.task_done / p.task_count) * 100) : 0;
   return (
     <div title={`${p.task_done}/${p.task_count} tâches`} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 110 }}>
-      <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--odoo-border)' }}>
-        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: pct === 100 ? 'var(--ds-success)' : 'var(--theme-accent)' }} />
+      <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--ds-sep)' }}>
+        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: pct === 100 ? 'var(--ds-success)' : 'var(--ds-accent)' }} />
       </div>
-      <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{pct}%</span>
+      <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{pct}%</span>
     </div>
   );
 }

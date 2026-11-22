@@ -35,10 +35,10 @@ export default function SalesPageShell({ icon: Icon, title, parent, summary, act
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
-          {Icon && <Icon size={14} style={{ color: 'var(--theme-accent)' }} />}
+          {Icon && <Icon size={14} style={{ color: 'var(--ds-accent)' }} />}
           {lead.map(l => <span key={l} style={{ display: 'contents' }}><span>{l}</span><span className="odoo-breadcrumb-separator">›</span></span>)}
           <span className="odoo-breadcrumb-current">{title}</span>
-          {summary && <span className="spsh-summary" style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{summary}</span>}
+          {summary && <span className="spsh-summary" style={{ marginLeft: 8, color: 'var(--ds-muted)', fontSize: '13px' }}>{summary}</span>}
         </div>
         <div style={{ flex: 1 }} />
         {actions}

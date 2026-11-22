@@ -15,14 +15,14 @@ export function AllergenSelector({ value, onChange }: { value: string[]; onChang
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.25rem 0.75rem' }}>
         {ALLERGENS.map(a => (
-          <label key={a.code} title={a.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', cursor: 'pointer' }}>
+          <label key={a.code} title={a.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '13px', cursor: 'pointer' }}>
             <input type="checkbox" checked={value.includes(a.code)} onChange={() => toggle(a.code)} />
             <span>{a.short}</span>
           </label>
         ))}
       </div>
       {legacy.length > 0 && (
-        <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.75rem' }}>
+        <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: '12px' }}>
           <span style={{ color: 'var(--ds-warning)' }}>Hors référentiel, à requalifier :</span>
           {legacy.map(v => (
             <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--ds-warning-bg)', color: 'var(--ds-warning)' }}>

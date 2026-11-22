@@ -548,13 +548,13 @@ function AppearanceTab() {
               <button key={preset.name} type="button" onClick={() => applyPreset(preset)} aria-pressed={isActive}
                 className="relative flex flex-col items-center gap-2 p-4 rounded-2xl transition-all text-left"
                 style={{
-                  background: 'var(--theme-bg-card)',
+                  background: 'var(--ds-card)',
                   boxShadow: isActive
-                    ? '0 0 0 2px var(--theme-accent), 0 6px 20px rgba(15, 23, 42, .08)'
-                    : 'inset 0 0 0 1px var(--theme-bg-separator)',
+                    ? '0 0 0 2px var(--ds-accent), 0 6px 20px rgba(15, 23, 42, .08)'
+                    : 'inset 0 0 0 1px var(--ds-sep)',
                 }}>
                 {isActive && (
-                  <span className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--theme-accent)' }}>
+                  <span className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--ds-accent)' }}>
                     <Check size={12} style={{ color: 'var(--theme-cta-text, #fff)' }} />
                   </span>
                 )}
@@ -571,7 +571,7 @@ function AppearanceTab() {
                   </div>
                 </div>
                 <span className="text-lg">{preset.icon}</span>
-                <span className="font-semibold text-sm" style={{ color: 'var(--theme-text-strong)' }}>{preset.name}</span>
+                <span className="font-semibold text-sm" style={{ color: 'var(--ds-ink)' }}>{preset.name}</span>
                 <span className="text-xs text-center" style={{ color: 'var(--ds-muted)' }}>{preset.desc}</span>
               </button>
             );
@@ -598,7 +598,7 @@ function AppearanceTab() {
       ))}
 
       <SettingsSection title="Aperçu en direct" columns={1}>
-        <div className="rounded-2xl overflow-hidden" style={{ boxShadow: 'inset 0 0 0 1px var(--theme-bg-separator)' }}>
+        <div className="rounded-2xl overflow-hidden" style={{ boxShadow: 'inset 0 0 0 1px var(--ds-sep)' }}>
           {/* Header preview */}
           <div className="h-14 flex items-center px-5" style={{ background: theme.themeAccent }}>
             <span className="font-bold tracking-wide" style={{ color: theme.themeCtaText }}>{settings.companyName}</span>
@@ -751,7 +751,7 @@ function PrintTab() {
 
         <SettingsSection title="Logo" columns={1}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
-            <div style={{ flexShrink: 0, width: 128, height: 80, borderRadius: 6, border: '2px dashed var(--odoo-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--odoo-bg-alt)', overflow: 'hidden' }}>
+            <div style={{ flexShrink: 0, width: 128, height: 80, borderRadius: 6, border: '2px dashed var(--ds-sep)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ds-bg)', overflow: 'hidden' }}>
               {logoUrl ? (
                 <img src={logoSrc} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
               ) : (

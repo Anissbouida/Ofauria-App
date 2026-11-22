@@ -175,7 +175,7 @@ export default function OrderRecordPage() {
 
   return (
     <div className="prj prj-detail">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', color: 'var(--ds-muted)', flexWrap: 'wrap' }}>
         <button type="button" className="sal-link" style={{ marginLeft: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => navigate(from.href)}><ArrowLeft size={14} /> {from.label}</button>
         <span aria-hidden="true">›</span><span>{o.order_number}</span>
       </div>
@@ -262,7 +262,7 @@ export default function OrderRecordPage() {
               </div>
               <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16 }}>
                 <div style={{ flex: '1 1 280px', display: 'grid', gap: 8 }}>
-                  {o.notes && <p className="prj-note" style={{ whiteSpace: 'pre-line' }}><strong style={{ color: 'var(--odoo-text)' }}>Note : </strong>{o.notes}</p>}
+                  {o.notes && <p className="prj-note" style={{ whiteSpace: 'pre-line' }}><strong style={{ color: 'var(--ds-ink)' }}>Note : </strong>{o.notes}</p>}
                   {pro && restHt > 0.004 && st !== 'cancelled' && <p className="prj-note">Reste à livrer : <strong style={{ color: 'var(--ds-warning)' }}>{money(restHt)} HT</strong>.</p>}
                   {!pro && advance > 0 && st !== 'completed' && <p className="prj-note">Avance non remboursable · le solde est encaissé au retrait.</p>}
                 </div>
@@ -316,7 +316,7 @@ export default function OrderRecordPage() {
           <section className="prj-panel">
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               <span className="prj-hero-icon" style={{ width: 40, height: 40, borderRadius: '50%' }}>
-                {pro ? <Building2 size={18} /> : <span style={{ fontWeight: 700, fontSize: '0.8125rem' }}>{initials}</span>}
+                {pro ? <Building2 size={18} /> : <span style={{ fontWeight: 700, fontSize: '13px' }}>{initials}</span>}
               </span>
               <div style={{ minWidth: 0 }}>
                 <strong>{customerName(o)}</strong>

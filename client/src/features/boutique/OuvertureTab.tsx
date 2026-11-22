@@ -27,7 +27,7 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 const signed = (v: number) => `${v > 0 ? '+' : ''}${v.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}`;
-const ecartColor = (v: number) => (v < 0 ? 'var(--ds-danger)' : v > 0 ? 'var(--ds-warning)' : 'var(--odoo-text)');
+const ecartColor = (v: number) => (v < 0 ? 'var(--ds-danger)' : v > 0 ? 'var(--ds-warning)' : 'var(--ds-ink)');
 
 type Existing = OpeningCheckPendingResponse['existingCheck'];
 

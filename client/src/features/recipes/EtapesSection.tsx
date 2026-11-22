@@ -136,13 +136,9 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
         <div className="pd-section-head"><ListChecks size={13} /> Étapes de production — modification</div>
         <div>
           {drafts.map((d, i) => (
-            <div key={d.k} style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)' }}>
+            <div key={d.k} style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--ds-sep)' }}>
               <div className="flex items-center gap-2 flex-wrap">
-                <span style={{
-                  width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-                  background: 'var(--theme-accent)', color: '#fff',
-                  display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
-                }}>{i + 1}</span>
+                <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 8, background: 'var(--ds-accent)' }} />
                 <input className={`${inp} flex-1 min-w-[180px] font-medium`} style={{ width: 'auto' }} value={d.nom} placeholder="Nom de l'étape" aria-label={`Nom de l'étape ${i + 1}`} aria-required="true"
                   onChange={(e) => patch(d.k, { nom: e.target.value })} maxLength={200} />
                 {(darijaOn || d.nomAr) && (
@@ -279,7 +275,7 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
         </span>
       </div>
       {recipeId && editBlockedReason && (
-        <div role="note" style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)', borderBottom: '1px solid var(--theme-bg-separator)' }}>
+        <div role="note" style={{ padding: '0.5rem 1rem', fontSize: '12px', color: 'var(--ds-muted)', borderBottom: '1px solid var(--ds-sep)' }}>
           {editBlockedReason}
         </div>
       )}
@@ -288,17 +284,13 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
         {etapes.slice().sort((a, b) => a.ordre - b.ordre).map((e) => {
           const ar = bilingue && aDuDarija(e);
           return (
-            <div key={e.ordre} style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)' }}>
-              {/* En-tête : numéro, libellé, et les marqueurs de conduite */}
+            <div key={e.ordre} style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--ds-sep)' }}>
+              {/* En-tête : repère, libellé, et les marqueurs de conduite (pas de numéro d'étape) */}
               <div className="flex items-start gap-3">
-                <span style={{
-                  width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
-                  background: 'var(--theme-accent)', color: '#fff',
-                  display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
-                }}>{e.ordre}</span>
+                <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 8, background: 'var(--ds-accent)' }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold" style={{ color: 'var(--theme-text-strong)' }}>{e.nom}</span>
+                    <span className="text-sm font-semibold" style={{ color: 'var(--ds-ink)' }}>{e.nom}</span>
                     {e.type && (
                       <span className="odoo-tag odoo-tag-grey">{refs.stepLabel(e.type)}</span>
                     )}
@@ -323,7 +315,7 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                   </div>
                   {ar && e.nom_ar && (
                     <div dir="rtl" lang="ar" className="text-sm font-semibold mt-0.5"
-                      style={{ color: 'var(--theme-accent)', fontFamily: 'Tahoma, Arial, sans-serif' }}>
+                      style={{ color: 'var(--ds-accent)', fontFamily: 'Tahoma, Arial, sans-serif' }}>
                       {e.nom_ar}
                     </div>
                   )}
@@ -338,14 +330,14 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                   style={ar ? { gridTemplateColumns: '1fr 1fr', marginTop: 8, marginLeft: 34 } : { marginTop: 8, marginLeft: 34 }}>
                   <ul style={{ margin: 0, paddingLeft: 16 }}>
                     {(e.checklist_items || []).map((it, i) => (
-                      <li key={i} className="text-[13px]" style={{ color: 'var(--theme-text-muted)', marginBottom: 3 }}>{it}</li>
+                      <li key={i} className="text-[13px]" style={{ color: 'var(--ds-muted)', marginBottom: 3 }}>{it}</li>
                     ))}
                   </ul>
                   {ar && (
-                    <ul dir="rtl" lang="ar" style={{ margin: 0, paddingRight: 16, paddingLeft: 0, borderRight: '2px solid var(--theme-bg-separator)' }}>
+                    <ul dir="rtl" lang="ar" style={{ margin: 0, paddingRight: 16, paddingLeft: 0, borderRight: '2px solid var(--ds-sep)' }}>
                       {(e.checklist_items_ar || []).map((it, i) => (
                         <li key={i} className="text-[13px]"
-                          style={{ color: 'var(--theme-text-muted)', marginBottom: 3, fontFamily: 'Tahoma, Arial, sans-serif' }}>{it}</li>
+                          style={{ color: 'var(--ds-muted)', marginBottom: 3, fontFamily: 'Tahoma, Arial, sans-serif' }}>{it}</li>
                       ))}
                     </ul>
                   )}

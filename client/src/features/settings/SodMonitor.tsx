@@ -74,7 +74,7 @@ export default function SodMonitor({ compact = false }: { compact?: boolean }) {
 
       <div style={{ display: 'grid', gap: 6 }}>
         {rules.map(r => (
-          <div key={r.code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: '0.8125rem' }}>
+          <div key={r.code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: '13px' }}>
             <span style={{ color: 'var(--ds-ink)' }}>{r.label}</span>
             <StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Active' : 'Inactive'} />
           </div>
@@ -82,11 +82,11 @@ export default function SodMonitor({ compact = false }: { compact?: boolean }) {
       </div>
 
       <div style={{ display: 'grid', gap: 6 }}>
-        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--ds-muted)' }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ds-muted)' }}>
           Manquements journalisés (90 derniers jours)
         </div>
         {violations.length === 0 ? (
-          <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', margin: 0 }}>
+          <p style={{ fontSize: '13px', color: 'var(--ds-muted)', margin: 0 }}>
             Aucun manquement journalisé. En mode « Observer », une action enfreignant une règle apparaîtra ici (sans être bloquée).
           </p>
         ) : table}

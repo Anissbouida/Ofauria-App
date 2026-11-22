@@ -426,7 +426,7 @@ function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
                       <h3 className="text-sm font-semibold text-gray-900 truncate" title={p.name as string}>{p.name as string}</h3>
                       <p className="text-xs text-gray-400 mt-0.5 truncate">{p.category_name as string}</p>
                     </div>
-                    <span className="text-sm font-bold whitespace-nowrap" style={{ color: 'var(--theme-accent)' }}>{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">{currencySymbol()}{p.sale_unit === 'weight' ? '/kg' : p.sale_unit === 'person' ? '/pers' : ''}</span></span>
+                    <span className="text-sm font-bold whitespace-nowrap" style={{ color: 'var(--ds-accent)' }}>{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">{currencySymbol()}{p.sale_unit === 'weight' ? '/kg' : p.sale_unit === 'person' ? '/pers' : ''}</span></span>
                   </div>
                   {/* Bottom row: stock + responsible */}
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
@@ -622,7 +622,7 @@ function CollapsibleSection({ title, subtitle, icon: Icon, defaultOpen = true, c
         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'color-mix(in srgb, var(--ds-bg) 50%, var(--ds-card))', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--ds-ink)' }}>
         {Icon && <Icon size={15} aria-hidden="true" style={{ color: 'var(--ds-accent)', flexShrink: 0 }} />}
         <span className="ds-subhead">{title}</span>
-        {subtitle && <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>· {subtitle}</span>}
+        {subtitle && <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>· {subtitle}</span>}
         <span style={{ flex: 1 }} />
         {open ? <ChevronDown size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /> : <ChevronRight size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
       </button>
@@ -647,18 +647,18 @@ function ProductPreview({ form, imagePreview, categories, chefUsers }: {
   const saleTypeLabel = form.saleType === 'dlv' ? 'Multi-jours' : form.saleType === 'commande' ? 'Sur commande' : 'Vente du jour';
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Aperçu</div>
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, background: 'var(--odoo-bg)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div style={{ aspectRatio: '4 / 3', background: 'var(--odoo-bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-muted)' }}>Aperçu</div>
+      <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 8, background: 'var(--ds-card)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+        <div style={{ aspectRatio: '4 / 3', background: 'var(--ds-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {imagePreview
             ? <img src={imagePreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <ShoppingBag size={40} style={{ color: 'var(--theme-text-muted)', opacity: 0.35 }} />}
+            : <ShoppingBag size={40} style={{ color: 'var(--ds-muted)', opacity: 0.35 }} />}
         </div>
         <div style={{ padding: 14, display: 'grid', gap: 8 }}>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--odoo-text)', lineHeight: 1.2 }}>{form.name || 'Nom du produit'}</div>
+          <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ds-ink)', lineHeight: 1.2 }}>{form.name || 'Nom du produit'}</div>
           {catName && <span className="odoo-tag odoo-tag-grey" style={{ justifySelf: 'start' }}>{catName}</span>}
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--theme-accent)' }}>
-            {priceStr}<span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--theme-text-muted)', marginLeft: 4 }}>{priceUnit}</span>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--ds-accent)' }}>
+            {priceStr}<span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--ds-muted)', marginLeft: 4 }}>{priceUnit}</span>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             <StatusTag tone={form.isAvailable ? 'done' : 'cancelled'} label={form.isAvailable ? 'Disponible' : 'Indisponible'} />
@@ -667,7 +667,7 @@ function ProductPreview({ form, imagePreview, categories, chefUsers }: {
             <span className="odoo-tag odoo-tag-yellow">{saleTypeLabel}</span>
           </div>
           {(resp || form.description) && (
-            <div style={{ borderTop: '1px solid var(--odoo-border)', paddingTop: 8, display: 'grid', gap: 5, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+            <div style={{ borderTop: '1px solid var(--ds-sep)', paddingTop: 8, display: 'grid', gap: 5, fontSize: '12px', color: 'var(--ds-muted)' }}>
               {resp && <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><ChefHat size={12} /> {resp.firstName as string} {resp.lastName as string}</div>}
               {form.description && <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{form.description}</div>}
             </div>
@@ -1062,7 +1062,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                           </button>
                           <button type="button" onClick={startCamera} aria-label="Prendre une photo"
                             className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
-                            <Camera size={14} style={{ color: 'var(--theme-accent)' }} />
+                            <Camera size={14} style={{ color: 'var(--ds-accent)' }} />
                           </button>
                           <button type="button" onClick={removeImage} aria-label="Retirer la photo"
                             className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
@@ -1074,13 +1074,13 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       <div className="flex gap-3 shrink-0">
                         <div onClick={() => fileInputRef.current?.click()}
                           className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
-                          <Upload size={24} className="mb-2" style={{ color: 'var(--theme-accent)' }} />
-                          <span className="text-xs font-medium" style={{ color: 'var(--theme-accent)' }}>Galerie</span>
+                          <Upload size={24} className="mb-2" style={{ color: 'var(--ds-accent)' }} />
+                          <span className="text-xs font-medium" style={{ color: 'var(--ds-accent)' }}>Galerie</span>
                         </div>
                         <div onClick={startCamera}
                           className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
-                          <Camera size={24} className="mb-2" style={{ color: 'var(--theme-accent)' }} />
-                          <span className="text-xs font-medium" style={{ color: 'var(--theme-accent)' }}>Camera</span>
+                          <Camera size={24} className="mb-2" style={{ color: 'var(--ds-accent)' }} />
+                          <span className="text-xs font-medium" style={{ color: 'var(--ds-accent)' }}>Camera</span>
                         </div>
                       </div>
                     )}
@@ -1125,13 +1125,13 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         <button key={opt.v} type="button" role="radio" aria-checked={active} onClick={() => setItemKind(opt.v)}
                           style={{
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '10px 6px', textAlign: 'center', cursor: 'pointer',
-                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
-                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
-                            boxShadow: active ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none',
+                            border: `1px solid ${active ? 'var(--ds-accent)' : 'var(--ds-sep)'}`, borderRadius: 4,
+                            background: active ? 'var(--ds-tint)' : 'var(--ds-card)',
+                            boxShadow: active ? 'inset 0 0 0 1px var(--ds-accent)' : 'none',
                           }}>
-                          <OptIcon size={18} style={{ color: active ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)' }} />
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--odoo-text)' }}>{opt.label}</span>
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', lineHeight: 1.2 }}>{opt.desc}</span>
+                          <OptIcon size={18} style={{ color: active ? 'var(--ds-accent)' : 'var(--ds-muted)' }} />
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-ink)' }}>{opt.label}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--ds-muted)', lineHeight: 1.2 }}>{opt.desc}</span>
                         </button>
                       );
                     })}
@@ -1298,7 +1298,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 <div className="flex gap-6">
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <div className={`relative w-11 h-6 rounded-full transition-colors ${form.isAvailable ? '' : 'bg-gray-300'}`}
-                      style={form.isAvailable ? { background: 'var(--theme-accent)' } : undefined}
+                      style={form.isAvailable ? { background: 'var(--ds-accent)' } : undefined}
                       onClick={() => setForm({ ...form, isAvailable: !form.isAvailable })}>
                       <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${form.isAvailable ? 'translate-x-5.5 left-[1px]' : 'left-[2px]'}`}
                         style={{ transform: form.isAvailable ? 'translateX(22px)' : 'translateX(0)' }} />
@@ -1307,7 +1307,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   </label>
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <div className={`relative w-11 h-6 rounded-full transition-colors ${form.isCustomOrderable ? '' : 'bg-gray-300'}`}
-                      style={form.isCustomOrderable ? { background: 'var(--theme-accent)' } : undefined}
+                      style={form.isCustomOrderable ? { background: 'var(--ds-accent)' } : undefined}
                       onClick={() => setForm({ ...form, isCustomOrderable: !form.isCustomOrderable })}>
                       <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform`}
                         style={{ transform: form.isCustomOrderable ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
@@ -1384,11 +1384,11 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         <button key={String(opt.v)} type="button" role="radio" aria-checked={active} onClick={() => setForm({ ...form, priceIncludesTax: opt.v })}
                           style={{
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 6px', textAlign: 'center', cursor: 'pointer',
-                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
-                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
+                            border: `1px solid ${active ? 'var(--ds-accent)' : 'var(--ds-sep)'}`, borderRadius: 4,
+                            background: active ? 'var(--ds-tint)' : 'var(--ds-card)',
                           }}>
-                          <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{opt.label}</span>
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{opt.desc}</span>
+                          <span style={{ fontWeight: 600, fontSize: '13px' }}>{opt.label}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{opt.desc}</span>
                         </button>
                       );
                     })}
@@ -1408,12 +1408,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         <button key={opt.v} type="button" role="radio" aria-checked={active} onClick={() => setForm({ ...form, saleUnit: opt.v })}
                           style={{
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 6px', textAlign: 'center', cursor: 'pointer',
-                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
-                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
-                            boxShadow: active ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none',
+                            border: `1px solid ${active ? 'var(--ds-accent)' : 'var(--ds-sep)'}`, borderRadius: 4,
+                            background: active ? 'var(--ds-tint)' : 'var(--ds-card)',
+                            boxShadow: active ? 'inset 0 0 0 1px var(--ds-accent)' : 'none',
                           }}>
-                          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--odoo-text)' }}>{opt.label}</span>
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{opt.desc}</span>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ds-ink)' }}>{opt.label}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{opt.desc}</span>
                         </button>
                       );
                     })}
@@ -1478,10 +1478,10 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     ? parseFloat((product.stock_quantity as string) || '0') / 1000
                     : parseFloat((product.stock_quantity as string) || '0');
                   return (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', padding: '7px 11px', borderRadius: 6, background: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', justifySelf: 'start' }}>
-                      <Package size={13} style={{ color: 'var(--theme-text-muted)' }} />
-                      <span style={{ color: 'var(--theme-text-muted)' }}>Stock actuel :</span>
-                      <strong style={{ color: stockN < 0 ? 'var(--ds-danger)' : 'var(--odoo-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '13px', padding: '7px 11px', borderRadius: 6, background: 'var(--ds-bg)', border: '1px solid var(--ds-sep)', justifySelf: 'start' }}>
+                      <Package size={13} style={{ color: 'var(--ds-muted)' }} />
+                      <span style={{ color: 'var(--ds-muted)' }}>Stock actuel :</span>
+                      <strong style={{ color: stockN < 0 ? 'var(--ds-danger)' : 'var(--ds-ink)', fontVariantNumeric: 'tabular-nums' }}>
                         {product.sale_unit === 'weight' ? `${stockN.toFixed(2)} kg` : stockN}
                       </strong>
                     </div>
@@ -1507,13 +1507,13 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         <button key={opt.value} type="button" role="radio" aria-checked={active} onClick={() => setSaleType(opt.value)}
                           style={{
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 12, textAlign: 'center', cursor: 'pointer',
-                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
-                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
-                            boxShadow: active ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none',
+                            border: `1px solid ${active ? 'var(--ds-accent)' : 'var(--ds-sep)'}`, borderRadius: 4,
+                            background: active ? 'var(--ds-tint)' : 'var(--ds-card)',
+                            boxShadow: active ? 'inset 0 0 0 1px var(--ds-accent)' : 'none',
                           }}>
-                          <OptIcon size={20} style={{ color: active ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)' }} />
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--odoo-text)' }}>{opt.label}</span>
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', lineHeight: 1.2 }}>{opt.desc}</span>
+                          <OptIcon size={20} style={{ color: active ? 'var(--ds-accent)' : 'var(--ds-muted)' }} />
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-ink)' }}>{opt.label}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--ds-muted)', lineHeight: 1.2 }}>{opt.desc}</span>
                         </button>
                       );
                     })}
@@ -1546,7 +1546,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     </div>
 
                     {/* M9 : traçabilité — lot (défaut) ou un numéro de série par pièce fabriquée. */}
-                    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, background: 'var(--odoo-bg)' }}>
+                    <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, padding: 14, background: 'var(--ds-card)' }}>
                       <label className="flex items-center justify-between gap-3">
                         <span className="min-w-0">
                           <span className="text-sm font-semibold text-gray-900">Traçabilité</span>
@@ -1563,7 +1563,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         max_reexpositions = nombre de jours où le produit reste vendable
                         après J (J+1…J+N) : on l'exprime donc comme une PÉRIODE en jours,
                         saisie inline devant le toggle. Colonne DB inchangée. */}
-                    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, background: 'var(--odoo-bg)' }}>
+                    <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, padding: 14, background: 'var(--ds-card)' }}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center shrink-0">
@@ -1610,7 +1610,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     </div>
 
                     {/* Recyclable toggle + gestion destinations (audit P1.3) */}
-                    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, background: 'var(--odoo-bg)' }}>
+                    <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, padding: 14, background: 'var(--ds-card)' }}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center">
@@ -1723,8 +1723,8 @@ function PricingTiersPanel({ productId }: { productId: string }) {
     <div style={{ border: '1px solid var(--ds-hair)', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div>
-          <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Coins size={14} style={{ color: 'var(--theme-accent)' }} /> Paliers tarifaires (vente au kg)</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>Un prix au kg par tranche de poids ; au POS, le palier correspondant s'applique automatiquement.</div>
+          <div style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Coins size={14} style={{ color: 'var(--ds-accent)' }} /> Paliers tarifaires (vente au kg)</div>
+          <div style={{ fontSize: '12px', color: 'var(--ds-muted)', marginTop: 2 }}>Un prix au kg par tranche de poids ; au POS, le palier correspondant s'applique automatiquement.</div>
         </div>
         <button type="button" onClick={addRow} className="odoo-btn-secondary" style={{ whiteSpace: 'nowrap' }}><Plus size={13} /> Ajouter</button>
       </div>
@@ -1748,12 +1748,12 @@ function PricingTiersPanel({ productId }: { productId: string }) {
       )}
 
       {rows.length > 0 && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg-alt)', padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--theme-text-muted)' }}>Aperçu pour <strong>{previewWeight} g</strong> :</span>
+        <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-bg)', padding: '6px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--ds-muted)' }}>Aperçu pour <strong>{previewWeight} g</strong> :</span>
           {matchingRow ? (
-            <span style={{ fontWeight: 600 }}>{money((previewWeight / 1000) * parseFloat(matchingRow.prix))} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, marginLeft: 6 }}>({matchingRow.prix} {currencySymbol()}/kg)</span></span>
+            <span style={{ fontWeight: 600 }}>{money((previewWeight / 1000) * parseFloat(matchingRow.prix))} <span style={{ color: 'var(--ds-muted)', fontWeight: 400, marginLeft: 6 }}>({matchingRow.prix} {currencySymbol()}/kg)</span></span>
           ) : (
-            <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucun palier — repli sur le prix produit</span>
+            <span style={{ color: 'var(--ds-muted)', fontStyle: 'italic' }}>Aucun palier — repli sur le prix produit</span>
           )}
         </div>
       )}
@@ -1846,12 +1846,12 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Destinations de valorisation</div>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-muted)' }}>Destinations de valorisation</div>
         <button type="button" onClick={addRow} className="odoo-btn-secondary ds-btn-sm"><Plus size={12} /> Ajouter</button>
       </div>
 
       {rows.length === 0 && (
-        <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucune destination. Ajoutez au moins un ingrédient cible pour rendre la valorisation opérationnelle.</p>
+        <p style={{ fontSize: '12px', color: 'var(--ds-muted)', fontStyle: 'italic' }}>Aucune destination. Ajoutez au moins un ingrédient cible pour rendre la valorisation opérationnelle.</p>
       )}
 
       {rows.length > 0 && (
@@ -1870,8 +1870,8 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
         </table></DataPanel>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, paddingTop: 8, borderTop: '1px solid var(--odoo-border)' }}>
-        <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Rendement : 1.0 = conversion complète, 0.7 = 30 % de perte</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, paddingTop: 8, borderTop: '1px solid var(--ds-sep)' }}>
+        <p style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>Rendement : 1.0 = conversion complète, 0.7 = 30 % de perte</p>
         {dirty && (
           <button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending} className="odoo-btn-primary ds-btn-sm">{mutation.isPending ? 'Enregistrement…' : 'Enregistrer'}</button>
         )}
@@ -1939,8 +1939,8 @@ function ChannelPricingPanel({ productId, saleUnit }: { productId: string; saleU
   return (
     <div style={{ border: '1px solid var(--ds-hair)', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
       <div>
-        <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Target size={14} style={{ color: 'var(--theme-accent)' }} /> Prix par canal de vente</div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>Remplace le prix par défaut pour un canal précis. Laissez vide pour le prix de catalogue (ou le palier pour la vente au poids).</div>
+        <div style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Target size={14} style={{ color: 'var(--ds-accent)' }} /> Prix par canal de vente</div>
+        <div style={{ fontSize: '12px', color: 'var(--ds-muted)', marginTop: 2 }}>Remplace le prix par défaut pour un canal précis. Laissez vide pour le prix de catalogue (ou le palier pour la vente au poids).</div>
       </div>
       <DataPanel label="Prix par canal"><table className="odoo-table ds-dense">
         <thead><tr><th>Canal</th><th className="ds-num">Prix ({currencySymbol()}{saleUnit === 'weight' ? '/kg' : '/pièce'})</th></tr></thead>

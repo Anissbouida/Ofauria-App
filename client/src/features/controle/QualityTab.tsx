@@ -96,7 +96,7 @@ function NonConformities() {
             {rows.map(nc => (
               <tr key={nc.id} style={{ cursor: 'pointer' }} onClick={() => setEditing(nc)}>
                 <td style={{ whiteSpace: 'nowrap' }}>{day(nc.detected_on)}</td>
-                <td className="ds-strong">{nc.title}{nc.reference_note && <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{nc.reference_note}</div>}</td>
+                <td className="ds-strong">{nc.title}{nc.reference_note && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{nc.reference_note}</div>}</td>
                 <td style={{ fontSize: '0.85rem' }}>{NC_SOURCE[nc.source]}</td>
                 <td><span className={`odoo-tag ${NC_SEVERITY[nc.severity].tag}`}>{NC_SEVERITY[nc.severity].label}</span></td>
                 <td style={{ fontSize: '0.85rem', color: 'var(--ds-muted)' }}>{nc.responsible_name || '—'}</td>
@@ -280,7 +280,7 @@ export function InspectionForm({ onClose, onSaved, links = {}, defaultTitle = ''
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifySelf: 'end' }}>
                     {it.kind === 'ok' ? (
                       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={vals[i]?.ok ?? false} onChange={e => setVal(i, { ok: e.target.checked })} style={{ accentColor: 'var(--theme-accent)' }} /> Conforme
+                        <input type="checkbox" checked={vals[i]?.ok ?? false} onChange={e => setVal(i, { ok: e.target.checked })} style={{ accentColor: 'var(--ds-accent)' }} /> Conforme
                       </label>
                     ) : (
                       <input type="number" step="any" className="ds-input sm" aria-label={`Mesure : ${it.label}`} value={vals[i]?.value ?? ''} onChange={e => setVal(i, { value: e.target.value })} placeholder={it.unit || 'valeur'} style={{ width: 110 }} />

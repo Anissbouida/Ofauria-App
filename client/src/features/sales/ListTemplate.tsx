@@ -23,7 +23,7 @@ export function ListToolbar({ search, onSearch, placeholder, children }: {
   return (
     <div className="prj-toolbar">
       <label className="prj-search">
-        <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+        <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
         <input type="search" aria-label={placeholder} placeholder={placeholder} value={search} onChange={e => onSearch(e.target.value)} />
       </label>
       {children}

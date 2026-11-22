@@ -126,7 +126,7 @@ function ReadingCard({ e }: { e: TodayEquipment }) {
   return (
     <EntryCard alert={e.last_in_range === false} title={e.nom} detail={`${t(e.temp_min)} à ${t(e.temp_max)}`}
       aside={<StatusTag tone={done ? 'done' : 'todo'} icon={Thermometer} label={`${e.readings_today}/${e.readings_per_day}`} title="Relevés du jour" />}>
-      <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+      <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
         {e.last_value == null ? 'Aucun relevé aujourd\'hui' : <>Dernier : <strong style={{ color: e.last_in_range ? 'var(--ds-ink)' : 'var(--ds-danger)' }}>{t(e.last_value)}</strong> à {time(e.last_at)}</>}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
@@ -137,7 +137,7 @@ function ReadingCard({ e }: { e: TodayEquipment }) {
       </div>
       {outOfRange && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ color: 'var(--ds-danger)', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ color: 'var(--ds-danger)', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <AlertTriangle size={12} aria-hidden="true" /> Hors plage : le gérant sera prévenu
           </span>
           <textarea value={action} onChange={ev => setAction(ev.target.value)} className="ds-input" style={textareaStyle} aria-label="Action réalisée"
@@ -228,10 +228,10 @@ function ActionCard({ a }: { a: CorrectiveAction }) {
         <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ds-muted)' }}>{day(a.created_at)} {time(a.created_at)}{a.created_by_name ? ` · ${a.created_by_name}` : ''}</span>
       </div>
       {a.validation_note && a.status === 'open' && (
-        <div style={{ fontSize: '0.75rem', color: 'var(--ds-warning)' }}>Renvoyée par le gérant : {a.validation_note}</div>
+        <div style={{ fontSize: '12px', color: 'var(--ds-warning)' }}>Renvoyée par le gérant : {a.validation_note}</div>
       )}
       {a.status === 'done' ? (
-        <div style={{ fontSize: '0.75rem' }}>
+        <div style={{ fontSize: '12px' }}>
           <StatusTag tone="todo" label="En attente de validation" /> {a.action_taken}
         </div>
       ) : (
@@ -258,7 +258,7 @@ function NewActionButton() {
     return <button type="button" className="odoo-btn-secondary" onClick={() => setOpen(true)}><Plus size={13} aria-hidden="true" /> Signaler un problème</button>;
   }
   return (
-    <div style={{ position: 'absolute', right: 0, top: 0, zIndex: 10, width: 'min(420px, 90vw)', background: 'var(--ds-card)', borderRadius: 16, padding: 12, boxShadow: '0 12px 32px rgba(15,23,42,0.16), 0 0 0 .5px rgba(15,23,42,.08)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.875rem', fontWeight: 400, letterSpacing: 0 }}>
+    <div style={{ position: 'absolute', right: 0, top: 0, zIndex: 10, width: 'min(420px, 90vw)', background: 'var(--ds-card)', borderRadius: 16, padding: 12, boxShadow: '0 12px 32px rgba(15,23,42,0.16), 0 0 0 .5px rgba(15,23,42,.08)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: '14px', fontWeight: 400, letterSpacing: 0 }}>
       <textarea autoFocus value={problem} onChange={ev => setProblem(ev.target.value)} className="ds-input" style={textareaStyle} aria-label="Problème constaté" aria-required="true" placeholder="Problème constaté (nuisible, produit suspect, panne…)" />
       <textarea value={action} onChange={ev => setAction(ev.target.value)} className="ds-input" style={textareaStyle} aria-label="Action réalisée" placeholder="Action réalisée (facultatif)" />
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>

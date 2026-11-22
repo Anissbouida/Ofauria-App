@@ -200,7 +200,7 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
           bulk={<div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 20px', borderBottom: '1px solid var(--ds-hair)', fontSize: 14 }}>
             <Package size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
             <span className="ds-ref">{g.bon_numero}</span>
-            <span style={{ color: 'var(--theme-text-muted)' }}>·</span>
+            <span style={{ color: 'var(--ds-muted)' }}>·</span>
             <span>Plan du {g.plan_date ? format(new Date(g.plan_date), 'dd MMM yyyy', { locale: fr }) : '—'}</span>
             {g.plan_type && <span className="odoo-tag odoo-tag-grey">{g.plan_type}</span>}
             <StatusTag tone={bonStatusTag(g.bon_status).tone} icon={bonStatusTag(g.bon_status).icon}
@@ -242,9 +242,9 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
                   <tr key={ligneId} className={insufficient ? 'row-danger' : ''}>
                     <td className="ds-strong">{l.ingredient_name as string}</td>
                     <td className="ds-num ds-strong">{qty.toFixed(2)} {unit}</td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>
+                    <td style={{ color: 'var(--ds-muted)' }}>
                       {l.suggested_lot_number ? <span className="ds-ref">{l.suggested_lot_number as string}</span> : '—'}
-                      {otherLot && <span style={{ fontSize: '0.6875rem' }}> (lot suggéré {suggestedLotQty.toFixed(2)}, un autre lot sera pris)</span>}
+                      {otherLot && <span style={{ fontSize: '12px' }}> (lot suggéré {suggestedLotQty.toFixed(2)}, un autre lot sera pris)</span>}
                     </td>
                     <td className="ds-num" style={{ color: insufficient ? 'var(--ds-danger)' : undefined, fontWeight: insufficient ? 600 : 400 }}>
                       {economatAvailable.toFixed(2)} {unit}
@@ -389,13 +389,13 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
           onSubmit={() => onConfirm(qty, note.trim() || undefined, isOverride ? (effectiveLotId || undefined) : undefined, containerTypeId || undefined, effectiveCount)} />
       }>
         <div className="space-y-4">
-          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, padding: '8px 12px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--odoo-text-muted)' }}>Bon de sortie</span>
+              <span style={{ color: 'var(--ds-muted)' }}>Bon de sortie</span>
               <span className="ds-ref">{payload.bonNumero}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--odoo-text-muted)' }}>Besoin du bon</span>
+              <span style={{ color: 'var(--ds-muted)' }}>Besoin du bon</span>
               <span style={{ fontWeight: 600 }}>{fmtQty(payload.requiredQty)} {payload.unit}</span>
             </div>
           </div>

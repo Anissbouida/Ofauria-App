@@ -107,7 +107,7 @@ export function TransferToPesage({ onDone, onCancel, initialIngredientId }: { on
           ) : (
             <>
               <div className="odoo-search-panel" style={{ margin: 0 }}>
-                <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+                <Search size={14} style={{ color: 'var(--ds-muted)', flexShrink: 0 }} />
                 <input id="transfer-pesage-search" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un ingrédient…" className="odoo-search-input" autoFocus />
               </div>
               {matches.length > 0 && (

@@ -381,7 +381,7 @@ export default function StoresPanel() {
                   <td>{kindLabel(s.kind)}</td>
                   <td>{[s.address, s.city].filter(Boolean).join(', ') || '—'}</td>
                   <td>{s.manager_name || '—'}</td>
-                  <td style={{ fontSize: '0.8125rem' }}>{hoursSummary(s.opening_hours)}</td>
+                  <td style={{ fontSize: '13px' }}>{hoursSummary(s.opening_hours)}</td>
                   <td className="ds-num">{s.user_count}</td>
                   <td><StatusTag tone={s.is_active === false ? 'cancelled' : 'done'} label={s.is_active === false ? 'Désactivé' : 'Actif'} /></td>
                   <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>

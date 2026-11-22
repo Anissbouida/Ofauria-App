@@ -123,10 +123,10 @@ function Letters() {
                   <td><input type="checkbox" aria-label={`Sélectionner ${p.customerName}`} checked={selected.has(p.customerId)}
                     onChange={e => { const s = new Set(selected); if (e.target.checked) s.add(p.customerId); else s.delete(p.customerId); setSelected(s); }} /></td>
                   <td><span className="ds-strong">{p.customerName}</span>{p.creditHold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}
-                    <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{p.email || <span style={{ color: 'var(--ds-warning)' }}>pas d'e-mail</span>}{p.phone ? ` · ${p.phone}` : ''}</div></td>
+                    <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{p.email || <span style={{ color: 'var(--ds-warning)' }}>pas d'e-mail</span>}{p.phone ? ` · ${p.phone}` : ''}</div></td>
                   <td className="ds-num ds-strong">{n2(p.overdue)}</td>
                   <td className="ds-num" style={{ color: p.maxDaysLate > 60 ? 'var(--ds-danger)' : undefined }}>{p.maxDaysLate}</td>
-                  <td style={{ fontSize: '0.8125rem' }}>{p.docs.map(d => d.number).join(', ')}</td>
+                  <td style={{ fontSize: '13px' }}>{p.docs.map(d => d.number).join(', ')}</td>
                   <td>{p.lastLevel ? `Niveau ${p.lastLevel} · ${fr(p.lastDunningAt)}` : '—'}</td>
                   <td><span className="odoo-tag odoo-tag-orange">{p.targetLevel} · {p.targetLabel}</span></td>
                 </tr>
@@ -154,10 +154,10 @@ function Letters() {
                     <td><span className="ds-ref">{d.number}</span></td>
                     <td><span className="ds-strong">{d.customer_name}</span>{d.credit_hold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}</td>
                     <td>{d.level} · {d.level_label}</td>
-                    <td>{fr(d.dunning_date)}<div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{d.created_by_name ?? 'proposée automatiquement'}</div></td>
-                    <td className="ds-num">{n2(d.amount_due)}{Number(d.fee_amount) + Number(d.interest_amount) > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>+ {n2(Number(d.fee_amount) + Number(d.interest_amount))} frais et pénalités</div>}</td>
+                    <td>{fr(d.dunning_date)}<div style={{ fontSize: '0.7rem', color: 'var(--ds-muted)' }}>{d.created_by_name ?? 'proposée automatiquement'}</div></td>
+                    <td className="ds-num">{n2(d.amount_due)}{Number(d.fee_amount) + Number(d.interest_amount) > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--ds-muted)' }}>+ {n2(Number(d.fee_amount) + Number(d.interest_amount))} frais et pénalités</div>}</td>
                     <td><StatusTag tone={DUNNING_TONE[d.status]?.tone ?? 'draft'} icon={DUNNING_TONE[d.status]?.icon} label={DUNNING_STATUS_LABELS[d.status]} />
-                      {d.sent_at && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{format(new Date(d.sent_at), 'dd/MM HH:mm')} · {VIA[d.sent_via ?? ''] ?? ''}</div>}</td>
+                      {d.sent_at && <div style={{ fontSize: '0.7rem', color: 'var(--ds-muted)' }}>{format(new Date(d.sent_at), 'dd/MM HH:mm')} · {VIA[d.sent_via ?? ''] ?? ''}</div>}</td>
                     <td className="ds-actions">
                       {d.status === 'draft' ? (
                         <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={!d.customer_email || send.isPending}
@@ -170,9 +170,9 @@ function Letters() {
                     </td>
                   </tr>
                   {openId === d.id && (
-                    <tr><td colSpan={7} style={{ background: 'var(--odoo-bg-alt)' }}>
+                    <tr><td colSpan={7} style={{ background: 'var(--ds-bg)' }}>
                       <div style={{ fontWeight: 600, marginBottom: 6 }}>{d.subject}</div>
-                      <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.8125rem', margin: 0 }}>{d.body}</pre>
+                      <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '13px', margin: 0 }}>{d.body}</pre>
                     </td></tr>
                   )}
                 </Fragment>
@@ -193,8 +193,8 @@ function Letters() {
                 <td className="ds-strong">{b.name}</td>
                 <td>{b.credit_hold_at ? <StatusTag tone="blocked" icon={Lock} label="bloqué" /> : null}{' '}
                   {b.dunning_paused_until && <StatusTag tone="cancelled" icon={PauseCircle} label={`relances en pause jusqu'au ${fr(b.dunning_paused_until)}`} />}</td>
-                <td style={{ fontSize: '0.8125rem' }}>{b.credit_hold_reason ?? '—'}</td>
-                <td style={{ fontSize: '0.8125rem' }}>{b.credit_hold_at ? `${format(new Date(b.credit_hold_at), 'dd/MM/yyyy')}${b.held_by_name ? ` · ${b.held_by_name}` : ' · relance'}` : '—'}</td>
+                <td style={{ fontSize: '13px' }}>{b.credit_hold_reason ?? '—'}</td>
+                <td style={{ fontSize: '13px' }}>{b.credit_hold_at ? `${format(new Date(b.credit_hold_at), 'dd/MM/yyyy')}${b.held_by_name ? ` · ${b.held_by_name}` : ' · relance'}` : '—'}</td>
                 <td className="ds-actions">
                   {b.credit_hold_at && <button type="button" className="odoo-btn-secondary ds-btn-sm"
                     onClick={async () => { if (await confirm(`Débloquer ${b.name} ? Ses achats à crédit redeviennent possibles.`, { title: 'Débloquer le client', confirmLabel: 'Débloquer' })) release.mutate(b.id); }}><Unlock size={12} /> Débloquer</button>}
@@ -280,7 +280,7 @@ function Levels() {
             <FormField label="Texte de la lettre" htmlFor="dl-body" required error={editing.body.trim().length < 10 ? 'Au moins 10 caractères.' : undefined}>
               <textarea id="dl-body" className="ds-input" style={{ minHeight: 180 }} maxLength={4000} value={editing.body} onChange={e => setEditing({ ...editing, body: e.target.value })} />
             </FormField>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '13px' }}>
               <label htmlFor="dl-email" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input id="dl-email" type="checkbox" checked={editing.send_email} onChange={e => setEditing({ ...editing, send_email: e.target.checked })} /> Envoyer par e-mail</label>
               <label htmlFor="dl-hold" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input id="dl-hold" type="checkbox" checked={editing.credit_hold} onChange={e => setEditing({ ...editing, credit_hold: e.target.checked })} /> Bloquer les achats à crédit à l'envoi</label>
               <label htmlFor="dl-active" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input id="dl-active" type="checkbox" checked={editing.is_active} onChange={e => setEditing({ ...editing, is_active: e.target.checked })} /> Actif</label>

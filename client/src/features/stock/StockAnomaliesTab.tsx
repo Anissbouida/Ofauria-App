@@ -108,13 +108,13 @@ export default function StockAnomaliesTab() {
                   <td style={{ whiteSpace: 'nowrap' }}>{day(a.created_at)}</td>
                   <td>
                     <div className="ds-strong">{a.item_name ?? '—'}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
                       {KIND_LABEL[a.item_kind]}{a.store_name ? ` · ${a.store_name}` : ''}
                     </div>
                   </td>
                   <td>
                     <div>{ORIGIN_LABEL[a.origin_type] ?? a.origin_type}</div>
-                    {a.created_by_name && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{a.created_by_name}</div>}
+                    {a.created_by_name && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{a.created_by_name}</div>}
                   </td>
                   <td className="ds-num">{qty(a.requested_qty, a.unit)}</td>
                   <td className="ds-num">{qty(a.available_qty, a.unit)}</td>
@@ -124,7 +124,7 @@ export default function StockAnomaliesTab() {
                     {a.status === 'resolved' ? (
                       <div>
                         <div>{a.resolution_note}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                        <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
                           {a.resolved_at ? day(a.resolved_at) : ''}{a.resolved_by_name ? ` · ${a.resolved_by_name}` : ''}
                         </div>
                       </div>

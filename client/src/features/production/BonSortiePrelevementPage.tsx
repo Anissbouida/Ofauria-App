@@ -28,7 +28,7 @@ export default function BonSortiePrelevementPage() {
           <ArrowLeft size={14} />
         </button>
         <div className="odoo-breadcrumb">
-          <Truck size={14} style={{ color: 'var(--theme-accent)' }} />
+          <Truck size={14} style={{ color: 'var(--ds-accent)' }} />
           <span style={{ cursor: 'pointer' }} onClick={() => navigate('/stock?tab=bons')}>Bons de sortie</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">Bon de sortie</span>

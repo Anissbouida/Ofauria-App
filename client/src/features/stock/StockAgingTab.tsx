@@ -54,8 +54,8 @@ export default function StockAgingTab() {
 
       {/* Barre d'outils */}
       <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un article ou un n° de lot…">
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: '0.85rem', cursor: 'pointer', color: 'var(--theme-text-body)', border: 0 }}>
-          <input type="checkbox" checked={oldOnly} onChange={e => setOldOnly(e.target.checked)} style={{ accentColor: 'var(--theme-accent)' }} />
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: '0.85rem', cursor: 'pointer', color: 'var(--ds-body)', border: 0 }}>
+          <input type="checkbox" checked={oldOnly} onChange={e => setOldOnly(e.target.checked)} style={{ accentColor: 'var(--ds-accent)' }} />
           Seulement plus de 90 jours
         </label>
       </ListToolbar>
@@ -93,14 +93,14 @@ export default function StockAgingTab() {
                     <span style={{ color: dormant ? 'var(--ds-danger)' : l.days_in_stock > 60 ? 'var(--ds-warning)' : undefined, fontWeight: dormant || l.days_in_stock > 60 ? 600 : undefined }}
                       title={dormant ? 'Stock dormant : plus de 90 jours' : undefined}>{l.days_in_stock}</span>
                   </td>
-                  <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>{format(new Date(l.received_at), 'dd MMM yyyy', { locale: fr })}</td>
+                  <td style={{ color: 'var(--ds-muted)', fontSize: '0.85rem' }}>{format(new Date(l.received_at), 'dd MMM yyyy', { locale: fr })}</td>
                   <td style={{ fontSize: '0.85rem' }}>
                     {l.expiration_date ? (
-                      <span style={{ color: dlcPast ? 'var(--ds-danger)' : dlcSoon ? 'var(--ds-warning)' : 'var(--theme-text-muted)', fontWeight: dlcPast || dlcSoon ? 600 : 400 }}>
+                      <span style={{ color: dlcPast ? 'var(--ds-danger)' : dlcSoon ? 'var(--ds-warning)' : 'var(--ds-muted)', fontWeight: dlcPast || dlcSoon ? 600 : 400 }}>
                         {dlcPast && <AlertTriangle size={11} style={{ display: 'inline', marginRight: 3 }} />}
                         {format(new Date(l.expiration_date), 'dd MMM yyyy', { locale: fr })}
                       </span>
-                    ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                    ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                   </td>
                   <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{money(l.value)}</td>
                 </tr>

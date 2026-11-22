@@ -72,12 +72,12 @@ export default function PriceHealthPage() {
                       : <StatusTag tone="todo" label="Prix manquant" />}
                   </td>
                   <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{r.catalogue_cost != null ? `${Number(r.catalogue_cost).toFixed(2)} /${r.unit}` : '—'}</td>
-                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{r.lot_avg_cost != null ? `${Number(r.lot_avg_cost).toFixed(2)} /${r.unit}` : '—'}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--ds-muted)' }}>{r.lot_avg_cost != null ? `${Number(r.lot_avg_cost).toFixed(2)} /${r.unit}` : '—'}</td>
                   <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: r.divergence_pct != null && Math.abs(r.divergence_pct) > 50 ? 'var(--ds-danger)' : undefined }}>
                     {r.divergence_pct != null ? `${r.divergence_pct > 0 ? '+' : ''}${r.divergence_pct}` : '—'}
                   </td>
                   <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{r.value_gap ? money(r.value_gap) : '—'}</td>
-                  <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}><ChevronRight size={14} aria-hidden="true" /></td>
+                  <td className="ds-num" style={{ color: 'var(--ds-muted)' }}><ChevronRight size={14} aria-hidden="true" /></td>
                 </tr>
               ))}
             </tbody>

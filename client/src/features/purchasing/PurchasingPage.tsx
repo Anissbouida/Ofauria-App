@@ -1017,7 +1017,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                       </FormField>
                     </div>
                     <input type="hidden" name="amount" value={dh.toFixed(2)} />
-                    <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'grid', gap: 2 }}>
+                    <div className="odoo-alert" style={{ fontSize: '12px', display: 'grid', gap: 2 }}>
                       <span>Sortie de trésorerie : <strong>{money(dh)}</strong> ({n(foreign)} {payCurrency} × {rate || '—'})</span>
                       <span>Dette soldée au taux de la facture ({invRate}) : <strong>{money(settled)}</strong></span>
                       {rate > 0 && Math.abs(diff) >= 0.01 && <span style={{ color: diff > 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>

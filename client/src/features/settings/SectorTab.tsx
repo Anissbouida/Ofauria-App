@@ -597,7 +597,7 @@ export default function SectorTab() {
                           <OdooToggle checked={fOn && on} disabled={!on || busy}
                             onChange={v => setDraft(d => ({ ...d, features: { ...d.features, [f.key]: v } }))} />
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 500 }}>
                               {f.label}{' '}
                               {fAdjusted && <StatusTag tone="todo" icon={SlidersHorizontal} label="Ajusté" />}
                               {fAdjusted && on && (
@@ -771,7 +771,7 @@ export default function SectorTab() {
           style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '4.75rem', zIndex: 59,
             width: 'min(760px, calc(100vw - 2rem))', maxHeight: '40vh', overflowY: 'auto',
             padding: '0.6rem 0.75rem', border: '1px solid var(--ds-sep)', borderRadius: 6,
-            background: 'var(--ds-card)', boxShadow: 'var(--ds-shadow)', fontSize: '0.8125rem', display: 'grid', gap: 4 }}>
+            background: 'var(--ds-card)', boxShadow: 'var(--ds-shadow)', fontSize: '13px', display: 'grid', gap: 4 }}>
           <div className="odoo-setting-label">Impact de vos changements</div>
           {(impact.modulesOn.length > 0 || impact.featuresOn.length > 0) && (
             <div><strong style={{ color: 'var(--ds-success)' }}>Apparaît :</strong> {[...impact.modulesOn.map(moduleLabel), ...impact.featuresOn.map(featureLabel)].join(', ')}</div>

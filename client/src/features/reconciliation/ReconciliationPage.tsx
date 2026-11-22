@@ -106,7 +106,7 @@ function EcartBadge({ value, format, strong, minWidth = 62 }: { value: number; f
       display: 'inline-flex', alignItems: 'center', gap: 4,
       padding: '2px 8px', borderRadius: 999,
       background: t.bg, color: t.fg,
-      fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '0.75rem',
+      fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '12px',
       minWidth, justifyContent: 'flex-end', lineHeight: 1.4,
     }}>
       <Icon size={12} strokeWidth={2.5} />
@@ -1254,7 +1254,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
         <input type="search" className="ds-input sm" placeholder="Rechercher un produit…" value={search} aria-label="Rechercher un produit"
           onChange={e => setSearch(e.target.value)} style={{ width: 200 }} />
         {refLabel && (
-          <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+          <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
             Basé sur <strong>{refLabel}</strong>
           </span>
         )}
@@ -1270,15 +1270,15 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
           </span>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--ds-bg)', borderRadius: 6, padding: '3px 8px', border: '1px solid var(--ds-sep)' }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: 500, whiteSpace: 'nowrap' }}>Ajustement</span>
+          <span style={{ fontSize: '12px', fontWeight: 500, whiteSpace: 'nowrap' }}>Ajustement</span>
           <button type="button" onClick={() => changeRisk(-5)} aria-label="Diminuer l'ajustement de 5 %"
-            style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1 }}>−</button>
-          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem', fontWeight: 600, minWidth: 40, textAlign: 'center',
+            style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '14px', lineHeight: 1 }}>−</button>
+          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '13px', fontWeight: 600, minWidth: 40, textAlign: 'center',
             color: riskPct > 0 ? 'var(--ds-success)' : riskPct < 0 ? 'var(--ds-danger)' : 'var(--ds-ink)' }}>
             {riskPct > 0 ? '+' : ''}{riskPct}%
           </span>
           <button type="button" onClick={() => changeRisk(5)} aria-label="Augmenter l'ajustement de 5 %"
-            style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1 }}>+</button>
+            style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '14px', lineHeight: 1 }}>+</button>
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'nowrap' }}>
@@ -1324,7 +1324,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
         <div style={{
           border: '1px solid var(--ds-sep)', borderRadius: 6,
           padding: '8px 12px', background: 'var(--ds-bg)',
-          fontSize: '0.75rem',
+          fontSize: '12px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer', userSelect: 'none' }}
             onClick={() => setShowCuissonPlan(v => !v)}
@@ -1424,7 +1424,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                 })}
                 style={{
                   fontWeight: 700, padding: '12px 16px',
-                  color: 'var(--ds-ink)', fontSize: '0.9375rem',
+                  color: 'var(--ds-ink)', fontSize: '14px',
                   borderBottom: isCollapsed ? 0 : '1px solid var(--ds-sep)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   cursor: 'pointer', userSelect: 'none',
@@ -1459,13 +1459,13 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                           borderRadius: 4, padding: '1px 4px',
                         }}>
                         <button type="button" onClick={() => changeCatRisk(cat, -5)} aria-label={`Diminuer l'ajustement de ${cat} de 5 %`}
-                          style={{ width: 18, height: 18, border: 'none', borderRadius: 3, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', lineHeight: 1, padding: 0 }}>−</button>
+                          style={{ width: 18, height: 18, border: 'none', borderRadius: 3, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '12px', lineHeight: 1, padding: 0 }}>−</button>
                         <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, fontWeight: 600, minWidth: 34, textAlign: 'center',
                           color: pct > 0 ? 'var(--ds-success)' : pct < 0 ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>
                           {pct > 0 ? '+' : ''}{pct}%
                         </span>
                         <button type="button" onClick={() => changeCatRisk(cat, 5)} aria-label={`Augmenter l'ajustement de ${cat} de 5 %`}
-                          style={{ width: 18, height: 18, border: 'none', borderRadius: 3, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', lineHeight: 1, padding: 0 }}>+</button>
+                          style={{ width: 18, height: 18, border: 'none', borderRadius: 3, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '12px', lineHeight: 1, padding: 0 }}>+</button>
                       </span>
                     );
                   })()}
@@ -1488,7 +1488,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                         catSlots.map(s => (
                           <th key={s.id} style={{ textAlign: 'right', width: 85 }}>
                             <div>{s.label}</div>
-                            <div style={{ fontSize: '0.5625rem', fontWeight: 400, color: 'var(--ds-muted)' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 400, color: 'var(--ds-muted)' }}>
                               {s.default_pct}%{s.target_time ? ` · ${s.target_time.slice(0, 5)}` : ''}
                             </div>
                           </th>
@@ -1510,7 +1510,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                             <span style={{ fontWeight: 500 }}>{p.product_name}</span>
                             {p.sku && <div style={{ fontSize: 12, color: 'var(--ds-muted)', fontFamily: 'monospace' }}>{p.sku}</div>}
                           </td>
-                          <td style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem', direction: 'rtl', textAlign: 'right' }}>
+                          <td style={{ color: 'var(--ds-muted)', fontSize: '13px', direction: 'rtl', textAlign: 'right' }}>
                             {darijaOf(p.product_name) || '—'}
                           </td>
                           <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: p.method === 'prevision' ? 'var(--ds-accent)' : 'var(--ds-muted)' }}
@@ -1531,7 +1531,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                                     aria-label={`${s.label} · ${p.product_name}`}
                                     style={{
                                       width: 64, textAlign: 'right',
-                                      fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem',
+                                      fontFamily: 'ui-monospace, monospace', fontSize: '13px',
                                     }}
                                   />
                                 </td>
@@ -1682,7 +1682,7 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
                     style={{
                       display: 'flex', justifyContent: 'space-between', width: '100%',
                       padding: '6px 10px', border: 'none', background: 'transparent',
-                      textAlign: 'left', cursor: 'pointer', fontSize: '0.8125rem',
+                      textAlign: 'left', cursor: 'pointer', fontSize: '13px',
                       borderBottom: '1px solid var(--ds-sep)',
                     }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--ds-tint)')}
@@ -2124,7 +2124,7 @@ export function DayView() {
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px',
                     border: 'none', borderRight: '1px solid var(--ds-sep)', cursor: 'pointer',
-                    fontSize: '0.8125rem', fontWeight: active ? 700 : 500,
+                    fontSize: '13px', fontWeight: active ? 700 : 500,
                     background: active ? 'var(--ds-accent)' : 'var(--ds-card)',
                     color: active ? 'var(--ds-card)' : 'var(--ds-ink)',
                   }}>
@@ -2138,7 +2138,7 @@ export function DayView() {
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px',
                 border: 'none', cursor: 'pointer',
-                fontSize: '0.8125rem', fontWeight: isTotalView ? 700 : 500,
+                fontSize: '13px', fontWeight: isTotalView ? 700 : 500,
                 background: isTotalView ? 'var(--ds-accent)' : 'var(--ds-card)',
                 color: isTotalView ? 'var(--ds-card)' : 'var(--ds-ink)',
               }}>
@@ -2235,12 +2235,12 @@ export function DayView() {
               padding: '6px 12px', borderRadius: 6,
               background: t.bg, color: t.fg,
               border: `1px solid ${t.border}`,
-              fontSize: '0.75rem', fontWeight: 600,
+              fontSize: '12px', fontWeight: 600,
               opacity: count === 0 ? 0.5 : 1,
             }}>
               <Icon size={14} strokeWidth={2.5} />
               <span>{label}</span>
-              <strong style={{ fontSize: '0.875rem', fontFamily: 'ui-monospace, monospace' }}>{count}</strong>
+              <strong style={{ fontSize: '14px', fontFamily: 'ui-monospace, monospace' }}>{count}</strong>
             </div>
           );
         };
@@ -2273,7 +2273,7 @@ export function DayView() {
                             ? 'Stock d\'ouverture du shift : reste compté à la passation (fin du shift précédent), reporté automatiquement. Non modifiable.'
                             : 'Stock d\'ouverture : reste du soir de la veille, reporté automatiquement. Non modifiable.'}>
                         {isPassationOpen ? 'Ouverture' : 'Reste veille'}
-                        <div style={{ fontSize: '0.5625rem', fontWeight: 500, opacity: 0.75 }}>
+                        <div style={{ fontSize: '10px', fontWeight: 500, opacity: 0.75 }}>
                           {isPassationOpen ? 'passation · auto' : 'J-1 · auto'}
                         </div>
                       </th>
@@ -2285,7 +2285,7 @@ export function DayView() {
                             ? 'Comptage physique de la passation (~14h) : tout ce qui reste en vitrine à la fin du shift. Devient l\'ouverture du shift suivant.'
                             : 'Comptage physique de fin de journée : un seul chiffre, tout ce qui reste en vitrine.'}>
                         {isPassationClose ? 'Reste passation' : 'Reste soir'}
-                        <div style={{ fontSize: '0.5625rem', fontWeight: 500, opacity: 0.75 }}>
+                        <div style={{ fontSize: '10px', fontWeight: 500, opacity: 0.75 }}>
                           {isPassationClose ? 'comptage 14h' : 'comptage'}
                         </div>
                       </th>
@@ -2326,7 +2326,7 @@ export function DayView() {
                     style={{ cursor: 'pointer', userSelect: 'none' }}>
                     <td style={{
                       background: catBg, fontWeight: 700,
-                      color: 'var(--ds-accent)', fontSize: '0.8125rem',
+                      color: 'var(--ds-accent)', fontSize: '13px',
                       borderLeft: `3px solid ${ecartTone(catEcartVal) === 'ok' ? 'transparent' : catTheme.border}`,
                     }}>
                       {isCollapsed ? '▸' : '▾'} {cat} ({items.length})
@@ -2367,7 +2367,7 @@ export function DayView() {
                     <td className="ds-num" style={{ background: COL_TINTS.recu.bg }}>
                       {numCell(l, 'recuQty', 'recu_qty', COL_TINTS.recu)}
                       {num(l.report_veille_qty) > 0 && (
-                        <div style={{ fontSize: '0.5625rem', color: COL_TINTS.report.text, fontWeight: 600 }}
+                        <div style={{ fontSize: '10px', color: COL_TINTS.report.text, fontWeight: 600 }}
                              title="Reste de la veille qui s'ajoute au reçu du jour pour le calcul de l'écart">
                           +{qf(num(l.report_veille_qty))}
                         </div>
@@ -2508,9 +2508,9 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
 
   const box = (label: string, s: { net: number; qty: number }, color: string) => (
     <div style={{ flex: 1, border: '1px solid var(--ds-sep)', borderRadius: 6, padding: '10px 14px' }}>
-      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>{label}</div>
+      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-muted)' }}>{label}</div>
       <div style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace', color }}>{nf(s.net)} <span style={{ fontSize: '0.8rem' }}>{currencySymbol()}</span></div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{qf(s.qty)} article{s.qty > 1 ? 's' : ''}</div>
+      <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{qf(s.qty)} article{s.qty > 1 ? 's' : ''}</div>
     </div>
   );
 
@@ -2523,7 +2523,7 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
         </button>
       </>}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', display: 'flex', gap: 8 }}>
+          <div style={{ fontSize: '12px', color: 'var(--ds-muted)', display: 'flex', gap: 8 }}>
             <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
               {receipts.length} ligne{receipts.length > 1 ? 's' : ''} de reçu. Fichier téléchargé depuis <strong>{detectedTz}</strong> ;
@@ -2559,7 +2559,7 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
             {box('Matin', stats.matin, 'var(--ds-accent-ink)')}
             {box('Soir', stats.soir, 'var(--ds-success)')}
           </div>
-          <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+          <div style={{ textAlign: 'right', fontSize: '12px', color: 'var(--ds-muted)' }}>
             Total : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{nf(total)} {currencySymbol()}</strong>
           </div>
         </div>
@@ -2606,7 +2606,7 @@ function PasteApproModal({ onClose, onSave, isLoading }: {
         </button>
       </>}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+          <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
             Une ligne par produit — colonnes Excel dans l'ordre :{' '}
             <strong>Nom · Quantité · Prix(opt) · SKU(opt) · Catégorie(opt)</strong>. Le vendu et le reste déjà saisis
             sont préservés.
@@ -2614,9 +2614,9 @@ function PasteApproModal({ onClose, onSave, isLoading }: {
           <textarea
             value={text} onChange={e => setText(e.target.value)} rows={9} autoFocus aria-label="Lignes collées depuis Excel"
             placeholder={'Tarte citron\t20\t12\tTARTE-CITRON\tPâtisserie\nPain complet\t35\t3.5'}
-            className="ds-input" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}
+            className="ds-input" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '13px' }}
           />
-          <div style={{ fontSize: '0.8125rem', color: rows.length ? 'var(--ds-success)' : 'var(--ds-muted)' }}>
+          <div style={{ fontSize: '13px', color: rows.length ? 'var(--ds-success)' : 'var(--ds-muted)' }}>
             {rows.length} ligne{rows.length > 1 ? 's' : ''} détectée{rows.length > 1 ? 's' : ''}.
           </div>
         </div>
@@ -2705,7 +2705,7 @@ function AddLineModal({ onClose, onSave, isLoading }: {
                     style={{
                       display: 'flex', justifyContent: 'space-between', width: '100%',
                       padding: '6px 10px', border: 'none', background: 'transparent',
-                      textAlign: 'left', cursor: 'pointer', fontSize: '0.8125rem',
+                      textAlign: 'left', cursor: 'pointer', fontSize: '13px',
                       borderBottom: '1px solid var(--ds-sep)',
                     }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--ds-bg)')}
@@ -3101,7 +3101,7 @@ export function DarijaSettingsView() {
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <label style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+        <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
           <input type="checkbox" checked={showTranslated} onChange={e => setShowTranslated(e.target.checked)} />
           Afficher les produits déjà traduits ({translated.length})
         </label>
@@ -3230,7 +3230,7 @@ export function CatalogView() {
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <input type="search" className="ds-input sm" placeholder="Rechercher (nom, SKU, catégorie)…" value={filter} aria-label="Rechercher un produit"
           onChange={e => setFilter(e.target.value)} style={{ width: 260 }} />
-        <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+        <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
           {visible.length} / {products.length} produit{products.length > 1 ? 's' : ''}
         </span>
         <div style={{ flex: 1 }} />
@@ -3278,7 +3278,7 @@ export function CatalogView() {
                   <tr key={p.id}>
                     <td className="ds-strong">{p.product_name}</td>
                     <td className="ds-ref">{p.sku || '—'}</td>
-                    <td style={{ direction: 'rtl', textAlign: 'right', color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>
+                    <td style={{ direction: 'rtl', textAlign: 'right', color: 'var(--ds-muted)', fontSize: '13px' }}>
                       {darijaOf(p.product_name) || '—'}
                     </td>
                     <td className="ds-num">{nf(num(p.unit_price))}</td>

@@ -167,7 +167,7 @@ export default function ProductionOrderTypesPanel() {
               </StatusBanner>
             )}
             <FormSection title="Étapes du parcours">
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem 1.25rem', fontSize: '0.875rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem 1.25rem', fontSize: '14px' }}>
               <label title="Fabrication confiée à un tiers : envoi des composants, réception du produit fini, coût de façon"><input type="checkbox" disabled={stepsLocked} checked={!!draft.isSubcontracting} onChange={(e) => set({ isSubcontracting: e.target.checked })} /> Sous-traité</label>
               <label style={{ opacity: draft.isSubcontracting ? 0.5 : 1 }}><input type="checkbox" disabled={!!draft.isSubcontracting || stepsLocked} checked={draft.requiresBonSortie !== false} onChange={(e) => set({ requiresBonSortie: e.target.checked })} /> Bon de sortie</label>
               <label style={{ opacity: draft.requiresBonSortie === false ? 0.5 : 1 }}>

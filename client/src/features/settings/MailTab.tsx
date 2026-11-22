@@ -100,7 +100,7 @@ export default function MailTab() {
           <textarea id="mail-footer" className="ds-input" style={{ minHeight: 56 }} maxLength={500} disabled={!editable} value={form.footer} onChange={e => setForm({ ...form, footer: e.target.value })} />
         </FormField>
         {editable && (
-          <label htmlFor="mail-enabled" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+          <label htmlFor="mail-enabled" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '13px' }}>
             <input id="mail-enabled" type="checkbox" checked={st.settings.enabled} disabled={save.isPending} onChange={e => save.mutate({ enabled: e.target.checked })} />
             Envoi des e-mails activé
           </label>
@@ -137,9 +137,9 @@ export default function MailTab() {
               <tbody>{outbox.map(m => (
                 <tr key={m.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{dt(m.created_at)}</td>
-                  <td>{m.to_name ? <>{m.to_name}<div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{m.to_email}</div></> : m.to_email}</td>
-                  <td className="ds-strong">{m.subject}{m.last_error && <div style={{ fontSize: '0.75rem', color: 'var(--ds-danger)' }} title={m.last_error}>{m.last_error.slice(0, 120)}</div>}</td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{m.type_label ?? (m.type === 'manual' ? 'Envoi manuel' : m.type)}</td>
+                  <td>{m.to_name ? <>{m.to_name}<div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{m.to_email}</div></> : m.to_email}</td>
+                  <td className="ds-strong">{m.subject}{m.last_error && <div style={{ fontSize: '12px', color: 'var(--ds-danger)' }} title={m.last_error}>{m.last_error.slice(0, 120)}</div>}</td>
+                  <td style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>{m.type_label ?? (m.type === 'manual' ? 'Envoi manuel' : m.type)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <StatusTag tone={STATUS[m.status].tone} label={STATUS[m.status].label} />
                     <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>

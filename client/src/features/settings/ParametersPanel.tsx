@@ -383,7 +383,7 @@ function SupplierScore({ param, draft, disabled, onChange }: {
   const f = (n: string) => param.fields.find(x => x.name === n)!;
   const weights = ['on_time', 'fill_rate', 'quality', 'price', 'disputes'].filter(has);
   const total = weights.reduce((s, n) => s + (Number(draft[n]) || 0), 0);
-  const shades = [100, 75, 52, 32, 16].map(p => `color-mix(in srgb, var(--theme-accent) ${p}%, var(--theme-bg-card))`);
+  const shades = [100, 75, 52, 32, 16].map(p => `color-mix(in srgb, var(--ds-accent) ${p}%, var(--ds-card))`);
   const num = (n: string, cls?: string) => (
     <input id={`param-${param.key}-${n}`} type="number" className="ds-input sm" style={{ textAlign: 'right', fontWeight: 600, width: cls ? 64 : undefined }} min={0} max={100} step={1} disabled={disabled}
       value={draft[n] === undefined || draft[n] === null ? '' : String(draft[n])}

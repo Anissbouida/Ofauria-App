@@ -73,7 +73,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
     <>
       <form className="prj-toolbar" onSubmit={e => { e.preventDefault(); setTerm(input.trim()); }}>
         <label className="prj-search" style={{ maxWidth: 560 }}>
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
           <input type="search" value={input} onChange={e => setInput(e.target.value)} placeholder="N° de lot interne ou fournisseur, ingrédient, produit…"
             aria-label="Rechercher un lot" />
         </label>
@@ -120,7 +120,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
                   <td>{r.origin_label}</td>
                   <td style={{ maxWidth: 280 }}>{r.reason}</td>
                   <td className="ds-num">{r.items_count}</td>
-                  <td>{dt(r.created_at)}<div style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{r.created_by_name}</div></td>
+                  <td>{dt(r.created_at)}<div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{r.created_by_name}</div></td>
                   <td><RecallStatusTag status={r.status} /></td>
                 </tr>
               ))}
@@ -181,9 +181,9 @@ function Header({ onBack, crumb, title, status, children }: {
 function LotSalesRow({ lot, colSpan }: { lot: ProductLotTrace; colSpan: number }) {
   const { data = [], isLoading } = useQuery({ queryKey: ['lot-sales', lot.id], queryFn: () => traceabilityApi.lotSales(lot.id) });
   return (
-    <tr><td colSpan={colSpan} style={{ background: 'var(--odoo-bg-hover)' }}>
+    <tr><td colSpan={colSpan} style={{ background: 'var(--ds-hair)' }}>
       {isLoading ? <Loading /> : data.length === 0 ? (
-        <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>Aucune vente ni livraison tracée pour ce lot (les ventes ne sont rattachées aux lots que depuis la mise en service).</span>
+        <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>Aucune vente ni livraison tracée pour ce lot (les ventes ne sont rattachées aux lots que depuis la mise en service).</span>
       ) : (
         <DataPanel label={`Ventes du lot ${lot.lot_number}`}>
         <table className="odoo-table ds-dense">
@@ -407,7 +407,7 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
               <td className="ds-ref">{i.lot_number ?? '—'}</td>
               <td><CertaintyTag c={i.certainty} /></td>
               <td>{i.store_name ?? '—'}</td>
-              <td className="ds-num">{i.item_kind === 'product_lot' ? <>{q(i.qty_sold)}{i.sales_count ? <div style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{i.sales_count} ticket(s)</div> : null}</> : '—'}</td>
+              <td className="ds-num">{i.item_kind === 'product_lot' ? <>{q(i.qty_sold)}{i.sales_count ? <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{i.sales_count} ticket(s)</div> : null}</> : '—'}</td>
               <td className="ds-num" style={{ fontWeight: 600 }}>{q(i.current_remaining)} {i.unit && i.unit !== 'u' ? i.unit : ''}</td>
               <td>{i.current_status}</td>
               <td>

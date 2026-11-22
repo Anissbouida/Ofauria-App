@@ -35,14 +35,14 @@ export default function QualityPanel({ filter, links, title, canInspect = true }
         {canInspect && <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setForm({ title })}><Plus size={12} /> Inspection</button>}
       </div>
       <div style={{ padding: '0.5rem 1rem' }}>
-        {data.length === 0 ? <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucune inspection rattachée.</span> : (
+        {data.length === 0 ? <span style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>Aucune inspection rattachée.</span> : (
           <DataPanel label="Inspections rattachées">
           <table className="odoo-table ds-dense">
             <thead><tr><th>Date</th><th>Inspection</th><th>Par</th><th>Résultat</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
             <tbody>{data.map(r => (
               <tr key={r.id}>
                 <td style={{ whiteSpace: 'nowrap' }}>{day(r.inspected_on)}</td>
-                <td className="ds-strong">{r.title}<div style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--ds-muted)' }}>{r.template_name}</div></td>
+                <td className="ds-strong">{r.title}<div style={{ fontSize: '12px', fontWeight: 400, color: 'var(--ds-muted)' }}>{r.template_name}</div></td>
                 <td>{r.inspected_by_name ?? '—'}</td>
                 <td>
                   {r.status === 'a_faire' ? <StatusTag tone="todo" label="À faire" />
@@ -65,7 +65,7 @@ export default function QualityPanel({ filter, links, title, canInspect = true }
             <thead><tr><th>Relevé</th><th>Étape</th><th className="ds-num">Mesure</th><th className="ds-num">Consigne</th><th>Résultat</th></tr></thead>
             <tbody>{readings.map(r => (
               <tr key={r.id}>
-                <td style={{ fontWeight: 500 }}>{r.parametre}{r.est_ccp ? ' · CCP' : ''}<div style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--ds-muted)' }}>{new Date(r.at).toLocaleString('fr-FR')}{r.by_name ? ` · ${r.by_name}` : ''}</div></td>
+                <td style={{ fontWeight: 500 }}>{r.parametre}{r.est_ccp ? ' · CCP' : ''}<div style={{ fontSize: '12px', fontWeight: 400, color: 'var(--ds-muted)' }}>{new Date(r.at).toLocaleString('fr-FR')}{r.by_name ? ` · ${r.by_name}` : ''}</div></td>
                 <td>{r.step}</td>
                 <td className="ds-num">{r.mesure}</td>
                 <td className="ds-num">{r.consigne != null ? `${r.consigne}${r.tolerance != null ? ` ± ${r.tolerance}` : ''}` : '—'}</td>

@@ -158,7 +158,7 @@ export default function SalesContractsPage() {
                     <td style={{ minWidth: 150 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span className={`prj-bar ${pct >= 100 ? 'red' : pct >= 85 ? 'orange' : ''}`} style={{ flex: 1 }}><span style={{ width: `${pct}%` }} /></span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{pct} %</span>
+                        <span style={{ fontSize: '12px', color: 'var(--ds-muted)', fontVariantNumeric: 'tabular-nums' }}>{pct} %</span>
                       </div>
                       <span className="sal-sub">{fmt(c.consumed)}</span>
                     </td>

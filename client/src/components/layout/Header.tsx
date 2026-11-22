@@ -36,7 +36,7 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
     : navItem ? navLabel(navItem, sectorLabel, locale) : (NAV_LABEL_BY_PATH[currentPath] || '');
 
   return (
-    <header className="h-12 flex items-center px-4 shrink-0 z-40" style={{ backgroundColor: 'var(--theme-accent)', color: 'var(--theme-cta-text)' }}>
+    <header className="h-12 flex items-center px-4 shrink-0 z-40" style={{ backgroundColor: 'var(--ds-accent)', color: 'var(--theme-cta-text)' }}>
       {/* Left: App grid + branding */}
       <div className="flex items-center gap-2">
         <button onClick={onToggleApps}

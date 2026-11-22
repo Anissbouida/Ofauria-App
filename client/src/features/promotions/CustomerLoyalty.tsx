@@ -12,7 +12,7 @@ import { LoadingState, ErrorState, KpiGrid, KpiCard, DataPanel, TableFooter, Emp
 
 const n0 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 const n2 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
+const field: React.CSSProperties = { fontSize: '14px', padding: '6px 8px', border: '1px solid var(--ds-sep)', borderRadius: 4, background: 'var(--ds-card)', color: 'var(--ds-ink)' };
 
 /** Onglet Fidélité de la fiche client (mig 372) : solde, niveau, points qui expirent, historique, ajustement. */
 export default function CustomerLoyalty({ customerId }: { customerId: string }) {
@@ -59,8 +59,8 @@ export default function CustomerLoyalty({ customerId }: { customerId: string }) 
               <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.created_at), 'dd/MM/yyyy HH:mm')}</td>
               <td>{LOYALTY_KIND_LABEL[t.kind]}</td>
               <td className="ds-num" style={{ color: t.points < 0 ? 'var(--ds-danger)' : 'var(--ds-success)', fontWeight: 600 }}>{t.points > 0 ? '+' : ''}{n0(t.points)}</td>
-              <td style={{ fontSize: '0.8125rem' }}>{t.note}{t.created_by_name ? ` · ${t.created_by_name}` : ''}</td>
-              <td style={{ fontSize: '0.8125rem' }}>{t.remaining && t.expires_at ? `${format(new Date(t.expires_at), 'dd/MM/yyyy')}${t.remaining < t.points ? ` (${n0(t.remaining)} restants)` : ''}` : ''}</td>
+              <td style={{ fontSize: '13px' }}>{t.note}{t.created_by_name ? ` · ${t.created_by_name}` : ''}</td>
+              <td style={{ fontSize: '13px' }}>{t.remaining && t.expires_at ? `${format(new Date(t.expires_at), 'dd/MM/yyyy')}${t.remaining < t.points ? ` (${n0(t.remaining)} restants)` : ''}` : ''}</td>
             </tr>
           ))}</tbody>
         </table>

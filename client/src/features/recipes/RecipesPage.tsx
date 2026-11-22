@@ -471,12 +471,12 @@ export default function RecipesPage() {
                   onClick={() => openRecipe(r)}>
                   <div className="odoo-kanban-card-title">
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {r.is_base ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
+                      {r.is_base ? <Layers size={14} style={{ color: 'var(--ds-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--ds-accent)' }} />}
                       {r.name as string}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       {r.category_color && (
-                        <span style={{ fontSize: '0.625rem', fontWeight: 600, padding: '2px 6px', borderRadius: 3, background: `${r.category_color as string}22`, color: r.category_color as string }} title={r.category_label as string}>
+                        <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 6px', borderRadius: 3, background: `${r.category_color as string}22`, color: r.category_color as string }} title={r.category_label as string}>
                           {r.category_label as string}
                         </span>
                       )}
@@ -489,7 +489,7 @@ export default function RecipesPage() {
                     {r.is_base ? T.base : (r.product_name as string || 'Aucun produit')}
                   </div>
                   <div className="odoo-kanban-card-stock">
-                    <span className="odoo-kanban-card-stock-value" style={{ color: 'var(--theme-accent)' }}>
+                    <span className="odoo-kanban-card-stock-value" style={{ color: 'var(--ds-accent)' }}>
                       {totalCost.toFixed(2)}
                     </span>
                     <span className="odoo-kanban-card-stock-unit">{currencySymbol()} coût matière</span>
@@ -502,7 +502,7 @@ export default function RecipesPage() {
                   <div className="odoo-kanban-card-footer">
                     <span>
                       {r.contenant_nom && (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--theme-text-muted)' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--ds-muted)' }}>
                           <Box size={9} /> {r.contenant_nom as string}
                         </span>
                       )}
@@ -640,7 +640,7 @@ export default function RecipesPage() {
                       <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         {r.name as string}
                         {r.category_color && (
-                          <span style={{ fontSize: '0.625rem', fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: `${r.category_color as string}22`, color: r.category_color as string }}>
+                          <span style={{ fontSize: '11px', fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: `${r.category_color as string}22`, color: r.category_color as string }}>
                             {r.category_label as string}
                           </span>
                         )}

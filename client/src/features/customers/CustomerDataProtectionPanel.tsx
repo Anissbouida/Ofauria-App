@@ -52,7 +52,7 @@ export default function CustomerDataProtectionPanel({ customerId, marketingConse
 
   if (anonymizedAt) {
     return (
-      <div style={{ marginTop: 10, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ marginTop: 10, fontSize: '13px', color: 'var(--ds-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         <ShieldCheck size={13} /> Client anonymisé (loi 09-08) — données personnelles effacées, comptabilité conservée.
       </div>
     );
@@ -63,7 +63,7 @@ export default function CustomerDataProtectionPanel({ customerId, marketingConse
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 }}>
         <ShieldCheck size={12} /> Protection des données (loi 09-08)
       </div>
-      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' }}>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '13px', cursor: 'pointer' }}>
         <input type="checkbox" checked={consent} disabled={consentMut.isPending} onChange={e => consentMut.mutate(e.target.checked)} />
         Consentement marketing (prospection, communications)
       </label>

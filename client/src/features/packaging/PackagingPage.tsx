@@ -133,7 +133,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
     <div className={embedded ? 'stk-stack' : 'odoo-scope stk-stack'}>
       {!embedded && (
         <div className="odoo-breadcrumb">
-          <Package size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+          <Package size={14} style={{ color: 'var(--ds-accent)' }} aria-hidden="true" />
           <span>Stock</span>
           <span className="odoo-breadcrumb-separator" aria-hidden="true">›</span>
           <span>Opérations</span>
@@ -208,32 +208,32 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                       {it.name}
                       {it.is_recyclable && <Recycle size={12} style={{ color: 'var(--ds-success)' }} aria-label="Recyclable" />}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: 'var(--ds-muted)', marginTop: 1 }}>
                       <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: PKG_DOT[situationOf(it)] }} />
                       {PKG_SITUATIONS.find(x => x.key === situationOf(it))?.label}
                     </div>
-                    {it.notes && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.notes}</div>}
+                    {it.notes && <div style={{ fontSize: '12px', color: 'var(--ds-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.notes}</div>}
                   </td>
                   <td className="hidden sm:table-cell">
                     {it.category_name
                       ? <span className="odoo-tag odoo-tag-grey">{it.category_name}</span>
-                      : <span style={{ color: 'var(--theme-bg-separator)', fontSize: '0.75rem' }}>—</span>}
+                      : <span style={{ color: 'var(--ds-sep)', fontSize: '12px' }}>—</span>}
                   </td>
-                  <td className="hidden md:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{it.format || '—'}</td>
+                  <td className="hidden md:table-cell" style={{ color: 'var(--ds-muted)' }}>{it.format || '—'}</td>
                   <td className="hidden md:table-cell ds-num">
-                    {parseFloat(String(it.unit_cost)).toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}/{it.unit}</span>
+                    {parseFloat(String(it.unit_cost)).toFixed(2)} <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{currencySymbol()}/{it.unit}</span>
                   </td>
                   <td className="ds-num">
                     <button type="button" onClick={() => setStockDialog(it)} title="Enregistrer un mouvement de stock"
                       style={{ border: 'none', background: 'transparent', cursor: 'pointer', font: 'inherit', fontWeight: 700,
-                        color: isRupture ? 'var(--ds-danger)' : isLow ? 'var(--ds-warning)' : 'var(--theme-text)' }}>
-                      {stock.toFixed(0)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>{it.unit}</span>
+                        color: isRupture ? 'var(--ds-danger)' : isLow ? 'var(--ds-warning)' : 'var(--ds-ink)' }}>
+                      {stock.toFixed(0)} <span style={{ color: 'var(--ds-muted)', fontWeight: 400, fontSize: '12px' }}>{it.unit}</span>
                     </button>
                     {parseFloat(String(it.stock_min_threshold || 0)) > 0 && (
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>seuil {parseFloat(String(it.stock_min_threshold)).toFixed(0)}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>seuil {parseFloat(String(it.stock_min_threshold)).toFixed(0)}</div>
                     )}
                   </td>
-                  <td className="hidden lg:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{it.supplier || '—'}</td>
+                  <td className="hidden lg:table-cell" style={{ color: 'var(--ds-muted)' }}>{it.supplier || '—'}</td>
                   <td className="ds-actions">
                     {(isRupture || isLow) ? (
                       <button type="button" onClick={() => setStockDialog(it)} className={`${isRupture ? 'ds-btn-danger' : 'odoo-btn-primary'} ds-btn-sm`}
@@ -440,8 +440,8 @@ function StockAdjustModal({ item, onClose, onSaved }: { item: PackagingItem; onC
         </div>
       }>
         <div className="space-y-4">
-          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--odoo-text-muted)' }}>Stock actuel</span>
+          <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, padding: '8px 12px', fontSize: '13px', display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'var(--ds-muted)' }}>Stock actuel</span>
             <strong>{parseFloat(String(item.stock_quantity || 0)).toFixed(0)} {item.unit}</strong>
           </div>
 

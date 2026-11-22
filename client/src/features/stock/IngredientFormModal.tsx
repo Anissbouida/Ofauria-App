@@ -153,7 +153,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
       title={title || (mode === 'create' ? 'Nouvel ingrédient' : "Modifier l'ingrédient")}
       subtitle={mode === 'edit' ? (ing.name as string) : undefined}
       aside={isConsumable && form.categoryId ? (
-        <span className={`odoo-tag ${consumable ? 'odoo-tag-purple' : 'odoo-tag-green'}`} style={{ fontSize: '0.625rem' }}>
+        <span className={`odoo-tag ${consumable ? 'odoo-tag-purple' : 'odoo-tag-green'}`} style={{ fontSize: '11px' }}>
           {consumable ? 'Consommable' : 'Ingrédient'}
         </span>
       ) : undefined}
@@ -176,17 +176,17 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
               </Field>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: '0.75rem' }}>
                 <Field label="Unité de stock">
-                  <div role="radiogroup" style={{ display: 'flex', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'hidden' }}>
+                  <div role="radiogroup" style={{ display: 'flex', border: '1px solid var(--ds-sep)', borderRadius: 4, overflow: 'hidden' }}>
                     {UNITS.map((opt, i) => {
                       const active = form.unit === opt.value;
                       return (
                         <button key={opt.value} type="button" role="radio" aria-checked={active} title={opt.hint}
                           onClick={() => set('unit', opt.value)}
                           style={{
-                            flex: 1, padding: '0.4rem 0', fontSize: '0.8125rem', fontWeight: active ? 600 : 500,
-                            borderLeft: i ? '1px solid var(--theme-bg-separator)' : 'none',
-                            backgroundColor: active ? 'var(--theme-accent)' : 'var(--ds-card)',
-                            color: active ? '#fff' : 'var(--theme-text-body)',
+                            flex: 1, padding: '0.4rem 0', fontSize: '13px', fontWeight: active ? 600 : 500,
+                            borderLeft: i ? '1px solid var(--ds-sep)' : 'none',
+                            backgroundColor: active ? 'var(--ds-accent)' : 'var(--ds-card)',
+                            color: active ? '#fff' : 'var(--ds-body)',
                           }}>
                           {opt.label}
                         </button>
@@ -276,7 +276,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                 ))}
               </div>
               {containerType && (
-                <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--ds-bg)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--ds-bg)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <Field label={`Contenance d'un ${String(containerType.label).toLowerCase()}`} required error={err('containerSize')}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <Suffixed suffix={u} width={150}>
@@ -290,11 +290,11 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                       ))}
                     </div>
                   </Field>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '12px', color: 'var(--ds-muted)' }}>
                     <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
                     {size > 0 ? (
                       <span>
-                        <strong style={{ color: 'var(--theme-text-strong)' }}>1 {String(containerType.label).toLowerCase()} = {fmt(size)} {u}</strong>
+                        <strong style={{ color: 'var(--ds-ink)' }}>1 {String(containerType.label).toLowerCase()} = {fmt(size)} {u}</strong>
                         {' '}— commandes et transferts vers le pesage se feront par {String(containerType.label).toLowerCase()} entier
                         (ex : besoin de {fmt(size * 1.5)} {u} → 2 × {fmt(size)} {u}).
                       </span>
@@ -305,7 +305,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                 </div>
               )}
               {activeContainerTypes.length === 0 && (
-                <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                <p style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
                   Aucun type de contenant défini — ajoutez-en dans Paramètres › Référentiel › Types de contenant.
                 </p>
               )}
@@ -346,7 +346,7 @@ function Suffixed({ suffix, width, children }: { suffix: string; width?: number;
   return (
     <div style={{ position: 'relative', width: width ?? '100%' }}>
       {children}
-      <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', color: 'var(--theme-text-muted)', pointerEvents: 'none' }}>
+      <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: 'var(--ds-muted)', pointerEvents: 'none' }}>
         {suffix}
       </span>
     </div>
@@ -359,9 +359,9 @@ function Chip({ active, small, onClick, children }: { active: boolean; small?: b
       style={{
         padding: small ? '0.2rem 0.55rem' : '0.35rem 0.8rem', borderRadius: 999,
         fontSize: small ? '0.75rem' : '0.8125rem', fontWeight: active ? 600 : 500,
-        border: `1px solid ${active ? 'var(--theme-accent)' : 'var(--theme-bg-separator)'}`,
-        backgroundColor: active ? 'var(--theme-accent-light, var(--ds-tint))' : 'var(--ds-card)',
-        color: active ? 'var(--theme-accent)' : 'var(--theme-text-body)',
+        border: `1px solid ${active ? 'var(--ds-accent)' : 'var(--ds-sep)'}`,
+        backgroundColor: active ? 'var(--ds-tint, var(--ds-tint))' : 'var(--ds-card)',
+        color: active ? 'var(--ds-accent)' : 'var(--ds-body)',
         cursor: 'pointer', whiteSpace: 'nowrap',
       }}>
       {children}

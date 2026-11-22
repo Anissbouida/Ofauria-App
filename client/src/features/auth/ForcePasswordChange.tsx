@@ -45,10 +45,10 @@ export default function ForcePasswordChange() {
   };
 
   return (
-    <div className="kl-ds min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
-      <form onSubmit={submit} className="rounded-2xl shadow-xl w-full max-w-md p-8 space-y-4" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
+    <div className="kl-ds min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
+      <form onSubmit={submit} className="rounded-2xl shadow-xl w-full max-w-md p-8 space-y-4" style={{ backgroundColor: 'var(--ds-card)' }}>
         <div>
-          <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--theme-accent)' }}>
+          <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--ds-accent)' }}>
             <KeyRound size={20} aria-hidden="true" /> Changez votre mot de passe
           </h1>
           <p className="mt-2 text-sm" style={{ color: 'var(--ds-muted)' }}>

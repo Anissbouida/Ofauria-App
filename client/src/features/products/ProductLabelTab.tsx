@@ -65,8 +65,8 @@ function sheetHtml(d: ProductLabelData): string {
     </style></head><body><div class="sheet">${Array.from({ length: 8 }, () => labelHtml(d)).join('')}</div></body></html>`;
 }
 
-const field: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '8px 10px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
-const label: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
+const field: React.CSSProperties = { width: '100%', fontSize: '14px', padding: '8px 10px', border: '1px solid var(--ds-sep)', borderRadius: 6, background: 'var(--ds-card)', color: 'var(--ds-ink)', boxSizing: 'border-box' };
+const label: React.CSSProperties = { display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4 };
 
 export default function ProductLabelTab({ productId }: { productId: string }) {
   const qc = useQueryClient();
@@ -134,7 +134,7 @@ export default function ProductLabelTab({ productId }: { productId: string }) {
             <style>{LABEL_CSS}</style>
             <div style={{ maxWidth: 420, background: '#fff' }} dangerouslySetInnerHTML={{ __html: labelHtml(data) }} />
           </>
-        ) : <div style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>Aucun ingrédient à afficher.</div>}
+        ) : <div style={{ color: 'var(--ds-muted)', fontSize: '0.85rem' }}>Aucun ingrédient à afficher.</div>}
       </div>
 
       {data.ingredients.length > 0 && (
@@ -147,7 +147,7 @@ export default function ProductLabelTab({ productId }: { productId: string }) {
                 <td className="ds-num">{i.sharePct === null ? '—' : `${i.sharePct.toLocaleString('fr-FR')} %`}</td>
                 <td style={{ fontSize: '0.8rem' }}>
                   {!i.reviewed ? <span style={{ color: 'var(--ds-danger)', fontWeight: 600 }}>Non renseigné</span>
-                    : i.contains.length + i.traces.length === 0 ? <span style={{ color: 'var(--theme-text-muted)' }}>Aucun</span>
+                    : i.contains.length + i.traces.length === 0 ? <span style={{ color: 'var(--ds-muted)' }}>Aucun</span>
                     : [i.contains.length ? `Contient : ${i.contains.join(', ')}` : '', i.traces.length ? `Traces : ${i.traces.join(', ')}` : ''].filter(Boolean).join(' · ')}
                 </td>
               </tr>

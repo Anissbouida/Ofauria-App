@@ -48,19 +48,19 @@ export default function CustomerTaxExemptionsPanel({ customerId }: { customerId:
       </div>
 
       {rows.length === 0 && !form && (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', padding: '6px 0' }}>Aucune attestation.</div>
+        <div style={{ fontSize: '13px', color: 'var(--ds-muted)', padding: '6px 0' }}>Aucune attestation.</div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {rows.map(r => (
-          <div key={r.id} style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+          <div key={r.id} style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 {r.certificate_number}
                 {todayActive(r) && <StatusTag tone="done" label="En cours" />}
               </div>
-              {r.reason && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{r.reason}</div>}
-              <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Du {r.valid_from}{r.valid_to ? ` au ${r.valid_to}` : ' (sans fin)'}</div>
+              {r.reason && <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{r.reason}</div>}
+              <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>Du {r.valid_from}{r.valid_to ? ` au ${r.valid_to}` : ' (sans fin)'}</div>
             </div>
             <button type="button" className="ds-icon-btn" title="Supprimer" aria-label="Supprimer l'exonération" disabled={del.isPending} style={{ color: 'var(--ds-danger)' }}
               onClick={async () => { if (await confirm('Supprimer cette exonération de TVA ?', { title: 'Supprimer l\'exonération', confirmLabel: 'Supprimer', danger: true })) del.mutate(r.id); }}><Trash2 size={14} /></button>

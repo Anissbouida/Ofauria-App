@@ -482,7 +482,7 @@ function SubRequestDetailView({
               <span className="kl-ic b"><PackageCheck size={16} /></span>
               <div>
                 <div>Préparation des articles</div>
-                <p style={{ fontSize: 13, fontWeight: 400, letterSpacing: 0, color: 'var(--theme-text-muted)', margin: '2px 0 0' }}>
+                <p style={{ fontSize: 13, fontWeight: 400, letterSpacing: 0, color: 'var(--ds-muted)', margin: '2px 0 0' }}>
                   {!hasPreparableItems
                     ? 'Aucun article prêt — en attente de production'
                     : pendingProductionItems.length > 0
@@ -608,7 +608,7 @@ function SubRequestDetailView({
               <span className="kl-ic b"><Truck size={16} /></span>
               <div>
                 <div>Confirmation de réception</div>
-                <p style={{ fontSize: 13, fontWeight: 400, letterSpacing: 0, color: 'var(--theme-text-muted)', margin: '2px 0 0' }}>
+                <p style={{ fontSize: 13, fontWeight: 400, letterSpacing: 0, color: 'var(--ds-muted)', margin: '2px 0 0' }}>
                   {pendingItems.length > 0
                     ? `Transfert partiel — ${readyItems.length} article(s) a confirmer, ${pendingItems.length} en attente`
                     : 'Vérifiez les quantités reçues article par article'}
@@ -688,7 +688,7 @@ function SubRequestDetailView({
       <section className="prj-panel" style={{ overflow: 'hidden' }}>
         <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Layers size={16} /> Articles
-          <small style={{ fontSize: 13, fontWeight: 500, color: 'var(--theme-text-muted)' }}>{items.length} article(s)</small>
+          <small style={{ fontSize: 13, fontWeight: 500, color: 'var(--ds-muted)' }}>{items.length} article(s)</small>
         </div>
         <div className="divide-y divide-gray-50">
           {items.map((item) => {

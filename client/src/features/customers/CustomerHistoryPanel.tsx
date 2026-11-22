@@ -42,16 +42,16 @@ export default function CustomerHistoryPanel({ customerId, isActive }: { custome
         <History size={12} /> Piste d'audit
       </div>
       {entries.length === 0 ? (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Aucun évènement enregistré.</div>
+        <div style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>Aucun évènement enregistré.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {entries.map(e => (
-            <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.8125rem', padding: '4px 0', borderBottom: '1px solid var(--odoo-border)' }}>
+            <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '13px', padding: '4px 0', borderBottom: '1px solid var(--ds-sep)' }}>
               <span style={{ fontWeight: 600 }}>{ACTION_LABELS[e.action] || e.action}
                 {e.action === 'update' && Array.isArray(e.detail?.fields) && e.detail.fields.length > 0 &&
-                  <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)' }}> · {e.detail.fields.length} champ(s)</span>}
+                  <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}> · {e.detail.fields.length} champ(s)</span>}
               </span>
-              <span style={{ color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>
+              <span style={{ color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
                 {e.changed_by_name ? `${e.changed_by_name} · ` : ''}{format(new Date(e.changed_at), 'd MMM yyyy HH:mm', { locale: fr })}
               </span>
             </div>

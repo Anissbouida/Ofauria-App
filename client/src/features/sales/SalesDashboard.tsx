@@ -135,13 +135,13 @@ export default function SalesDashboard() {
   const overdue = t?.overdue ?? 0;
   const money: Array<{ label: string; amount: number; sub: string; color: string; href: string; red?: boolean }> = [
     { label: 'Devis ouverts', amount: openQuotes.amount, sub: `${openQuotes.count} devis${followQuotes ? ` · ${followQuotes} à relancer` : ''}`,
-      color: 'color-mix(in srgb, var(--theme-accent) 28%, var(--theme-bg-card))', href: followQuotes ? '/quotes?status=follow' : '/quotes?status=open' },
+      color: 'color-mix(in srgb, var(--ds-accent) 28%, var(--ds-card))', href: followQuotes ? '/quotes?status=follow' : '/quotes?status=open' },
     { label: 'Commandes en cours', amount: sum(openOrders, 'total'), sub: `${openOrders.length} commande${openOrders.length > 1 ? 's' : ''}${lateOrders.length ? ` · ${lateOrders.length} en retard` : ''}`,
-      color: 'color-mix(in srgb, var(--theme-accent) 50%, var(--theme-bg-card))', href: lateOrders.length ? '/orders?filter=late' : '/orders' },
+      color: 'color-mix(in srgb, var(--ds-accent) 50%, var(--ds-card))', href: lateOrders.length ? '/orders?filter=late' : '/orders' },
     { label: 'Livré, à facturer', amount: blAmount, sub: `${blCount} bon${blCount > 1 ? 's' : ''} de livraison`,
-      color: 'color-mix(in srgb, var(--theme-accent) 78%, var(--theme-bg-card))', href: '/delivery-notes' },
+      color: 'color-mix(in srgb, var(--ds-accent) 78%, var(--ds-card))', href: '/delivery-notes' },
     { label: 'Facturé, à encaisser', amount: Math.max(0, (t?.total ?? 0) - overdue), sub: `${t?.documents ?? 0} pièce${(t?.documents ?? 0) > 1 ? 's' : ''}`,
-      color: 'var(--theme-accent-hover)', href: '/sales?tab=unpaid' },
+      color: 'var(--ds-accent-ink)', href: '/sales?tab=unpaid' },
     { label: 'En retard', amount: overdue, sub: `${overdueCustomers.length} client${overdueCustomers.length > 1 ? 's' : ''}`,
       color: 'var(--ds-danger)', href: '/sales?tab=unpaid&filter=overdue', red: true },
   ];
@@ -172,7 +172,7 @@ export default function SalesDashboard() {
   const topDebtors = (rec?.customers ?? []).slice().sort((a, b) => b.total - a.total).slice(0, 5);
 
   const rings = [
-    { pct: conv, color: 'var(--theme-accent)', label: 'Transformation des devis', value: conv != null ? `${conv} %` : '—', small: qov ? `${qov.conversion.won} gagné(s) sur 90 j` : '' },
+    { pct: conv, color: 'var(--ds-accent)', label: 'Transformation des devis', value: conv != null ? `${conv} %` : '—', small: qov ? `${qov.conversion.won} gagné(s) sur 90 j` : '' },
     { pct: margin?.pct ?? null, color: 'var(--ds-success)', label: 'Marge brute', value: margin ? pct1(margin.pct) : '—', small: margin ? `coût matière ${pct1(margin.food)}` : 'coûts non disponibles' },
     { pct: onTime, color: 'var(--ds-warning)', label: 'Créances à jour', value: onTime != null ? `${Math.round(onTime)} %` : '—', small: 'non échues' },
   ];
@@ -202,7 +202,7 @@ export default function SalesDashboard() {
                   <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'var(--kl-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={24} />
                   <YAxis tick={{ fontSize: 12, fill: 'var(--kl-muted)' }} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => n0(v)} />
                   <Tooltip formatter={(v: number) => [`${moneyFmt(v)}`, "Chiffre d'affaires"]} />
-                  <Area type="monotone" dataKey="revenue" stroke="var(--theme-accent)" strokeWidth={2.5} fill="var(--theme-accent-light)" fillOpacity={0.7} />
+                  <Area type="monotone" dataKey="revenue" stroke="var(--ds-accent)" strokeWidth={2.5} fill="var(--ds-tint)" fillOpacity={0.7} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : <div className="kl-empty" style={{ height: '100%', alignContent: 'center' }}>Aucune vente sur la période.</div>}

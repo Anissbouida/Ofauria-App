@@ -96,7 +96,7 @@ function TemplateCard({ tpl }: { tpl: DocumentTemplate }) {
         <input id={id('footer')} maxLength={300} className="ds-input" disabled={!editable}
           value={form.footerNote} onChange={e => setForm({ ...form, footerNote: e.target.value })} placeholder="Merci de votre confiance" />
       </FormField>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.875rem' }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '14px' }}>
         {isInvoice && (
           <label htmlFor={id('bank')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <input id={id('bank')} type="checkbox" disabled={!editable} checked={form.showBank} onChange={e => setForm({ ...form, showBank: e.target.checked })} />

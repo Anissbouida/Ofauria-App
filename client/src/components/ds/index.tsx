@@ -22,7 +22,7 @@ export type Crumb = { label: ReactNode; onClick?: () => void };
 export function Breadcrumb({ items, icon: Icon }: { items: Crumb[]; icon?: LucideIcon }) {
   return (
     <nav className="odoo-breadcrumb" aria-label="Fil d'Ariane">
-      {Icon && <Icon size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />}
+      {Icon && <Icon size={14} style={{ color: 'var(--ds-accent)' }} aria-hidden="true" />}
       {items.map((c, i) => {
         const last = i === items.length - 1;
         return (

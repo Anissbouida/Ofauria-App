@@ -61,7 +61,7 @@ export default function NumberingTab() {
                   <td className="ds-ref">{s.pattern} <span style={{ color: 'var(--ds-muted)' }}>· {s.padding} chiffres</span></td>
                   <td>{RESET_LABELS[s.reset_period]}</td>
                   <td className="ds-ref">{s.next_number}</td>
-                  <td style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>
+                  <td style={{ color: 'var(--ds-muted)', fontSize: '13px' }}>
                     {s.updated_by_name ? `${s.updated_by_name}, ${new Date(s.updated_at).toLocaleDateString('fr-FR')}` : 'Format d\'origine'}
                   </td>
                   <td className="ds-actions">
@@ -137,7 +137,7 @@ function SequenceEditor({ seq, onClose }: { seq: DocumentSequence; onClose: () =
           </select>
         </FormField>
       </div>
-      <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div style={{ fontSize: '13px', color: 'var(--ds-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {TOKENS.map(([t, l]) => (
           <button key={t} type="button" className="odoo-filter-chip" onClick={() => setForm({ ...form, pattern: form.pattern + t })} title={`Ajouter ${t}`}>
             <code>{t}</code> {l}
@@ -145,7 +145,7 @@ function SequenceEditor({ seq, onClose }: { seq: DocumentSequence; onClose: () =
         ))}
       </div>
       {preview && (preview.valid
-        ? <div style={{ fontSize: '0.875rem' }}>Exemple : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{preview.sample}</strong> <span style={{ color: 'var(--ds-muted)' }}>(le compteur reprend après le dernier numéro existant)</span></div>
+        ? <div style={{ fontSize: '14px' }}>Exemple : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{preview.sample}</strong> <span style={{ color: 'var(--ds-muted)' }}>(le compteur reprend après le dernier numéro existant)</span></div>
         : <StatusBanner tone="warning" icon={Hash} title="Modèle invalide">{preview.error}</StatusBanner>)}
       <FormFooter dirty={changed} onCancel={onClose} busy={save.isPending} disabled={!changed || !preview?.valid} onSubmit={() => { void submit(); }} />
     </section>

@@ -470,7 +470,7 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
                       </span>
                       <span className="sal-sub">{isPro(inv) ? 'Professionnel' : 'Particulier'}</span>
                     </td>
-                    <td style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                    <td style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
                       {isCredit(inv) ? (CREDIT_REASON_LABEL[inv.credit_reason as string] ?? 'Avoir')
                         : (inv.delivery_note_numbers || inv.order_number_ref)
                           ? <span className="sal-mono">{(inv.delivery_note_numbers || inv.order_number_ref) as string}</span>
@@ -488,7 +488,7 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
                         : (
                           <div title={`${Math.round(pct)} % encaissé`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span className={`prj-bar ${pct >= 100 ? 'green' : late ? 'red' : ''}`} style={{ flex: 1, maxWidth: 90 }}><span style={{ width: `${pct}%` }} /></span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(pct)} %</span>
+                            <span style={{ fontSize: '12px', color: 'var(--ds-muted)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(pct)} %</span>
                           </div>
                         )}
                     </td>
@@ -504,7 +504,7 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
                           ? <span className="ds-strong" title="Crédit du client, à imputer sur une facture">{n(remaining)}</span>
                           : <span className="sal-sub" style={{ margin: 0 }}>imputé</span>)
                         : remaining > 0.004 ? <span style={{ color: late ? 'var(--ds-danger)' : 'var(--ds-warning)', fontWeight: 600 }}>{n(remaining)}</span>
-                        : <span style={{ color: 'var(--ds-success)', fontSize: '0.8125rem' }}>soldée</span>}
+                        : <span style={{ color: 'var(--ds-success)', fontSize: '13px' }}>soldée</span>}
                     </td>
                     <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
                       {open && !isCredit(inv) && remaining > 0.004 && <NextStep icon={Banknote} label="Encaisser" onClick={() => openPay(inv)} />}
@@ -750,7 +750,7 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
                   <div className="odoo-view-switcher" role="radiogroup" aria-labelledby="pay-method-label" style={{ width: '100%' }}>
                     {(['bank', 'check', 'traite', 'cash'] as const).map(m => (
                       <button key={m} type="button" role="radio" aria-checked={payMethod === m} onClick={() => setPayMethod(m)}
-                        className={payMethod === m ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', fontWeight: payMethod === m ? 600 : 400 }}>
+                        className={payMethod === m ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '13px', fontWeight: payMethod === m ? 600 : 400 }}>
                         {payLabel(getPaymentLabel, m)}
                       </button>
                     ))}

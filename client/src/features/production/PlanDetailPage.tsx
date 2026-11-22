@@ -608,7 +608,7 @@ export default function PlanDetailPage() {
     <div className="ds-panel pd-section">
       <div className="pd-section-head">
         <Beaker size={12} /> {isMagasinier ? 'Besoins en ingrédients' : 'Ingrédients nécessaires'}
-        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{needs.length} ingrédient(s)</span>
+        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400 }}>{needs.length} ingrédient(s)</span>
         {isMagasinier && (
           <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
             {insufficientNeeds.length > 0 && (
@@ -656,13 +656,13 @@ export default function PlanDetailPage() {
                 </td>
                 {isMagasinier && (
                   <td>
-                    <div style={{ width: 80, height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ width: 80, height: 4, backgroundColor: 'var(--ds-sep)', borderRadius: 2, overflow: 'hidden' }}>
                       <div style={{
                         height: '100%', width: `${pct}%`,
                         backgroundColor: sufficient ? 'var(--ds-success)' : 'var(--ds-danger)',
                       }} />
                     </div>
-                    <span style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)' }}>{pct}%</span>
+                    <span style={{ fontSize: '11px', color: 'var(--ds-muted)' }}>{pct}%</span>
                   </td>
                 )}
                 <td className="ds-num">
@@ -671,7 +671,7 @@ export default function PlanDetailPage() {
                     const digits = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
                     return <>
                       <span style={{ fontWeight: 600 }}>{f.value.toFixed(digits)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{f.unit}</span>
+                      <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 2 }}>{f.unit}</span>
                     </>;
                   })()}
                 </td>
@@ -682,7 +682,7 @@ export default function PlanDetailPage() {
                       const digits = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
                       return <>
                         <span style={{ fontWeight: 500 }}>{f.value.toFixed(digits)}</span>
-                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{f.unit}</span>
+                        <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 2 }}>{f.unit}</span>
                       </>;
                     })()}
                   </td>
@@ -768,21 +768,21 @@ export default function PlanDetailPage() {
                     <td><span className={`odoo-status-dot ${isFulfilled ? 'ok' : 'warning'}`} /></td>
                     <td style={{ fontWeight: 600 }}>{dep.sub_recipe_name as string}</td>
                     <td className="ds-num">{needed.toFixed(1)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: fromStock > 0 ? 'var(--ds-success)' : 'var(--theme-text-muted)' }}>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: fromStock > 0 ? 'var(--ds-success)' : 'var(--ds-muted)' }}>
                       {fromStock > 0 ? fromStock.toFixed(1) : '—'}
                     </td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: toProduce > 0 ? 'var(--ds-warning)' : 'var(--theme-text-muted)' }}>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: toProduce > 0 ? 'var(--ds-warning)' : 'var(--ds-muted)' }}>
                       {toProduce > 0 ? toProduce.toFixed(1) : '—'}
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 80, height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${itemPct}%`, backgroundColor: isFulfilled ? 'var(--ds-success)' : 'var(--theme-accent)' }} />
+                        <div style={{ width: 80, height: 4, backgroundColor: 'var(--ds-sep)', borderRadius: 2, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${itemPct}%`, backgroundColor: isFulfilled ? 'var(--ds-success)' : 'var(--ds-accent)' }} />
                         </div>
-                        <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{itemPct}%</span>
+                        <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{itemPct}%</span>
                       </div>
                     </td>
-                    <td>{depPlanTag ? <StatusTag tone={depPlanTag.tone} icon={depPlanTag.icon} label={depPlanTag.label} /> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                    <td>{depPlanTag ? <StatusTag tone={depPlanTag.tone} icon={depPlanTag.icon} label={depPlanTag.label} /> : <span style={{ color: 'var(--ds-sep)' }}>—</span>}</td>
                     <td>
                       <StatusTag tone={isFulfilled ? 'done' : 'todo'} label={isFulfilled ? 'Disponible' : 'En attente'} />
                     </td>
@@ -815,11 +815,11 @@ export default function PlanDetailPage() {
     <div className="ds-panel pd-section">
       <div className="pd-section-head">
         <Layers size={12} /> Articles du plan
-        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{items.length} article(s)</span>
+        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{items.length} article(s)</span>
         {plan.status === 'in_progress' && totalActive > 0 && (
           <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8, textTransform: 'none', letterSpacing: 0 }}>
-            <div style={{ width: 100, height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${progressPct}%`, backgroundColor: progressPct >= 100 ? 'var(--ds-success)' : 'var(--theme-accent)', transition: 'width 0.3s' }} />
+            <div style={{ width: 100, height: 4, backgroundColor: 'var(--ds-sep)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${progressPct}%`, backgroundColor: progressPct >= 100 ? 'var(--ds-success)' : 'var(--ds-accent)', transition: 'width 0.3s' }} />
             </div>
             <span>{producedCount} / {totalActive}</span>
           </span>
@@ -870,7 +870,7 @@ export default function PlanDetailPage() {
                 : isWaiting ? { tone: 'todo', label: 'En attente' }
                 : { tone: 'todo', label: 'À faire' };
               const dot = isProduced ? 'ok' : isInProgress ? 'warning' : isCancelled ? 'danger' : 'neutral';
-              const empty = <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>;
+              const empty = <span style={{ color: 'var(--ds-sep)' }}>—</span>;
 
               return (
                 <tr key={item.id as string} className={isInProgress ? 'row-warning' : ''} style={{ cursor: 'default', opacity: isCancelled ? 0.5 : 1 }}>
@@ -922,20 +922,20 @@ export default function PlanDetailPage() {
                   <td className="ds-num">
                     <strong>{planned}</strong>
                     {item.quantite_brute_totale && (item.quantite_brute_totale as number) !== planned && (
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }} title="Quantité brute totale (formats)">brut {item.quantite_brute_totale as number}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }} title="Quantité brute totale (formats)">brut {item.quantite_brute_totale as number}</div>
                     )}
                   </td>
                   <td className="ds-num">
                     {actual != null ? <strong style={{ color: actual >= planned ? 'var(--ds-success)' : 'var(--ds-warning)' }}>{actual}</strong> : empty}
                   </td>
                   <td style={{ fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>{(isProduced || isInProgress) && lotNumber ? lotNumber : empty}</td>
-                  <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>
+                  <td style={{ whiteSpace: 'nowrap', color: 'var(--ds-muted)' }}>
                     {isProduced && prodTimestamp ? format(prodDate, 'dd/MM/yy HH:mm') : isInProgress && startTs ? format(new Date(startTs), 'dd/MM/yy HH:mm') : empty}
                   </td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{isProduced && producedBy ? producedBy : isInProgress && startedBy ? startedBy : empty}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>{isProduced && producedBy ? producedBy : isInProgress && startedBy ? startedBy : empty}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {isProduced && dlcDate
-                      ? (dlcDate <= now ? <StatusTag tone="late" label="Expiré" /> : <span style={{ color: 'var(--theme-text-muted)' }}>{format(dlcDate, 'dd/MM/yyyy')}</span>)
+                      ? (dlcDate <= now ? <StatusTag tone="late" label="Expiré" /> : <span style={{ color: 'var(--ds-muted)' }}>{format(dlcDate, 'dd/MM/yyyy')}</span>)
                       : empty}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
@@ -1263,7 +1263,7 @@ export default function PlanDetailPage() {
             </div>
             <div className="prj-hero-meta">
               {!isSemiFini && items.length > 0 && (
-                <span style={{ color: 'var(--theme-text-strong)', fontWeight: 500 }}>
+                <span style={{ color: 'var(--ds-ink)', fontWeight: 500 }}>
                   {items.length === 1
                     ? (items[0].product_name as string)
                     : `${items[0].product_name as string} +${items.length - 1} autre${items.length > 2 ? 's' : ''}`}
@@ -1346,8 +1346,8 @@ export default function PlanDetailPage() {
             <div className="prj-kpi-value" style={{ color: k.tone ? kpiColor[k.tone] : undefined }}>{k.value}</div>
             {k.sub && <div className="prj-kpi-sub">{k.sub}</div>}
             {k.bar != null && (
-              <div style={{ height: 6, backgroundColor: 'var(--kl-fill, var(--theme-bg-separator))', borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
-                <div style={{ height: '100%', width: `${k.bar}%`, backgroundColor: k.bar >= 100 ? 'var(--prj-green)' : 'var(--theme-accent)', borderRadius: 99, transition: 'width 0.3s' }} />
+              <div style={{ height: 6, backgroundColor: 'var(--kl-fill, var(--ds-sep))', borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
+                <div style={{ height: '100%', width: `${k.bar}%`, backgroundColor: k.bar >= 100 ? 'var(--prj-green)' : 'var(--ds-accent)', borderRadius: 99, transition: 'width 0.3s' }} />
               </div>
             )}
           </div>
@@ -1459,12 +1459,12 @@ export default function PlanDetailPage() {
                   <Eye size={11} /> Voir
                 </button>
               </div>
-              <div style={{ padding: '0.625rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', backgroundColor: 'var(--theme-bg-card)', fontSize: '0.75rem' }}>
+              <div style={{ padding: '0.625rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', backgroundColor: 'var(--ds-card)', fontSize: '12px' }}>
                 {(() => {
                   const t = planStatusTag(dep.parent_status as string);
                   return <StatusTag tone={t.tone} icon={t.icon} label={t.label} />;
                 })()}
-                {parentNotes && <span style={{ color: 'var(--theme-text-muted)' }}>{parentNotes}</span>}
+                {parentNotes && <span style={{ color: 'var(--ds-muted)' }}>{parentNotes}</span>}
               </div>
             </div>
 
@@ -1473,7 +1473,7 @@ export default function PlanDetailPage() {
               <div className="pd-section-head">
                 <Beaker size={12} /> {recipeName} — Préparation de base
               </div>
-              <div className="odoo-smart-button-row" style={{ borderBottom: '1px solid var(--theme-bg-separator)' }}>
+              <div className="odoo-smart-button-row" style={{ borderBottom: '1px solid var(--ds-sep)' }}>
                 <div className="odoo-smart-button">
                   <div className="odoo-smart-button-value">{qtyNeeded.toFixed(2)}</div>
                   <div className="odoo-smart-button-label">À produire ({yieldUnit})</div>
@@ -1494,11 +1494,11 @@ export default function PlanDetailPage() {
 
               {/* Recipe instructions */}
               {instructions && (
-                <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--theme-bg-card)' }}>
-                  <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--ds-sep)', backgroundColor: 'var(--ds-card)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-accent)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <BookOpen size={11} /> Instructions
                   </div>
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{instructions}</p>
+                  <p style={{ fontSize: '13px', color: 'var(--ds-ink)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{instructions}</p>
                 </div>
               )}
 
@@ -1525,7 +1525,7 @@ export default function PlanDetailPage() {
                             <td className="ds-strong">{ri.ingredient_name as string}</td>
                             <td className="ds-num">
                               <strong>{scaledQty.toFixed(3)}</strong>
-                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{unit}</span>
+                              <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 2 }}>{unit}</span>
                             </td>
                           </tr>
                         );
@@ -1754,8 +1754,8 @@ export default function PlanDetailPage() {
           <div className="ds-panel pd-section">
             <div className="pd-section-head">
               <Box size={12} /> Prélevés du stock
-              <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{stockItems.length} article(s)</span>
-              <span style={{ marginLeft: 'auto', color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{stockItems.length} article(s)</span>
+              <span style={{ marginLeft: 'auto', color: 'var(--ds-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <TrendingUp size={11} /> Transfert auto — demande {linkedReplenishment.request_number as string}
               </span>
             </div>
@@ -1771,10 +1771,10 @@ export default function PlanDetailPage() {
                 {stockItems.map((ri) => (
                   <tr key={ri.id as string} style={{ cursor: 'default' }}>
                     <td style={{ fontWeight: 500 }}>{ri.product_name as string}</td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{ri.category_name as string}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{ri.category_name as string}</td>
                     <td className="ds-num">
                       <strong style={{ color: 'var(--ds-success)' }}>{(ri.fulfilled_from_stock as number) || 0}</strong>
-                      <span style={{ color: 'var(--theme-text-muted)' }}> / {(ri.requested_quantity as number) || 0}</span>
+                      <span style={{ color: 'var(--ds-muted)' }}> / {(ri.requested_quantity as number) || 0}</span>
                     </td>
                   </tr>
                 ))}
@@ -1890,7 +1890,7 @@ export default function PlanDetailPage() {
             </span>
           )}
         </div>
-        <div style={{ padding: '0.5rem 0.75rem', backgroundColor: 'var(--theme-bg-card)' }}>
+        <div style={{ padding: '0.5rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
           {/* New note input */}
           <div style={{ display: 'flex', gap: '0.375rem', marginBottom: '0.5rem' }}>
             <input type="text" value={newNote} onChange={(e) => setNewNote(e.target.value)}
@@ -1909,19 +1909,19 @@ export default function PlanDetailPage() {
               {(activities as Record<string, any>[]).map((act: Record<string, any>, i: number) => (
                 <div key={act.id as string} style={{
                   display: 'flex', gap: '0.5rem', padding: '0.375rem 0',
-                  borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none',
+                  borderTop: i > 0 ? '1px solid var(--ds-sep)' : 'none',
                 }}>
                   <div style={{
                     width: 22, height: 22, borderRadius: '50%',
-                    backgroundColor: 'var(--theme-accent-light)',
-                    color: 'var(--theme-accent)',
+                    backgroundColor: 'var(--ds-tint)',
+                    color: 'var(--ds-accent)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2,
                   }}>
                     {act.activity_type === 'note_added' ? <MessageSquare size={11} /> : <Play size={11} />}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)' }}>{act.message as string}</p>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: 1, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                    <p style={{ fontSize: '13px', color: 'var(--ds-ink)' }}>{act.message as string}</p>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: 1, fontSize: '12px', color: 'var(--ds-muted)' }}>
                       {act.first_name && <span style={{ fontWeight: 500 }}>{act.first_name as string} {act.last_name as string}</span>}
                       <span>{format(new Date(act.created_at as string), 'dd/MM HH:mm', { locale: fr })}</span>
                     </div>
@@ -1930,7 +1930,7 @@ export default function PlanDetailPage() {
               ))}
             </div>
           ) : (
-            <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'center', padding: '0.5rem' }}>Aucune note pour le moment</p>
+            <p style={{ fontSize: '12px', color: 'var(--ds-muted)', textAlign: 'center', padding: '0.5rem' }}>Aucune note pour le moment</p>
           )}
         </div>
       </div>
@@ -2086,7 +2086,7 @@ function PlanHeaderTags({ plan }: { plan: Record<string, any> }) {
           {plan.order_type_label as string}
         </span>
       )}
-      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '13px', color: 'var(--ds-muted)' }}>
         Priorité
         <select value={prio} disabled={locked || m.isPending} onChange={(e) => m.mutate(Number(e.target.value))}
           className="ds-input sm" style={{ width: 'auto' }} aria-label="Priorité de l'ordre">

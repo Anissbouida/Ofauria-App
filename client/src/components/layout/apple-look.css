@@ -16,20 +16,20 @@
 
 
 .kl-apple {
-  --kl-bg: var(--theme-bg-page);
-  --kl-card: var(--theme-bg-card);
-  --kl-ink: var(--theme-text-strong);
-  --kl-ink2: var(--theme-text-body);
-  --kl-muted: var(--theme-text-muted);
-  --kl-sep: var(--theme-bg-separator);
-  --kl-hair: color-mix(in srgb, var(--theme-bg-separator) 70%, transparent);
-  --kl-fill: color-mix(in srgb, var(--theme-text-muted) 13%, transparent);
-  --kl-accent: var(--theme-accent);
-  --kl-accent-ink: var(--theme-accent-hover);
-  --kl-accent-soft: var(--theme-accent-light);
+  --kl-bg: var(--ds-bg);
+  --kl-card: var(--ds-card);
+  --kl-ink: var(--ds-ink);
+  --kl-ink2: var(--ds-body);
+  --kl-muted: var(--ds-muted);
+  --kl-sep: var(--ds-sep);
+  --kl-hair: color-mix(in srgb, var(--ds-sep) 70%, transparent);
+  --kl-fill: color-mix(in srgb, var(--ds-muted) 13%, transparent);
+  --kl-accent: var(--ds-accent);
+  --kl-accent-ink: var(--ds-accent-ink);
+  --kl-accent-soft: var(--ds-tint);
   --kl-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .05);
   --prj-green: var(--ds-success); --prj-orange: var(--ds-warning); --prj-red: var(--ds-danger);
-  --kl-nav: color-mix(in srgb, var(--theme-bg-secondary) 45%, var(--theme-bg-page));
+  --kl-nav: color-mix(in srgb, var(--ds-hair) 45%, var(--ds-bg));
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   letter-spacing: -.011em;
   -webkit-font-smoothing: antialiased;
@@ -71,9 +71,9 @@
 
 /* Grand titre en tête de page */
 .kl-largetitle { margin: 0 0 4px; }
-.kl-largetitle h1 { margin: 0; font-size: 30px; line-height: 1.12; font-weight: 700; letter-spacing: -.025em; color: var(--kl-ink, var(--theme-text-strong)); }
-.kl-largetitle p { margin: 6px 0 0; font-size: 15px; color: var(--kl-muted, var(--theme-text-muted)); }
-.kl-largetitle p b { color: var(--kl-ink, var(--theme-text-strong)); font-weight: 600; }
+.kl-largetitle h1 { margin: 0; font-size: 30px; line-height: 1.12; font-weight: 700; letter-spacing: -.025em; color: var(--kl-ink, var(--ds-ink)); }
+.kl-largetitle p { margin: 6px 0 0; font-size: 15px; color: var(--kl-muted, var(--ds-muted)); }
+.kl-largetitle p b { color: var(--kl-ink, var(--ds-ink)); font-weight: 600; }
 
 /* Marges du contenu */
 .kl-apple .sal-page, .kl-apple .pur-head-body { padding: 24px 32px 56px; gap: 22px; }
@@ -82,17 +82,17 @@
 /* ── Boutons en pilule ── */
 .kl-apple .odoo-btn-primary:not(.fixed *) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; }
 /* Boutons secondaires : teinte d'accent claire plutôt que gris (bleu sur gris 4,4:1 → 5,9:1). */
-.kl-apple .odoo-btn-secondary:not(.fixed *) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; border-color: transparent; background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--kl-accent-ink); }
-.kl-apple .odoo-btn-secondary:not(.fixed *):hover { background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-bg-card)); }
-.kl-apple .sal-next { border: 0; border-radius: 999px; background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--kl-accent-ink); height: 30px; padding: 0 12px; }
-.kl-apple .sal-next:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-bg-card)); color: var(--kl-accent-ink); }
+.kl-apple .odoo-btn-secondary:not(.fixed *) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; border-color: transparent; background: color-mix(in srgb, var(--ds-accent) 10%, var(--ds-card)); color: var(--kl-accent-ink); }
+.kl-apple .odoo-btn-secondary:not(.fixed *):hover { background: color-mix(in srgb, var(--ds-accent) 17%, var(--ds-card)); }
+.kl-apple .sal-next { border: 0; border-radius: 999px; background: color-mix(in srgb, var(--ds-accent) 10%, var(--ds-card)); color: var(--kl-accent-ink); height: 30px; padding: 0 12px; }
+.kl-apple .sal-next:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-accent) 17%, var(--ds-card)); color: var(--kl-accent-ink); }
 
 /* Liste à gauche (vue Colonnes) : sélection en teinte claire + barre d'accent, texte foncé
    (le bloc plein obligeait à éclaircir les sous-lignes : 3,3:1 → 15:1). */
-.kl-apple .ord-row.sel { background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--kl-ink); box-shadow: inset 3px 0 0 var(--theme-accent); }
-.kl-apple .ord-row.sel .ord-when, .kl-apple .ord-row.sel .ord-l3 { color: var(--theme-text-muted); }
-.kl-apple .ord-row.sel .ord-l2 { color: var(--theme-text-body); }
-.kl-apple .ord-row.sel .ord-dot.today { background: var(--theme-accent); }
+.kl-apple .ord-row.sel { background: color-mix(in srgb, var(--ds-accent) 10%, var(--ds-card)); color: var(--kl-ink); box-shadow: inset 3px 0 0 var(--ds-accent); }
+.kl-apple .ord-row.sel .ord-when, .kl-apple .ord-row.sel .ord-l3 { color: var(--ds-muted); }
+.kl-apple .ord-row.sel .ord-l2 { color: var(--ds-body); }
+.kl-apple .ord-row.sel .ord-dot.today { background: var(--ds-accent); }
 .kl-apple .ord-l2 b { font-weight: 600; color: var(--kl-ink); }
 .kl-apple .ord-l3 .kl-tag { margin-right: 2px; }
 
@@ -133,7 +133,7 @@
 /* ── Circuit numéroté (Ventes, Achats) ── */
 .kl-apple .pur-circuit { gap: 10px; }
 .kl-apple .pur-stage { border: 0; border-radius: 14px; padding: 13px 14px; background: color-mix(in srgb, var(--kl-bg) 85%, var(--kl-card)); }
-.kl-apple .pur-stage:hover, .kl-apple .pur-stage:focus-visible { background: color-mix(in srgb, var(--theme-bg-secondary) 70%, var(--kl-card)); }
+.kl-apple .pur-stage:hover, .kl-apple .pur-stage:focus-visible { background: color-mix(in srgb, var(--ds-hair) 70%, var(--kl-card)); }
 .kl-apple .pur-stage.orange, .kl-apple .pur-stage.red { border: 0; background: color-mix(in srgb, var(--kl-bg) 85%, var(--kl-card)); }
 .kl-apple .pur-stage-head { font-size: 13px; font-weight: 500; }
 .kl-apple .pur-stage-num { width: 22px; height: 22px; font-size: 12px; font-weight: 700; background: var(--kl-card); color: var(--kl-ink2); box-shadow: 0 0 0 .5px rgba(15, 23, 42, .12); }
@@ -194,7 +194,7 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-cell .tr { font-size: 15px; font-weight: 500; color: var(--kl-ink2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kl-cell .tr.red { color: var(--prj-red); }
 .kl-cell .chev { color: color-mix(in srgb, var(--kl-muted) 60%, transparent); flex: none; }
-.kl-mono { width: 36px; height: 36px; border-radius: 50%; display: inline-grid; place-items: center; flex: none; font-size: 13px; font-weight: 600; background: var(--theme-bg-secondary); color: var(--kl-ink); }
+.kl-mono { width: 36px; height: 36px; border-radius: 50%; display: inline-grid; place-items: center; flex: none; font-size: 13px; font-weight: 600; background: var(--ds-hair); color: var(--kl-ink); }
 .kl-ic { width: 32px; height: 32px; border-radius: 9px; display: inline-grid; place-items: center; flex: none; }
 .kl-ic.r { background: color-mix(in srgb, var(--prj-red) 12%, transparent); color: var(--prj-red); }
 .kl-ic.o { background: color-mix(in srgb, var(--prj-orange) 13%, transparent); color: var(--prj-orange); }
@@ -214,10 +214,10 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 /* ── Feuille (fenêtre de détail) au style Apple : réutilisable par toute fenêtre (.kl-sheet) ──
    Indépendante de .kl-apple : les modales s'ouvrent aussi hors des modules qui l'activent. */
 .kl-sheet {
-  --kl-bg: var(--theme-bg-page); --kl-card: var(--theme-bg-card); --kl-ink: var(--theme-text-strong); --kl-ink2: var(--theme-text-body);
-  --kl-muted: var(--theme-text-muted); --kl-sep: var(--theme-bg-separator); --kl-hair: color-mix(in srgb, var(--theme-bg-separator) 70%, transparent);
-  --kl-fill: color-mix(in srgb, var(--theme-text-muted) 13%, transparent); --kl-accent: var(--theme-accent); --kl-accent-ink: var(--theme-accent-hover);
-  --kl-accent-soft: var(--theme-accent-light); --kl-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .05);
+  --kl-bg: var(--ds-bg); --kl-card: var(--ds-card); --kl-ink: var(--ds-ink); --kl-ink2: var(--ds-body);
+  --kl-muted: var(--ds-muted); --kl-sep: var(--ds-sep); --kl-hair: color-mix(in srgb, var(--ds-sep) 70%, transparent);
+  --kl-fill: color-mix(in srgb, var(--ds-muted) 13%, transparent); --kl-accent: var(--ds-accent); --kl-accent-ink: var(--ds-accent-ink);
+  --kl-accent-soft: var(--ds-tint); --kl-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .05);
   --prj-green: var(--ds-success); --prj-orange: var(--ds-warning); --prj-red: var(--ds-danger);
   display: flex; flex-direction: column; overflow: hidden; border-radius: 20px;
   background-color: var(--kl-bg) !important; color: var(--kl-ink);
@@ -228,13 +228,13 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-sheet-head .ord-who h2 { font-size: 21px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .kl-sheet-head .ord-amt b { font-size: 21px; }
 .kl-sheet-close { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--kl-fill); color: var(--kl-ink2); display: grid; place-items: center; cursor: pointer; align-self: flex-start; }
-.kl-sheet-close:hover { background: color-mix(in srgb, var(--theme-text-muted) 22%, transparent); }
+.kl-sheet-close:hover { background: color-mix(in srgb, var(--ds-muted) 22%, transparent); }
 .kl-sheet-body { flex: 1; overflow-y: auto; padding: 20px 22px 24px; display: grid; gap: 20px; align-content: start; }
 .kl-sheet-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
 .kl-sheet-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--kl-sep); background: color-mix(in srgb, var(--kl-card) 85%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
 .kl-sheet .odoo-btn-primary, .kl-sheet .odoo-btn-secondary, .kl-sheet .odoo-btn-danger { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
-.kl-sheet .odoo-btn-secondary { border-color: transparent; background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--kl-accent-ink); }
-.kl-sheet .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-bg-card)); }
+.kl-sheet .odoo-btn-secondary { border-color: transparent; background: color-mix(in srgb, var(--ds-accent) 10%, var(--ds-card)); color: var(--kl-accent-ink); }
+.kl-sheet .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-accent) 17%, var(--ds-card)); }
 .kl-sheet .odoo-btn-danger { border: 0; background: color-mix(in srgb, var(--prj-red) 10%, transparent); color: var(--prj-red); }
 .kl-sheet .odoo-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--prj-red) 16%, transparent); }
 .kl-sheet .kl-widget { background: var(--kl-card); border-radius: 18px; padding: 18px 20px; box-shadow: var(--kl-shadow); }
@@ -247,8 +247,8 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-pill.o { background: var(--ds-warning-bg); color: var(--ds-warning); }
 .kl-pill.r { background: var(--ds-danger-bg); color: var(--ds-danger); }
 .kl-pill.g { background: var(--ds-success-bg); color: var(--ds-success); }
-.kl-pill.b { background: var(--theme-accent-light); color: var(--theme-accent-hover); }
-.kl-pill.x { background: color-mix(in srgb, var(--theme-text-muted) 14%, transparent); color: var(--theme-text-body); }
+.kl-pill.b { background: var(--ds-tint); color: var(--ds-accent-ink); }
+.kl-pill.x { background: color-mix(in srgb, var(--ds-muted) 14%, transparent); color: var(--ds-body); }
 /* Panneaux internes (litiges, créance douteuse) : titres, champs et tableaux au même style. */
 .kl-sheet-panel { padding: 4px 16px 16px; display: grid; gap: 4px; }
 .kl-sheet-panel > section { margin: 0 !important; padding-top: 12px; }
@@ -258,9 +258,9 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-sheet-panel .odoo-input:focus { outline: 2px solid color-mix(in srgb, var(--kl-accent) 45%, transparent); outline-offset: 0; }
 .kl-sheet-panel .odoo-table { border: 0; }
 .kl-sheet-panel .odoo-table thead th { background: transparent; color: var(--kl-muted); font-weight: 500; font-size: 12px; text-transform: none; letter-spacing: 0; }
-.odoo-scope.kl-sheet { background-color: var(--theme-bg-page) !important; }
+.odoo-scope.kl-sheet { background-color: var(--ds-bg) !important; }
 /* En-tête de la feuille dans la couleur du thème (accent), texte blanc — demande utilisateur 2026-11-14. */
-.kl-sheet-head { background: var(--theme-accent); color: #fff; border-bottom: 0; }
+.kl-sheet-head { background: var(--ds-accent); color: #fff; border-bottom: 0; }
 .kl-sheet-head .ord-mono { background: rgba(255, 255, 255, .2); color: #fff; }
 .kl-sheet-head .ord-who h2, .kl-sheet-head .ord-amt b { color: #fff; }
 .kl-sheet-head .ord-who p, .kl-sheet-head .ord-amt small { color: rgba(255, 255, 255, .85); }
@@ -276,8 +276,8 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
   box-shadow: 0 24px 60px rgba(15, 23, 42, .22), 0 0 0 .5px rgba(15, 23, 42, .08) !important;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; letter-spacing: -.011em; }
 .kl-apple .fixed .odoo-btn-primary, .kl-apple .fixed .odoo-btn-secondary, .kl-apple .fixed .odoo-btn-danger { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; }
-.kl-apple .fixed .odoo-btn-secondary { border-color: transparent; background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--theme-accent-hover); }
-.kl-apple .fixed .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-bg-card)); }
+.kl-apple .fixed .odoo-btn-secondary { border-color: transparent; background: color-mix(in srgb, var(--ds-accent) 10%, var(--ds-card)); color: var(--ds-accent-ink); }
+.kl-apple .fixed .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--ds-accent) 17%, var(--ds-card)); }
 .kl-apple .fixed .odoo-btn-danger { border: 0; background: var(--ds-danger-bg); color: var(--ds-danger); }
 .kl-apple .fixed .odoo-section-header { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; background: transparent; }
 .kl-apple .fixed .odoo-table thead th { background: transparent; text-transform: none; letter-spacing: 0; font-weight: 500; }
@@ -314,7 +314,7 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-apple .ring-2.ring-blue-400 { --tw-ring-color: var(--kl-accent); }
 /* En-tête des fenêtres bâties sur une barre .odoo-control-bar : couleur du thème, texte blanc
    (comme les en-têtes modalHeaderStyle et la feuille .kl-sheet). */
-.kl-apple .fixed .odoo-control-bar { background: var(--theme-accent) !important; color: #fff; border-bottom: 0; min-height: 52px; height: auto; padding: 10px 16px; }
+.kl-apple .fixed .odoo-control-bar { background: var(--ds-accent) !important; color: #fff; border-bottom: 0; min-height: 52px; height: auto; padding: 10px 16px; }
 .kl-apple .fixed .odoo-control-bar .odoo-breadcrumb, .kl-apple .fixed .odoo-control-bar .odoo-breadcrumb-current,
 .kl-apple .fixed .odoo-control-bar .odoo-breadcrumb svg { color: #fff !important; }
 .kl-apple .fixed .odoo-control-bar .odoo-breadcrumb-current { font-size: 15px; font-weight: 600; }
@@ -549,24 +549,24 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-apple .status-banner-note.danger { background: color-mix(in srgb, var(--prj-red) 10%, transparent); color: var(--prj-red); border-radius: 8px; }
 
 /* ─── Achats : fiche BC et pièces chaînées ─────────────────────────────── */
-.kl-apple .pur-doc { border: 0; border-radius: 12px; background: var(--theme-bg-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .05); padding: 8px 12px; }
+.kl-apple .pur-doc { border: 0; border-radius: 12px; background: var(--ds-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .05); padding: 8px 12px; }
 .kl-apple .pur-doc small { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; }
-.kl-apple .pur-doc.current { background: var(--theme-accent-light); box-shadow: inset 0 0 0 1.5px var(--theme-accent); }
-.kl-apple .pur-doc.current span { color: var(--theme-accent-hover); }
-.kl-apple .pur-doc.warn { background: color-mix(in srgb, var(--prj-orange) 8%, var(--theme-bg-card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--prj-orange) 35%, transparent); }
+.kl-apple .pur-doc.current { background: var(--ds-tint); box-shadow: inset 0 0 0 1.5px var(--ds-accent); }
+.kl-apple .pur-doc.current span { color: var(--ds-accent-ink); }
+.kl-apple .pur-doc.warn { background: color-mix(in srgb, var(--prj-orange) 8%, var(--ds-card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--prj-orange) 35%, transparent); }
 .kl-apple .pur-doc.todo { background: transparent; box-shadow: inset 0 0 0 1px dashed var(--kl-sep); border: 1px dashed var(--kl-sep); }
-.kl-apple .kl-po-body .prj-kpi { border: 0; border-radius: 14px; background: var(--theme-bg-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
-.kl-apple .kl-po-body .ui-timeline { background: var(--theme-bg-card); border-radius: 14px; border: 0; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); padding-top: 14px; padding-bottom: 12px; }
+.kl-apple .kl-po-body .prj-kpi { border: 0; border-radius: 14px; background: var(--ds-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.kl-apple .kl-po-body .ui-timeline { background: var(--ds-card); border-radius: 14px; border: 0; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); padding-top: 14px; padding-bottom: 12px; }
 .kl-apple .kl-po-body .odoo-table { border: 0; }
-.kl-apple .kl-po-body .odoo-table tfoot td { border-top: 1px solid var(--kl-sep, var(--theme-bg-separator)); }
+.kl-apple .kl-po-body .odoo-table tfoot td { border-top: 1px solid var(--kl-sep, var(--ds-sep)); }
 .kl-apple .pur-check { border-radius: 999px; }
 
 /* Libellés en capitales posés en style inline (anciens formulaires) : casse normale, comme le reste. */
 .kl-apple [style*="text-transform: uppercase"], .kl-apple [style*="textTransform"] { text-transform: none !important; letter-spacing: 0 !important; }
-.kl-apple .fixed label[style*="text-transform: uppercase"] { font-size: 13px !important; font-weight: 500 !important; color: var(--theme-text-muted) !important; }
+.kl-apple .fixed label[style*="text-transform: uppercase"] { font-size: 13px !important; font-weight: 500 !important; color: var(--ds-muted) !important; }
 /* Encadrés des anciens formulaires (bordure inline) : trait fin et coins arrondis. */
-.kl-apple .fixed [style*="border: 1px solid var(--odoo-border)"],
-.kl-apple .fixed [style*="border: 1px dashed var(--odoo-border)"] { border-color: var(--theme-bg-separator) !important; border-radius: 12px !important; }
+.kl-apple .fixed [style*="border: 1px solid var(--ds-sep)"],
+.kl-apple .fixed [style*="border: 1px dashed var(--ds-sep)"] { border-color: var(--ds-sep) !important; border-radius: 12px !important; }
 
 /* ─── Comptabilité : page de rubrique (grand titre + marges comme Ventes/Achats) ── */
 .kl-apple .acc-page, .kl-apple .kl-page { display: flex; flex-direction: column; gap: 22px; padding: 24px 32px 56px; min-width: 0; }

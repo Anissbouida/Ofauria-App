@@ -407,7 +407,7 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
             </tbody>
           </table>
         </div>
-        <p style={{ margin: 0, fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ds-muted)' }}>
           Prix proposés : tarif catalogue moins la remise du client ; TVA : dernier taux utilisé pour le produit. Le BL sort les produits du stock avec leurs lots ; il sera facturé depuis « À facturer ».
         </p>
       </FormSection>
@@ -435,13 +435,13 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
       footer={<button type="button" onClick={() => printNote(id)} className="odoo-btn-secondary"><Printer size={13} /> Imprimer</button>}>
       {!n ? <LoadingState bare /> : (
         <>
-          <div className="flex flex-wrap gap-6" style={{ fontSize: '0.8125rem' }}>
-            <div><div style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}>Client</div><b>{n.customer_name}</b></div>
-            <div><div style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}>Livré le</div>{day(n.delivery_date)}</div>
-            {n.order_number && <div><div style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}>Commande</div><span className="ds-ref">{n.order_number}</span></div>}
-            {n.invoice_number && <div><div style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}>Facture</div><span className="ds-ref">{n.invoice_number}</span></div>}
+          <div className="flex flex-wrap gap-6" style={{ fontSize: '13px' }}>
+            <div><div style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>Client</div><b>{n.customer_name}</b></div>
+            <div><div style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>Livré le</div>{day(n.delivery_date)}</div>
+            {n.order_number && <div><div style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>Commande</div><span className="ds-ref">{n.order_number}</span></div>}
+            {n.invoice_number && <div><div style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>Facture</div><span className="ds-ref">{n.invoice_number}</span></div>}
           </div>
-          {n.notes && <div style={{ fontSize: '0.8125rem' }}><b>Notes :</b> {n.notes}</div>}
+          {n.notes && <div style={{ fontSize: '13px' }}><b>Notes :</b> {n.notes}</div>}
           <DataPanel label="Lignes du bon de livraison">
             <table className="odoo-table ds-dense">
               <thead><tr><th>Désignation</th><th className="ds-num">Qté</th><th className="ds-num">Prix HT ({currencySymbol()})</th><th className="ds-num">TVA</th><th className="ds-num">Total HT ({currencySymbol()})</th></tr></thead>
@@ -450,7 +450,7 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   <tr key={i.id}>
                     <td>{i.description}
                       {(i.lots ?? []).length > 0 && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)', marginTop: 2 }}>
+                        <div style={{ fontSize: '12px', color: 'var(--ds-muted)', marginTop: 2 }}>
                           {(i.lots ?? []).map(l => `Lot ${l.lot_number} · ${Number(l.quantity).toLocaleString('fr-FR')}${l.dlc ? ` (DLC ${l.dlc.slice(0, 10).split('-').reverse().join('/')})` : ''}`).join(' — ')}
                         </div>
                       )}

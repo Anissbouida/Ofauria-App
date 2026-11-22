@@ -30,7 +30,7 @@ export default function LotReleaseSection() {
         <thead><tr><th>Lot</th><th>Produit</th><th className="ds-num">Quantité</th><th>Inspections</th><th>Libération</th></tr></thead>
         <tbody>{data.length === 0 ? <tr><td colSpan={5}><EmptyState bare icon={Inbox} title="Aucun lot retenu" /></td></tr> : data.map(l => (
           <tr key={l.id}>
-            <td><span className="ds-ref">{l.lot_number ?? '—'}</span><div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{new Date(l.produced_at).toLocaleDateString('fr-FR')}</div></td>
+            <td><span className="ds-ref">{l.lot_number ?? '—'}</span><div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{new Date(l.produced_at).toLocaleDateString('fr-FR')}</div></td>
             <td style={{ fontWeight: 500 }}>{l.product_name}</td>
             <td className="ds-num">{l.quantity.toLocaleString('fr-FR')}</td>
             <td>

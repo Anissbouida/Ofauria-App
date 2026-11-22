@@ -63,7 +63,7 @@ export default function ProjectsPlanning() {
   return (
     <div className="prj">
       <div className="prj-toolbar">
-        <strong style={{ flex: 1, minWidth: 200, fontSize: '0.9375rem' }}>
+        <strong style={{ flex: 1, minWidth: 200, fontSize: '14px' }}>
           {format(start, 'd MMM', { locale: fr })} → {format(addDays(end, -1), 'd MMM yyyy', { locale: fr })}
         </strong>
         <div className="prj-views" role="group" aria-label="Échelle">
@@ -84,7 +84,7 @@ export default function ProjectsPlanning() {
         <section className="prj-panel prj-gantt" aria-label="Planning des projets">
           <div className="prj-gantt-inner">
             <div className="prj-gantt-row head">
-              <div className="prj-gantt-label" style={{ cursor: 'default', fontSize: '0.75rem', fontWeight: 500, color: 'var(--ds-muted)' }}>Projet / tâche</div>
+              <div className="prj-gantt-label" style={{ cursor: 'default', fontSize: '12px', fontWeight: 500, color: 'var(--ds-muted)' }}>Projet / tâche</div>
               <div className="prj-gantt-cols" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
                 {columns.map(c => (
                   <div key={c.toISOString()}>{col === 1 ? format(c, 'EEE d', { locale: fr }) : `${format(c, 'd MMM', { locale: fr })}`}</div>
@@ -101,7 +101,7 @@ export default function ProjectsPlanning() {
                 const health = projectHealth(p);
                 const sub = tasksBy.get(p.id) ?? [];
                 const expanded = open.has(p.id);
-                const grid = { backgroundImage: 'linear-gradient(to right, var(--odoo-border) 1px, transparent 1px)', backgroundSize: `calc(100% / ${columns.length}) 100%` };
+                const grid = { backgroundImage: 'linear-gradient(to right, var(--ds-sep) 1px, transparent 1px)', backgroundSize: `calc(100% / ${columns.length}) 100%` };
                 return (
                   <div key={p.id}>
                     <div className="prj-gantt-row">
@@ -145,8 +145,8 @@ export default function ProjectsPlanning() {
       )}
 
       <div className="prj-gantt-legend">
-        <span><span className="prj-swatch" style={{ background: 'var(--odoo-purple)' }} />Avancement</span>
-        <span><span className="prj-swatch" style={{ background: 'color-mix(in srgb, var(--odoo-purple) 18%, transparent)' }} />Reste à faire</span>
+        <span><span className="prj-swatch" style={{ background: 'var(--ds-accent)' }} />Avancement</span>
+        <span><span className="prj-swatch" style={{ background: 'color-mix(in srgb, var(--ds-accent) 18%, transparent)' }} />Reste à faire</span>
         <span><span className="prj-swatch" style={{ background: 'var(--ds-warning)' }} />En retard</span>
         <span><span className="prj-swatch" style={{ background: 'var(--ds-ink)', transform: 'rotate(45deg)' }} />Échéance d’une tâche</span>
       </div>

@@ -153,11 +153,11 @@ function DayMovements({ payments }: { payments: Record<string, any>[] }) {
   return (
     <>
       {groups.filter(g => g.rows.length > 0).map(g => (
-        <div key={g.title} style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--theme-bg-separator)' }}>
+        <div key={g.title} style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--ds-sep)' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4 }}>{g.title}</div>
           {g.rows.map((p, idx) => (
-            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', padding: '2px 0' }}>
-              <span style={{ color: 'var(--theme-text-muted)' }}>{g.label(p)}</span>
+            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', padding: '2px 0' }}>
+              <span style={{ color: 'var(--ds-muted)' }}>{g.label(p)}</span>
               <span style={{ fontWeight: 600, color: g.sign > 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{g.sign > 0 ? '+' : '−'}{money(parseFloat(p.amount as string) || 0)}</span>
             </div>
           ))}
@@ -739,7 +739,7 @@ function DettesTab() {
                       <td>
                         <span className="ds-strong">{t.name}</span>
                         {t.phone && <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 6 }}>{t.phone}</span>}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: 'var(--ds-muted)', marginTop: 1 }}>
                           <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: t.situation === 'overdue' ? 'var(--ds-danger)' : t.situation === 'soon' ? 'var(--ds-warning)' : 'var(--ds-success)' }} />
                           {t.situation === 'overdue' ? 'Échue' : t.situation === 'soon' ? 'Échéance ≤ 7 j' : 'À venir'}
                         </div>
@@ -1063,7 +1063,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
     ],
   },
   unpaidInvoices: {
-    title: 'Factures impayées (toutes périodes)', accent: 'var(--ds-warning)', bg: 'var(--theme-bg-page)',
+    title: 'Factures impayées (toutes périodes)', accent: 'var(--ds-warning)', bg: 'var(--ds-bg)',
     filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
       { label: 'N° facture', render: r => <span className="ds-ref">{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
@@ -1294,11 +1294,11 @@ function PilotageTab() {
       <div className="prj-toolbar">
         <PeriodFilter label="Période" title="Période d'analyse des flux"
           period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-        <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-          <strong style={{ textTransform: 'capitalize', color: 'var(--odoo-text)' }}>{periodLabel}</strong>
+        <span style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
+          <strong style={{ textTransform: 'capitalize', color: 'var(--ds-ink)' }}>{periodLabel}</strong>
         </span>
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Cliquez une carte pour voir le détail</span>
+        <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>Cliquez une carte pour voir le détail</span>
       </div>
 
       {/* 1. Flux de la période : engagé → payé → reste à payer (+ reçu non facturé) */}
@@ -1372,30 +1372,30 @@ function PilotageTab() {
           <SectionHeader title="Répartition des paiements de la période" />
           <div className="ds-panel" style={{ padding: '16px 20px', marginTop: 8 }}>
             {/* Barre proportionnelle */}
-            <div style={{ display: 'flex', height: 24, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--theme-bg-page)' }}>
+            <div style={{ display: 'flex', height: 24, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--ds-bg)' }}>
               {cashPct > 0 && (
-                <div style={{ width: `${cashPct}%`, background: 'var(--ds-success)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                <div style={{ width: `${cashPct}%`, background: 'var(--ds-success)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px', fontWeight: 600 }}>
                   {cashPct >= 8 && `${Math.round(cashPct)}%`}
                 </div>
               )}
               {checkPct > 0 && (
-                <div style={{ width: `${checkPct}%`, background: 'var(--ds-warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                <div style={{ width: `${checkPct}%`, background: 'var(--ds-warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px', fontWeight: 600 }}>
                   {checkPct >= 8 && `${Math.round(checkPct)}%`}
                 </div>
               )}
               {transferPct > 0 && (
-                <div style={{ width: `${transferPct}%`, background: 'var(--ds-info)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                <div style={{ width: `${transferPct}%`, background: 'var(--ds-info)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '12px', fontWeight: 600 }}>
                   {transferPct >= 8 && `${Math.round(transferPct)}%`}
                 </div>
               )}
             </div>
             {/* Legende */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, fontSize: '0.8125rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, fontSize: '13px' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ width: 12, height: 12, background: 'var(--ds-success)', borderRadius: 2 }} />
                   <strong>Espèces</strong>
-                  <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.cash.count})</span>
+                  <span style={{ color: 'var(--ds-muted)' }}>({kpis.treasury.byMethod.cash.count})</span>
                 </div>
                 <div className="ds-num ds-strong" style={{ marginLeft: 18, textAlign: 'left' }}>{money(kpis.treasury.byMethod.cash.total)}</div>
               </div>
@@ -1403,7 +1403,7 @@ function PilotageTab() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ width: 12, height: 12, background: 'var(--ds-warning)', borderRadius: 2 }} />
                   <strong>Chèque (encaissé)</strong>
-                  <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.check.count})</span>
+                  <span style={{ color: 'var(--ds-muted)' }}>({kpis.treasury.byMethod.check.count})</span>
                 </div>
                 <div className="ds-num ds-strong" style={{ marginLeft: 18, textAlign: 'left' }}>{money(kpis.treasury.byMethod.check.total)}</div>
               </div>
@@ -1411,7 +1411,7 @@ function PilotageTab() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ width: 12, height: 12, background: 'var(--ds-info)', borderRadius: 2 }} />
                   <strong>Virement et banque</strong>
-                  <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.transfer.count + kpis.treasury.byMethod.bank.count})</span>
+                  <span style={{ color: 'var(--ds-muted)' }}>({kpis.treasury.byMethod.transfer.count + kpis.treasury.byMethod.bank.count})</span>
                 </div>
                 <div className="ds-num ds-strong" style={{ marginLeft: 18, textAlign: 'left' }}>{money(kpis.treasury.byMethod.transfer.total + kpis.treasury.byMethod.bank.total)}</div>
               </div>
@@ -1710,8 +1710,8 @@ function CaisseTab() {
                     <td className="ds-ref">{p.invoice_number as string}</td>
                     <td>{(p.customer_name as string) || '—'}</td>
                     <td><StatusTag tone={p.payment_method === 'cash' ? 'done' : 'progress'} label={caissePayLabel(p.payment_method)} />
-                      <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginLeft: 6 }}>{p.payment_method === 'cash' ? 'solde cash' : 'solde banque'}</span></td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{(p.reference as string) || '—'}</td>
+                      <span style={{ fontSize: '12px', color: 'var(--ds-muted)', marginLeft: 6 }}>{p.payment_method === 'cash' ? 'solde cash' : 'solde banque'}</span></td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{(p.reference as string) || '—'}</td>
                     <td className="ds-num" style={{ fontWeight: 700, color: 'var(--ds-success)' }}>+{n(parseFloat(p.amount as string) || 0)}</td>
                   </tr>
                 ))}
@@ -1770,33 +1770,33 @@ function CaisseTab() {
                     </tr>
                     {expanded && (
                       <tr>
-                        <td colSpan={cardPct > 0 ? 11 : 10} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
+                        <td colSpan={cardPct > 0 ? 11 : 10} style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))', padding: '12px 16px' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                             <div>
                               <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Cash réel</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cashSysteme)}</div>
+                              <div style={{ fontWeight: 600, fontSize: '14px' }}>{money(day.cashSysteme)}</div>
                             </div>
                             <div>
                               <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Total encaissé</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cashCaissiere)}</div>
+                              <div style={{ fontWeight: 600, fontSize: '14px' }}>{money(day.cashCaissiere)}</div>
                             </div>
                             <div>
                               <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Carte</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardReceipt)}</div>
+                              <div style={{ fontWeight: 600, fontSize: '14px' }}>{money(day.cardReceipt)}</div>
                             </div>
                             {day.cardCommission > 0 && (
                               <div>
                                 <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Carte nette en banque</div>
-                                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardReceipt - day.cardCommission)} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--ds-danger)' }}>(−{n(day.cardCommission)} commission {cardPct} %)</span></div>
+                                <div style={{ fontWeight: 600, fontSize: '14px' }}>{money(day.cardReceipt - day.cardCommission)} <span style={{ fontWeight: 400, fontSize: '12px', color: 'var(--ds-danger)' }}>(−{n(day.cardCommission)} commission {cardPct} %)</span></div>
                               </div>
                             )}
                             <div>
                               <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Solde cash</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cashNetCumul)}</div>
+                              <div style={{ fontWeight: 600, fontSize: '14px' }}>{money(day.cashNetCumul)}</div>
                             </div>
                             <div>
                               <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Solde carte</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardCumul)}</div>
+                              <div style={{ fontWeight: 600, fontSize: '14px' }}>{money(day.cardCumul)}</div>
                             </div>
                           </div>
                           <DayMovements payments={day.payments} />
@@ -1827,32 +1827,32 @@ function CaisseTab() {
             </thead>
             <tbody>
               <tr>
-                <td style={{ color: 'var(--theme-text-muted)' }}>Total Ventes ({monthTotals.saleCount})</td>
+                <td style={{ color: 'var(--ds-muted)' }}>Total Ventes ({monthTotals.saleCount})</td>
                 <td className="ds-num" style={{ fontWeight: 600 }}>{n(monthTotals.totalSales)}</td>
               </tr>
               <tr>
-                <td style={{ color: 'var(--theme-text-muted)' }}>Total encaissé</td>
+                <td style={{ color: 'var(--ds-muted)' }}>Total encaissé</td>
                 <td className="ds-num" style={{ fontWeight: 600 }}>{n(monthTotals.cashCaissiere)}</td>
               </tr>
               <tr>
-                <td style={{ color: 'var(--theme-text-muted)' }}>Carte Encaissée</td>
+                <td style={{ color: 'var(--ds-muted)' }}>Carte Encaissée</td>
                 <td className="ds-num" style={{ fontWeight: 600 }}>{n(monthTotals.cardReceipts)}</td>
               </tr>
               {monthTotals.cardCommission > 0 && (
                 <tr>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>Commission carte ({cardPct} %) — non versée en banque</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>Commission carte ({cardPct} %) — non versée en banque</td>
                   <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>−{n(monthTotals.cardCommission)}</td>
                 </tr>
               )}
               {monthTotals.clientReceipts > 0 && (
                 <tr>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>Règlements clients (factures)</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>Règlements clients (factures)</td>
                   <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-success)' }}>{n(monthTotals.clientReceipts)}</td>
                 </tr>
               )}
               {monthTotals.otherEntries > 0 && (
                 <tr>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>Autres entrées</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>Autres entrées</td>
                   <td className="ds-num" style={{ fontWeight: 600 }}>{n(monthTotals.otherEntries)}</td>
                 </tr>
               )}
@@ -1862,13 +1862,13 @@ function CaisseTab() {
               </tr>
               {monthTotals.exits > 0 && (
                 <tr>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>Sorties (fournisseurs, salaires, dépenses)</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>Sorties (fournisseurs, salaires, dépenses)</td>
                   <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>−{n(monthTotals.exits)}</td>
                 </tr>
               )}
               {monthTotals.ecart !== 0 && (
                 <tr>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>Écart Caisse</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>Écart Caisse</td>
                   <td className="ds-num" style={{ fontWeight: 600, color: monthTotals.ecart > 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
                     {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)}
                   </td>
@@ -2331,7 +2331,7 @@ function ChargesTab() {
   const pagedDisplayed = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const toggleSort = (col: string) => { if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(col); setSortDir('asc'); } };
-  const SortIcon = ({ col }: { col: string }) => sortCol === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '0.625rem' }}>{sortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '0.625rem' }}>▼</span>;
+  const SortIcon = ({ col }: { col: string }) => sortCol === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '11px' }}>{sortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '11px' }}>▼</span>;
 
   const handleExport = () => {
     const rows = displayed.map(p => [
@@ -3264,8 +3264,8 @@ function ChequesTab() {
                     title={multi ? (isExpanded ? 'Cliquer pour replier les factures' : 'Cliquer pour lister les factures') : undefined}>
                     <td className="ds-ref">
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        {multi && (isExpanded ? <ChevronDown size={13} style={{ color: 'var(--theme-accent)' }} /> : <ChevronRight size={13} style={{ color: 'var(--theme-accent)' }} />)}
-                        {c.check_number || <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                        {multi && (isExpanded ? <ChevronDown size={13} style={{ color: 'var(--ds-accent)' }} /> : <ChevronRight size={13} style={{ color: 'var(--ds-accent)' }} />)}
+                        {c.check_number || <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </span>
                     </td>
                     <td>
@@ -3276,27 +3276,27 @@ function ChequesTab() {
                         </div>
                       )}
                     </td>
-                    <td style={{ fontSize: '0.75rem' }}>
+                    <td style={{ fontSize: '12px' }}>
                       {multi ? (
                         <div>
                           <strong>{g.rows.length} factures</strong>
-                          <span style={{ color: 'var(--theme-text-muted)' }}> — {isExpanded ? 'replier' : 'cliquer pour lister'}</span>
+                          <span style={{ color: 'var(--ds-muted)' }}> — {isExpanded ? 'replier' : 'cliquer pour lister'}</span>
                         </div>
                       ) : (
                         <>
                           {c.invoice_number && (
                             <div>
                               Facture <strong className="ds-ref">{c.invoice_number}</strong>
-                              {c.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({money(parseFloat(c.invoice_total))})</span>}
+                              {c.invoice_total && <span style={{ color: 'var(--ds-muted)' }}> ({money(parseFloat(c.invoice_total))})</span>}
                             </div>
                           )}
                           {c.purchase_order_number && (
-                            <div style={{ color: 'var(--theme-text-muted)' }}>
+                            <div style={{ color: 'var(--ds-muted)' }}>
                               BC <strong className="ds-ref">{c.purchase_order_number}</strong>
                             </div>
                           )}
                           {!c.invoice_number && !c.purchase_order_number && (c.description || c.category_name) && (
-                            <div style={{ color: 'var(--theme-text-muted)' }}>{c.description || c.category_name}</div>
+                            <div style={{ color: 'var(--ds-muted)' }}>{c.description || c.category_name}</div>
                           )}
                         </>
                       )}
@@ -3305,7 +3305,7 @@ function ChequesTab() {
                     <td>
                       {fmtDate(dueDate)}
                       {isOverdue && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--ds-danger)', fontWeight: 600 }}>en retard</div>
+                        <div style={{ fontSize: '12px', color: 'var(--ds-danger)', fontWeight: 600 }}>en retard</div>
                       )}
                     </td>
                     <td>
@@ -3313,15 +3313,15 @@ function ChequesTab() {
                         <div>
                           {fmtDate(lastCashed)}
                           {c.cashed_by_name && (
-                            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                            <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
                               par {c.cashed_by_name}
                             </div>
                           )}
                         </div>
                       ) : g.anyCashed ? (
-                        <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>partiel</span>
+                        <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>partiel</span>
                       ) : (
-                        <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
+                        <span style={{ color: 'var(--ds-muted)' }}>—</span>
                       )}
                     </td>
                     <td className="ds-num ds-strong">
@@ -3355,28 +3355,28 @@ function ChequesTab() {
                   {isExpanded && g.rows.map(r => (
                     <tr key={r.id} style={{ background: 'var(--ds-bg)' }}>
                       <td />
-                      <td style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>└ Facture</td>
-                      <td style={{ fontSize: '0.75rem' }}>
+                      <td style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>└ Facture</td>
+                      <td style={{ fontSize: '12px' }}>
                         {r.invoice_number ? (
                           <div>
                             Facture <strong className="ds-ref">{r.invoice_number}</strong>
-                            {r.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({money(parseFloat(r.invoice_total))})</span>}
+                            {r.invoice_total && <span style={{ color: 'var(--ds-muted)' }}> ({money(parseFloat(r.invoice_total))})</span>}
                           </div>
                         ) : (
-                          <span style={{ color: 'var(--theme-text-muted)' }}>{r.description || r.purchase_order_number || '—'}</span>
+                          <span style={{ color: 'var(--ds-muted)' }}>{r.description || r.purchase_order_number || '—'}</span>
                         )}
                         {r.purchase_order_number && r.invoice_number && (
-                          <div style={{ color: 'var(--theme-text-muted)' }}>
+                          <div style={{ color: 'var(--ds-muted)' }}>
                             BC <strong className="ds-ref">{r.purchase_order_number}</strong>
                           </div>
                         )}
                       </td>
-                      <td style={{ fontSize: '0.75rem' }}>{fmtDate(r.payment_date)}</td>
-                      <td style={{ fontSize: '0.75rem' }}>{fmtDate(r.check_date || r.invoice_due_date)}</td>
-                      <td style={{ fontSize: '0.75rem' }}>
-                        {r.cashed_at ? fmtDate(r.cashed_at) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                      <td style={{ fontSize: '12px' }}>{fmtDate(r.payment_date)}</td>
+                      <td style={{ fontSize: '12px' }}>{fmtDate(r.check_date || r.invoice_due_date)}</td>
+                      <td style={{ fontSize: '12px' }}>
+                        {r.cashed_at ? fmtDate(r.cashed_at) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
-                      <td className="ds-num" style={{ fontSize: '0.75rem' }}>
+                      <td className="ds-num" style={{ fontSize: '12px' }}>
                         {n(parseFloat(r.amount) || 0)}
                       </td>
                       <td><CheckStatusDot status={r.status === 'cashed' ? 'cashed' : r.status === 'overdue' ? 'overdue' : 'pending'} /></td>

@@ -62,7 +62,7 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
   return (
     <div className="stk-stack">
       <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher par N° de bon, demandeur, préparateur…">
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--ds-muted)' }} />}
         <SelectFilter label="Statut" icon={Filter} value={status} onChange={setStatus} options={HISTORY_STATUSES} />
         <PeriodFilter label="Terminé" title="Filtre sur la date de remise / clôture"
           period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
@@ -116,20 +116,20 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
                     <td>
                       <span className="ds-strong">Plan du {bon.plan_date ? format(new Date(bon.plan_date as string), 'dd MMM yyyy', { locale: fr }) : '—'}</span>
                       {bon.chef_reject_reason && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--ds-danger)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <div style={{ fontSize: '12px', color: 'var(--ds-danger)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                           <AlertTriangle size={10} /> Refus préc. : {bon.chef_reject_reason as string}
                         </div>
                       )}
                     </td>
                     <td><StatusTag tone={conf.tone} icon={conf.icon} label={conf.label} /></td>
                     <td className="ds-num" style={{ fontWeight: 600 }}>{bon.total_lines as number}</td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.generated_by_name as string) || '—'}</td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.preparation_by_name as string) || '—'}</td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.prelevement_by_name as string) || '—'}</td>
-                    <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>
+                    <td style={{ color: 'var(--ds-muted)' }}>{(bon.generated_by_name as string) || '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{(bon.preparation_by_name as string) || '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{(bon.prelevement_by_name as string) || '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
                       {finalDate ? format(new Date(finalDate), 'dd MMM HH:mm', { locale: fr }) : '—'}
                     </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}><ChevronRight size={14} aria-hidden="true" /></td>
+                    <td style={{ color: 'var(--ds-muted)' }}><ChevronRight size={14} aria-hidden="true" /></td>
                   </tr>,
                 ];
               })}

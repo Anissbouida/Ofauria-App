@@ -101,7 +101,7 @@ export default function AtelierPage() {
               <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15 }}>
                 <span className={`kl-ic ${g.id === NON_ASSIGNE ? 'o' : 'b'}`} style={{ width: 28, height: 28 }}><Wrench size={14} /></span>
                 <span>{g.name}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 500, color: 'var(--theme-text-muted)' }}>{g.etapes.length}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 500, color: 'var(--ds-muted)' }}>{g.etapes.length}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10 }}>
                 {g.etapes.map(e => {
@@ -113,15 +113,15 @@ export default function AtelierPage() {
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 600, fontSize: '0.86rem' }}>{e.product_name || '—'}</span>
                         {e.est_bloquante && <StatusTag tone="blocked" icon={Lock} label="Bloquante" />}
-                        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--theme-text-muted)' }}>{e.plan_date ? new Date(e.plan_date).toLocaleDateString('fr-FR') : ''}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--ds-muted)' }}>{e.plan_date ? new Date(e.plan_date).toLocaleDateString('fr-FR') : ''}</span>
                       </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>#{e.ordre} · {e.nom}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--ds-muted)', marginTop: 2 }}>#{e.ordre} · {e.nom}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, fontSize: '0.76rem' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontVariantNumeric: 'tabular-nums', color: over ? 'var(--ds-danger)' : paused ? 'var(--ds-warning)' : 'var(--ds-success)', fontWeight: 600 }}>
                           <Clock size={11} aria-hidden="true" /> {mins} min{e.duree_estimee_min != null ? ` / ${e.duree_estimee_min}` : ''}{paused ? ' (en pause)' : ''}
                         </span>
                         {(e.assigned_employee_name || e.started_by_name) && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-muted)' }}>
                             <User size={11} /> {e.assigned_employee_name || e.started_by_name}
                           </span>
                         )}

@@ -61,7 +61,7 @@ export default function JobsTab() {
                   onChange={e => update.mutate({ key: j.key, data: { enabled: e.target.checked } })} /></td>
                 <td>
                   <div className="ds-strong">{j.label} <span className="odoo-tag odoo-tag-grey" style={{ fontWeight: 400 }}>{DOMAINS[j.domain] ?? j.domain}</span></div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{j.description}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{j.description}</div>
                 </td>
                 <td>
                   {editable ? (
@@ -76,7 +76,7 @@ export default function JobsTab() {
                 <td style={{ whiteSpace: 'nowrap' }}>{dt(j.last_run_at)}{j.last_duration_ms != null && <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{j.last_duration_ms} ms</div>}</td>
                 <td style={{ maxWidth: 320 }}>
                   {j.last_status && <StatusTag tone={j.last_status === 'ok' ? 'done' : 'blocked'} label={j.last_status === 'ok' ? 'OK' : 'Erreur'} />}{' '}
-                  <span style={{ fontSize: '0.8125rem', color: j.last_status === 'error' ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>{j.last_message ?? (j.last_run_at ? '' : 'Jamais lancée')}</span>
+                  <span style={{ fontSize: '13px', color: j.last_status === 'error' ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>{j.last_message ?? (j.last_run_at ? '' : 'Jamais lancée')}</span>
                 </td>
                 <td style={{ whiteSpace: 'nowrap', color: 'var(--ds-muted)' }}>{j.enabled ? dt(j.next_run_at) : '—'}</td>
                 <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
@@ -93,7 +93,7 @@ export default function JobsTab() {
               </tr>
               {open === j.key && (
                 <tr><td colSpan={7} style={{ background: 'var(--ds-bg)' }}>
-                  {j.runs.length === 0 ? <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucun passage.</span> : (
+                  {j.runs.length === 0 ? <span style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>Aucun passage.</span> : (
                     <table className="odoo-table" style={{ margin: 0 }}>
                       <thead><tr><th>Début</th><th>Déclenché</th><th>Statut</th><th className="ds-num">Éléments</th><th>Message</th></tr></thead>
                       <tbody>{j.runs.map(r => (
@@ -102,7 +102,7 @@ export default function JobsTab() {
                           <td>{TRIGGERS[r.trigger]}</td>
                           <td><StatusTag tone={r.status === 'ok' ? 'done' : r.status === 'error' ? 'blocked' : 'progress'} label={r.status === 'ok' ? 'OK' : r.status === 'error' ? 'Erreur' : 'En cours'} /></td>
                           <td className="ds-num">{r.items}</td>
-                          <td style={{ fontSize: '0.8125rem' }}>{r.message}</td>
+                          <td style={{ fontSize: '13px' }}>{r.message}</td>
                         </tr>
                       ))}</tbody>
                     </table>

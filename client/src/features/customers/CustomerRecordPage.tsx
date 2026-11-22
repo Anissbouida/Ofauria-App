@@ -42,7 +42,7 @@ const BL_STATUS: Record<string, { label: string; tone: StatusTone; icon?: Lucide
   delivered: { label: 'À facturer', tone: 'todo', icon: FileText }, invoiced: { label: 'Facturé', tone: 'done' }, cancelled: { label: 'Annulé', tone: 'cancelled' },
 };
 const BUCKETS: Array<{ key: AgingBucket; label: string; color: string }> = [
-  { key: 'current', label: 'Non échu', color: 'var(--odoo-purple)' },
+  { key: 'current', label: 'Non échu', color: 'var(--ds-accent)' },
   { key: 'd30', label: 'Échu 1 à 30 j', color: 'var(--ds-warning)' },
   { key: 'd60', label: 'Échu 31 à 60 j', color: 'var(--ds-warning)' },
   { key: 'd90', label: 'Échu 61 à 90 j', color: 'var(--ds-danger)' },
@@ -143,14 +143,14 @@ export default function CustomerRecordPage() {
 
   return (
     <div className="prj prj-detail">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', color: 'var(--ds-muted)', flexWrap: 'wrap' }}>
         <button type="button" className="sal-link" style={{ marginLeft: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => navigate('/customers')}><ArrowLeft size={14} /> Clients</button>
         <span aria-hidden="true">›</span><span>{primary}</span>
       </div>
 
       <section className="prj-panel prj-hero">
         <div className="prj-hero-top">
-          <span className="prj-hero-icon" style={{ width: 56, height: 56, borderRadius: 14, fontWeight: 700, fontSize: '1.0625rem' }}>{initials}</span>
+          <span className="prj-hero-icon" style={{ width: 56, height: 56, borderRadius: 14, fontWeight: 700, fontSize: '17px' }}>{initials}</span>
           <div style={{ flex: 1, minWidth: 260 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h1>{primary}</h1>
@@ -330,7 +330,7 @@ export default function CustomerRecordPage() {
           {c.notes && (
             <section className="prj-panel">
               <h2>Notes internes</h2>
-              <p className="prj-note" style={{ whiteSpace: 'pre-line', color: 'var(--odoo-text)' }}>{c.notes}</p>
+              <p className="prj-note" style={{ whiteSpace: 'pre-line', color: 'var(--ds-ink)' }}>{c.notes}</p>
             </section>
           )}
         </aside>

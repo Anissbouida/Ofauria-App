@@ -296,7 +296,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
 
   if (etapes.length === 0 && !isLoading) return null;
   if (isLoading) return (
-    <div className="ds-panel pd-section" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+    <div className="ds-panel pd-section" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--ds-muted)', fontSize: '13px' }}>
       <Loader2 size={16} className="animate-spin" /> Chargement des étapes…
     </div>
   );
@@ -335,7 +335,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
       <div className="pd-section-head">
         <ListChecks size={12} />
         <span>Étapes de production</span>
-        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
           {etapes.filter(e => e.status === 'completed').length}/{etapes.length} terminees
         </span>
         <div className="ml-auto flex items-center gap-3">

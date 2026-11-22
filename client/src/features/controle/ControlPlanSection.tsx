@@ -89,7 +89,7 @@ export default function ControlPlanSection() {
             </FormField>
             {f.frequency !== 'chaque_lot' && <FormField label="N" htmlFor="cp-n"><input id="cp-n" className="ds-input" value={f.frequencyN} onChange={e => setF({ ...f, frequencyN: e.target.value })} /></FormField>}
             <FormField label="Échantillon" htmlFor="cp-sample"><input id="cp-sample" className="ds-input" value={f.sampleSize} onChange={e => setF({ ...f, sampleSize: e.target.value.replace(/\D/g, '') })} /></FormField>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, fontSize: '0.8125rem' }}><input type="checkbox" checked={f.isBlocking} onChange={e => setF({ ...f, isBlocking: e.target.checked })} /> Bloquant</label>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, fontSize: '13px' }}><input type="checkbox" checked={f.isBlocking} onChange={e => setF({ ...f, isBlocking: e.target.checked })} /> Bloquant</label>
             <div><button type="button" className="odoo-btn-primary" disabled={!valid || save.isPending} onClick={() => save.mutate()}><Plus size={12} /> Ajouter</button></div>
           </div>
         </FormSection>
@@ -101,7 +101,7 @@ export default function ControlPlanSection() {
             <tr key={l.id}>
               <td>{STAGE[l.stage]}</td>
               <td className="ds-strong">{l.product_name ?? l.ingredient_name ?? 'Famille'}</td>
-              <td>{l.characteristic} <span style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>({TYPE[l.char_type]}{l.char_type === 'mesure' ? ` ${l.min_value ?? '−∞'} à ${l.max_value ?? '+∞'}${l.unit ? ' ' + l.unit : ''}` : ''})</span>{l.is_blocking && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="bloquant" /></span>}</td>
+              <td>{l.characteristic} <span style={{ color: 'var(--ds-muted)', fontSize: '13px' }}>({TYPE[l.char_type]}{l.char_type === 'mesure' ? ` ${l.min_value ?? '−∞'} à ${l.max_value ?? '+∞'}${l.unit ? ' ' + l.unit : ''}` : ''})</span>{l.is_blocking && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="bloquant" /></span>}</td>
               <td>{FREQ[l.frequency]}{l.frequency_n ? ` (N = ${l.frequency_n})` : ''}</td>
               <td className="ds-num">{l.sample_size}</td>
               <td className="ds-actions"><button type="button" className="ds-icon-btn" aria-label={`Retirer ${l.characteristic}`} title="Retirer" onClick={() => remove.mutate(l.id)}><Trash2 size={12} /></button></td>

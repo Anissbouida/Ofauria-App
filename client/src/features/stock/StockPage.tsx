@@ -539,7 +539,7 @@ export default function StockPage() {
             actions={<button type="button" className="odoo-btn-secondary" onClick={() => setShowExpiredLots(v => !v)}>{showExpiredLots ? 'Masquer' : 'Voir les lots'}</button>}>
               La date imprimée sur le paquet est dépassée : envoyez ces lots aux pertes.
               {showExpiredLots && (
-              <div style={{ marginTop: '0.5rem', maxHeight: '18rem', overflowY: 'auto', borderRadius: 12, backgroundColor: 'var(--theme-bg-card)' }}>
+              <div style={{ marginTop: '0.5rem', maxHeight: '18rem', overflowY: 'auto', borderRadius: 12, backgroundColor: 'var(--ds-card)' }}>
                 {lots.map((lot, i) => {
                   const totalQty = parseFloat(lot.total_qty as string) || 0;
                   const unitCost = parseFloat(lot.unit_cost as string) || 0;
@@ -548,17 +548,17 @@ export default function StockPage() {
                   return (
                     <div key={lot.id as string} style={{
                       padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem',
-                      borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none', fontSize: '0.8125rem',
+                      borderTop: i > 0 ? '1px solid var(--ds-sep)' : 'none', fontSize: '13px',
                     }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 600, color: 'var(--theme-text-strong)' }}>{lot.ingredient_name as string}</span>
-                          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--ds-ink)' }}>{lot.ingredient_name as string}</span>
+                          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '12px', color: 'var(--ds-muted)' }}>
                             {(lot.lot_number as string) || '?'}
                           </span>
                           <StatusTag tone="late" label="DLC expirée" />
                         </div>
-                        <div style={{ marginTop: 2, color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
+                        <div style={{ marginTop: 2, color: 'var(--ds-muted)', fontSize: '12px' }}>
                           Expiré depuis <strong style={{ color: 'var(--ds-danger)' }}>{daysExpired}j</strong> ·
                           En réserve {parseFloat(lot.economat_quantity as string).toFixed(1)}{lot.ingredient_unit as string} ·
                           Au pesage {parseFloat(lot.pesage_quantity as string).toFixed(1)}{lot.ingredient_unit as string}
@@ -566,7 +566,7 @@ export default function StockPage() {
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <div style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>{totalQty.toFixed(1)} {lot.ingredient_unit as string}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{money(lostValue)}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{money(lostValue)}</div>
                       </div>
                       <button type="button" onClick={() => setLossDialogLot(lot)} className="ds-btn-danger ds-btn-sm" style={{ flexShrink: 0 }}>
                         <Trash2 size={11} /> Pertes
@@ -715,7 +715,7 @@ export default function StockPage() {
                     {(() => {
                       const sit = situationOf(item);
                       return (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: 'var(--ds-muted)', marginTop: 1 }}>
                           <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: SITUATION_DOT[sit] }} />
                           {SITUATIONS.find(x => x.key === sit)?.label}
                         </div>
@@ -727,19 +727,19 @@ export default function StockPage() {
                       {resolveCategory(item.category_id)?.typeName || 'Non classé'}
                     </span>
                   </td>
-                  <td className="hidden md:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{item.supplier || '—'}</td>
+                  <td className="hidden md:table-cell" style={{ color: 'var(--ds-muted)' }}>{item.supplier || '—'}</td>
                   <td className="hidden md:table-cell ds-num">
                     {(() => {
                       const cost = parseFloat(item.unit_cost || '0');
                       return cost > 0 ? (
-                        <span style={{ fontWeight: 500 }}>{cost.toFixed(2)} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{currencySymbol()}/{item.unit}</span></span>
-                      ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>;
+                        <span style={{ fontWeight: 500 }}>{cost.toFixed(2)} <span style={{ color: 'var(--ds-muted)', fontSize: '12px' }}>{currencySymbol()}/{item.unit}</span></span>
+                      ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>;
                     })()}
                   </td>
                   {(() => {
                     const economatQty = parseFloat(item.economat_quantity || '0');
                     const pesageQty = parseFloat(item.pesage_quantity || '0');
-                    const muted = { color: 'var(--theme-text-muted)' };
+                    const muted = { color: 'var(--ds-muted)' };
                     return (
                       <>
                         <td className="hidden sm:table-cell ds-num">
@@ -753,8 +753,8 @@ export default function StockPage() {
                           ) : <span style={muted}>—</span>}
                         </td>
                         <td className="ds-num">
-                          <span style={{ fontWeight: 600, color: isOut ? 'var(--ds-danger)' : isLow ? 'var(--ds-warning)' : 'var(--theme-text-strong)' }}>
-                            {fmtQty(qty)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.6875rem' }}>{item.unit}</span>
+                          <span style={{ fontWeight: 600, color: isOut ? 'var(--ds-danger)' : isLow ? 'var(--ds-warning)' : 'var(--ds-ink)' }}>
+                            {fmtQty(qty)} <span style={{ color: 'var(--ds-muted)', fontWeight: 400, fontSize: '12px' }}>{item.unit}</span>
                           </span>
                         </td>
                       </>
@@ -765,12 +765,12 @@ export default function StockPage() {
                       <span className="odoo-tag odoo-tag-blue">
                         <Boxes size={9} /> {lotsCount}
                       </span>
-                    ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                    ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                   </td>
                   <td className="hidden lg:table-cell ds-num">
                     {(() => {
                       const avgConso = parseFloat(item.avg_daily_consumption || '0');
-                      if (avgConso <= 0) return <span style={{ color: 'var(--theme-text-muted)' }}>—</span>;
+                      if (avgConso <= 0) return <span style={{ color: 'var(--ds-muted)' }}>—</span>;
                       const daysOfStock = Math.round(qty / avgConso);
                       return (
                         <span style={{
@@ -788,16 +788,16 @@ export default function StockPage() {
                       <span style={{
                         fontWeight: 500,
                         color: daysUntilDlc !== null && daysUntilDlc < 0 ? 'var(--ds-danger)' :
-                          daysUntilDlc !== null && daysUntilDlc <= 7 ? 'var(--ds-warning)' : 'var(--theme-text-muted)',
+                          daysUntilDlc !== null && daysUntilDlc <= 7 ? 'var(--ds-warning)' : 'var(--ds-muted)',
                       }}>
                         {format(nearestDlc, 'dd/MM/yy')}
                         {daysUntilDlc !== null && daysUntilDlc <= 30 && (
-                          <span style={{ fontSize: '0.625rem', marginLeft: 4, opacity: 0.7 }}>
+                          <span style={{ fontSize: '11px', marginLeft: 4, opacity: 0.7 }}>
                             ({daysUntilDlc < 0 ? `${Math.abs(daysUntilDlc)}j!` : `${daysUntilDlc}j`})
                           </span>
                         )}
                       </span>
-                    ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                    ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                   </td>
                   <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
                     {(() => {
@@ -890,7 +890,7 @@ function KanbanView({ items, onSelect }: {
             <div className="odoo-kanban-section-header">
               <span>{group.label}</span>
               <span className="odoo-kanban-section-count">{group.items.length}</span>
-              <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
+              <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--ds-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>
                 Stock total : {totalStock.toFixed(totalStock % 1 === 0 ? 0 : 1)}
               </span>
             </div>
@@ -928,7 +928,7 @@ function KanbanView({ items, onSelect }: {
                     )}
                     <div className="odoo-kanban-card-stock">
                       <span className="odoo-kanban-card-stock-value" style={{
-                        color: isOut ? 'var(--ds-danger)' : isLow ? 'var(--ds-warning)' : 'var(--theme-text-strong)',
+                        color: isOut ? 'var(--ds-danger)' : isLow ? 'var(--ds-warning)' : 'var(--ds-ink)',
                       }}>
                         {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
                       </span>
@@ -937,7 +937,7 @@ function KanbanView({ items, onSelect }: {
                     {(economatQty > 0 || pesageQty > 0) && (
                       <div className="odoo-kanban-card-split">
                         <span>réserve <strong>{fmtQty(economatQty)}</strong></span>
-                        <span style={{ color: 'var(--theme-bg-separator)' }}>·</span>
+                        <span style={{ color: 'var(--ds-sep)' }}>·</span>
                         <span>pesée <strong>{fmtQty(pesageQty)}</strong></span>
                       </div>
                     )}
@@ -958,7 +958,7 @@ function KanbanView({ items, onSelect }: {
                       <span>
                         {nearestDlc && daysUntilDlc !== null ? (
                           <span style={{
-                            color: daysUntilDlc < 0 ? 'var(--ds-danger)' : daysUntilDlc <= 7 ? 'var(--ds-warning)' : 'var(--theme-text-muted)',
+                            color: daysUntilDlc < 0 ? 'var(--ds-danger)' : daysUntilDlc <= 7 ? 'var(--ds-warning)' : 'var(--ds-muted)',
                             display: 'inline-flex', alignItems: 'center', gap: 3,
                           }}>
                             <CalendarClock size={9} />

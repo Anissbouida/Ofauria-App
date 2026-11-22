@@ -23,7 +23,7 @@ import { EmptyState, NoResultState, LoadingState, ErrorState, DataPanel, TableFo
  */
 
 const BUCKETS: Array<{ key: AgingBucket; label: string; tone: string }> = [
-  { key: 'current', label: 'Non échu', tone: 'var(--theme-accent)' },
+  { key: 'current', label: 'Non échu', tone: 'var(--ds-accent)' },
   { key: 'd30', label: '1-30 j', tone: 'var(--ds-warning)' },
   { key: 'd60', label: '31-60 j', tone: 'var(--ds-warning)' },
   { key: 'd90', label: '61-90 j', tone: 'var(--ds-danger)' },
@@ -328,7 +328,7 @@ function PayDialog({ doc, customer, onClose }: { doc: ReceivableDoc; customer: s
         </FormField>
       )}
       {isTicket && (
-        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+        <p style={{ margin: 0, fontSize: '12px', color: 'var(--ds-muted)' }}>
           Le ticket est soldé en entier ; il entre dans le chiffre d'affaires du jour d'encaissement.
         </p>
       )}
@@ -464,13 +464,13 @@ function AdvancesBlock({ customerId, invoices }: { customerId: string; invoices:
         <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <PiggyBank size={13} style={{ color: 'var(--ds-cat-purple)' }} />
           <span>Avance de <b>{money(a.unapplied)}</b> non affectée
-            <span style={{ color: 'var(--odoo-text-muted)' }}> · règlement du {day(a.payment_date)}{a.check_number ? ` · n° ${a.check_number}` : ''}</span></span>
+            <span style={{ color: 'var(--ds-muted)' }}> · règlement du {day(a.payment_date)}{a.check_number ? ` · n° ${a.check_number}` : ''}</span></span>
           {invoices.length > 0 && (
             <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }} onClick={e => e.stopPropagation()}>
               <SearchSelect value={target[a.id] ?? invoices[0].id} onChange={v => setTarget(t => ({ ...t, [a.id]: v }))}
                 placeholder="Facture à affecter" width={220} clearable={false} ariaLabel="Facture à affecter"
                 options={invoices.map(i => ({ id: String(i.id), label: `${i.number} · reste ${money(i.remaining)}` }))} />
-              <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }} disabled={mutation.isPending}
+              <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '12px' }} disabled={mutation.isPending}
                 onClick={() => mutation.mutate({ id: a.id, invoiceId: target[a.id] ?? invoices[0].id })}>Affecter</button>
             </span>
           )}

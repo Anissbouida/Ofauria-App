@@ -89,10 +89,10 @@ const ORDER_TYPES = [
 ];
 
 function LineKindTag({ kind }: { kind: unknown }) {
-  if (kind === 'consumable') return <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>;
-  if (kind === 'product') return <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Revente</span>;
-  if (kind === 'service') return <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Service</span>;
-  if (kind === 'asset') return <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Immobilisation</span>;
+  if (kind === 'consumable') return <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '11px' }}>Consommable</span>;
+  if (kind === 'product') return <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '11px' }}>Revente</span>;
+  if (kind === 'service') return <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6, fontSize: '11px' }}>Service</span>;
+  if (kind === 'asset') return <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6, fontSize: '11px' }}>Immobilisation</span>;
   return null;
 }
 
@@ -1171,14 +1171,14 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
         {cat ? (
           // Chemin hierarchique complet : "Racine › Sous-categorie › " en
           // texte attenue, feuille en tag colore (meme palette que l'Economat).
-          <span className="flex items-center flex-wrap" style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', columnGap: 4, rowGap: 2 }}>
+          <span className="flex items-center flex-wrap" style={{ fontSize: '12px', color: 'var(--ds-muted)', columnGap: 4, rowGap: 2 }}>
             {cat.path.split(' / ').slice(0, -1).map((seg, i) => (
               <Fragment key={i}>{seg} <span style={{ opacity: 0.6 }}>›</span> </Fragment>
             ))}
-            <span className={`odoo-tag ${tagClass(categoryId)}`} style={{ fontSize: '0.6875rem' }}>{cat.typeName}</span>
+            <span className={`odoo-tag ${tagClass(categoryId)}`} style={{ fontSize: '12px' }}>{cat.typeName}</span>
           </span>
         ) : (
-          <span style={{ fontSize: '0.75rem', color: 'var(--ds-warning)', fontWeight: 600 }}>Sans catégorie</span>
+          <span style={{ fontSize: '12px', color: 'var(--ds-warning)', fontWeight: 600 }}>Sans catégorie</span>
         )}
         <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedId(categoryId || ''); setEditing(true); }}
           title="Corriger la catégorie de l'article" aria-label={`Corriger la catégorie${itemName ? ` de ${itemName}` : ''}`}
@@ -1567,7 +1567,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             <label htmlFor="po-new-search" className="ds-field-label" style={{ display: 'block', marginBottom: 6 }}>Ajouter des articles</label>
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--odoo-text-muted)' }} />
+                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ds-muted)' }} />
                 <input id="po-new-search" ref={searchRef} type="text" placeholder="Tapez le nom d'un article puis Entrée (↑ ↓ pour choisir)…"
                   value={searchIngredient}
                   onChange={e => { setSearchIngredient(e.target.value); setSearchOpen(true); }}
@@ -1576,7 +1576,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                   onKeyDown={onSearchKeyDown}
                   className="ds-input" style={{ paddingLeft: 30 }} />
                 {searchOpen && search && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 30, backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 4, maxHeight: 320, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 30, backgroundColor: 'var(--ds-card)', border: '1px solid var(--ds-sep)', borderRadius: 4, maxHeight: 320, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>
                     {filteredProducts.map((p, i) => {
                       const catPath = resolve(p.category_id as string | null)?.path;
                       const cont = p._kind === 'ingredient' ? containerOf(p) : null;
@@ -1588,26 +1588,26 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                           style={{ padding: '0.5rem 0.75rem', backgroundColor: i === highlighted ? 'var(--ds-tint)' : 'transparent' }}>
                           <span style={{ minWidth: 0 }}>
                             <span className="font-medium">
-                              {p.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({p.unit as string})</span>
-                              {p._kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
-                              {p._kind === 'product' && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Revente</span>}
-                              {isUsual(p) && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Habituel</span>}
+                              {p.name as string} <span style={{ color: 'var(--ds-muted)' }}>({p.unit as string})</span>
+                              {p._kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '11px' }}>Consommable</span>}
+                              {p._kind === 'product' && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '11px' }}>Revente</span>}
+                              {isUsual(p) && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '11px' }}>Habituel</span>}
                             </span>
                             {/* Chemin de categorie : repere une erreur de classement avant l'achat */}
-                            <span style={{ display: 'block', fontSize: '0.6875rem', color: catPath || p._kind === 'product' ? 'var(--odoo-text-muted)' : 'var(--ds-warning)' }}>
+                            <span style={{ display: 'block', fontSize: '12px', color: catPath || p._kind === 'product' ? 'var(--ds-muted)' : 'var(--ds-warning)' }}>
                               {p._kind === 'product' ? 'Produit de revente · Achats de marchandises' : (catPath || 'Sans catégorie')}{cont ? ` · ${containerLabel(cont, p.unit as string)}` : ''}
                             </span>
                           </span>
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>{n(parseFloat(p.unit_cost as string) || 0)} {currencySymbol()}/{p.unit as string}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>{n(parseFloat(p.unit_cost as string) || 0)} {currencySymbol()}/{p.unit as string}</span>
                         </button>
                       );
                     })}
                     <button type="button" onMouseDown={e => { e.preventDefault(); setShowNewIngredient(true); }}
                       className="w-full text-left text-sm flex items-center gap-2"
-                      style={{ padding: '0.5rem 0.75rem', borderTop: filteredProducts.length ? '1px solid var(--odoo-border)' : 'none', color: 'var(--theme-accent)', fontWeight: 600,
+                      style={{ padding: '0.5rem 0.75rem', borderTop: filteredProducts.length ? '1px solid var(--ds-sep)' : 'none', color: 'var(--ds-accent)', fontWeight: 600,
                         backgroundColor: filteredProducts.length === 0 ? 'var(--ds-tint)' : 'transparent' }}>
                       <Plus size={14} /> Créer « {searchIngredient.trim()} »
-                      {filteredProducts.length === 0 && <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>— aucun article trouvé (Entrée)</span>}
+                      {filteredProducts.length === 0 && <span style={{ fontWeight: 400, color: 'var(--ds-muted)', fontSize: '12px' }}>— aucun article trouvé (Entrée)</span>}
                     </button>
                   </div>
                 )}
@@ -1723,10 +1723,10 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                       </td>
                       <td>
                         {item.kind === 'service' || item.kind === 'asset' ? (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{resolve(item.categoryId)?.path || '—'}</span>
+                          <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{resolve(item.categoryId)?.path || '—'}</span>
                         ) : item.kind === 'product' ? (
                           // Produit de revente (mig 619) : imputé en Achats de marchandises (6111) côté serveur.
-                          <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Achats de marchandises</span>
+                          <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>Achats de marchandises</span>
                         ) : (
                         <CategoryQuickEdit
                           kind={item.kind} refId={item.refId} categoryId={item.categoryId}
@@ -1747,7 +1747,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                                 setItems(prev => prev.map((it, i) => i === idx ? { ...it, containerCount: count, quantityOrdered: count * (it.container as ContainerDef).size } : it));
                               }}
                               style={{ width: 64 }} title={`${containerLabel(item.container, item.unit)} — commande par contenant entier`} />
-                            <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
                               × {containerLabel(item.container, item.unit)} = <strong>{n(item.quantityOrdered)} {item.unit}</strong>
                             </span>
                           </div>
@@ -1940,9 +1940,9 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
               icon={stageDef?.icon}
               label={`${stageDef?.label ?? (status === 'non_livre' ? 'Non livré' : 'Annulé')}${cancelled ? '' : po.on_hold ? ' · bloqué' : isLate ? ' · en retard' : ''}`} />
             {po.frozen && <StatusTag tone="draft" icon={Lock} label="Gelé" title="En-tête et lignes figés" />}
-            <span style={{ color: 'var(--odoo-text-muted)' }}>
-              {items.length} article{items.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{money(totalOrdered)}</strong>
-              {poCur !== BASE_CURRENCY && <> · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalForeign)} {poCur}</strong> <span className="odoo-tag odoo-tag-blue">1 {poCur} = {num(po.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })} {currencySymbol()}</span></>}
+            <span style={{ color: 'var(--ds-muted)' }}>
+              {items.length} article{items.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--ds-ink)' }}>{money(totalOrdered)}</strong>
+              {poCur !== BASE_CURRENCY && <> · <strong style={{ color: 'var(--ds-ink)' }}>{n(totalForeign)} {poCur}</strong> <span className="odoo-tag odoo-tag-blue">1 {poCur} = {num(po.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })} {currencySymbol()}</span></>}
               {po.created_by_name && <> · créé par {po.created_by_name}</>}
             </span>
           </div>

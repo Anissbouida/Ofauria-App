@@ -35,11 +35,11 @@ function ProgressRing({ value }: { value: number }) {
   const r = 34, c = 2 * Math.PI * r;
   return (
     <svg width="84" height="84" viewBox="0 0 84 84" role="img" aria-label={`Paramétrage terminé à ${value} %`}>
-      <circle cx="42" cy="42" r={r} fill="none" stroke="var(--kl-fill, var(--odoo-border))" strokeWidth="8" />
-      <circle cx="42" cy="42" r={r} fill="none" stroke="var(--theme-accent, var(--odoo-purple))" strokeWidth="8" strokeLinecap="round"
+      <circle cx="42" cy="42" r={r} fill="none" stroke="var(--kl-fill, var(--ds-sep))" strokeWidth="8" />
+      <circle cx="42" cy="42" r={r} fill="none" stroke="var(--theme-accent, var(--ds-accent))" strokeWidth="8" strokeLinecap="round"
         strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)} transform="rotate(-90 42 42)"
         style={{ transition: 'stroke-dashoffset 0.4s' }} />
-      <text x="42" y="47" textAnchor="middle" fontSize="17" fontWeight="700" fill="var(--odoo-text)">{value} %</text>
+      <text x="42" y="47" textAnchor="middle" fontSize="17" fontWeight="700" fill="var(--ds-ink)">{value} %</text>
     </svg>
   );
 }

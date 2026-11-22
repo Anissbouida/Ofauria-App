@@ -56,7 +56,7 @@ export default function ProfileStatusPanel() {
               aria-label={`${l.label} : ${st.label}. ${l.detail}`}>
               <Icon size={16} style={{ color: st.color, flexShrink: 0 }} />
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontWeight: 500, fontSize: '0.8125rem' }}>{l.label}</span>
+                <span style={{ display: 'block', fontWeight: 500, fontSize: '13px' }}>{l.label}</span>
                 <span style={{ display: 'block', fontSize: 12, color: st.color }}>{st.label}</span>
                 <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.detail}</span>
               </span>

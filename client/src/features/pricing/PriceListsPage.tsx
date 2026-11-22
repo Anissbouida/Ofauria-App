@@ -96,13 +96,13 @@ export default function PriceListsPage() {
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
       <div style={{ flex: '1 1 260px', maxWidth: 340, minWidth: 0 }}>
         {showHistory && (
-          <div className="prj-panel" style={{ padding: 10, marginBottom: 10, maxHeight: 240, overflow: 'auto', fontSize: '0.75rem' }}>
-            {history.length === 0 && <div style={{ color: 'var(--odoo-text-muted)' }}>Aucun changement.</div>}
+          <div className="prj-panel" style={{ padding: 10, marginBottom: 10, maxHeight: 240, overflow: 'auto', fontSize: '12px' }}>
+            {history.length === 0 && <div style={{ color: 'var(--ds-muted)' }}>Aucun changement.</div>}
             {history.map(h => (
-              <div key={h.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--odoo-border)' }}>
+              <div key={h.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--ds-sep)' }}>
                 <strong>{h.product_name}</strong> {Number(h.old_price ?? 0).toFixed(2)} → {Number(h.new_price ?? 0).toFixed(2)}
                 {h.pct != null && <span> ({Number(h.pct) > 0 ? '+' : ''}{Number(h.pct).toFixed(1)} %)</span>}
-                <div style={{ color: 'var(--odoo-text-muted)' }}>{new Date(h.changed_at).toLocaleString('fr-FR')}{h.reason ? ` · ${h.reason}` : ''}</div>
+                <div style={{ color: 'var(--ds-muted)' }}>{new Date(h.changed_at).toLocaleString('fr-FR')}{h.reason ? ` · ${h.reason}` : ''}</div>
               </div>
             ))}
           </div>
@@ -110,10 +110,10 @@ export default function PriceListsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {lists.map((l: PriceList) => (
             <button key={l.id} onClick={() => setSelectedId(l.id)}
-              style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: `1px solid ${l.id === selectedId ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`,
-                background: l.id === selectedId ? 'color-mix(in srgb, var(--odoo-purple) 8%, var(--theme-bg-card))' : 'var(--theme-bg-card)', cursor: 'pointer' }}>
-              <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{l.name} {!l.is_active && <StatusTag tone="cancelled" label="inactive" />}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--odoo-text-muted)' }}>
+              style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: `1px solid ${l.id === selectedId ? 'var(--ds-accent)' : 'var(--ds-sep)'}`,
+                background: l.id === selectedId ? 'color-mix(in srgb, var(--ds-accent) 8%, var(--ds-card))' : 'var(--ds-card)', cursor: 'pointer' }}>
+              <div style={{ fontWeight: 600, fontSize: '13px' }}>{l.name} {!l.is_active && <StatusTag tone="cancelled" label="inactive" />}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--ds-muted)' }}>
                 {[l.channel_name, l.customer_type, l.price_group, l.customer_id ? 'client précis' : null].filter(Boolean).join(' · ') || 'Générale'} · {l.currency} · {l.item_count ?? 0} art.
               </div>
             </button>

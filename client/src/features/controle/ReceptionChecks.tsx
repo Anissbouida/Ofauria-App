@@ -184,15 +184,15 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
   });
 
   const Crit = ({ label, value, onChange, optional }: { label: string; value: boolean | null; onChange: (v: boolean | null) => void; optional?: boolean }) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--odoo-border)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--ds-sep)' }}>
       <span style={{ fontSize: 14, color: 'var(--ds-ink)' }}>{label}</span>
       <span className="odoo-view-switcher" role="radiogroup" aria-label={label}>
         {([[true, 'Conforme'], [false, 'Non conforme'], ...(optional ? [[null, 'Sans objet']] as const : [])] as const).map(([v, l]) => (
           <button key={String(v)} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
             style={{
-              padding: '0.3rem 0.65rem', fontSize: '0.75rem',
-              background: value === v ? (v === false ? 'color-mix(in srgb, var(--ds-danger) 12%, transparent)' : 'var(--odoo-purple-light)') : 'transparent',
-              color: value === v ? (v === false ? 'var(--ds-danger)' : 'var(--odoo-purple)') : 'var(--ds-muted)',
+              padding: '0.3rem 0.65rem', fontSize: '12px',
+              background: value === v ? (v === false ? 'color-mix(in srgb, var(--ds-danger) 12%, transparent)' : 'var(--ds-tint)') : 'transparent',
+              color: value === v ? (v === false ? 'var(--ds-danger)' : 'var(--ds-accent)') : 'var(--ds-muted)',
               fontWeight: value === v ? 600 : 400,
             }}>
             {l}
@@ -207,12 +207,12 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
       footer={<FormFooter onCancel={onClose} onSubmit={() => save.mutate()} submitLabel="Enregistrer le contrôle"
         busy={save.isPending} disabled={!overall && !notes.trim()} />}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', marginBottom: 6 }}>
+          <div style={{ fontSize: '13px', color: 'var(--ds-muted)', marginBottom: 6 }}>
             {row.supplier_name ?? 'Fournisseur inconnu'} · reçu le {format(new Date(row.reception_date), 'd MMM yyyy', { locale: fr })} · {row.line_count} ligne{row.line_count > 1 ? 's' : ''}
           </div>
           <Crit label="Température de livraison" value={temperatureOk} onChange={setTemperatureOk} optional />
           {temperatureOk !== null && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', padding: '8px 0', borderBottom: '1px solid var(--odoo-border)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', padding: '8px 0', borderBottom: '1px solid var(--ds-sep)' }}>
               <Thermometer size={14} style={{ color: 'var(--ds-muted)' }} /> Température relevée
               <input type="number" step="0.1" value={temperatureValue} onChange={e => setTemperatureValue(e.target.value)}
                 className="ds-input sm ds-num" style={{ width: 90 }} aria-label="Température en degrés" /> °C

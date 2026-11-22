@@ -114,7 +114,7 @@ export default function CompanyBankAccounts() {
               </select>
             </FormField>
           </div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.875rem' }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '14px' }}>
             {([['isDefault', 'Compte par défaut'], ['showOnInvoices', 'Afficher sur les factures'], ['isActive', 'Compte ouvert']] as const).map(([k, l]) => (
               <label key={k} htmlFor={`bank-${k}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <input id={`bank-${k}`} type="checkbox" checked={editing.draft[k]} onChange={e => set(k, e.target.checked)} /> {l}

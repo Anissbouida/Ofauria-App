@@ -75,7 +75,7 @@ export default function CashForecastTab() {
       <div className="ds-panel" style={{ height: 280, padding: '12px 8px 4px' }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data.days} margin={{ top: 6, right: 16, left: 8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--odoo-border)" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--ds-sep)" />
             <XAxis dataKey="date" tickFormatter={dm} minTickGap={24} tick={{ fontSize: 11 }} />
             <YAxis tickFormatter={v => `${Math.round(Number(v) / 1000)} k`} tick={{ fontSize: 11 }} width={60} domain={[(min: number) => Math.min(min, data.threshold), (max: number) => Math.max(max, data.threshold)]} />
             <Tooltip formatter={(v: number) => money(v)} labelFormatter={(d: string) => dmy(d)} />

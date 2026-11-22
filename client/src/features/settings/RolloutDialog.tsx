@@ -33,7 +33,7 @@ export default function RolloutDialog({ module, pilot, disabledStores, busy, onC
     set(list.includes(id) ? list.filter(x => x !== id) : [...list, id]);
   const pilotEmpty = inPilot && !roles.length && !users.length;
 
-  const box: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' };
+  const box: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', cursor: 'pointer' };
   const listStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 6, maxHeight: 180, overflowY: 'auto' };
 
   return (

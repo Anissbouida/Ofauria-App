@@ -45,8 +45,8 @@ type SortKey = 'urgency' | 'dlc' | 'name' | 'qty' | 'autonomy';
 
 const dlcText = (days: number | null) => days === null ? null
   : days < 0 ? `dépassée de ${-days} j` : days === 0 ? 'aujourd\'hui' : `dans ${days} j`;
-const dlcColor = (days: number | null) => days === null ? 'var(--theme-text-muted)'
-  : days < 0 ? 'var(--ds-danger)' : days <= 3 ? 'var(--ds-warning)' : days <= 7 ? 'var(--ds-warning)' : 'var(--theme-text-muted)';
+const dlcColor = (days: number | null) => days === null ? 'var(--ds-muted)'
+  : days < 0 ? 'var(--ds-danger)' : days <= 3 ? 'var(--ds-warning)' : days <= 7 ? 'var(--ds-warning)' : 'var(--ds-muted)';
 
 export function PesageStockList({ rows, isLoading, inventory = [], canOpen = false }: {
   rows: Row[];
@@ -209,47 +209,47 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
                     <tr onClick={() => setExpanded(isOpen ? null : id)} style={{ cursor: 'pointer' }} aria-expanded={isOpen}>
                       <td>
                         <span className="ds-strong">{r.ingredient_name as string}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: 'var(--ds-muted)', marginTop: 1 }}>
                           <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: DOT[r._situation] }} />
                           {SITUATIONS.find(s => s.key === r._situation)?.label}
                         </div>
                       </td>
                       <td className="ds-num">
-                        <span style={{ fontWeight: 700, color: r._situation === 'empty' ? 'var(--theme-text-muted)' : 'var(--odoo-text)' }}>{fmtQty(r._qty)}</span>
-                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>{unit(r)}</span>
+                        <span style={{ fontWeight: 700, color: r._situation === 'empty' ? 'var(--ds-muted)' : 'var(--ds-ink)' }}>{fmtQty(r._qty)}</span>
+                        <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 3 }}>{unit(r)}</span>
                       </td>
-                      <td className="ds-num" style={{ fontSize: '0.8125rem' }}>
-                        {r._autonomy === null ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span> : (
-                          <span style={{ color: r._autonomy < 1 ? 'var(--ds-warning)' : 'var(--theme-text-muted)', fontWeight: r._autonomy < 1 ? 600 : 400 }}
+                      <td className="ds-num" style={{ fontSize: '13px' }}>
+                        {r._autonomy === null ? <span style={{ color: 'var(--ds-muted)' }}>—</span> : (
+                          <span style={{ color: r._autonomy < 1 ? 'var(--ds-warning)' : 'var(--ds-muted)', fontWeight: r._autonomy < 1 ? 600 : 400 }}
                             title={`Consommation moyenne : ${fmtQty(r._avg)} ${unit(r)} / jour`}>
                             {r._autonomy < 1 ? '< 1 jour' : `${Math.floor(r._autonomy)} j`}
                           </span>
                         )}
                       </td>
-                      <td style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                      <td style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
                         {lots.length} contenant{lots.length > 1 ? 's' : ''}
                         {r._openedDays !== null && <span> · ouvert {r._openedDays === 0 ? 'aujourd\'hui' : `depuis ${r._openedDays} j`}</span>}
                       </td>
-                      <td style={{ fontSize: '0.8125rem' }}>
+                      <td style={{ fontSize: '13px' }}>
                         {r.nearest_dlc_effective ? (
                           <>
-                            <span style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(r.nearest_dlc_effective as string), 'dd MMM', { locale: fr })}</span>
+                            <span style={{ color: 'var(--ds-muted)' }}>{format(new Date(r.nearest_dlc_effective as string), 'dd MMM', { locale: fr })}</span>
                             <span style={{ color: dlcColor(r._days), fontWeight: r._days !== null && r._days <= 3 ? 600 : 400, marginLeft: 6 }}>{dlcText(r._days)}</span>
                           </>
-                        ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                        ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
-                      <td className="ds-num" style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                      <td className="ds-num" style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
                         {r._reserve > 0 ? <>{fmtQty(r._reserve)} {unit(r)}</> : <span title="Plus rien en réserve : à commander">épuisée</span>}
                       </td>
                       <td className="ds-actions" onClick={e => e.stopPropagation()}>
                         {action && <button type="button" className={`${action.cls} ds-btn-sm`} onClick={action.run} title={action.title}>{action.label}</button>}
                       </td>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
+                      <td style={{ color: 'var(--ds-muted)' }}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                     </tr>
 
                     {isOpen && lots.length > 0 && (
                       <tr className="odoo-subrow">
-                        <td colSpan={8} style={{ padding: '0 0 0 1.5rem', background: 'color-mix(in srgb, var(--theme-bg-page) 70%, var(--theme-bg-card))' }}>
+                        <td colSpan={8} style={{ padding: '0 0 0 1.5rem', background: 'color-mix(in srgb, var(--ds-bg) 70%, var(--ds-card))' }}>
                           <table className="odoo-table ds-dense ds-nested">
                             <thead>
                               <tr>
@@ -272,18 +272,18 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
                                 return (
                                   <tr key={(lot.lot_id as string) ?? i}>
                                     <td><span className="ds-ref">{lotName}</span></td>
-                                    <td style={{ color: 'var(--theme-text-muted)' }}>{(lot.supplier_name as string) || '—'}</td>
-                                    <td style={{ color: 'var(--theme-text-muted)' }}>{lot.first_opened_at ? format(new Date(lot.first_opened_at as string), 'dd/MM/yyyy') : '—'}</td>
-                                    <td style={{ fontSize: '0.8125rem' }}>
+                                    <td style={{ color: 'var(--ds-muted)' }}>{(lot.supplier_name as string) || '—'}</td>
+                                    <td style={{ color: 'var(--ds-muted)' }}>{lot.first_opened_at ? format(new Date(lot.first_opened_at as string), 'dd/MM/yyyy') : '—'}</td>
+                                    <td style={{ fontSize: '13px' }}>
                                       {lotDlc ? (
                                         <>
-                                          <span style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(lotDlc), 'dd/MM')}</span>
+                                          <span style={{ color: 'var(--ds-muted)' }}>{format(new Date(lotDlc), 'dd/MM')}</span>
                                           <span style={{ color: dlcColor(lotDays), marginLeft: 6, fontWeight: lotDays !== null && lotDays <= 3 ? 600 : 400 }}>{dlcText(lotDays)}</span>
                                         </>
-                                      ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                                      ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                                     </td>
-                                    <td className="ds-num" style={{ fontWeight: 600 }}>{fmtQty(pq)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>{unit(r)}</span></td>
-                                    <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{eq > 0 ? `${fmtQty(eq)} ${unit(r)}` : '—'}</td>
+                                    <td className="ds-num" style={{ fontWeight: 600 }}>{fmtQty(pq)} <span style={{ color: 'var(--ds-muted)', fontWeight: 400, fontSize: '12px' }}>{unit(r)}</span></td>
+                                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{eq > 0 ? `${fmtQty(eq)} ${unit(r)}` : '—'}</td>
                                     <td className="ds-actions">
                                       <PesageLotActions lotId={lot.lot_id as string} lotNumber={lotName} ingredientName={r.ingredient_name as string}
                                         pesageQuantity={pq} economatQuantity={eq} unit={unit(r)}

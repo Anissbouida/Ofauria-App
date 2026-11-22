@@ -35,7 +35,7 @@ function ConditionEditor({ docType, value, disabled, onChange }: {
   // pas l'écraser ; son réglage fin se fait pour l'instant côté règle (migration).
   if (Array.isArray(value.all) || Array.isArray(value.any)) {
     return (
-      <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }} title="Condition composée : modifiable via migration/API">
+      <span style={{ fontSize: '13px', color: 'var(--ds-muted)' }} title="Condition composée : modifiable via migration/API">
         {describeApprovalCondition(docType, value)}
       </span>
     );
@@ -77,7 +77,7 @@ function ConditionEditor({ docType, value, disabled, onChange }: {
                 onChange={e => setDraft(e.target.value)}
                 onBlur={() => { if (draft !== '' && Number(draft) !== Number(value.value)) commit({ value: Number(draft) }); }}
                 onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
-              {field.unit && <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{field.unit}</span>}
+              {field.unit && <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{field.unit}</span>}
             </span>
           )}
         </>
@@ -193,8 +193,8 @@ export default function ApprovalsTab() {
                 </td>
                 <td>
                   <div className="ds-strong">{r.label}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{DOC_TYPES[r.doc_type]?.label ?? r.doc_type} · <code>{r.code}</code></div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', marginTop: 2 }}>{DOC_TYPES[r.doc_type]?.effect}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{DOC_TYPES[r.doc_type]?.label ?? r.doc_type} · <code>{r.code}</code></div>
+                  <div style={{ fontSize: '12px', color: 'var(--ds-muted)', marginTop: 2 }}>{DOC_TYPES[r.doc_type]?.effect}</div>
                 </td>
                 <td>
                   {editable
@@ -206,7 +206,7 @@ export default function ApprovalsTab() {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                     {r.steps.map((s, i) => (
                       <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        {i > 0 && (r.mode === 'serial' ? <ArrowRight size={12} style={{ color: 'var(--ds-muted)' }} /> : <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>+</span>)}
+                        {i > 0 && (r.mode === 'serial' ? <ArrowRight size={12} style={{ color: 'var(--ds-muted)' }} /> : <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>+</span>)}
                         <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           {s.approver_name ?? roleLabel(s.approver_role)}
                           {editable && r.steps.length > 1 && (
@@ -225,7 +225,7 @@ export default function ApprovalsTab() {
                     )}
                   </div>
                   {r.steps.length > 1 && (
-                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem', color: 'var(--ds-muted)', marginTop: 6 }}>
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '12px', color: 'var(--ds-muted)', marginTop: 6 }}>
                       <select aria-label="Mode du circuit" value={r.mode} disabled={!editable} className="ds-input sm" style={{ width: 'auto' }}
                         onChange={e => save.mutate({ code: r.code, data: { mode: e.target.value as 'serial' | 'parallel' } })}>
                         <option value="serial">L'un après l'autre</option>
