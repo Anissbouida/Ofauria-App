@@ -497,10 +497,16 @@ export const bonSortieRepository = {
         // (DLC passee) ne sont JAMAIS alloues : ils restent visibles dans l'onglet
         // Stock pesage pour etre sortis en perte, et la ligne passe en transfert
         // ou en rupture si rien d'autre n'est disponible.
+        // Constat 141 (scenario 2) : le disponible d'un lot exclut ce que les lignes des
+        // AUTRES bons ouverts y ont deja promis ou pese (lotClaimsLateral). Avant, un bon
+        // genere juste apres (autre atelier, plan enfant) comptait sur la meme quantite,
+        // la consommait, et la pesee du premier bon etait refusee « Lot non actif ».
         const pesageLotsResult = await client.query(
-          `SELECT il.id, il.lot_number, il.supplier_lot_number, il.pesage_quantity, il.expiration_date,
-                  il.received_at, il.status, il.first_opened_at
+          `SELECT il.id, il.lot_number, il.supplier_lot_number, il.pesage_quantity, il.economat_quantity,
+                  il.expiration_date, il.received_at, il.status, il.first_opened_at,
+                  claims.hard_qty, claims.soft_pesage_qty, claims.soft_economat_qty
            FROM ingredient_lots il
+           ${lotClaimsLateral('il', 'NULL::uuid')}
            WHERE il.ingredient_id = $1 AND il.store_id = $2
              AND ${usableSql} AND il.pesage_quantity > 0
            ORDER BY il.expiration_date ASC NULLS LAST,
@@ -538,7 +544,8 @@ export const bonSortieRepository = {
 
         for (const lot of pesageLotsResult.rows) {
           if (remaining <= 0) break;
-          const available = parseFloat(lot.pesage_quantity);
+          const available = lotFree(lot, true).pesage;
+          if (available <= 1e-9) continue;
           // Fond de sac : un residu de quelques grammes au pesage ne doit pas creer
           // une ligne « a peser 0 g » (le magasinier pesera le besoin entier depuis le
           // contenant ouvert ensuite). On ignore un lot qui ne couvre ni le reste du
@@ -584,11 +591,15 @@ export const bonSortieRepository = {
         // production. On eclate desormais comme les lignes PESAGE : chaque ligne
         // porte la part d'UN lot et s'ouvre sur ce lot. La regle du contenant entier
         // reste appliquee a l'ouverture (moveEconomatToPesage).
+        // Constat 141 : economat du lot hors promesses des autres bons ouverts (et hors
+        // les lignes PESAGE que ce bon vient de poser, si elles debordent du pesage).
         if (remaining > 0) {
           const economatLotsResult = await client.query(
-            `SELECT il.id, il.lot_number, il.supplier_lot_number, il.economat_quantity, il.expiration_date,
-                    il.received_at, il.status
+            `SELECT il.id, il.lot_number, il.supplier_lot_number, il.economat_quantity, il.pesage_quantity,
+                    il.expiration_date, il.received_at, il.status,
+                    claims.hard_qty, claims.soft_pesage_qty, claims.soft_economat_qty
              FROM ingredient_lots il
+             ${lotClaimsLateral('il', 'NULL::uuid')}
              WHERE il.ingredient_id = $1 AND il.store_id = $2
                AND ${usableSql} AND il.economat_quantity > 0
              ORDER BY il.expiration_date ASC NULLS LAST, il.received_at ASC`,
@@ -596,7 +607,7 @@ export const bonSortieRepository = {
           );
           for (const lot of economatLotsResult.rows) {
             if (remaining <= 1e-9) break;
-            const lotEconomat = parseFloat(lot.economat_quantity);
+            const lotEconomat = lotFree(lot, true).economat;
             const take = Math.min(lotEconomat, remaining);
             if (take <= 1e-9) continue;
             const lineResult = await client.query(
