@@ -92,44 +92,46 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
         </span>
       </Toolbar>
 
-      {sections.map(s => {
-        const Icon = s.icon;
-        const isCollapsed = !search && collapsed[s.key];
-        return (
-          <section key={s.key} style={{ display: 'grid', gap: 6 }}>
-            <SectionHeader title={
-              <button type="button" onClick={() => setCollapsed(c => ({ ...c, [s.key]: !c[s.key] }))} aria-expanded={!isCollapsed}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit' }}>
-                {isCollapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
-                <Icon size={14} aria-hidden="true" />
-                {s.label}
-              </button>
-            } note={`${s.tables.length} table${s.tables.length > 1 ? 's' : ''}`} />
-            {!isCollapsed && (
-              <DataPanel label={s.label}>
-                {/* Largeurs fixes : les colonnes restent alignees d'un domaine a l'autre. */}
-                <table className="odoo-table" style={{ tableLayout: 'fixed', width: '100%' }}>
-                  <thead><tr><th style={{ width: '30%' }}>Table</th><th>Description</th><th className="ds-num" style={{ width: 90 }}>Actives</th><th style={{ width: 130 }}>État</th><th style={{ width: 44 }} aria-label="Ouvrir"></th></tr></thead>
-                  <tbody>
-                    {s.tables.map(t => (
-                      <tr key={String(t.id)} className="ds-clickable" onClick={() => onOpenTable(String(t.id))}>
-                        <td className="ds-strong">
-                          <button type="button" onClick={ev => { ev.stopPropagation(); onOpenTable(String(t.id)); }}
-                            style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>{String(t.label)}</button>
-                        </td>
-                        <td style={{ color: 'var(--ds-muted)' }}>{String(t.description || '')}</td>
-                        <td className="ds-num">{Number(t.active_count) || 0}</td>
-                        <td>{Number(t.inactive_count) > 0 && <StatusTag tone="cancelled" label={`${Number(t.inactive_count)} inactive(s)`} />}</td>
-                        <td><ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </DataPanel>
-            )}
-          </section>
-        );
-      })}
+      {sections.length > 0 && (
+        // Un seul tableau, groupé par domaine (lignes de groupe repliables) : même gabarit
+        // que les listes des autres modules (barre d'outils + panneau standard).
+        <DataPanel label="Tables du référentiel">
+          <table className="odoo-table">
+            <thead><tr><th style={{ width: '30%' }}>Table</th><th>Description</th><th className="ds-num" style={{ width: 90 }}>Actives</th><th style={{ width: 140 }}>État</th><th style={{ width: 44 }}><span className="sr-only">Ouvrir</span></th></tr></thead>
+            {sections.map(s => {
+              const Icon = s.icon;
+              const isCollapsed = !search && collapsed[s.key];
+              return (
+                <tbody key={s.key}>
+                  <tr className="ds-group">
+                    <td colSpan={5}>
+                      <button type="button" onClick={() => setCollapsed(c => ({ ...c, [s.key]: !c[s.key] }))} aria-expanded={!isCollapsed}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit' }}>
+                        {isCollapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                        <Icon size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
+                        {s.label}
+                        <small>{s.tables.length} table{s.tables.length > 1 ? 's' : ''}</small>
+                      </button>
+                    </td>
+                  </tr>
+                  {!isCollapsed && s.tables.map(t => (
+                    <tr key={String(t.id)} className="ds-clickable" onClick={() => onOpenTable(String(t.id))}>
+                      <td className="ds-strong">
+                        <button type="button" onClick={ev => { ev.stopPropagation(); onOpenTable(String(t.id)); }}
+                          style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>{String(t.label)}</button>
+                      </td>
+                      <td style={{ color: 'var(--ds-muted)' }}>{String(t.description || '')}</td>
+                      <td className="ds-num">{Number(t.active_count) || 0}</td>
+                      <td>{Number(t.inactive_count) > 0 && <StatusTag tone="cancelled" label={`${Number(t.inactive_count)} inactive${Number(t.inactive_count) > 1 ? 's' : ''}`} />}</td>
+                      <td><ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              );
+            })}
+          </table>
+        </DataPanel>
+      )}
       {!sections.length && <NoResultState text="Aucune table ne correspond à la recherche." onReset={() => setSearch('')} />}
 
       {recent.length > 0 && (
