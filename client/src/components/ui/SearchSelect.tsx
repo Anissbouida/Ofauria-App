@@ -117,7 +117,7 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width }}>
-      <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--odoo-text-muted)', pointerEvents: 'none' }} />
+      <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--ds-muted)', pointerEvents: 'none' }} />
       <input
         id={id}
         ref={inputRef}
@@ -131,14 +131,15 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
         onChange={e => { if (disabled) return; setQuery(e.target.value); if (!open) setOpen(true); }}
         onKeyDown={handleKeyDown}
         style={{
-          width: '100%',
-          padding: size === 'md' ? '0.5rem 1.75rem 0.5rem 1.75rem' : '0.25rem 1.625rem 0.25rem 1.625rem',
-          borderRadius: size === 'md' ? 6 : 3,
-          border: '1px solid var(--odoo-border)',
-          backgroundColor: disabled ? 'var(--odoo-bg-alt)' : 'var(--odoo-bg)',
-          fontSize: size === 'md' ? '0.875rem' : '0.8125rem',
-          fontWeight: size === 'md' ? 400 : 500,
-          color: selected && !open ? 'var(--odoo-text)' : 'var(--odoo-text-muted)',
+          // Hauteurs du Design System : 40 px (champ de formulaire), 36 px (barre d'outils, filtre).
+          width: '100%', height: size === 'md' ? 40 : 36,
+          padding: size === 'md' ? '0 1.75rem' : '0 1.625rem',
+          borderRadius: size === 'md' ? 'var(--ds-r-field)' : 6,
+          border: '1px solid var(--ds-line)',
+          backgroundColor: disabled ? 'var(--ds-hair)' : 'var(--ds-card)',
+          fontSize: size === 'md' ? 14 : 13,
+          fontWeight: 400,
+          color: selected && !open ? 'var(--ds-ink)' : 'var(--ds-muted)',
           outline: 'none',
           cursor: disabled ? 'not-allowed' : 'text',
         }}
@@ -148,7 +149,7 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
           type="button"
           onClick={() => { onChange(''); setQuery(''); }}
           title="Effacer"
-          style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', display: 'flex', color: 'var(--odoo-text-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 2 }}>
+          style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', display: 'flex', color: 'var(--ds-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 2 }}>
           <X size={12} />
         </button>
       )}
@@ -156,12 +157,12 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
         <div ref={listRef} role="listbox" aria-label={ariaLabel ?? placeholder} style={{
           ...place, zIndex: 1000,
           width: 'max-content', maxWidth: 340,
-          backgroundColor: 'var(--odoo-bg, var(--ds-card))', border: '1px solid var(--odoo-border, var(--ds-line))',
+          backgroundColor: 'var(--ds-card)', border: '1px solid var(--ds-line)',
           borderRadius: 8, overflowY: 'auto',
           boxShadow: '0 8px 24px rgba(15,23,42,0.14)',
         }}>
           {filtered.length === 0 && (
-            <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted, var(--ds-muted))', padding: '0.5rem 0.75rem', margin: 0 }}>Aucun résultat</p>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', padding: '0.5rem 0.75rem', margin: 0 }}>Aucun résultat</p>
           )}
           {filtered.map((o, i) => (
             <button
@@ -174,19 +175,19 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
               className="w-full text-left text-sm flex items-center justify-between gap-3"
               style={{
                 padding: '0.5rem 0.75rem',
-                backgroundColor: i === highlighted ? 'var(--odoo-bg-hover, var(--ds-hair))' : (o.id === value ? 'var(--odoo-bg-alt, var(--ds-bg))' : 'transparent'),
+                backgroundColor: i === highlighted ? 'var(--ds-hair)' : (o.id === value ? 'var(--ds-bg)' : 'transparent'),
                 cursor: 'pointer', border: 'none',
               }}>
               <span style={{ minWidth: 0 }}>
-                <span className="font-medium" style={{ color: 'var(--odoo-text, var(--ds-ink))', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span className="font-medium" style={{ color: 'var(--ds-ink)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {o.label}
                 </span>
                 {o.sublabel && (
-                  <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted, var(--ds-muted))' }}>{o.sublabel}</span>
+                  <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{o.sublabel}</span>
                 )}
               </span>
               {o.detail && (
-                <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted, var(--ds-muted))', flexShrink: 0 }}>{o.detail}</span>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)', flexShrink: 0 }}>{o.detail}</span>
               )}
             </button>
           ))}
