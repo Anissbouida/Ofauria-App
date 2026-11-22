@@ -261,3 +261,33 @@ Corrigé à la suite du parcours :
 
 Ce parcours vérifie l'affichage ; il ne remplace pas les scénarios métier (saisies, validations
 de bout en bout), qui restent à rejouer avant une mise en production.
+
+## 10. Quatrième passe — derniers restes (2026-11-22)
+
+| Point | Correction |
+|---|---|
+| Code mort (§ 6 n° 10) | Supprimés : `RecallPage`, `RuptureRequestsList`, `LowStockOrderList`, `DashboardPage` (aucun import, compilation propre) |
+| Menu « Plus » de la fiche plan | Menu commun `RowMenu`, enrichi des séparateurs et des infobulles d'actions désactivées |
+| Carte de saisie d'atelier | Composant commun `EntryCard` (grande cible tactile, contour rouge en alerte), appliqué au HACCP |
+| Pagination des vues Colonnes et Kanban | Le composant historique `Pager` délègue au pied de tableau commun |
+| Tableau des sessions de caisse | Aligné sur les jetons (en-tête, pied, couleurs) |
+| Bandeau des échéances fournisseurs | Repliable (clic sur l'en-tête, choix retenu sur le poste) |
+| Menu de ligne masqué | Les cellules d'actions des lignes suivantes passaient par-dessus le menu ouvert : corrigé |
+
+### 10.1 Parcours métier rejoué sur 5173 (base de développement)
+
+Réception d'un bon de commande de bout en bout, par la nouvelle page dédiée :
+BC-2026-0531 (Laiterie du Gharb, 29 l de lait entier) → « Tout reçu » → n° de facture fournisseur
+(champ devenu obligatoire car la réception solde le BC) → « Confirmer la réception ».
+Résultat : notification « Réception confirmée — lots LI-261122-00824 », BC retiré des réceptions
+attendues (4 → 3), réceptions du mois 67 → 68, facture fournisseur FAC-TEST-0531 créée en
+brouillon dans Factures reçues avec son menu d'actions complet. Données de test laissées en base
+(BC réceptionné, lot, facture brouillon).
+
+### 10.2 Ce qui reste
+
+| Point | Raison |
+|---|---|
+| Paramètres non vus à l'écran | compte gérant sans accès, administrateur sous double authentification : à contrôler par l'utilisateur |
+| Autres scénarios métier (vente, production, paie, comptabilité) | un seul parcours rejoué ; les autres restent à jouer avant mise en production |
+| Caisse (`/pos`), palette ⌘K, caméra, verrou de session | exclus ou plein écran par conception |
