@@ -8,6 +8,7 @@
 //   poste/tablette du reseau, sans driver a installer.
 
 import { ThermalPrinter, PrinterTypes, CharacterSet } from 'node-thermal-printer';
+import { formatBusinessDateTime } from '../utils/timezone.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFile, unlink, readFile } from 'node:fs/promises';
@@ -374,7 +375,7 @@ export const printerService = {
         printer.println(`Ticket : ${params.sale.sale_number}`);
         const d = new Date(params.sale.created_at);
         const pad = (n: number) => String(n).padStart(2, '0');
-        printer.println(`Date   : ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
+        printer.println(`Date   : ${formatBusinessDateTime(d)}`);
         if (params.sale.cashier_name) {
           printer.println(`Caisse : ${params.sale.cashier_name}`);
         }
@@ -525,9 +526,9 @@ export const printerService = {
 
       const s = params.session;
       const pad = (n: number) => String(n).padStart(2, '0');
+      // Heure de la boutique, pas celle du serveur (constat 139).
       const fmtDT = (v: string | Date) => {
-        const d = new Date(v);
-        return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        return formatBusinessDateTime(v);
       };
       const dh = (v: number) => `${(v || 0).toFixed(2)} ${currencySymbol()}`;
 
@@ -630,7 +631,7 @@ export const printerService = {
       printer.println(`Connexion  : ${config.connection_string}`);
       printer.println(`Largeur    : ${config.paper_width} car.`);
       const now = new Date();
-      printer.println(`Date       : ${now.toLocaleString('fr-FR')}`);
+      printer.println(`Date       : ${formatBusinessDateTime(now)}`);
       printer.drawLine();
       printer.alignCenter();
       printer.println('Si vous lisez ce ticket,');

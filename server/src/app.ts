@@ -15,7 +15,7 @@ import { errorHandler } from './middleware/error.middleware.js';
 import { originCheck } from './middleware/csrf.middleware.js';
 import { authenticate } from './middleware/auth.middleware.js';
 import { publicApiLimiter, portalLimiter, globalApiLimiter } from './middleware/rate-limit.middleware.js';
-import { runWithTimezone } from './utils/timezone.js';
+import { runWithTimezone, BUSINESS_TIMEZONE } from './utils/timezone.js';
 import { logger } from './utils/logger.js';
 import { appEnv } from './config/app-env.js';
 
@@ -163,10 +163,12 @@ app.use((req, res, next) => {
   return globalJsonParser(req, res, next);
 });
 
-// Capture user timezone from request header and store in async context
-app.use((req, res, next) => {
-  const timezone = req.headers['x-timezone'] as string || 'Africa/Casablanca';
-  runWithTimezone(timezone, () => next());
+// Fuseau de travail du serveur = fuseau de la boutique, pas celui du navigateur (constat 139) :
+// consultée depuis New York, une journée de caisse de Casablanca reste celle de Casablanca.
+// L'en-tête X-Timezone reste accepté mais ne pilote plus les calculs ; les écrans affichent
+// l'heure locale du poste en formatant eux-mêmes les dates.
+app.use((_req, _res, next) => {
+  runWithTimezone(BUSINESS_TIMEZONE, () => next());
 });
 
 // ─── A05-3 / G0-04 : anciens fichiers de /uploads ─────────

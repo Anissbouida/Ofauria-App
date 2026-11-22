@@ -52,6 +52,25 @@ export function runWithTimezone(timezone: string, fn: () => void) {
 }
 
 /**
+ * Fuseau de la boutique (constat 139, scénario 2) : une vente a lieu à l'heure locale du magasin,
+ * quel que soit l'endroit d'où l'on consulte l'application. Les journées de caisse, les filtres
+ * « du jour », la numérotation et le reçu suivent ce fuseau ; seul l'affichage des écrans prend
+ * l'heure du poste (formatage côté navigateur). Réglable par BUSINESS_TIMEZONE.
+ */
+export const BUSINESS_TIMEZONE: string =
+  isValidTimezone(process.env.BUSINESS_TIMEZONE ?? '') ? (process.env.BUSINESS_TIMEZONE as string) : DEFAULT_TIMEZONE;
+
+/** « jj/mm/aaaa hh:mm » à l'heure de la boutique (reçus et rapports imprimés). */
+export function formatBusinessDateTime(value: string | Date): string {
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: BUSINESS_TIMEZONE, day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(value));
+  const g = (t: string) => parts.find(p => p.type === t)?.value ?? '';
+  return `${g('day')}/${g('month')}/${g('year')} ${g('hour')}:${g('minute')}`;
+}
+
+/**
  * Get the current user's timezone from async context
  * Falls back to 'Africa/Casablanca' if not set
  */
