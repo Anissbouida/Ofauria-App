@@ -8,6 +8,7 @@ import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Journal des modifications du paramétrage (mig 328) et des connexions.
@@ -103,12 +104,12 @@ function rowTitle(e: AuditLogEntry): string {
 }
 
 function Pager({ offset, total, onChange }: { offset: number; total: number; onChange: (o: number) => void }) {
-  if (total <= PAGE) return <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{total} ligne{total > 1 ? 's' : ''}</span>;
+  if (total <= PAGE) return <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{total} ligne{total > 1 ? 's' : ''}</span>;
   return (
     <span className="odoo-pager">
       {offset + 1}-{Math.min(offset + PAGE, total)} / {total}
-      <button className="odoo-pager-btn" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - PAGE))} aria-label="Page précédente"><ChevronLeft size={14} /></button>
-      <button className="odoo-pager-btn" disabled={offset + PAGE >= total} onClick={() => onChange(offset + PAGE)} aria-label="Page suivante"><ChevronRight size={14} /></button>
+      <button type="button" className="odoo-pager-btn" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - PAGE))} aria-label="Page précédente"><ChevronLeft size={14} /></button>
+      <button type="button" className="odoo-pager-btn" disabled={offset + PAGE >= total} onClick={() => onChange(offset + PAGE)} aria-label="Page suivante"><ChevronRight size={14} /></button>
     </span>
   );
 }
@@ -166,7 +167,7 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
     <>
       <div className="prj-toolbar">
         <label className="prj-search" style={{ maxWidth: 360 }}>
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
           <input type="search" placeholder="Rechercher (libellé, valeur)…"
             value={q} onChange={e => reset(setQ)(e.target.value)} aria-label="Rechercher" />
         </label>
@@ -176,10 +177,10 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
           <SearchSelect value={changedBy} onChange={reset(setChangedBy)} ariaLabel="Auteur" placeholder="Tous les auteurs" width={200}
             options={users.map(u => ({ id: String(u.id), label: `${u.firstName} ${u.lastName}` }))} />
         )}
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
           Du <input type="date" style={filterInput} value={from} onChange={e => reset(setFrom)(e.target.value)} />
         </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
           au <input type="date" style={filterInput} value={to} onChange={e => reset(setTo)(e.target.value)} />
         </label>
         <div style={{ flex: 1 }} />
@@ -187,9 +188,9 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
       </div>
 
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--ds-muted)' }}>
           <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-          <p style={{ fontSize: '0.8125rem' }}>Chargement…</p>
+          <LoadingState bare />
         </div>
       ) : isError ? (
         <StatusBanner tone="danger" icon={History} title="Journal indisponible">
@@ -213,11 +214,11 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
                     <tr onClick={() => setOpen(isOpen ? null : e.id)} style={{ cursor: 'pointer' }}>
                       <td>{isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</td>
                       <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtDate(e.changed_at)}</td>
-                      <td>{e.changed_by_name || <span style={{ color: 'var(--odoo-text-muted)' }}>Système</span>}</td>
+                      <td>{e.changed_by_name || <span style={{ color: 'var(--ds-muted)' }}>Système</span>}</td>
                       <td>{tableLabel(e.table_name)}</td>
                       <td>{rowTitle(e)}</td>
                       <td><StatusTag tone={OP_TAG[e.operation].tone} icon={OP_TAG[e.operation].icon} label={OP_TAG[e.operation].label} /></td>
-                      <td style={{ color: 'var(--odoo-text-muted)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary(e)}</td>
+                      <td style={{ color: 'var(--ds-muted)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary(e)}</td>
                     </tr>
                     {isOpen && (
                       <tr>
@@ -244,7 +245,7 @@ function ChangeDetail({ e }: { e: AuditLogEntry }) {
     : Object.entries((e.new_row ?? e.old_row) ?? {})
         .filter(([k]) => !['id', 'created_at', 'updated_at', 'updated_by'].includes(k))
         .map(([k, v]) => [k, e.operation === 'DELETE' ? v : undefined, e.operation === 'DELETE' ? undefined : v]);
-  if (!pairs.length) return <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Aucun détail.</span>;
+  if (!pairs.length) return <span style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>Aucun détail.</span>;
   return (
     <table className="odoo-table" style={{ margin: 0 }}>
       <thead><tr><th>Champ</th><th>Avant</th><th>Après</th></tr></thead>
@@ -252,7 +253,7 @@ function ChangeDetail({ e }: { e: AuditLogEntry }) {
         {pairs.map(([k, o, n]) => (
           <tr key={k}>
             <td style={{ fontWeight: 500 }}>{fieldLabel(k)}</td>
-            <td style={{ color: 'var(--odoo-text-muted)', wordBreak: 'break-word' }}>{o === undefined ? '' : fmtValue(o)}</td>
+            <td style={{ color: 'var(--ds-muted)', wordBreak: 'break-word' }}>{o === undefined ? '' : fmtValue(o)}</td>
             <td style={{ wordBreak: 'break-word' }}>{n === undefined ? '' : fmtValue(n)}</td>
           </tr>
         ))}
@@ -296,17 +297,17 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
           <SearchSelect value={userId} onChange={reset(setUserId)} ariaLabel="Utilisateur" placeholder="Tous les utilisateurs" width={200}
             options={users.map(u => ({ id: String(u.id), label: `${u.firstName} ${u.lastName}` }))} />
         )}
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
           Du <input type="date" style={filterInput} value={from} onChange={e => reset(setFrom)(e.target.value)} />
         </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
           au <input type="date" style={filterInput} value={to} onChange={e => reset(setTo)(e.target.value)} />
         </label>
         <div style={{ flex: 1 }} />
         <Pager offset={offset} total={data?.total ?? 0} onChange={setOffset} />
       </div>
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--ds-muted)' }}>
           <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
         </div>
       ) : !data?.rows.length ? (
@@ -323,7 +324,7 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
                   <td>{e.user_name || e.email || '—'}</td>
                   <td>{e.target_name || ''}</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>{e.ip || ''}</td>
-                  <td style={{ color: 'var(--odoo-text-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td style={{ color: 'var(--ds-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {e.details ? Object.entries(e.details).map(([k, v]) => `${k}: ${fmtValue(v)}`).join(' · ') : ''}
                   </td>
                 </tr>

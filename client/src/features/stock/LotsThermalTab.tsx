@@ -6,8 +6,9 @@ import { lotThermalApi, type FreezableLot } from '../../api/lot-thermal.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
-import { FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { FilterChips } from '../sales/ListTemplate';
 import { ChipsRow } from './StockUi';
+import { DataPanel, EmptyState, LoadingState, NoResultState, TableFooter } from '../../components/ds';
 
 /** État thermique en étiquette commune (StatusTag) : décongelé = à consommer, action attendue. */
 const ETAT_BADGE: Record<string, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
@@ -63,16 +64,18 @@ export default function LotsThermalTab() {
       </ChipsRow>
 
       {isLoading ? (
-        <ListEmpty icon={Loader2} title="Chargement…" />
+        <LoadingState label="Chargement des lots…" />
       ) : lots.length === 0 ? (
-        <ListEmpty icon={Snowflake} title="Aucun lot dans cet état." />
+        etat
+          ? <NoResultState text="Aucun lot dans cet état." onReset={() => setEtat(null)} />
+          : <EmptyState icon={Snowflake} title="Aucun lot surgelable" text="Les lots d'articles surgelables apparaîtront ici dès leur entrée en stock." />
       ) : (
-        <ListPanel>
+        <DataPanel label="Lots surgelables" footer={<TableFooter note={`${lots.length} lot${lots.length > 1 ? 's' : ''}`} />}>
         <table className="odoo-table">
           <thead>
             <tr>
-              <th>Lot</th><th>Article</th><th style={{ textAlign: 'right' }}>Quantité</th>
-              <th>État</th><th>DLC</th><th>Surgelé le</th><th>Décongelé le</th><th />
+              <th>Lot</th><th>Article</th><th className="ds-num">Quantité</th>
+              <th>État</th><th>DLC</th><th>Surgelé le</th><th>Décongelé le</th><th className="ds-actions">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -81,36 +84,36 @@ export default function LotsThermalTab() {
               const expired = isExpired(l.dlc_affichee);
               return (
                 <tr key={`${l.kind}-${l.id}`}>
-                  <td><span className="sal-num">{l.lot_number}</span></td>
+                  <td><span className="ds-ref">{l.lot_number}</span></td>
                   <td>
                     <span className="odoo-tag" style={{ marginRight: 6 }}>{l.item_kind}</span>
-                    {l.item_name}
+                    <span className="ds-strong">{l.item_name}</span>
                   </td>
-                  <td style={{ textAlign: 'right' }} className="tabular-nums">{Math.round(l.quantity)} {l.unit}</td>
+                  <td className="tabular-nums ds-num">{Math.round(l.quantity)} {l.unit}</td>
                   <td>
                     <StatusTag tone={badge.tone} icon={badge.icon} label={badge.label} />
                   </td>
-                  <td className="tabular-nums" style={{ color: expired ? 'var(--theme-danger, #dc3545)' : undefined }}>
+                  <td style={{ color: expired ? 'var(--ds-danger)' : undefined, fontWeight: expired ? 600 : undefined }}>
                     {fmtDate(l.dlc_affichee)}
-                    {l.etat_thermique === 'decongele' && <span className="text-[10px] text-gray-400 ml-1">(décong.)</span>}
+                    {l.etat_thermique === 'decongele' && <span style={{ fontSize: 12, color: 'var(--ds-muted)', marginLeft: 4 }}>(décongelé)</span>}
                   </td>
                   <td className="tabular-nums text-gray-500">{fmtDate(l.surgele_a)}</td>
                   <td className="tabular-nums text-gray-500">{fmtDate(l.decongele_a)}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td className="ds-actions">
                     {l.etat_thermique === 'frais' && (
-                      <button className="odoo-btn-secondary" disabled={freezeMut.isPending}
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={freezeMut.isPending}
                         onClick={() => freezeMut.mutate(l)}>
                         <Snowflake size={12} /> Geler
                       </button>
                     )}
                     {l.etat_thermique === 'surgele' && (
-                      <button className="odoo-btn-secondary" disabled={thawMut.isPending}
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={thawMut.isPending}
                         onClick={() => askThaw(l)}>
                         <Sun size={12} /> Décongeler
                       </button>
                     )}
                     {l.etat_thermique === 'decongele' && (
-                      <span className="text-[11px] text-gray-400 inline-flex items-center gap-1" title="Recongélation interdite">
+                      <span style={{ fontSize: 12, color: 'var(--ds-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }} title="Recongélation interdite">
                         <AlertTriangle size={11} /> non recongelable
                       </span>
                     )}
@@ -120,7 +123,7 @@ export default function LotsThermalTab() {
             })}
           </tbody>
         </table>
-        </ListPanel>
+        </DataPanel>
       )}
       <p className="prj-note" style={{ display: 'flex', alignItems: 'center', gap: 4, margin: 0, color: 'var(--theme-text-muted)' }}>
         <Package size={11} /> La DLC d'un lot décongelé est recalculée ({DEFAULT_THAW_HOURS} h) et prime au FEFO. La recongélation est interdite.

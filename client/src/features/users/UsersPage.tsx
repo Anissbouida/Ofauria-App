@@ -9,16 +9,18 @@ import AccessReviewTab, { AccessReviewModal } from './AccessReviewPanel';
 import { storesApi } from '../../api/stores.api';
 import {
   Plus, Pencil, KeyRound, Settings2, Check, MapPin, Lock, Users, UserCheck, UserX,
-  ShieldCheck, ShieldAlert, Loader2, RotateCcw, Scale, ScanSearch, Wand2, Copy, LogOut, X,
+  ShieldCheck, RotateCcw, Scale, ScanSearch, Wand2, Copy, LogOut,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { HrModal, Field, SubmitButton, LoadingPanel, Segmented } from '../employees/ui';
-import SalesPageShell from '../sales/SalesPageShell';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { HrModal, Field, SubmitButton, Segmented, HrHeaderSlot } from '../employees/ui';
+import { ListPage, FilterChips } from '../sales/ListTemplate';
+import {
+  Breadcrumb, PageHeader, KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState,
+} from '../../components/ds';
 import { useAuth } from '../../context/AuthContext';
 import {
   MfaTag, MfaPolicyModal, SecuritySection, securityMenuItems, useAccountActions, formatLastLogin, formatDateTime,
@@ -52,33 +54,56 @@ export default function UsersPage() {
   const setTab = (t: UsersTab) => setParams(t === 'users' ? {} : { tab: t });
   const [editing, setEditing] = useState<UserRow | 'new' | null>(null);
 
-  const tabs: { key: UsersTab; label: string; icon: typeof Users }[] = [
-    { key: 'users', label: 'Comptes', icon: Users },
-    { key: 'roles', label: 'Rôles et contrôle', icon: ShieldCheck },
-    { key: 'governance', label: 'Gouvernance', icon: Scale },
-    { key: 'review', label: 'Revue des accès', icon: ScanSearch },
+  const [policyOpen, setPolicyOpen] = useState(false);
+  // Emplacement des actions de la vue active (ex. « Nouveau rôle »), à droite du fil d'Ariane.
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
+
+  const tabs: { key: UsersTab; label: string; icon: typeof Users; lead: string }[] = [
+    { key: 'users', label: 'Comptes', icon: Users, lead: 'Comptes de connexion : rôle, établissement, sécurité et droits propres.' },
+    { key: 'roles', label: 'Rôles et contrôle', icon: ShieldCheck, lead: 'Droits de chaque rôle sur les modules et les actions sensibles.' },
+    { key: 'governance', label: 'Gouvernance', icon: Scale, lead: 'Séparation des tâches, délégations et dérogations d\'accès.' },
+    { key: 'review', label: 'Revue des accès', icon: ScanSearch, lead: 'Contrôle périodique des droits accordés à chaque compte.' },
   ];
   const current = tabs.find(t => t.key === tab)!;
 
   return (
     <>
-      {/* Design Ventes (2026-11-18) : barre fil d'Ariane + action, grand titre de la rubrique,
-          contrôle segmenté des quatre vues, puis contenu au gabarit Liste. */}
-      <SalesPageShell icon={Lock} parent="Utilisateurs" title={current.label} list
-        actions={tab === 'users' ? (
-          <button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Plus size={13} /> Nouvel utilisateur
-          </button>
-        ) : undefined}>
-        <div className="prj-toolbar">
-          <Segmented label="Vues des utilisateurs" value={tab} onChange={setTab}
-            options={tabs.map(t => ({ key: t.key, label: t.label, icon: t.icon }))} />
+      {/* Gabarit de page (Design System) : fil d'Ariane à trois niveaux + actions (secondaire puis
+          une seule principale), titre et description, bascule des quatre vues, puis le contenu. */}
+      <div className="odoo-scope" style={{ minHeight: '100%' }}>
+        <div className="odoo-control-bar">
+          <Breadcrumb icon={Lock} items={[
+            { label: 'Administration' },
+            { label: 'Utilisateurs', onClick: tab === 'users' ? undefined : () => setTab('users') },
+            { label: current.label },
+          ]} />
+          <div style={{ flex: 1 }} />
+          <div ref={setHeaderSlot} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} />
+          {tab === 'users' && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="odoo-btn-secondary" onClick={() => setPolicyOpen(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <ShieldCheck size={13} aria-hidden="true" /> Double authentification
+              </button>
+              <button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Plus size={13} aria-hidden="true" /> Nouvel utilisateur
+              </button>
+            </div>
+          )}
         </div>
-        {tab === 'users' && <AccountsTab onEdit={setEditing} />}
-        {tab === 'roles' && <RolesPanel />}
-        {tab === 'governance' && <GovernancePanel />}
-        {tab === 'review' && <AccessReviewTab />}
-      </SalesPageShell>
+        <HrHeaderSlot.Provider value={headerSlot}>
+        <ListPage>
+          <PageHeader title={current.label} description={current.lead} />
+          <Toolbar>
+            <Segmented label="Vues des utilisateurs" value={tab} onChange={setTab}
+              options={tabs.map(t => ({ key: t.key, label: t.label, icon: t.icon }))} />
+          </Toolbar>
+          {tab === 'users' && <AccountsTab onEdit={setEditing} policyOpen={policyOpen} onPolicyClose={() => setPolicyOpen(false)} />}
+          {tab === 'roles' && <RolesPanel />}
+          {tab === 'governance' && <GovernancePanel />}
+          {tab === 'review' && <AccessReviewTab />}
+        </ListPage>
+        </HrHeaderSlot.Provider>
+      </div>
 
       {editing && <UserFormModal user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
     </>
@@ -113,7 +138,7 @@ const matchSecurity = (u: UserRow, f: SecurityFilter) =>
   : f === 'pwd' ? !!u.mustChangePassword
   : !u.lastLoginAt;
 
-function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
+function AccountsTab({ onEdit, policyOpen, onPolicyClose }: { onEdit: (u: UserRow) => void; policyOpen: boolean; onPolicyClose: () => void }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const { user: me } = useAuth();
@@ -124,12 +149,11 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
   const [status, setStatus] = useState<'active' | 'inactive' | 'all'>('active');
   const [permUser, setPermUser] = useState<UserRow | null>(null);
   const [reviewUser, setReviewUser] = useState<UserRow | null>(null);
-  const [policyOpen, setPolicyOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const { run } = useAccountActions();
 
-  const { data: users = [], isLoading } = useQuery<UserRow[]>({ queryKey: ['users'], queryFn: usersApi.list });
+  const { data: users = [], isLoading, isError, refetch } = useQuery<UserRow[]>({ queryKey: ['users'], queryFn: usersApi.list });
   const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
   const { roles, label: roleLabel } = useRoleLabel();
   const storeName = (id: unknown) => stores.find(s => s.id === id)?.name as string | undefined;
@@ -177,32 +201,27 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
   };
   const others = chosen.filter(u => u.id !== selfId);
 
+  const filtered = !!q || !!roleFilter || !!security || status !== 'active';
+  const resetFilters = () => { setQ(''); setRoleFilter(''); setSecurity(''); setStatus('active'); };
+
   return (
     <>
-      <div className="prj-kpis">
-        <button type="button" className="prj-kpi" onClick={() => { setStatus('active'); setSecurity(''); }} style={{ textAlign: 'left' }}>
-          <div className="prj-kpi-head"><span>Comptes actifs</span><UserCheck size={14} /></div>
-          <div className="prj-kpi-value">{activeCount}</div>
-          <div className="prj-kpi-sub">{inactiveCount} désactivé{inactiveCount > 1 ? 's' : ''} sur {users.length}</div>
-        </button>
-        <button type="button" className="prj-kpi" onClick={() => { setStatus('active'); setSecurity('mfa_todo'); }} style={{ textAlign: 'left' }}>
-          <div className="prj-kpi-head"><span>Double auth. à configurer</span><ShieldAlert size={14} /></div>
-          <div className="prj-kpi-value" style={{ color: mfaTodoCount ? 'var(--prj-orange)' : undefined }}>{mfaTodoCount}</div>
-          <div className="prj-kpi-sub">{mfaOnCount} compte{mfaOnCount > 1 ? 's' : ''} protégé{mfaOnCount > 1 ? 's' : ''}</div>
-        </button>
-        <button type="button" className="prj-kpi" onClick={() => { setStatus('active'); setSecurity('locked'); }} style={{ textAlign: 'left' }}>
-          <div className="prj-kpi-head"><span>Verrouillés</span><Lock size={14} /></div>
-          <div className="prj-kpi-value" style={{ color: lockedCount ? 'var(--prj-orange)' : undefined }}>{lockedCount}</div>
-          <div className="prj-kpi-sub">trop d'échecs de connexion</div>
-        </button>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Sans code PIN</span><KeyRound size={14} /></div>
-          <div className="prj-kpi-value" style={{ color: noPinCount ? 'var(--prj-orange)' : undefined }}>{noPinCount}</div>
-          <div className="prj-kpi-sub">pas de connexion rapide en caisse</div>
-        </div>
-      </div>
+      {/* Indicateurs cliquables : filtrent la liste. */}
+      <KpiGrid>
+        <KpiCard label="Comptes actifs" value={activeCount} sub={`${inactiveCount} désactivé${inactiveCount > 1 ? 's' : ''} sur ${users.length}`}
+          onClick={() => { setStatus('active'); setSecurity(''); }} active={status === 'active' && security === ''} />
+        <KpiCard label="Double authentification à configurer" value={mfaTodoCount} sub={`${mfaOnCount} compte${mfaOnCount > 1 ? 's' : ''} protégé${mfaOnCount > 1 ? 's' : ''}`}
+          tone={mfaTodoCount ? 'orange' : undefined} onClick={() => { setStatus('active'); setSecurity('mfa_todo'); }} active={security === 'mfa_todo'} />
+        <KpiCard label="Verrouillés" value={lockedCount} sub="trop d'échecs de connexion" tone={lockedCount ? 'orange' : undefined}
+          onClick={() => { setStatus('active'); setSecurity('locked'); }} active={security === 'locked'} />
+        <KpiCard label="Sans code PIN" value={noPinCount} sub="pas de connexion rapide en caisse" tone={noPinCount ? 'orange' : undefined} />
+      </KpiGrid>
 
-      <ListToolbar search={q} onSearch={setQ} placeholder="Rechercher un nom, un e-mail, un rôle…">
+      {/* Pastilles de statut, puis barre d'outils : recherche et filtres. */}
+      <FilterChips label="Statut" value={status} onChange={k => setStatus(k as typeof status)}
+        chips={[{ key: 'active', label: 'Actifs', count: activeCount }, { key: 'inactive', label: 'Désactivés', count: inactiveCount }, { key: 'all', label: 'Tous', count: users.length }]} />
+      <Toolbar>
+        <SearchBar value={q} onChange={setQ} placeholder="Rechercher un nom, un e-mail, un rôle…" />
         <select id="users-role-filter" className="odoo-filter-dropdown" style={{ width: 'auto' }} value={roleFilter} onChange={e => setRoleFilter(e.target.value)} aria-label="Filtrer par rôle">
           <option value="">Tous les rôles</option>
           {roleOptions.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
@@ -210,52 +229,48 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
         <select id="users-security-filter" className="odoo-filter-dropdown" style={{ width: 'auto' }} value={security} onChange={e => setSecurity(e.target.value as SecurityFilter)} aria-label="Filtrer par sécurité">
           {SECURITY_FILTERS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
         </select>
-        <button type="button" className="odoo-btn-secondary" onClick={() => setPolicyOpen(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <ShieldCheck size={13} /> Double authentification
-        </button>
-      </ListToolbar>
-      <FilterChips label="Statut" value={status} onChange={k => setStatus(k as typeof status)}
-        chips={[{ key: 'active', label: 'Actifs', count: activeCount }, { key: 'inactive', label: 'Désactivés', count: inactiveCount }, { key: 'all', label: 'Tous', count: users.length }]} />
+      </Toolbar>
 
-      {chosen.length > 0 && (
-        <div className="sal-bulk" role="region" aria-label="Actions sur la sélection">
-          <strong>{chosen.length} compte{chosen.length > 1 ? 's' : ''} sélectionné{chosen.length > 1 ? 's' : ''}</strong>
-          <button type="button" disabled={bulkBusy} onClick={() => void bulk('Double authentification exigée', chosen.filter(u => !u.mfaRequired && !u.mfaEnabled), u => usersApi.setMfaRequired(u.id, true),
-            { title: 'Exiger la double authentification ?', message: 'Les comptes sélectionnés devront configurer une application d\'authentification à leur prochaine connexion.' })}>
-            <ShieldCheck size={13} /> Exiger la double auth.
-          </button>
-          <button type="button" disabled={bulkBusy} onClick={() => void bulk('Changement de mot de passe imposé', chosen.filter(u => !u.mustChangePassword), u => usersApi.setMustChangePassword(u.id, true),
-            { title: 'Imposer un nouveau mot de passe ?', message: 'Les comptes sélectionnés devront choisir un nouveau mot de passe à leur prochaine connexion.' })}>
-            <KeyRound size={13} /> Imposer un mot de passe
-          </button>
-          <button type="button" disabled={bulkBusy} onClick={() => void bulk('Sessions fermées', others.filter(u => u.isActive), u => usersApi.revokeSessions(u.id),
-            { title: 'Fermer les sessions ?', message: 'Les comptes sélectionnés seront déconnectés de tous leurs appareils.' })}>
-            <LogOut size={13} /> Fermer les sessions
-          </button>
-          {chosen.some(u => !u.isActive) && (
-            <button type="button" disabled={bulkBusy} onClick={() => void bulk('Comptes réactivés', chosen.filter(u => !u.isActive), u => usersApi.update(u.id, { isActive: true }))}>
-              <UserCheck size={13} /> Réactiver
-            </button>
-          )}
-          {others.some(u => u.isActive) && (
-            <button type="button" disabled={bulkBusy} onClick={() => void bulk('Comptes désactivés', others.filter(u => u.isActive), u => usersApi.update(u.id, { isActive: false }),
-              { title: 'Désactiver les comptes ?', message: 'Les comptes sélectionnés ne pourront plus se connecter ; leur historique est conservé. Votre propre compte n\'est jamais désactivé.', danger: true })}>
-              <UserX size={13} /> Désactiver
-            </button>
-          )}
-          <button type="button" onClick={() => setSelected(new Set())} aria-label="Vider la sélection"><X size={13} /></button>
-        </div>
-      )}
-
-      {isLoading ? <LoadingPanel /> : !shown.length ? (
-        <ListEmpty icon={Users} title={users.length ? 'Aucun compte ne correspond aux filtres.' : 'Aucun utilisateur.'} />
-      ) : (
-        <ListPanel footer={<div className="hr-panel-foot">{shown.length} compte{shown.length > 1 ? 's' : ''}</div>}>
+      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => void refetch()} />
+        : !users.length ? <EmptyState icon={Users} title="Aucun utilisateur" text="Les comptes de connexion apparaîtront ici." />
+        : !shown.length ? <NoResultState text="Aucun compte ne correspond aux filtres." onReset={filtered ? resetFilters : undefined} />
+        : (
+        <DataPanel label="Comptes" footer={<TableFooter note={`${shown.length} compte${shown.length > 1 ? 's' : ''}`} />}
+          bulk={chosen.length > 0 && (
+            <div className="ds-bulk" role="region" aria-label="Actions sur la sélection">
+              <strong>{chosen.length} compte{chosen.length > 1 ? 's' : ''} sélectionné{chosen.length > 1 ? 's' : ''}</strong>
+              <span className="ds-grow" />
+              <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={bulkBusy} onClick={() => void bulk('Double authentification exigée', chosen.filter(u => !u.mfaRequired && !u.mfaEnabled), u => usersApi.setMfaRequired(u.id, true),
+                { title: 'Exiger la double authentification ?', message: 'Les comptes sélectionnés devront configurer une application d\'authentification à leur prochaine connexion.' })}>
+                <ShieldCheck size={13} aria-hidden="true" /> Exiger la double authentification
+              </button>
+              <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={bulkBusy} onClick={() => void bulk('Changement de mot de passe imposé', chosen.filter(u => !u.mustChangePassword), u => usersApi.setMustChangePassword(u.id, true),
+                { title: 'Imposer un nouveau mot de passe ?', message: 'Les comptes sélectionnés devront choisir un nouveau mot de passe à leur prochaine connexion.' })}>
+                <KeyRound size={13} aria-hidden="true" /> Imposer un mot de passe
+              </button>
+              <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={bulkBusy} onClick={() => void bulk('Sessions fermées', others.filter(u => u.isActive), u => usersApi.revokeSessions(u.id),
+                { title: 'Fermer les sessions ?', message: 'Les comptes sélectionnés seront déconnectés de tous leurs appareils.' })}>
+                <LogOut size={13} aria-hidden="true" /> Fermer les sessions
+              </button>
+              {chosen.some(u => !u.isActive) && (
+                <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={bulkBusy} onClick={() => void bulk('Comptes réactivés', chosen.filter(u => !u.isActive), u => usersApi.update(u.id, { isActive: true }))}>
+                  <UserCheck size={13} aria-hidden="true" /> Réactiver
+                </button>
+              )}
+              {others.some(u => u.isActive) && (
+                <button type="button" className="ds-btn-danger ds-btn-sm" disabled={bulkBusy} onClick={() => void bulk('Comptes désactivés', others.filter(u => u.isActive), u => usersApi.update(u.id, { isActive: false }),
+                  { title: 'Désactiver les comptes ?', message: 'Les comptes sélectionnés ne pourront plus se connecter ; leur historique est conservé. Votre propre compte n\'est jamais désactivé.', danger: true })}>
+                  <UserX size={13} aria-hidden="true" /> Désactiver
+                </button>
+              )}
+              <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => setSelected(new Set())}>Annuler la sélection</button>
+            </div>
+          )}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 36 }}><input type="checkbox" className="sal-check" checked={allChosen} onChange={toggleAll} aria-label="Tout sélectionner" /></th>
-                <th>Utilisateur</th><th>Rôle</th><th>Établissement</th><th>Sécurité</th><th title="Dernière connexion réussie">Connexion</th><th>Statut</th><th style={{ width: 1 }}></th>
+                <th style={{ width: 36 }}><input type="checkbox" checked={allChosen} onChange={toggleAll} aria-label="Tout sélectionner" /></th>
+                <th>Utilisateur</th><th>Rôle</th><th>Établissement</th><th>Sécurité</th><th title="Dernière connexion réussie">Dernière connexion</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -263,15 +278,15 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
                 const store = storeName(u.storeId);
                 const name = fullName(u);
                 return (
-                  <tr key={u.id} id={`user-row-${u.id}`} onClick={() => onEdit(u)} style={{ cursor: 'pointer', opacity: u.isActive ? 1 : 0.6 }}>
+                  <tr key={u.id} id={`user-row-${u.id}`} className={selected.has(u.id) ? 'ds-selected' : undefined} onClick={() => onEdit(u)} style={{ cursor: 'pointer' }}>
                     <td onClick={e => e.stopPropagation()}>
-                      <input type="checkbox" className="sal-check" checked={selected.has(u.id)} onChange={() => toggle(u.id)} aria-label={`Sélectionner ${name}`} />
+                      <input type="checkbox" checked={selected.has(u.id)} onChange={() => toggle(u.id)} aria-label={`Sélectionner ${name}`} />
                     </td>
                     <td>
-                      <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div className="ds-strong" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         {name}{u.id === selfId && <span className="odoo-tag odoo-tag-blue">Vous</span>}
                       </div>
-                      <div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>{u.email}</div>
+                      <div style={{ color: 'var(--ds-muted)', fontSize: 13 }}>{u.email}</div>
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
@@ -282,54 +297,51 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
                     </td>
                     <td>
                       {store
-                        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><MapPin size={12} /> {store}</span>
-                        : <span style={{ color: 'var(--odoo-text-light)' }}>{u.role === 'admin' ? 'Tous' : 'Non assigné'}</span>}
+                        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><MapPin size={12} aria-hidden="true" /> {store}</span>
+                        : <span style={{ color: 'var(--ds-muted)' }}>{u.role === 'admin' ? 'Tous' : 'Non assigné'}</span>}
                     </td>
                     <td>
                       {/* Sécurité : code PIN (caisse) et double authentification, l'un sous l'autre. */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 6px', alignItems: 'center', justifyContent: 'start' }}>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>PIN</span>
+                        <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>PIN</span>
                         {!u.hasPin ? <StatusTag tone="draft" label="Non défini" />
                           : u.pinWeak ? <StatusTag tone="todo" label="À renouveler" title="PIN de moins de 6 chiffres ou antérieur à la règle : à renouveler" />
                           : <StatusTag tone="done" label="Défini" />}
-                        <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }} title="Double authentification">2FA</span>
+                        <span style={{ fontSize: 12, color: 'var(--ds-muted)' }} title="Double authentification">2FA</span>
                         <MfaTag u={u} />
                       </div>
                     </td>
-                    <td style={{ color: u.lastLoginAt ? undefined : 'var(--odoo-text-light)' }} title={u.lastLoginAt ? formatDateTime(u.lastLoginAt) : undefined}>
+                    <td style={{ color: u.lastLoginAt ? undefined : 'var(--ds-muted)' }} title={u.lastLoginAt ? formatDateTime(u.lastLoginAt) : undefined}>
                       {formatLastLogin(u.lastLoginAt)}
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                         <StatusTag tone={u.isActive ? 'done' : 'cancelled'} label={u.isActive ? 'Actif' : 'Désactivé'} />
                         {u.lockedUntil && <StatusTag tone="blocked" label="Verrouillé" title={`Jusqu'à ${formatDateTime(u.lockedUntil)}`} />}
-                        {u.mustChangePassword && <StatusTag tone="todo" label="Mdp à changer" title="Nouveau mot de passe à choisir à la prochaine connexion" />}
+                        {u.mustChangePassword && <StatusTag tone="todo" label="Mot de passe à changer" title="Nouveau mot de passe à choisir à la prochaine connexion" />}
                       </div>
                     </td>
-                    <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-                        <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setPermUser(u)}
-                          title="Droits d'accès" aria-label={`Droits de ${name}`}>
-                          <Settings2 size={13} />
-                        </button>
-                        <RowMenu label={`Autres actions pour ${name}`} items={[
-                          { label: 'Modifier la fiche', icon: Pencil, onSelect: () => onEdit(u) },
-                          { label: 'Analyser les accès', icon: ScanSearch, onSelect: () => setReviewUser(u) },
-                          ...securityMenuItems(u, (a, x) => void run(a, x), selfId),
-                        ]} />
-                      </div>
+                    <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setPermUser(u)} aria-label={`Droits de ${name}`}>
+                        <Settings2 size={13} aria-hidden="true" /> Droits
+                      </button>
+                      <RowMenu label={`Autres actions pour ${name}`} items={[
+                        { label: 'Modifier la fiche', icon: Pencil, onSelect: () => onEdit(u) },
+                        { label: 'Analyser les accès', icon: ScanSearch, onSelect: () => setReviewUser(u) },
+                        ...securityMenuItems(u, (a, x) => void run(a, x), selfId),
+                      ]} />
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
 
       {permUser && <PermissionsModal user={permUser} roleLabel={roleLabel(permUser.role)} onClose={() => setPermUser(null)} />}
       {reviewUser && <AccessReviewModal userId={reviewUser.id as string} name={fullName(reviewUser)} onClose={() => setReviewUser(null)} />}
-      {policyOpen && <MfaPolicyModal onClose={() => setPolicyOpen(false)} />}
+      {policyOpen && <MfaPolicyModal onClose={onPolicyClose} />}
     </>
   );
 }
@@ -412,29 +424,29 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
       tag={user && <StatusTag tone={user.isActive ? 'done' : 'cancelled'} label={user.isActive ? 'Actif' : 'Désactivé'} />}
       width={620} onClose={onClose}
       footer={<>
-        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
+        <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={save.isPending}>Annuler</button>
         <SubmitButton pending={save.isPending} disabled={invalid} onClick={() => save.mutate()}>
-          <Check size={13} /> {user ? 'Enregistrer' : 'Créer le compte'}
+          {user ? 'Enregistrer' : 'Créer le compte'}
         </SubmitButton>
       </>}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field label="Prénom"><input id="user-first-name" className="odoo-input" value={form.firstName} onChange={e => set('firstName', e.target.value)} autoFocus /></Field>
-        <Field label="Nom"><input id="user-last-name" className="odoo-input" value={form.lastName} onChange={e => set('lastName', e.target.value)} /></Field>
+      <div className="ds-form-grid">
+        <Field label="Prénom" required><input id="user-first-name" className="ds-input" value={form.firstName} onChange={e => set('firstName', e.target.value)} autoFocus /></Field>
+        <Field label="Nom" required><input id="user-last-name" className="ds-input" value={form.lastName} onChange={e => set('lastName', e.target.value)} /></Field>
       </div>
-      <Field label="E-mail" hint="Identifiant de connexion administrateur">
-        <input id="user-email" type="email" className="odoo-input" value={form.email} onChange={e => set('email', e.target.value)} />
+      <Field label="E-mail" required hint="Identifiant de connexion administrateur">
+        <input id="user-email" type="email" className="ds-input" value={form.email} onChange={e => set('email', e.target.value)} />
       </Field>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field label={user ? 'Nouveau mot de passe' : 'Mot de passe'} hint={user ? 'Vide = inchangé' : (mustChangePassword ? 'Provisoire : à changer à la 1re connexion' : '4 caractères minimum')}>
+      <div className="ds-form-grid">
+        <Field label={user ? 'Nouveau mot de passe' : 'Mot de passe'} required={!user} hint={user ? 'Vide = inchangé' : (mustChangePassword ? 'Provisoire : à changer à la 1re connexion' : '4 caractères minimum')}>
           <div style={{ display: 'flex', gap: 6 }}>
-            <input id="user-password" type={showPassword ? 'text' : 'password'} className={`odoo-input${form.password && passwordInvalid ? ' invalid' : ''}`} autoComplete="new-password"
+            <input id="user-password" type={showPassword ? 'text' : 'password'} className="ds-input" aria-invalid={!!(form.password && passwordInvalid) || undefined} autoComplete="new-password"
               style={showPassword ? { fontFamily: 'ui-monospace, monospace' } : undefined}
               value={form.password} onChange={e => set('password', e.target.value)} placeholder={user ? '••••••••' : ''} />
-            <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={generate} title="Générer un mot de passe sûr" aria-label="Générer un mot de passe sûr">
+            <button type="button" className="odoo-btn-secondary" style={{ height: 40 }} onClick={generate} title="Générer un mot de passe sûr" aria-label="Générer un mot de passe sûr">
               <Wand2 size={13} />
             </button>
             {form.password && showPassword && (
-              <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => void copyPassword()} title="Copier" aria-label="Copier le mot de passe">
+              <button type="button" className="odoo-btn-secondary" style={{ height: 40 }} onClick={() => void copyPassword()} title="Copier" aria-label="Copier le mot de passe">
                 <Copy size={13} />
               </button>
             )}
@@ -442,11 +454,11 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
         </Field>
         <Field label="Code PIN" hint={user ? (user.hasPin ? (removePin ? 'Sera retiré à l\'enregistrement' : (user.pinWeak ? 'À renouveler (6 chiffres au moins) ; vide = inchangé' : 'Défini ; vide = inchangé')) : 'Non défini ; 6 à 10 chiffres') : '6 à 10 chiffres, connexion en caisse'}>
           <div style={{ display: 'flex', gap: 6 }}>
-            <input id="user-pin" inputMode="numeric" maxLength={10} className={`odoo-input${pinInvalid ? ' invalid' : ''}`}
+            <input id="user-pin" inputMode="numeric" maxLength={10} className="ds-input" aria-invalid={!!(pinInvalid) || undefined}
               style={{ fontFamily: 'ui-monospace, monospace', letterSpacing: '0.2em' }} autoComplete="off" disabled={removePin}
               value={form.pinCode} onChange={e => set('pinCode', e.target.value.replace(/\D/g, ''))} placeholder="123456" />
             {user?.hasPin && (
-              <button type="button" className={removePin ? 'odoo-btn-secondary' : 'odoo-btn-danger'} style={{ whiteSpace: 'nowrap' }}
+              <button type="button" className={removePin ? 'odoo-btn-secondary' : 'ds-btn-danger'} style={{ whiteSpace: 'nowrap', height: 40 }}
                 onClick={() => { setRemovePin(!removePin); set('pinCode', ''); }}>
                 {removePin ? 'Garder' : 'Retirer'}
               </button>
@@ -454,22 +466,22 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
           </div>
         </Field>
       </div>
-      <Field label="Rôles" hint="Plusieurs rôles cumulent leurs droits (le plus permissif gagne). Droits par défaut : onglet Rôles et contrôle.">
+      <Field label="Rôles" required hint="Plusieurs rôles cumulent leurs droits (le plus permissif gagne). Droits par défaut : onglet Rôles et contrôle.">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {roleChoices.map(([code, label]) => {
             const on = roleCodes.includes(code);
             return (
               <button key={code} type="button" className="odoo-filter-chip" aria-pressed={on} onClick={() => toggleRole(code)}
-                style={{ background: on ? 'var(--odoo-purple)' : 'var(--odoo-bg)', color: on ? '#fff' : 'var(--odoo-text)', borderColor: on ? 'var(--odoo-purple)' : 'var(--odoo-border)', padding: '0.25rem 0.625rem', fontSize: '0.75rem' }}>
+                style={{ background: on ? 'var(--ds-tint)' : 'var(--ds-card)', color: 'var(--ds-ink)', fontWeight: on ? 600 : undefined, borderColor: on ? 'var(--ds-accent)' : 'var(--ds-line)', padding: '0.25rem 0.625rem', fontSize: 12 }}>
                 {on && <Check size={11} />} {label}
               </button>
             );
           })}
         </div>
       </Field>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="ds-form-grid">
         <Field label="Rôle principal" hint="Fixe le périmètre technique (écrans, filtres) du compte">
-          <select id="user-primary-role" className="odoo-input" value={primaryRole} onChange={e => setPrimaryRole(e.target.value)} disabled={roleCodes.length <= 1}>
+          <select id="user-primary-role" className="ds-input" value={primaryRole} onChange={e => setPrimaryRole(e.target.value)} disabled={roleCodes.length <= 1}>
             {roleCodes.map(code => {
               const label = roleChoices.find(([c]) => c === code)?.[1] ?? ROLE_LABELS[code as keyof typeof ROLE_LABELS] ?? code;
               return <option key={code} value={code}>{label}</option>;
@@ -477,7 +489,7 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
           </select>
         </Field>
         <Field label="Établissement" hint="Boutique ou site de rattachement">
-          <select id="user-store" className="odoo-input" value={form.storeId} onChange={e => set('storeId', e.target.value)}>
+          <select id="user-store" className="ds-input" value={form.storeId} onChange={e => set('storeId', e.target.value)}>
             <option value="">Aucun</option>
             {stores.map(s => <option key={s.id as string} value={s.id as string}>{s.name as string}{s.city ? ` (${s.city})` : ''}</option>)}
           </select>
@@ -485,20 +497,20 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
       </div>
       {!user && (
         <div style={{ display: 'grid', gap: 6 }}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.8125rem', cursor: 'pointer' }}>
-            <input id="user-must-change" type="checkbox" className="sal-check" checked={mustChangePassword} onChange={e => setMustChangePassword(e.target.checked)} />
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' }}>
+            <input id="user-must-change" type="checkbox" checked={mustChangePassword} onChange={e => setMustChangePassword(e.target.checked)} />
             <span><strong>Changer le mot de passe à la première connexion</strong><br />
-              <span style={{ color: 'var(--odoo-text-muted)' }}>Vous communiquez un mot de passe provisoire ; l'utilisateur choisit le sien en arrivant.</span></span>
+              <span style={{ color: 'var(--ds-muted)' }}>Vous communiquez un mot de passe provisoire ; l'utilisateur choisit le sien en arrivant.</span></span>
           </label>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.8125rem', cursor: 'pointer' }}>
-            <input id="user-mfa-required" type="checkbox" className="sal-check" checked={mfaRequired} onChange={e => setMfaRequired(e.target.checked)} />
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' }}>
+            <input id="user-mfa-required" type="checkbox" checked={mfaRequired} onChange={e => setMfaRequired(e.target.checked)} />
             <span><strong>Exiger la double authentification</strong><br />
-              <span style={{ color: 'var(--odoo-text-muted)' }}>Application d'authentification à configurer dès la première connexion (en plus des rôles qui l'imposent).</span></span>
+              <span style={{ color: 'var(--ds-muted)' }}>Application d'authentification à configurer dès la première connexion (en plus des rôles qui l'imposent).</span></span>
           </label>
         </div>
       )}
       <Field label="Fiche salarié" hint="Relie ce compte à sa fiche pour l'espace employé (heures, bulletins, congés). Aucune = pas d'espace employé.">
-        <select id="user-employee" className="odoo-input" value={effEmployeeId} onChange={e => setEmployeeId(e.target.value)}>
+        <select id="user-employee" className="ds-input" value={effEmployeeId} onChange={e => setEmployeeId(e.target.value)}>
           <option value="">Aucune</option>
           {employees.map(e => {
             const linkedElsewhere = !!e.user_id && e.user_id !== (user?.id as string);
@@ -693,8 +705,8 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
   }
 
   const chip = (selected: boolean): React.CSSProperties => ({
-    background: selected ? 'var(--odoo-purple)' : 'var(--odoo-bg)', color: selected ? '#fff' : 'var(--odoo-text)',
-    borderColor: selected ? 'var(--odoo-purple)' : 'var(--odoo-border)', padding: '0.25rem 0.625rem', fontSize: '0.75rem',
+    background: selected ? 'var(--ds-tint)' : 'var(--ds-card)', color: 'var(--ds-ink)', fontWeight: selected ? 600 : undefined,
+    borderColor: selected ? 'var(--ds-accent)' : 'var(--ds-line)', padding: '0.25rem 0.625rem', fontSize: 12,
   });
 
   return (
@@ -703,12 +715,12 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
       footer={<>
         {hasCustomPerms && (
           <button type="button" className="odoo-btn-secondary" style={{ marginRight: 'auto' }} disabled={resetMutation.isPending} onClick={() => void resetToRole()}>
-            <RotateCcw size={13} /> Revenir aux droits du rôle
+            <RotateCcw size={13} aria-hidden="true" /> Revenir aux droits du rôle
           </button>
         )}
         <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
         <SubmitButton pending={saveMutation.isPending} disabled={!perms} onClick={() => saveMutation.mutate()}>
-          <Check size={13} /> Enregistrer les droits
+          Enregistrer les droits
         </SubmitButton>
       </>}>
       <StatusBanner tone="info" icon={ShieldCheck} title={hasCustomPerms ? 'Cet utilisateur a des droits propres' : `Point de départ : les droits du rôle « ${roleLabel} »`}>
@@ -716,7 +728,7 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
           ? 'Ils remplacent ceux de son rôle tant qu\'ils existent.'
           : 'Enregistrer crée des droits propres à cet utilisateur, qui remplacent alors ceux du rôle.'}
       </StatusBanner>
-      {isLoading || !perms ? <Loader2 className="animate-spin" size={18} /> : (
+      {isLoading || !perms ? <LoadingState bare /> : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
             <thead><tr><th>Module</th>{ACTIONS.map(([, l]) => <th key={l} style={{ textAlign: 'center', width: 84 }}>{l}</th>)}</tr></thead>
@@ -738,18 +750,18 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
                   </tr>,
                   p.canView && (
                     <tr key={`${mod}-scope`}>
-                      <td colSpan={5} style={{ background: 'var(--odoo-bg-alt)' }}>
+                      <td colSpan={5} style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
                         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 16 }}>
-                          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem' }}>
+                          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
                             <span style={{ fontWeight: 600 }}>Portée des données</span>
-                            <select className="odoo-input" style={{ width: 'auto', padding: '2px 6px' }}
+                            <select className="ds-input sm" style={{ width: 'auto' }}
                               value={p.scope || 'store'} onChange={e => setScope(mod, e.target.value)}>
                               {DATA_SCOPES.map(s => <option key={s} value={s}>{DATA_SCOPE_LABELS[s]}</option>)}
                             </select>
                           </label>
                           {verbsFor(mod).length > 0 && (
                             <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Actions métier</span>
+                              <span style={{ fontSize: 12, fontWeight: 600 }}>Actions métier</span>
                               {verbsFor(mod).map(v => {
                                 const on = (p.verbs || []).includes(v);
                                 return (
@@ -767,10 +779,10 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
                   ),
                   mod === 'settings' && p.canView && (
                     <tr key={`${mod}-sections`}>
-                      <td colSpan={5} style={{ background: 'var(--odoo-bg-alt)' }}>
+                      <td colSpan={5} style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
                         <div style={{ display: 'grid', gap: 6, paddingLeft: 16 }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-                            Sections autorisées {!sections.length && <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)' }}>— toutes (aucune restriction)</span>}
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>
+                            Sections autorisées {!sections.length && <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>— toutes (aucune restriction)</span>}
                           </span>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                             {SETTINGS_SECTION_KEYS.map(sec => (
@@ -786,14 +798,14 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
                   ),
                   CATEGORY_MODULES.includes(mod) && p.canView && (
                     <tr key={`${mod}-categories`}>
-                      <td colSpan={5} style={{ background: 'var(--odoo-bg-alt)' }}>
+                      <td colSpan={5} style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
                         <div style={{ display: 'grid', gap: 6, paddingLeft: 16 }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
-                            Catégories autorisées {!slugs.length && <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)' }}>— toutes (aucune restriction)</span>}
+                          <span style={{ fontSize: 12, fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
+                            Catégories autorisées {!slugs.length && <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>— toutes (aucune restriction)</span>}
                             <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }}>
-                              <button type="button" className="odoo-btn-secondary" style={{ padding: '1px 8px', fontSize: '0.75rem' }}
+                              <button type="button" className="odoo-btn-secondary ds-btn-sm"
                                 onClick={() => setConfig(mod, { category_slugs: categories.map(c => c.slug) })}>Tout</button>
-                              <button type="button" className="odoo-btn-secondary" style={{ padding: '1px 8px', fontSize: '0.75rem' }}
+                              <button type="button" className="odoo-btn-secondary ds-btn-sm"
                                 onClick={() => setConfig(mod, { category_slugs: [] })}>Effacer</button>
                             </span>
                           </span>

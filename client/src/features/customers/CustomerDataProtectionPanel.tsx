@@ -60,7 +60,7 @@ export default function CustomerDataProtectionPanel({ customerId, marketingConse
 
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--odoo-text-muted)', marginBottom: 6 }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 }}>
         <ShieldCheck size={12} /> Protection des données (loi 09-08)
       </div>
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' }}>
@@ -71,7 +71,7 @@ export default function CustomerDataProtectionPanel({ customerId, marketingConse
         <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={doExport}>
           <Download size={13} /> Exporter les données
         </button>
-        <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#dc3545' }}
+        <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-danger)' }}
           onClick={askAnonymize} disabled={anonymizeMut.isPending}>
           <UserX size={13} /> Anonymiser
         </button>

@@ -21,6 +21,7 @@ import {
   DeliverModal, ProDeliverModal, RescheduleModal, PrepaymentModal,
 } from './OrdersPage';
 import { OrderStatusTag } from './OrderSplit';
+import { LoadingState, ErrorState, EmptyState } from '../../components/ds';
 
 /**
  * Fiche commande (refonte Ventes, maquette planche 3) : en-tête avec l'action de l'étape
@@ -116,13 +117,12 @@ export default function OrderRecordPage() {
 
   const history = useMemo(() => (o ? orderHistory(o) : []), [o]);
 
-  if (isLoading) return <div className="prj sal-page"><div className="prj-panel sal-empty"><Loader2 className="animate-spin" size={20} /><span>Chargement de la commande…</span></div></div>;
+  if (isLoading) return <div className="prj sal-page"><LoadingState label="Chargement de la commande…" /></div>;
   if (error || !o) {
     return (
       <div className="prj sal-page">
-        <div className="prj-panel sal-empty"><ClipboardList size={28} style={{ opacity: 0.4 }} /><strong>Commande introuvable</strong>
-          <span>{getApiErrorMessage(error, 'Elle a peut-être été supprimée.')}</span>
-          <button type="button" className="odoo-btn-secondary" onClick={() => navigate('/orders')}>Retour aux commandes</button></div>
+        <ErrorState title="Commande introuvable" text={getApiErrorMessage(error, 'Elle a peut-être été supprimée.')} />
+        <div><button type="button" className="odoo-btn-secondary" onClick={() => navigate('/orders')}>Retour aux commandes</button></div>
       </div>
     );
   }
@@ -203,7 +203,7 @@ export default function OrderRecordPage() {
           </div>
         </div>
         {st === 'cancelled' ? (
-          <p className="prj-note" style={{ color: 'var(--prj-red)', fontWeight: 600 }}>Commande annulée{advance > 0 ? ` · avance de ${money(advance)} conservée` : ''}.</p>
+          <p className="prj-note" style={{ color: 'var(--ds-danger)', fontWeight: 600 }}>Commande annulée{advance > 0 ? ` · avance de ${money(advance)} conservée` : ''}.</p>
         ) : (
           <ol className="sal-steps" aria-label="Avancement de la commande">
             {steps.map(s => (
@@ -232,15 +232,15 @@ export default function OrderRecordPage() {
               <div className="prj-scroll">
                 <table className="odoo-table" style={{ margin: 0 }}>
                   <thead><tr>
-                    <th>Produit</th><th style={{ textAlign: 'right' }}>Commandé</th><th style={{ textAlign: 'right' }}>Livré</th><th style={{ textAlign: 'right' }}>Reste</th>
-                    <th style={{ textAlign: 'right' }}>PU{pro ? ' HT' : ''}</th>{pro && <th>TVA</th>}<th style={{ textAlign: 'right' }}>Montant{pro ? ' HT' : ''}</th>
+                    <th>Produit</th><th className="ds-num">Commandé</th><th className="ds-num">Livré</th><th className="ds-num">Reste</th>
+                    <th className="ds-num">PU{pro ? ' HT' : ''} ({currencySymbol()})</th>{pro && <th>TVA</th>}<th className="ds-num">Montant{pro ? ' HT' : ''} ({currencySymbol()})</th>
                   </tr></thead>
                   <tbody>
                     {items.map((it, i) => {
                       const qty = num(it.quantity); const dl = num(it.qty_delivered); const rest = Math.max(0, qty - dl - num(it.qty_cancelled));
                       return (
                         <tr key={it.id ?? i} style={{ cursor: 'default' }}>
-                          <td><span style={{ fontWeight: 500 }}>{it.product_name || it.product_id}</span>{it.notes && <span className="sal-sub">{it.notes}</span>}
+                          <td><span className="ds-strong">{it.product_name || it.product_id}</span>{it.notes && <span className="sal-sub">{it.notes}</span>}
                             {Array.isArray(it.production_lines) && it.production_lines.map((pl: { plan_id: string; of_number: string; item_status: string; planned_quantity: number }) => (
                               <a key={pl.plan_id} href={`/production/${pl.plan_id}`} onClick={(e) => { e.preventDefault(); navigate(`/production/${pl.plan_id}`); }}
                                 className="sal-sub" title="Ordre de fabrication qui sert cette ligne" style={{ display: 'block' }}>
@@ -248,12 +248,12 @@ export default function OrderRecordPage() {
                               </a>
                             ))}
                           </td>
-                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{qty}</td>
-                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{dl}</td>
-                          <td style={{ textAlign: 'right' }}>{rest > 0 && st !== 'cancelled' ? <span className="odoo-tag odoo-tag-orange">{rest}</span> : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}</td>
-                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n(num(it.unit_price))}</td>
+                          <td className="ds-num">{qty}</td>
+                          <td className="ds-num">{dl}</td>
+                          <td className="ds-num">{rest > 0 && st !== 'cancelled' ? <span style={{ color: 'var(--ds-warning)', fontWeight: 600 }}>{rest}</span> : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                          <td className="ds-num">{n(num(it.unit_price))}</td>
                           {pro && <td>{it.tva_rate != null ? (num(it.tva_rate) ? `${num(it.tva_rate)} %` : 'Exonéré') : '—'}</td>}
-                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{n(qty * num(it.unit_price))}</td>
+                          <td className="ds-num ds-strong">{n(qty * num(it.unit_price))}</td>
                         </tr>
                       );
                     })}
@@ -263,7 +263,7 @@ export default function OrderRecordPage() {
               <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16 }}>
                 <div style={{ flex: '1 1 280px', display: 'grid', gap: 8 }}>
                   {o.notes && <p className="prj-note" style={{ whiteSpace: 'pre-line' }}><strong style={{ color: 'var(--odoo-text)' }}>Note : </strong>{o.notes}</p>}
-                  {pro && restHt > 0.004 && st !== 'cancelled' && <p className="prj-note">Reste à livrer : <strong style={{ color: 'var(--prj-orange)' }}>{money(restHt)} HT</strong>.</p>}
+                  {pro && restHt > 0.004 && st !== 'cancelled' && <p className="prj-note">Reste à livrer : <strong style={{ color: 'var(--ds-warning)' }}>{money(restHt)} HT</strong>.</p>}
                   {!pro && advance > 0 && st !== 'completed' && <p className="prj-note">Avance non remboursable · le solde est encaissé au retrait.</p>}
                 </div>
                 <dl className="sal-totals">
@@ -280,29 +280,29 @@ export default function OrderRecordPage() {
 
             {tab === 'deliveries' && (allNotes.length ? (
               <div className="prj-scroll"><table className="odoo-table" style={{ margin: 0 }}>
-                <thead><tr><th>N° BL</th><th>Date</th><th>Par</th><th>Statut</th><th style={{ textAlign: 'right' }}>HT</th><th style={{ textAlign: 'right' }}>TTC</th></tr></thead>
+                <thead><tr><th>N° BL</th><th>Date</th><th>Par</th><th>Statut</th><th className="ds-num">HT ({currencySymbol()})</th><th className="ds-num">TTC ({currencySymbol()})</th></tr></thead>
                 <tbody>{allNotes.map(d => (
                   <tr key={d.id} onClick={() => navigate(`/delivery-notes?open=${d.id}`)} style={{ cursor: 'pointer' }}>
-                    <td><span className="sal-num">{d.number}</span></td><td>{fmtDate(d.delivery_date)}</td><td>{d.created_by_name || '—'}</td>
+                    <td><span className="ds-ref">{d.number}</span></td><td>{fmtDate(d.delivery_date)}</td><td>{d.created_by_name || '—'}</td>
                     <td><StatusTag tone={BL_STATUS[d.status]?.tone ?? 'draft'} icon={BL_STATUS[d.status]?.icon} label={BL_STATUS[d.status]?.label ?? d.status} />{d.invoice_number && <span className="sal-sub sal-mono">{d.invoice_number}</span>}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n(num(d.total_ht))}</td><td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{n(num(d.total_ttc))}</td>
+                    <td className="ds-num">{n(num(d.total_ht))}</td><td className="ds-num ds-strong">{n(num(d.total_ttc))}</td>
                   </tr>))}</tbody>
               </table></div>
-            ) : <div className="sal-empty">{pro ? 'Aucune livraison pour cette commande.' : 'Commande de particulier : remise au comptoir, sans bon de livraison.'}</div>)}
+            ) : <EmptyState bare icon={ClipboardList} title={pro ? 'Aucune livraison pour cette commande' : 'Pas de bon de livraison'} text={pro ? undefined : 'Commande de particulier : remise au comptoir, sans bon de livraison.'} />)}
 
             {tab === 'invoices' && (allInvoices.length ? (
               <div className="prj-scroll"><table className="odoo-table" style={{ margin: 0 }}>
-                <thead><tr><th>N°</th><th>Date</th><th>Échéance</th><th>Statut</th><th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'right' }}>Encaissé</th></tr></thead>
+                <thead><tr><th>N°</th><th>Date</th><th>Échéance</th><th>Statut</th><th className="ds-num">Total ({currencySymbol()})</th><th className="ds-num">Encaissé ({currencySymbol()})</th></tr></thead>
                 <tbody>{allInvoices.map(i => (
                   <tr key={i.id} onClick={() => navigate('/sales?tab=invoices')} style={{ cursor: 'pointer' }}>
-                    <td><span className="sal-num">{i.invoice_number}</span>{i.kind === 'credit_note' && <span className="sal-sub">avoir</span>}</td>
+                    <td><span className="ds-ref">{i.invoice_number}</span>{i.kind === 'credit_note' && <span className="sal-sub">avoir</span>}</td>
                     <td>{fmtDate(i.invoice_date)}</td><td>{i.due_date ? fmtDate(i.due_date) : '—'}</td>
                     <td><StatusTag tone={INVOICE_STATUS[i.status]?.tone ?? 'draft'} icon={INVOICE_STATUS[i.status]?.icon} label={INVOICE_STATUS[i.status]?.label ?? i.status} /></td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{n(num(i.total_amount))}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n(num(i.paid_amount))}</td>
+                    <td className="ds-num ds-strong">{n(num(i.total_amount))}</td>
+                    <td className="ds-num">{n(num(i.paid_amount))}</td>
                   </tr>))}</tbody>
               </table></div>
-            ) : <div className="sal-empty">{pro ? 'Pas encore de facture : elle naît de la livraison.' : 'Commande de particulier : encaissée en caisse, sans facture.'}</div>)}
+            ) : <EmptyState bare icon={FileText} title="Pas de facture" text={pro ? 'Elle naît de la livraison.' : 'Commande de particulier : encaissée en caisse, sans facture.'} />)}
 
             {tab === 'history' && (
               <ul className="prj-feed" style={{ padding: 16 }}>

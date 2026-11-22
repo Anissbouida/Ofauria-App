@@ -15,8 +15,8 @@ import { apiErrorMessage } from '../../api/errors';
  * les informations de son métier. Le type et le code d'un champ sont figés après création
  * (les valeurs saisies en dépendent) ; un champ se désactive, il ne se supprime pas.
  */
-const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
-const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)', width: '100%' };
+const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
 type Draft = { id?: string; label: string; fieldType: CfType; options: string; required: boolean; showInList: boolean; help: string };
 const emptyDraft = (): Draft => ({ label: '', fieldType: 'text', options: '', required: false, showInList: false, help: '' });
 const EXAMPLES: Record<CfEntity, string> = {
@@ -84,29 +84,29 @@ export default function CustomFieldsTab() {
         chips={entities.map(e => ({ key: e.key, label: e.label, count: all.filter(d => d.entity === e.key && d.is_active).length }))} />
 
       {list.length === 0 && !draft ? (
-        <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>Aucun champ sur cette fiche. Exemples : {EXAMPLES[entity]}</p>
+        <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', margin: 0 }}>Aucun champ sur cette fiche. Exemples : {EXAMPLES[entity]}</p>
       ) : list.length > 0 && (
         <div className="prj-panel prj-scroll">
           <table className="odoo-table">
-            <thead><tr><th style={{ width: 60 }}>Ordre</th><th>Champ</th><th>Type</th><th>Obligatoire</th><th>Dans la liste</th><th>Statut</th><th></th></tr></thead>
+            <thead><tr><th style={{ width: 60 }}>Ordre</th><th>Champ</th><th>Type</th><th>Obligatoire</th><th>Dans la liste</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>{list.map((d, i) => (
               <tr key={d.id} style={{ opacity: d.is_active ? 1 : 0.55 }}>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   {canEdit('settings') && <>
-                    <button className="odoo-pager-btn" aria-label="Monter" disabled={i === 0} onClick={() => move(d, -1)}><ArrowUp size={12} /></button>
-                    <button className="odoo-pager-btn" aria-label="Descendre" disabled={i === list.length - 1} onClick={() => move(d, 1)}><ArrowDown size={12} /></button>
+                    <button type="button" className="odoo-pager-btn" aria-label="Monter" disabled={i === 0} onClick={() => move(d, -1)}><ArrowUp size={12} /></button>
+                    <button type="button" className="odoo-pager-btn" aria-label="Descendre" disabled={i === list.length - 1} onClick={() => move(d, 1)}><ArrowDown size={12} /></button>
                   </>}
                 </td>
-                <td><strong>{d.label}</strong><div style={{ fontSize: '0.7rem', color: 'var(--odoo-text-muted)', fontFamily: 'ui-monospace, monospace' }}>{d.code}</div>
-                  {d.help && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{d.help}</div>}</td>
-                <td>{CF_TYPE_LABELS[d.field_type]}{d.field_type === 'select' && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{d.options.join(' · ')}</div>}</td>
+                <td><strong>{d.label}</strong><div style={{ fontSize: 12, color: 'var(--ds-muted)', fontFamily: 'ui-monospace, monospace' }}>{d.code}</div>
+                  {d.help && <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{d.help}</div>}</td>
+                <td>{CF_TYPE_LABELS[d.field_type]}{d.field_type === 'select' && <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{d.options.join(' · ')}</div>}</td>
                 <td>{d.required ? 'Oui' : 'Non'}</td>
                 <td>{d.show_in_list ? 'Oui' : 'Non'}</td>
                 <td>{d.is_active ? <StatusTag tone="done" label="Actif" /> : <StatusTag tone="cancelled" label="Désactivé" />}</td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
                   {canEdit('settings') && <>
-                    <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setDraft({ id: d.id, label: d.label, fieldType: d.field_type, options: d.options.join('\n'), required: d.required, showInList: d.show_in_list, help: d.help ?? '' })}>Modifier</button>{' '}
-                    <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => toggle(d)}>{d.is_active ? 'Désactiver' : 'Réactiver'}</button>
+                    <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setDraft({ id: d.id, label: d.label, fieldType: d.field_type, options: d.options.join('\n'), required: d.required, showInList: d.show_in_list, help: d.help ?? '' })}>Modifier</button>{' '}
+                    <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => toggle(d)}>{d.is_active ? 'Désactiver' : 'Réactiver'}</button>
                   </>}
                 </td>
               </tr>
@@ -116,7 +116,7 @@ export default function CustomFieldsTab() {
       )}
 
       {!draft && canCreate('settings') && (
-        <div><button className="odoo-btn-secondary" onClick={() => setDraft(emptyDraft())} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Ajouter un champ</button></div>
+        <div><button type="button" className="odoo-btn-secondary" onClick={() => setDraft(emptyDraft())} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Ajouter un champ</button></div>
       )}
       {draft && (
         <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
@@ -135,10 +135,10 @@ export default function CustomFieldsTab() {
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={draft.required} onChange={e => setDraft({ ...draft, required: e.target.checked })} /> Obligatoire</label>
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={draft.showInList} onChange={e => setDraft({ ...draft, showInList: e.target.checked })} /> Afficher dans la liste</label>
           </div>
-          {draft.required && !draft.id && <p style={{ fontSize: '0.75rem', color: 'var(--prj-orange)', margin: 0 }}>Un champ obligatoire sera exigé à la prochaine modification de chaque fiche existante.</p>}
+          {draft.required && !draft.id && <p style={{ fontSize: '0.75rem', color: 'var(--ds-warning)', margin: 0 }}>Un champ obligatoire sera exigé à la prochaine modification de chaque fiche existante.</p>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
-            <button className="odoo-btn-primary" disabled={save.isPending || draft.label.trim().length < 2 || (draft.fieldType === 'select' && !draft.options.trim())} onClick={() => save.mutate(draft)}>Enregistrer</button>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
+            <button type="button" className="odoo-btn-primary" disabled={save.isPending || draft.label.trim().length < 2 || (draft.fieldType === 'select' && !draft.options.trim())} onClick={() => save.mutate(draft)}>Enregistrer</button>
           </div>
         </div>
       )}

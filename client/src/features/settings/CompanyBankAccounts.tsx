@@ -48,8 +48,8 @@ export default function CompanyBankAccounts() {
     : { id: null, draft: { ...EMPTY, isDefault: accounts.length === 0 } });
 
   const ribDigits = editing?.draft.rib.replace(/\s/g, '') ?? '';
-  const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)' };
+  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
   const set = (k: keyof Draft, v: string | boolean) => setEditing(e => e && { ...e, draft: { ...e.draft, [k]: v } });
 
   return (
@@ -57,10 +57,10 @@ export default function CompanyBankAccounts() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Comptes bancaires</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Le compte par défaut figure sur les factures et sert aux virements.</div>
+          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Le compte par défaut figure sur les factures et sert aux virements.</div>
         </div>
         {!editing && !isError && (
-          <button className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button type="button" className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Plus size={13} /> Ajouter un compte
           </button>
         )}
@@ -80,7 +80,7 @@ export default function CompanyBankAccounts() {
                   <td>{a.ledger_account ?? '—'}</td>
                   <td>{a.store_name ?? 'Tous'}</td>
                   <td><StatusTag tone={a.is_active ? 'done' : 'cancelled'} label={a.is_active ? (a.show_on_invoices ? 'Actif · sur factures' : 'Actif') : 'Fermé'} /></td>
-                  <td><button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(a)} aria-label={`Modifier ${a.label}`}><Pencil size={13} /></button></td>
+                  <td><button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(a)} aria-label={`Modifier ${a.label}`}><Pencil size={13} /></button></td>
                 </tr>
               ))}
             </tbody>
@@ -88,7 +88,7 @@ export default function CompanyBankAccounts() {
         </div>
       )}
       {!isLoading && !isError && !accounts.length && !editing && (
-        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--odoo-text-muted)' }}>Aucun compte bancaire : ajoutez celui de la société pour qu'il figure sur les factures.</p>
+        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--ds-muted)' }}>Aucun compte bancaire : ajoutez celui de la société pour qu'il figure sur les factures.</p>
       )}
 
       {editing && (
@@ -103,7 +103,7 @@ export default function CompanyBankAccounts() {
             <label style={{ ...lab, flex: '2 1 280px' }}>RIB (24 chiffres)
               <input id="bank-rib" style={{ ...field, fontFamily: 'ui-monospace, monospace' }} value={editing.draft.rib} inputMode="numeric"
                 onChange={e => set('rib', e.target.value)} placeholder="000 000 0000000000000000 00" />
-              <span style={{ fontSize: '0.75rem', color: ribDigits.length === 24 || !ribDigits ? 'var(--odoo-text-muted)' : 'var(--odoo-danger, #b3261e)' }}>
+              <span style={{ fontSize: '0.75rem', color: ribDigits.length === 24 || !ribDigits ? 'var(--ds-muted)' : 'var(--odoo-danger, #b3261e)' }}>
                 {ribDigits.length}/24 chiffres · la clé est vérifiée à l'enregistrement
               </span>
             </label>
@@ -130,8 +130,8 @@ export default function CompanyBankAccounts() {
             ))}
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
-            <button className="odoo-btn-primary" disabled={save.isPending || ribDigits.length !== 24 || !editing.draft.label.trim() || !editing.draft.bankName.trim()}
+            <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
+            <button type="button" className="odoo-btn-primary" disabled={save.isPending || ribDigits.length !== 24 || !editing.draft.label.trim() || !editing.draft.bankName.trim()}
               onClick={() => save.mutate()}>
               {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
             </button>

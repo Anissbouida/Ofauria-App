@@ -14,6 +14,8 @@ import { apiErrorMessage } from '../../api/errors';
 import IntegrityPanel from './IntegrityPanel';
 import FiscalYearsPanel from './FiscalYearsPanel';
 import { money } from '../../utils/money';
+import { DataPanel, EmptyState, LoadingState, SectionHeader, Toolbar, TableFooter } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
 
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
@@ -85,19 +87,16 @@ export default function ClotureTab() {
 
   if (!canSee) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>La clôture est réservée à l'administrateur ou au gérant.</p>
-      </div>
+      <EmptyState icon={Lock} title="La clôture est réservée à l'administrateur ou au gérant" />
     );
   }
 
   const close = async (p: FiscalPeriod) => {
-    if (!(await confirm(`Clôturer ${MONTH_NAMES[p.month - 1]} ${p.year} ? Plus aucune écriture ne pourra y être passée ; une correction sera datée dans la période ouverte suivante.`))) return;
+    if (!(await confirm(`Clôturer ${MONTH_NAMES[p.month - 1]} ${p.year} ? Plus aucune écriture ne pourra y être passée ; une correction sera datée dans la période ouverte suivante.`, { title: 'Clôturer la période', confirmLabel: 'Clôturer', danger: true }))) return;
     mutation.mutate({ id: p.id, status: 'closed' });
   };
   const lock = async (p: FiscalPeriod) => {
-    if (!(await confirm(`Verrouiller définitivement ${MONTH_NAMES[p.month - 1]} ${p.year} ? Aucune correction ne sera plus possible, même par extourne.`))) return;
+    if (!(await confirm(`Verrouiller définitivement ${MONTH_NAMES[p.month - 1]} ${p.year} ? Aucune correction ne sera plus possible, même par extourne.`, { title: 'Verrouiller définitivement', confirmLabel: 'Verrouiller', danger: true }))) return;
     mutation.mutate({ id: p.id, status: 'locked' });
   };
   const grirTotal = grir.reduce((t, g) => t + (parseFloat(g.open_amount) || 0), 0);
@@ -105,7 +104,43 @@ export default function ClotureTab() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
+      {pendingOutbox.length > 0 && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <StatusBanner tone="danger" icon={Inbox} title={`${pendingOutbox.length} pièce(s) non comptabilisée(s)`}
+            actions={isAdmin ? (
+              <button type="button" className="odoo-btn-primary" disabled={replay.isPending} aria-busy={replay.isPending || undefined} onClick={() => replay.mutate(undefined)}>
+                {replay.isPending ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={12} aria-hidden="true" />} Rejouer tout
+              </button>
+            ) : undefined}>
+            La pièce a été enregistrée mais son écriture a échoué. Corrigez la cause (paramétrage, prix BC…) puis rejouez.
+          </StatusBanner>
+          <DataPanel label="Pièces non comptabilisées">
+          <table className="odoo-table ds-dense">
+            <thead><tr><th style={{ width: 120 }}>Pièce</th><th style={{ width: 160 }}>Document</th><th>Motif de l'échec</th><th className="ds-num" style={{ width: 70 }}>Essais</th>{isAdmin && <th style={{ width: 90 }} />}</tr></thead>
+            <tbody>
+              {pendingOutbox.map(o => (
+                <tr key={o.id}>
+                  <td><StatusTag tone="draft" label={o.source_kind === 'invoice' ? 'Facture' : o.source_kind === 'payment' ? 'Paiement' : o.source_kind === 'goods_receipt' ? 'Réception' : o.source_kind} /></td>
+                  <td className="ds-ref">{o.document_label || o.source_id.slice(0, 8)}</td>
+                  <td style={{ color: 'var(--ds-danger)' }}>{o.last_error}</td>
+                  <td className="ds-num">{o.attempts}</td>
+                  {isAdmin && <td className="ds-actions">
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={replay.isPending} onClick={() => replay.mutate(o.id)}>Rejouer</button>
+                  </td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </DataPanel>
+        </div>
+      )}
+
+      <IntegrityPanel />
+
+      <FiscalYearsPanel isAdmin={isAdmin} />
+
+      <SectionHeader title="Périodes mensuelles" />
+      <Toolbar>
         <SearchSelect
           options={[now.getFullYear() + 1, now.getFullYear(), now.getFullYear() - 1].map(y => ({ id: String(y), label: String(y) }))}
           value={String(year)}
@@ -113,62 +148,25 @@ export default function ClotureTab() {
           placeholder="Année"
           width={120}
         />
-        <div style={{ flex: 1 }} />
-      </div>
+      </Toolbar>
 
-      <IntegrityPanel />
-
-      <FiscalYearsPanel isAdmin={isAdmin} />
-
-      {pendingOutbox.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <StatusBanner tone="danger" icon={Inbox} title={`${pendingOutbox.length} pièce(s) non comptabilisée(s)`}
-            actions={isAdmin ? (
-              <button className="odoo-btn-primary" disabled={replay.isPending} onClick={() => replay.mutate(undefined)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                {replay.isPending ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Rejouer tout
-              </button>
-            ) : undefined}>
-            La pièce a été enregistrée mais son écriture a échoué. Corrigez la cause (paramétrage, prix BC…) puis rejouez.
-          </StatusBanner>
-          <table className="odoo-table" style={{ margin: '8px 0 0' }}>
-            <thead><tr><th style={{ width: 120 }}>Pièce</th><th style={{ width: 160 }}>Document</th><th>Motif de l'échec</th><th style={{ width: 70, textAlign: 'right' }}>Essais</th>{isAdmin && <th style={{ width: 90 }} />}</tr></thead>
-            <tbody>
-              {pendingOutbox.map(o => (
-                <tr key={o.id}>
-                  <td><span className="odoo-tag odoo-tag-grey">{o.source_kind === 'invoice' ? 'Facture' : o.source_kind === 'payment' ? 'Paiement' : o.source_kind === 'goods_receipt' ? 'Réception' : o.source_kind}</span></td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{o.document_label || o.source_id.slice(0, 8)}</td>
-                  <td style={{ fontSize: '0.75rem', color: '#721c24' }}>{o.last_error}</td>
-                  <td style={{ textAlign: 'right' }}>{o.attempts}</td>
-                  {isAdmin && <td style={{ textAlign: 'right' }}>
-                    <button className="odoo-btn-secondary" disabled={replay.isPending} onClick={() => replay.mutate(o.id)}>Rejouer</button>
-                  </td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginBottom: 12 }}>
+      <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>
         <strong>Ouverte</strong> : écritures libres. <strong>Clôturée</strong> : plus de nouvelle écriture ; une correction est
         datée au premier jour de la période ouverte suivante. Les mois se clôturent dans l'ordre, après des contrôles sans
         point bloquant. <strong>Verrouillée</strong> : verrou définitif, réservé à l'administrateur.
       </p>
 
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        </div>
+        <LoadingState />
       ) : (
-        <div className="odoo-section" style={{ padding: 0 }}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Périodes mensuelles" footer={<TableFooter note={`${periods.length} période${periods.length > 1 ? 's' : ''} · exercice ${year}`} />}>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th>Période</th>
-                <th style={{ width: 200 }}>Dates</th>
-                <th style={{ width: 130 }}>Statut</th>
-                <th style={{ width: 360, textAlign: 'right' }}>Actions</th>
+                <th style={{ width: 220 }}>Dates</th>
+                <th style={{ width: 150 }}>Statut</th>
+                <th className="ds-actions" style={{ width: 260 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -178,47 +176,27 @@ export default function ClotureTab() {
                 return (
                   <Fragment key={p.id}>
                     <tr>
-                      <td style={{ fontWeight: 500 }}>{MONTH_NAMES[p.month - 1]} {p.year}</td>
-                      <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                      <td className="ds-strong">{MONTH_NAMES[p.month - 1]} {p.year}</td>
+                      <td style={{ color: 'var(--ds-muted)' }}>
                         {String(p.start_date).slice(0, 10)} → {String(p.end_date).slice(0, 10)}
                       </td>
                       <td>
                         <StatusTag tone={meta.tone} icon={meta.icon} label={meta.label} />
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: 6 }}>
-                          <button className="odoo-btn-secondary" onClick={() => setOpenChecks(expanded ? null : p.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            <ListChecks size={12} /> {expanded ? 'Masquer' : 'Contrôles'}
-                          </button>
-                          {p.status === 'open' && (
-                            <button className="odoo-btn-primary" disabled={mutation.isPending} onClick={() => close(p)}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <Lock size={12} /> Clôturer
-                            </button>
-                          )}
-                          {p.status === 'closed' && (
-                            <>
-                              <button className="odoo-btn-secondary" disabled={mutation.isPending} onClick={() => setReopen(p)}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                <LockOpen size={12} /> Rouvrir
-                              </button>
-                              {isAdmin && (
-                                <button className="odoo-btn-danger" disabled={mutation.isPending} onClick={() => lock(p)}
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  <ShieldCheck size={12} /> Verrouiller
-                                </button>
-                              )}
-                            </>
-                          )}
-                          {p.status === 'locked' && (
-                            <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Verrou définitif</span>
-                          )}
-                        </div>
+                      <td className="ds-actions">
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-expanded={expanded} onClick={() => setOpenChecks(expanded ? null : p.id)}>
+                          <ListChecks size={12} aria-hidden="true" /> {expanded ? 'Masquer' : 'Contrôles'}
+                        </button>
+                        {p.status === 'locked' && <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Verrou définitif</span>}
+                        <RowMenu label={`Actions sur ${MONTH_NAMES[p.month - 1]} ${p.year}`} items={[
+                          ...(p.status === 'open' ? [{ label: 'Clôturer la période', icon: Lock, danger: true, disabled: mutation.isPending, onSelect: () => { void close(p); } }] : []),
+                          ...(p.status === 'closed' ? [{ label: 'Rouvrir la période', icon: LockOpen, disabled: mutation.isPending, onSelect: () => setReopen(p) }] : []),
+                          ...(p.status === 'closed' && isAdmin ? [{ label: 'Verrouiller définitivement', icon: ShieldCheck, danger: true, disabled: mutation.isPending, onSelect: () => { void lock(p); } }] : []),
+                        ]} />
                       </td>
                     </tr>
                     {expanded && (
-                      <tr><td colSpan={4} style={{ background: 'var(--theme-bg-page)', padding: 12 }}>
+                      <tr><td colSpan={4} style={{ background: 'var(--ds-bg)', padding: 16 }}>
                         <PeriodChecks periodId={p.id} />
                         <SalesPeriodEnd periodId={p.id} open={p.status === 'open'} />
                       </td></tr>
@@ -228,36 +206,39 @@ export default function ClotureTab() {
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {/* Réceptions à facturer : compte d'attente 4417 lettré par ligne de BC (G-D8-05). */}
-      <div style={{ marginTop: 16 }}>
+      <div style={{ display: 'grid', gap: 8 }}>
+        <SectionHeader title="Réceptions à facturer" />
         <StatusBanner tone={grirAged.length ? 'warning' : 'neutral'} icon={PackageOpen}
           title={`Réceptions à facturer : ${money(grirTotal)} sur ${grir.length} ligne(s) de BC`}>
           Marchandise reçue et comptabilisée au prix du BC, en attente de la facture fournisseur.
           {grirAged.length > 0 && ` ${grirAged.length} ligne(s) attendent depuis plus de 30 jours.`}
         </StatusBanner>
         {grir.length > 0 && (
-          <table className="odoo-table" style={{ margin: '8px 0 0' }}>
-            <thead><tr><th>Fournisseur</th><th style={{ width: 130 }}>BC</th><th>Article</th><th style={{ width: 110 }}>Depuis</th><th style={{ width: 70, textAlign: 'right' }}>Âge</th><th style={{ width: 120, textAlign: 'right' }}>Solde</th></tr></thead>
+          <DataPanel label="Réceptions à facturer">
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Fournisseur</th><th style={{ width: 130 }}>BC</th><th>Article</th><th style={{ width: 110 }}>Depuis</th><th className="ds-num" style={{ width: 70 }}>Âge</th><th className="ds-num" style={{ width: 120 }}>Solde</th></tr></thead>
             <tbody>
               {grir.map(g => {
                 const v = parseFloat(g.open_amount);
                 return (
                   <tr key={g.po_line_id}>
-                    <td>{g.supplier_name || '—'}</td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{g.order_number}</td>
+                    <td className="ds-strong">{g.supplier_name || '—'}</td>
+                    <td className="ds-ref">{g.order_number}</td>
                     <td>{g.item_name || '—'}</td>
-                    <td style={{ fontSize: '0.75rem' }}>{String(g.first_event).slice(0, 10)}</td>
-                    <td style={{ textAlign: 'right' }}>{g.age_days > 30 ? <span className="odoo-tag odoo-tag-orange">{g.age_days} j</span> : `${g.age_days} j`}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: v < 0 ? '#b71c1c' : undefined }}
+                    <td>{String(g.first_event).slice(0, 10)}</td>
+                    <td className="ds-num">{g.age_days > 30 ? <StatusTag tone="todo" label={`${g.age_days} j`} /> : `${g.age_days} j`}</td>
+                    <td className="ds-num" style={{ color: v < 0 ? 'var(--ds-danger)' : undefined }}
                       title={v < 0 ? 'Facturé non reçu' : 'Reçu non facturé'}>{fmt(v)}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </DataPanel>
         )}
       </div>
 
@@ -268,7 +249,7 @@ export default function ClotureTab() {
             <div className="odoo-control-bar">
               <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Rouvrir {MONTH_NAMES[reopen.month - 1]} {reopen.year}</span></div>
               <div style={{ flex: 1 }} />
-              <button onClick={() => setReopen(null)} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+              <button onClick={() => setReopen(null)} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
             </div>
             <form onSubmit={(e) => { e.preventDefault(); mutation.mutate({ id: reopen.id, status: 'open', note: reopenNote.trim() }); }}
               style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -298,7 +279,7 @@ function PeriodChecks({ periodId }: { periodId: string }) {
   const { data: events = [] } = useQuery({
     queryKey: ['ledger-period-events', periodId], queryFn: () => fiscalPeriodsApi.events(periodId),
   });
-  if (isLoading) return <Loader2 size={16} className="animate-spin" />;
+  if (isLoading) return <LoadingState />;
   const blocking = (checks as CloseCheck[]).filter(c => c.blocking && c.item_count > 0);
   const warnings = (checks as CloseCheck[]).filter(c => !c.blocking && c.item_count > 0);
   return (
@@ -306,14 +287,14 @@ function PeriodChecks({ periodId }: { periodId: string }) {
       {blocking.length > 0
         ? <StatusBanner tone="danger" icon={AlertTriangle} title={`${blocking.length} contrôle(s) bloquant(s)`}>La période ne peut pas être clôturée tant qu'ils ne sont pas résolus.</StatusBanner>
         : <StatusBanner tone="success" icon={CheckCircle2} title="Aucun point bloquant">{warnings.length ? `${warnings.length} avertissement(s) à examiner.` : 'Tous les contrôles sont au vert.'}</StatusBanner>}
-      <table className="odoo-table" style={{ margin: 0 }}>
-        <thead><tr><th>Contrôle</th><th style={{ width: 90, textAlign: 'right' }}>Nombre</th><th style={{ width: 130, textAlign: 'right' }}>Montant</th><th style={{ width: 120 }}>Effet</th></tr></thead>
+      <table className="odoo-table ds-dense">
+        <thead><tr><th>Contrôle</th><th className="ds-num" style={{ width: 90 }}>Nombre</th><th className="ds-num" style={{ width: 130 }}>Montant</th><th style={{ width: 120 }}>Effet</th></tr></thead>
         <tbody>
           {(checks as CloseCheck[]).map(c => (
             <tr key={c.code}>
               <td>{c.label}</td>
-              <td style={{ textAlign: 'right' }}>{c.item_count}</td>
-              <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{c.amount != null && c.item_count > 0 ? fmt(c.amount) : '—'}</td>
+              <td className="ds-num">{c.item_count}</td>
+              <td className="ds-num">{c.amount != null && c.item_count > 0 ? fmt(c.amount) : '—'}</td>
               <td>{c.item_count === 0
                 ? <StatusTag tone="done" label="OK" />
                 : c.blocking ? <StatusTag tone="blocked" label="Bloquant" /> : <StatusTag tone="todo" label="À examiner" />}</td>
@@ -392,7 +373,7 @@ function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean })
           <span style={{ flex: 1, minWidth: 260 }}>
             <strong>Stock de produits finis</strong> — {fgOp
               ? <>valorisé à {money(fgOp.amount)} (variation {money(fgOp.detail?.delta ?? 0)}){fgOp.detail?.products_without_cost
-                  ? <span style={{ color: '#b45309' }}> · {fgOp.detail.products_without_cost} produit(s) sans coût</span> : null}</>
+                  ? <span style={{ color: 'var(--ds-warning)' }}> · {fgOp.detail.products_without_cost} produit(s) sans coût</span> : null}</>
               : 'non valorisé pour cette période'}
             <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
               Valorisation du stock au moment du calcul (lots au coût figé, sinon coût standard) : à lancer le dernier jour du mois.

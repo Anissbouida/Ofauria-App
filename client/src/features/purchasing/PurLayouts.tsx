@@ -19,9 +19,9 @@ export type PurLayout = 'split' | 'list' | 'kanban';
 /** Taille de page demandée en Kanban : toutes les pièces de la vue (plafond serveur 500). */
 export const KANBAN_ALL = 500;
 
-/** Colonnes par défaut sur grand écran, Liste sinon (même règle que les Ventes). */
+/** Tableau par défaut (gabarit de liste standard du Design System, 2026-11-22). */
 export function usePurLayout(): [PurLayout, (l: PurLayout) => void] {
-  return useState<PurLayout>(() => (typeof window !== 'undefined' && window.innerWidth >= 1100 ? 'split' : 'list'));
+  return useState<PurLayout>('list');
 }
 
 export function LayoutSwitch({ value, onChange }: { value: PurLayout; onChange: (l: PurLayout) => void }) {
@@ -30,7 +30,7 @@ export function LayoutSwitch({ value, onChange }: { value: PurLayout; onChange: 
   );
   return (
     <div className="prj-views" role="group" aria-label="Affichage">
-      {btn('split', Columns3, 'Colonnes')}{btn('list', List, 'Liste')}{btn('kanban', SquareKanban, 'Kanban')}
+      {btn('list', List, 'Tableau')}{btn('split', Columns3, 'Colonnes')}{btn('kanban', SquareKanban, 'Kanban')}
     </div>
   );
 }

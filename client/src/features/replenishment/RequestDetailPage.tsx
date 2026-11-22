@@ -18,6 +18,8 @@ import {
   Loader2, User, Calendar, Hash, ChefHat, Layers, ArrowRight,
   ShoppingBag, Send, type LucideIcon,
 } from 'lucide-react';
+import { Breadcrumb, EmptyState, LoadingState } from '../../components/ds';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 /* ─── Constants ─── */
 
@@ -184,17 +186,14 @@ export default function RequestDetailPage() {
 
   if (isLoading) return (
     <div className="odoo-scope pd"><div className="pd-page">
-      <section className="prj-panel sal-empty"><Loader2 size={24} className="animate-spin" /><span>Chargement...</span></section>
+      <LoadingState label="Chargement de la demande…" />
     </div></div>
   );
 
   if (!request) return (
     <div className="odoo-scope pd"><div className="pd-page">
-      <section className="prj-panel sal-empty">
-        <Package size={28} style={{ opacity: 0.4 }} />
-        <strong>Demande non trouvée</strong>
-        <button onClick={() => navigate('/replenishment')} className="odoo-btn-secondary"><ArrowLeft size={14} /> Retour</button>
-      </section>
+      <EmptyState icon={Package} title="Demande introuvable" text="Elle a peut-être été annulée ou supprimée."
+        action={<button type="button" onClick={() => navigate('/replenishment')} className="odoo-btn-secondary"><ArrowLeft size={14} aria-hidden="true" /> Retour aux demandes</button>} />
     </div></div>
   );
 
@@ -245,6 +244,7 @@ function SubRequestDetailView({
   setReceptionItems: React.Dispatch<React.SetStateAction<Record<string, { qtyReceived: number; notes: string }>>>;
 }) {
   const ws = useWorkshops(); // libellé de l'atelier (mig 511)
+  const confirm = useConfirm();
   const items = (request.items || []) as Record<string, any>[];
   const displayStatus = (request.display_status as string) || (request.status as string);
   const currentStep = stepIndex(displayStatus);
@@ -340,17 +340,18 @@ function SubRequestDetailView({
     <div className="odoo-scope pd">
       {/* ══════ BARRE : retour + fil d'Ariane ══════ */}
       <div className="odoo-control-bar">
-        <button onClick={() => navigate('/replenishment')} className="odoo-pager-btn" title="Retour">
-          <ArrowLeft size={14} />
-        </button>
-        <div className="odoo-breadcrumb">
-          <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/replenishment')}>Demandes boutique</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">
-            #{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}
-          </span>
-        </div>
+        <Breadcrumb icon={ShoppingBag} items={[
+          { label: 'Production' },
+          { label: 'Demandes boutique', onClick: () => navigate('/replenishment') },
+          { label: `#${request.request_number || (request.id as string).slice(0, 8).toUpperCase()}` },
+        ]} />
+        <div style={{ flex: 1 }} />
+        {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged', 'partially_received'].includes(status) && (
+          <button type="button" disabled={cancelMutation.isPending} className="ds-btn-danger"
+            onClick={async () => { if (await confirm('Annuler cette demande ? Elle ne sera plus préparée.', { title: 'Annuler la demande', confirmLabel: 'Annuler la demande', danger: true })) cancelMutation.mutate(); }}>
+            <XCircle size={14} aria-hidden="true" /> Annuler la demande
+          </button>
+        )}
       </div>
 
       <div className="pd-page">
@@ -360,7 +361,7 @@ function SubRequestDetailView({
           <span className="prj-hero-icon"><ShoppingBag size={22} /></span>
           <div style={{ flex: 1, minWidth: 260 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <h1 style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>#{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}</h1>
+              <h1>#{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}</h1>
               <StatusTag tone={statusTag.tone} icon={statusTag.icon} label={STATUS_LABELS[displayStatus] || displayStatus} />
               <span className={`odoo-tag ${priorityTagClass}`}>{PRIORITY_LABELS[request.priority as string] || request.priority}</span>
             </div>
@@ -395,13 +396,6 @@ function SubRequestDetailView({
               )}
             </div>
           </div>
-          {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged', 'partially_received'].includes(status) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending} className="odoo-btn-danger">
-                <XCircle size={13} /> Annuler
-              </button>
-            </div>
-          )}
         </div>
 
         {/* ══════ ÉTAPES ══════ */}

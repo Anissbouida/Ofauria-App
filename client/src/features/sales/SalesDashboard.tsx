@@ -143,7 +143,7 @@ export default function SalesDashboard() {
     { label: 'Facturé, à encaisser', amount: Math.max(0, (t?.total ?? 0) - overdue), sub: `${t?.documents ?? 0} pièce${(t?.documents ?? 0) > 1 ? 's' : ''}`,
       color: 'var(--theme-accent-hover)', href: '/sales?tab=unpaid' },
     { label: 'En retard', amount: overdue, sub: `${overdueCustomers.length} client${overdueCustomers.length > 1 ? 's' : ''}`,
-      color: 'var(--prj-red)', href: '/sales?tab=unpaid&filter=overdue', red: true },
+      color: 'var(--ds-danger)', href: '/sales?tab=unpaid&filter=overdue', red: true },
   ];
   const moneyTotal = money.reduce((s, m) => s + m.amount, 0);
 
@@ -173,8 +173,8 @@ export default function SalesDashboard() {
 
   const rings = [
     { pct: conv, color: 'var(--theme-accent)', label: 'Transformation des devis', value: conv != null ? `${conv} %` : '—', small: qov ? `${qov.conversion.won} gagné(s) sur 90 j` : '' },
-    { pct: margin?.pct ?? null, color: 'var(--prj-green)', label: 'Marge brute', value: margin ? pct1(margin.pct) : '—', small: margin ? `coût matière ${pct1(margin.food)}` : 'coûts non disponibles' },
-    { pct: onTime, color: 'var(--prj-orange)', label: 'Créances à jour', value: onTime != null ? `${Math.round(onTime)} %` : '—', small: 'non échues' },
+    { pct: margin?.pct ?? null, color: 'var(--ds-success)', label: 'Marge brute', value: margin ? pct1(margin.pct) : '—', small: margin ? `coût matière ${pct1(margin.food)}` : 'coûts non disponibles' },
+    { pct: onTime, color: 'var(--ds-warning)', label: 'Créances à jour', value: onTime != null ? `${Math.round(onTime)} %` : '—', small: 'non échues' },
   ];
 
   return (
@@ -258,7 +258,7 @@ export default function SalesDashboard() {
                 ))}
               </div>
             ) : (
-              <div className="kl-group kl-empty"><CheckCircle2 size={26} style={{ color: 'var(--prj-green)' }} /><strong>Rien à traiter</strong><span>Commandes, devis, livraisons et créances sont à jour.</span></div>
+              <div className="kl-group kl-empty"><CheckCircle2 size={26} style={{ color: 'var(--ds-success)' }} /><strong>Rien à traiter</strong><span>Commandes, devis, livraisons et créances sont à jour.</span></div>
             )}
           </section>
           <section aria-label="CA par famille">

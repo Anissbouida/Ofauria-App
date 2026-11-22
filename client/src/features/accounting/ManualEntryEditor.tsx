@@ -131,7 +131,7 @@ export default function ManualEntryEditor({ draft, onClose }: { draft?: JournalE
           <div className="odoo-breadcrumb">
             <PenLine size={14} style={{ color: 'var(--theme-accent)' }} />
             <span>Écritures</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">{draft ? 'Modifier le brouillon' : 'Nouvelle écriture'}</span>
           </div>
           <div style={{ flex: 1 }} />
@@ -143,7 +143,7 @@ export default function ManualEntryEditor({ draft, onClose }: { draft?: JournalE
             <SearchSelect options={journalOptions} value={journalCode} onChange={v => setJournalCode(v || 'OD')} placeholder="Journal" width="100%" />
           </label>
           <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Date
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="odoo-search-input" style={{ width: '100%' }} />
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: '100%' }} />
           </label>
           <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Libellé *
             <input value={description} onChange={e => setDescription(e.target.value)} className="odoo-search-input" style={{ width: '100%' }}
@@ -154,19 +154,19 @@ export default function ManualEntryEditor({ draft, onClose }: { draft?: JournalE
               placeholder="Ex. PV AGO 2026, relevé n° 12…" maxLength={60} />
           </label>
           <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', maxWidth: 180 }}>Date de la pièce
-            <input type="date" value={pieceDate} onChange={e => setPieceDate(e.target.value)} className="odoo-search-input" style={{ width: '100%' }} />
+            <input type="date" value={pieceDate} onChange={e => setPieceDate(e.target.value)} className="ds-input sm" style={{ width: '100%' }} />
           </label>
         </div>
 
-        <table className="odoo-table" style={{ margin: 0, borderTop: '1px solid var(--theme-bg-separator)' }}>
+        <table className="odoo-table ds-dense" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
           <thead>
             <tr>
               <th style={{ width: 34 }}>#</th>
               <th style={{ width: 280 }}>Compte</th>
               <th style={{ width: 230 }}>Tiers</th>
               <th>Libellé</th>
-              <th style={{ width: 120, textAlign: 'right' }}>Débit</th>
-              <th style={{ width: 120, textAlign: 'right' }}>Crédit</th>
+              <th className="ds-num" style={{ width: 120 }}>Débit</th>
+              <th className="ds-num" style={{ width: 120 }}>Crédit</th>
               <th style={{ width: 40 }} />
             </tr>
           </thead>
@@ -196,14 +196,14 @@ export default function ManualEntryEditor({ draft, onClose }: { draft?: JournalE
             })}
           </tbody>
           <tfoot>
-            <tr style={{ background: 'var(--theme-bg-secondary)', fontWeight: 600 }}>
+            <tr>
               <td colSpan={4}>
                 <div style={{ display: 'inline-flex', gap: 6 }}>
-                  <button type="button" className="odoo-btn-secondary" onClick={addLine} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <button type="button" className="odoo-btn-secondary" onClick={addLine}>
                     <Plus size={12} /> Ligne
                   </button>
                   <button type="button" className="odoo-btn-secondary" onClick={balance} disabled={totals.diff === 0}
-                    title="Ajoute une ligne du montant manquant" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    title="Ajoute une ligne du montant manquant">
                     <Scale size={12} /> Équilibrer
                   </button>
                 </div>
@@ -225,12 +225,10 @@ export default function ManualEntryEditor({ draft, onClose }: { draft?: JournalE
               </StatusBanner>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={busy}>Annuler</button>
-            <button type="button" className="odoo-btn-secondary" onClick={() => save.mutate()} disabled={busy || filled.length < 2 || !description.trim()}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button type="button" className="odoo-btn-secondary" onClick={() => save.mutate()} disabled={busy || filled.length < 2 || !description.trim()}>
               {save.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Enregistrer le brouillon
             </button>
-            <button type="button" className="odoo-btn-primary" onClick={() => post.mutate()} disabled={busy || problems.length > 0}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button type="button" className="odoo-btn-primary" onClick={() => post.mutate()} disabled={busy || problems.length > 0}>
               {post.isPending ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Comptabiliser
             </button>
           </div>

@@ -66,7 +66,7 @@ export default function WorkshopsCard() {
 
   const box: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' };
   const grid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 6, maxHeight: 200, overflowY: 'auto' };
-  const field: CSSProperties = { width: '100%', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.875rem' };
+  const field: CSSProperties = { width: '100%', padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, fontSize: 14 };
   const codeValid = !draft || /^[a-z][a-z0-9_]{1,29}$/.test(draft.code);
 
   return (
@@ -105,7 +105,7 @@ export default function WorkshopsCard() {
             style={{ background: 'var(--odoo-bg)', borderRadius: 6, border: '1px solid var(--odoo-border)', width: '100%', maxWidth: 680, margin: '0 16px', display: 'grid', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
               <div style={{ fontWeight: 600 }}>{draft.isNew ? 'Nouvel atelier' : `Atelier — ${draft.label}`}</div>
-              <button type="button" onClick={() => setDraft(null)} aria-label="Fermer" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--odoo-text-muted)' }}><X size={16} /></button>
+              <button type="button" onClick={() => setDraft(null)} aria-label="Fermer" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ds-muted)' }}><X size={16} /></button>
             </div>
             <div style={{ padding: 16, display: 'grid', gap: 14 }}>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -118,7 +118,7 @@ export default function WorkshopsCard() {
                     onChange={e => setDraft({ ...draft, code: e.target.value })} />
                 </label>
               </div>
-              {!codeValid && <p className="odoo-setting-help" style={{ color: 'var(--prj-red)' }}>Code : minuscules, chiffres et « _ », 2 à 30 caractères, commence par une lettre.</p>}
+              {!codeValid && <p className="odoo-setting-help" style={{ color: 'var(--ds-danger)' }}>Code : minuscules, chiffres et « _ », 2 à 30 caractères, commence par une lettre.</p>}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <label style={box}><input type="checkbox" checked={draft.isActive} onChange={e => setDraft({ ...draft, isActive: e.target.checked })} /> Actif</label>
                 <label style={box}><input type="checkbox" checked={draft.isDefault} onChange={e => setDraft({ ...draft, isDefault: e.target.checked })} />

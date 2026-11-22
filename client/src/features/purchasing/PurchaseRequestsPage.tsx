@@ -5,9 +5,8 @@ import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { rfqApi } from '../../api/rfq.api';
 import { suppliersApi } from '../../api/accounting.api';
 import {
-  ShoppingCart, Search, ChevronDown, ChevronRight, Truck,
-  X, Trash2, FileQuestion, Clock, AlertTriangle, Check,
-  User, Coins, History,
+  ShoppingCart, ChevronDown, ChevronRight,
+  X, Trash2, FileQuestion, AlertTriangle, Check, History,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -19,6 +18,13 @@ import { PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../c
 import { FilterChips } from '../sales/ListTemplate';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { currencySymbol } from '../../utils/money';
+import { RowMenu } from '../../components/ui/RowMenu';
+import {
+  Alert, BulkBar, DataPanel, EmptyState, FormField, KpiCard, KpiGrid, LoadingState, NoResultState,
+  SearchBar, Segmented, TableFooter, Toolbar,
+} from '../../components/ds';
+
+const n2 = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** Statuts calculés par la base depuis la couverture des lignes de BC (mig 305). */
 const STATUS_INFO: Record<string, { label: string; tone: StatusTone; dot: string }> = {
@@ -78,11 +84,24 @@ interface SupplierGroup {
   }[];
 }
 
+/** Ligne du tableau, commune aux vues « En attente » et « Historique ». */
+interface Row {
+  id: string; article: string; unit: string; qty: number; cost: number | null; reason: string; note: string | null;
+  approval: string; requester: string; createdAt: string; supplierId: string; supplierName: string | null; status: string;
+  /** Ligne d'historique brute (couverture, BC, traçabilité). */
+  raw?: Record<string, any>;
+}
+/** Bloc de lignes ; `title` non nul = ligne de regroupement (fournisseur ou mois) avec sous-total. */
+interface Section { key: string; title: string | null; small?: string; rows: Row[]; subtotal: number; group?: SupplierGroup }
+
 export default function PurchaseRequestsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
-  const [expandedSupplier, setExpandedSupplier] = useState<string | null>(null);
+  // Présentation du tableau : une ligne par demande, ou regroupée par fournisseur (sous-totaux).
+  const [layout, setLayout] = useState<'line' | 'supplier'>('supplier');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleCollapsed = (key: string) => setCollapsed(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; });
   const [selectedRequests, setSelectedRequests] = useState<Record<string, Set<string>>>({});
   const [viewMode, setViewMode] = useState<'grouped' | 'all'>('grouped');
   // Historique : « Tous » les statuts par défaut (on garde la trace des demandes traitées).
@@ -213,328 +232,289 @@ export default function PurchaseRequestsPage() {
     return selectedRequests[supplierId || '__none__'] || new Set<string>();
   };
 
+  // ── Présentation (Design System) : lignes normalisées, regroupées selon la bascule ──
+  const pendingView = viewMode === 'grouped';
+  const rowCost = (qty: unknown, unitCost: unknown) => (unitCost ? (parseFloat(String(qty)) || 0) * (parseFloat(String(unitCost)) || 0) : null);
+  const pendingRows: Row[] = filteredGroups.flatMap(g => g.requests.map(r => ({
+    id: r.id, article: r.ingredient_name, unit: r.ingredient_unit, qty: parseFloat(r.quantity) || 0,
+    cost: rowCost(r.quantity, r.ingredient_unit_cost), reason: r.reason, note: r.note, approval: r.approval_status,
+    requester: r.requested_by_name, createdAt: r.created_at, supplierId: g.supplier_id || '', supplierName: g.supplier_name, status: 'pending',
+  })));
+  const historyList: Row[] = historyRows.map(r => ({
+    id: r.id as string, article: r.ingredient_name as string, unit: (r.ingredient_unit as string) ?? '', qty: parseFloat(r.quantity as string) || 0,
+    cost: rowCost(r.quantity, r.ingredient_unit_cost), reason: r.reason as string, note: (r.note as string) ?? null, approval: r.approval_status as string,
+    requester: r.requested_by_name as string, createdAt: r.created_at as string, supplierId: (r.supplier_id as string) || '', supplierName: (r.supplier_name as string) || null,
+    status: r.status as string, raw: r,
+  }));
+  const countLabel = (n: number) => `${n} demande${n > 1 ? 's' : ''}`;
+  const sumCost = (rows: Row[]) => rows.reduce((s, r) => s + (r.cost ?? 0), 0);
+
+  let sections: Section[];
+  if (pendingView && layout === 'supplier') {
+    sections = filteredGroups.map(g => ({
+      key: g.supplier_id || '__none__', title: g.supplier_name || 'Sans fournisseur',
+      small: [countLabel(parseInt(g.request_count)), g.supplier_contact, g.supplier_phone].filter(Boolean).join(' · '),
+      rows: pendingRows.filter(r => r.supplierId === (g.supplier_id || '')), subtotal: parseFloat(g.estimated_total || '0'), group: g,
+    }));
+  } else if (pendingView) {
+    sections = [{ key: 'all', title: null, rows: pendingRows, subtotal: 0 }];
+  } else if (layout === 'supplier') {
+    const map = new Map<string, Row[]>();
+    for (const r of historyList) { const k = r.supplierName || 'Sans fournisseur'; map.set(k, [...(map.get(k) ?? []), r]); }
+    sections = Array.from(map, ([k, rows]) => ({ key: k, title: k, small: countLabel(rows.length), rows, subtotal: sumCost(rows) }));
+  } else {
+    // Historique par ligne : regroupement par mois de la demande (liste triée par le serveur).
+    sections = [];
+    for (const r of historyList) {
+      const k = String(r.createdAt ?? '').slice(0, 7);
+      const last = sections[sections.length - 1];
+      if (last && last.key === k) { last.rows.push(r); last.subtotal += r.cost ?? 0; continue; }
+      const m = r.createdAt ? format(new Date(r.createdAt), 'MMMM yyyy', { locale: fr }) : '—';
+      sections.push({ key: k, title: m.charAt(0).toUpperCase() + m.slice(1), rows: [r], subtotal: r.cost ?? 0 });
+    }
+    for (const sct of sections) sct.small = countLabel(sct.rows.length);
+  }
+  const shownRows = pendingView ? pendingRows : historyList;
+  const grandTotal = pendingView ? filteredGroups.reduce((s, g) => s + parseFloat(g.estimated_total || '0'), 0) : sumCost(historyList);
+
+  // Sélection (vue « En attente » seulement) : seules les demandes prêtes sont sélectionnables.
+  const selectableIds = pendingRows.filter(r => isApproved(r.approval)).map(r => r.id);
+  const selectedIds = Object.values(selectedRequests).flatMap(set => Array.from(set));
+  const allChecked = selectableIds.length > 0 && selectableIds.every(id => selectedIds.includes(id));
+  const toggleAll = () => {
+    if (allChecked) { setSelectedRequests({}); return; }
+    setSelectedRequests(Object.fromEntries(filteredGroups.map(g => [g.supplier_id || '__none__', new Set(g.requests.filter(r => isApproved(r.approval_status)).map(r => r.id))])));
+  };
+  const noSupplierGroup = pendingView ? filteredGroups.find(g => !g.supplier_id) : undefined;
+  const labelSpan = layout === 'line' ? 6 : 5;
+  const historyFiltered = !!search.trim() || !!statusFilter || period !== 'all';
+  const resetHistory = () => { setSearch(''); setStatusFilter(''); setPeriod('all'); setCustomFrom(''); setCustomTo(''); };
+  const loading = pendingView ? groupsLoading : allLoading;
+
   return (
     <>
-      {/* Stat tiles */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Clock size={11} style={{ display: 'inline', marginRight: 4 }} />En attente</div>
-          <div className="odoo-stat-card-value">{totalPending}</div>
-          <div className="odoo-stat-card-sub">besoins</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Truck size={11} style={{ display: 'inline', marginRight: 4 }} />Fournisseurs</div>
-          <div className="odoo-stat-card-value">{totalSuppliers}</div>
-          <div className="odoo-stat-card-sub">à commander</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Estimé</div>
-          <div className="odoo-stat-card-value">{totalEstimated.toFixed(0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-          <div className="odoo-stat-card-sub">à dépenser</div>
-        </div>
-      </div>
+      <KpiGrid>
+        <KpiCard label="En attente" value={totalPending} sub="besoins" />
+        <KpiCard label="Fournisseurs" value={totalSuppliers} sub="à commander" />
+        <KpiCard label="Estimé" value={`${totalEstimated.toFixed(0)} ${currencySymbol()}`} sub="à dépenser" />
+      </KpiGrid>
 
-      {/* Barre d'outils : recherche + présentation Par fournisseur / Historique */}
-      <div className="prj-toolbar">
-        <label className="prj-search">
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="search" aria-label="Rechercher une demande" placeholder="Fournisseur ou ingrédient…"
-            value={search} onChange={e => setSearch(e.target.value)} />
-        </label>
-        <div className="prj-views" role="tablist" aria-label="Présentation">
-          <button type="button" role="tab" aria-selected={viewMode === 'grouped'} className={viewMode === 'grouped' ? 'active' : ''} onClick={() => setViewMode('grouped')}>Par fournisseur</button>
-          <button type="button" role="tab" aria-selected={viewMode === 'all'} className={viewMode === 'all' ? 'active' : ''} onClick={() => setViewMode('all')}><History size={13} /> Historique</button>
-        </div>
-      </div>
-
-      {/* Grouped view */}
-      {viewMode === 'grouped' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {groupsLoading ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>Chargement...</div>
-          ) : filteredGroups.length === 0 ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-              <ShoppingCart size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-              <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucune demande en attente</p>
-              <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>Les demandes apparaîtront ici lorsqu'un utilisateur demandera un ingrédient</p>
-              <button type="button" onClick={() => setViewMode('all')}
-                style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'underline', color: 'var(--theme-accent)', fontSize: '0.75rem' }}>
-                <History size={12} /> Voir l'historique des demandes
-              </button>
-            </div>
-          ) : filteredGroups.map((group) => {
-            const suppKey = group.supplier_id || '__none__';
-            const isExpanded = expandedSupplier === suppKey;
-            const selected = getSelectedForSupplier(group.supplier_id || '');
-            const approvedCount = group.requests.filter(r => isApproved(r.approval_status)).length;
-            const allSelected = selected.size === approvedCount && approvedCount > 0;
-            const someSelected = selected.size > 0;
-            const dotClass = group.supplier_id ? 'ok' : 'warning';
-
-            return (
-              <div key={suppKey} className="odoo-section">
-                <div className="odoo-section-header"
-                  onClick={() => setExpandedSupplier(isExpanded ? null : suppKey)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                  <span className={`odoo-status-dot ${dotClass}`} />
-                  <Truck size={13} style={{ color: 'var(--theme-accent)' }} />
-                  <strong>{group.supplier_name || 'Sans fournisseur'}</strong>
-                  <span className="odoo-tag odoo-tag-purple">{group.request_count} besoin{parseInt(group.request_count) > 1 ? 's' : ''}</span>
-                  {group.supplier_contact && (
-                    <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.6875rem' }}>
-                      · {group.supplier_contact}{group.supplier_phone ? ` — ${group.supplier_phone}` : ''}
-                    </span>
-                  )}
-                  <span style={{ flex: 1 }} />
-                  <span style={{ fontWeight: 700 }}>{parseFloat(group.estimated_total || '0').toFixed(2)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.6875rem' }}>{currencySymbol()} estimé</span></span>
-                  {isExpanded ? <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-                </div>
-
-                {isExpanded && (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '8px 16px', background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', borderBottom: '1px solid var(--theme-bg-separator)' }}>
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--theme-text-muted)', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={allSelected} onChange={() => toggleSelectAll(group.supplier_id || '', group.requests)} />
-                        Tout sélectionner
-                      </label>
-                      {someSelected && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); rfqMutation.mutate(Array.from(selected)); }}
-                          className="odoo-btn-primary" disabled={rfqMutation.isPending}
-                          title="Mettre ces demandes en concurrence avant de commander"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <FileQuestion size={11} /> Lancer la demande de prix ({selected.size})
-                        </button>
-                      )}
-                      {!group.supplier_id && (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.6875rem', color: '#b85d1a' }}>
-                            <AlertTriangle size={10} /> Attribuez un fournisseur :
-                          </span>
-                          <SearchSelect
-                            value=""
-                            disabled={assignSupplierMutation.isPending}
-                            onChange={(supplierId) => {
-                              if (!supplierId) return;
-                              const sel = getSelectedForSupplier(group.supplier_id || '');
-                              const ids = sel.size > 0
-                                ? Array.from(sel)
-                                : group.requests.map(r => r.id);
-                              assignSupplierMutation.mutate({ requestIds: ids, supplierId });
-                            }}
-                            placeholder="Choisir un fournisseur…"
-                            width={230}
-                            ariaLabel="Attribuer un fournisseur"
-                            options={(suppliers as { id: string; name: string }[]).map(s => ({ id: s.id, label: s.name }))}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <table className="odoo-table" style={{ margin: 0, boxShadow: 'none' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ width: 24 }}></th>
-                          <th>Ingrédient</th>
-                          <th>Motif</th>
-                          <th>Approbation</th>
-                          <th>Demandeur</th>
-                          <th>Date</th>
-                          <th>Note</th>
-                          <th style={{ textAlign: 'right' }}>Quantité</th>
-                          <th style={{ textAlign: 'right' }}>Coût estimé</th>
-                          <th style={{ textAlign: 'right', width: 40 }}></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.requests.map((req) => {
-                          const isSelected = selected.has(req.id);
-                          const reasonInfo = REASON_LABELS[req.reason] || REASON_LABELS.manual;
-                          const reasonTag = req.reason === 'stock_bas' ? 'odoo-tag-red'
-                            : req.reason === 'production' ? 'odoo-tag-blue'
-                            : req.reason === 'replenishment' ? 'odoo-tag-purple'
-                            : 'odoo-tag-grey';
-                          const approved = isApproved(req.approval_status);
-                          const appr = APPROVAL_INFO[req.approval_status] ?? APPROVAL_INFO.approved;
-                          return (
-                            <tr key={req.id} style={{ opacity: approved ? 1 : 0.7 }}>
-                              <td>
-                                <input type="checkbox" checked={isSelected} disabled={!approved}
-                                  title={approved ? undefined : 'Proposition à activer avant de pouvoir la sourcer'}
-                                  onChange={() => toggleSelect(group.supplier_id || '', req.id)} />
-                              </td>
-                              <td style={{ fontWeight: 500 }}>{req.ingredient_name}</td>
-                              <td><span className={`odoo-tag ${reasonTag}`}>{reasonInfo.label}</span></td>
-                              <td><StatusTag tone={appr.tone} label={appr.label} /></td>
-                              <td style={{ color: 'var(--theme-text-muted)' }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                                  <User size={10} /> {req.requested_by_name}
-                                </span>
-                              </td>
-                              <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
-                                {format(new Date(req.created_at), 'dd/MM/yyyy HH:mm')}
-                              </td>
-                              <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {req.note || '—'}
-                              </td>
-                              <td style={{ textAlign: 'right' }}>
-                                <span style={{ fontWeight: 600 }}>{parseFloat(req.quantity).toFixed(1)}</span>
-                                <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{req.ingredient_unit}</span>
-                              </td>
-                              <td style={{ textAlign: 'right' }}>
-                                {req.ingredient_unit_cost ? (
-                                  <span style={{ color: 'var(--theme-text-muted)' }}>
-                                    {(parseFloat(req.quantity) * parseFloat(req.ingredient_unit_cost)).toFixed(2)} <span style={{ fontSize: '0.6875rem' }}>{currencySymbol()}</span>
-                                  </span>
-                                ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-                              </td>
-                              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                {req.approval_status === 'draft' && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); submitMutation.mutate(req.id); }}
-                                    disabled={submitMutation.isPending}
-                                    className="odoo-btn-secondary"
-                                    title="Activer cette proposition : besoin validé, prête à sourcer"
-                                    style={{ marginRight: 4, fontSize: '0.6875rem', padding: '2px 6px' }}>
-                                    Activer
-                                  </button>
-                                )}
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setReasonAction({ kind: 'cancel', id: req.id, label: req.ingredient_name }); }}
-                                  className="odoo-pager-btn"
-                                  title="Annuler cette demande"
-                                  style={{ color: '#dc3545' }}>
-                                  <Trash2 size={12} />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      {/* Pastilles de statut : filtre de l'historique (la vue « En attente » ne montre que les besoins à commander). */}
+      {!pendingView && (
+        <FilterChips label="Filtrer par statut" value={statusFilter} onChange={setStatusFilter}
+          chips={['', 'pending', 'assigned', 'received', 'closed', 'cancelled'].map(k => ({ key: k, label: k ? STATUS_INFO[k].label : 'Tous' }))} />
       )}
 
-      {/* All view */}
-      {viewMode === 'all' && (
-        <>
-          <div className="prj-toolbar">
-            <FilterChips label="Filtrer par statut" value={statusFilter} onChange={setStatusFilter}
-              chips={['', 'pending', 'assigned', 'received', 'closed', 'cancelled'].map(k => ({ key: k, label: k ? STATUS_INFO[k].label : 'Tous' }))} />
-            <span style={{ flex: 1 }} />
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} label="Rechercher une demande" placeholder="Fournisseur ou article…" />
+        {!pendingView && (
+          <>
             <PeriodFilter label="Demandé" title="Filtre sur la date de la demande"
               period={period} onPeriod={setPeriod}
               from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
             {period !== 'all' && (
-              <button type="button" onClick={() => { setPeriod('all'); setCustomFrom(''); setCustomTo(''); }}
-                className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <X size={12} /> Effacer
+              <button type="button" onClick={() => { setPeriod('all'); setCustomFrom(''); setCustomTo(''); }} className="ds-btn-ghost ds-btn-sm">
+                <X size={13} aria-hidden="true" /> Effacer
               </button>
             )}
-          </div>
-          <div style={{ overflowX: 'auto' }}>
+          </>
+        )}
+        <Segmented label="Période" value={viewMode} onChange={setViewMode}
+          options={[{ key: 'grouped', label: 'En attente', count: totalPending }, { key: 'all', label: 'Historique', icon: History }]} />
+        <Segmented label="Présentation" value={layout} onChange={setLayout}
+          options={[{ key: 'line', label: 'Par ligne' }, { key: 'supplier', label: 'Par fournisseur' }]} />
+      </Toolbar>
+
+      {/* Demandes sans fournisseur : attribution groupée (à la sélection, sinon à toutes). */}
+      {noSupplierGroup && (
+        <Alert tone="warning" icon={AlertTriangle}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            {countLabel(noSupplierGroup.requests.length)} sans fournisseur. Attribuez un fournisseur
+            {getSelectedForSupplier('').size > 0 ? ' aux demandes sélectionnées' : ''} :
+            <SearchSelect
+              value=""
+              disabled={assignSupplierMutation.isPending}
+              onChange={(supplierId) => {
+                if (!supplierId) return;
+                const sel = getSelectedForSupplier('');
+                const ids = sel.size > 0 ? Array.from(sel) : noSupplierGroup.requests.map(r => r.id);
+                assignSupplierMutation.mutate({ requestIds: ids, supplierId });
+              }}
+              placeholder="Choisir un fournisseur…"
+              width={230}
+              ariaLabel="Attribuer un fournisseur"
+              options={(suppliers as { id: string; name: string }[]).map(s => ({ id: s.id, label: s.name }))}
+            />
+          </span>
+        </Alert>
+      )}
+
+      {loading ? <LoadingState />
+        : pendingView && (groups as SupplierGroup[]).length === 0 ? (
+          <EmptyState icon={ShoppingCart} title="Aucune demande en attente"
+            text="Les demandes apparaîtront ici lorsqu'un utilisateur demandera un article."
+            action={<button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => setViewMode('all')}><History size={13} aria-hidden="true" /> Voir l'historique des demandes</button>} />
+        ) : shownRows.length === 0 ? (
+          pendingView ? <NoResultState text="Aucune demande ne correspond à la recherche." onReset={() => setSearch('')} />
+            : historyFiltered ? <NoResultState text="Aucune demande ne correspond aux filtres." onReset={resetHistory} />
+            : <EmptyState icon={History} title="Aucune demande dans l'historique" text="Les demandes commandées, reçues, clôturées ou annulées apparaîtront ici." />
+        ) : (
+          <DataPanel label="Demandes d'achat"
+            bulk={pendingView ? (
+              <BulkBar count={selectedIds.length} noun="demande" onClear={() => setSelectedRequests({})}>
+                <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={rfqMutation.isPending}
+                  title="Mettre ces demandes en concurrence avant de commander"
+                  onClick={() => rfqMutation.mutate(selectedIds)}>
+                  <FileQuestion size={13} aria-hidden="true" /> Demander des prix
+                </button>
+              </BulkBar>
+            ) : undefined}
+            footer={<TableFooter note={pendingView
+              ? `${countLabel(shownRows.length)} · ${filteredGroups.length} fournisseur${filteredGroups.length > 1 ? 's' : ''}`
+              : `${countLabel(shownRows.length)} · ${periodLabel(period, customFrom, customTo)}`} />}>
             <table className="odoo-table">
               <thead>
                 <tr>
-                  <th style={{ width: 24 }}></th>
-                  <th>Ingrédient</th>
-                  <th>Fournisseur</th>
+                  {pendingView && (
+                    <th style={{ width: 36 }}>
+                      <input type="checkbox" aria-label="Sélectionner toutes les demandes prêtes" checked={allChecked} disabled={selectableIds.length === 0} onChange={toggleAll} />
+                    </th>
+                  )}
+                  <th>Article</th>
+                  {layout === 'line' && <th>Fournisseur</th>}
                   <th>Motif</th>
-                  <th>Statut</th>
-                  <th>Approbation</th>
                   <th>Demandeur</th>
-                  <th>Date</th>
-                  <th>BC</th>
-                  <th style={{ textAlign: 'right' }}>Quantité</th>
-                  <th style={{ textAlign: 'right' }} title="Part commandée et part reçue, calculées depuis les lignes de BC">Couverture</th>
-                  <th style={{ width: 40 }}></th>
+                  <th>Demandé le</th>
+                  <th className="ds-num">Quantité</th>
+                  <th className="ds-num">Coût estimé ({currencySymbol()})</th>
+                  <th>Statut</th>
+                  <th title="Part commandée et part reçue, calculées depuis les lignes de BC">Couverture</th>
+                  <th className="ds-actions">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {allLoading ? (
-                  <tr><td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
-                ) : historyRows.length === 0 ? (
-                  <tr><td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune demande pour ces filtres</td></tr>
-                ) : historyRows.map((req, i) => {
-                  const curMonth = String(req.created_at ?? '').slice(0, 7);
-                  const prevMonth = i > 0 ? String(historyRows[i - 1].created_at ?? '').slice(0, 7) : null;
-                  const showMonth = curMonth !== prevMonth;
-                  const reasonInfo = REASON_LABELS[req.reason as string] || REASON_LABELS.manual;
-                  const reasonTag = req.reason === 'stock_bas' ? 'odoo-tag-red'
-                    : req.reason === 'production' ? 'odoo-tag-blue'
-                    : req.reason === 'replenishment' ? 'odoo-tag-purple'
-                    : 'odoo-tag-grey';
-                  const st = STATUS_INFO[req.status as string] ?? { label: req.status as string, tone: 'draft' as StatusTone, dot: 'neutral' };
-                  const dotClass = st.dot;
-                  const statusLabel = st.label;
-                  const qReq = parseFloat(req.quantity as string) || 0;
-                  const qOrd = parseFloat(req.quantity_ordered as string) || 0;
-                  const qRec = parseFloat(req.quantity_received as string) || 0;
-                  const traceTitle = req.status === 'cancelled'
-                    ? `Annulée${req.cancelled_by_name ? ` par ${req.cancelled_by_name}` : ''} : ${req.cancel_reason ?? ''}`
-                    : req.status === 'closed'
-                      ? `Reliquat clôturé${req.closed_by_name ? ` par ${req.closed_by_name}` : ''} : ${req.close_reason ?? ''}`
-                      : undefined;
+                {sections.map(sct => {
+                  const isCollapsed = collapsed.has(sct.key);
+                  const groupSel = sct.group ? getSelectedForSupplier(sct.group.supplier_id || '') : null;
+                  const groupApproved = sct.group ? sct.group.requests.filter(r => isApproved(r.approval_status)).length : 0;
                   return (
-                    <Fragment key={req.id as string}>
-                    {showMonth && (
-                      <tr>
-                        <td colSpan={12} style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize', color: 'var(--odoo-text)' }}>
-                          {req.created_at ? format(new Date(req.created_at as string), 'MMMM yyyy', { locale: fr }) : '—'}
-                        </td>
-                      </tr>
-                    )}
-                    <tr>
-                      <td><span className={`odoo-status-dot ${dotClass}`} /></td>
-                      <td style={{ fontWeight: 500 }}>{req.ingredient_name as string}</td>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>{(req.supplier_name as string) || '—'}</td>
-                      <td><span className={`odoo-tag ${reasonTag}`}>{reasonInfo.label}</span></td>
-                      <td><StatusTag tone={st.tone} label={statusLabel} title={traceTitle} /></td>
-                      <td>{(() => { const a = APPROVAL_INFO[req.approval_status as string] ?? APPROVAL_INFO.approved; return <StatusTag tone={a.tone} label={a.label} />; })()}</td>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>{req.requested_by_name as string}</td>
-                      <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{format(new Date(req.created_at as string), 'dd/MM HH:mm')}</td>
-                      <td style={{ color: 'var(--theme-accent)', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{(req.purchase_order_number as string) || '—'}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <span style={{ fontWeight: 600 }}>{parseFloat(req.quantity as string).toFixed(1)}</span>
-                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{req.ingredient_unit as string}</span>
-                      </td>
-                      <td style={{ textAlign: 'right', fontSize: '0.75rem', whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}
-                        title={`Commandé ${qOrd.toFixed(2)} · reçu ${qRec.toFixed(2)} sur ${qReq.toFixed(2)} ${req.ingredient_unit ?? ''}`}>
-                        {qReq > 0 ? `${Math.round(Math.min(qOrd, qReq) / qReq * 100)} % cmd · ${Math.round(Math.min(qRec, qReq) / qReq * 100)} % reçu` : '—'}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {req.status === 'pending' && (
-                          <button className="odoo-pager-btn" title="Annuler cette demande" style={{ color: '#dc3545' }}
-                            onClick={() => setReasonAction({ kind: 'cancel', id: req.id as string, label: req.ingredient_name as string })}>
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                        {(req.status === 'assigned' || req.status === 'ordered') && qRec > 0 && qRec < qReq && (
-                          <button className="odoo-pager-btn" title="Clôturer le reliquat (renoncer au manquant)"
-                            onClick={() => setReasonAction({ kind: 'close', id: req.id as string, label: req.ingredient_name as string })}>
-                            <Check size={12} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={sct.key}>
+                      {sct.title !== null && (
+                        <tr className="ds-group">
+                          {pendingView && (
+                            <td>
+                              {sct.group && (
+                                <input type="checkbox" aria-label={`Sélectionner les demandes prêtes de ${sct.title}`}
+                                  checked={groupApproved > 0 && groupSel!.size === groupApproved} disabled={groupApproved === 0}
+                                  onChange={() => toggleSelectAll(sct.group!.supplier_id || '', sct.group!.requests)} />
+                              )}
+                            </td>
+                          )}
+                          <td colSpan={labelSpan}>
+                            <button type="button" aria-expanded={!isCollapsed} onClick={() => toggleCollapsed(sct.key)}
+                              style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              {isCollapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                              {sct.title}
+                            </button>
+                            {sct.small && <small>{sct.small}</small>}
+                          </td>
+                          <td className="ds-num">{n2(sct.subtotal)}</td>
+                          <td colSpan={3} />
+                        </tr>
+                      )}
+                      {!isCollapsed && sct.rows.map(row => {
+                        const approved = isApproved(row.approval);
+                        const appr = APPROVAL_INFO[row.approval] ?? APPROVAL_INFO.approved;
+                        const reasonInfo = REASON_LABELS[row.reason] || REASON_LABELS.manual;
+                        const reasonTag = row.reason === 'stock_bas' ? 'odoo-tag-red'
+                          : row.reason === 'production' ? 'odoo-tag-blue'
+                          : row.reason === 'replenishment' ? 'odoo-tag-purple'
+                          : 'odoo-tag-grey';
+                        const isSelected = pendingView && getSelectedForSupplier(row.supplierId).has(row.id);
+                        const req = row.raw;
+                        const st = STATUS_INFO[row.status] ?? { label: row.status, tone: 'draft' as StatusTone, dot: 'neutral' };
+                        const qOrd = req ? parseFloat(req.quantity_ordered as string) || 0 : 0;
+                        const qRec = req ? parseFloat(req.quantity_received as string) || 0 : 0;
+                        const traceTitle = !req ? undefined : row.status === 'cancelled'
+                          ? `Annulée${req.cancelled_by_name ? ` par ${req.cancelled_by_name}` : ''} : ${req.cancel_reason ?? ''}`
+                          : row.status === 'closed'
+                            ? `Reliquat clôturé${req.closed_by_name ? ` par ${req.closed_by_name}` : ''} : ${req.close_reason ?? ''}`
+                            : undefined;
+                        const canCancel = pendingView || row.status === 'pending';
+                        const canClose = !pendingView && (row.status === 'assigned' || row.status === 'ordered') && qRec > 0 && qRec < row.qty;
+                        return (
+                          <tr key={row.id} className={isSelected ? 'ds-selected' : undefined} style={pendingView && !approved ? { opacity: 0.7 } : undefined}>
+                            {pendingView && (
+                              <td>
+                                <input type="checkbox" aria-label={`Sélectionner ${row.article}`} checked={isSelected} disabled={!approved}
+                                  title={approved ? undefined : 'Proposition à activer avant de pouvoir la sourcer'}
+                                  onChange={() => toggleSelect(row.supplierId, row.id)} />
+                              </td>
+                            )}
+                            <td className="ds-strong">
+                              {row.article}
+                              {row.note && (
+                                <div title={row.note} style={{ fontWeight: 400, fontSize: 12, color: 'var(--ds-muted)', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.note}</div>
+                              )}
+                            </td>
+                            {layout === 'line' && <td>{row.supplierName || '—'}</td>}
+                            <td><span className={`odoo-tag ${reasonTag}`}>{reasonInfo.label}</span></td>
+                            <td style={{ whiteSpace: 'nowrap' }}>{row.requester}</td>
+                            <td style={{ whiteSpace: 'nowrap' }} title={row.createdAt ? format(new Date(row.createdAt), 'dd/MM/yyyy HH:mm') : undefined}>
+                              {row.createdAt ? format(new Date(row.createdAt), 'd MMM yyyy', { locale: fr }) : '—'}
+                            </td>
+                            <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{row.qty.toFixed(1)} {row.unit}</td>
+                            <td className="ds-num">{row.cost !== null ? n2(row.cost) : '—'}</td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
+                              {pendingView ? <StatusTag tone={appr.tone} label={appr.label} /> : (
+                                <>
+                                  <StatusTag tone={st.tone} label={st.label} title={traceTitle} />
+                                  {!approved && <> <StatusTag tone={appr.tone} label={appr.label} /></>}
+                                </>
+                              )}
+                            </td>
+                            <td style={{ whiteSpace: 'nowrap' }}
+                              title={req ? `Commandé ${qOrd.toFixed(2)} · reçu ${qRec.toFixed(2)} sur ${row.qty.toFixed(2)} ${row.unit}` : undefined}>
+                              {req?.purchase_order_number && <><span className="ds-ref">{req.purchase_order_number as string}</span> · </>}
+                              {req && row.qty > 0 ? `${Math.round(Math.min(qOrd, row.qty) / row.qty * 100)} % cmd · ${Math.round(Math.min(qRec, row.qty) / row.qty * 100)} % reçu` : '—'}
+                            </td>
+                            <td className="ds-actions">
+                              {pendingView && row.approval === 'draft' && (
+                                <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={submitMutation.isPending}
+                                  title="Activer cette proposition : besoin validé, prête à sourcer"
+                                  onClick={() => submitMutation.mutate(row.id)}>
+                                  Activer
+                                </button>
+                              )}
+                              {canClose && (
+                                <button type="button" className="odoo-btn-secondary ds-btn-sm" title="Renoncer à la part non reçue"
+                                  onClick={() => setReasonAction({ kind: 'close', id: row.id, label: row.article })}>
+                                  <Check size={13} aria-hidden="true" /> Clôturer le reliquat
+                                </button>
+                              )}
+                              {canCancel && (
+                                <RowMenu label={`Plus d'actions pour ${row.article}`} items={[
+                                  { label: 'Annuler la demande', icon: Trash2, danger: true, onSelect: () => setReasonAction({ kind: 'cancel', id: row.id, label: row.article }) },
+                                ]} />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </Fragment>
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={labelSpan + (pendingView ? 1 : 0)}>Total estimé</td>
+                  <td className="ds-num">{n2(grandTotal)}</td>
+                  <td colSpan={3} />
+                </tr>
+              </tfoot>
             </table>
-            {!allLoading && historyRows.length > 0 && (
-              <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                {historyRows.length} demande{historyRows.length > 1 ? 's' : ''} · {periodLabel(period, customFrom, customTo)}
-              </div>
-            )}
-          </div>
-        </>
-      )}
+          </DataPanel>
+        )}
 
       {reasonAction && (
         <ReasonModal
@@ -555,6 +535,7 @@ function ReasonModal({ action, pending, onClose, onSubmit }: {
   action: ReasonAction; pending: boolean; onClose: () => void; onSubmit: (reason: string) => void;
 }) {
   const [reason, setReason] = useState('');
+  const [touched, setTouched] = useState(false);
   const isCancel = action.kind === 'cancel';
   const valid = reason.trim().length >= 3;
   return (
@@ -566,21 +547,26 @@ function ReasonModal({ action, pending, onClose, onSubmit }: {
             <span className="odoo-breadcrumb-current">{isCancel ? 'Annuler la demande' : 'Clôturer le reliquat'} · {action.label}</span>
           </div>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit(reason.trim()); }} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-            {isCancel
-              ? 'La demande ne sera plus proposée à la commande. Cette action est définitive et journalisée.'
-              : 'La part non reçue ne sera plus attendue : la demande est close avec ce qui est arrivé. Action définitive et journalisée.'}
-          </p>
-          <label htmlFor="pr-reason" style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Motif *</label>
-          <textarea id="pr-reason" rows={3} autoFocus value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500}
-            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-            placeholder={isCancel ? 'Ex. besoin couvert par un transfert, erreur de saisie' : 'Ex. fournisseur en rupture, reliquat abandonné'} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Retour</button>
-            <button type="submit" disabled={!valid || pending} className={isCancel ? 'odoo-btn-danger' : 'odoo-btn-primary'}>
+        <form onSubmit={(e) => { e.preventDefault(); setTouched(true); if (valid && !pending) onSubmit(reason.trim()); }}>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--ds-muted)' }}>
+              {isCancel
+                ? 'La demande ne sera plus proposée à la commande. Cette action est définitive et journalisée.'
+                : 'La part non reçue ne sera plus attendue : la demande est close avec ce qui est arrivé. Action définitive et journalisée.'}
+            </p>
+            <FormField label="Motif" htmlFor="pr-reason" required
+              error={touched && !valid ? 'Indiquez un motif d\'au moins 3 caractères.' : undefined}>
+              <textarea id="pr-reason" rows={3} autoFocus value={reason} maxLength={500} className="ds-input" aria-required="true"
+                onChange={(e) => setReason(e.target.value)} onBlur={() => setTouched(true)}
+                placeholder={isCancel ? 'Ex. besoin couvert par un transfert, erreur de saisie' : 'Ex. fournisseur en rupture, reliquat abandonné'} />
+            </FormField>
+          </div>
+          <div className="ds-form-foot">
+            <span className="ds-grow" />
+            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={pending}>Retour</button>
+            <button type="submit" disabled={!valid || pending} aria-busy={pending || undefined} className={isCancel ? 'ds-btn-danger solid' : 'odoo-btn-primary'}>
               {isCancel ? 'Annuler la demande' : 'Clôturer le reliquat'}
             </button>
           </div>

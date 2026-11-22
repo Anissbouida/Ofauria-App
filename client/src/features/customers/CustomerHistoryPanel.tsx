@@ -38,7 +38,7 @@ export default function CustomerHistoryPanel({ customerId, isActive }: { custome
             onClick={() => restore.mutate()} disabled={restore.isPending}><RotateCcw size={12} /> Restaurer le client</button>
         </div>
       )}
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--odoo-text-muted)', margin: '10px 0 6px' }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)', margin: '10px 0 6px' }}>
         <History size={12} /> Piste d'audit
       </div>
       {entries.length === 0 ? (

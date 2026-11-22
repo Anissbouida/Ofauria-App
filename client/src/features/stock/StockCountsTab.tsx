@@ -16,8 +16,9 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useStockCategories } from './useStockCategories';
 import { money } from '../../utils/money';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
-import { SectionTitle } from './StockUi';
+import { ListToolbar, FilterChips } from '../sales/ListTemplate';
+import { SectionTitle, HeaderActions } from './StockUi';
+import { DataPanel, EmptyState, FormField, LoadingState, NoResultState, SectionHeader, TableFooter } from '../../components/ds';
 
 /** Statut d'une campagne d'inventaire en étiquette commune : à vérifier = action attendue. */
 const COUNT_TONE: Record<StockCountStatus, StatusTone> = { counting: 'progress', review: 'todo', validated: 'done', cancelled: 'cancelled' };
@@ -29,8 +30,6 @@ const COUNT_TONE: Record<StockCountStatus, StatusTone> = { counting: 'progress',
  */
 const qty = (v: number | string | null | undefined) => (v == null ? '' : Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 3 }));
 const n2 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
-const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
 
 async function openSheet(id: string) {
   try { window.open(URL.createObjectURL(await stockCountsApi.sheet(id)), '_blank'); } catch (e) { notify.error(apiErrorMessage(e)); }
@@ -43,20 +42,23 @@ export default function StockCountsTab() {
   const { data, isLoading } = useQuery({ queryKey: ['stock-counts'], queryFn: () => stockCountsApi.list({ limit: '50' }) });
   const current = data?.data.find(c => c.status === 'counting' || c.status === 'review');
   const [creating, setCreating] = useState(false);
-  if (isLoading) return <ListEmpty icon={Loader2} title="Chargement…" />;
+  if (isLoading) return <LoadingState label="Chargement des inventaires…" />;
   if (openId) return <CountSheet id={openId} isDirection={isDirection} onBack={() => setOpenId(null)} />;
   return (
     <div className="stk-stack">
+      <HeaderActions>
+        {current
+          ? <button type="button" className="odoo-btn-primary" onClick={() => setOpenId(current.id)}>{current.status === 'review' && isDirection ? 'Vérifier et valider' : 'Continuer le comptage'}</button>
+          : <button type="button" className="odoo-btn-primary" disabled={creating} onClick={() => setCreating(true)}><Plus size={14} aria-hidden="true" /> Nouvel inventaire</button>}
+      </HeaderActions>
       {current ? (
         <StatusBanner tone={current.status === 'review' ? 'warning' : 'info'} icon={ClipboardCheck}
-          title={`${current.number} · ${STOCK_COUNT_STATUS_LABELS[current.status]} (${current.lines_counted}/${current.lines_total} compté(s))`}
-          actions={<button className="odoo-btn-primary" onClick={() => setOpenId(current.id)}>{current.status === 'review' && isDirection ? 'Vérifier et valider' : 'Continuer le comptage'}</button>}>
+          title={`${current.number} · ${STOCK_COUNT_STATUS_LABELS[current.status]} (${current.lines_counted}/${current.lines_total} compté(s))`}>
           {current.title ?? 'Inventaire en cours'} — ouvert le {format(new Date(current.created_at), 'dd/MM/yyyy')}{current.created_by_name ? ` par ${current.created_by_name}` : ''}.
           Un seul inventaire peut être ouvert à la fois.
         </StatusBanner>
       ) : !creating && (
-        <StatusBanner tone="neutral" icon={ClipboardCheck} title="Aucun inventaire en cours"
-          actions={<button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={13} /> Nouvel inventaire</button>}>
+        <StatusBanner tone="neutral" icon={ClipboardCheck} title="Aucun inventaire en cours">
           Comptez tout le stock (inventaire complet) ou quelques catégories (inventaire tournant). Les écarts validés ajustent le stock et sont valorisés au coût moyen.
         </StatusBanner>
       )}
@@ -64,23 +66,23 @@ export default function StockCountsTab() {
       {isDirection && <CycleCountPanel canOpen={!current} onOpened={(id) => setOpenId(id)} />}
 
       <SectionTitle icon={History}>Historique des inventaires</SectionTitle>
-      {!data?.data.length ? <ListEmpty icon={ClipboardCheck} title="Aucun inventaire enregistré dans l'application." /> : (
-        <ListPanel>
+      {!data?.data.length ? <EmptyState icon={ClipboardCheck} title="Aucun inventaire enregistré" text="Les inventaires ouverts, validés ou annulés apparaîtront ici." /> : (
+        <DataPanel label="Historique des inventaires" footer={<TableFooter note={`${data.data.length} inventaire${data.data.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Inventaire</th><th>Date</th><th>Articles</th><th>Statut</th>{isDirection && <th style={{ textAlign: 'right' }}>Écart valorisé</th>}<th>Validé par</th></tr></thead>
+            <thead><tr><th>N°</th><th>Inventaire</th><th>Date</th><th className="ds-num">Articles comptés</th><th>Statut</th>{isDirection && <th className="ds-num">Écart valorisé</th>}<th>Validé par</th></tr></thead>
             <tbody>{data.data.map(c => (
               <tr key={c.id} onClick={() => setOpenId(c.id)} style={{ cursor: 'pointer' }}>
-                <td><span className="sal-num">{c.number}</span></td>
-                <td>{c.title ?? (c.scope === 'full' ? 'Inventaire complet' : 'Inventaire tournant')}<div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{{ ingredient: 'Matières', packaging: 'Consommables', both: 'Matières et consommables' }[c.item_kinds]}{c.blind ? ' · à l\'aveugle' : ''}</div></td>
+                <td><span className="ds-ref">{c.number}</span></td>
+                <td><span className="ds-strong">{c.title ?? (c.scope === 'full' ? 'Inventaire complet' : 'Inventaire tournant')}</span><div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{{ ingredient: 'Matières', packaging: 'Consommables', both: 'Matières et consommables' }[c.item_kinds]}{c.blind ? ' · à l\'aveugle' : ''}</div></td>
                 <td>{format(new Date(`${String(c.count_date).slice(0, 10)}T00:00:00`), 'dd/MM/yyyy')}</td>
-                <td>{c.lines_counted}/{c.lines_total}</td>
+                <td className="ds-num">{c.lines_counted}/{c.lines_total}</td>
                 <td><StatusTag tone={COUNT_TONE[c.status] ?? 'draft'} label={STOCK_COUNT_STATUS_LABELS[c.status]} /></td>
-                {isDirection && <td style={{ textAlign: 'right', color: Number(c.gap_value) < 0 ? 'var(--prj-red)' : undefined }}>{c.gap_value != null ? `${money(c.gap_value)}` : '—'}</td>}
+                {isDirection && <td className="ds-num" style={{ color: Number(c.gap_value) < 0 ? 'var(--ds-danger)' : undefined }}>{c.gap_value != null ? `${money(c.gap_value)}` : '—'}</td>}
                 <td>{c.validated_by_name ?? '—'}</td>
               </tr>
             ))}</tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
     </div>
   );
@@ -99,10 +101,10 @@ function NewCount({ onCancel, onCreated }: { onCancel: () => void; onCreated: (c
     <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-label="Nouvel inventaire">
       <SectionTitle icon={ClipboardCheck}>Nouvel inventaire</SectionTitle>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-        <label style={lab}>Intitulé<input style={field} maxLength={200} value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Ex. : inventaire de fin octobre" /></label>
-        <label style={lab}>Articles à compter<select style={field} value={f.itemKinds} onChange={e => setF({ ...f, itemKinds: e.target.value as typeof f.itemKinds })}>
+        <FormField label="Intitulé" htmlFor="count-title"><input id="count-title" className="ds-input" maxLength={200} value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Ex. : inventaire de fin octobre" /></FormField>
+        <FormField label="Articles à compter" htmlFor="count-kinds"><select id="count-kinds" className="ds-input" value={f.itemKinds} onChange={e => setF({ ...f, itemKinds: e.target.value as typeof f.itemKinds })}>
           <option value="both">Matières et consommables</option><option value="ingredient">Matières premières</option><option value="packaging">Consommables (emballages…)</option>
-        </select></label>
+        </select></FormField>
       </div>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.blind} onChange={e => setF({ ...f, blind: e.target.checked })} /> Comptage à l'aveugle (le compteur ne voit pas le stock théorique)</label>
@@ -120,8 +122,8 @@ function NewCount({ onCancel, onCreated }: { onCancel: () => void; onCreated: (c
         </div>
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button className="odoo-btn-secondary" onClick={onCancel}>Annuler</button>
-        <button className="odoo-btn-primary" disabled={create.isPending || (f.partial && !cats.size)} onClick={() => create.mutate()}>
+        <button type="button" className="odoo-btn-secondary" onClick={onCancel} disabled={create.isPending}>Annuler</button>
+        <button type="button" className="odoo-btn-primary" disabled={create.isPending || (f.partial && !cats.size)} aria-busy={create.isPending || undefined} onClick={() => create.mutate()}>
           {create.isPending ? <Loader2 size={13} className="animate-spin" /> : <ClipboardCheck size={13} />} Ouvrir l'inventaire
         </button>
       </div>
@@ -180,7 +182,7 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
     return { gain, loss, gaps, uncounted: lines.filter(l => l.counted_qty == null).length };
   }, [lines]);
 
-  if (isLoading || !c) return <ListEmpty icon={Loader2} title="Chargement de l'inventaire…" />;
+  if (isLoading || !c) return <LoadingState label="Chargement de l'inventaire…" />;
   const editable = c.status === 'counting';
   const commit = (l: StockCountLine) => {
     const raw = drafts[l.id];
@@ -195,22 +197,26 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
   return (
     <div className="stk-stack">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <button className="odoo-btn-secondary" onClick={onBack}><ArrowLeft size={13} /> Inventaires</button>
-        <h2 className="stk-section-title" style={{ flex: 1 }}>{c.number} · {c.title ?? (c.scope === 'full' ? 'Inventaire complet' : 'Inventaire tournant')}</h2>
+        <button type="button" className="odoo-btn-secondary" onClick={onBack}><ArrowLeft size={13} aria-hidden="true" /> Inventaires</button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <SectionHeader title={<><span className="ds-ref" style={{ fontSize: 'inherit' }}>{c.number}</span> · {c.title ?? (c.scope === 'full' ? 'Inventaire complet' : 'Inventaire tournant')}</>} />
+        </div>
         <StatusTag tone={COUNT_TONE[c.status] ?? 'draft'} label={STOCK_COUNT_STATUS_LABELS[c.status]} />
-        <button className="odoo-btn-secondary" onClick={() => openSheet(c.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Feuille de comptage</button>
       </div>
+      <HeaderActions>
+        <button type="button" className="odoo-btn-secondary" onClick={() => openSheet(c.id)}><Printer size={14} aria-hidden="true" /> Feuille de comptage</button>
+      </HeaderActions>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ flex: 1, height: 8, borderRadius: 999, background: 'var(--theme-bg-separator)' }}>
-          <div style={{ width: `${c.lines_total ? Math.round(c.lines_counted / c.lines_total * 100) : 0}%`, height: '100%', borderRadius: 999, background: c.lines_counted === c.lines_total ? 'var(--prj-green)' : 'var(--theme-accent)' }} />
+          <div style={{ width: `${c.lines_total ? Math.round(c.lines_counted / c.lines_total * 100) : 0}%`, height: '100%', borderRadius: 999, background: c.lines_counted === c.lines_total ? 'var(--ds-success)' : 'var(--theme-accent)' }} />
         </div>
         <span style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>{c.lines_counted}/{c.lines_total} compté(s)</span>
       </div>
 
       {c.status === 'counting' && (
         <StatusBanner tone="info" icon={ClipboardCheck} title="Comptage en cours"
-          actions={<button className="odoo-btn-primary" disabled={!c.lines_counted || act.isPending}
+          actions={<button type="button" className="odoo-btn-primary" disabled={!c.lines_counted || act.isPending}
             onClick={async () => { if (await confirm(`Terminer le comptage ? ${totals.uncounted} article(s) non compté(s) ne seront pas ajustés, sauf décision contraire à la validation.`)) act.mutate('submit'); }}>
             <Send size={13} /> Terminer le comptage</button>}>
           Saisissez la quantité réellement présente, réserve et poste de pesée confondus, dans l'unité de l'article. Formule acceptée pour les contenants : « 3x25 + 4,5 ».
@@ -221,9 +227,9 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
         <section className="prj-panel" style={{ padding: '14px 18px', display: 'grid', gap: 10 }} aria-label="Écarts et validation">
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: '0.875rem' }}>
             <span>Écarts : <strong>{totals.gaps}</strong></span>
-            <span>Excédents : <strong style={{ color: 'var(--prj-green)' }}>+{money(totals.gain)}</strong></span>
-            <span>Manquants : <strong style={{ color: 'var(--prj-red)' }}>{money(totals.loss)}</strong></span>
-            <span>Net : <strong style={{ color: totals.gain + totals.loss < 0 ? 'var(--prj-red)' : undefined }}>{money(totals.gain + totals.loss)}</strong></span>
+            <span>Excédents : <strong style={{ color: 'var(--ds-success)' }}>+{money(totals.gain)}</strong></span>
+            <span>Manquants : <strong style={{ color: 'var(--ds-danger)' }}>{money(totals.loss)}</strong></span>
+            <span>Net : <strong style={{ color: totals.gain + totals.loss < 0 ? 'var(--ds-danger)' : undefined }}>{money(totals.gain + totals.loss)}</strong></span>
             <span>Non comptés : <strong>{totals.uncounted}</strong></span>
           </div>
           {totals.uncounted > 0 && (
@@ -233,9 +239,9 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
             </label>
           )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-            <button className="odoo-btn-secondary" disabled={act.isPending} onClick={async () => { if (await confirm(`Annuler l'inventaire ${c.number} ? Aucun stock ne sera modifié.`)) act.mutate('cancel'); }}><Ban size={13} /> Annuler</button>
-            {c.status === 'review' && <button className="odoo-btn-secondary" disabled={act.isPending} onClick={() => act.mutate('reopen')}><RotateCcw size={13} /> Rouvrir le comptage</button>}
-            <button className="odoo-btn-primary" disabled={validate.isPending || !c.lines_counted}
+            <button type="button" className="ds-btn-danger" disabled={act.isPending} onClick={async () => { if (await confirm(`Annuler l'inventaire ${c.number} ? Aucun stock ne sera modifié.`)) act.mutate('cancel'); }}><Ban size={13} aria-hidden="true" /> Annuler l'inventaire</button>
+            {c.status === 'review' && <button type="button" className="odoo-btn-secondary" disabled={act.isPending} onClick={() => act.mutate('reopen')}><RotateCcw size={13} /> Rouvrir le comptage</button>}
+            <button type="button" className="odoo-btn-primary" disabled={validate.isPending || !c.lines_counted} aria-busy={validate.isPending || undefined}
               onClick={async () => { if (await confirm(`Valider l'inventaire ? Le stock de ${totals.gaps + (zeroUncounted ? totals.uncounted : 0)} article(s) sera ajusté (net ${money(totals.gain + totals.loss)}). Cette opération ne s'annule pas.`)) validate.mutate(); }}>
               {validate.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Valider l'inventaire
             </button>
@@ -249,53 +255,57 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
         </StatusBanner>
       )}
 
-      <ListToolbar search={search} onSearch={setSearch} placeholder="Article ou catégorie…">
-        <span className="stk-grow" />
-        {editable && <button className="odoo-btn-secondary" onClick={() => setAdding(!adding)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Article hors liste</button>}
-      </ListToolbar>
       <FilterChips label="Filtrer les articles" value={filter} onChange={k => setFilter(k as typeof filter)} chips={[
         { key: 'all', label: 'Tous les articles', count: lines.length },
         { key: 'todo', label: 'Non comptés', count: totals.uncounted },
         ...(showTh ? [{ key: 'gaps', label: 'Avec écart', count: totals.gaps }] : []),
       ]} />
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un article ou une catégorie…">
+        <span className="stk-grow" />
+        {editable && <button type="button" className="odoo-btn-secondary" onClick={() => setAdding(!adding)}><Plus size={13} aria-hidden="true" /> Article hors liste</button>}
+      </ListToolbar>
       {adding && editable && <AddLine countId={c.id} kinds={c.item_kinds} onDone={() => { setAdding(false); refresh(); }} />}
 
-      {visible.length === 0 ? <ListEmpty icon={ClipboardCheck} title="Aucun article pour ce filtre." /> : (
-      <ListPanel>
+      {visible.length === 0 ? (
+        lines.length === 0
+          ? <EmptyState icon={ClipboardCheck} title="Aucun article à compter" />
+          : <NoResultState text="Aucun article ne correspond aux filtres." onReset={() => { setSearch(''); setFilter('all'); }} />
+      ) : (
+      <DataPanel label="Articles à compter" footer={<TableFooter note={`${visible.length} article${visible.length > 1 ? 's' : ''}${visible.length !== lines.length ? ` sur ${lines.length}` : ''} · ${c.lines_counted} compté${c.lines_counted > 1 ? 's' : ''}`} />}>
         <table className="odoo-table">
           <thead><tr>
-            <th>Article</th><th>Unité</th>{showTh && <th style={{ textAlign: 'right' }}>Théorique</th>}<th style={{ width: 160 }}>Compté</th>
-            {showTh && <th style={{ textAlign: 'right' }}>Écart</th>}{showTh && isDirection && <th style={{ textAlign: 'right' }}>Valeur</th>}
-            {c.status === 'validated' && <th style={{ textAlign: 'right' }}>Ajusté</th>}<th>Compté par</th>
+            <th>Article</th><th>Unité</th>{showTh && <th className="ds-num">Théorique</th>}<th className="ds-num" style={{ width: 160 }}>Compté</th>
+            {showTh && <th className="ds-num">Écart</th>}{showTh && isDirection && <th className="ds-num">Valeur</th>}
+            {c.status === 'validated' && <th className="ds-num">Ajusté</th>}<th>Compté par</th>
           </tr></thead>
           <tbody>{visible.map(l => {
             const g = gapOf(l);
             const th = l.theoretical_at_count ?? l.theoretical_at_start;
             return (
               <tr key={l.id}>
-                <td>{l.item_name}<div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{l.category_name ?? (l.item_kind === 'packaging' ? 'Consommable' : '')}{l.container_size ? ` · contenant ${qty(l.container_size)} ${l.unit ?? ''}` : ''}</div></td>
+                <td><span className="ds-strong">{l.item_name}</span><div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{l.category_name ?? (l.item_kind === 'packaging' ? 'Consommable' : '')}{l.container_size ? ` · contenant ${qty(l.container_size)} ${l.unit ?? ''}` : ''}</div></td>
                 <td>{l.unit}</td>
-                {showTh && <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{qty(th)}</td>}
-                <td>
+                {showTh && <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{qty(th)}</td>}
+                <td className="ds-num">
                   {editable ? (
-                    <input style={{ ...field, textAlign: 'right', borderColor: l.counted_qty != null ? '#28a745' : undefined }} inputMode="decimal"
+                    <input className="ds-input ds-num" style={{ borderColor: l.counted_qty != null ? 'var(--ds-success)' : undefined }} inputMode="decimal"
                       value={drafts[l.id] ?? (l.counted_qty != null ? qty(l.counted_qty).replace(/\s/g, '') : '')}
                       onChange={e => setDrafts({ ...drafts, [l.id]: e.target.value })}
                       onBlur={() => commit(l)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                       aria-label={`Quantité comptée ${l.item_name}`} placeholder="—" />
                   ) : <span style={{ fontWeight: 600 }}>{l.counted_qty != null ? qty(l.counted_qty) : <span style={{ color: 'var(--theme-text-muted)' }}>non compté</span>}</span>}
                 </td>
-                {showTh && <td style={{ textAlign: 'right', fontWeight: g && Math.abs(g) > 0.0005 ? 600 : 400, color: g == null ? undefined : g < -0.0005 ? 'var(--prj-red)' : g > 0.0005 ? 'var(--prj-green)' : 'var(--theme-text-muted)' }}>
-                  {g == null ? '' : `${g > 0 ? '+' : ''}${qty(g)}`}{g != null && Number(th) > 0 && Math.abs(g) / Number(th) > 0.2 && <AlertTriangle size={11} style={{ marginLeft: 4, color: 'var(--prj-orange)' }} aria-label="Écart supérieur à 20 %" />}
+                {showTh && <td className="ds-num" style={{ fontWeight: g && Math.abs(g) > 0.0005 ? 600 : 400, color: g == null ? undefined : g < -0.0005 ? 'var(--ds-danger)' : g > 0.0005 ? 'var(--ds-success)' : 'var(--theme-text-muted)' }}>
+                  {g == null ? '' : `${g > 0 ? '+' : ''}${qty(g)}`}{g != null && Number(th) > 0 && Math.abs(g) / Number(th) > 0.2 && <AlertTriangle size={11} style={{ marginLeft: 4, color: 'var(--ds-warning)' }} aria-label="Écart supérieur à 20 %" />}
                 </td>}
-                {showTh && isDirection && <td style={{ textAlign: 'right' }}>{g == null || Math.abs(g) < 0.0005 ? '' : n2(g * Number(l.cost ?? 0))}</td>}
-                {c.status === 'validated' && <td style={{ textAlign: 'right' }}>{l.applied_qty != null && Math.abs(Number(l.applied_qty)) > 0.0005 ? `${Number(l.applied_qty) > 0 ? '+' : ''}${qty(l.applied_qty)}` : '—'}</td>}
+                {showTh && isDirection && <td className="ds-num">{g == null || Math.abs(g) < 0.0005 ? '' : n2(g * Number(l.cost ?? 0))}</td>}
+                {c.status === 'validated' && <td className="ds-num">{l.applied_qty != null && Math.abs(Number(l.applied_qty)) > 0.0005 ? `${Number(l.applied_qty) > 0 ? '+' : ''}${qty(l.applied_qty)}` : '—'}</td>}
                 <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{l.counted_by_name ?? ''}{l.counted_at ? ` · ${format(new Date(l.counted_at), 'dd/MM HH:mm')}` : ''}</td>
               </tr>
             );
           })}</tbody>
         </table>
-      </ListPanel>
+      </DataPanel>
       )}
     </div>
   );
@@ -317,8 +327,8 @@ function AddLine({ countId, kinds, onDone }: { countId: string; kinds: StockCoun
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
       <SearchSelect options={options} value={value} onChange={setValue} placeholder="Article trouvé hors liste…" width={360} size="md" />
-      <button className="odoo-btn-primary" disabled={!value || add.isPending} onClick={() => add.mutate()}>Ajouter</button>
-      <button className="odoo-pager-btn" aria-label="Fermer" onClick={onDone}><X size={13} /></button>
+      <button type="button" className="odoo-btn-secondary" disabled={!value || add.isPending} onClick={() => add.mutate()}>Ajouter</button>
+      <button type="button" className="ds-icon-btn" aria-label="Fermer" onClick={onDone}><X size={16} /></button>
     </div>
   );
 }
@@ -346,25 +356,25 @@ function CycleCountPanel({ canOpen, onOpened }: { canOpen: boolean; onOpened: (i
   return (
     <section className="prj-panel" style={{ padding: '14px 18px', display: 'grid', gap: 10 }} aria-label="Inventaire tournant">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <strong className="stk-section-title">Inventaire tournant</strong>
+        <h2 className="ds-subhead" style={{ fontSize: 'var(--ds-t-section)', fontWeight: 700 }}>Inventaire tournant</h2>
         <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
           Classes par valeur consommée sur 12 mois ; A compté tous les {days.A} j, B tous les {days.B} j, C tous les {days.C} j.
         </span>
         <div style={{ flex: 1 }} />
         <button type="button" className="odoo-btn-secondary" disabled={classify.isPending} onClick={() => classify.mutate()}>Recalculer les classes</button>
-        <button type="button" className="odoo-btn-primary" disabled={!canOpen || !due || open.isPending} onClick={() => open.mutate()}
+        <button type="button" className="odoo-btn-secondary" disabled={!canOpen || !due || open.isPending} onClick={() => open.mutate()}
           title={!canOpen ? 'Un inventaire est déjà ouvert' : undefined}>
           Ouvrir la campagne ({Math.min(due, data.params.max_lines)} article{Math.min(due, data.params.max_lines) > 1 ? 's' : ''})
         </button>
       </div>
       <table className="odoo-table">
-        <thead><tr><th>Classe</th><th style={{ textAlign: 'right' }}>Articles</th><th style={{ textAlign: 'right' }}>Valeur consommée (12 mois)</th><th style={{ textAlign: 'right' }}>À compter</th></tr></thead>
+        <thead><tr><th>Classe</th><th className="ds-num">Articles</th><th className="ds-num">Valeur consommée (12 mois)</th><th className="ds-num">À compter</th></tr></thead>
         <tbody>{data.classes.map(c => (
           <tr key={c.class}>
-            <td><strong>{c.class}</strong></td>
-            <td style={{ textAlign: 'right' }}>{c.items}</td>
-            <td style={{ textAlign: 'right' }}>{money(c.value)}</td>
-            <td style={{ textAlign: 'right' }}>{c.due ? <StatusTag tone="todo" label={String(c.due)} /> : '0'}</td>
+            <td className="ds-strong">{c.class}</td>
+            <td className="ds-num">{c.items}</td>
+            <td className="ds-num">{money(c.value)}</td>
+            <td className="ds-num">{c.due ? <StatusTag tone="todo" label={String(c.due)} /> : '0'}</td>
           </tr>
         ))}</tbody>
       </table>

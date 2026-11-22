@@ -9,8 +9,9 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import {
   PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
-import { ChipsRow, PagerFoot } from './StockUi';
+import { ListToolbar, FilterChips } from '../sales/ListTemplate';
+import { ChipsRow, PagerFoot, HeaderActions } from './StockUi';
+import { DataPanel, EmptyState, LoadingState, NoResultState } from '../../components/ds';
 
 const date = (v: string | null | undefined) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—');
 const qty = (v: string | number) => Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
@@ -93,6 +94,21 @@ export default function GoodsEntryRegisterTab({ bare = false }: {
 
   return (
     <div className="stk-stack" style={bare ? undefined : { padding: '1rem' }}>
+      <HeaderActions>
+        <button type="button" className="odoo-btn-secondary" disabled={!total} onClick={exportCsv}
+          title="Fichier complet de la période (pas seulement la page affichée)">
+          <Download size={14} aria-hidden="true" /> Exporter
+        </button>
+      </HeaderActions>
+
+      {counts.incomplete > 0 && (
+        <StatusBanner tone="warning" icon={AlertTriangle}
+          title={`${counts.incomplete} entrée${counts.incomplete > 1 ? 's' : ''} sans lot fournisseur ou sans DLC sur la période`}
+          actions={flag !== 'incomplete' ? <button type="button" className="odoo-btn-secondary" onClick={() => setFlag('incomplete')}>Les afficher</button> : undefined}>
+          Une entrée incomplète ne permet pas de retrouver un lot en cas de rappel. La saisie se fait à la réception (lot et DLC exigés selon la catégorie).
+        </StatusBanner>
+      )}
+
       <ChipsRow summary={`${counts.all} entrée${counts.all > 1 ? 's' : ''} · ${periodLabel(period, customFrom, customTo)}`}>
         <FilterChips label="Registre des entrées" value={flag || 'all'} onChange={k => setFlag(k === 'all' ? '' : (k as Flag))}
           chips={FLAGS.map(f => {
@@ -104,14 +120,6 @@ export default function GoodsEntryRegisterTab({ bare = false }: {
           })} />
       </ChipsRow>
 
-      {counts.incomplete > 0 && (
-        <StatusBanner tone="warning" icon={AlertTriangle}
-          title={`${counts.incomplete} entrée${counts.incomplete > 1 ? 's' : ''} sans lot fournisseur ou sans DLC sur la période`}
-          actions={flag !== 'incomplete' ? <button type="button" className="odoo-btn-secondary" onClick={() => setFlag('incomplete')}>Les afficher</button> : undefined}>
-          Une entrée incomplète ne permet pas de retrouver un lot en cas de rappel. La saisie se fait à la réception (lot et DLC exigés selon la catégorie).
-        </StatusBanner>
-      )}
-
       <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher par article, fournisseur, N° de lot, bon ou BC…">
         {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
         <PeriodFilter label="Entrée" title="Filtre sur la date d'entrée en stock"
@@ -122,46 +130,42 @@ export default function GoodsEntryRegisterTab({ bare = false }: {
             <X size={12} /> Effacer les filtres
           </button>
         )}
-        <span className="stk-grow" />
-        <button type="button" className="odoo-btn-secondary" disabled={!total} onClick={exportCsv}
-          title="Fichier complet de la période (pas seulement la page affichée)" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Download size={12} /> Exporter
-        </button>
       </ListToolbar>
 
       {isLoading ? (
-        <ListEmpty icon={Loader2} title="Chargement du registre…" />
+        <LoadingState label="Chargement du registre…" />
       ) : rows.length === 0 ? (
-        <ListEmpty icon={ClipboardList} title={hasFilters ? 'Aucune entrée pour ces filtres.' : 'Aucune entrée sur la période.'}
-          action={hasFilters ? <button type="button" className="odoo-btn-secondary" onClick={resetFilters}>Effacer les filtres</button> : undefined} />
+        hasFilters
+          ? <NoResultState text="Aucune entrée ne correspond aux filtres." onReset={resetFilters} />
+          : <EmptyState icon={ClipboardList} title="Aucune entrée sur la période" text="Chaque réception de matière s'inscrit ici avec son lot et sa date limite." />
       ) : (
         <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
-        <ListPanel footer={<PagerFoot page={page} total={total} onPage={setPage}
+        <DataPanel footer={<PagerFoot page={page} total={total} onPage={setPage}
             note={`${FLAGS.find(f => f.key === (flag || 'all'))?.label} · ${periodLabel(period, customFrom, customTo)}`} />}>
           <table className="odoo-table" style={{ margin: 0, minWidth: 1100 }}>
             <thead><tr>
               <th style={{ width: 90 }}>Date</th><th style={{ width: 130 }}>Bon</th><th>Fournisseur</th><th>Article</th>
-              <th style={{ width: 110, textAlign: 'right' }}>Quantité</th><th style={{ width: 120 }}>Lot fournisseur</th><th style={{ width: 140 }}>Lot interne</th>
+              <th className="ds-num" style={{ width: 110 }}>Quantité</th><th style={{ width: 120 }}>Lot fournisseur</th><th style={{ width: 140 }}>Lot interne</th>
               <th style={{ width: 90 }}>DLC</th><th style={{ width: 90 }}>Contrôle</th><th style={{ width: 120 }}>BL / facture</th><th style={{ width: 120 }}>Réceptionné par</th>
             </tr></thead>
             <tbody>
               {rows.map((r, i) => (
                 <tr key={`${r.voucher_number ?? 'hb'}-${r.internal_lot ?? ''}-${i}`}>
                   <td style={{ color: 'var(--theme-text-muted)' }}>{date(r.entry_date)}</td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>
-                    {r.source === 'hors_bc' ? <span style={{ color: 'var(--prj-orange, #B45309)', fontWeight: 600, fontFamily: 'inherit' }}>hors BC</span> : (
+                  <td className="ds-ref">
+                    {r.source === 'hors_bc' ? <span style={{ color: 'var(--ds-warning)', fontWeight: 600, fontFamily: 'inherit' }}>hors BC</span> : (
                       <>
-                        <div style={{ fontWeight: 600 }}>{r.voucher_number}</div>
-                        {r.order_number && <div style={{ color: 'var(--theme-text-muted)' }}>{r.order_number}</div>}
+                        <div>{r.voucher_number}</div>
+                        {r.order_number && <div style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}>{r.order_number}</div>}
                       </>
                     )}
                   </td>
                   <td>{r.supplier_name ?? '—'}</td>
-                  <td>
+                  <td className="ds-strong">
                     {r.item_name ?? '—'}
-                    {r.line_kind && r.line_kind !== 'receive' && r.source === 'bc' && <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 6 }}>{r.line_kind}</span>}
+                    {r.line_kind && r.line_kind !== 'receive' && r.source === 'bc' && <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', fontWeight: 400, marginLeft: 6 }}>{r.line_kind}</span>}
                   </td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="ds-num">
                     {qty(r.quantity)} <span style={{ color: 'var(--theme-text-muted)' }}>{r.unit ?? ''}</span>
                     {r.container_label ? <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.container_label}</div> : null}
                   </td>
@@ -178,7 +182,7 @@ export default function GoodsEntryRegisterTab({ bare = false }: {
               ))}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
         </div>
       )}
     </div>
@@ -188,7 +192,7 @@ export default function GoodsEntryRegisterTab({ bare = false }: {
 /** Donnée de traçabilité absente : texte orange discret plutôt qu'une pastille rouge par cellule. */
 function Missing({ label }: { label: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--prj-orange, #B45309)', fontSize: '0.75rem', fontWeight: 600 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-warning)', fontSize: '0.75rem', fontWeight: 600 }}>
       <AlertTriangle size={11} /> {label}
     </span>
   );
@@ -196,8 +200,8 @@ function Missing({ label }: { label: string }) {
 
 function Dot({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: ok ? 'var(--odoo-text)' : 'var(--prj-red, #DC2626)', fontWeight: ok ? 400 : 600 }}>
-      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: ok ? 'var(--prj-green, #15803D)' : 'var(--prj-red, #DC2626)' }} />
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: ok ? 'var(--odoo-text)' : 'var(--ds-danger)', fontWeight: ok ? 400 : 600 }}>
+      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: ok ? 'var(--ds-success)' : 'var(--ds-danger)' }} />
       {label}
     </span>
   );

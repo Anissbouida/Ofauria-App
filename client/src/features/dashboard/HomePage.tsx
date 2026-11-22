@@ -8,6 +8,7 @@ import { Warehouse, Factory, ShoppingCart, Home, ChevronRight } from 'lucide-rea
 import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
 import { navLabel, visibleNavGroups } from '../../config/navigation';
 import { useApprovalsCount } from '../../api/approvals.api';
+import { Breadcrumb, PageHeader, SectionHeader } from '../../components/ds';
 import './home.css';
 
 export default function HomePage() {
@@ -42,46 +43,41 @@ export default function HomePage() {
   return (
     <div className="odoo-scope home-page">
       <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <Home size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span className="odoo-breadcrumb-current">Accueil</span>
-        </div>
+        <Breadcrumb icon={Home} items={[{ label: 'Accueil' }]} />
         <div style={{ flex: 1 }} />
-        {quickActions.map((action, i) => (
-          <button key={action.href} type="button" className={i === 0 ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+        {/* Une seule action principale, à droite ; les raccourcis secondaires à sa gauche. */}
+        {[...quickActions.slice(1), ...quickActions.slice(0, 1)].map(action => (
+          <button key={action.href} type="button" className={action === quickActions[0] ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
             onClick={() => navigate(action.href)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <action.icon size={14} /> {action.label}
+            <action.icon size={14} aria-hidden="true" /> {action.label}
           </button>
         ))}
       </div>
 
       <div className="sal-page" style={{ display: 'flex', flexDirection: 'column' }}>
-        <header className="kl-largetitle">
-          <h1>Bienvenue, {user?.firstName}</h1>
-          <p>Que souhaitez-vous faire aujourd'hui ?</p>
-        </header>
+        <PageHeader title={`Bienvenue, ${user?.firstName ?? ''}`} description="Que souhaitez-vous faire aujourd'hui ?" />
 
         {/* ══════ MODULE NAVIGATION ══════ */}
         <div className="home-groups">
           {userGroups.map((group) => (
             <section key={group.title} aria-label={group.title}>
-              <div className="kl-sec"><h2>{group.title}</h2></div>
+              <SectionHeader title={group.title} />
               <div className="kl-group">
                 {group.items.map((mod) => {
                   const pending = mod.counter === 'approvals' && approvalsCount > 0;
                   return (
                     <button key={mod.href} type="button" className="kl-cell ico" onClick={() => navigate(mod.href)}>
-                      <span className={`kl-ic home-ic ${mod.color}`}><mod.icon size={17} /></span>
+                      <span className={`kl-ic home-ic ${mod.color}`}><mod.icon size={17} aria-hidden="true" /></span>
                       <span className="tx">
                         <span className="t1">{navLabel(mod, sectorLabel)}</span>
-                        <span className="t2" style={pending ? { color: 'var(--prj-red)', fontWeight: 500 } : undefined}>
+                        <span className="t2" style={pending ? { color: 'var(--ds-danger)', fontWeight: 600 } : undefined}>
                           {pending
                             ? `${approvalsCount} pièce${approvalsCount > 1 ? 's' : ''} attend${approvalsCount > 1 ? 'ent' : ''} votre décision`
                             : mod.description}
                         </span>
                       </span>
                       {pending && <span className="tr red">{approvalsCount > 99 ? '99+' : approvalsCount}</span>}
-                      <ChevronRight size={15} className="chev" />
+                      <ChevronRight size={15} className="chev" aria-hidden="true" />
                     </button>
                   );
                 })}

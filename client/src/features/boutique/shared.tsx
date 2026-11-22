@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Inbox } from 'lucide-react';
+import { EmptyState, LoadingState } from '../../components/ds';
 import '../controle/KlUi';
 
 /** Briques communes aux onglets de la Journée boutique (style odoo, pas de Tailwind coloré). */
@@ -11,15 +12,15 @@ export const toNum = (v: unknown) => {
   return Number.isFinite(x) ? x : 0;
 };
 
-/** Champ de saisie aligné sur les tableaux odoo (pas de classe globale pour les inputs). */
+/** Champ de saisie dans un tableau : mêmes cotes que `ds-input sm` (jetons du Design System). */
 export const inputStyle: CSSProperties = {
-  border: '1px solid var(--odoo-border)', borderRadius: 3, padding: '4px 8px',
-  fontSize: '0.8125rem', background: 'var(--odoo-bg)', color: 'var(--odoo-text)',
+  border: '1px solid var(--ds-line)', borderRadius: 6, padding: '0 8px', height: 32,
+  fontSize: 14, background: 'var(--ds-card)', color: 'var(--ds-ink)',
 };
 
 /** Classe d'un tableau en carte (design Ventes) : prj-panel + défilement horizontal. */
 export const tableCard = 'prj-panel prj-scroll';
-export const muted: CSSProperties = { fontSize: '0.6875rem', color: 'var(--theme-text-muted)' };
+export const muted: CSSProperties = { fontSize: 12, color: 'var(--ds-muted)' };
 /** Intertitre de section (design Ventes) : pas de capitales forcées. */
 export const sectionTitle: CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6,
@@ -31,17 +32,13 @@ export function Dot({ color }: { color: string }) {
 }
 
 export function Loading() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-      <Loader2 size={22} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-    </div>
-  );
+  return <LoadingState bare />;
 }
 
 export function EmptyRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
   return (
     <tr>
-      <td colSpan={colSpan} style={{ textAlign: 'center', padding: '2rem', color: 'var(--theme-text-muted)' }}>{children}</td>
+      <td colSpan={colSpan}><EmptyState bare icon={Inbox} title={children} /></td>
     </tr>
   );
 }

@@ -115,7 +115,7 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
 
   const canSubmit = !!categoryCode && subject.trim().length > 0 && (!!customerId || customerName.trim().length > 0) && !create.isPending;
   const isSafety = categoryCode === 'safety';
-  const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4, display: 'block' };
+  const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4, display: 'block' };
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -166,7 +166,7 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
             {productId && lots.length > 0 && (
               <div>
                 <span style={label}>Lot</span>
-                <select className="input" value={productLotId} onChange={e => setProductLotId(e.target.value)} style={{ width: '100%' }}>
+                <select className="ds-input" value={productLotId} onChange={e => setProductLotId(e.target.value)} style={{ width: '100%' }}>
                   <option value="">Lot inconnu</option>
                   {lots.map(l => <option key={l.id} value={l.id}>{l.lot_number} · {new Date(l.produced_at).toLocaleDateString('fr-FR')}</option>)}
                 </select>
@@ -176,7 +176,7 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
 
           <div>
             <span style={label}>En un mot</span>
-            <input className="input" style={{ width: '100%' }} value={subject} maxLength={200}
+            <input className="ds-input" value={subject} maxLength={200}
               onChange={e => { setSubject(e.target.value); setSubjectTouched(true); }} placeholder="Ex. : pain brûlé, retard de commande…" />
           </div>
 
@@ -191,7 +191,7 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
                 </div>
               ) : (
                 <>
-                  <input className="input" style={{ width: '100%' }} value={customerName} maxLength={160}
+                  <input className="ds-input" value={customerName} maxLength={160}
                     onChange={e => { setCustomerName(e.target.value); setCustomerQuery(e.target.value); }} placeholder="Nom du client (ou rechercher une fiche)" />
                   {customers.length > 0 && customerQuery.trim().length >= 2 && (
                     <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 4, maxHeight: 140, overflowY: 'auto' }}>
@@ -199,7 +199,7 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
                         <button key={c.id} type="button" onClick={() => { setCustomerId(c.id); setCustomerQuery(''); }}
                           style={{ display: 'flex', width: '100%', justifyContent: 'space-between', padding: '6px 10px', fontSize: '0.8125rem', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>
                           <span>{customerLabel(c)}</span>
-                          <span style={{ color: 'var(--theme-text-muted)' }}>{c.phone || ''}</span>
+                          <span style={{ color: 'var(--ds-muted)' }}>{c.phone || ''}</span>
                         </button>
                       ))}
                     </div>
@@ -209,7 +209,7 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
             </div>
             <div>
               <span style={label}>Téléphone</span>
-              <input className="input" style={{ width: '100%' }} value={customerPhone} maxLength={40} onChange={e => setCustomerPhone(e.target.value)} placeholder="Pour rappeler le client" />
+              <input className="ds-input" value={customerPhone} maxLength={40} onChange={e => setCustomerPhone(e.target.value)} placeholder="Pour rappeler le client" />
             </div>
           </div>
 
@@ -218,27 +218,27 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 <div>
                   <span style={label}>Canal</span>
-                  <select className="input" style={{ width: '100%' }} value={channel} onChange={e => setChannel(e.target.value as ComplaintChannel)}>
+                  <select className="ds-input" value={channel} onChange={e => setChannel(e.target.value as ComplaintChannel)}>
                     {Object.entries(CHANNEL_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
                 <div>
                   <span style={label}>Priorité</span>
-                  <select className="input" style={{ width: '100%' }} value={isSafety ? 'critical' : priority} disabled={isSafety}
+                  <select className="ds-input" value={isSafety ? 'critical' : priority} disabled={isSafety}
                     onChange={e => setPriority(e.target.value as ComplaintPriority)}>
                     {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
                 <div>
                   <span style={label}>Quantité</span>
-                  <input className="input" style={{ width: '100%' }} type="number" min="0" step="any" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="—" />
+                  <input className="ds-input" type="number" min="0" step="any" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="—" />
                 </div>
               </div>
               <div>
                 <span style={label}>Ticket de caisse</span>
                 <div style={{ position: 'relative' }}>
-                  <Search size={13} style={{ position: 'absolute', left: 8, top: 9, color: 'var(--theme-text-muted)' }} />
-                  <input className="input" style={{ width: '100%', paddingLeft: 26 }} value={saleQuery} onChange={e => { setSaleQuery(e.target.value); setSaleId(''); }}
+                  <Search size={13} style={{ position: 'absolute', left: 8, top: 9, color: 'var(--ds-muted)' }} />
+                  <input className="ds-input" style={{ paddingLeft: 26 }} value={saleQuery} onChange={e => { setSaleQuery(e.target.value); setSaleId(''); }}
                     placeholder="N° de ticket (VNT-…)" />
                 </div>
                 {sales.length > 0 && !saleId && (
@@ -246,8 +246,8 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
                     {sales.map(s => (
                       <button key={s.id} type="button" onClick={() => { setSaleId(s.id); setSaleQuery(s.sale_number); if (s.customer_id && !customerId) setCustomerId(s.customer_id); }}
                         style={{ display: 'flex', width: '100%', justifyContent: 'space-between', padding: '6px 10px', fontSize: '0.8125rem', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>
-                        <span className="font-mono">{s.sale_number}</span>
-                        <span style={{ color: 'var(--theme-text-muted)' }}>{new Date(s.created_at).toLocaleDateString('fr-FR')} · {money(Number(s.total))}</span>
+                        <span className="ds-ref">{s.sale_number}</span>
+                        <span style={{ color: 'var(--ds-muted)' }}>{new Date(s.created_at).toLocaleDateString('fr-FR')} · {money(Number(s.total))}</span>
                       </button>
                     ))}
                   </div>
@@ -255,7 +255,7 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
               </div>
               <div>
                 <span style={label}>Description</span>
-                <textarea className="input" style={{ width: '100%', minHeight: 80 }} value={description} maxLength={4000}
+                <textarea className="ds-input" style={{ minHeight: 80 }} value={description} maxLength={4000}
                   onChange={e => setDescription(e.target.value)} placeholder="Ce que dit le client, ce qui a été constaté…" />
               </div>
             </>

@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronRight as Caret, GanttChartSquare, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronRight as Caret, GanttChartSquare } from 'lucide-react';
 import { addDays, differenceInCalendarDays, format, startOfWeek } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { projectsApi, type Project, type Task } from '../../api/projects.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { projectHealth } from './shared';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Planning des projets (refonte 2026-11) : un Gantt des projets ouverts, de leur
@@ -57,7 +58,7 @@ export default function ProjectsPlanning() {
     return span(from, to < from ? from : to);
   };
 
-  if (isLoading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={28} className="animate-spin" /></div>;
+  if (isLoading) return <LoadingState bare label="Chargement du planning…" />;
 
   return (
     <div className="prj">
@@ -83,7 +84,7 @@ export default function ProjectsPlanning() {
         <section className="prj-panel prj-gantt" aria-label="Planning des projets">
           <div className="prj-gantt-inner">
             <div className="prj-gantt-row head">
-              <div className="prj-gantt-label" style={{ cursor: 'default', fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>Projet / tâche</div>
+              <div className="prj-gantt-label" style={{ cursor: 'default', fontSize: '0.75rem', fontWeight: 500, color: 'var(--ds-muted)' }}>Projet / tâche</div>
               <div className="prj-gantt-cols" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
                 {columns.map(c => (
                   <div key={c.toISOString()}>{col === 1 ? format(c, 'EEE d', { locale: fr }) : `${format(c, 'd MMM', { locale: fr })}`}</div>
@@ -146,8 +147,8 @@ export default function ProjectsPlanning() {
       <div className="prj-gantt-legend">
         <span><span className="prj-swatch" style={{ background: 'var(--odoo-purple)' }} />Avancement</span>
         <span><span className="prj-swatch" style={{ background: 'color-mix(in srgb, var(--odoo-purple) 18%, transparent)' }} />Reste à faire</span>
-        <span><span className="prj-swatch" style={{ background: 'var(--prj-orange)' }} />En retard</span>
-        <span><span className="prj-swatch" style={{ background: 'var(--theme-text, #1D2433)', transform: 'rotate(45deg)' }} />Échéance d’une tâche</span>
+        <span><span className="prj-swatch" style={{ background: 'var(--ds-warning)' }} />En retard</span>
+        <span><span className="prj-swatch" style={{ background: 'var(--ds-ink)', transform: 'rotate(45deg)' }} />Échéance d’une tâche</span>
       </div>
     </div>
   );

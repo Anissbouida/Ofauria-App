@@ -21,7 +21,7 @@ type CellState = 'absent' | 'contains' | 'traces';
 type Draft = Record<string, CellState>;
 const NEXT: Record<CellState, CellState> = { absent: 'contains', contains: 'traces', traces: 'absent' };
 const CELL: Record<CellState, { text: string; title: string; style: React.CSSProperties }> = {
-  absent: { text: '', title: 'Absent', style: { background: 'transparent', color: 'var(--theme-text-muted)' } },
+  absent: { text: '', title: 'Absent', style: { background: 'transparent', color: 'var(--ds-muted)' } },
   contains: { text: 'C', title: 'Contient', style: { background: '#c62828', color: '#fff', fontWeight: 700 } },
   traces: { text: 'T', title: 'Traces', style: { background: '#fde68a', color: '#78350f', fontWeight: 700 } },
 };
@@ -87,7 +87,7 @@ export default function AllergenGrid() {
 
       <div className="prj-toolbar">
         <label className="prj-search" style={{ maxWidth: 360 }}>
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
           <input type="search" placeholder="Filtrer par nom ou catégorie" aria-label="Filtrer les ingrédients"
             value={search} onChange={e => { setSearch(e.target.value); setLimit(PAGE); }} />
         </label>
@@ -98,7 +98,7 @@ export default function AllergenGrid() {
         <span className="prj-note" style={{ marginLeft: 'auto' }}>{filtered.length} fiche{filtered.length > 1 ? 's' : ''}</span>
       </div>
 
-      {shown.length === 0 && <div style={{ padding: 16, color: 'var(--theme-text-muted)' }}>Aucune fiche à afficher.</div>}
+      {shown.length === 0 && <div style={{ padding: 16, color: 'var(--ds-muted)' }}>Aucune fiche à afficher.</div>}
 
       {shown.length > 0 && (
         <div className="prj-panel" style={{ overflowX: 'auto' }}>
@@ -120,7 +120,7 @@ export default function AllergenGrid() {
                   <tr key={r.id}>
                     <td style={{ position: 'sticky', left: 0, background: 'var(--odoo-bg)', zIndex: 1 }}>
                       <div style={{ fontWeight: 500 }}>{r.name}</div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--theme-text-muted)' }}>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--ds-muted)' }}>
                         {r.category ?? 'Sans catégorie'}{r.usedInRecipes > 0 ? ` · ${r.usedInRecipes} fiche${r.usedInRecipes > 1 ? 's' : ''}` : ''}
                       </div>
                     </td>
@@ -145,7 +145,7 @@ export default function AllergenGrid() {
                         : <StatusTag tone="done" label={r.contains.length + r.traces.length === 0 ? 'Aucun allergène' : 'Renseigné'}
                             title={r.reviewedAt ? `Vérifié le ${new Date(r.reviewedAt).toLocaleDateString('fr-FR')}${r.reviewedByName ? ` par ${r.reviewedByName}` : ''}` : undefined} />}
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
                       {(dirty || !r.reviewed) && (
                         <button type="button" className={dirty || proposed ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={save.isPending}
                           title={Object.values(d).every(s => s === 'absent') ? 'Déclare que cet ingrédient ne contient aucun allergène' : 'Enregistre cette ligne'}

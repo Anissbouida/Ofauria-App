@@ -3158,7 +3158,7 @@ export default function POSPage() {
                   <div className="odoo-breadcrumb">
                     <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
                     <span>Caisse</span>
-                    <span className="odoo-breadcrumb-separator">/</span>
+                    <span className="odoo-breadcrumb-separator">›</span>
                     <span className="odoo-breadcrumb-current">
                       {closeType === 'passation' ? 'Inventaire de passation' : 'Inventaire de fin de journée'}
                     </span>

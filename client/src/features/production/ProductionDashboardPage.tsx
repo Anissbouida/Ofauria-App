@@ -1,4 +1,4 @@
-import { useProductionPolicies, yieldLevel, YIELD_PILL } from './usePolicies';
+import { useProductionPolicies, yieldLevel } from './usePolicies';
 import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,9 +13,13 @@ import { apiErrorMessage } from '../../api/errors';
 import { PRODUCTION_STATUS_LABELS } from '@ofauria/shared';
 import {
   TrendingUp, TrendingDown, DollarSign, Scale, Package, Users, Zap,
-  AlertTriangle, BarChart3, Loader2, RotateCcw
+  AlertTriangle, BarChart3, RotateCcw
 } from 'lucide-react';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { planStatusTag } from './status';
+import { Alert, DataPanel, KpiCard, KpiGrid, LoadingState, EmptyState, Segmented, SectionHeader, TableFooter } from '../../components/ds';
 import { format, subDays } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import SalesPageShell from '../sales/SalesPageShell';
 
 export default function ProductionDashboardPage() {
@@ -78,9 +82,9 @@ export default function ProductionDashboardPage() {
       const count = (result?.meta?.relaunchedCount as number) ?? 0;
       const quoi = [
         count > 0 ? `${count} article(s) remis en production` : null,
-        result?.meta?.recomputed ? 'besoins et bon de sortie recalcules' : null,
+        result?.meta?.recomputed ? 'besoins et bon de sortie recalculés' : null,
       ].filter(Boolean).join(', ');
-      notify.success(`Plan relance — ${quoi}`);
+      notify.success(`Plan relancé — ${quoi}`);
       (result?.warnings as string[] | undefined)?.forEach((w) => notify(w, { icon: '⚠️', duration: 6000 }));
     },
     onError: (err: unknown) => {
@@ -102,101 +106,115 @@ export default function ProductionDashboardPage() {
   const avgEcart = coutStats?.avg_ecart_pct ? parseFloat(coutStats.avg_ecart_pct) : null;
   const totalCout = parseFloat(coutStats?.total_cout || '1');
   const costParts: Array<{ label: string; icon: React.ReactNode; value: number; color: string }> = coutStats ? [
-    { label: 'Matieres', icon: <Package size={12} />, value: parseFloat(coutStats.total_matieres || '0'), color: 'var(--prj-orange)' },
+    { label: 'Matières', icon: <Package size={12} />, value: parseFloat(coutStats.total_matieres || '0'), color: 'var(--prj-orange)' },
     { label: 'Emballages', icon: <Package size={12} />, value: parseFloat(coutStats.total_emballages || '0'), color: '#C2410C' },
-    { label: "Main d'oeuvre", icon: <Users size={12} />, value: parseFloat(coutStats.total_main_oeuvre || '0'), color: 'var(--kl-accent)' },
-    { label: 'Energie', icon: <Zap size={12} />, value: parseFloat(coutStats.total_energie || '0'), color: '#7C3AED' },
+    { label: "Main-d'œuvre", icon: <Users size={12} />, value: parseFloat(coutStats.total_main_oeuvre || '0'), color: 'var(--kl-accent)' },
+    { label: 'Énergie', icon: <Zap size={12} />, value: parseFloat(coutStats.total_energie || '0'), color: '#7C3AED' },
     { label: 'Charges', icon: <DollarSign size={12} />, value: parseFloat(coutStats.total_charges || '0'), color: 'var(--prj-green)' },
-    { label: 'Pertes', icon: <AlertTriangle size={12} />, value: parseFloat(coutStats.total_pertes || '0'), color: 'var(--prj-red)' },
+    { label: 'Pertes', icon: <AlertTriangle size={12} />, value: parseFloat(coutStats.total_pertes || '0'), color: 'var(--ds-danger)' },
   ] : [];
+
+  const periodLabel = period === '7d' ? '7 derniers jours' : period === '30d' ? '30 derniers jours' : '90 derniers jours';
+  const rendLevel = yieldLevel(parseFloat(rendementStats?.avg_rendement || '0'), avgGood);
+  const noData = !rendementStats?.total_items && !coutStats?.total_plans && blockedPlans.length === 0
+    && rendementByProduct.length === 0 && coutByDay.length === 0;
 
   return (
     <SalesPageShell icon={BarChart3} parent="Production" title="Tableau de bord" list
-      summary={<>{period === '7d' ? '7 derniers jours' : period === '30d' ? '30 derniers jours' : '90 derniers jours'}{blockedPlans.length ? <> · <b>{blockedPlans.length} plan{blockedPlans.length > 1 ? 's' : ''}</b> à relancer</> : null}</>}
+      summary={`Rendement, pertes et coûts de fabrication sur les ${periodLabel}.`}
       actions={
-        <div className="prj-views" role="group" aria-label="Période">
-          {(['7d', '30d', '90d'] as const).map(p => (
-            <button key={p} type="button" onClick={() => setPeriod(p)} className={period === p ? 'active' : ''} aria-pressed={period === p}>
-              {p === '7d' ? '7j' : p === '30d' ? '30j' : '90j'}
-            </button>
-          ))}
-        </div>
+        <Segmented label="Période" value={period} onChange={setPeriod}
+          options={[{ key: '7d', label: '7 jours' }, { key: '30d', label: '30 jours' }, { key: '90d', label: '90 jours' }]} />
       }>
 
-      {isLoading && (
-        <section className="prj-panel sal-empty"><Loader2 size={20} className="animate-spin" /><span>Chargement...</span></section>
-      )}
+      {isLoading && <LoadingState />}
 
       {!isLoading && (
         <>
+          {/* ═══ Alerte : plans bloqués ═══ */}
+          {blockedPlans.length > 0 && (
+            <Alert tone="warning" icon={AlertTriangle}>
+              {blockedPlans.length} plan{blockedPlans.length > 1 ? 's' : ''} à relancer : articles annulés ou en attente, ou plan confirmé sur un référentiel incomplet.
+            </Alert>
+          )}
+
           {/* ═══ Chiffres de la période ═══ */}
-          <section className="kl-stats" aria-label="Chiffres de la période">
-            <StatCard icon={<Scale size={13} />} label="Rendement moyen"
-              value={avgRend != null ? `${avgRend.toFixed(1)}%` : '—'}
-              tone={yieldLevel(parseFloat(rendementStats?.avg_rendement || '0'), avgGood) === 'warn' ? 'orange' : 'green'}
-              sub={`${rendementStats?.total_items || 0} items`} />
-            <StatCard icon={<AlertTriangle size={13} />} label="Total pertes"
+          <KpiGrid label="Chiffres de la période">
+            <KpiCard label="Rendement moyen" aside={<Scale size={13} aria-hidden="true" />}
+              value={avgRend != null ? `${avgRend.toFixed(1)} %` : '—'}
+              tone={rendLevel === 'warn' ? 'orange' : 'green'}
+              sub={`${rendementStats?.total_items || 0} article(s) produit(s)`} />
+            <KpiCard label="Total des pertes" aside={<AlertTriangle size={13} aria-hidden="true" />}
               value={rendementStats?.total_pertes ? parseFloat(rendementStats.total_pertes).toFixed(0) : '0'}
               tone="red"
-              sub={`Brut: ${parseFloat(rendementStats?.total_brute || '0').toFixed(0)} → Net: ${parseFloat(rendementStats?.total_nette || '0').toFixed(0)}`} />
-            <StatCard icon={<DollarSign size={13} />} label="Cout total"
+              sub={`Brut ${parseFloat(rendementStats?.total_brute || '0').toFixed(0)} → net ${parseFloat(rendementStats?.total_nette || '0').toFixed(0)}`} />
+            <KpiCard label="Coût total" aside={<DollarSign size={13} aria-hidden="true" />}
               value={fmtMoney(coutStats?.total_cout)}
-              sub={`${coutStats?.total_plans || 0} plans`} />
-            <StatCard icon={<TrendingUp size={13} />} label="Ecart moyen"
-              value={avgEcart != null ? `${avgEcart > 0 ? '+' : ''}${avgEcart.toFixed(1)}%` : '—'}
+              sub={`${coutStats?.total_plans || 0} plan(s)`} />
+            <KpiCard label="Écart moyen" aside={<TrendingUp size={13} aria-hidden="true" />}
+              value={avgEcart != null ? `${avgEcart > 0 ? '+' : ''}${avgEcart.toFixed(1)} %` : '—'}
               tone={parseFloat(coutStats?.avg_ecart_pct || '0') <= 5 ? 'green' : 'red'}
-              sub="Prevu vs Reel" />
-          </section>
+              sub="Prévu contre réel" />
+          </KpiGrid>
 
-          {/* ═══ Plans a relancer ═══ */}
+          {noData && (
+            <EmptyState icon={BarChart3} title="Aucune production sur la période"
+              text="Les rendements et les coûts apparaissent dès qu'un plan de production est terminé." />
+          )}
+
+          {/* ═══ Plans à relancer : tableau standard des listes « à traiter » ═══ */}
           {blockedPlans.length > 0 && (
             <section>
-              <div className="kl-sec"><h2>Plans a relancer</h2><small>articles annules / en attente, ou plan confirme sur un referentiel incomplet</small></div>
-              <div className="kl-group">
-                {blockedPlans.map((p) => {
-                  const nb = Number(p.relaunchable_count) || 0;
-                  return (
-                    <div key={p.id as string} className="kl-cell ico" role="button" tabIndex={0}
-                      onClick={() => navigate(`/production/${p.id}`)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/production/${p.id}`); }}>
-                      <span className={`kl-ic ${nb > 0 ? 'o' : 'b'}`}><RotateCcw size={16} /></span>
-                      <span className="tx">
-                        <span className="t1"><span style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>{(p.id as string).slice(0, 8).toUpperCase()}</span> · {format(new Date(p.plan_date as string), 'dd/MM/yyyy')}</span>
-                        <span className="t2">
-                          {PRODUCTION_STATUS_LABELS[p.status as keyof typeof PRODUCTION_STATUS_LABELS] || (p.status as string)}
-                          {' · '}
-                          {nb > 0
-                            ? <span style={{ color: 'var(--prj-orange)', fontWeight: 600 }}>{p.relaunchable_count as number} article(s)</span>
-                            : <span title={((p.warnings as string[] | null) || []).join('\n')}>besoins a recalculer</span>}
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          const detail = nb > 0
-                            ? `${nb} article(s) annule(s) ou en attente repassent en production, et les besoins seront recalcules.`
-                            : 'Les besoins en ingredients et le bon de sortie seront recalcules depuis les recettes actuelles.';
-                          if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
-                            relaunchMutation.mutate(p.id as string);
-                          }
-                        }}
-                        disabled={relaunchMutation.isPending}
-                        className="sal-next"
-                      >
-                        <RotateCcw size={12} /> Relancer
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+              <SectionHeader title="Plans à relancer" note="Articles annulés ou en attente, ou besoins à recalculer" />
+              <DataPanel label="Plans à relancer" footer={<TableFooter note={`${blockedPlans.length} plan${blockedPlans.length > 1 ? 's' : ''}`} />}>
+                <table className="odoo-table">
+                  <thead>
+                    <tr><th>N° plan</th><th>Date</th><th>Statut</th><th>À traiter</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr>
+                  </thead>
+                  <tbody>
+                    {blockedPlans.map((p) => {
+                      const nb = Number(p.relaunchable_count) || 0;
+                      const st = planStatusTag(p.status as string);
+                      return (
+                        <tr key={p.id as string} onClick={() => navigate(`/production/${p.id}`)}>
+                          <td><span className="ds-ref">{(p.of_number as string) || (p.id as string).slice(0, 8).toUpperCase()}</span></td>
+                          <td className="ds-strong">{format(new Date(p.plan_date as string), 'd MMM yyyy', { locale: fr })}</td>
+                          <td><StatusTag tone={st.tone} icon={st.icon} label={PRODUCTION_STATUS_LABELS[p.status as keyof typeof PRODUCTION_STATUS_LABELS] || (p.status as string)} /></td>
+                          <td>
+                            {nb > 0
+                              ? `${nb} article(s) annulé(s) ou en attente`
+                              : <span title={((p.warnings as string[] | null) || []).join('\n')}>Besoins à recalculer</span>}
+                          </td>
+                          <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const detail = nb > 0
+                                  ? `${nb} article(s) annulé(s) ou en attente repassent en production, et les besoins seront recalculés.`
+                                  : 'Les besoins en ingrédients et le bon de sortie seront recalculés depuis les recettes actuelles.';
+                                if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
+                                  relaunchMutation.mutate(p.id as string);
+                                }
+                              }}
+                              disabled={relaunchMutation.isPending}
+                              className="odoo-btn-secondary ds-btn-sm"
+                            >
+                              <RotateCcw size={12} aria-hidden="true" /> Relancer
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </DataPanel>
             </section>
           )}
 
           {/* ═══ Repartition des couts ═══ */}
           {coutStats && (
             <section>
-              <div className="kl-sec"><h2>Repartition des couts</h2><small><b style={{ color: 'var(--kl-ink)' }}>{fmtMoney(coutStats.total_cout)}</b> sur la période</small></div>
+              <SectionHeader title="Répartition des coûts" note={<><b style={{ color: 'var(--ds-ink)' }}>{fmtMoney(coutStats.total_cout)}</b> sur la période</>} />
               <div className="kl-widget">
                 <div className="kl-store" aria-hidden="true">
                   {costParts.filter(c => c.value > 0).map(c => (
@@ -210,98 +228,81 @@ export default function ProductionDashboardPage() {
             </section>
           )}
 
-          {/* ═══ Rendement by product ═══ */}
+          {/* ═══ Rendement par produit ═══ */}
           {rendementByProduct.length > 0 && (
             <section>
-              <div className="kl-sec"><h2>Rendement par produit</h2><small>{rendementByProduct.length} produit(s)</small></div>
-              <section className="prj-panel sal-panel">
-                <div className="prj-scroll">
-                  <table className="odoo-table" style={{ margin: 0 }}>
-                    <thead>
-                      <tr>
-                        <th>Produit</th>
-                        <th style={{ textAlign: 'center' }}>Productions</th>
-                        <th style={{ textAlign: 'center' }}>Rendement moy.</th>
-                        <th style={{ textAlign: 'center' }}>Pertes</th>
-                        <th style={{ textAlign: 'center' }}>Vers magasin</th>
-                        <th style={{ textAlign: 'center' }}>Vers frigo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rendementByProduct.map((r: any, i: number) => {
-                        const avgR = parseFloat(r.avg_rendement);
-                        return (
-                          <tr key={i}>
-                            <td style={{ fontWeight: 500 }}>{r.product_name}</td>
-                            <td style={{ textAlign: 'center' }}>{r.nb_productions}</td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${YIELD_PILL[yieldLevel(avgR, avgGood, avgAlert)]}`}>
-                                {yieldLevel(avgR, avgGood, avgAlert) === 'good' ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                                {avgR.toFixed(1)}%
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'center', color: 'var(--prj-red)' }}>{parseFloat(r.total_pertes).toFixed(0)}</td>
-                            <td style={{ textAlign: 'center' }}>{parseFloat(r.total_vers_magasin).toFixed(0)}</td>
-                            <td style={{ textAlign: 'center' }}>{parseFloat(r.total_vers_frigo).toFixed(0)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+              <SectionHeader title="Rendement par produit" />
+              <DataPanel label="Rendement par produit" footer={<TableFooter note={`${rendementByProduct.length} produit(s)`} />}>
+                <table className="odoo-table">
+                  <thead>
+                    <tr>
+                      <th>Produit</th>
+                      <th className="ds-num">Productions</th>
+                      <th>Rendement moyen</th>
+                      <th className="ds-num">Pertes</th>
+                      <th className="ds-num">Vers magasin</th>
+                      <th className="ds-num">Vers frigo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rendementByProduct.map((r: any, i: number) => {
+                      const avgR = parseFloat(r.avg_rendement);
+                      const lvl = yieldLevel(avgR, avgGood, avgAlert);
+                      return (
+                        <tr key={i}>
+                          <td className="ds-strong">{r.product_name}</td>
+                          <td className="ds-num">{r.nb_productions}</td>
+                          <td>
+                            <StatusTag tone={lvl === 'good' ? 'done' : lvl === 'warn' ? 'todo' : lvl === 'bad' ? 'blocked' : 'draft'}
+                              icon={lvl === 'good' ? TrendingUp : TrendingDown} label={`${avgR.toFixed(1)} %`} />
+                          </td>
+                          <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{parseFloat(r.total_pertes).toFixed(0)}</td>
+                          <td className="ds-num">{parseFloat(r.total_vers_magasin).toFixed(0)}</td>
+                          <td className="ds-num">{parseFloat(r.total_vers_frigo).toFixed(0)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </DataPanel>
             </section>
           )}
 
-          {/* ═══ Cost by day ═══ */}
+          {/* ═══ Coûts par jour ═══ */}
           {coutByDay.length > 0 && (
             <section>
-              <div className="kl-sec"><h2>Couts par jour</h2><small>{coutByDay.length} jour(s)</small></div>
-              <section className="prj-panel sal-panel">
-                <div className="prj-scroll">
-                  <table className="odoo-table" style={{ margin: 0 }}>
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th style={{ textAlign: 'right' }}>Matieres</th>
-                        <th style={{ textAlign: 'right' }}>M.O.</th>
-                        <th style={{ textAlign: 'right' }}>Energie</th>
-                        <th style={{ textAlign: 'right' }}>Pertes</th>
-                        <th style={{ textAlign: 'right' }}>Total</th>
+              <SectionHeader title="Coûts par jour" />
+              <DataPanel label="Coûts par jour" footer={<TableFooter note={`${coutByDay.length} jour(s)`} />}>
+                <table className="odoo-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th className="ds-num">Matières</th>
+                      <th className="ds-num">Main-d'œuvre</th>
+                      <th className="ds-num">Énergie</th>
+                      <th className="ds-num">Pertes</th>
+                      <th className="ds-num">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coutByDay.map((d: any, i: number) => (
+                      <tr key={i}>
+                        <td className="ds-strong">{format(new Date(d.plan_date), 'd MMM yyyy', { locale: fr })}</td>
+                        <td className="ds-num">{fmtMoney(d.matieres)}</td>
+                        <td className="ds-num">{fmtMoney(d.main_oeuvre)}</td>
+                        <td className="ds-num">{fmtMoney(d.energie)}</td>
+                        <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{fmtMoney(d.pertes)}</td>
+                        <td className="ds-num ds-strong">{fmtMoney(d.total)}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {coutByDay.map((d: any, i: number) => (
-                        <tr key={i}>
-                          <td>{format(new Date(d.plan_date), 'dd/MM/yyyy')}</td>
-                          <td style={{ textAlign: 'right' }}>{fmtMoney(d.matieres)}</td>
-                          <td style={{ textAlign: 'right' }}>{fmtMoney(d.main_oeuvre)}</td>
-                          <td style={{ textAlign: 'right' }}>{fmtMoney(d.energie)}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--prj-red)' }}>{fmtMoney(d.pertes)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtMoney(d.total)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
+                    ))}
+                  </tbody>
+                </table>
+              </DataPanel>
             </section>
           )}
         </>
       )}
     </SalesPageShell>
-  );
-}
-
-function StatCard({ icon, label, value, tone, sub }: {
-  icon: React.ReactNode; label: string; value: string; tone?: 'red' | 'green' | 'orange'; sub?: string;
-}) {
-  return (
-    <div className="kl-widget">
-      <div className="kl-wlabel"><span className="kl-sq">{icon}</span>{label}</div>
-      <div className="kl-big" style={{ fontSize: 32, color: tone ? `var(--prj-${tone})` : undefined }}>{value}</div>
-      {sub && <div className="kl-sub">{sub}</div>}
-    </div>
   );
 }
 

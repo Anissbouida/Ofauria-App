@@ -43,14 +43,14 @@ export default function SodMonitor({ compact = false }: { compact?: boolean }) {
         )}
         {detail && (
           <table className="odoo-table">
-            <thead><tr><th>Règle</th><th>Acteur</th><th style={{ textAlign: 'right' }}>Occurrences</th><th style={{ textAlign: 'right' }}>Documents</th><th>Dernier</th></tr></thead>
+            <thead><tr><th>Règle</th><th>Acteur</th><th className="ds-num">Occurrences</th><th className="ds-num">Documents</th><th>Dernier</th></tr></thead>
             <tbody>
               {violations.map((v, i) => (
                 <tr key={i}>
                   <td>{rules.find(r => r.code === v.rule_code)?.label ?? v.rule_code}</td>
                   <td>{v.actor}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{v.occurrences}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{v.documents}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.occurrences}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.documents}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmt(v.last_at)}</td>
                 </tr>
               ))}
@@ -78,23 +78,23 @@ export default function SodMonitor({ compact = false }: { compact?: boolean }) {
       </div>
 
       <div style={{ display: 'grid', gap: 6 }}>
-        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--odoo-text-muted)' }}>
+        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--ds-muted)' }}>
           Manquements journalisés (90 derniers jours)
         </div>
         {violations.length === 0 ? (
-          <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', margin: 0 }}>
             Aucun manquement journalisé. En mode « Observer », une action enfreignant une règle apparaîtra ici (sans être bloquée).
           </p>
         ) : (
           <table className="odoo-table">
-            <thead><tr><th>Règle</th><th>Acteur</th><th style={{ textAlign: 'right' }}>Occurrences</th><th style={{ textAlign: 'right' }}>Documents</th><th>Dernier</th></tr></thead>
+            <thead><tr><th>Règle</th><th>Acteur</th><th className="ds-num">Occurrences</th><th className="ds-num">Documents</th><th>Dernier</th></tr></thead>
             <tbody>
               {violations.map((v, i) => (
                 <tr key={i}>
                   <td>{rules.find(r => r.code === v.rule_code)?.label ?? v.rule_code}</td>
                   <td>{v.actor}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{v.occurrences}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{v.documents}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.occurrences}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.documents}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmt(v.last_at)}</td>
                 </tr>
               ))}

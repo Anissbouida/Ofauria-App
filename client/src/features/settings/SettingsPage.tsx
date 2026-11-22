@@ -50,6 +50,7 @@ import { HOME_PAGE, LEGACY_PAGES, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, 
 import '../projects/projects.css';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { Breadcrumb } from '../../components/ds';
 
 export default function SettingsPage() {
   const { hasModule } = usePermissions();
@@ -333,12 +334,11 @@ function SettingsShell() {
         <div className="odoo-settings-main">
           {/* Design Ventes (2026-11-18) : barre de fil d'Ariane + actions de la page, puis grand titre. */}
           <div className="odoo-control-bar odoo-settings-bar">
-            <div className="odoo-breadcrumb" aria-label="Fil d'Ariane">
-              <button type="button" onClick={() => void goTo('home')}>Paramètres</button>
-              <span className="odoo-breadcrumb-separator">›</span>
-              {!isHome && <><span>{current.group}</span><span className="odoo-breadcrumb-separator">›</span></>}
-              <span className="odoo-breadcrumb-current">{current.label}</span>
-            </div>
+            <Breadcrumb items={[
+              { label: 'Paramètres', onClick: () => void goTo('home') },
+              ...(!isHome ? [{ label: current.group }] : []),
+              { label: current.label },
+            ]} />
             <div style={{ flex: 1 }} />
             {current.auditTable && (
               <PageHistory table={current.auditTable}
@@ -566,7 +566,7 @@ function AppearanceTab() {
                 </div>
                 <span className="text-lg">{preset.icon}</span>
                 <span className="font-semibold text-sm" style={{ color: 'var(--theme-text-strong)' }}>{preset.name}</span>
-                <span className="text-xs text-center" style={{ color: 'var(--theme-text-muted)' }}>{preset.desc}</span>
+                <span className="text-xs text-center" style={{ color: 'var(--ds-muted)' }}>{preset.desc}</span>
               </button>
             );
           })}
@@ -655,7 +655,7 @@ function AppearanceTab() {
                 </div>
               </div>
               <div className="p-2">
-                <button className="w-full py-2.5 rounded-lg text-sm font-bold transition-colors"
+                <button type="button" className="w-full py-2.5 rounded-lg text-sm font-bold transition-colors"
                   style={{ background: theme.themeCtaColor, color: theme.themeCtaText }}>
                   Encaisser
                 </button>
@@ -749,7 +749,7 @@ function PrintTab() {
               {logoUrl ? (
                 <img src={logoSrc} alt="Logo" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
               ) : (
-                <div style={{ textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+                <div style={{ textAlign: 'center', color: 'var(--ds-muted)' }}>
                   <Image size={24} style={{ margin: '0 auto 4px' }} />
                   <span style={{ fontSize: 10 }}>Logo par défaut</span>
                 </div>
@@ -776,7 +776,7 @@ function PrintTab() {
             toggle={{ checked: receiptShowLogo, onChange: setReceiptShowLogo }}
           >
             {receiptShowLogo && (
-              <label style={{ display: 'grid', gap: 4, maxWidth: 320, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+              <label style={{ display: 'grid', gap: 4, maxWidth: 320, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
                 Taille du logo (px) : {receiptLogoSize}
                 <input type="range" min="20" max="80" value={receiptLogoSize}
                   onChange={(e) => setReceiptLogoSize(parseInt(e.target.value))} style={{ accentColor: 'var(--odoo-purple)' }} />
@@ -856,7 +856,7 @@ function PrintTab() {
         <div className="odoo-settings-preview">
           <div className="prj-panel" style={{ padding: '16px 18px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <Eye size={15} style={{ color: 'var(--odoo-text-muted)' }} />
+              <Eye size={15} style={{ color: 'var(--ds-muted)' }} />
               <h3 className="odoo-setting-label" style={{ margin: 0 }}>Aperçu du reçu</h3>
             </div>
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, padding: 12, overflow: 'hidden', maxWidth: `${Math.min(receiptPaperWidth * 3.2, 280)}px`, margin: '0 auto' }}>

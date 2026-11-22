@@ -1,4 +1,4 @@
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -16,7 +16,8 @@ import SalesPageShell from './SalesPageShell';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty, NextStep, ListKpi } from './ListTemplate';
+import { ListToolbar, FilterChips, ListPanel, NextStep, ListKpi } from './ListTemplate';
+import { Segmented, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
 
 /** BL imprimable (mig 354) : remis avec la marchandise, signé par le client. */
 async function printNote(id: string) {
@@ -37,6 +38,8 @@ async function printNote(id: string) {
 
 const day = (d: string) => format(new Date(String(d).slice(0, 10) + 'T00:00:00'), 'dd MMM yyyy', { locale: fr });
 const TVA_RATES = [0, 7, 10, 14, 20];
+/** Montant sans unité (l'unité est dans l'en-tête de colonne). */
+const amt = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** Cycle différé (mig 489) : brouillon, préparé, expédié — avant la livraison. */
 const IN_PROGRESS = new Set<DeliveryNote['status']>(['draft', 'prepared', 'shipped']);
 const STATUS: Record<DeliveryNote['status'], { label: string }> = {
@@ -62,13 +65,12 @@ export default function ProSalesTab() {
   // avec l'action de facturation ; les autres filtrent la liste des BL.
   // Retour depuis une commande (?open=<id>) : tous les BL, pour que le bon d'origine reste visible et sélectionné.
   const [view, setView] = useState<'' | 'inprogress' | 'delivered' | 'invoiced' | 'cancelled' | null>(() => (new URLSearchParams(window.location.search).get('open') ? '' : null));
-  // Style Apple (2026-11) : Colonnes (liste + fiche) par défaut sur grand écran, Liste, Kanban.
-  const [layout, setLayout] = useState<'split' | 'list' | 'kanban'>(() => (window.innerWidth >= 1100 ? 'split' : 'list'));
+  // Design System : Tableau par défaut ; Colonnes (liste + fiche) et Kanban au choix.
+  const [layout, setLayout] = useState<'split' | 'list' | 'kanban'>('list');
   const [search, setSearch] = useState('');
   const [showNew, setShowNew] = useState(false);
   // ?open=<id> : bon ouvert depuis la fiche commande.
-  // En vue Colonnes, le bon demandé s'affiche dans la colonne de droite (NotesSplit) : pas de fenêtre en plus.
-  const [detailId, setDetailId] = useState<string | null>(() => (window.innerWidth >= 1100 ? null : new URLSearchParams(window.location.search).get('open')));
+  const [detailId, setDetailId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('open'));
   const { data: toInvoice = [], isSuccess } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice() });
   const pending = toInvoice.reduce((n, g) => n + g.notes.length, 0);
   const current = view ?? (isSuccess && pending > 0 ? 'delivered' : '');
@@ -110,13 +112,6 @@ export default function ProSalesTab() {
         <ListKpi label="Livré ce mois" value={money(kpis.monthTotal)} sub={`${kpis.monthCount} bon${kpis.monthCount > 1 ? 's' : ''}`} />
         <ListKpi label="Facturé ce mois" value={money(kpis.invoicedMonth)} sub="BL du mois déjà facturés" />
       </section>}
-      <ListToolbar search={search} onSearch={setSearch} placeholder="N° de BL, client, commande…">
-        <div className="prj-views" role="group" aria-label="Affichage">
-          <button type="button" className={layout === 'split' ? 'active' : ''} aria-pressed={layout === 'split'} onClick={() => setLayout('split')}><Columns3 size={14} /> Colonnes</button>
-          <button type="button" className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={14} /> Liste</button>
-          <button type="button" className={layout === 'kanban' ? 'active' : ''} aria-pressed={layout === 'kanban'} onClick={() => setLayout('kanban')}><SquareKanban size={14} /> Kanban</button>
-        </div>
-      </ListToolbar>
       <FilterChips label="Filtrer les bons de livraison" value={current} onChange={k => setView(k as '' | 'inprogress' | 'delivered' | 'invoiced' | 'cancelled')} chips={[
         ...(stats.inprogress.count ? [{ key: 'inprogress', label: 'En préparation', count: stats.inprogress.count, icon: PackageCheck }] : []),
         { key: 'delivered', label: 'À facturer', count: stats.delivered.count, icon: FileText },
@@ -124,19 +119,26 @@ export default function ProSalesTab() {
         { key: 'cancelled', label: 'Annulés', count: stats.cancelled.count },
         { key: '', label: 'Tous', count: allNotes.length },
       ]} />
+      <ListToolbar search={search} onSearch={setSearch} placeholder="N° de BL, client, commande…">
+        <Segmented label="Affichage" value={layout} onChange={setLayout} options={[
+          { key: 'list', label: 'Tableau', icon: List },
+          { key: 'split', label: 'Colonnes', icon: Columns3 },
+          { key: 'kanban', label: 'Kanban', icon: SquareKanban },
+        ]} />
+      </ListToolbar>
       {layout !== 'split' && <p className="prj-note">Commande → bon de livraison → facture : le chiffre d'affaires et la créance naissent à la facture.</p>}
-      {layout === 'split' ? <NotesSplit notes={shownNotes} search={!!q} onToInvoice={() => { setLayout('list'); setView('delivered'); }} />
+      {layout === 'split' ? <NotesSplit notes={shownNotes} search={!!q} onReset={() => setSearch('')} onToInvoice={() => { setLayout('list'); setView('delivered'); }} />
         : layout === 'kanban' ? <NotesKanban notes={allNotes.filter(n => !q || `${n.number} ${n.customer_name} ${n.order_number ?? ''}`.toLowerCase().includes(q))} onOpen={setDetailId} />
         : current === 'delivered'
-        ? <ToInvoice groups={groups} filtered={!!q} onOpen={setDetailId} />
-        : <NotesList status={current === 'inprogress' ? '' : current} search={q} onOpen={setDetailId} onToInvoice={() => setView('delivered')} />}
+        ? <ToInvoice groups={groups} filtered={!!q} onReset={() => setSearch('')} onOpen={setDetailId} />
+        : <NotesList status={current === 'inprogress' ? '' : current} search={q} onReset={() => setSearch('')} onOpen={setDetailId} onToInvoice={() => setView('delivered')} />}
       {showNew && <NewNoteModal onClose={() => setShowNew(false)} />}
       {detailId && <NoteDetail id={detailId} onClose={() => setDetailId(null)} />}
     </SalesPageShell>
   );
 }
 
-function NotesList({ status, search, onOpen, onToInvoice }: { status: string; search: string; onOpen: (id: string) => void; onToInvoice: () => void }) {
+function NotesList({ status, search, onReset, onOpen, onToInvoice }: { status: string; search: string; onReset: () => void; onOpen: (id: string) => void; onToInvoice: () => void }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const { data: all = [], isLoading } = useQuery({
@@ -162,34 +164,33 @@ function NotesList({ status, search, onOpen, onToInvoice }: { status: string; se
     });
     return items;
   };
-  if (isLoading) return <ListEmpty icon={Loader2} title="Chargement des bons de livraison…" />;
+  if (isLoading) return <LoadingState label="Chargement des bons de livraison…" />;
   if (!notes.length) {
-    return <ListEmpty icon={Truck} title={search ? 'Aucun bon de livraison pour cette recherche' : 'Aucun bon de livraison'}
-      text={search ? 'Effacez la recherche ou changez de filtre.' : '« Nouveau bon de livraison » pour livrer un client.'} />;
+    return search
+      ? <NoResultState onReset={onReset} text="Aucun bon de livraison ne correspond à la recherche." />
+      : <EmptyState icon={Truck} title="Aucun bon de livraison" text="« Nouveau bon de livraison » pour livrer un client." />;
   }
   const ttc = notes.reduce((s, n) => s + Number(n.total_ttc), 0);
   return (
-    <ListPanel footer={<div className="sal-foot"><span>{notes.length} bon{notes.length > 1 ? 's' : ''} de livraison</span><span>Total <strong>{money(ttc)} TTC</strong></span></div>}>
+    <ListPanel footer={<TableFooter note={<>{notes.length} bon{notes.length > 1 ? 's' : ''} de livraison · total <strong>{money(ttc)} TTC</strong></>} />}>
       <table className="odoo-table">
-        <thead><tr><th>N° BL</th><th>Date</th><th>Client</th><th>Commande</th><th style={{ textAlign: 'right' }}>HT</th><th style={{ textAlign: 'right' }}>TTC</th><th>Statut</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
+        <thead><tr><th>N° BL</th><th>Date</th><th>Client</th><th>Commande</th><th className="ds-num">HT ({currencySymbol()})</th><th className="ds-num">TTC ({currencySymbol()})</th><th>Statut</th><th className="ds-actions">Actions</th></tr></thead>
         <tbody>
           {notes.map(n => (
             <tr key={n.id} onClick={() => onOpen(n.id)}>
-              <td style={{ whiteSpace: 'nowrap' }}><span className="sal-num">{n.number}</span></td>
+              <td style={{ whiteSpace: 'nowrap' }}><span className="ds-ref">{n.number}</span></td>
               <td style={{ whiteSpace: 'nowrap' }}>{day(n.delivery_date)}</td>
-              <td style={{ fontWeight: 500 }}>{n.customer_name}</td>
+              <td className="ds-strong">{n.customer_name}</td>
               <td><span className="sal-mono">{n.order_number ?? '—'}</span></td>
-              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{money(n.total_ht)}</td>
-              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(n.total_ttc)}</td>
+              <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{amt(n.total_ht)}</td>
+              <td className="ds-num ds-strong" style={{ whiteSpace: 'nowrap' }}>{amt(n.total_ttc)}</td>
               <td>
                 <StatusTag tone={STATUS_TAG[n.status].tone} icon={STATUS_TAG[n.status].icon} label={STATUS[n.status].label} />
                 {n.invoice_number && <span className="sal-sub sal-mono">{n.invoice_number}</span>}
               </td>
-              <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                <div className="sal-actions">
-                  {n.status === 'delivered' && <NextStep icon={FileText} label="Facturer" onClick={onToInvoice} />}
-                  <RowMenu items={menu(n)} />
-                </div>
+              <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                {n.status === 'delivered' && <NextStep icon={FileText} label="Facturer" onClick={onToInvoice} />}
+                <RowMenu items={menu(n)} />
               </td>
             </tr>
           ))}
@@ -199,10 +200,11 @@ function NotesList({ status, search, onOpen, onToInvoice }: { status: string; se
   );
 }
 
-function ToInvoice({ groups, filtered, onOpen }: { groups: ToInvoiceGroup[]; filtered: boolean; onOpen: (id: string) => void }) {
+function ToInvoice({ groups, filtered, onReset, onOpen }: { groups: ToInvoiceGroup[]; filtered: boolean; onReset: () => void; onOpen: (id: string) => void }) {
   if (groups.length === 0) {
-    return <ListEmpty icon={CheckSquare} title={filtered ? 'Aucun client à facturer pour cette recherche' : 'Rien à facturer'}
-      text={filtered ? undefined : 'Tous les bons de livraison sont facturés.'} />;
+    return filtered
+      ? <NoResultState onReset={onReset} text="Aucun client à facturer ne correspond à la recherche." />
+      : <EmptyState icon={CheckSquare} title="Rien à facturer" text="Tous les bons de livraison sont facturés." />;
   }
   return <div style={{ display: 'grid', gap: 14 }}>{groups.map(g => <InvoiceGroup key={g.customerId} g={g} onOpen={onOpen} />)}</div>;
 }
@@ -233,7 +235,7 @@ function InvoiceGroup({ g, onOpen }: { g: ToInvoiceGroup; onOpen: (id: string) =
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <label style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Date de facture
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ height: 32, padding: '0 8px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--theme-bg-card)', color: 'var(--odoo-text)' }} />
+            <input type="date" className="ds-input sm" value={date} onChange={e => setDate(e.target.value)} style={{ width: 'auto' }} />
           </label>
           <button type="button" className="odoo-btn-primary" disabled={chosen.length === 0 || mutation.isPending} onClick={() => mutation.mutate()}>
             {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
@@ -246,26 +248,26 @@ function InvoiceGroup({ g, onOpen }: { g: ToInvoiceGroup; onOpen: (id: string) =
           <thead><tr>
             <th style={{ width: 36 }}><input type="checkbox" className="sal-check" checked={allChosen} aria-label={`Tout sélectionner pour ${g.name}`}
               onChange={() => setSelected(allChosen ? new Set() : new Set(g.notes.map(n => n.id)))} /></th>
-            <th>N° BL</th><th>Date</th><th>Commande</th><th style={{ textAlign: 'right' }}>HT</th><th style={{ textAlign: 'right' }}>TTC</th><th style={{ width: 48 }} />
+            <th>N° BL</th><th>Date</th><th>Commande</th><th className="ds-num">HT ({currencySymbol()})</th><th className="ds-num">TTC ({currencySymbol()})</th><th className="ds-actions">Actions</th>
           </tr></thead>
           <tbody>
             {g.notes.map(n => (
-              <tr key={n.id} className={selected.has(n.id) ? 'selected' : undefined} onClick={() => toggle(n.id)}>
+              <tr key={n.id} className={selected.has(n.id) ? 'selected ds-selected' : undefined} onClick={() => toggle(n.id)}>
                 <td onClick={e => e.stopPropagation()}><input type="checkbox" className="sal-check" checked={selected.has(n.id)} onChange={() => toggle(n.id)} aria-label={`Inclure ${n.number}`} /></td>
-                <td><span className="sal-num">{n.number}</span></td>
+                <td><span className="ds-ref">{n.number}</span></td>
                 <td style={{ whiteSpace: 'nowrap' }}>{day(n.delivery_date)}</td>
                 <td><span className="sal-mono">{n.order_number ?? ''}</span></td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{money(n.total_ht)}</td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(n.total_ttc)}</td>
-                <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                  <button type="button" className="sal-next" aria-label={`Voir ${n.number}`} onClick={() => onOpen(n.id)}><Eye size={13} /></button>
+                <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{amt(n.total_ht)}</td>
+                <td className="ds-num ds-strong" style={{ whiteSpace: 'nowrap' }}>{amt(n.total_ttc)}</td>
+                <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                  <button type="button" className="ds-icon-btn" aria-label={`Voir ${n.number}`} onClick={() => onOpen(n.id)}><Eye size={15} /></button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div className="sal-foot"><span>Sélection : {money(ht)} HT · {money(ttc)} TTC</span><span>Une seule facture, échéance selon le délai de paiement du client.</span></div>
+      <TableFooter note={<>Sélection : {money(ht)} HT · <strong>{money(ttc)} TTC</strong></>}><span>Une seule facture, échéance selon le délai de paiement du client.</span></TableFooter>
     </section>
   );
 }
@@ -350,11 +352,11 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb"><Truck size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">Nouveau bon de livraison</span></div>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ padding: 16, overflowY: 'auto', display: 'grid', gap: 14 }}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label style={{ display: 'grid', gap: 4, fontSize: '0.75rem', fontWeight: 600 }}>Client *
+            <label style={{ display: 'grid', gap: 4, fontSize: '0.75rem', fontWeight: 600 }}><span>Client<span className="ds-req" aria-hidden="true"> *</span></span>
               <SearchSelect options={customerOptions} value={customerId} onChange={id => { setCustomerId(id); setOrderId(''); }} placeholder="Rechercher un client…" width="100%" size="md" />
             </label>
             <label style={{ display: 'grid', gap: 4, fontSize: '0.75rem', fontWeight: 600 }}>Date de livraison
@@ -369,7 +371,7 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
           </div>
           <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
             <table className="odoo-table" style={{ minWidth: 760 }}>
-              <thead><tr><th style={{ width: '36%' }}>Produit / désignation</th><th style={{ textAlign: 'right', width: 90 }}>Qté</th><th style={{ textAlign: 'right', width: 120 }}>Prix unit. HT</th><th style={{ width: 90 }}>TVA</th><th style={{ textAlign: 'right' }}>Total HT</th><th style={{ width: 36 }} /></tr></thead>
+              <thead><tr><th style={{ width: '36%' }}>Produit / désignation</th><th style={{ textAlign: 'right', width: 90 }}>Qté</th><th style={{ textAlign: 'right', width: 120 }}>Prix unit. HT</th><th style={{ width: 90 }}>TVA</th><th className="ds-num">Total HT</th><th style={{ width: 36 }} /></tr></thead>
               <tbody>
                 {lines.map((l, i) => (
                   <tr key={i}>
@@ -385,8 +387,8 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
                         {TVA_RATES.map(r => <option key={r} value={String(r)}>{r} %</option>)}
                       </select>
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{money((parseFloat(l.quantity) || 0) * (parseFloat(l.unitPrice) || 0))}</td>
-                    <td><button type="button" className="odoo-pager-btn" disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, k) => k !== i))}><Trash2 size={13} /></button></td>
+                    <td className="ds-num ds-strong">{money((parseFloat(l.quantity) || 0) * (parseFloat(l.unitPrice) || 0))}</td>
+                    <td><button type="button" className="odoo-pager-btn" aria-label="Retirer la ligne" disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, k) => k !== i))}><Trash2 size={13} /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -405,7 +407,7 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
             Prix proposés : tarif catalogue moins la remise du client ; TVA : dernier taux utilisé pour le produit. Le BL sort les produits du stock avec leurs lots ; il sera facturé depuis « À facturer ».
           </p>
           {creditBlock && (
-            <div style={{ border: '1px solid #f5c2c7', background: '#f8d7da', color: '#842029', borderRadius: 4, padding: '8px 10px', fontSize: '0.8125rem' }}>
+            <div role="alert" style={{ border: '1px solid var(--ds-danger)', background: 'var(--ds-danger-bg)', color: 'var(--ds-danger)', borderRadius: 8, padding: '8px 10px', fontSize: '0.8125rem' }}>
               <b>Expédition bloquée par le contrôle de crédit.</b> {creditBlock}
               <div style={{ marginTop: 6 }}>
                 <input type="text" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} maxLength={500} style={field}
@@ -435,9 +437,9 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
           <div className="odoo-breadcrumb"><Truck size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">{n ? `Bon de livraison ${n.number}` : 'Bon de livraison'}</span></div>
           <div style={{ flex: 1 }} />
           <button type="button" onClick={() => printNote(id)} className="odoo-btn-secondary"><Printer size={13} /> Imprimer</button>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
-        {!n ? <div style={{ padding: 24, textAlign: 'center' }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div> : (
+        {!n ? <LoadingState bare /> : (
           <div style={{ padding: 16, overflowY: 'auto', display: 'grid', gap: 10, fontSize: '0.8125rem' }}>
             <div className="flex flex-wrap gap-6">
               <div><div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Client</div><b>{n.customer_name}</b></div>
@@ -448,7 +450,7 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
             {n.notes && <div><b>Notes :</b> {n.notes}</div>}
             <table className="odoo-table">
-              <thead><tr><th>Désignation</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>Prix HT</th><th style={{ textAlign: 'right' }}>TVA</th><th style={{ textAlign: 'right' }}>Total HT</th></tr></thead>
+              <thead><tr><th>Désignation</th><th className="ds-num">Qté</th><th className="ds-num">Prix HT ({currencySymbol()})</th><th className="ds-num">TVA</th><th className="ds-num">Total HT ({currencySymbol()})</th></tr></thead>
               <tbody>
                 {(n.items ?? []).map(i => (
                   <tr key={i.id}>
@@ -459,10 +461,10 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
                         </div>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right' }}>{Number(i.quantity).toLocaleString('fr-FR')}</td>
-                    <td style={{ textAlign: 'right' }}>{money(i.unit_price)}</td>
-                    <td style={{ textAlign: 'right' }}>{i.tva_rate != null ? `${Number(i.tva_rate)} %` : '—'}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(i.subtotal)}</td>
+                    <td className="ds-num">{Number(i.quantity).toLocaleString('fr-FR')}</td>
+                    <td className="ds-num">{amt(i.unit_price)}</td>
+                    <td className="ds-num">{i.tva_rate != null ? `${Number(i.tva_rate)} %` : '—'}</td>
+                    <td className="ds-num ds-strong">{amt(i.subtotal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -505,12 +507,13 @@ function useNoteActions(onToInvoice: () => void) {
   return { next, menu, busy };
 }
 
-function NotesSplit({ notes, search, onToInvoice }: { notes: DeliveryNote[]; search: boolean; onToInvoice: () => void }) {
+function NotesSplit({ notes, search, onReset, onToInvoice }: { notes: DeliveryNote[]; search: boolean; onReset: () => void; onToInvoice: () => void }) {
   const [activeId, setActiveId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('open'));
   const actions = useNoteActions(onToInvoice);
   if (!notes.length) {
-    return <ListEmpty icon={Truck} title={search ? 'Aucun bon de livraison pour cette recherche' : 'Aucun bon de livraison'}
-      text={search ? 'Effacez la recherche ou changez de filtre.' : '« Nouveau bon de livraison » pour livrer un client.'} />;
+    return search
+      ? <NoResultState onReset={onReset} text="Aucun bon de livraison ne correspond à la recherche." />
+      : <EmptyState icon={Truck} title="Aucun bon de livraison" text="« Nouveau bon de livraison » pour livrer un client." />;
   }
   const active = notes.find(n => n.id === activeId) ?? notes[0];
   return (
@@ -630,7 +633,7 @@ function NotesKanban({ notes, onOpen }: { notes: DeliveryNote[]; onOpen: (id: st
                 <span className="prj-task-meta"><span style={{ flex: 1 }}>{day(n.delivery_date)}{n.invoice_number ? ` · ${n.invoice_number}` : ''}</span><span className="sal-amount">{money(n.total_ttc)}</span></span>
               </button>
             ))}
-            {cards.length > 60 && <div className="prj-lane-empty">+ {cards.length - 60} autres — filtrez ou passez en liste</div>}
+            {cards.length > 60 && <div className="prj-lane-empty">+ {cards.length - 60} autres — filtrez ou passez en tableau</div>}
           </section>
         );
       })}

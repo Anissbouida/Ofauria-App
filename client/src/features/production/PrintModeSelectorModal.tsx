@@ -37,7 +37,7 @@ export default function PrintModeSelectorModal({ lotData, onPreviewHtml, onClose
       <div className="bg-white rounded-2xl max-w-md w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h3 className="text-lg font-semibold text-gray-900">Imprimer le ticket</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg" disabled={printing}>
+          <button type="button" onClick={onClose} aria-label="Fermer" className="p-1.5 hover:bg-gray-100 rounded-lg" disabled={printing}>
             <X size={20} className="text-gray-500" />
           </button>
         </div>

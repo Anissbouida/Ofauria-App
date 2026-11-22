@@ -190,7 +190,7 @@ function SendToLossesDialog({ item, isPending, onClose, onConfirm }: {
                 : 'Action irréversible — le lot sera retiré du stock.'}
             </p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-red-100 rounded-lg">
+          <button type="button" onClick={onClose} aria-label="Fermer" className="p-1 hover:bg-red-100 rounded-lg">
             <X size={18} className="text-red-700" />
           </button>
         </div>

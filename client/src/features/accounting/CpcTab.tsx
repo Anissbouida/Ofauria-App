@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Download, Lock, TrendingUp, TrendingDown, Calendar } from 'lucide-react';
+import { Download, Lock } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
+import { EmptyState, KpiCard, KpiGrid, LoadingState, DataPanel, SectionHeader, Toolbar } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
+import { DateRangeField } from './AccToolbarFields';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -38,10 +41,7 @@ export default function CpcTab() {
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>Le CPC est reserve a l'administrateur ou au gerant.</p>
-      </div>
+      <EmptyState icon={Lock} title="Le CPC est réservé à l'administrateur ou au gérant." />
     );
   }
 
@@ -64,103 +64,88 @@ export default function CpcTab() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-            className="odoo-search-input" style={{ width: 140 }} />
-          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-            className="odoo-search-input" style={{ width: 140 }} />
-        </div>
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} className="odoo-btn-secondary" disabled={!data}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: !data ? 0.5 : 1 }}>
-          <Download size={13} /> Exporter CSV
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={!data}>
+          <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <EditionButtons kind="cpc" params={{ startDate, endDate }} />
-      </div>
+      </AccHeaderActions>
+
+      {data && (
+        <KpiGrid>
+          <KpiCard label="Produits (classe 7)" value={n(data.total_produits)} sub={currencySymbol()} />
+          <KpiCard label="Charges (classe 6)" value={n(data.total_charges)} sub={currencySymbol()} />
+          <KpiCard label="Résultat net" value={<>{isProfit ? '+' : ''}{n(resultat)}</>} sub={isProfit ? 'Bénéfice' : 'Perte'} tone={isProfit ? 'green' : 'red'} />
+        </KpiGrid>
+      )}
+
+      <Toolbar>
+        <DateRangeField from={startDate} to={endDate} onFrom={setStartDate} onTo={setEndDate} />
+      </Toolbar>
 
       {isLoading || !data ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        </div>
+        <LoadingState />
       ) : (
         <>
-          {/* Synthese */}
-          <div className="odoo-stat-grid">
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><TrendingUp size={11} style={{ display: 'inline', marginRight: 4 }} />Produits (classe 7)</div>
-              <div className="odoo-stat-card-value" style={{ color: '#0e7c3a' }}>{n(data.total_produits)}</div>
-              <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><TrendingDown size={11} style={{ display: 'inline', marginRight: 4 }} />Charges (classe 6)</div>
-              <div className="odoo-stat-card-value" style={{ color: '#c62828' }}>{n(data.total_charges)}</div>
-              <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-            </div>
-            <div className="odoo-stat-card" style={{ border: `1.5px solid ${isProfit ? '#0e7c3a' : '#c62828'}` }}>
-              <div className="odoo-stat-card-label">Resultat net</div>
-              <div className="odoo-stat-card-value" style={{ color: isProfit ? '#0e7c3a' : '#c62828' }}>
-                {isProfit ? '+' : ''}{n(resultat)}
-              </div>
-              <div className="odoo-stat-card-sub">{isProfit ? 'Benefice' : 'Perte'}</div>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16, alignItems: 'start' }}>
             {/* Produits */}
-            <div className="odoo-section" style={{ padding: 0 }}>
-              <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: 15, color: 'var(--theme-text-strong)' }}>
-                Produits
-              </div>
-              <table className="odoo-table" style={{ margin: 0 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <SectionHeader title="Produits" />
+              <DataPanel label="Produits">
+              <table className="odoo-table ds-dense">
+                <thead>
+                  <tr><th style={{ width: 80 }}>Compte</th><th>Libellé</th><th className="ds-num">Montant ({currencySymbol()})</th></tr>
+                </thead>
                 <tbody>
                   {data.produits.map(p => (
                     <tr key={p.code}>
-                      <td style={{ fontFamily: 'ui-monospace, monospace', width: 70 }}>{p.code}</td>
-                      <td>{p.label}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(p.amount)}</td>
+                      <td className="ds-ref" style={{ width: 70 }}>{p.code}</td>
+                      <td className="ds-strong">{p.label}</td>
+                      <td className="ds-num">{n(p.amount)}</td>
                     </tr>
                   ))}
                   {data.produits.length === 0 && (
-                    <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucun produit</td></tr>
+                    <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--ds-muted)' }}>Aucun produit sur la période</td></tr>
                   )}
                 </tbody>
                 <tfoot>
-                  <tr style={{ fontWeight: 700, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                  <tr>
                     <td colSpan={2}>Total produits</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(data.total_produits)}</td>
+                    <td className="ds-num">{n(data.total_produits)}</td>
                   </tr>
                 </tfoot>
               </table>
+              </DataPanel>
             </div>
 
             {/* Charges */}
-            <div className="odoo-section" style={{ padding: 0 }}>
-              <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: 15, color: 'var(--theme-text-strong)' }}>
-                Charges
-              </div>
-              <table className="odoo-table" style={{ margin: 0 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <SectionHeader title="Charges" />
+              <DataPanel label="Charges">
+              <table className="odoo-table ds-dense">
+                <thead>
+                  <tr><th style={{ width: 80 }}>Compte</th><th>Libellé</th><th className="ds-num">Montant ({currencySymbol()})</th></tr>
+                </thead>
                 <tbody>
                   {data.charges.map(c => (
                     <tr key={c.code}>
-                      <td style={{ fontFamily: 'ui-monospace, monospace', width: 70 }}>{c.code}</td>
-                      <td>{c.label}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(c.amount)}</td>
+                      <td className="ds-ref" style={{ width: 70 }}>{c.code}</td>
+                      <td className="ds-strong">{c.label}</td>
+                      <td className="ds-num">{n(c.amount)}</td>
                     </tr>
                   ))}
                   {data.charges.length === 0 && (
-                    <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucune charge</td></tr>
+                    <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--ds-muted)' }}>Aucune charge sur la période</td></tr>
                   )}
                 </tbody>
                 <tfoot>
-                  <tr style={{ fontWeight: 700, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                  <tr>
                     <td colSpan={2}>Total charges</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(data.total_charges)}</td>
+                    <td className="ds-num">{n(data.total_charges)}</td>
                   </tr>
                 </tfoot>
               </table>
+              </DataPanel>
             </div>
           </div>
         </>

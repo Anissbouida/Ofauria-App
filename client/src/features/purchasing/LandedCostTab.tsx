@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Truck, Plus, Search, Loader2, CheckCircle2, XCircle, X, Trash2, Ship, FilePenLine, AlertTriangle } from 'lucide-react';
-import PageNote from '../../components/ui/PageNote';
+import { Truck, Plus, Loader2, CheckCircle2, XCircle, X, Trash2, Ship, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   landedCostApi, LANDED_STATUS_LABELS, METHOD_LABELS, type AllocationMethod, type ChargeInput, type LandedCostStatus,
@@ -14,7 +13,10 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, SectionHeader } from '../../components/ds';
+import { FilterChips } from '../sales/ListTemplate';
+import { PurHeaderActions } from './PurHeaderActions';
 import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney, KANBAN_ALL } from './PurLayouts';
 import { money, currencySymbol } from '../../utils/money';
 
@@ -25,7 +27,7 @@ import { money, currencySymbol } from '../../utils/money';
 const n2 = (v: string | number | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const n4 = (v: string | number | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const STATUS_TONE: Record<LandedCostStatus, StatusTone> = { draft: 'draft', applied: 'done', cancelled: 'cancelled' };
-const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4, display: 'block' };
+const label: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6, display: 'block' };
 
 export default function LandedCostTab() {
   const [status, setStatus] = useState<LandedCostStatus | ''>('');
@@ -42,25 +44,29 @@ export default function LandedCostTab() {
   const params: Record<string, string> = layout === 'kanban' ? { page: '1', pageSize: String(KANBAN_ALL) } : { page: String(page), pageSize: String(PAGE_SIZE) };
   if (status) params.status = status; if (search) params.search = search;
   const { data, isLoading } = useQuery({ queryKey: ['landed-costs', params], queryFn: () => landedCostApi.list(params) });
+  const hasFilters = !!(status || search);
+  const resetFilters = () => { setStatus(''); setSearchInput(''); setSearch(''); };
+  const countNote = data ? `${data.total} bon${data.total > 1 ? 's' : ''} de frais · ${money(data.appliedTotal)} appliqués` : '';
   return (
     <>
-      <PageNote help="Répartis sur les lignes d'une réception et ajoutés au coût du lot reçu et au coût standard de l'article. La comptabilité n'est pas modifiée : la facture du transporteur reste une charge.">
-        Transport, douane, assurance et manutention ajoutés au coût des articles reçus.
-      </PageNote>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
-        <input className="odoo-search-input" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, réception, BC, fournisseur…" />
-        <select className="odoo-filter-dropdown" value={status} onChange={e => setStatus(e.target.value as LandedCostStatus | '')}>
-          <option value="">Tous statuts</option>
-          {Object.entries(LANDED_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        {data && <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{money(data.appliedTotal)} appliqués</span>}
-        <div style={{ flex: 1 }} />
+      <PurHeaderActions>
+        <button type="button" className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} aria-hidden="true" /> Nouveaux frais</button>
+      </PurHeaderActions>
+      <FilterChips label="Filtrer par statut" value={status} onChange={k => setStatus(k as LandedCostStatus | '')} chips={[
+        { key: '', label: 'Tous' },
+        ...Object.entries(LANDED_STATUS_LABELS).map(([k, v]) => ({ key: k, label: v })),
+      ]} />
+      <Toolbar>
+        <SearchBar value={searchInput} onChange={setSearchInput} placeholder="N°, réception, BC, fournisseur…" label="Rechercher des frais d'approche" />
+        {hasFilters && <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={resetFilters}><X size={13} aria-hidden="true" /> Effacer</button>}
         <LayoutSwitch value={layout} onChange={setLayout} />
-        <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouveaux frais</button>
-      </div>
-      {isLoading ? <Loading /> : !data?.rows.length ? (
-        <StatusBanner tone="info" icon={Ship} title="Aucun frais d'approche">Rattachez une facture de transport ou de douane à une réception pour l'intégrer au coût des articles.</StatusBanner>
+      </Toolbar>
+      {isLoading ? <LoadingState /> : !data?.rows.length ? (
+        hasFilters
+          ? <NoResultState onReset={resetFilters} text="Aucun bon de frais ne correspond aux filtres." />
+          : <EmptyState icon={Ship} title="Aucun frais d'approche"
+              text="Rattachez une facture de transport ou de douane à une réception : les frais sont répartis sur les lignes reçues et ajoutés au coût du lot et au coût standard. La comptabilité n'est pas modifiée."
+              action={<button type="button" className="odoo-btn-primary ds-btn-sm" onClick={() => setCreating(true)}><Plus size={13} aria-hidden="true" /> Nouveaux frais</button>} />
       ) : layout === 'split' ? (
         <>
           <SplitView items={data.rows} getId={v => v.id} activeId={activeId} onPick={setActiveId} label="Frais d'approche"
@@ -71,7 +77,7 @@ export default function LandedCostTab() {
               dot: '',
             })}
             pane={v => <LandedCostPane id={v.id} onFull={() => setOpenId(v.id)} />} />
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} bon${data.total > 1 ? 's' : ''} de frais`} />
+          <TableFooter page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} note={`${money(data.appliedTotal)} appliqués`} />
         </>
       ) : layout === 'kanban' ? (
         <>
@@ -83,27 +89,37 @@ export default function LandedCostTab() {
               { key: 'cancelled', label: 'Annulés', tone: 'grey', match: v => v.status === 'cancelled' },
             ]}
             card={v => ({ num: v.number, title: v.supplier_name || '—', meta: `${v.reception_number} · ${METHOD_LABELS[v.allocation_method]}`, amount: pmoney(v.total_amount) })} />
-          <p className="prj-note">{data.total > data.rows.length ? `${data.rows.length} bons affichés sur ${data.total}` : `${data.total} bon${data.total > 1 ? 's' : ''} de frais`}</p>
+          <TableFooter note={data.total > data.rows.length ? `${data.rows.length} bons affichés sur ${data.total}` : countNote} />
         </>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <DataPanel label="Frais d'approche"
+          footer={<TableFooter page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} note={`bons de frais · ${money(data.appliedTotal)} appliqués`} />}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Réception</th><th>Fournisseur</th><th>Répartition</th><th style={{ textAlign: 'right' }}>Montant</th><th>Lignes</th><th>Statut</th><th>Appliqué</th></tr></thead>
+            <thead><tr>
+              <th>N°</th><th>Réception</th><th>Fournisseur</th><th>Répartition</th>
+              <th className="ds-num">Lignes</th><th className="ds-num">Montant ({currencySymbol()})</th>
+              <th>Statut</th><th>Appliqué</th><th className="ds-actions"><span className="sr-only">Actions</span></th>
+            </tr></thead>
             <tbody>{data.rows.map(v => (
               <tr key={v.id} onClick={() => setOpenId(v.id)} style={{ cursor: 'pointer' }}>
-                <td className="font-mono" style={{ whiteSpace: 'nowrap' }}>{v.number}</td>
-                <td><span className="font-mono">{v.reception_number}</span> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>· {format(new Date(v.reception_date), 'dd/MM/yyyy')}{v.order_number ? ` · ${v.order_number}` : ''}</span></td>
-                <td>{v.supplier_name || '—'}</td>
+                <td className="ds-ref" style={{ whiteSpace: 'nowrap' }}>{v.number}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <span className="ds-ref" style={{ fontWeight: 400 }}>{v.reception_number}</span>
+                  <div style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{pdate(v.reception_date)}{v.order_number ? ` · ${v.order_number}` : ''}</div>
+                </td>
+                <td className="ds-strong">{v.supplier_name || '—'}</td>
                 <td>{METHOD_LABELS[v.allocation_method]}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{n2(v.total_amount)}</td>
-                <td style={{ textAlign: 'center' }}>{v.line_count}</td>
+                <td className="ds-num">{v.line_count}</td>
+                <td className="ds-num ds-strong">{n2(v.total_amount)}</td>
                 <td><StatusTag tone={STATUS_TONE[v.status] ?? 'draft'} label={LANDED_STATUS_LABELS[v.status]} /></td>
-                <td style={{ color: 'var(--theme-text-muted)' }}>{v.applied_at ? `${format(new Date(v.applied_at), 'dd/MM/yyyy')} · ${v.applied_by_name ?? ''}` : '—'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{v.applied_at ? <>{pdate(v.applied_at)}{v.applied_by_name ? <div style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{v.applied_by_name}</div> : null}</> : '—'}</td>
+                <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setOpenId(v.id)}>Ouvrir</button>
+                </td>
               </tr>
             ))}</tbody>
           </table>
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} bon${data.total > 1 ? 's' : ''} de frais`} />
-        </div>
+        </DataPanel>
       )}
       {creating && <LandedCostFormModal onClose={() => setCreating(false)} onSaved={id => setOpenId(id)} />}
       {openId && <LandedCostDrawer id={openId} onClose={() => setOpenId(null)} />}
@@ -111,7 +127,7 @@ export default function LandedCostTab() {
   );
 }
 
-function Loading() { return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>; }
+function Loading() { return <LoadingState bare />; }
 
 /* ═══════════════════ Création : réception, frais, aperçu de la répartition ═══════════════════ */
 type DraftCharge = ChargeInput & { key: number };
@@ -163,7 +179,7 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
           <div>
             <span style={label}>Frais</span>
             <table className="odoo-table">
-              <thead><tr><th>Libellé</th><th style={{ width: 240 }}>Catégorie de charge</th><th style={{ width: 140, textAlign: 'right' }}>Montant HT ({currencySymbol()})</th><th style={{ width: 40 }} /></tr></thead>
+              <thead><tr><th>Libellé</th><th style={{ width: 240 }}>Catégorie de charge</th><th className="ds-num" style={{ width: 160 }}>Montant HT ({currencySymbol()})</th><th style={{ width: 40 }} /></tr></thead>
               <tbody>{charges.map(c => (
                 <tr key={c.key}>
                   <td><input className="input" style={{ width: '100%' }} value={c.label} onChange={e => upd(c.key, { label: e.target.value })} placeholder="Transport, douane, assurance…" /></td>
@@ -173,10 +189,10 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
                       options={(categories as Record<string, any>[]).filter(x => x.is_active !== false).map(x => ({ id: String(x.id), label: x.name as string }))} />
                   </td>
                   <td><input className="input" type="number" step="0.01" style={{ width: '100%', textAlign: 'right' }} value={c.amount || ''} onChange={e => upd(c.key, { amount: Number(e.target.value) })} /></td>
-                  <td>{charges.length > 1 && <button type="button" className="odoo-btn-secondary" onClick={() => setCharges(cs => cs.filter(x => x.key !== c.key))}><Trash2 size={12} /></button>}</td>
+                  <td>{charges.length > 1 && <button type="button" className="ds-icon-btn" aria-label={`Retirer la ligne de frais ${c.label || ''}`.trim()} onClick={() => setCharges(cs => cs.filter(x => x.key !== c.key))}><Trash2 size={14} /></button>}</td>
                 </tr>
               ))}</tbody>
-              <tfoot><tr><td colSpan={2}><button type="button" className="odoo-btn-secondary" onClick={() => setCharges(cs => [...cs, { key: Date.now(), label: '', amount: 0, categoryId: null }])}><Plus size={12} /> Ligne de frais</button></td><td style={{ textAlign: 'right', fontWeight: 700 }}>{n2(total)}</td><td /></tr></tfoot>
+              <tfoot><tr><td colSpan={2}><button type="button" className="odoo-btn-secondary" onClick={() => setCharges(cs => [...cs, { key: Date.now(), label: '', amount: 0, categoryId: null }])}><Plus size={12} /> Ligne de frais</button></td><td className="ds-num" style={{ fontWeight: 700 }}>{n2(total)}</td><td /></tr></tfoot>
             </table>
           </div>
 
@@ -190,20 +206,20 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
                   </StatusBanner>
                 </div>
               )}
-              {preview.length === 0 ? <p style={{ fontSize: '0.8125rem', color: '#dc3545', margin: 0 }}>Cette réception n'a aucune ligne d'article valorisable.</p> : (
+              {preview.length === 0 ? <p style={{ fontSize: 14, color: 'var(--ds-danger)', margin: 0 }}>Cette réception n'a aucune ligne d'article valorisable.</p> : (
                 <table className="odoo-table">
-                  <thead><tr><th>Article</th><th>Lot</th><th style={{ textAlign: 'right' }}>Qté</th>{method === 'weight' && <th style={{ textAlign: 'right' }}>Poids</th>}<th style={{ textAlign: 'right' }}>Prix reçu</th><th style={{ textAlign: 'right' }}>Part</th><th style={{ textAlign: 'right' }}>Frais</th><th style={{ textAlign: 'right' }}>+ par unité</th><th style={{ textAlign: 'right' }}>Coût rendu</th></tr></thead>
+                  <thead><tr><th>Article</th><th>Lot</th><th className="ds-num">Qté</th>{method === 'weight' && <th className="ds-num">Poids</th>}<th className="ds-num">Prix reçu ({currencySymbol()})</th><th className="ds-num">Part</th><th className="ds-num">Frais ({currencySymbol()})</th><th className="ds-num">+ par unité</th><th className="ds-num">Coût rendu ({currencySymbol()})</th></tr></thead>
                   <tbody>{preview.map(l => (
                     <tr key={l.id}>
                       <td>{l.label}</td>
                       <td className="font-mono" style={{ fontSize: '0.75rem' }}>{l.lot_number || '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(l.quantity).toLocaleString('fr-FR')} {l.unit ?? ''}</td>
-                      {method === 'weight' && <td style={{ textAlign: 'right', color: l.weight_kg == null ? '#dc3545' : undefined }}>{l.weight_kg == null ? 'inconnu' : `${n2(l.weight_kg)} kg`}</td>}
-                      <td style={{ textAlign: 'right' }}>{n4(l.unit_price)}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{l.share_pct.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %</td>
-                      <td style={{ textAlign: 'right' }}>{n2(l.amount)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>+{n4(l.unit_increment)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{n4(Number(l.unit_price) + l.unit_increment)}</td>
+                      <td className="ds-num">{Number(l.quantity).toLocaleString('fr-FR')} {l.unit ?? ''}</td>
+                      {method === 'weight' && <td className="ds-num" style={{ color: l.weight_kg == null ? 'var(--ds-danger)' : undefined }}>{l.weight_kg == null ? 'inconnu' : `${n2(l.weight_kg)} kg`}</td>}
+                      <td className="ds-num">{n4(l.unit_price)}</td>
+                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{l.share_pct.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %</td>
+                      <td className="ds-num">{n2(l.amount)}</td>
+                      <td className="ds-num ds-strong">+{n4(l.unit_increment)}</td>
+                      <td className="ds-num ds-strong">{n4(Number(l.unit_price) + l.unit_increment)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -212,9 +228,9 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
           )}
           <div><span style={label}>Notes</span><input className="input" style={{ width: '100%' }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Référence de la facture du transporteur, n° de déclaration en douane…" /></div>
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
-          <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="odoo-btn-primary" disabled={!can} onClick={() => save.mutate()}>{save.isPending && <Loader2 size={13} className="animate-spin" />} Enregistrer en brouillon</button>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--ds-hair)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
+          <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={save.isPending}>Annuler</button>
+          <button type="button" className="odoo-btn-primary" disabled={!can} onClick={() => save.mutate()}>{save.isPending && <Loader2 size={13} className="animate-spin" />} Enregistrer en brouillon</button>
         </div>
       </div>
     </ModalBackdrop>
@@ -237,10 +253,10 @@ function LandedCostPane({ id, onFull }: { id: string; onFull: () => void }) {
         amount={pmoney(v.total_amount)} amountSub={`${v.line_count} ligne${Number(v.line_count) > 1 ? 's' : ''} · ${METHOD_LABELS[v.allocation_method]}`} />
       <div className="ord-actions">
         {v.status === 'draft' && <>
-          <button className="odoo-btn-primary" disabled={apply.isPending} onClick={async () => {
+          <button type="button" className="odoo-btn-primary" disabled={apply.isPending} onClick={async () => {
             if (await confirm(`Appliquer ${money(v.total_amount)} de frais sur ${v.line_count} ligne(s) ? Les coûts des lots et les coûts standard seront augmentés ; l'opération ne se défait pas.`)) apply.mutate();
           }}><CheckCircle2 size={13} /> Appliquer aux coûts</button>
-          <button className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler ce brouillon ?', { danger: true })) cancel.mutate(); }}><XCircle size={13} /> Annuler</button>
+          <button type="button" className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler ce brouillon ?', { danger: true })) cancel.mutate(); }}><XCircle size={13} /> Annuler</button>
         </>}
         <button type="button" className="odoo-btn-secondary" onClick={onFull}>Fiche complète</button>
       </div>
@@ -295,14 +311,14 @@ function LandedCostDrawer({ id, onClose }: { id: string; onClose: () => void }) 
           <>
             <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
               <div className="odoo-breadcrumb">
-                <Truck size={14} style={{ color: 'var(--theme-accent)' }} />
-                <span className="font-mono">{v.number}</span>
+                <Truck size={14} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} />
+                <span className="ds-ref">{v.number}</span>
                 <span style={{ marginLeft: 6 }}><StatusTag tone={STATUS_TONE[v.status] ?? 'draft'} label={LANDED_STATUS_LABELS[v.status]} /></span>
               </div>
               <div style={{ flex: 1 }} />
               {v.status === 'draft' && <>
-                <button className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler ce brouillon ?', { danger: true })) cancel.mutate(); }}><XCircle size={13} /> Annuler</button>
-                <button className="odoo-btn-primary" disabled={apply.isPending} onClick={async () => {
+                <button type="button" className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler ce brouillon ?', { danger: true })) cancel.mutate(); }}><XCircle size={13} /> Annuler</button>
+                <button type="button" className="odoo-btn-primary" disabled={apply.isPending} onClick={async () => {
                   if (await confirm(`Appliquer ${money(v.total_amount)} de frais sur ${v.line_count} ligne(s) ? Les coûts des lots et les coûts standard seront augmentés ; l'opération ne se défait pas.`)) apply.mutate();
                 }}><CheckCircle2 size={13} /> Appliquer aux coûts</button>
               </>}
@@ -310,56 +326,56 @@ function LandedCostDrawer({ id, onClose }: { id: string; onClose: () => void }) 
             </div>
             <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
               <div style={{ fontSize: '0.8125rem' }}>
-                Réception <span className="font-mono">{v.reception_number}</span> du {format(new Date(v.reception_date), 'dd/MM/yyyy')}{v.order_number ? <> · BC <span className="font-mono">{v.order_number}</span></> : null}{v.supplier_name ? ` · ${v.supplier_name}` : ''}
-                <span style={{ color: 'var(--theme-text-muted)' }}> · {METHOD_LABELS[v.allocation_method]} · créé par {v.created_by_name || '—'}</span>
-                {v.notes && <div style={{ color: 'var(--theme-text-muted)', marginTop: 4 }}>{v.notes}</div>}
+                Réception <span className="font-mono">{v.reception_number}</span> du {pdate(v.reception_date)}{v.order_number ? <> · BC <span className="font-mono">{v.order_number}</span></> : null}{v.supplier_name ? ` · ${v.supplier_name}` : ''}
+                <span style={{ color: 'var(--ds-muted)' }}> · {METHOD_LABELS[v.allocation_method]} · créé par {v.created_by_name || '—'}</span>
+                {v.notes && <div style={{ color: 'var(--ds-muted)', marginTop: 4 }}>{v.notes}</div>}
               </div>
-              {v.status === 'applied' && <StatusBanner tone="success" icon={CheckCircle2} title={`Appliqué le ${format(new Date(v.applied_at!), 'dd/MM/yyyy')} par ${v.applied_by_name ?? '—'}`}>Les coûts ci-dessous sont ceux écrits à l'application.</StatusBanner>}
+              {v.status === 'applied' && <StatusBanner tone="success" icon={CheckCircle2} title={`Appliqué le ${pdate(v.applied_at)} par ${v.applied_by_name ?? '—'}`}>Les coûts ci-dessous sont ceux écrits à l'application.</StatusBanner>}
               <div>
-                <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}><FilePenLine size={12} /> Frais</div>
+                <SectionHeader title="Frais" />
                 <table className="odoo-table">
-                  <thead><tr><th>Libellé</th><th>Catégorie</th><th>Fournisseur / facture</th><th style={{ textAlign: 'right' }}>Montant</th></tr></thead>
+                  <thead><tr><th>Libellé</th><th>Catégorie</th><th>Fournisseur / facture</th><th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
                   <tbody>{(v.charges ?? []).map(c => (
-                    <tr key={c.id}><td>{c.label}</td><td>{c.category_name || '—'}</td><td>{[c.supplier_name, c.invoice_number].filter(Boolean).join(' · ') || '—'}</td><td style={{ textAlign: 'right' }}>{n2(c.amount)}</td></tr>
+                    <tr key={c.id}><td>{c.label}</td><td>{c.category_name || '—'}</td><td>{[c.supplier_name, c.invoice_number].filter(Boolean).join(' · ') || '—'}</td><td className="ds-num">{n2(c.amount)}</td></tr>
                   ))}
-                  <tr style={{ fontWeight: 700 }}><td colSpan={3}>Total</td><td style={{ textAlign: 'right' }}>{n2(v.total_amount)}</td></tr></tbody>
+                  <tr style={{ fontWeight: 700 }}><td colSpan={3}>Total</td><td className="ds-num">{n2(v.total_amount)}</td></tr></tbody>
                 </table>
               </div>
               <div>
-                <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}><Ship size={12} /> Répartition</div>
+                <SectionHeader title="Répartition" note={METHOD_LABELS[v.allocation_method]} />
                 <table className="odoo-table">
-                  <thead><tr><th>Article</th><th>Lot</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>Part</th><th style={{ textAlign: 'right' }}>Frais</th><th style={{ textAlign: 'right' }}>+ par unité</th><th style={{ textAlign: 'right' }}>Coût du lot</th><th style={{ textAlign: 'right' }}>Coût standard</th></tr></thead>
+                  <thead><tr><th>Article</th><th>Lot</th><th className="ds-num">Qté</th><th className="ds-num">Part</th><th className="ds-num">Frais ({currencySymbol()})</th><th className="ds-num">+ par unité</th><th className="ds-num">Coût du lot</th><th className="ds-num">Coût standard</th></tr></thead>
                   <tbody>{(v.allocations ?? []).map(a => (
                     <tr key={a.id}>
                       <td>{a.label}</td>
                       <td className="font-mono" style={{ fontSize: '0.75rem' }}>{a.lot_number || '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(a.quantity).toLocaleString('fr-FR')} {a.unit ?? ''}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{Number(a.share_pct).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %</td>
-                      <td style={{ textAlign: 'right' }}>{n2(a.amount)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>+{n4(a.unit_increment)}</td>
-                      <td style={{ textAlign: 'right' }}>{v.status === 'applied' && a.lot_cost_after != null ? <>{n4(a.lot_cost_before)} → <strong>{n4(a.lot_cost_after)}</strong></> : a.lot_number ? `${n4(a.current_cost)} → ${n4(Number(a.current_cost) + Number(a.unit_increment))}` : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{v.status === 'applied' && a.standard_cost_after != null ? <>{n4(a.standard_cost_before)} → <strong>{n4(a.standard_cost_after)}</strong></> : <span style={{ color: 'var(--theme-text-muted)' }}>CMUP à l'application</span>}</td>
+                      <td className="ds-num">{Number(a.quantity).toLocaleString('fr-FR')} {a.unit ?? ''}</td>
+                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{Number(a.share_pct).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %</td>
+                      <td className="ds-num">{n2(a.amount)}</td>
+                      <td className="ds-num ds-strong">+{n4(a.unit_increment)}</td>
+                      <td className="ds-num">{v.status === 'applied' && a.lot_cost_after != null ? <>{n4(a.lot_cost_before)} → <strong>{n4(a.lot_cost_after)}</strong></> : a.lot_number ? `${n4(a.current_cost)} → ${n4(Number(a.current_cost) + Number(a.unit_increment))}` : '—'}</td>
+                      <td className="ds-num">{v.status === 'applied' && a.standard_cost_after != null ? <>{n4(a.standard_cost_before)} → <strong>{n4(a.standard_cost_after)}</strong></> : <span style={{ color: 'var(--ds-muted)' }}>CMUP à l'application</span>}</td>
                     </tr>
                   ))}</tbody>
                 </table>
               </div>
               {(v.valuationAdjustments ?? []).length > 0 && (
                 <div>
-                  <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}><Ship size={12} /> Réévaluation — part en stock vs écart</div>
+                  <SectionHeader title="Réévaluation : part en stock et part en écart" />
                   <StatusBanner tone="info" icon={Ship} title="Traçabilité de la réévaluation">
                     Le coût du lot et le CMUP sont <strong>déjà mis à jour</strong> à l'application des frais. Ce tableau trace la répartition entre la part <strong>capitalisée en stock</strong> (quantité encore en stock) et la part en <strong>écart</strong> (déjà consommée). Compta en inventaire intermittent : pas d'écriture comptable, la charge est déjà au compte de frais.
                   </StatusBanner>
                   <table className="odoo-table">
-                    <thead><tr><th>Article</th><th>Lot</th><th style={{ textAlign: 'right' }}>Qté base</th><th style={{ textAlign: 'right' }}>Encore en stock</th><th style={{ textAlign: 'right' }}>+ / unité</th><th style={{ textAlign: 'right' }}>Part en stock</th><th style={{ textAlign: 'right' }}>Part en écart</th></tr></thead>
+                    <thead><tr><th>Article</th><th>Lot</th><th className="ds-num">Qté base</th><th className="ds-num">Encore en stock</th><th className="ds-num">+ / unité</th><th className="ds-num">Part en stock ({currencySymbol()})</th><th className="ds-num">Part en écart ({currencySymbol()})</th></tr></thead>
                     <tbody>{(v.valuationAdjustments ?? []).map(s => (
                       <tr key={s.id}>
                         <td>{s.label || '—'}</td>
                         <td className="font-mono" style={{ fontSize: '0.75rem' }}>{s.lot_number || '—'}</td>
-                        <td style={{ textAlign: 'right' }}>{Number(s.qty_basis).toLocaleString('fr-FR')}</td>
-                        <td style={{ textAlign: 'right' }}>{Number(s.qty_remaining).toLocaleString('fr-FR')}</td>
-                        <td style={{ textAlign: 'right' }}>+{n4(s.unit_delta)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 600, color: '#28a745' }}>{n2(s.amount_to_stock)}</td>
-                        <td style={{ textAlign: 'right', color: Number(s.amount_to_variance) > 0 ? '#b85d1a' : 'var(--theme-text-muted)' }}>{n2(s.amount_to_variance)}</td>
+                        <td className="ds-num">{Number(s.qty_basis).toLocaleString('fr-FR')}</td>
+                        <td className="ds-num">{Number(s.qty_remaining).toLocaleString('fr-FR')}</td>
+                        <td className="ds-num">+{n4(s.unit_delta)}</td>
+                        <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-success)' }}>{n2(s.amount_to_stock)}</td>
+                        <td className="ds-num" style={{ color: Number(s.amount_to_variance) > 0 ? 'var(--ds-warning)' : 'var(--ds-muted)' }}>{n2(s.amount_to_variance)}</td>
                       </tr>
                     ))}</tbody>
                   </table>

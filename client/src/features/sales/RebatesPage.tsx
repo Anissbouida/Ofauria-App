@@ -13,7 +13,8 @@ import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { FilterChips, ListPanel, ListEmpty, NextStep, ListKpi } from './ListTemplate';
+import { FilterChips, ListPanel, NextStep, ListKpi } from './ListTemplate';
+import { TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
 
 /**
  * Ventes › Ristournes de fin d'année (phase 11, D5-12). Un accord par client et
@@ -84,6 +85,13 @@ export default function RebatesPage() {
       </section>
       <p className="prj-note">Taux sur le CA annuel (net des avoirs) au-delà d'un seuil ; la ristourne est figée à la clôture, puis émise en avoir.</p>
 
+      <FilterChips label="Filtrer les accords" value={view} onChange={k => setView(k as '' | RebateAgreement['status'])} chips={[
+        { key: 'active', label: 'Actifs', count: stats.active.count },
+        { key: 'settled', label: 'Clôturés', count: stats.settled.count },
+        { key: 'cancelled', label: 'Annulés', count: stats.cancelled.count },
+        { key: '', label: 'Tous', count: list.length },
+      ]} />
+
       {isDirection && (
         <section className="prj-panel" style={{ padding: '12px 14px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <strong style={{ fontSize: '0.875rem', marginRight: 4 }}>Nouvel accord {year}</strong>
@@ -93,40 +101,35 @@ export default function RebatesPage() {
           <input className="odoo-input" aria-label="Taux en %" type="number" step="0.1" placeholder="Taux %" value={form.ratePercent} onChange={e => setForm({ ...form, ratePercent: e.target.value })} style={{ width: 90 }} />
           <input className="odoo-input" aria-label={`Seuil de CA en ${currencySymbol()}`} type="number" placeholder={`Seuil CA (${currencySymbol()})`} value={form.minTurnover} onChange={e => setForm({ ...form, minTurnover: e.target.value })} style={{ width: 130 }} />
           <button className="odoo-btn-primary" disabled={!form.customerId || !(Number(form.ratePercent) >= 0) || create.isPending} onClick={() => create.mutate()}>
-            {create.isPending ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Créer l'accord
+            {create.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Créer l'accord
           </button>
         </section>
       )}
 
-      <FilterChips label="Filtrer les accords" value={view} onChange={k => setView(k as '' | RebateAgreement['status'])} chips={[
-        { key: 'active', label: 'Actifs', count: stats.active.count },
-        { key: 'settled', label: 'Clôturés', count: stats.settled.count },
-        { key: 'cancelled', label: 'Annulés', count: stats.cancelled.count },
-        { key: '', label: 'Tous', count: list.length },
-      ]} />
-
-      {isLoading ? <ListEmpty icon={Loader2} title="Chargement des accords…" /> : !filtered.length ? (
-        <ListEmpty icon={BadgePercent} title={list.length ? 'Aucun accord pour ce filtre' : `Aucun accord pour ${year}`} />
+      {isLoading ? <LoadingState label="Chargement des accords…" /> : !filtered.length ? (
+        list.length
+          ? <NoResultState onReset={() => setView('')} text="Aucun accord ne correspond au filtre." />
+          : <EmptyState icon={BadgePercent} title={`Aucun accord pour ${year}`} text="Un accord de ristourne applique un taux sur le chiffre d'affaires annuel d'un client." />
       ) : (
-        <ListPanel>
+        <ListPanel footer={<TableFooter note={`${filtered.length} accord${filtered.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>Client</th><th style={{ textAlign: 'right' }}>Taux</th><th style={{ textAlign: 'right' }}>Seuil</th><th>CA de l'année</th><th style={{ textAlign: 'right' }}>Ristourne</th><th>État</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
+            <thead><tr><th>Client</th><th className="ds-num">Taux</th><th className="ds-num">Seuil</th><th>CA de l'année</th><th className="ds-num">Ristourne</th><th>État</th><th className="ds-actions">Actions</th></tr></thead>
             <tbody>
               {filtered.map(r => {
                 const reached = Number(r.min_turnover) > 0 ? Math.min(100, Number(r.current_turnover) / Number(r.min_turnover) * 100) : 100;
                 return (
                   <tr key={r.id} style={{ cursor: 'default' }}>
-                    <td style={{ fontWeight: 500 }}>{custName(r)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(r.rate_percent)} %</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{money(r.min_turnover)}</td>
+                    <td className="ds-strong">{custName(r)}</td>
+                    <td className="ds-num">{Number(r.rate_percent)} %</td>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{money(r.min_turnover)}</td>
                     <td style={{ minWidth: 160 }}>
                       <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(r.current_turnover)}</span>
                       <span className={`prj-bar ${reached >= 100 ? 'green' : ''}`} style={{ marginTop: 4 }} title={`${Math.round(reached)} % du seuil`}><span style={{ width: `${reached}%` }} /></span>
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{r.current_amount > 0 ? money(r.current_amount) : '—'}</td>
+                    <td className="ds-num ds-strong" style={{ whiteSpace: 'nowrap' }}>{r.current_amount > 0 ? money(r.current_amount) : '—'}</td>
                     <td>{r.status === 'active' ? <StatusTag tone="progress" label="Actif" /> : r.status === 'settled' ? <StatusTag tone="done" icon={Lock} label="Clôturé" /> : <StatusTag tone="cancelled" label="Annulé" />}
                       {r.status === 'settled' && r.settled_credit_note_id && <span className="sal-sub">avoir émis</span>}</td>
-                    <td style={{ textAlign: 'right' }}>{isDirection && r.status === 'active' && (
+                    <td className="ds-actions">{isDirection && r.status === 'active' && (
                       <div className="sal-actions">
                         <NextStep icon={Lock} label="Clôturer" disabled={settle.isPending} onClick={async () => {
                           if (await confirm(`Clôturer l'accord de ${custName(r)} ? La ristourne est figée à ${r.current_amount > 0 ? money(r.current_amount) : money(0, { decimals: 0 })}.`, { title: 'Clôturer la ristourne', confirmLabel: 'Clôturer' })) settle.mutate(r.id);

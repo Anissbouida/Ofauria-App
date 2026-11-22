@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ListPage } from './ListTemplate';
+import { useModuleCrumb } from '../../components/layout/ModuleShell';
 
 /**
  * En-tête standard d'un onglet du module Ventes : barre de contrôle (fil d'Ariane + actions)
@@ -21,6 +22,13 @@ export default function SalesPageShell({ icon: Icon, title, parent, summary, act
   list?: boolean;
   children: ReactNode;
 }) {
+  // Fil d'Ariane à trois niveaux : « Module › Rubrique › Page ». Sans `parent`, la coquille du
+  // module fournit les deux premiers niveaux (Design System, 2026-11-22).
+  const crumb = useModuleCrumb();
+  // `parent` déjà complet (« Module › Rubrique ») : on le garde ; sinon la coquille fait foi.
+  const lead = parent && (parent.includes('›') || !crumb) ? [parent]
+    : crumb ? [crumb.module, ...(crumb.section && crumb.section !== title ? [crumb.section] : [])]
+    : [];
   // Style Apple (2026-11) : grand titre en tête de page, le résumé passe dessous.
   const largeTitle = <header className="kl-largetitle"><h1>{title}</h1>{summary && <p>{summary}</p>}</header>;
   return (
@@ -28,7 +36,7 @@ export default function SalesPageShell({ icon: Icon, title, parent, summary, act
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           {Icon && <Icon size={14} style={{ color: 'var(--theme-accent)' }} />}
-          {parent && <><span>{parent}</span><span className="odoo-breadcrumb-separator">/</span></>}
+          {lead.map(l => <span key={l} style={{ display: 'contents' }}><span>{l}</span><span className="odoo-breadcrumb-separator">›</span></span>)}
           <span className="odoo-breadcrumb-current">{title}</span>
           {summary && <span className="spsh-summary" style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{summary}</span>}
         </div>

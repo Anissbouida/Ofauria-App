@@ -15,7 +15,9 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 export const n2 = (v: string | number | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const PRIORITY_TAG: Record<Priority, string> = { critical: 'odoo-tag-red', high: 'odoo-tag-orange', normal: 'odoo-tag-blue', low: 'odoo-tag-grey' };
-const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4, display: 'block' };
+/** Libellé de champ aux cotes du Design System (ds-field-label). */
+const label: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6, display: 'block' };
+const req = <span className="ds-req" aria-hidden="true"> *</span>;
 const customerLabel = (c: Record<string, any>) => (c.company_name as string)?.trim() || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
 
 function Shell({ title, onClose, children, footer, width = 680 }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode; width?: number }) {
@@ -26,7 +28,7 @@ function Shell({ title, onClose, children, footer, width = 680 }: { title: strin
         <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
           <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{title}</span></div>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-btn-secondary" aria-label="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
         </div>
         <div style={{ padding: '16px 20px', display: 'grid', gap: 12 }}>{children}</div>
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>{footer}</div>
@@ -53,8 +55,8 @@ function EquipmentFields({ value, onChange, withProductionEquipment = false }: {
       <div style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--theme-bg-secondary)', borderRadius: 8, width: 'fit-content' }}>
         {([['asset', 'Matériel interne'], ['customer', 'Chez un client']] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => { setMode(k); onChange(k === 'asset' ? { customerId: null, customerName: '' } : { fixedAssetId: null }); }}
-            style={{ padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: mode === k ? 600 : 400,
-              background: mode === k ? 'var(--theme-bg-card)' : 'transparent', color: mode === k ? 'var(--theme-text)' : 'var(--theme-text-muted)' }}>{l}</button>
+            style={{ padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: mode === k ? 600 : 400,
+              background: mode === k ? 'var(--theme-bg-card)' : 'transparent', color: mode === k ? 'var(--theme-text)' : 'var(--ds-muted)' }}>{l}</button>
         ))}
       </div>
       {mode === 'asset' && withProductionEquipment && (
@@ -81,7 +83,7 @@ function EquipmentFields({ value, onChange, withProductionEquipment = false }: {
           </div>
           <div>
             <span style={label}>Ou équipement (libellé)</span>
-            <input className="input" style={{ width: '100%' }} value={value.equipmentLabel} maxLength={200} onChange={e => onChange({ equipmentLabel: e.target.value })} placeholder="Ex. : four à sole n° 2, chambre froide" />
+            <input className="ds-input" value={value.equipmentLabel} maxLength={200} onChange={e => onChange({ equipmentLabel: e.target.value })} placeholder="Ex. : four à sole n° 2, chambre froide" />
           </div>
         </div>
       ) : (
@@ -95,20 +97,20 @@ function EquipmentFields({ value, onChange, withProductionEquipment = false }: {
               </div>
             ) : (
               <>
-                <input className="input" style={{ width: '100%' }} value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher une fiche" />
+                <input className="ds-input" value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher une fiche" />
                 {customers.length > 0 && q.trim().length >= 2 && (
                   <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 4, maxHeight: 120, overflowY: 'auto' }}>
                     {customers.slice(0, 8).map(c => (
                       <button key={c.id} type="button" onClick={() => { onChange({ customerId: c.id, customerName: customerLabel(c) }); setQ(''); }}
-                        style={{ display: 'block', width: '100%', padding: '6px 10px', fontSize: '0.8125rem', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>{customerLabel(c)}</button>
+                        style={{ display: 'block', width: '100%', padding: '6px 10px', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>{customerLabel(c)}</button>
                     ))}
                   </div>
                 )}
               </>
             )}
           </div>
-          <div><span style={label}>Équipement</span><input className="input" style={{ width: '100%' }} value={value.equipmentLabel} maxLength={200} onChange={e => onChange({ equipmentLabel: e.target.value })} placeholder="Ex. : vitrine réfrigérée" /></div>
-          <div><span style={label}>N° de série</span><input className="input" style={{ width: '100%' }} value={value.serialNo} maxLength={80} onChange={e => onChange({ serialNo: e.target.value })} /></div>
+          <div><span style={label}>Équipement</span><input className="ds-input" value={value.equipmentLabel} maxLength={200} onChange={e => onChange({ equipmentLabel: e.target.value })} placeholder="Ex. : vitrine réfrigérée" /></div>
+          <div><span style={label}>N° de série</span><input className="ds-input" value={value.serialNo} maxLength={80} onChange={e => onChange({ serialNo: e.target.value })} /></div>
         </div>
       )}
     </>
@@ -142,20 +144,20 @@ export function InterventionFormModal({ onClose, onCreated, defaults }: {
   return (
     <Shell title="Nouvelle intervention" onClose={onClose}
       footer={<>
-        <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-        <button className="odoo-btn-primary" disabled={!can} onClick={() => create.mutate()}>{create.isPending && <Loader2 size={13} className="animate-spin" />} Créer</button>
+        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
+        <button type="button" className="odoo-btn-primary" disabled={!can} aria-busy={create.isPending || undefined} onClick={() => create.mutate()}>{create.isPending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />} Créer l'intervention</button>
       </>}>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-        <div><span style={label}>Objet</span><input className="input" style={{ width: '100%' }} value={f.title} maxLength={200} onChange={e => set({ title: e.target.value })} placeholder="Ex. : four ne chauffe plus, révision annuelle…" autoFocus /></div>
+        <div><span style={label}>Objet{req}</span><input className="ds-input" value={f.title} maxLength={200} onChange={e => set({ title: e.target.value })} placeholder="Ex. : four ne chauffe plus, révision annuelle…" autoFocus /></div>
         <div>
           <span style={label}>Type</span>
-          <select className="input" style={{ width: '100%' }} value={f.kind} onChange={e => set({ kind: e.target.value as InterventionKind })}>
+          <select className="ds-input" value={f.kind} onChange={e => set({ kind: e.target.value as InterventionKind })}>
             {Object.entries(KIND_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         <div>
           <span style={label}>Priorité</span>
-          <select className="input" style={{ width: '100%' }} value={f.priority} onChange={e => set({ priority: e.target.value as Priority })}>
+          <select className="ds-input" value={f.priority} onChange={e => set({ priority: e.target.value as Priority })}>
             {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
@@ -168,11 +170,11 @@ export function InterventionFormModal({ onClose, onCreated, defaults }: {
             placeholder="À affecter" width="100%" size="md" ariaLabel="Intervenant"
             options={people.map(p => ({ id: String(p.id), label: p.name as string }))} />
         </div>
-        <div><span style={label}>Planifiée le</span><input className="input" type="datetime-local" style={{ width: '100%' }} value={f.scheduledAt} onChange={e => set({ scheduledAt: e.target.value })} /></div>
-        <div><span style={label}>Lieu</span><input className="input" style={{ width: '100%' }} value={f.location} maxLength={200} onChange={e => set({ location: e.target.value })} placeholder="Atelier, adresse…" /></div>
+        <div><span style={label}>Planifiée le</span><input className="ds-input" type="datetime-local" value={f.scheduledAt} onChange={e => set({ scheduledAt: e.target.value })} /></div>
+        <div><span style={label}>Lieu</span><input className="ds-input" value={f.location} maxLength={200} onChange={e => set({ location: e.target.value })} placeholder="Atelier, adresse…" /></div>
       </div>
-      <div><span style={label}>Problème signalé / travail demandé</span><textarea className="input" style={{ width: '100%', minHeight: 70 }} value={f.reportedProblem} onChange={e => set({ reportedProblem: e.target.value })} /></div>
-      <div style={{ display: 'flex', gap: 16, fontSize: '0.8125rem' }}>
+      <div><span style={label}>Problème signalé / travail demandé</span><textarea className="ds-input" style={{ minHeight: 70 }} value={f.reportedProblem} onChange={e => set({ reportedProblem: e.target.value })} /></div>
+      <div style={{ display: 'flex', gap: 16, fontSize: 14 }}>
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.underWarranty} onChange={e => set({ underWarranty: e.target.checked })} /> Sous garantie</label>
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.billable} onChange={e => set({ billable: e.target.checked })} /> Refacturable au client</label>
       </div>
@@ -204,14 +206,14 @@ export function PlanFormModal({ plan, onClose }: { plan?: MaintenancePlan | null
   return (
     <Shell title={plan ? 'Modifier le plan d\'entretien' : 'Nouveau plan d\'entretien'} onClose={onClose}
       footer={<>
-        <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-        <button className="odoo-btn-primary" disabled={!can} onClick={() => save.mutate()}>Enregistrer</button>
+        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
+        <button type="button" className="odoo-btn-primary" disabled={!can} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>Enregistrer</button>
       </>}>
-      <div><span style={label}>Entretien</span><input className="input" style={{ width: '100%' }} value={f.label} maxLength={200} onChange={e => set({ label: e.target.value })} placeholder="Ex. : Détartrage four vapeur, Contrôle joints chambre froide" autoFocus /></div>
+      <div><span style={label}>Entretien{req}</span><input className="ds-input" value={f.label} maxLength={200} onChange={e => set({ label: e.target.value })} placeholder="Ex. : Détartrage four vapeur, Contrôle joints chambre froide" autoFocus /></div>
       <EquipmentFields value={f} onChange={set} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <div><span style={label}>Tous les (jours)</span><input className="input" type="number" min="1" max="3660" style={{ width: '100%' }} value={f.frequencyDays} onChange={e => set({ frequencyDays: Number(e.target.value) })} /></div>
-        <div><span style={label}>Prochaine échéance</span><input className="input" type="date" style={{ width: '100%' }} value={f.nextDueOn} onChange={e => set({ nextDueOn: e.target.value })} /></div>
+        <div><span style={label}>Tous les (jours){req}</span><input className="ds-input" type="number" min="1" max="3660" value={f.frequencyDays} onChange={e => set({ frequencyDays: Number(e.target.value) })} /></div>
+        <div><span style={label}>Prochaine échéance{req}</span><input className="ds-input" type="date" value={f.nextDueOn} onChange={e => set({ nextDueOn: e.target.value })} /></div>
         <div>
           <span style={label}>Intervenant habituel</span>
           <SearchSelect value={f.assigneeId} onChange={v => set({ assigneeId: v })}
@@ -219,8 +221,8 @@ export function PlanFormModal({ plan, onClose }: { plan?: MaintenancePlan | null
             options={people.map(p => ({ id: String(p.id), label: p.name as string }))} />
         </div>
       </div>
-      <div><span style={label}>Points à vérifier</span><textarea className="input" style={{ width: '100%', minHeight: 70 }} value={f.checklist} onChange={e => set({ checklist: e.target.value })} placeholder="Une ligne par point de contrôle" /></div>
-      {plan && <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.8125rem' }}><input type="checkbox" checked={f.isActive} onChange={e => set({ isActive: e.target.checked })} /> Plan actif</label>}
+      <div><span style={label}>Points à vérifier</span><textarea className="ds-input" style={{ minHeight: 70 }} value={f.checklist} onChange={e => set({ checklist: e.target.value })} placeholder="Une ligne par point de contrôle" /></div>
+      {plan && <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14 }}><input type="checkbox" checked={f.isActive} onChange={e => set({ isActive: e.target.checked })} /> Plan actif</label>}
     </Shell>
   );
 }

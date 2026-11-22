@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Loader2, Clock, AlertTriangle } from 'lucide-react';
+import { Clock, AlertTriangle } from 'lucide-react';
 import { inventoryApi, type StockAgingLot } from '../../api/inventory.api';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { money } from '../../utils/money';
-import { ListToolbar, ListKpi, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { ListToolbar, ListKpi } from '../sales/ListTemplate';
 import './stock.css';
+import { DataPanel, EmptyState, ErrorState, KpiGrid, LoadingState, NoResultState, TableFooter } from '../../components/ds';
 
 /**
  * Age du stock matiere (rapport, lot P1 ERPNext « stock aging »). Lit les lots
@@ -20,7 +20,7 @@ import './stock.css';
 const qty = (n: number, unit: string) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}${unit ? ' ' + unit : ''}`;
 
 export default function StockAgingTab() {
-  const { data, isLoading } = useQuery({ queryKey: ['stock-aging'], queryFn: inventoryApi.aging });
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['stock-aging'], queryFn: inventoryApi.aging });
   const [search, setSearch] = useState('');
   const [oldOnly, setOldOnly] = useState(false);
 
@@ -33,27 +33,24 @@ export default function StockAgingTab() {
   }, [data, search, oldOnly]);
 
   if (isLoading) {
-    return <ListEmpty icon={Loader2} title="Chargement…" />;
+    return <LoadingState label="Chargement des lots…" />;
   }
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   const buckets = data?.buckets ?? [];
   const total = data?.totalValue ?? 0;
 
   return (
     <div className="stk-stack">
-      <StatusBanner tone="info" icon={Clock} title="Âge du stock matière">
-        Les lots actifs classés par ancienneté depuis leur réception. Repérez le stock dormant (tranche « plus de 90 jours ») et les lots proches de leur date limite.
-      </StatusBanner>
-
       {/* Résumé par tranche d'ancienneté (valeur immobilisée) */}
-      <section className="prj-kpis" aria-label="Valeur par tranche d'ancienneté">
+      <KpiGrid label="Valeur par tranche d'ancienneté">
         {buckets.map(b => (
           <ListKpi key={b.key} label={b.label} value={money(b.value)} sub={`${b.lots} lot${b.lots > 1 ? 's' : ''}`}
             tone={b.key === '90+' && b.value > 0 ? 'red' : undefined} />
         ))}
         <ListKpi label="Valeur totale en stock" value={money(total)}
           sub={`${data?.lots.length ?? 0} lot${(data?.lots.length ?? 0) > 1 ? 's' : ''} actif${(data?.lots.length ?? 0) > 1 ? 's' : ''}`} />
-      </section>
+      </KpiGrid>
 
       {/* Barre d'outils */}
       <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un article ou un n° de lot…">
@@ -64,17 +61,22 @@ export default function StockAgingTab() {
       </ListToolbar>
 
       {/* Détail des lots, du plus ancien au plus récent */}
-      <ListPanel>
+      {lots.length === 0 ? (
+        (search || oldOnly)
+          ? <NoResultState text="Aucun lot ne correspond aux filtres." onReset={() => { setSearch(''); setOldOnly(false); }} />
+          : <EmptyState icon={Clock} title="Aucun lot en stock" text="Les lots de matière encore en stock apparaîtront ici, du plus ancien au plus récent." />
+      ) : (
+      <DataPanel label="Lots par ancienneté" footer={<TableFooter note={`${lots.length} lot${lots.length > 1 ? 's' : ''} · du plus ancien au plus récent`} />}>
         <table className="odoo-table">
           <thead>
             <tr>
               <th>Article</th>
               <th>Lot</th>
-              <th style={{ textAlign: 'right' }}>Quantité restante</th>
-              <th style={{ textAlign: 'right' }}>Ancienneté</th>
+              <th className="ds-num">Quantité restante</th>
+              <th className="ds-num">Ancienneté (j)</th>
               <th>Réception</th>
               <th>DLC</th>
-              <th style={{ textAlign: 'right' }}>Valeur</th>
+              <th className="ds-num">Valeur</th>
             </tr>
           </thead>
           <tbody>
@@ -84,31 +86,30 @@ export default function StockAgingTab() {
               const dlcPast = l.days_to_expiry != null && l.days_to_expiry < 0;
               return (
                 <tr key={l.id}>
-                  <td style={{ fontWeight: 500 }}>{l.ingredient_name}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>{l.lot_number}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{qty(l.quantity_remaining, l.unit)}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                    <span className={`odoo-tag ${dormant ? 'odoo-tag-red' : l.days_in_stock > 60 ? 'odoo-tag-orange' : 'odoo-tag-grey'}`}>{l.days_in_stock} j</span>
+                  <td className="ds-strong">{l.ingredient_name}</td>
+                  <td><span className="ds-ref">{l.lot_number}</span></td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{qty(l.quantity_remaining, l.unit)}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ color: dormant ? 'var(--ds-danger)' : l.days_in_stock > 60 ? 'var(--ds-warning)' : undefined, fontWeight: dormant || l.days_in_stock > 60 ? 600 : undefined }}
+                      title={dormant ? 'Stock dormant : plus de 90 jours' : undefined}>{l.days_in_stock}</span>
                   </td>
                   <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>{format(new Date(l.received_at), 'dd MMM yyyy', { locale: fr })}</td>
                   <td style={{ fontSize: '0.85rem' }}>
                     {l.expiration_date ? (
-                      <span style={{ color: dlcPast ? 'var(--prj-red)' : dlcSoon ? 'var(--prj-orange)' : 'var(--theme-text-muted)', fontWeight: dlcPast || dlcSoon ? 600 : 400 }}>
+                      <span style={{ color: dlcPast ? 'var(--ds-danger)' : dlcSoon ? 'var(--ds-warning)' : 'var(--theme-text-muted)', fontWeight: dlcPast || dlcSoon ? 600 : 400 }}>
                         {dlcPast && <AlertTriangle size={11} style={{ display: 'inline', marginRight: 3 }} />}
                         {format(new Date(l.expiration_date), 'dd MMM yyyy', { locale: fr })}
                       </span>
                     ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                   </td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{money(l.value)}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{money(l.value)}</td>
                 </tr>
               );
             })}
-            {lots.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--theme-text-muted)' }}>Aucun lot ne correspond.</td></tr>
-            )}
           </tbody>
         </table>
-      </ListPanel>
+      </DataPanel>
+      )}
     </div>
   );
 }

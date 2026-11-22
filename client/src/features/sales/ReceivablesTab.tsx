@@ -13,6 +13,7 @@ import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { ListToolbar, FilterChips, ListKpi, NextStep } from './ListTemplate';
+import { EmptyState, NoResultState, LoadingState } from '../../components/ds';
 
 /**
  * Créances clients (mig 351) — remplace l'onglet « Impayés ».
@@ -24,10 +25,10 @@ import { ListToolbar, FilterChips, ListKpi, NextStep } from './ListTemplate';
 
 const BUCKETS: Array<{ key: AgingBucket; label: string; tone: string }> = [
   { key: 'current', label: 'Non échu', tone: 'var(--theme-accent)' },
-  { key: 'd30', label: '1-30 j', tone: '#b45309' },
-  { key: 'd60', label: '31-60 j', tone: '#c2410c' },
-  { key: 'd90', label: '61-90 j', tone: '#dc2626' },
-  { key: 'over90', label: '+ 90 j', tone: '#991b1b' },
+  { key: 'd30', label: '1-30 j', tone: 'var(--ds-warning)' },
+  { key: 'd60', label: '31-60 j', tone: 'var(--ds-warning)' },
+  { key: 'd90', label: '61-90 j', tone: 'var(--ds-danger)' },
+  { key: 'over90', label: '+ 90 j', tone: 'var(--ds-danger)' },
 ];
 const day = (d: string) => format(new Date(d + 'T00:00:00'), 'dd MMM yyyy', { locale: fr });
 
@@ -120,20 +121,20 @@ export default function ReceivablesTab() {
         </section>
       )}
 
-      <ListToolbar search={search} onSearch={setSearch} placeholder="Client, téléphone ou n° de pièce…" />
       <FilterChips label="Filtrer les créances" value={filter} onChange={k => setFilter(k as Filter)} chips={[
         { key: 'all', label: 'Tous', count: counts.all },
         { key: 'overdue', label: 'En retard', count: counts.overdue, tone: counts.overdue ? 'late' : undefined, icon: counts.overdue ? AlertTriangle : undefined },
         { key: 'over60', label: '+ 60 jours', count: counts.over60 },
       ]} />
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Client, téléphone ou n° de pièce…" />
 
       {/* Clients débiteurs : une carte par client, pièces dépliables */}
       <section style={{ display: 'grid', gap: 12 }}>
-        {isLoading && <div className="kl-ar-empty"><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div>}
+        {isLoading && <LoadingState label="Chargement des créances…" />}
         {!isLoading && rows.length === 0 && (
-          <div className="kl-ar-empty">
-            {data?.customers.length ? 'Aucun client pour ce filtre' : 'Aucune créance : tous les clients sont à jour.'}
-          </div>
+          data?.customers.length
+            ? <NoResultState onReset={() => { setFilter('all'); setSearch(''); }} text="Aucun client ne correspond aux filtres." />
+            : <EmptyState icon={Scale} title="Aucune créance" text="Tous les clients sont à jour." />
         )}
         {rows.map(c => {
           const key = c.customerId ?? c.name;
@@ -290,13 +291,13 @@ function PayDialog({ doc, customer, onClose }: { doc: ReceivableDoc; customer: s
           <div className="odoo-breadcrumb"><Banknote size={14} style={{ color: 'var(--theme-accent)' }} />
             <span className="odoo-breadcrumb-current">Encaisser {isTicket ? 'le ticket' : 'la facture'} {doc.number}</span></div>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ padding: 16, display: 'grid', gap: 12, fontSize: '0.8125rem' }}>
           <div style={{ display: 'grid', gap: 4, padding: 10, borderRadius: 6, background: 'var(--odoo-bg-alt, #f8f9fa)' }}>
             <div className="flex justify-between"><span>Client</span><b>{customer}</b></div>
             <div className="flex justify-between"><span>Reste dû</span><b>{money(doc.remaining)}</b></div>
-            {doc.days_late > 0 && <div className="flex justify-between" style={{ color: '#dc2626' }}><span>Retard</span><b>{doc.days_late} jours</b></div>}
+            {doc.days_late > 0 && <div className="flex justify-between" style={{ color: 'var(--ds-danger)' }}><span>Retard</span><b>{doc.days_late} jours</b></div>}
           </div>
           {!isTicket && (
             <label style={{ display: 'grid', gap: 4 }}>Montant encaissé
@@ -399,7 +400,7 @@ function StatementDialog({ customerId, name, onClose }: { customerId: string; na
             <div className="kl-sec"><h2>Mouvements</h2>{data && <small>{data.entries.length} écriture{data.entries.length > 1 ? 's' : ''}</small>}</div>
             <div className="kl-group">
               {isLoading ? (
-                <div className="kl-empty"><Loader2 size={16} className="animate-spin" /> Chargement…</div>
+                <LoadingState bare />
               ) : (
                 <>
                   {data && <div className="kl-stmt-cols"><span>Montant</span><span>Solde</span></div>}
@@ -531,7 +532,7 @@ function ReceiptDialog({ c, onClose }: { c: CustomerReceivable; onClose: () => v
           <div className="odoo-breadcrumb"><Layers size={14} style={{ color: 'var(--theme-accent)' }} />
             <span className="odoo-breadcrumb-current">Règlement de {c.name}</span></div>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ padding: 16, display: 'grid', gap: 12, fontSize: '0.8125rem', overflowY: 'auto' }}>
           <div className="grid grid-cols-2 gap-2">
@@ -576,7 +577,7 @@ function ReceiptDialog({ c, onClose }: { c: CustomerReceivable; onClose: () => v
               {invoices.map(i => (
                 <tr key={i.id} style={{ borderTop: '1px solid var(--odoo-border)' }}>
                   <td style={{ padding: 4, fontFamily: 'ui-monospace, monospace' }}>{i.number}</td>
-                  <td style={{ padding: 4, color: i.days_late > 0 ? '#dc2626' : undefined }}>{day(i.due_date)}</td>
+                  <td style={{ padding: 4, color: i.days_late > 0 ? 'var(--ds-danger)' : undefined }}>{day(i.due_date)}</td>
                   <td style={{ padding: 4, textAlign: 'right' }}>{money(i.remaining)}</td>
                   <td style={{ padding: 4 }}>
                     <input inputMode="decimal" value={alloc[i.id] ?? ''} onChange={e => setAlloc(a => ({ ...a, [i.id]: e.target.value }))}
@@ -588,7 +589,7 @@ function ReceiptDialog({ c, onClose }: { c: CustomerReceivable; onClose: () => v
           </table>
           <div style={{ display: 'grid', gap: 4, padding: 10, borderRadius: 6, background: 'var(--odoo-bg-alt, #f8f9fa)' }}>
             <div className="flex justify-between"><span>Affecté aux factures</span><b>{money(allocated)}</b></div>
-            <div className="flex justify-between" style={{ color: rest < -0.004 ? '#dc2626' : rest > 0.004 ? '#6f42c1' : undefined }}>
+            <div className="flex justify-between" style={{ color: rest < -0.004 ? 'var(--ds-danger)' : rest > 0.004 ? '#6f42c1' : undefined }}>
               <span>{rest < -0.004 ? 'Affecté au-delà du montant reçu' : 'Reste en avance du client (4421)'}</span><b>{money(Math.abs(rest))}</b>
             </div>
           </div>

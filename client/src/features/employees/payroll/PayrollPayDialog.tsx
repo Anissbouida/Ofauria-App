@@ -1,6 +1,6 @@
 import { money } from '../../../utils/money';
 import { useState } from 'react';
-import { Check, HandCoins, Wallet, Banknote } from 'lucide-react';
+import { HandCoins, Wallet, Banknote } from 'lucide-react';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { HrModal, SubmitButton, Field, inputCls } from '../ui';
 
@@ -38,12 +38,12 @@ export default function PayrollPayDialog({ employeeName, periodLabel, net, outst
       footer={<>
         <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
         <SubmitButton pending={pending} disabled={invalid} onClick={() => onConfirm(method, Math.round(ded * 100) / 100)}>
-          <Check size={13} /> {pending ? 'Enregistrement...' : 'Confirmer le paiement'}
+          Confirmer le paiement
         </SubmitButton>
       </>}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.8125rem' }}>
-        <span style={{ color: 'var(--odoo-text-muted)' }}>Net dû</span>
-        <strong style={{ fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{money(net)}</strong>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 14 }}>
+        <span style={{ color: 'var(--ds-muted)' }}>Net dû</span>
+        <strong style={{ fontSize: 16, color: 'var(--ds-ink)' }}>{money(net)}</strong>
       </div>
 
       <Field label="Mode de paiement">
@@ -58,16 +58,15 @@ export default function PayrollPayDialog({ employeeName, periodLabel, net, outst
         <StatusBanner tone="warning" icon={HandCoins} title={`Avances en cours : ${money(outstanding)}`}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
             <Field label={`Retenue sur cette paie (max ${money(maxDeduction)})${hasPlan ? ` — plan d'étalement : ${money(proposed)} proposés` : ''}`}
-              hint="Montant modifiable — mettre 0 pour ne rien retenir sur cette paie.">
+              hint="Montant modifiable — mettre 0 pour ne rien retenir sur cette paie."
+              error={invalid ? 'La retenue dépasse le solde d\'avances ou le net dû.' : undefined}>
               <input type="number" step="0.01" min="0" max={maxDeduction} value={deduction}
-                onChange={e => setDeduction(e.target.value)} className={inputCls}
-                style={invalid ? { borderColor: 'var(--prj-red)' } : undefined} />
+                onChange={e => setDeduction(e.target.value)} className={inputCls} aria-invalid={invalid || undefined} />
             </Field>
-            {invalid && <span style={{ fontSize: '0.75rem', color: 'var(--prj-red)' }}>La retenue dépasse le solde d'avances ou le net dû.</span>}
           </div>
         </StatusBanner>
       ) : (
-        <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Aucune avance en cours pour cet employé.</span>
+        <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Aucune avance en cours pour cet employé.</span>
       )}
 
       <StatusBanner tone={cashOut > 0 ? 'success' : 'neutral'} icon={Banknote}

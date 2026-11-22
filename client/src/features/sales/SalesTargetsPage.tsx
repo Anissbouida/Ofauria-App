@@ -10,7 +10,8 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { ListPanel, ListEmpty, ListKpi } from './ListTemplate';
+import { ListPanel, ListKpi } from './ListTemplate';
+import { TableFooter, EmptyState, LoadingState } from '../../components/ds';
 
 /**
  * Ventes › Objectifs (phase 11, D3-13). Objectif de CA par commercial et par
@@ -19,6 +20,9 @@ import { ListPanel, ListEmpty, ListKpi } from './ListTemplate';
 
 function monthStart() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); }
 function monthEnd() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10); }
+
+/** Montant sans unité (l'unité est dans l'en-tête de colonne). */
+const amt = (v: number) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function SalesTargetsPage() {
   const qc = useQueryClient();
@@ -85,7 +89,7 @@ export default function SalesTargetsPage() {
                 <input aria-label={`Objectif en ${currencySymbol()}`} type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} style={{ width: 160 }} />
                 <span style={{ flex: 1 }} />
                 <button className="odoo-btn-primary" disabled={!sellerId || !(Number(amount) >= 0) || save.isPending} onClick={() => save.mutate()}>
-                  {save.isPending ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Enregistrer
+                  {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Enregistrer
                 </button>
               </span>
             </div>
@@ -93,21 +97,21 @@ export default function SalesTargetsPage() {
         </section>
       )}
 
-      {isLoading ? <ListEmpty icon={Loader2} title="Chargement des objectifs…" /> : !rows.length ? (
-        <ListEmpty icon={Target} title="Aucun objectif ni réalisé sur la période" text={isDirection ? 'Fixez un objectif par vendeur ci-dessus.' : undefined} />
+      {isLoading ? <LoadingState label="Chargement des objectifs…" /> : !rows.length ? (
+        <EmptyState icon={Target} title="Aucun objectif ni réalisé sur la période" text={isDirection ? 'Fixez un objectif par vendeur ci-dessus.' : undefined} />
       ) : (
-        <ListPanel>
+        <ListPanel footer={<TableFooter note={`${rows.length} vendeur${rows.length > 1 ? 's' : ''} · réalisé ${money(totalRealized)} sur ${money(totalTarget)}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>Vendeur</th><th style={{ textAlign: 'right' }}>Objectif</th><th style={{ textAlign: 'right' }}>Réalisé</th><th style={{ textAlign: 'right' }}>Écart</th><th>Atteinte</th><th style={{ width: 48 }} /></tr></thead>
+            <thead><tr><th>Vendeur</th><th className="ds-num">Objectif ({currencySymbol()})</th><th className="ds-num">Réalisé ({currencySymbol()})</th><th className="ds-num">Écart ({currencySymbol()})</th><th>Atteinte</th><th className="ds-actions">Actions</th></tr></thead>
             <tbody>
               {rows.map(r => {
                 const pct = r.pct ?? (r.target > 0 ? Math.round((r.realized / r.target) * 100) : null);
                 return (
                   <tr key={r.salespersonId} style={{ cursor: 'default' }}>
-                    <td style={{ fontWeight: 500 }}>{r.name}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{r.target > 0 ? money(r.target) : '—'}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(r.realized)}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: r.gap >= 0 ? 'var(--prj-green)' : 'var(--prj-red)' }}>{money(r.gap)}</td>
+                    <td className="ds-strong">{r.name}</td>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{r.target > 0 ? amt(r.target) : '—'}</td>
+                    <td className="ds-num ds-strong" style={{ whiteSpace: 'nowrap' }}>{amt(r.realized)}</td>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap', color: r.gap >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{amt(r.gap)}</td>
                     <td style={{ minWidth: 160 }}>
                       {pct != null ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -116,7 +120,7 @@ export default function SalesTargetsPage() {
                         </div>
                       ) : '—'}
                     </td>
-                    <td style={{ textAlign: 'right' }}>{isDirection && r.targetId && (
+                    <td className="ds-actions">{isDirection && r.targetId && (
                       <RowMenu items={[{ label: "Retirer l'objectif", icon: Trash2, danger: true, disabled: remove.isPending, onSelect: () => remove.mutate(r.targetId!) }]} />
                     )}</td>
                   </tr>

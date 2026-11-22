@@ -38,7 +38,7 @@ function ConditionEditor({ docType, value, disabled, onChange }: {
   // pas l'écraser ; son réglage fin se fait pour l'instant côté règle (migration).
   if (Array.isArray(value.all) || Array.isArray(value.any)) {
     return (
-      <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }} title="Condition composée : modifiable via migration/API">
+      <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }} title="Condition composée : modifiable via migration/API">
         {describeApprovalCondition(docType, value)}
       </span>
     );
@@ -80,7 +80,7 @@ function ConditionEditor({ docType, value, disabled, onChange }: {
                 onChange={e => setDraft(e.target.value)}
                 onBlur={() => { if (draft !== '' && Number(draft) !== Number(value.value)) commit({ value: Number(draft) }); }}
                 onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
-              {field.unit && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{field.unit}</span>}
+              {field.unit && <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{field.unit}</span>}
             </span>
           )}
         </>
@@ -183,7 +183,7 @@ export default function ApprovalsTab() {
         <table className="odoo-table">
           <thead>
             <tr>
-              <th style={{ width: 60 }}>Active</th><th>Règle</th><th>Condition</th><th>Circuit</th><th style={{ width: 110 }}>Escalade</th><th style={{ textAlign: 'right' }}>30 jours</th>{editable && <th />}
+              <th style={{ width: 60 }}>Active</th><th>Règle</th><th>Condition</th><th>Circuit</th><th style={{ width: 110 }}>Escalade</th><th className="ds-num">30 jours</th>{editable && <th />}
             </tr>
           </thead>
           <tbody>
@@ -195,8 +195,8 @@ export default function ApprovalsTab() {
                 </td>
                 <td>
                   <div style={{ fontWeight: 600 }}>{r.label}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{DOC_TYPES[r.doc_type]?.label ?? r.doc_type} · <code>{r.code}</code></div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginTop: 2 }}>{DOC_TYPES[r.doc_type]?.effect}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{DOC_TYPES[r.doc_type]?.label ?? r.doc_type} · <code>{r.code}</code></div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', marginTop: 2 }}>{DOC_TYPES[r.doc_type]?.effect}</div>
                 </td>
                 <td>
                   {editable
@@ -208,7 +208,7 @@ export default function ApprovalsTab() {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                     {r.steps.map((s, i) => (
                       <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        {i > 0 && (r.mode === 'serial' ? <ArrowRight size={12} style={{ color: 'var(--odoo-text-muted)' }} /> : <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>+</span>)}
+                        {i > 0 && (r.mode === 'serial' ? <ArrowRight size={12} style={{ color: 'var(--ds-muted)' }} /> : <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>+</span>)}
                         <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           {s.approver_name ?? roleLabel(s.approver_role)}
                           {editable && r.steps.length > 1 && (
@@ -227,7 +227,7 @@ export default function ApprovalsTab() {
                     )}
                   </div>
                   {r.steps.length > 1 && (
-                    <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginTop: 6 }}>
+                    <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem', color: 'var(--ds-muted)', marginTop: 6 }}>
                       <select aria-label="Mode du circuit" value={r.mode} disabled={!editable} style={inputStyle}
                         onChange={e => save.mutate({ code: r.code, data: { mode: e.target.value as 'serial' | 'parallel' } })}>
                         <option value="serial">L'un après l'autre</option>
@@ -238,22 +238,22 @@ export default function ApprovalsTab() {
                 </td>
                 <td>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <Clock size={12} style={{ color: 'var(--odoo-text-muted)' }} />
+                    <Clock size={12} style={{ color: 'var(--ds-muted)' }} />
                     <input aria-label="Alerte après (heures)" type="number" min={1} max={720} defaultValue={r.escalate_after_hours ?? ''} disabled={!editable}
                       key={`${r.code}-${r.escalate_after_hours}`} placeholder="—" style={{ ...inputStyle, width: 56, textAlign: 'right' }}
                       onBlur={e => { const v = e.target.value === '' ? null : Number(e.target.value); if (v !== r.escalate_after_hours) save.mutate({ code: r.code, data: { escalateAfterHours: v } }); }} />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>h</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>h</span>
                   </span>
                 </td>
-                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: '0.8125rem' }}>
+                <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.8125rem' }}>
                   <div>{r.requests_30d} demande{r.requests_30d > 1 ? 's' : ''}</div>
-                  {r.rejected_30d > 0 && <div style={{ color: 'var(--prj-red)' }}>{r.rejected_30d} refus</div>}
+                  {r.rejected_30d > 0 && <div style={{ color: 'var(--ds-danger)' }}>{r.rejected_30d} refus</div>}
                   {r.pending_count > 0 && <div style={{ marginTop: 2 }}><StatusTag tone="todo" label={`${r.pending_count} en attente`} /></div>}
                 </td>
                 {editable && (
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="ds-num">
                     {canDelete('settings') && (
-                      <button type="button" className="odoo-pager-btn" title="Supprimer la règle" aria-label={`Supprimer « ${r.label} »`} style={{ color: 'var(--prj-red)' }}
+                      <button type="button" className="odoo-pager-btn" title="Supprimer la règle" aria-label={`Supprimer « ${r.label} »`} style={{ color: 'var(--ds-danger)' }}
                         onClick={async () => { if (await confirm(`Supprimer la règle « ${r.label} » ? Les pièces de ce type ne demanderont plus d'approbation.`, { danger: true, confirmLabel: 'Supprimer' })) remove.mutate(r.code); }}>
                         <Trash2 size={13} />
                       </button>

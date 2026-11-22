@@ -6,6 +6,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Format du fichier de virement d'un compte bancaire (G4-01, mig 600).
@@ -58,7 +59,7 @@ export default function TransferFormatDialog({ banks, initialId, onClose }: { ba
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <strong style={{ fontSize: '1rem' }}>Format du fichier de virement</strong>
           {data && <StatusTag tone={data.isGeneric ? 'draft' : 'done'} label={data.isGeneric ? 'Générique' : 'Propre à la banque'} />}
-          <button type="button" className="odoo-pager-btn" style={{ marginLeft: 'auto' }} onClick={onClose} title="Fermer"><X size={14} /></button>
+          <button type="button" className="odoo-pager-btn" style={{ marginLeft: 'auto' }} onClick={onClose} title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>
           Décrivez le fichier qu'attend le portail de virement de masse de la banque (voir sa notice d'import). Le RIB du bénéficiaire et le montant sont obligatoires.
@@ -69,7 +70,7 @@ export default function TransferFormatDialog({ banks, initialId, onClose }: { ba
           </select>
         </label>
 
-        {isLoading || !f || !data ? <Loader2 size={16} className="animate-spin" /> : (
+        {isLoading || !f || !data ? <LoadingState /> : (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
               <label style={lbl}>Séparateur
@@ -108,9 +109,9 @@ export default function TransferFormatDialog({ banks, initialId, onClose }: { ba
             </div>
 
             <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, overflowX: 'auto' }}>
-              <table className="odoo-table" style={{ width: '100%', margin: 0 }}>
-                <thead><tr><th style={{ width: 36 }} /><th style={{ textAlign: 'left' }}>Colonne</th><th style={{ textAlign: 'right', width: 60 }}>Ordre</th>
-                  {fixed && <th style={{ textAlign: 'right', width: 90 }}>Largeur</th>}<th style={{ width: 70 }} /></tr></thead>
+              <table className="odoo-table ds-dense" style={{ width: '100%', margin: 0 }}>
+                <thead><tr><th style={{ width: 36 }} /><th style={{ textAlign: 'left' }}>Colonne</th><th className="ds-num" style={{ width: 60 }}>Ordre</th>
+                  {fixed && <th className="ds-num" style={{ width: 90 }}>Largeur</th>}<th style={{ width: 70 }} /></tr></thead>
                 <tbody>
                   {[...f.columns, ...ALL.filter(c => !f.columns.includes(c))].map(c => {
                     const i = f.columns.indexOf(c);
@@ -119,16 +120,16 @@ export default function TransferFormatDialog({ banks, initialId, onClose }: { ba
                       <tr key={c} style={{ opacity: on ? 1 : 0.55 }}>
                         <td><input type="checkbox" checked={on} onChange={() => toggle(c)} aria-label={`Inclure ${data.columns[c]}`} /></td>
                         <td>{data.columns[c]}</td>
-                        <td style={{ textAlign: 'right' }}>{on ? i + 1 : '—'}</td>
-                        {fixed && <td style={{ textAlign: 'right' }}>{on && (
+                        <td className="ds-num">{on ? i + 1 : '—'}</td>
+                        {fixed && <td className="ds-num">{on && (
                           <input className="odoo-input" inputMode="numeric" style={{ width: 70, textAlign: 'right' }} aria-label={`Largeur de ${data.columns[c]}`}
                             value={String(f.widths?.[c] ?? DEFAULT_WIDTH[c])}
                             onChange={e => set('widths', { ...(f.widths ?? {}), [c]: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
                         )}</td>}
-                        <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>{on && (
+                        <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{on && (
                           <>
-                            <button type="button" className="odoo-pager-btn" title="Monter" disabled={i === 0} onClick={() => move(i, -1)}><ArrowUp size={12} /></button>
-                            <button type="button" className="odoo-pager-btn" title="Descendre" disabled={i === f.columns.length - 1} onClick={() => move(i, 1)}><ArrowDown size={12} /></button>
+                            <button type="button" className="odoo-pager-btn" title="Monter" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Monter"><ArrowUp size={12} /></button>
+                            <button type="button" className="odoo-pager-btn" title="Descendre" disabled={i === f.columns.length - 1} onClick={() => move(i, 1)} aria-label="Descendre"><ArrowDown size={12} /></button>
                           </>
                         )}</td>
                       </tr>
@@ -148,12 +149,10 @@ export default function TransferFormatDialog({ banks, initialId, onClose }: { ba
         )}
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="odoo-btn-secondary" disabled={!data || data.isGeneric || save.isPending} onClick={() => save.mutate(null)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><RotateCcw size={13} /> Rétablir le format générique</button>
+          <button type="button" className="odoo-btn-secondary" disabled={!data || data.isGeneric || save.isPending} onClick={() => save.mutate(null)}><RotateCcw size={13} /> Rétablir le format générique</button>
           <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8 }}>
             <button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>
-            <button type="button" className="odoo-btn-primary" disabled={!f || save.isPending} onClick={() => save.mutate(payload())}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" className="odoo-btn-primary" disabled={!f || save.isPending} onClick={() => save.mutate(payload())}>
               {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Enregistrer
             </button>
           </span>

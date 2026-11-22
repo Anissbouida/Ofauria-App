@@ -56,8 +56,8 @@ export default function ProfileStatusPanel() {
               <Icon size={16} style={{ color: st.color, flexShrink: 0 }} />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontWeight: 500, fontSize: '0.8125rem' }}>{l.label}</span>
-                <span style={{ display: 'block', fontSize: '0.6875rem', color: st.color }}>{st.label}</span>
-                <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted, #6b7280)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.detail}</span>
+                <span style={{ display: 'block', fontSize: 12, color: st.color }}>{st.label}</span>
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--odoo-text-muted, #6b7280)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.detail}</span>
               </span>
               <ChevronRight size={14} style={{ color: 'var(--odoo-text-muted, #6b7280)' }} />
             </button>

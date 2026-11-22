@@ -15,6 +15,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useExtraUnits } from '../../hooks/useReferentiel';
 import SearchSelect from '../../components/ui/SearchSelect';
 
+import { LoadingState } from '../../components/ds';
 interface SourceOpt { type: 'recipe' | 'ingredient'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
 interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; sourceId: string; quantite: string; unite: string; pertePct?: string }
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
@@ -135,7 +136,7 @@ function ChildRow({ child, depth }: { child: RecipeChild; depth: number }) {
       <div className="flex items-center gap-2 py-1 text-sm text-gray-600 border-t border-gray-50"
         style={{ paddingLeft: `${depth * 18 + 8}px` }}>
         {child.expandable ? (
-          <button type="button" onClick={() => setOpen((v) => !v)} className="text-gray-400 hover:text-gray-600 shrink-0">
+          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={open ? 'Replier' : 'Déplier'} className="text-gray-400 hover:text-gray-600 shrink-0">
             {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
         ) : (
@@ -747,7 +748,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             <SourcePicker options={sourceOpts} value={src ?? null}
               onPick={(o) => setRow(r.key, { type: o.type, sourceId: o.id, unite: o.unit === 'unit' ? r.unite : o.unit })} />
             {dup && <div className="text-[10px] mt-0.5 text-amber-700"><AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />Saisi sur plusieurs lignes</div>}
-            {noPrice && <div className="text-[10px] mt-0.5 text-amber-700" title="Compté 0 DH : le coût de revient est incomplet"><AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />Sans prix : coût incomplet</div>}
+            {noPrice && <div className="text-[10px] mt-0.5 text-amber-700" title="Compté à zéro : le coût de revient est incomplet"><AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />Sans prix : coût incomplet</div>}
           </div>
           <div>
             <input type="number" step="any" min="0"
@@ -857,7 +858,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         {!adding && f && (
           <button type="button" onClick={handleDeleteFormat} disabled={deleteFormatMut.isPending}
             className="ml-auto inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-sm border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
-            title="Supprimer ce format et toute sa composition">
+            title="Supprimer ce format et toute sa composition" aria-label="Supprimer ce format et toute sa composition">
             <Trash2 size={13} /> {deleteFormatMut.isPending ? 'Suppression…' : 'Supprimer ce format'}
           </button>
         )}
@@ -868,7 +869,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       {formats.length === 0 ? (
         <div className="text-sm text-gray-400 py-6 px-3">Aucun format. Ajoute un contenant pour composer cette recette.</div>
       ) : isLoading || !f ? (
-        <div className="text-sm text-gray-400 py-4 px-3">Chargement…</div>
+        <LoadingState bare />
       ) : (() => {
         const [bv, bu] = splitW(poidsBrutG);
         const [cv, cu] = splitW(poidsCuitG);
@@ -1013,7 +1014,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-[13px] text-amber-800">
                 <AlertTriangle size={15} className="shrink-0" />
                 <span>
-                  <strong>Coût incomplet</strong> — {noPriceNames.join(', ')} {noPriceNames.length > 1 ? "n'ont" : "n'a"} pas de prix et {noPriceNames.length > 1 ? 'comptent' : 'compte'} pour 0 DH : le coût de revient ci-dessous est trop bas. Renseigne le prix de l'ingrédient (achat ou fiche ingrédient).
+                  <strong>Coût incomplet</strong> — {noPriceNames.join(', ')} {noPriceNames.length > 1 ? "n'ont" : "n'a"} pas de prix et {noPriceNames.length > 1 ? 'comptent' : 'compte'} pour zéro : le coût de revient ci-dessous est trop bas. Renseigne le prix de l'ingrédient (achat ou fiche ingrédient).
                 </span>
               </div>
             )}
@@ -1177,7 +1178,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 </span>
               )}
               <button type="button" onClick={printFormat} disabled={printing}
-                className="odoo-btn-secondary inline-flex items-center gap-1" title="Imprimer la fiche technique de ce format">
+                className="odoo-btn-secondary inline-flex items-center gap-1" title="Imprimer la fiche technique de ce format" aria-label="Imprimer la fiche technique de ce format">
                 <Printer size={15} /> {printing ? 'Génération…' : 'Imprimer la fiche'}
               </button>
               <button type="button" onClick={handleCancel} disabled={saveMut.isPending}

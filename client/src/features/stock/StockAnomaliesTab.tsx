@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { Loader2, PackageX, Check, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { PackageX, Check, ShieldCheck } from 'lucide-react';
 import { inventoryApi, type StockAnomaly } from '../../api/inventory.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
-import { ListToolbar, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { ListToolbar } from '../sales/ListTemplate';
 import { SubViews } from './StockUi';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { DataPanel, EmptyState, ErrorState, LoadingState, NoResultState, TableFooter } from '../../components/ds';
 
 /**
  * Anomalies de stock (G0-18) : sorties supérieures au disponible. Le stock a été ramené
@@ -38,11 +40,12 @@ const day = (iso: string) => new Date(iso).toLocaleString('fr-FR', { day: '2-dig
 
 export default function StockAnomaliesTab() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<'open' | 'resolved'>('open');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [note, setNote] = useState('');
-  const { data = [], isLoading } = useQuery({ queryKey: ['stock-anomalies', status], queryFn: () => inventoryApi.anomalies(status) });
+  const { data = [], isLoading, isError, refetch } = useQuery({ queryKey: ['stock-anomalies', status], queryFn: () => inventoryApi.anomalies(status) });
 
   const resolve = useMutation({
     mutationFn: (id: string) => inventoryApi.resolveAnomaly(id, note.trim()),
@@ -76,22 +79,27 @@ export default function StockAnomaliesTab() {
       </ListToolbar>
 
       {isLoading ? (
-        <ListEmpty icon={Loader2} title="Chargement…" />
+        <LoadingState label="Chargement des anomalies…" />
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
-        <ListEmpty icon={ShieldCheck} title={status === 'open' ? 'Aucune anomalie à régulariser.' : 'Aucune anomalie clôturée.'} />
+        search.trim()
+          ? <NoResultState text="Aucune anomalie ne correspond à la recherche." onReset={() => setSearch('')} />
+          : <EmptyState icon={ShieldCheck} title={status === 'open' ? 'Aucune anomalie à régulariser' : 'Aucune anomalie clôturée'}
+              text={status === 'open' ? 'Aucune sortie n\'a dépassé le stock disponible.' : undefined} />
       ) : (
-        <ListPanel>
+        <DataPanel label="Anomalies de stock" footer={<TableFooter note={`${rows.length} anomalie${rows.length > 1 ? 's' : ''}${status === 'open' ? ' à régulariser' : ' clôturée' + (rows.length > 1 ? 's' : '')}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Article</th>
                 <th>Origine</th>
-                <th style={{ textAlign: 'right' }}>Demandé</th>
-                <th style={{ textAlign: 'right' }}>Disponible</th>
-                <th style={{ textAlign: 'right' }}>Manque</th>
+                <th className="ds-num">Demandé</th>
+                <th className="ds-num">Disponible</th>
+                <th className="ds-num">Manque</th>
                 <th>État</th>
-                <th>{status === 'open' ? '' : 'Régularisation'}</th>
+                <th className={status === 'open' ? 'ds-actions' : undefined}>{status === 'open' ? 'Actions' : 'Régularisation'}</th>
               </tr>
             </thead>
             <tbody>
@@ -99,7 +107,7 @@ export default function StockAnomaliesTab() {
                 <tr key={a.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{day(a.created_at)}</td>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{a.item_name ?? '—'}</div>
+                    <div className="ds-strong">{a.item_name ?? '—'}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                       {KIND_LABEL[a.item_kind]}{a.store_name ? ` · ${a.store_name}` : ''}
                     </div>
@@ -108,11 +116,11 @@ export default function StockAnomaliesTab() {
                     <div>{ORIGIN_LABEL[a.origin_type] ?? a.origin_type}</div>
                     {a.created_by_name && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{a.created_by_name}</div>}
                   </td>
-                  <td style={{ textAlign: 'right' }}>{qty(a.requested_qty, a.unit)}</td>
-                  <td style={{ textAlign: 'right' }}>{qty(a.available_qty, a.unit)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700 }}>{qty(a.shortfall_qty, a.unit)}</td>
+                  <td className="ds-num">{qty(a.requested_qty, a.unit)}</td>
+                  <td className="ds-num">{qty(a.available_qty, a.unit)}</td>
+                  <td className="ds-num ds-strong">{qty(a.shortfall_qty, a.unit)}</td>
                   <td>{a.status === 'open' ? <StatusTag tone="late" label="À régulariser" /> : <StatusTag tone="done" label="Clôturée" />}</td>
-                  <td style={{ minWidth: 240 }}>
+                  <td style={{ minWidth: 240 }} className={a.status === 'resolved' ? undefined : 'ds-actions'}>
                     {a.status === 'resolved' ? (
                       <div>
                         <div>{a.resolution_note}</div>
@@ -122,29 +130,27 @@ export default function StockAnomaliesTab() {
                       </div>
                     ) : editing === a.id ? (
                       <form style={{ display: 'flex', gap: 6 }} onSubmit={e => { e.preventDefault(); if (note.trim().length >= 3) resolve.mutate(a.id); }}>
-                        <input className="odoo-input" autoFocus value={note} onChange={e => setNote(e.target.value)} maxLength={1000}
+                        <input className="ds-input sm" autoFocus value={note} onChange={e => setNote(e.target.value)} maxLength={1000}
                           placeholder="Comment a-t-elle été régularisée ?" aria-label="Motif de régularisation" style={{ flex: 1 }} />
-                        <button type="submit" className="odoo-btn-primary" disabled={note.trim().length < 3 || resolve.isPending}>
-                          <Check size={14} style={{ display: 'inline', marginRight: 4 }} />Clôturer
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => { setEditing(null); setNote(''); }}>Annuler</button>
+                        <button type="submit" className="odoo-btn-primary ds-btn-sm" disabled={note.trim().length < 3 || resolve.isPending}>
+                          <Check size={14} aria-hidden="true" /> Clôturer
                         </button>
-                        <button type="button" className="odoo-btn-secondary" onClick={() => { setEditing(null); setNote(''); }}>Annuler</button>
                       </form>
                     ) : (
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <>
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => { setEditing(a.id); setNote(''); }}>Clôturer</button>
                         {adjustLink(a) && (
-                          <Link to={adjustLink(a)!} className="odoo-btn-secondary" title="Ouvre l'article pour ajuster son stock, avec un motif">
-                            Ajuster le stock
-                          </Link>
+                          <RowMenu items={[{ label: 'Ajuster le stock', onSelect: () => navigate(adjustLink(a)!) }]} />
                         )}
-                        <button type="button" className="odoo-btn-secondary" onClick={() => { setEditing(a.id); setNote(''); }}>Clôturer</button>
-                      </div>
+                      </>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
     </div>
   );

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Users, Clock, CalendarOff, Banknote, CalendarDays, AlertOctagon, HandCoins, BarChart3, UserCircle, Percent,
@@ -9,6 +10,7 @@ import '../projects/projects.css';
 import '../sales/sales.css';
 import './employees.css';
 import type { HrTab } from './shared';
+import { HrHeaderSlot } from './ui';
 import EmployeesTab from './tabs/EmployeesTab';
 import AttendanceTab from './tabs/AttendanceTab';
 import LeavesTab from './tabs/LeavesTab';
@@ -21,7 +23,22 @@ import CommissionsTab from './CommissionsTab';
 import { selfApi } from '../../api/employees.api';
 import SalesPageShell from '../sales/SalesPageShell';
 
+/** Description d'une ligne sous le titre de chaque écran (gabarit de page du Design System). */
+const PAGE_LEADS: Record<HrTab, string> = {
+  analytics: 'Effectif, coût de main-d\'œuvre, absentéisme et heures de l\'année.',
+  me: 'Vos bulletins, vos congés, vos avances et vos informations personnelles.',
+  attendance: 'Présences, absences et heures supplémentaires, jour par jour.',
+  schedule: 'Horaires de la semaine par salarié et par poste.',
+  leaves: 'Demandes de congé, soldes des salariés et jours fériés.',
+  advances: 'Avances sur salaire accordées et retenues sur les paies.',
+  payroll: 'Paies hebdomadaires, par quinzaine et mensuelles, déclarations et réglages.',
+  commissions: 'Barèmes des vendeurs et relevé des commissions par période.',
+  employees: 'Fiches des salariés : contrat, rémunération et situation.',
+};
+
 export default function EmployeesPage() {
+  // Emplacement des actions de l'écran actif, à droite du fil d'Ariane (HrHeaderActions).
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
   const { hasModule, isLoading: permsLoading } = usePermissions();
   const queryClient = useQueryClient();
   // Espace employe : le compte est-il lie a une fiche ? (404 sinon)
@@ -50,7 +67,7 @@ export default function EmployeesPage() {
   if (permsLoading || (!hasModule('employees') && selfLoading)) return null;
   if (!hasModule('employees') && hasSelf) {
     return (
-      <SalesPageShell icon={UserCircle} title="Mon espace">
+      <SalesPageShell icon={UserCircle} title="Mon espace" summary={PAGE_LEADS.me}>
         <div className="prj hr-body"><MySpace /></div>
       </SalesPageShell>
     );
@@ -72,10 +89,12 @@ export default function EmployeesPage() {
   const tab = current?.key;
 
   return (
-    <ModuleShell title="Personnel" views={views} current={current} onSelect={select} flush>
-      {/* Design Ventes (2026-11-18) : grand titre de la rubrique, marges standard ; chaque
-          écran garde sa barre d'outils (recherche, filtres, actions) sous le titre. */}
-      <ModulePage title={current?.label}>
+    <ModuleShell title="Personnel" views={views} current={current} onSelect={select} flush
+      actions={<div ref={setHeaderSlot} style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} />}>
+      {/* Gabarit de page (Design System) : fil d'Ariane « Personnel › rubrique › page » + actions
+          de l'écran à droite, puis titre et description d'une ligne, puis le contenu de l'écran. */}
+      <HrHeaderSlot.Provider value={headerSlot}>
+      <ModulePage title={current?.label} summary={tab ? PAGE_LEADS[tab] : undefined}>
       <div className="prj hr-body">
       {tab === 'employees' && <EmployeesTab queryClient={queryClient} />}
       {tab === 'attendance' && <AttendanceTab queryClient={queryClient} />}
@@ -88,6 +107,7 @@ export default function EmployeesPage() {
       {tab === 'me' && <MySpace />}
       </div>
       </ModulePage>
+      </HrHeaderSlot.Provider>
     </ModuleShell>
   );
 }

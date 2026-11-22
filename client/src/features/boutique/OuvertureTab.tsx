@@ -8,7 +8,8 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 import { openingInventoryCheckApi, type OpeningCheckPendingResponse } from '../../api/opening-inventory-check.api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { EmptyRow, Loading, inputStyle, muted, sectionTitle, tableCard, toNum } from './shared';
+import { EmptyRow, Loading, inputStyle, muted, toNum } from './shared';
+import { DataPanel, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Ouverture (ex-écran /inventory-check/validation) : la caissière compte la
@@ -26,7 +27,7 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 const signed = (v: number) => `${v > 0 ? '+' : ''}${v.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}`;
-const ecartColor = (v: number) => (v < 0 ? 'var(--prj-red)' : v > 0 ? 'var(--prj-orange)' : 'var(--odoo-text)');
+const ecartColor = (v: number) => (v < 0 ? 'var(--ds-danger)' : v > 0 ? 'var(--ds-warning)' : 'var(--odoo-text)');
 
 type Existing = OpeningCheckPendingResponse['existingCheck'];
 
@@ -126,36 +127,36 @@ function ValidationQueue() {
 
   return (
     <>
-      <h3 style={sectionTitle}>Écarts d'ouverture à valider</h3>
+      <SectionHeader title="Écarts d'ouverture à valider" />
       {msg && (
         <StatusBanner tone={msg.type === 'error' ? 'danger' : 'success'} icon={msg.type === 'error' ? AlertTriangle : CheckCircle2}
           title={msg.type === 'error' ? 'Action impossible' : 'Enregistré'}>{msg.text}</StatusBanner>
       )}
-      <div className={tableCard}>
-        <table className="odoo-table" style={{ margin: 0 }}>
+      <DataPanel>
+        <table className="odoo-table">
           <thead>
             <tr>
               <th>Soumis le</th>
               <th>Caissière</th>
-              <th style={{ textAlign: 'right' }}>Lignes en écart</th>
-              <th style={{ textAlign: 'right' }}>Écart total</th>
-              <th style={{ textAlign: 'right' }}>Prochaine action</th>
+              <th className="ds-num">Lignes en écart</th>
+              <th className="ds-num">Écart total</th>
+              <th className="ds-actions">Prochaine action</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <EmptyRow colSpan={5}><Loader2 size={16} className="animate-spin" /></EmptyRow>}
+            {isLoading && <tr><td colSpan={5}><LoadingState bare /></td></tr>}
             {!isLoading && pending.length === 0 && <EmptyRow colSpan={5}>Aucun comptage en attente de validation.</EmptyRow>}
             {pending.map(c => {
               const total = toNum(c.total_discrepancy);
               const active = c.id === selectedId;
               return (
-                <tr key={c.id} style={active ? { background: 'var(--odoo-purple-light)' } : undefined}>
+                <tr key={c.id} className={active ? 'ds-selected' : undefined}>
                   <td>{format(new Date(c.created_at), "EEE dd MMM 'à' HH:mm", { locale: fr })}</td>
-                  <td>{c.checked_by_first} {c.checked_by_last}</td>
-                  <td style={{ textAlign: 'right' }}>{c.discrepancy_lines}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: ecartColor(total) }}>{signed(total)}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button type="button" className={active ? 'odoo-btn-secondary' : 'odoo-btn-primary'}
+                  <td className="ds-strong">{c.checked_by_first} {c.checked_by_last}</td>
+                  <td className="ds-num">{c.discrepancy_lines}</td>
+                  <td className="ds-num" style={{ fontWeight: 600, color: ecartColor(total) }}>{signed(total)}</td>
+                  <td className="ds-actions">
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-expanded={active}
                       onClick={() => { setSelectedId(active ? null : c.id); setRejection(''); setMsg(null); }}>
                       {active ? 'Fermer' : 'Examiner'}
                     </button>
@@ -165,24 +166,24 @@ function ValidationQueue() {
             })}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
 
       {selectedId && (
         <div className="odoo-section" style={{ margin: 0 }}>
           <div className="odoo-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Détail du comptage{selected ? ` · ${selected.checked_by_first} ${selected.checked_by_last}` : ''}</span>
-            <button type="button" className="odoo-pager-btn" onClick={() => setSelectedId(null)} aria-label="Fermer le détail"><X size={14} /></button>
+            <button type="button" className="odoo-pager-btn" onClick={() => setSelectedId(null)} aria-label="Fermer le détail"><X size={14} aria-hidden="true" /></button>
           </div>
           {detailLoading ? <Loading /> : (
             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div className={tableCard}>
-                <table className="odoo-table" style={{ margin: 0 }}>
+              <DataPanel>
+                <table className="odoo-table">
                   <thead>
                     <tr>
                       <th>Produit</th>
-                      <th style={{ textAlign: 'right' }}>Attendu</th>
-                      <th style={{ textAlign: 'right' }}>Compté</th>
-                      <th style={{ textAlign: 'right' }}>Écart</th>
+                      <th className="ds-num">Attendu</th>
+                      <th className="ds-num">Compté</th>
+                      <th className="ds-num">Écart</th>
                       <th>Motif</th>
                     </tr>
                   </thead>
@@ -192,23 +193,22 @@ function ValidationQueue() {
                       return (
                         <tr key={it.id} style={{ opacity: e === 0 ? 0.6 : 1 }}>
                           <td style={{ fontWeight: e !== 0 ? 600 : 400 }}>{it.product_name}</td>
-                          <td style={{ textAlign: 'right' }}>{it.expected_qty}</td>
-                          <td style={{ textAlign: 'right' }}>{it.found_qty}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 600, color: ecartColor(e) }}>{e === 0 ? '—' : signed(e)}</td>
+                          <td className="ds-num">{it.expected_qty}</td>
+                          <td className="ds-num">{it.found_qty}</td>
+                          <td className="ds-num" style={{ fontWeight: 600, color: ecartColor(e) }}>{e === 0 ? '—' : signed(e)}</td>
                           <td>{it.missing_reason ? REASON_LABELS[it.missing_reason] ?? it.missing_reason : <span style={muted}>—</span>}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-              </div>
-              {detail?.notes && <div style={{ fontSize: '0.8125rem' }}><strong>Note de la caissière :</strong> {detail.notes}</div>}
+              </DataPanel>
+              {detail?.notes && <div style={{ fontSize: 14 }}><strong>Note de la caissière :</strong> {detail.notes}</div>}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 <input type="text" value={rejection} onChange={e => setRejection(e.target.value)} aria-label="Motif du rejet"
                   placeholder="Motif du rejet (obligatoire pour rejeter)" style={{ ...inputStyle, flex: '1 1 260px' }} />
-                <button type="button" className="odoo-btn-danger" onClick={reject} disabled={validate.isPending}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <XCircle size={13} /> Rejeter
+                <button type="button" className="ds-btn-danger" onClick={reject} disabled={validate.isPending}>
+                  <XCircle size={13} aria-hidden="true" /> Rejeter
                 </button>
                 <button type="button" className="odoo-btn-primary" onClick={() => validate.mutate({ action: 'approve' })} disabled={validate.isPending}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>

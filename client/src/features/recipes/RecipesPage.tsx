@@ -7,7 +7,10 @@ import { recipesApi } from '../../api/recipes.api';
 import { ChefHat, Search, BookOpen, Plus, Pencil, Trash2, Layers, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, Repeat, Upload, Download, Printer, Archive, ArchiveRestore } from 'lucide-react';
 import ContenantsPage from '../production/ContenantsPage';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListToolbar, ListPanel } from '../sales/ListTemplate';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import {
+  BulkBar, DataPanel, EmptyState as DsEmptyState, ErrorState, LoadingState, NoResultState, SearchBar, Segmented, TableFooter, Tabs, Toolbar,
+} from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -77,7 +80,7 @@ export default function RecipesPage() {
   // aux actives. La clé de query préfixée 'recipes' reste invalidée par les
   // invalidateQueries(['recipes']) existants.
   const [showArchived, setShowArchived] = useState(false);
-  const { data: recipes = [], isLoading, error: listError } = useQuery({
+  const { data: recipes = [], isLoading, error: listError, refetch } = useQuery({
     queryKey: ['recipes', { archived: showArchived }],
     queryFn: () => recipesApi.list(showArchived),
     // Refus de droit (403, `recipes.view`) : définitif, pas de nouvel essai.
@@ -341,175 +344,109 @@ export default function RecipesPage() {
         action: 'create' as const,
       };
 
-  const EmptyState = () => (
-    <section className="prj-panel sal-empty">
-      <BookOpen size={28} style={{ opacity: 0.4 }} />
-      <strong>{emptyState.title}</strong>
-      <span style={{ maxWidth: 420 }}>{emptyState.hint}</span>
-      <div style={{ marginTop: 4 }}>
-        {emptyState.action === 'create' ? (
-          <button onClick={openCreate} className="odoo-btn-primary"><Plus size={14} /> Créer une fiche</button>
-        ) : (
-          <button onClick={() => { setSearch(''); setCategoryFilter(''); }} className="odoo-btn-secondary">
-            Réinitialiser les filtres
-          </button>
-        )}
-      </div>
-    </section>
-  );
+  const EmptyState = () => (emptyState.action === 'create' ? (
+    <DsEmptyState icon={BookOpen} title={emptyState.title} text={emptyState.hint}
+      action={<button type="button" onClick={openCreate} className="odoo-btn-primary"><Plus size={14} aria-hidden="true" /> Créer une fiche</button>} />
+  ) : showArchived && !search && !categoryFilter ? (
+    <DsEmptyState icon={Archive} title={emptyState.title} text={emptyState.hint} />
+  ) : (
+    <NoResultState text={showArchived ? 'Aucune fiche archivée ne correspond aux filtres.' : emptyState.hint} onReset={() => { setSearch(''); setCategoryFilter(''); }} />
+  ));
 
-  const tabLabel = activeTab === 'contenants' ? T.formatsTab : activeTab === 'base' ? T.baseTab : T.finishedTab;
+  const shellTitle = sectorLabel('recipes', 'Fiches techniques');
+  const tabNoun = isBaseTab ? 'préparation' : 'recette';
 
   // Lecture des fiches réservée (scénario 1, constat 105) : la caisse n'y a pas accès.
   if (forbidden) {
     return (
-      <SalesPageShell icon={ChefHat} parent="Production" title={sectorLabel('recipes', 'Fiches techniques')} list>
-        <section className="prj-panel sal-empty">
-          <ChefHat size={28} style={{ opacity: 0.4 }} />
-          <strong>Vous n'avez pas accès aux fiches techniques.</strong>
-          <span>La consultation des fiches est réservée à la production, au magasin et à la direction.</span>
-        </section>
+      <SalesPageShell icon={ChefHat} parent="Production › Paramétrage" title={shellTitle} list>
+        <DsEmptyState icon={ChefHat} title="Vous n'avez pas accès aux fiches techniques"
+          text="La consultation des fiches est réservée à la production, au magasin et à la direction." />
       </SalesPageShell>
     );
   }
 
   return (
-    <SalesPageShell icon={ChefHat} parent="Production" title={sectorLabel('recipes', 'Fiches techniques')} list
-      summary={activeTab !== 'contenants'
-        ? <>{tabLabel} · <b>{sortedFiltered.length}</b> / {activeTab === 'base' ? baseCount : productCount}{showArchived ? ' — archivées' : ''}</>
-        : tabLabel}
+    <SalesPageShell icon={ChefHat} parent="Production › Paramétrage" title={shellTitle} list
+      summary="Recettes des produits finis, préparations de base et formats de production, avec leur coût matière."
       actions={<>
         {/* Import/export xlsx — admin uniquement, pas sur l'onglet Contenants */}
         {activeTab !== 'contenants' && isAdmin && (
           <>
-            <button
-              onClick={() => setShowImport(true)}
-              className="odoo-btn-secondary"
-              title="Importer des recettes depuis un fichier Excel"
-            >
-              <Upload size={13} /> Importer
-            </button>
-            <button
-              onClick={() => recipesApi.exportXlsx(activeTab === 'base' ? 'base' : 'product')}
-              className="odoo-btn-secondary"
-              title={activeTab === 'base' ? 'Exporter les recettes de base en Excel' : 'Exporter les recettes produits en Excel'}
-            >
-              <Download size={13} /> Exporter
-            </button>
-            <button
+            <button type="button"
               onClick={() => setShowReplace(true)}
               className="odoo-btn-secondary"
               title="Remplacer un ingrédient par un autre sur toutes les recettes"
             >
-              <Repeat size={13} /> Remplacer un ingrédient
+              <Repeat size={13} aria-hidden="true" /> Remplacer un ingrédient
+            </button>
+            <button type="button"
+              onClick={() => setShowImport(true)}
+              className="odoo-btn-secondary"
+              title="Importer des recettes depuis un fichier Excel"
+            >
+              <Upload size={13} aria-hidden="true" /> Importer
+            </button>
+            <button type="button"
+              onClick={() => recipesApi.exportXlsx(activeTab === 'base' ? 'base' : 'product')}
+              className="odoo-btn-secondary"
+              title={activeTab === 'base' ? 'Exporter les recettes de base en Excel' : 'Exporter les recettes produits en Excel'}
+            >
+              <Download size={13} aria-hidden="true" /> Exporter
             </button>
           </>
         )}
         {/* L'onglet Formats gère son propre référentiel : le bouton reste dans la barre
             comme pour les deux autres onglets, mais pilote son formulaire. */}
         {activeTab === 'contenants' ? (
-          <button onClick={() => setCreatingContenant(true)} className="odoo-btn-primary">
-            <Plus size={14} /> Nouveau format
+          <button type="button" onClick={() => setCreatingContenant(true)} className="odoo-btn-primary">
+            <Plus size={14} aria-hidden="true" /> Nouveau format
           </button>
         ) : (
-          <button onClick={openCreate} className="odoo-btn-primary">
-            <Plus size={14} /> Nouveau
+          <button type="button" onClick={openCreate} className="odoo-btn-primary">
+            <Plus size={14} aria-hidden="true" /> Nouvelle fiche
           </button>
         )}
       </>}>
 
-      {/* ══════ VUES (contrôle segmenté) ══════ */}
+      {/* ══════ ONGLETS ══════ */}
       {/* Ordre = flux métier : on compose un produit fini à partir de préparations de
           base, elles-mêmes coulées dans des formats. Les filtres sont remis à zéro au
           changement d'onglet : une catégorie restée active donnait une liste vide
           inexpliquée sur l'onglet d'arrivée. */}
-      <div className="prj-views" role="tablist" aria-label="Fiches techniques" style={{ alignSelf: 'flex-start', display: 'inline-flex', flexWrap: 'wrap' }}>
-        <button type="button" role="tab" aria-selected={activeTab === 'product'} onClick={() => switchTab('product')}
-          className={activeTab === 'product' ? 'active' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <ChefHat size={13} /> {T.finishedTab}
-          {productCount > 0 && <small style={{ color: 'var(--theme-text-muted)', fontWeight: 500 }}>{productCount}</small>}
-        </button>
-        <button type="button" role="tab" aria-selected={activeTab === 'base'} onClick={() => switchTab('base')}
-          className={activeTab === 'base' ? 'active' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Layers size={13} /> {T.baseTab}
-          {baseCount > 0 && <small style={{ color: 'var(--theme-text-muted)', fontWeight: 500 }}>{baseCount}</small>}
-        </button>
-        <button type="button" role="tab" aria-selected={activeTab === 'contenants'} onClick={() => switchTab('contenants')}
-          className={activeTab === 'contenants' ? 'active' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Package size={13} /> {T.formatsTab}
-        </button>
-      </div>
+      <Tabs label={shellTitle} value={activeTab} onChange={switchTab} tabs={[
+        { key: 'product', label: T.finishedTab, count: productCount > 0 ? productCount : undefined },
+        { key: 'base', label: T.baseTab, count: baseCount > 0 ? baseCount : undefined },
+        { key: 'contenants', label: T.formatsTab },
+      ]} />
 
       {activeTab === 'contenants' ? (
         <ContenantsPage creating={creatingContenant} onCreatingChange={setCreatingContenant} />
       ) : <>
-      {/* ══════ BARRE D'OUTILS : recherche, catégorie, archivées, vue ══════ */}
-      <ListToolbar search={search} onSearch={setSearch}
-        placeholder={activeTab === 'base' ? T.searchBase : T.searchRecipes}>
+      {/* ══════ BARRE D'OUTILS : recherche, catégorie, puis bascules (période, affichage) ══════ */}
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} placeholder={activeTab === 'base' ? T.searchBase : T.searchRecipes} />
         <SearchSelect
           options={recipeCategories.map(c => ({ id: String(c.id), label: c.label }))}
           value={categoryFilter}
           onChange={setCategoryFilter}
           placeholder="Toutes catégories"
         />
-        <button
-          onClick={() => { setShowArchived(v => !v); setSelectedIds(new Set()); }}
-          className={showArchived ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-          style={{ flexShrink: 0 }}
-          aria-pressed={showArchived}
-          title={showArchived ? 'Revenir aux fiches actives' : 'Voir les fiches archivées'}>
-          <Archive size={13} /> Archivées
-        </button>
-        <div style={{ flex: 1 }} />
-        <div className="prj-views" role="group" aria-label="Affichage">
-          <button type="button" onClick={() => setViewMode('list')} className={viewMode === 'list' ? 'active' : ''} aria-pressed={viewMode === 'list'} title="Vue liste">
-            <List size={14} />
-          </button>
-          <button type="button" onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} aria-pressed={viewMode === 'grid'} title="Vue kanban">
-            <LayoutGrid size={14} />
-          </button>
-        </div>
-      </ListToolbar>
-
-      {/* ══════ BARRE DE SÉLECTION (suppression en masse) ══════ */}
-      {viewMode === 'list' && selectedIds.size > 0 && (
-        <div className="prj-panel" style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap',
-          fontSize: '0.875rem',
-        }}>
-          <span>
-            <strong>{selectedIds.size}</strong> {isBaseTab ? 'préparation(s) sélectionnée(s)' : 'recette(s) sélectionnée(s)'}
-          </span>
-          <button onClick={() => setSelectedIds(new Set())} className="odoo-btn-secondary">
-            Tout désélectionner
-          </button>
-          {showArchived ? (canBulkRestore && (
-            <button onClick={() => bulkRestoreMutation.mutate([...selectedIds])} className="odoo-btn-secondary"
-              disabled={bulkRestoreMutation.isPending}>
-              <ArchiveRestore size={13} /> {bulkRestoreMutation.isPending ? 'Restauration…' : 'Restaurer la sélection'}
-            </button>
-          )) : (canBulkArchive && (
-            <button onClick={askBulkArchive} className="odoo-btn-secondary"
-              disabled={bulkArchiveMutation.isPending}>
-              <Archive size={13} /> {bulkArchiveMutation.isPending ? 'Archivage…' : 'Archiver la sélection'}
-            </button>
-          ))}
-          {canBulkDelete && (
-          <button onClick={askBulkDelete} className="odoo-btn-danger"
-            disabled={bulkDeleteMutation.isPending}>
-            <Trash2 size={13} /> {bulkDeleteMutation.isPending ? 'Suppression…' : 'Supprimer la sélection'}
-          </button>
-          )}
-        </div>
-      )}
+        <span className="ds-grow" />
+        <Segmented label="Fiches affichées" value={showArchived ? 'archived' : 'active'}
+          onChange={k => { setShowArchived(k === 'archived'); setSelectedIds(new Set()); }}
+          options={[{ key: 'active', label: 'Actives' }, { key: 'archived', label: 'Archivées', icon: Archive }]} />
+        <Segmented label="Affichage" value={viewMode} onChange={setViewMode}
+          options={[{ key: 'list', label: 'Tableau', icon: List }, { key: 'grid', label: 'Cartes', icon: LayoutGrid }]} />
+      </Toolbar>
 
       {/* ══════ CONTENT ══════ */}
       {isLoading ? (
-        <section className="prj-panel sal-empty">
-          <div style={{ width: 24, height: 24, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        </section>
+        <LoadingState label="Chargement des fiches…" />
+      ) : listError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : viewMode === 'grid' ? (
-        /* ═══ GRID View (kanban Odoo) ═══ */
+        /* ═══ Vue cartes ═══ */
         sortedFiltered.length === 0 ? <EmptyState /> : (
         <div className="odoo-kanban">
           <div className="odoo-kanban-grid">
@@ -559,8 +496,8 @@ export default function RecipesPage() {
                   </div>
                   <div className="odoo-kanban-card-split">
                     <span>{T.yield} <strong>{yieldQty} {r.yield_unit as string || 'u.'}</strong></span>
-                    <span style={{ color: 'var(--theme-bg-separator)' }}>·</span>
-                    <span>Coût mat./u. <strong>{money(costPerUnit)}</strong></span>
+                    <span style={{ color: 'var(--ds-muted)' }}>·</span>
+                    <span>Coût matière par unité <strong>{money(costPerUnit)}</strong></span>
                   </div>
                   <div className="odoo-kanban-card-footer">
                     <span>
@@ -571,10 +508,8 @@ export default function RecipesPage() {
                       )}
                     </span>
                     {!r.is_base && price > 0 && (
-                      <span className={`odoo-tag ${margin >= 50 ? 'odoo-tag-green' : margin >= 30 ? 'odoo-tag-yellow' : 'odoo-tag-red'}`}
-                        title="Marge sur coût matière — hors main d'œuvre, énergie et frais de structure.">
-                        Marge mat. {margin.toFixed(0)}%
-                      </span>
+                      <StatusTag tone={margin >= 50 ? 'done' : margin >= 30 ? 'todo' : 'blocked'} label={`Marge matière ${margin.toFixed(0)} %`}
+                        title="Marge sur coût matière — hors main d'œuvre, énergie et frais de structure." />
                     )}
                   </div>
                 </div>
@@ -584,19 +519,41 @@ export default function RecipesPage() {
         </div>
         )
       ) : (
-        /* ═══ LIST View (table dense Odoo) ═══ */
-        <ListPanel>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        /* ═══ Vue tableau ═══ */
+        sortedFiltered.length === 0 ? <EmptyState /> : (
+        <DataPanel label={shellTitle}
+          bulk={
+            <BulkBar count={selectedIds.size} noun={tabNoun} onClear={() => setSelectedIds(new Set())}>
+              {showArchived ? (canBulkRestore && (
+                <button type="button" onClick={() => bulkRestoreMutation.mutate([...selectedIds])} className="odoo-btn-secondary ds-btn-sm"
+                  disabled={bulkRestoreMutation.isPending}>
+                  <ArchiveRestore size={13} aria-hidden="true" /> {bulkRestoreMutation.isPending ? 'Restauration…' : 'Restaurer'}
+                </button>
+              )) : (canBulkArchive && (
+                <button type="button" onClick={askBulkArchive} className="odoo-btn-secondary ds-btn-sm"
+                  disabled={bulkArchiveMutation.isPending}>
+                  <Archive size={13} aria-hidden="true" /> {bulkArchiveMutation.isPending ? 'Archivage…' : 'Archiver'}
+                </button>
+              ))}
+              {canBulkDelete && (
+                <button type="button" onClick={askBulkDelete} className="ds-btn-danger ds-btn-sm"
+                  disabled={bulkDeleteMutation.isPending}>
+                  <Trash2 size={13} aria-hidden="true" /> {bulkDeleteMutation.isPending ? 'Suppression…' : 'Supprimer'}
+                </button>
+              )}
+            </BulkBar>
+          }
+          footer={<TableFooter note={`${sortedFiltered.length} sur ${activeTab === 'base' ? baseCount : productCount} fiche(s)${showArchived ? ' archivée(s)' : ''}`} />}>
+          <table className="odoo-table">
             <thead>
               <tr>
                 <th style={{ width: 28 }}>
                   <input type="checkbox"
                     checked={allVisibleSelected}
                     onChange={toggleSelectAll}
-                    title={allVisibleSelected ? 'Tout désélectionner' : 'Sélectionner toutes les fiches visibles'}
+                    aria-label={allVisibleSelected ? 'Tout désélectionner' : 'Sélectionner toutes les fiches visibles'}
                     style={{ cursor: 'pointer', verticalAlign: 'middle' }} />
                 </th>
-                <th style={{ width: 24 }}></th>
                 <SortHeader label={sectorLabel("recipe", "Recette")} sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 {/* Onglet Bases : « Type » ne dit rien (tout est Base) et « Marge »
                     est vide (une préparation ne se vend pas). On rend ces deux
@@ -606,7 +563,7 @@ export default function RecipesPage() {
                 <SortHeader label={isBaseTab ? `${T.yield} brut` : T.yield} sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 {isBaseTab && (
                   <>
-                    <SortHeader label="Perte" sortKey="perte" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                    <SortHeader label="Perte (%)" sortKey="perte" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                       title="Perte de transformation (cuisson, réduction). Elle sépare le poids engagé du poids réellement utilisable." />
                     <SortHeader label={`${T.yield} net`} sortKey="net" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                       title="Poids brut moins la perte de transformation." />
@@ -616,9 +573,9 @@ export default function RecipesPage() {
                     (ingrédients + emballages + sous-recettes). Main d'œuvre, énergie et
                     frais de structure ne sont ajoutés que dans l'éditeur de composition.
                     Les libellés le disent, sinon la marge d'ici contredit celle de là-bas. */}
-                <SortHeader label={isBaseTab ? T.batchCost : 'Coût matière'} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                <SortHeader label={`${isBaseTab ? T.batchCost : 'Coût matière'} (${currencySymbol()})`} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                   title="Ingrédients, emballages et préparations de base. Hors main d'œuvre, énergie et frais de structure." />
-                <SortHeader label={isBaseTab ? 'Coût / kg net' : 'Coût mat./u.'} sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                <SortHeader label={isBaseTab ? `Coût par kg net (${currencySymbol()}/kg)` : `Coût matière par unité (${currencySymbol()})`} sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                   title={isBaseTab
                     ? "Coût de la fournée rapporté au kilo réellement utilisable. Normalisé au kg pour que deux préparations soient comparables, quelle que soit l'unité de leur rendement."
                     : 'Coût matière rapporté à une unité produite.'} />
@@ -626,16 +583,14 @@ export default function RecipesPage() {
                   <SortHeader label="Utilisée par" sortKey="utilisee_par" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                     title="Nombre de recettes qui consomment cette préparation. À zéro, la fiche n'est utilisée nulle part." />
                 ) : (
-                  <SortHeader label="Marge mat." sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                  <SortHeader label="Marge matière" sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                     title="Marge sur coût matière — majorée par rapport à la marge réelle, qui déduit aussi main d'œuvre, énergie et structure (voir l'éditeur de composition)." />
                 )}
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
-              {sortedFiltered.length === 0 ? (
-                <tr><td colSpan={isBaseTab ? 11 : 10} style={{ padding: 0 }}><EmptyState /></td></tr>
-              ) : sortedFiltered.map((r: Record<string, any>) => {
+              {sortedFiltered.map((r: Record<string, any>) => {
                 const isComposeRow = r.mode_cout === 'compose';
                 const yieldQty = r.yield_quantity as number || 1;
                 // Composé : coût/pièce = coût total ÷ rendement (format) ; sinon legacy ÷ yield.
@@ -665,11 +620,6 @@ export default function RecipesPage() {
                 const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
                 // Indicateur d'ÉTAT (santé donnée) : vide → rouge, rendement à définir → ambre, sinon vert.
                 // Composition vide : signalée aussi sur une préparation de base (constat 107).
-                const dotClass = r.compo_vide ? 'danger'
-                  : r.cout_incomplet ? 'warning'
-                  : r.is_base ? 'neutral'
-                  : r.rendement_a_definir ? 'warning'
-                  : 'ok';
                 const dotTitle = r.compo_vide ? 'Fiche incomplète : aucun composant'
                   : r.cout_incomplet ? 'Coût de revient incomplet : ingrédient sans prix, conversion douteuse ou préparation vide (détail sur la fiche)'
                   : r.is_base ? T.base
@@ -678,17 +628,16 @@ export default function RecipesPage() {
                 const formatNom = (r.default_contenant_nom as string) || (r.contenant_nom as string) || '';
 
                 return (
-                  <tr key={r.id as string} onClick={() => openRecipe(r)}>
+                  <tr key={r.id as string} onClick={() => openRecipe(r)} className={selectedIds.has(r.id as string) ? 'ds-selected' : undefined}>
                     <td onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox"
                         checked={selectedIds.has(r.id as string)}
                         onChange={() => toggleSelect(r.id as string)}
+                        aria-label={`Sélectionner ${r.name as string}`}
                         style={{ cursor: 'pointer', verticalAlign: 'middle' }} />
                     </td>
-                    <td><span className={`odoo-status-dot ${dotClass}`} role="img" title={dotTitle} aria-label={dotTitle} /></td>
                     <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                        {r.is_base ? <Layers size={13} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={13} style={{ color: 'var(--theme-accent)' }} />}
+                      <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         {r.name as string}
                         {r.category_color && (
                           <span style={{ fontSize: '0.625rem', fontWeight: 600, padding: '1px 5px', borderRadius: 3, background: `${r.category_color as string}22`, color: r.category_color as string }}>
@@ -708,92 +657,55 @@ export default function RecipesPage() {
                         </span>
                       </td>
                     )}
-                    <td style={{ color: 'var(--theme-text-muted)' }}>
-                      {formatNom ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <Box size={11} /> {formatNom}
-                        </span>
-                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <span style={{ fontWeight: 500 }}>{isComposeRow ? rendement : yieldQty}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{isComposeRow ? 'p.' : (r.yield_unit as string || 'u.')}</span>
+                    <td>{formatNom || '—'}</td>
+                    <td className="ds-num">
+                      {isComposeRow ? rendement : yieldQty}
+                      <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 3 }}>{isComposeRow ? 'p.' : (r.yield_unit as string || 'u.')}</span>
                     </td>
                     {isBaseTab && (
                       <>
-                        <td style={{ textAlign: 'right', color: perteBase > 0 ? '#b45309' : undefined }}>
-                          {perteBase > 0
-                            ? <><span style={{ fontWeight: 500 }}>{perteBase.toFixed(1)}</span><span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>%</span></>
-                            : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                        <td className="ds-num" style={{ color: perteBase > 0 ? 'var(--ds-warning)' : undefined }}>
+                          {perteBase > 0 ? perteBase.toFixed(1) : '—'}
                         </td>
-                        <td style={{ textAlign: 'right', color: '#15803d' }}>
+                        <td className="ds-num">
                           {poidsNetKg > 0
-                            ? <><span style={{ fontWeight: 500 }}>{poidsNetKg >= 1 ? poidsNetKg.toFixed(2) : Math.round(poidsNetKg * 1000)}</span><span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{poidsNetKg >= 1 ? 'kg' : 'g'}</span></>
-                            : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                            ? <>{poidsNetKg >= 1 ? poidsNetKg.toFixed(2) : Math.round(poidsNetKg * 1000)}<span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 3 }}>{poidsNetKg >= 1 ? 'kg' : 'g'}</span></>
+                            : '—'}
                         </td>
                       </>
                     )}
-                    <td style={{ textAlign: 'right' }}>
-                      <span style={{ fontWeight: 600 }}>{totalCost.toFixed(2)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}</span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <span style={{ fontWeight: 500 }}>{costPerUnit.toFixed(2)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{isBaseTab ? `${currencySymbol()}/kg` : currencySymbol()}</span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="ds-num ds-strong">{totalCost.toFixed(2)}</td>
+                    <td className="ds-num">{costPerUnit.toFixed(2)}</td>
+                    <td className="ds-num">
                       {isBaseTab ? (
                         utiliseePar > 0
-                          ? <span className="odoo-tag odoo-tag-blue" title={`${utiliseePar} recette(s) consomment cette préparation`}>{utiliseePar}</span>
-                          : <span style={{ color: 'var(--theme-bg-separator)' }} title="Aucune recette n’utilise cette préparation">—</span>
+                          ? <span title={`${utiliseePar} recette(s) consomment cette préparation`}>{utiliseePar}</span>
+                          : <span title="Aucune recette n’utilise cette préparation">—</span>
                       ) : (!r.is_base && price > 0 ? (
-                        <span className={`odoo-tag ${margin >= 50 ? 'odoo-tag-green' : margin >= 30 ? 'odoo-tag-yellow' : 'odoo-tag-red'}`}>
-                          {margin.toFixed(0)}%
-                        </span>
-                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>)}
+                        <StatusTag tone={margin >= 50 ? 'done' : margin >= 30 ? 'todo' : 'blocked'} label={`${margin.toFixed(0)} %`} />
+                      ) : '—')}
                     </td>
                     {/* Une seule entrée vers la fiche, des deux côtés : « Voir » et
                         « Modifier » menaient au même écran depuis que la préparation
                         s'ouvre en page pleine comme un produit fini. */}
-                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: 'inline-flex', gap: 2 }}>
-                        <button onClick={(e) => { e.stopPropagation(); openRecipe(r); }}
-                          className="odoo-pager-btn"
-                          title={r.is_base ? 'Ouvrir la préparation' : 'Ouvrir la composition'}>
-                          <Layers size={13} />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); setIdentityEdit({ id: r.id as string, name: r.name as string, category_id: r.category_id ?? null, is_base: !!r.is_base, is_phantom: !!r.is_phantom }); }}
-                          className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
-                          <Pencil size={13} />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); printFiche(r); }}
-                          className="odoo-pager-btn" title="Imprimer la fiche technique"
-                          disabled={printingId === r.id}>
-                          <Printer size={13} />
-                        </button>
-                        {/* Un seul bouton par geste, montré seulement s'il est permis (constat 111). */}
-                        {showArchived ? (canRestore && (
-                          <button onClick={(e) => { e.stopPropagation(); restoreMutation.mutate(r.id as string); }}
-                            className="odoo-pager-btn" title="Restaurer la fiche"
-                            disabled={restoreMutation.isPending}
-                            style={{ color: '#28a745' }}>
-                            <ArchiveRestore size={13} />
-                          </button>
-                        )) : (canArchive && (
-                          <button onClick={(e) => { e.stopPropagation(); askDelete(r); }}
-                            className="odoo-pager-btn" title="Archiver la fiche (restaurable)"
-                            style={{ color: '#dc3545' }}>
-                            <Archive size={13} />
-                          </button>
-                        ))}
-                      </div>
+                    <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" onClick={() => openRecipe(r)} className="odoo-btn-secondary ds-btn-sm">Ouvrir</button>
+                      {/* Un seul geste par entrée, montré seulement s'il est permis (constat 111). */}
+                      <RowMenu label={`Plus d'actions sur ${r.name as string}`} items={[
+                        { label: 'Modifier le nom ou la catégorie', icon: Pencil, onSelect: () => setIdentityEdit({ id: r.id as string, name: r.name as string, category_id: r.category_id ?? null, is_base: !!r.is_base, is_phantom: !!r.is_phantom }) },
+                        { label: 'Imprimer la fiche technique', icon: Printer, disabled: printingId === r.id, onSelect: () => printFiche(r) },
+                        ...(showArchived
+                          ? (canRestore ? [{ label: 'Restaurer la fiche', icon: ArchiveRestore, disabled: restoreMutation.isPending, onSelect: () => restoreMutation.mutate(r.id as string) }] : [])
+                          : (canArchive ? [{ label: 'Archiver la fiche', icon: Archive, danger: true, onSelect: () => askDelete(r) }] : [])),
+                      ] as RowMenuItem[]} />
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
+        )
       )}
 
       {/* Création et édition d'identité passent par la même petite fenêtre

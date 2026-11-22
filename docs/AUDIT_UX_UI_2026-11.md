@@ -1,0 +1,190 @@
+# Audit UX/UI et harmonisation des interfaces — novembre 2026
+
+Mission : un seul ERP, une seule identité visuelle, une seule logique de navigation, une seule
+hiérarchie graphique. Ce document rassemble l'audit, l'inventaire des incohérences, le rapport de
+migration et les anomalies restantes. Les règles elles-mêmes sont dans
+[DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
+
+Maquettes validées le 2026-11-22 (module Achats, 10 planches) : liste standard, tableau de bord,
+fiche, tableau dense avec sélection, formulaire, fondations, demandes d'achat, demande de prix,
+approbations, réception.
+
+## 1. Audit de l'existant
+
+### 1.1 Socle technique
+
+- React + TypeScript, Tailwind pour la base, puis des feuilles de style par génération d'écrans.
+- 349 fichiers d'écran (`.tsx`), 14 feuilles de style, 18 familles de classes (`kl-`, `odoo-`,
+  `prj-`, `sal-`, `pur-`, `ord-`, `bsi-`, `plan-`…) empilées au fil des refontes.
+- Trois refontes successives coexistent : « odoo » (tableaux, boutons), « prj/sal » (gabarit Liste
+  des Projets puis des Ventes) et « Apple » (cartes, grands titres), cette dernière généralisée à
+  tous les modules le 2026-11-19.
+
+L'identité est donc déjà commune (thème, police, cartes, menu latéral par rubriques fixes). Les
+écarts viennent de la façon dont chaque écran assemble ses blocs, et des variantes locales.
+
+### 1.2 Constats par thème
+
+| Thème | Constat | Mesure avant |
+|---|---|---|
+| Styles en ligne | présentation décidée écran par écran, impossible à faire évoluer d'un seul endroit | 11 182 `style={{…}}` |
+| Couleurs | couleurs de sens écrites en dur, avec plusieurs rouges et plusieurs verts pour le même sens | 1 053 codes hexadécimaux ; 6 rouges (`#DC3545`, `#C62828`, `#B71C1C`, `#DC2626`…), 3 verts |
+| Titres | en-têtes en capitales dans une partie des écrans, en minuscules dans l'autre | 127 occurrences de capitales forcées |
+| Fil d'Ariane | deux niveaux (« Module / Page ») sur les pages à barre propre, trois sur les autres ; séparateur « / » ou « › » | 32 fichiers avec « / » |
+| Action principale | en haut à droite, dans la barre d'outils, ou absente selon l'écran ; libellés abrégés (« Nouveau BC ») | — |
+| Ordre des blocs | barre d'outils avant ou après les étapes ; bascules de vue à trois emplacements | — |
+| Indicateurs | trois composants de tuile (`ListKpi`, `Kpi`, tuiles locales), valeur colorée ou non, 3 à 6 par ligne | — |
+| Étapes | pastilles numérotées, à icône ou nues ; étape active pleine ou en contour | — |
+| Tableaux | 479 tableaux, tous sur la même classe mais avec en-têtes, alignements et unités décidés localement ; unité répétée dans chaque cellule | 479 `<table>` |
+| Actions de ligne | jusqu'à 10 boutons icônes par ligne (factures reçues), sans libellé | 237 boutons icônes de ligne |
+| Statuts | deux systèmes d'étiquettes | 342 `StatusTag`, 658 `odoo-tag` (catégories comprises) |
+| États | chargement et liste vide refaits à la main, trois présentations de l'état vide | 417 indicateurs de chargement faits à la main |
+| Confirmations | confirmation du navigateur encore utilisée à côté de la fenêtre commune | 17 `window.confirm` explicites (5 après migration) |
+| Formulaires | libellés en style local, obligatoire signalé par « * » dans le texte, erreurs en notification plutôt que sous le champ | — |
+| Vue par défaut | Colonnes sur grand écran, Liste sinon ; libellé « Liste » | — |
+
+### 1.3 Constats par module (écrans observés)
+
+- **Achats** : module le plus avancé (poste de travail, circuit, chaîne des pièces). Écarts :
+  circuit en 5 + 3 cases, indicateurs en 3 + 1, action principale dans la barre d'outils (Frais
+  d'approche), tableau Fournisseurs débordant (colonne d'action coupée), trois états vides, tuiles
+  propres aux Demandes d'achat, comparateur de devis en grille hors tableau.
+- **Ventes** : gabarit Liste propre, mais fil d'Ariane à deux niveaux, pastilles après la barre
+  d'outils, vue Colonnes par défaut.
+- **Stock** : fil d'Ariane à trois niveaux, barre d'outils sur deux lignes, pastilles après la
+  barre, bascule « Liste / Kanban ».
+- **Production** : fil d'Ariane à deux niveaux, plusieurs icônes d'action par ligne dans les plans.
+- **Personnel** : tuiles d'indicateur d'un style propre, en 5 + 1 ; filtre « Année » isolé.
+- **Comptabilité** : pilotage avec tuiles locales et liste d'échéances hors tableau standard.
+
+## 2. Inventaire des incohérences et décision retenue
+
+| # | Incohérence | Règle commune (Design System) |
+|---|---|---|
+| 1 | Fil d'Ariane à 2 ou 3 niveaux, séparateurs différents | toujours « Module › Rubrique › Page » |
+| 2 | Titre sans description, ou description en bandeau | titre + une ligne de description |
+| 3 | Action principale à des endroits différents | une seule, en haut à droite, libellé complet |
+| 4 | Ordre des blocs variable | indicateurs → étapes → barre d'outils → tableau |
+| 5 | Trois composants de tuile | `KpiCard` ; la valeur reste neutre, le commentaire porte la couleur |
+| 6 | Pastilles numérotées ou non | pastilles sans numéro, étape active en contour d'accent |
+| 7 | Recherche grise ou blanche, largeur variable | champ bordé de 320 px, à gauche de la barre d'outils |
+| 8 | Bascules de vue à plusieurs endroits | à droite de la barre : période, puis affichage |
+| 9 | Vue par défaut variable | Tableau par défaut ; « Tableau / Colonnes / Kanban » |
+| 10 | Unité dans chaque cellule | unité dans l'en-tête de colonne |
+| 11 | Nombreuses icônes par ligne | une action visible, le reste dans le menu de ligne |
+| 12 | États vides et chargements multiples | `EmptyState`, `NoResultState`, `LoadingState`, `ErrorState` |
+| 13 | Couleurs de sens en dur | jetons `--ds-success`, `--ds-warning`, `--ds-danger`, `--ds-info` |
+| 14 | Champs et pieds de formulaire variables | `FormField`, `FormSection`, `FormFooter` |
+| 15 | Densité unique | 48 px en standard, 36 px en dense (comptabilité, paie) |
+
+## 3. Rapport de migration
+
+### 3.1 Socle
+
+| Élément | Fichier |
+|---|---|
+| Jetons et règles communes | `client/src/styles/design-system.css` |
+| Composants | `client/src/components/ds/index.tsx` : `Breadcrumb`, `PageHeader`, `SectionHeader`, `KpiGrid`, `KpiCard`, `Toolbar`, `SearchBar`, `Segmented`, `Tabs`, `DataPanel`, `BulkBar`, `TableFooter`, `EmptyState`, `NoResultState`, `LoadingState`, `ErrorState`, `Alert`, `FormField`, `FormSection`, `FormFooter` |
+| Activation | classe `kl-ds` sur la zone de contenu (`AppLayout`), sauf la caisse |
+| Fil d'Ariane à trois niveaux | `ModuleShell` (contexte `ModuleCrumbContext`) et `SalesPageShell` |
+| Briques existantes rebranchées | `ListKpi`, `Kpi`, `ListEmpty`, `NextStep`, `StagePipeline`, `LayoutSwitch`, briques de module (`StockUi`, `KlUi`, `employees/ui`, `boutique/shared`) |
+
+Composants déjà en place et conservés : `StatusTag` (StatusBadge), `RowMenu`, `ConfirmDialog`,
+`SearchSelect` (Select), `DateRangePicker`, `ModalBackdrop`, `notify` (Toast), `StatusBanner`.
+
+### 3.2 Écrans migrés, par module
+
+| Module | Écrans | État |
+|---|---|---|
+| Achats | Poste de travail, À commander, Demandes d'achat, Demandes de prix (liste, fiche, comparatif), Approbations, Bons de commande (liste, fiche, réception), Réceptions, Factures reçues et leurs fenêtres, Frais d'approche, Écarts de prix, Rapprochement, Évaluation, Fournisseurs (liste et fiche) | gabarit complet, contrôlé à l'écran |
+| Ventes | Commandes, Devis, Bons de livraison, Factures émises, Créances, Clients, Tickets, Retours, Sessions, Pipeline, Promotions, Relances, Contrats, Ristournes, Objectifs, Tournées, Abonnements, Listes de prix, Canaux | listes au gabarit ; formulaires non repris |
+| Stock | Réserve, Poste de pesée, Bons de sortie, Consommables, Inventaires, Lots surgelables, Emplacements, registres et rapports, fiche ingrédient, Demandes boutique | gabarit complet ; écrans d'atelier alignés sans changer le déroulé |
+| Production | Plans, Tableau de bord, Atelier, Prévisions, Plan directeur, HACCP, Désassemblage, Fiches techniques, Postes & gammes, Paramétrage, Produits | listes au gabarit ; fiche plan et panneaux d'exécution alignés en surface |
+| Personnel | Pilotage, Mon espace, Pointage, Planning, Congés, Avances, Paie (3 rythmes), Déclarations, Commissions, Employés, fiche employé, Utilisateurs et rôles | gabarit complet |
+| Comptabilité | 31 écrans (Pilotage, Caisse, Charges, Chèques, Effets, Créances & dettes, Banque, Journal, Lettrage, Immobilisations, Clôture, états et déclarations) | gabarit complet en variante dense ; fenêtres de saisie non reprises |
+| Autres | Accueil, Contrôle & qualité, Journée boutique, Maintenance, Projets, Portail client, Connexion ; Paramètres et Contrôle des ventes en surface | voir anomalies |
+
+### 3.3 Mesures avant / après (fichiers d'écran)
+
+| Indicateur | Avant | Après |
+|---|---|---|
+| Styles en ligne | 11 182 | 7 289 |
+| Couleurs écrites en dur | 1 053 | 201 |
+| Capitales forcées | 127 | 33 |
+| Boutons icônes de ligne | 237 | 104 |
+| Indicateurs de chargement faits à la main | 417 | 235 |
+| Tableaux dans le panneau standard | 0 | 199 sur 477 |
+| Tuiles d'indicateur communes | 0 | 189 |
+| États communs (vide, chargement, erreur) | 0 | 542 |
+| Menus de ligne | — | 70 |
+| Champs de formulaire communs | 0 | 150 |
+| Colonnes numériques normalisées | 0 | 1 753 |
+
+Étendue : 291 fichiers modifiés, 13 161 lignes ajoutées, 14 482 retirées.
+
+## 4. Tests
+
+- Types : `npx tsc -b` sans erreur.
+- Tests unitaires du client : 74 sur 74.
+- Build de production : réussi.
+- Contrôle à l'écran (compte gérant, base de développement) : les dix rubriques Achats, puis
+  l'écran d'entrée de Ventes (Commandes, Clients), Stock, Production (Plans, Fiches techniques),
+  Personnel (Pilotage, Paie), Comptabilité (Pilotage), Contrôle, Journée boutique, Projets,
+  Maintenance, Utilisateurs, Accueil ; largeur tablette sur les Bons de commande.
+- Non contrôlé à l'écran : les fenêtres et formulaires, les fiches de détail, les sous-écrans
+  au-delà de l'écran d'entrée de chaque module, les Paramètres (compte gérant sans accès,
+  administrateur sous double authentification), la caisse (non modifiée).
+- Non rejoué : les scénarios quotidiens des agents métier. Ils doivent être relancés sur cette
+  version avant mise en production (voir § 6).
+
+## 5. Changements de comportement visibles
+
+Aucune règle métier, aucun appel d'API, aucun droit ni calcul n'a été modifié. Les gestes
+suivants changent :
+
+- Vue « Tableau » par défaut sur les listes (avant : « Colonnes » sur grand écran).
+- Actions de ligne : une action visible, les autres dans le menu « ⋯ » (PDF, modifier, supprimer,
+  annuler, litige, etc.). Les boutons de ligne sont secondaires ; le retard se lit dans le statut.
+- Actions principales et exports déplacés en haut à droite de la page.
+- Demandes d'achat : sélection globale ; « Demander des prix » envoie toutes les demandes cochées
+  dans une seule demande de prix.
+- Demande de prix : devis retenu par bouton radio, puis un seul bouton d'attribution.
+- Approbations : lignes de tableau dépliables au lieu de cartes ; seule la première est dépliée.
+- Paie : un bouton « Payer » + menu « Payer par virement » au lieu de deux boutons.
+- Confirmations ajoutées là où l'action partait au premier clic (suppression de pièce jointe,
+  d'une gamme, d'une saisie de temps, annulation d'une demande boutique, retrait d'une
+  délégation…), et confirmations du navigateur remplacées par la fenêtre commune.
+- Dates « 21 nov. 2026 », montants sans devise dans les cellules (devise dans l'en-tête).
+- Mini-barres d'avancement et points de couleur remplacés par une étiquette de statut.
+
+## 6. Anomalies restantes
+
+| # | Anomalie | Portée |
+|---|---|---|
+| 1 | Formulaires non convertis aux champs communs : commande, devis, client, facture manuelle, opportunité, promotion (Ventes) ; dépense, règlement, chèque, immobilisation (Comptabilité) ; import, ajustement de stock ; formulaire produit, nomenclature | à faire |
+| 2 | 278 tableaux hors panneau standard (fenêtres, fiches, Paramètres, Contrôle des ventes, panneaux d'exécution de production) | à faire |
+| 3 | Réception et comparatif de devis restent dans leur conteneur (fiche du BC, tiroir) au lieu d'une page dédiée comme sur les maquettes | décision à prendre : touche au déroulé |
+| 4 | Emplacement d'actions d'en-tête dupliqué par module (`PurHeaderSlot`, `StockHeaderSlot`, `HrHeaderSlot`, `AccHeaderActions`) ; à remonter dans `ModuleShell` | dette technique |
+| 5 | Composants manquants : fenêtre/tiroir commun (Modal, Drawer), champ de période, dialogue de saisie de motif (6 `prompt` du navigateur subsistent), étiquette de catégorie (les `odoo-tag` non-statut), carte de saisie d'atelier | à créer |
+| 6 | Couleurs en dur restantes (201) : palettes catégorielles (shifts, types de commande), documents imprimés, rapport Coûts | à traiter |
+| 7 | En-têtes de colonne triables non atteignables au clavier | accessibilité |
+| 8 | L'état d'erreur dit « Vérifiez la connexion » aussi quand l'accès est refusé (écran Utilisateurs avec un compte sans droit) | message à préciser |
+| 9 | Vues Colonnes et Kanban : fiche de droite avec 5 à 6 boutons, pagination locale | à aligner |
+| 10 | Code mort repéré : `RecallPage`, `RuptureRequestsList`, `LowStockOrderList`, `DashboardPage` (branchés nulle part) | à supprimer après confirmation |
+| 11 | Paramètres : alignés en surface seulement et non contrôlés à l'écran | à vérifier avec un compte administrateur |
+| 12 | Scénarios des agents métier non rejoués sur cette version | à faire avant mise en production |
+
+## 7. Évaluation de la cohérence
+
+| Critère d'acceptation | État |
+|---|---|
+| Tous les modules utilisent le Design System | oui pour le socle (jetons, barres, pastilles, tuiles, tableaux de liste) ; partiel pour les fenêtres et formulaires |
+| Tous les tableaux s'appuient sur le composant standard | 199 sur 477 ; les listes principales sont faites |
+| Formulaires cohérents | Achats, Stock, Personnel, Maintenance : oui ; Ventes, Comptabilité, Production : en partie |
+| Titres sur la même hiérarchie | oui |
+| Boutons et actions sur les mêmes conventions | oui sur les listes ; fiches de détail en partie |
+| Couleurs et typographies harmonisées | oui, hors palettes catégorielles |
+| Navigation structurée et prévisible | oui (fil d'Ariane à trois niveaux, rubriques fixes) |
+| Écrans adaptés au métier | écrans d'atelier et de caisse conservés |
+| Aucune fonctionnalité perdue | aucune suppression volontaire ; à confirmer par les scénarios |
+| Scénarios des agents fonctionnels | non rejoués |

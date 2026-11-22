@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  TrendingUp, CalendarDays, Link2, Target, Loader2, ChevronLeft, ChevronRight, Search, Plus, Trash2, Pencil,
-  CheckCircle2, AlertTriangle, Info,
+  TrendingUp, CalendarDays, Link2, Target, Loader2, ChevronLeft, ChevronRight, Plus, Trash2, Pencil,
+  CheckCircle2, AlertTriangle, PenLine,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -17,7 +17,13 @@ import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import SearchSelect from '../../components/ui/SearchSelect';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListKpi } from '../sales/ListTemplate';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import {
+  Alert, DataPanel, EmptyState, ErrorState, FormField, KpiCard, KpiGrid, LoadingState, NoResultState,
+  SearchBar, SectionHeader, TableFooter, Tabs, Toolbar,
+} from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 
 /**
@@ -37,7 +43,11 @@ const TABS: Array<{ key: Tab; label: string; icon: typeof TrendingUp; managerOnl
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
 const addDays = (date: string, n: number) => iso(new Date(parseISO(date).getTime() + n * 86_400_000));
-const CONF_TAG = { haute: 'odoo-tag-green', moyenne: 'odoo-tag-yellow', faible: 'odoo-tag-grey' } as const;
+const CONF_TONE: Record<ForecastCell['confidence'], { tone: StatusTone; label: string }> = {
+  haute: { tone: 'done', label: 'Haute' }, moyenne: { tone: 'todo', label: 'Moyenne' }, faible: { tone: 'draft', label: 'Faible' },
+};
+const dayFr = (d: string) => format(parseISO(d), 'd MMM yyyy', { locale: fr });
+const note: React.CSSProperties = { margin: 0, fontSize: 13, color: 'var(--ds-muted)' };
 const METHOD_LABEL: Record<ForecastCell['method'], string> = {
   meme_jour: 'Mêmes jours de semaine',
   evenement: 'Historique de l\'événement',
@@ -57,25 +67,10 @@ export default function ForecastPage() {
     if (t === 'grille') searchParams.delete('tab'); else searchParams.set('tab', t);
     setSearchParams(searchParams, { replace: true });
   };
-  const current = tabs.find(t => t.key === tab)!;
-
   return (
-    <SalesPageShell icon={TrendingUp} parent="Production" title="Prévisions" list
-      summary={<>Prévision de la demande · {current.label}</>}
-      actions={
-        /* 2 à 4 vues : contrôle segmenté (design Ventes). */
-        <div className="prj-views" role="tablist" aria-label="Vues de la prévision">
-          {tabs.map(t => {
-            const Icon = t.icon;
-            return (
-              <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}
-                className={tab === t.key ? 'active' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Icon size={13} /> {t.label}
-              </button>
-            );
-          })}
-        </div>
-      }>
+    <SalesPageShell icon={TrendingUp} parent="Production › Opérations" title="Prévisions" list
+      summary="Quantité suggérée par produit et par jour, d'après les ventes, le calendrier et la majoration de production.">
+      <Tabs label="Vues de la prévision" value={tab} onChange={setTab} tabs={tabs.map(t => ({ key: t.key, label: t.label }))} />
       {tab === 'grille' && <GridTab canEdit={canEdit} onTab={setTab} />}
       {tab === 'evenements' && <EventsTab canEdit={canEdit} />}
       {tab === 'liens' && canEdit && <LinksTab />}
@@ -95,7 +90,7 @@ function GridTab({ canEdit, onTab }: { canEdit: boolean; onTab: (t: Tab) => void
   const [category, setCategory] = useState('');
   const [editing, setEditing] = useState<{ productId: string; date: string; value: string } | null>(null);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['forecast-grid', from, to],
     queryFn: () => forecastApi.grid({ from, to }),
   });
@@ -130,44 +125,41 @@ function GridTab({ canEdit, onTab }: { canEdit: boolean; onTab: (t: Tab) => void
     <>
       {canEdit && unsoldVolume.length > 0 && (
         <StatusBanner tone="orange" icon={AlertTriangle} title={`${unsoldVolume.length} produit(s) Loyverse vendus mais non reliés au catalogue`}
-          actions={<button type="button" className="odoo-btn-secondary" onClick={() => onTab('liens')}>Relier</button>}>
+          actions={<button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => onTab('liens')}>Relier</button>}>
           Leurs ventes ne comptent pas encore dans la prévision.
         </StatusBanner>
       )}
 
-      <div className="prj-toolbar">
-        <button type="button" className="odoo-btn-secondary" aria-label="Semaine précédente" onClick={() => setFrom(addDays(from, -7))}><ChevronLeft size={14} /></button>
-        <input type="date" value={from} onChange={e => e.target.value && setFrom(e.target.value)} className="input" style={{ width: 160 }} aria-label="Premier jour" />
-        <button type="button" className="odoo-btn-secondary" aria-label="Semaine suivante" onClick={() => setFrom(addDays(from, 7))}><ChevronRight size={14} /></button>
-        {from !== tomorrow && <button type="button" className="odoo-btn-secondary" onClick={() => setFrom(tomorrow)}>Demain</button>}
-        <label className="prj-search" style={{ width: 200 }}>
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Produit…" aria-label="Rechercher un produit" />
-        </label>
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} placeholder="Rechercher un produit" />
         <SearchSelect value={category} onChange={setCategory} ariaLabel="Catégorie" placeholder="Toutes catégories" width={200}
           options={categories.map(([id, name]) => ({ id: String(id), label: name as string }))} />
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginLeft: 'auto' }}>
-          {rows.length} produit(s){canEdit && ' · cliquez sur une case pour la corriger'}
-        </span>
-      </div>
+        <span className="ds-grow" />
+        <button type="button" className="ds-icon-btn" aria-label="Semaine précédente" onClick={() => setFrom(addDays(from, -7))}><ChevronLeft size={16} aria-hidden="true" /></button>
+        <input type="date" value={from} onChange={e => e.target.value && setFrom(e.target.value)} className="ds-input" style={{ width: 170 }} aria-label="Premier jour" />
+        <button type="button" className="ds-icon-btn" aria-label="Semaine suivante" onClick={() => setFrom(addDays(from, 7))}><ChevronRight size={16} aria-hidden="true" /></button>
+        {from !== tomorrow && <button type="button" className="odoo-btn-secondary" onClick={() => setFrom(tomorrow)}>Demain</button>}
+      </Toolbar>
 
-      {isLoading ? <Loading /> : error ? (
-        <StatusBanner tone="danger" icon={AlertTriangle} title="Prévision indisponible">{String((error as any)?.response?.data?.error?.message ?? error)}</StatusBanner>
+      {isLoading ? <LoadingState label="Calcul de la prévision…" /> : error ? (
+        <ErrorState title="Prévision indisponible" text={String((error as any)?.response?.data?.error?.message ?? error)} onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
-        <StatusBanner tone="info" icon={Info} title="Aucun produit à prévoir">
-          Aucune vente enregistrée sur les 8 dernières semaines pour ce magasin (caisse ou Contrôle des ventes).
-        </StatusBanner>
+        (search || category)
+          ? <NoResultState text="Aucun produit ne correspond aux filtres." onReset={() => { setSearch(''); setCategory(''); }} />
+          : <EmptyState icon={TrendingUp} title="Aucun produit à prévoir"
+              text="Aucune vente enregistrée sur les 8 dernières semaines pour ce magasin (caisse ou Contrôle des ventes)." />
       ) : (
-        <div className="prj-panel prj-scroll">
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Prévisions par produit"
+          footer={<TableFooter note={`${rows.length} produit(s)${canEdit ? ' · cliquez sur une case pour la corriger' : ''}`} />}>
+          <table className="odoo-table">
             <thead>
               <tr>
                 <th style={{ minWidth: 200 }}>Produit</th>
                 {dates.map(d => (
-                  <th key={d} style={{ textAlign: 'right', minWidth: 78, background: eventsByDate[d]?.length ? '#fff3cd' : undefined }}
+                  <th key={d} className="ds-num" style={{ minWidth: 78, background: eventsByDate[d]?.length ? 'var(--ds-warning-bg)' : undefined }}
                     title={eventsByDate[d]?.map(e => `${e.label} (${e.uplift_pct >= 0 ? '+' : ''}${e.uplift_pct} %)`).join(', ') || undefined}>
-                    <div style={{ textTransform: 'capitalize' }}>{format(parseISO(d), 'EEE dd/MM', { locale: fr })}</div>
-                    {eventsByDate[d]?.[0] && <div style={{ fontSize: '0.625rem', fontWeight: 500, color: '#856404' }}>{eventsByDate[d][0].label}</div>}
+                    <div>{format(parseISO(d), 'EEE dd/MM', { locale: fr })}</div>
+                    {eventsByDate[d]?.[0] && <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--ds-warning)' }}>{eventsByDate[d][0].label}</div>}
                   </th>
                 ))}
                 <th>Confiance</th>
@@ -175,53 +167,53 @@ function GridTab({ canEdit, onTab }: { canEdit: boolean; onTab: (t: Tab) => void
             </thead>
             <tbody>
               {grouped.map(([cat, list]) => [
-                <tr key={`h-${cat}`}>
-                  <td style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem' }}>{cat}</td>
+                <tr key={`h-${cat}`} className="ds-group">
+                  <td>{cat}</td>
                   {dates.map(d => (
-                    <td key={d} style={{ background: 'var(--odoo-bg-hover)', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem' }}>
+                    <td key={d} className="ds-num">
                       {list.reduce((s, r) => s + (r.days[d]?.qty ?? 0), 0)}
                     </td>
                   ))}
-                  <td style={{ background: 'var(--odoo-bg-hover)' }} />
+                  <td />
                 </tr>,
                 ...list.map(r => (
                   <tr key={r.product_id}>
-                    <td>{r.product_name}</td>
+                    <td className="ds-strong">{r.product_name}</td>
                     {dates.map(d => {
                       const c = r.days[d];
                       const isEditing = editing?.productId === r.product_id && editing.date === d;
                       if (isEditing) {
                         return (
-                          <td key={d} style={{ textAlign: 'right' }}>
+                          <td key={d} className="ds-num">
                             <input autoFocus type="number" min={0} value={editing.value} aria-label={`Quantité ${r.product_name} ${d}`}
                               onChange={e => setEditing({ ...editing, value: e.target.value })}
                               onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(null); }}
                               onBlur={commit}
-                              className="odoo-search-input" style={{ width: 64, textAlign: 'right' }} />
+                              className="ds-input sm" style={{ width: 64, textAlign: 'right' }} />
                           </td>
                         );
                       }
                       return (
                         <td key={d} title={`${METHOD_LABEL[c.method]}\n${c.explanation}${c.override_reason ? `\nMotif : ${c.override_reason}` : ''}`}
                           onClick={canEdit ? () => setEditing({ productId: r.product_id, date: d, value: c.method === 'manuel' ? String(c.qty) : '' }) : undefined}
-                          style={{ textAlign: 'right', cursor: canEdit ? 'pointer' : 'default', color: c.qty === 0 ? 'var(--theme-text-muted)' : undefined }}>
-                          {c.method === 'manuel' && <span className="odoo-tag odoo-tag-purple" style={{ marginRight: 4, padding: '0 4px' }}>M</span>}
+                          className="ds-num" style={{ cursor: canEdit ? 'pointer' : 'default', color: c.qty === 0 ? 'var(--ds-muted)' : undefined }}>
+                          {c.method === 'manuel' && <PenLine size={11} aria-label="Saisie manuelle" style={{ marginRight: 4, color: 'var(--ds-accent-ink)', display: 'inline' }} />}
                           <strong>{c.qty}</strong>
-                          {c.actual != null && <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)' }}>vendu {c.actual}</div>}
+                          {c.actual != null && <div style={{ fontSize: 11, color: 'var(--ds-muted)' }}>vendu {c.actual}</div>}
                         </td>
                       );
                     })}
-                    <td>{(() => { const c = r.days[dates[0]]; return c ? <span className={`odoo-tag ${CONF_TAG[c.confidence]}`}>{c.confidence}</span> : null; })()}</td>
+                    <td>{(() => { const c = r.days[dates[0]]; return c ? <StatusTag tone={CONF_TONE[c.confidence].tone} label={CONF_TONE[c.confidence].label} /> : null; })()}</td>
                   </tr>
                 )),
               ])}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
-      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p style={note}>
         Calcul : moyenne pondérée des 6 derniers mêmes jours de semaine (hors événements), corrigée des ruptures, de la tendance (±10 % max),
-        des événements du calendrier, puis majorée du taux de production de la catégorie. « M » = saisie manuelle ; videz la case pour revenir au calcul.
+        des événements du calendrier, puis majorée du taux de production de la catégorie. Le crayon signale une saisie manuelle ; videz la case pour revenir au calcul.
       </p>
     </>
   );
@@ -236,9 +228,10 @@ const EMPTY_EVENT = (): EventDraft => ({
 
 function EventsTab({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [showPast, setShowPast] = useState(false);
   const [draft, setDraft] = useState<EventDraft | null>(null);
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['forecast-events', showPast],
     queryFn: () => forecastApi.events(showPast ? undefined : iso(new Date())),
   });
@@ -253,83 +246,102 @@ function EventsTab({ canEdit }: { canEdit: boolean }) {
 
   return (
     <>
-      <div className="prj-toolbar">
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+      <Toolbar>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
           <input type="checkbox" checked={showPast} onChange={e => setShowPast(e.target.checked)} /> Afficher les événements passés
         </label>
+        <span className="ds-grow" />
         {canEdit && !draft && (
-          <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setDraft(EMPTY_EVENT())}>
-            <Plus size={13} /> Nouvel événement
+          <button type="button" className="odoo-btn-primary" onClick={() => setDraft(EMPTY_EVENT())}>
+            <Plus size={13} aria-hidden="true" /> Nouvel événement
           </button>
         )}
-      </div>
+      </Toolbar>
 
       {draft && (
-        <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, alignItems: 'end' }}>
-          <Field label="Libellé"><input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} className="odoo-search-input" placeholder="Aïd al-Adha" /></Field>
-          <Field label="Type">
-            <select value={draft.kind} onChange={e => {
-              const kind = e.target.value as EventKind;
-              setDraft({ ...draft, kind, uplift_pct: kind === 'fermeture' ? -100 : draft.uplift_pct === -100 ? 0 : draft.uplift_pct });
-            }} className="odoo-search-input">
-              {(Object.keys(EVENT_KIND_LABELS) as EventKind[]).map(k => <option key={k} value={k}>{EVENT_KIND_LABELS[k]}</option>)}
-            </select>
-          </Field>
-          <Field label="Du"><input type="date" value={draft.date_start} onChange={e => setDraft({ ...draft, date_start: e.target.value, date_end: draft.date_end < e.target.value ? e.target.value : draft.date_end })} className="odoo-search-input" /></Field>
-          <Field label="Au"><input type="date" value={draft.date_end} min={draft.date_start} onChange={e => setDraft({ ...draft, date_end: e.target.value })} className="odoo-search-input" /></Field>
-          <Field label="Effet sur la demande (%)">
-            <input type="number" value={draft.uplift_pct} disabled={draft.kind === 'fermeture'} min={-100} max={500}
-              onChange={e => setDraft({ ...draft, uplift_pct: Number(e.target.value) })} className="odoo-search-input" />
-          </Field>
-          <Field label="Catégorie">
-            <SearchSelect value={draft.category_id != null ? String(draft.category_id) : ''} onChange={id => setDraft({ ...draft, category_id: id ? Number(id) : null })}
-              placeholder="Toutes" width="100%" size="md" ariaLabel="Catégorie"
-              options={(categories as Array<{ id: number; name: string }>).map(c => ({ id: String(c.id), label: c.name as string }))} />
-          </Field>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
-            <input type="checkbox" checked={draft.all_stores} onChange={e => setDraft({ ...draft, all_stores: e.target.checked })} /> Tous les magasins
-          </label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" className="odoo-btn-primary" disabled={!draft.label.trim() || save.isPending} onClick={() => save.mutate(draft)}>Enregistrer</button>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
+        <form className="ds-panel" style={{ overflow: 'visible' }} aria-label={draft.id ? 'Modifier l\'événement' : 'Nouvel événement'}
+          onSubmit={e => { e.preventDefault(); if (draft.label.trim() && !save.isPending) save.mutate(draft); }}>
+          <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
+            <h2 className="ds-subhead">{draft.id ? 'Modifier l\'événement' : 'Nouvel événement'}</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14, alignItems: 'start' }}>
+              <FormField label="Libellé" htmlFor="ev-label" required>
+                <input id="ev-label" value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} className="ds-input" placeholder="Ex. : Aïd al-Adha" />
+              </FormField>
+              <FormField label="Type" htmlFor="ev-kind">
+                <select id="ev-kind" value={draft.kind} onChange={e => {
+                  const kind = e.target.value as EventKind;
+                  setDraft({ ...draft, kind, uplift_pct: kind === 'fermeture' ? -100 : draft.uplift_pct === -100 ? 0 : draft.uplift_pct });
+                }} className="ds-input">
+                  {(Object.keys(EVENT_KIND_LABELS) as EventKind[]).map(k => <option key={k} value={k}>{EVENT_KIND_LABELS[k]}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Du" htmlFor="ev-from" required>
+                <input id="ev-from" type="date" value={draft.date_start} onChange={e => setDraft({ ...draft, date_start: e.target.value, date_end: draft.date_end < e.target.value ? e.target.value : draft.date_end })} className="ds-input" />
+              </FormField>
+              <FormField label="Au" htmlFor="ev-to" required>
+                <input id="ev-to" type="date" value={draft.date_end} min={draft.date_start} onChange={e => setDraft({ ...draft, date_end: e.target.value })} className="ds-input" />
+              </FormField>
+              <FormField label="Effet sur la demande (%)" htmlFor="ev-uplift">
+                <input id="ev-uplift" type="number" value={draft.uplift_pct} disabled={draft.kind === 'fermeture'} min={-100} max={500}
+                  onChange={e => setDraft({ ...draft, uplift_pct: Number(e.target.value) })} className="ds-input" />
+              </FormField>
+              <FormField label="Catégorie">
+                <SearchSelect value={draft.category_id != null ? String(draft.category_id) : ''} onChange={id => setDraft({ ...draft, category_id: id ? Number(id) : null })}
+                  placeholder="Toutes" width="100%" size="md" ariaLabel="Catégorie"
+                  options={(categories as Array<{ id: number; name: string }>).map(c => ({ id: String(c.id), label: c.name as string }))} />
+              </FormField>
+            </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+              <input type="checkbox" checked={draft.all_stores} onChange={e => setDraft({ ...draft, all_stores: e.target.checked })} /> Tous les magasins
+            </label>
           </div>
-        </div>
+          <div className="ds-form-foot">
+            <span className="ds-grow" />
+            <button type="button" className="odoo-btn-secondary" disabled={save.isPending} onClick={() => setDraft(null)}>Annuler</button>
+            <button type="submit" className="odoo-btn-primary" disabled={!draft.label.trim() || save.isPending} aria-busy={save.isPending || undefined}>
+              {save.isPending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />} Enregistrer
+            </button>
+          </div>
+        </form>
       )}
 
-      {isLoading ? <Loading /> : data.length === 0 ? (
-        <StatusBanner tone="info" icon={CalendarDays} title="Aucun événement à venir">
-          Ajoutez Ramadan, les fêtes, les vacances scolaires ou les jours de fermeture : la prévision en tient compte, et exclut ces jours de l'historique normal.
-        </StatusBanner>
+      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : data.length === 0 ? (
+        <EmptyState icon={CalendarDays} title="Aucun événement à venir"
+          text="Ajoutez Ramadan, les fêtes, les vacances scolaires ou les jours de fermeture : la prévision en tient compte, et exclut ces jours de l'historique normal." />
       ) : (
-        <div className="prj-panel prj-scroll">
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Événements du calendrier" footer={<TableFooter note={`${data.length} événement${data.length > 1 ? 's' : ''}`} />}>
+          <table className="odoo-table">
             <thead>
-              <tr><th>Événement</th><th>Type</th><th>Période</th><th style={{ textAlign: 'right' }}>Effet</th><th>Catégorie</th><th>Magasin</th>{canEdit && <th />}</tr>
+              <tr><th>Événement</th><th>Type</th><th>Période</th><th className="ds-num">Effet (%)</th><th>Catégorie</th><th>Magasin</th>{canEdit && <th className="ds-actions"><span className="sr-only">Actions</span></th>}</tr>
             </thead>
             <tbody>
               {data.map(e => (
                 <tr key={e.id}>
-                  <td style={{ fontWeight: 600 }}>{e.label}</td>
-                  <td><span className={`odoo-tag ${e.kind === 'fermeture' ? 'odoo-tag-red' : 'odoo-tag-yellow'}`}>{EVENT_KIND_LABELS[e.kind]}</span></td>
-                  <td>{format(parseISO(e.date_start), 'dd/MM/yyyy')}{e.date_end !== e.date_start && ` → ${format(parseISO(e.date_end), 'dd/MM/yyyy')}`}</td>
-                  <td style={{ textAlign: 'right' }}>{e.kind === 'fermeture' ? 'Fermé' : `${e.uplift_pct >= 0 ? '+' : ''}${e.uplift_pct} %`}</td>
+                  <td className="ds-strong">{e.label}</td>
+                  <td><StatusTag tone={e.kind === 'fermeture' ? 'blocked' : 'todo'} icon={CalendarDays} label={EVENT_KIND_LABELS[e.kind]} /></td>
+                  <td>{dayFr(e.date_start)}{e.date_end !== e.date_start && ` → ${dayFr(e.date_end)}`}</td>
+                  <td className="ds-num">{e.kind === 'fermeture' ? 'Fermé' : `${e.uplift_pct >= 0 ? '+' : ''}${e.uplift_pct}`}</td>
                   <td>{e.category_name ?? 'Toutes'}</td>
                   <td>{e.store_id ? 'Ce magasin' : 'Tous'}</td>
                   {canEdit && (
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button type="button" className="odoo-btn-secondary" aria-label="Modifier" onClick={() => setDraft({
+                    <td className="ds-actions">
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDraft({
                         id: e.id, date_start: e.date_start, date_end: e.date_end, kind: e.kind, label: e.label,
                         uplift_pct: e.uplift_pct, category_id: e.category_id, all_stores: e.store_id == null,
-                      })}><Pencil size={12} /></button>{' '}
-                      <button type="button" className="odoo-btn-danger" aria-label="Supprimer"
-                        onClick={() => { if (window.confirm(`Supprimer « ${e.label} » ?`)) remove.mutate(e.id); }}><Trash2 size={12} /></button>
+                      })}><Pencil size={12} aria-hidden="true" /> Modifier</button>
+                      <RowMenu label={`Plus d'actions sur ${e.label}`} items={[{
+                        label: 'Supprimer', icon: Trash2, danger: true,
+                        onSelect: async () => {
+                          if (await confirm(`« ${e.label} » ne sera plus pris en compte dans la prévision.`, { title: 'Supprimer cet événement ?', confirmLabel: 'Supprimer', danger: true })) remove.mutate(e.id);
+                        },
+                      }]} />
                     </td>
                   )}
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
     </>
   );
@@ -341,7 +353,7 @@ function LinksTab() {
   const qc = useQueryClient();
   const [onlySold, setOnlySold] = useState(true);
   const [choice, setChoice] = useState<Record<string, string>>({});
-  const { data = [], isLoading } = useQuery({ queryKey: ['forecast-unmapped'], queryFn: forecastApi.unmapped });
+  const { data = [], isLoading, isError, refetch } = useQuery({ queryKey: ['forecast-unmapped'], queryFn: forecastApi.unmapped });
   const { data: productsRes } = useQuery({
     queryKey: ['products-all-for-link'],
     queryFn: () => productsApi.list({ limit: '1000', page: '1' }),
@@ -357,38 +369,37 @@ function LinksTab() {
 
   return (
     <>
-      <StatusBanner tone="info" icon={Info} title="Pourquoi relier ?">
+      <Alert tone="info">
         Les ventes importées depuis Loyverse sont identifiées par leur nom ou leur SKU. Tant qu'un article n'est pas relié à un produit du catalogue,
         ses ventes n'alimentent ni la prévision ni la fiche de besoin. Les articles les plus vendus sont en tête.
-      </StatusBanner>
-      <div className="prj-toolbar">
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+      </Alert>
+      <Toolbar>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
           <input type="checkbox" checked={onlySold} onChange={e => setOnlySold(e.target.checked)} /> Seulement les articles vendus ces 60 derniers jours
         </label>
-        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{rows.length} article(s)</span>
-      </div>
+      </Toolbar>
       <datalist id="forecast-products">{products.map(p => <option key={p.id} value={p.name} />)}</datalist>
-      {isLoading ? <Loading /> : rows.length === 0 ? (
-        <StatusBanner tone="success" icon={CheckCircle2} title="Tous les articles vendus sont reliés" />
+      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : rows.length === 0 ? (
+        <EmptyState icon={CheckCircle2} title="Tous les articles vendus sont reliés" text="Leurs ventes alimentent la prévision et la fiche de besoin." />
       ) : (
-        <div className="prj-panel prj-scroll">
-          <table className="odoo-table" style={{ margin: 0 }}>
-            <thead><tr><th>Article Loyverse</th><th>Catégorie Loyverse</th><th style={{ textAlign: 'right' }}>Vendu (60 j)</th><th>Produit du catalogue</th><th /></tr></thead>
+        <DataPanel label="Articles à relier" footer={<TableFooter note={`${rows.length} article(s)`} />}>
+          <table className="odoo-table">
+            <thead><tr><th>Article Loyverse</th><th>Catégorie Loyverse</th><th className="ds-num">Vendu (60 j)</th><th>Produit du catalogue</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
               {rows.map(u => {
                 const typed = choice[u.product_key] ?? '';
                 const productId = byName.get(typed.toLowerCase());
                 return (
                   <tr key={u.product_key}>
-                    <td style={{ fontWeight: 600 }}>{u.product_name}{u.sku && <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}> · {u.sku}</span>}</td>
+                    <td className="ds-strong">{u.product_name}{u.sku && <span style={{ color: 'var(--ds-muted)', fontWeight: 400 }}> · {u.sku}</span>}</td>
                     <td>{u.category ?? '—'}</td>
-                    <td style={{ textAlign: 'right' }}>{u.sold_60d.toLocaleString('fr-FR')}</td>
+                    <td className="ds-num">{u.sold_60d.toLocaleString('fr-FR')}</td>
                     <td>
-                      <input list="forecast-products" value={typed} placeholder="Choisir un produit…" aria-label={`Produit pour ${u.product_name}`}
-                        onChange={e => setChoice({ ...choice, [u.product_key]: e.target.value })} className="odoo-search-input" style={{ width: 260 }} />
+                      <input list="forecast-products" value={typed} placeholder="Choisir un produit" aria-label={`Produit pour ${u.product_name}`}
+                        onChange={e => setChoice({ ...choice, [u.product_key]: e.target.value })} className="ds-input sm" style={{ width: 260 }} />
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button type="button" className="odoo-btn-primary" disabled={!productId || link.isPending}
+                    <td className="ds-actions">
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={!productId || link.isPending}
                         onClick={() => productId && link.mutate({ key: u.product_key, productId })}>Relier</button>
                     </td>
                   </tr>
@@ -396,7 +407,7 @@ function LinksTab() {
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
     </>
   );
@@ -408,66 +419,49 @@ function AccuracyTab() {
   const today = iso(new Date());
   const [from, setFrom] = useState(addDays(today, -28));
   const [to, setTo] = useState(addDays(today, -1));
-  const { data, isLoading } = useQuery({ queryKey: ['forecast-accuracy', from, to], queryFn: () => forecastApi.accuracy(from, to) });
-  const tone = (m: number | null) => (m == null ? 'odoo-tag-grey' : m <= 25 ? 'odoo-tag-green' : m <= 40 ? 'odoo-tag-yellow' : 'odoo-tag-red');
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['forecast-accuracy', from, to], queryFn: () => forecastApi.accuracy(from, to) });
+  const tone = (m: number | null): StatusTone => (m == null ? 'draft' : m <= 25 ? 'done' : m <= 40 ? 'todo' : 'blocked');
 
   return (
     <>
-      <div className="prj-toolbar">
-        <span style={{ fontSize: '0.8125rem' }}>Du</span>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="input" style={{ width: 160 }} aria-label="Du" />
-        <span style={{ fontSize: '0.8125rem' }}>au</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="input" style={{ width: 160 }} aria-label="Au" />
-      </div>
-      {isLoading ? <Loading /> : !data || data.days === 0 ? (
-        <StatusBanner tone="info" icon={Info} title="Pas encore de mesure">
-          La précision se mesure sur les prévisions réellement utilisées (création d'un plan de production, fiche de besoin), comparées au vendu une fois la journée passée.
-        </StatusBanner>
+      <Toolbar>
+        <span style={{ fontSize: 14 }}>Du</span>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="ds-input" style={{ width: 170 }} aria-label="Du" />
+        <span style={{ fontSize: 14 }}>au</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="ds-input" style={{ width: 170 }} aria-label="Au" />
+      </Toolbar>
+      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : !data || data.days === 0 ? (
+        <EmptyState icon={Target} title="Pas encore de mesure"
+          text="La précision se mesure sur les prévisions réellement utilisées (création d'un plan de production, fiche de besoin), comparées au vendu une fois la journée passée." />
       ) : (
         <>
-          <div className="prj-kpis">
-            <ListKpi label="Erreur moyenne (MAPE)" value={data.mape == null ? '—' : `${data.mape} %`} sub="écart moyen entre prévu et vendu" />
-            <ListKpi label="Lignes mesurées" value={String(data.days)} sub="produit × jour" />
-          </div>
-          {[['Par catégorie', data.byCategory], ['Par produit', data.byProduct.slice(0, 50)]].map(([title, list]) => (
-            <div key={title as string} className="prj-panel prj-scroll">
-              <table className="odoo-table" style={{ margin: 0 }}>
-                <thead><tr><th>{title as string}</th><th style={{ textAlign: 'right' }}>Jours</th><th style={{ textAlign: 'right' }}>Prévu</th><th style={{ textAlign: 'right' }}>Vendu</th><th style={{ textAlign: 'right' }}>Erreur</th></tr></thead>
-                <tbody>
-                  {(list as typeof data.byCategory).map(g => (
-                    <tr key={g.key}>
-                      <td>{g.key}</td>
-                      <td style={{ textAlign: 'right' }}>{g.days}</td>
-                      <td style={{ textAlign: 'right' }}>{g.forecast.toLocaleString('fr-FR')}</td>
-                      <td style={{ textAlign: 'right' }}>{g.actual.toLocaleString('fr-FR')}</td>
-                      <td style={{ textAlign: 'right' }}><span className={`odoo-tag ${tone(g.mape)}`}>{g.mape == null ? '—' : `${g.mape} %`}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <KpiGrid>
+            <KpiCard label="Erreur moyenne (MAPE)" value={data.mape == null ? '—' : `${data.mape} %`} sub="Écart moyen entre prévu et vendu" />
+            <KpiCard label="Lignes mesurées" value={String(data.days)} sub="Produit × jour" />
+          </KpiGrid>
+          {([['Par catégorie', data.byCategory], ['Par produit', data.byProduct.slice(0, 50)]] as const).map(([title, list]) => (
+            <section key={title} style={{ display: 'grid', gap: 12 }}>
+              <SectionHeader title={title} />
+              <DataPanel label={title} footer={<TableFooter note={`${list.length} ligne(s)`} />}>
+                <table className="odoo-table">
+                  <thead><tr><th>{title === 'Par catégorie' ? 'Catégorie' : 'Produit'}</th><th className="ds-num">Jours</th><th className="ds-num">Prévu</th><th className="ds-num">Vendu</th><th>Erreur</th></tr></thead>
+                  <tbody>
+                    {list.map(g => (
+                      <tr key={g.key}>
+                        <td className="ds-strong">{g.key}</td>
+                        <td className="ds-num">{g.days}</td>
+                        <td className="ds-num">{g.forecast.toLocaleString('fr-FR')}</td>
+                        <td className="ds-num">{g.actual.toLocaleString('fr-FR')}</td>
+                        <td><StatusTag tone={tone(g.mape)} label={g.mape == null ? 'Non mesurée' : `${g.mape} %`} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </DataPanel>
+            </section>
           ))}
         </>
       )}
     </>
-  );
-}
-
-/* ═══════════════════════ UTILITAIRES ═══════════════════════ */
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-      {label}
-      {children}
-    </label>
-  );
-}
-
-function Loading() {
-  return (
-    <section className="prj-panel sal-empty">
-      <Loader2 size={22} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-    </section>
   );
 }

@@ -17,6 +17,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Secteur et modules (mig 468 + 507).
@@ -311,7 +312,7 @@ export default function SectorTab() {
   };
 
   if (loadingSector || loadingAct || !act || !view) {
-    return <div className="odoo-setting-help">Chargement…</div>;
+    return <LoadingState bare />;
   }
 
   const featuresOf = (m: AppModule) => act.catalog.filter(f => f.module_key === m);
@@ -773,10 +774,10 @@ export default function SectorTab() {
             background: 'var(--odoo-bg)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', fontSize: '0.8125rem', display: 'grid', gap: 4 }}>
           <div className="odoo-setting-label">Impact de vos changements</div>
           {(impact.modulesOn.length > 0 || impact.featuresOn.length > 0) && (
-            <div><strong style={{ color: 'var(--prj-green)' }}>Apparaît :</strong> {[...impact.modulesOn.map(moduleLabel), ...impact.featuresOn.map(featureLabel)].join(', ')}</div>
+            <div><strong style={{ color: 'var(--ds-success)' }}>Apparaît :</strong> {[...impact.modulesOn.map(moduleLabel), ...impact.featuresOn.map(featureLabel)].join(', ')}</div>
           )}
           {(impact.modulesOff.length > 0 || impact.featuresOff.length > 0) && (
-            <div><strong style={{ color: 'var(--prj-red)' }}>Disparaît :</strong> {[...impact.modulesOff.map(moduleLabel), ...impact.featuresOff.map(featureLabel)].join(', ')}</div>
+            <div><strong style={{ color: 'var(--ds-danger)' }}>Disparaît :</strong> {[...impact.modulesOff.map(moduleLabel), ...impact.featuresOff.map(featureLabel)].join(', ')}</div>
           )}
           {impact.roles.length > 0 && (
             <div><strong>Rôles touchés :</strong> {impact.roles.map(r => {

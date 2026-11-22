@@ -12,9 +12,10 @@ import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { ListEmpty } from '../sales/ListTemplate';
+import '../sales/ListTemplate';
 import { bonStatusTag } from '../production/status';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { Alert, DataPanel, EmptyState, ErrorState, LoadingState, TableFooter } from '../../components/ds';
 
 type TransferModalPayload = {
   ligneId: string;
@@ -143,21 +144,19 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
   };
 
   if (isLoading) {
-    return <ListEmpty icon={Loader2} title="Chargement des contenants à ouvrir…" />;
+    return <LoadingState label="Chargement des contenants à ouvrir…" />;
   }
   if (isError) {
     const errMsg = (error as any)?.response?.data?.error || (error as any)?.message || 'Erreur inconnue';
     const status = (error as any)?.response?.status;
     return (
-      <StatusBanner tone="danger" icon={AlertTriangle} title="Impossible de charger les contenants à ouvrir">
-        {status ? `[${status}] ` : ''}{errMsg}
-        {status === 403 && ' (accès réservé aux rôles magasinier, admin et gérant)'}
-      </StatusBanner>
+      <ErrorState title="Les contenants à ouvrir n'ont pas pu être chargés"
+        text={<>{status ? `[${status}] ` : ''}{errMsg}{status === 403 && ' (accès réservé aux rôles magasinier, admin et gérant)'}</>} />
     );
   }
   if (rows.length === 0) {
     return (
-      <ListEmpty icon={PackageOpen} title="Aucun contenant à ouvrir pour les bons de sortie en cours." />
+      <EmptyState icon={PackageOpen} title="Aucun contenant à ouvrir" text="Les bons de sortie en cours n'attendent aucun contenant de la réserve." />
     );
   }
 
@@ -187,8 +186,8 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
           title={`${rows.length} contenant${rows.length > 1 ? 's' : ''} à ouvrir pour les bons de sortie en cours`}
           actions={
             <button type="button" onClick={transferAll} disabled={transferringAll || isTransferring} className="odoo-btn-primary">
-              {transferringAll ? <Loader2 size={13} className="animate-spin" /> : <PackageOpen size={13} />}
-              {transferringAll ? 'Ouverture...' : `Tout ouvrir (${rows.length})`}
+              {transferringAll ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <PackageOpen size={13} aria-hidden="true" />}
+              {transferringAll ? 'Ouverture…' : `Tout ouvrir (${rows.length})`}
             </button>
           }>
           Depuis le bon, l'ouverture se fait en pesant la ligne. Cette liste sert à préparer les contenants à l'avance ou à commander un manquant.
@@ -196,26 +195,27 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
       )}
 
       {Array.from(groups.entries()).map(([bonId, g]) => (
-        <div key={bonId} className="odoo-section">
-          <div className="odoo-section-header">
-            <Package size={12} />
-            <span style={{ fontFamily: 'ui-monospace, monospace' }}>{g.bon_numero}</span>
+        <DataPanel key={bonId} label={`Bon ${g.bon_numero}`}
+          footer={<TableFooter note={`${g.lines.length} contenant${g.lines.length > 1 ? 's' : ''} à ouvrir`} />}
+          bulk={<div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 20px', borderBottom: '1px solid var(--ds-hair)', fontSize: 14 }}>
+            <Package size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
+            <span className="ds-ref">{g.bon_numero}</span>
             <span style={{ color: 'var(--theme-text-muted)' }}>·</span>
             <span>Plan du {g.plan_date ? format(new Date(g.plan_date), 'dd MMM yyyy', { locale: fr }) : '—'}</span>
             {g.plan_type && <span className="odoo-tag odoo-tag-grey">{g.plan_type}</span>}
             <StatusTag tone={bonStatusTag(g.bon_status).tone} icon={bonStatusTag(g.bon_status).icon}
               label={BON_SORTIE_STATUS_LABELS[g.bon_status as keyof typeof BON_SORTIE_STATUS_LABELS] || g.bon_status} />
             <div style={{ flex: 1 }} />
-            <Link to={`/stock?tab=bons&bon=${bonId}`} className="odoo-btn-secondary" style={{ textDecoration: 'none' }}>Ouvrir le bon</Link>
-          </div>
+            <Link to={`/stock?tab=bons&bon=${bonId}`} className="odoo-btn-secondary ds-btn-sm" style={{ textDecoration: 'none' }}>Ouvrir le bon</Link>
+          </div>}>
           <table className="odoo-table">
             <thead>
               <tr>
                 <th>Ingrédient</th>
-                <th style={{ textAlign: 'right' }}>À ouvrir</th>
+                <th className="ds-num">À ouvrir</th>
                 <th>Lot suggéré</th>
-                <th style={{ textAlign: 'right' }}>Dispo en réserve</th>
-                <th style={{ width: 260 }}></th>
+                <th className="ds-num">Dispo en réserve</th>
+                <th className="ds-actions" style={{ width: 260 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -240,17 +240,17 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
                 const otherLot = suggestedLotQty + 1e-9 < qty && economatAvailable + 1e-9 >= qty;
                 return (
                   <tr key={ligneId} className={insufficient ? 'row-danger' : ''}>
-                    <td style={{ fontWeight: 500 }}>{l.ingredient_name as string}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{qty.toFixed(2)} {unit}</td>
+                    <td className="ds-strong">{l.ingredient_name as string}</td>
+                    <td className="ds-num ds-strong">{qty.toFixed(2)} {unit}</td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>
-                      {l.suggested_lot_number ? <span style={{ fontFamily: 'ui-monospace, monospace' }}>{l.suggested_lot_number as string}</span> : '—'}
+                      {l.suggested_lot_number ? <span className="ds-ref">{l.suggested_lot_number as string}</span> : '—'}
                       {otherLot && <span style={{ fontSize: '0.6875rem' }}> (lot suggéré {suggestedLotQty.toFixed(2)}, un autre lot sera pris)</span>}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: insufficient ? 'var(--prj-red)' : undefined, fontWeight: insufficient ? 600 : 400 }}>
+                    <td className="ds-num" style={{ color: insufficient ? 'var(--ds-danger)' : undefined, fontWeight: insufficient ? 600 : 400 }}>
                       {economatAvailable.toFixed(2)} {unit}
                       {insufficient && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="insuffisant" /></span>}
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className="ds-actions">
                       {/* Scelle insuffisant : le transfert est impossible (regle serveur),
                           on propose de commander le seul delta manquant. */}
                       {insufficient && (alreadyOrdered ? (
@@ -287,7 +287,7 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       ))}
 
       {modalPayload && (
@@ -386,10 +386,8 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
       <div className="odoo-scope" style={{ width: '100%', maxWidth: 448, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }} role="dialog" aria-label="Transfert Économat vers Pesage">
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
-            <PackageOpen size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Transfert Économat → Pesage</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">{payload.ingredientName}</span>
+            <PackageOpen size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+            <span className="odoo-breadcrumb-current">Ouvrir un contenant · {payload.ingredientName}</span>
           </div>
           <div style={{ flex: 1 }} />
           <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
@@ -399,7 +397,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
           <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--odoo-text-muted)' }}>Bon de sortie</span>
-              <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{payload.bonNumero}</span>
+              <span className="ds-ref">{payload.bonNumero}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--odoo-text-muted)' }}>Besoin du bon</span>
@@ -410,13 +408,11 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
           {/* Delta v1 point 4 : selecteur de lot FEFO. Le lot suggere est presente en premier
               (marque par is_suggested). Le magasinier peut le confirmer ou en choisir un autre. */}
           <div>
-            <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
-              Lot a transferer {lotsLoading && <Loader2 size={11} className="inline animate-spin ml-1" />}
+            <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
+              Lot à transférer {lotsLoading && <Loader2 size={11} className="inline animate-spin ml-1" />}
             </label>
             {economatLots.length === 0 && !lotsLoading && (
-              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                Aucun lot Economat actif pour cet ingredient.
-              </div>
+              <Alert tone="danger">Aucun lot en réserve pour cet ingrédient.</Alert>
             )}
             {economatLots.length > 0 && (
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
@@ -443,7 +439,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
                             {(lot.lot_number as string) || (lot.supplier_lot_number as string) || lotId.slice(0, 8)}
                           </span>
                           {lot.is_suggested && (
-                            <span className="text-[10px] uppercase tracking-wide bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
                               Suggéré FEFO
                             </span>
                           )}
@@ -458,7 +454,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
                           <span className="text-gray-400">·</span>
                           <span>{fmtQty(lotEconomat)} {payload.unit} dispo</span>
                           {lotInsufficient && (
-                            <span className="text-red-600 font-semibold">insuffisant</span>
+                            <span style={{ color: 'var(--ds-danger)', fontWeight: 600 }}>insuffisant</span>
                           )}
                         </div>
                       </div>
@@ -473,13 +469,11 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
               </div>
             )}
             {isOverride && (
-              <p className="text-[11px] text-amber-700 mt-1.5 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                ⚠ Lot different du suggere FEFO : la raison sera tracee dans l'audit.
-              </p>
+              <div style={{ marginTop: 6 }}><Alert tone="warning" icon={AlertTriangle}>Lot différent du lot suggéré (FEFO) : la raison sera tracée dans l'audit.</Alert></div>
             )}
             {effectiveDlc && (
               <p className="text-[11px] text-gray-500 mt-1.5">
-                DLC du lot selectionne : <strong>{format(new Date(effectiveDlc), 'dd/MM/yyyy')}</strong> · Dispo : <strong>{fmtQty(effectiveAvailable)} {payload.unit}</strong>
+                DLC du lot sélectionné : <strong>{format(new Date(effectiveDlc), 'dd/MM/yyyy')}</strong> · Dispo : <strong>{fmtQty(effectiveAvailable)} {payload.unit}</strong>
               </p>
             )}
             {/* Garde-fou : eviter "unused var" warnings sur effectiveLotNumber (utilisable pour debug). */}
@@ -491,7 +485,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
               (transfert par contenant entier). Sinon, saisie libre en kg ci-dessous. */}
           <div className="grid grid-cols-[1fr_auto] gap-3">
             <div>
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
                 Type de contenant
               </label>
               <select
@@ -508,8 +502,8 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
               </select>
             </div>
             <div className="w-28">
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
-                {containerSize ? 'Nb contenants' : 'Nombre'}
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
+                {containerSize ? 'Nombre de contenants' : 'Nombre'}
               </label>
               <input
                 type="number" min={1} step={1}
@@ -539,7 +533,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
           ) : (
             /* Mode libre : pas de contenant defini sur l'ingredient, saisie directe en kg. */
             <div>
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
                 Quantité à transférer
               </label>
               <div className="flex items-center gap-2">
@@ -558,14 +552,14 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
             </div>
           )}
           {qty < payload.requiredQty && (
-            <p className="text-xs text-red-600 -mt-2">Inférieur au besoin BSI ({fmtQty(payload.requiredQty)} {payload.unit}).</p>
+            <p className="ds-field-hint" role="alert" style={{ color: 'var(--ds-danger)', fontWeight: 600, marginTop: -8 }}>Inférieur au besoin BSI ({fmtQty(payload.requiredQty)} {payload.unit}).</p>
           )}
           {qty > effectiveAvailable && (
-            <p className="text-xs text-red-600 -mt-2">Dépasse la quantité dispo sur ce lot ({fmtQty(effectiveAvailable)} {payload.unit}).</p>
+            <p className="ds-field-hint" role="alert" style={{ color: 'var(--ds-danger)', fontWeight: 600, marginTop: -8 }}>Dépasse la quantité dispo sur ce lot ({fmtQty(effectiveAvailable)} {payload.unit}).</p>
           )}
 
           <div>
-            <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5 block">
+            <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
               Note (optionnelle)
             </label>
             <input
@@ -575,17 +569,17 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
             />
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button onClick={onClose}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
+            <button type="button" onClick={onClose}
               disabled={isLoading}
-              className="flex-1 py-2.5 px-4 rounded-xl text-gray-700 font-medium bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-60">
+              className="odoo-btn-secondary" style={{ minHeight: 44 }}>
               Annuler
             </button>
-            <button onClick={() => onConfirm(qty, note.trim() || undefined, isOverride ? (effectiveLotId || undefined) : undefined, containerTypeId || undefined, effectiveCount)}
-              disabled={!isValid || isLoading}
-              className="flex-1 py-2.5 px-4 rounded-xl text-white font-medium bg-amber-600 hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2">
-              {isLoading ? <Loader2 size={14} className="animate-spin" /> : <PackageOpen size={14} />}
-              {isLoading ? 'Transfert...' : 'Confirmer le transfert'}
+            <button type="button" onClick={() => onConfirm(qty, note.trim() || undefined, isOverride ? (effectiveLotId || undefined) : undefined, containerTypeId || undefined, effectiveCount)}
+              disabled={!isValid || isLoading} aria-busy={isLoading || undefined}
+              className="odoo-btn-primary" style={{ minHeight: 44 }}>
+              {isLoading ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <PackageOpen size={14} aria-hidden="true" />}
+              {isLoading ? 'Ouverture…' : 'Ouvrir le contenant'}
             </button>
           </div>
         </div>

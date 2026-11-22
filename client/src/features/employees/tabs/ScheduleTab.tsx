@@ -5,7 +5,7 @@ import { schedulesApi, shiftsApi } from '../../../api/employees.api';
 import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, subWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  UserCog, Users, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Copy, Eraser, Save, Sparkles, Printer,
+  Users, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Copy, Eraser, Save, Sparkles, Printer,
 } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
 import { ROLE_LABELS, SHIFT_SHORT_LABELS, SHIFT_HOURS } from '@ofauria/shared';
@@ -13,7 +13,8 @@ import type { ShiftCode } from '@ofauria/shared';
 import { LEAVE_TYPE_LABELS, shiftStyle } from '../shared';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
-import { EmptyState } from '../ui';
+import { EmptyState, HrHeaderActions } from '../ui';
+import { Toolbar, DataPanel, TableFooter } from '../../../components/ds';
 
 /* ═══════════════════════ SCHEDULE TAB (planning hebdomadaire) ═══════════════════════ */
 type LeaveInfoUI = { type: string; status: 'approved' | 'pending'; startDate: string; endDate: string };
@@ -394,51 +395,18 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
 
   return (
     <>
-      <div className="prj-toolbar" style={{ justifyContent: 'space-between' }}>
-        <div className="hr-tools">
-          <button onClick={() => setWeekOffset(w => w - 1)} className="odoo-pager-btn" aria-label="Semaine précédente"><ChevronLeft size={14} /></button>
-          <span style={{ fontSize: '0.9375rem', fontWeight: 600 }}>
-            {format(weekStart, 'dd MMM', { locale: fr })} — {format(weekEnd, 'dd MMM yyyy', { locale: fr })}
-          </span>
-          <button onClick={() => setWeekOffset(w => w + 1)} className="odoo-pager-btn" aria-label="Semaine suivante"><ChevronRight size={14} /></button>
-          {weekOffset !== 0 && (
-            <button type="button" className="sal-link" onClick={() => setWeekOffset(0)}>
-              Cette semaine
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <SearchSelect
-            options={allRoles.map(r => ({ id: r, label: ROLE_LABELS[r as keyof typeof ROLE_LABELS] ?? r }))}
-            value={roleFilter === 'all' ? '' : roleFilter}
-            onChange={id => setRoleFilter(id || 'all')}
-            placeholder="Toutes catégories"
-            width={200}
-          />
-          <button onClick={applyDefaults} className="odoo-btn-secondary" title="Pré-remplit les cellules vides avec le shift par défaut de chaque employé"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Sparkles size={13} /> Appliquer défaut
-          </button>
-          <button onClick={duplicatePreviousWeek} className="odoo-btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Copy size={13} /> Dupliquer S-1
-          </button>
-          <button onClick={clearWeek} className="odoo-btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Eraser size={13} /> Vider
-          </button>
-          <button onClick={printSchedule} className="odoo-btn-secondary"
-            title="Ouvre une fenêtre A4 paysage prête à imprimer"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Printer size={13} /> Imprimer
-          </button>
-          <button onClick={() => saveMutation.mutate()} disabled={!hasChanges || saveMutation.isPending} className="odoo-btn-primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Save size={13} /> {saveMutation.isPending ? 'Sauvegarde...' : 'Sauvegarder'}
-          </button>
-        </div>
-      </div>
+      {/* En-tête de page : édition en secondaire, puis l'action principale. */}
+      <HrHeaderActions>
+        <button type="button" onClick={printSchedule} className="odoo-btn-secondary"
+          title="Ouvre une fenêtre A4 paysage prête à imprimer"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Printer size={13} aria-hidden="true" /> Imprimer
+        </button>
+        <button type="button" onClick={() => saveMutation.mutate()} disabled={!hasChanges || saveMutation.isPending} className="odoo-btn-primary"
+          aria-busy={saveMutation.isPending || undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Save size={13} aria-hidden="true" /> {saveMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+      </HrHeaderActions>
 
       {/* Bannière récap des congés sur la semaine */}
       {weekLeaveSummary.length > 0 && (
@@ -452,26 +420,63 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                 title={`${l.name} • ${l.days.join(', ')} • ${LEAVE_TYPE_LABELS[l.type] ?? l.type}${l.status === 'pending' ? ' (en attente)' : ''}`}
               >
                 <span style={{ fontWeight: 600 }}>{l.name}</span>
-                <span style={{ opacity: 0.75 }}>
+                <span>
                   {l.days.length === 1 ? `1 jour` : `${l.days.length} jours`}
                 </span>
-                {l.status === 'pending' && <AlertTriangle size={11} />}
+                {l.status === 'pending' && <><AlertTriangle size={11} aria-hidden="true" /> en attente</>}
               </span>
             ))}
           </div>
         </StatusBanner>
       )}
 
-      <section className="prj-panel hr-plain">
-      <div className="prj-scroll">
+      {/* Barre d'outils : semaine, catégorie, puis outils de remplissage. */}
+      <Toolbar>
+        <div className="hr-tools">
+          <button type="button" onClick={() => setWeekOffset(w => w - 1)} className="ds-icon-btn" aria-label="Semaine précédente"><ChevronLeft size={16} /></button>
+          <span className="ds-strong">
+            {format(weekStart, 'd MMM', { locale: fr })} — {format(weekEnd, 'd MMM yyyy', { locale: fr })}
+          </span>
+          <button type="button" onClick={() => setWeekOffset(w => w + 1)} className="ds-icon-btn" aria-label="Semaine suivante"><ChevronRight size={16} /></button>
+          {weekOffset !== 0 && (
+            <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => setWeekOffset(0)}>
+              Cette semaine
+            </button>
+          )}
+        </div>
+        <SearchSelect
+          options={allRoles.map(r => ({ id: r, label: ROLE_LABELS[r as keyof typeof ROLE_LABELS] ?? r }))}
+          value={roleFilter === 'all' ? '' : roleFilter}
+          onChange={id => setRoleFilter(id || 'all')}
+          placeholder="Toutes catégories"
+          width={200}
+        />
+        <span className="hr-spacer" />
+        <button type="button" onClick={applyDefaults} className="odoo-btn-secondary ds-btn-sm" title="Pré-remplit les cellules vides avec le shift par défaut de chaque employé">
+          <Sparkles size={13} aria-hidden="true" /> Appliquer les shifts par défaut
+        </button>
+        <button type="button" onClick={duplicatePreviousWeek} className="odoo-btn-secondary ds-btn-sm">
+          <Copy size={13} aria-hidden="true" /> Dupliquer la semaine précédente
+        </button>
+        <button type="button" onClick={clearWeek} className="odoo-btn-secondary ds-btn-sm">
+          <Eraser size={13} aria-hidden="true" /> Vider
+        </button>
+      </Toolbar>
+
+      <DataPanel label="Planning de la semaine" footer={<TableFooter note={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <span><span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--ds-warning-bg)', border: '1px solid var(--ds-warning)', marginRight: 4, verticalAlign: 'middle' }} /> cellule modifiée (non enregistrée)</span>
+        <span><CalendarOff size={12} aria-hidden="true" style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> congé approuvé — affectation impossible</span>
+        <span><span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, border: '1px dashed var(--ds-warning)', marginRight: 4, verticalAlign: 'middle' }} /> congé en attente — modification possible avec confirmation</span>
+        <span>Enregistrer pré-remplit aussi le pointage attendu.</span>
+      </span>} />}>
         <table className="odoo-table">
           <thead>
             <tr>
-              <th style={{ minWidth: 200, position: 'sticky', left: 0, background: 'var(--kl-card, var(--theme-bg-card))', zIndex: 5 }}>Employé</th>
+              <th style={{ minWidth: 200, position: 'sticky', left: 0, background: 'var(--ds-card)', zIndex: 5 }}>Employé</th>
               {days.map(d => (
                 <th key={d.toISOString()} style={{ textAlign: 'center', minWidth: 130 }}>
                   <div>{format(d, 'EEE', { locale: fr })}</div>
-                  <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-light)', fontWeight: 400 }}>{format(d, 'dd/MM')}</div>
+                  <div style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>{format(d, 'dd/MM')}</div>
                 </th>
               ))}
             </tr>
@@ -484,43 +489,24 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
               const collapsed = !!collapsedGroups[group.role];
               return (
               <Fragment key={group.role}>
-                <tr
-                  onClick={() => toggleGroup(group.role)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <td
-                    colSpan={8}
-                    style={{
-                      position: 'sticky',
-                      left: 0,
-                      background: 'color-mix(in srgb, var(--kl-bg, var(--theme-bg-page)) 70%, var(--kl-card, var(--theme-bg-card)))',
-                      fontWeight: 600,
-                      fontSize: '0.8125rem',
-                      color: 'var(--kl-ink, var(--odoo-text))',
-                      padding: '0.5rem 0.75rem',
-                    }}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-                      <UserCog size={13} style={{ color: 'var(--theme-accent)' }} />
+                <tr className="ds-group" onClick={() => toggleGroup(group.role)} style={{ cursor: 'pointer' }}>
+                  <td colSpan={8} style={{ position: 'sticky', left: 0 }}>
+                    <button type="button" aria-expanded={!collapsed} onClick={ev => { ev.stopPropagation(); toggleGroup(group.role); }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer' }}>
+                      {collapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
                       {group.label}
-                      <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>
-                        ({group.rows.length})
-                      </span>
-                    </span>
+                      <small>{group.rows.length} employé{group.rows.length > 1 ? 's' : ''}</small>
+                    </button>
                   </td>
                 </tr>
                 {!collapsed && group.rows.map(row => (
               <tr key={row.employeeId}>
-                <td style={{ position: 'sticky', left: 0, background: 'var(--kl-card, var(--theme-bg-card))', zIndex: 4 }}>
-                  <div style={{ fontWeight: 500 }}>
-                    <Users size={11} style={{ color: 'var(--theme-accent)', display: 'inline', marginRight: 4 }} />
-                    {row.firstName} {row.lastName}
-                  </div>
-                  <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+                <td style={{ position: 'sticky', left: 0, background: 'var(--ds-card)', zIndex: 4 }}>
+                  <div className="ds-strong">{row.firstName} {row.lastName}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
                     {ROLE_LABELS[row.role as keyof typeof ROLE_LABELS] ?? row.role}
                     {row.defaultShiftCode && (
-                      <span style={{ marginLeft: 4, color: 'var(--odoo-text-light)' }}>• défaut: {SHIFT_SHORT_LABELS[row.defaultShiftCode]}</span>
+                      <span style={{ marginLeft: 4 }}>· par défaut : {SHIFT_SHORT_LABELS[row.defaultShiftCode]}</span>
                     )}
                   </div>
                 </td>
@@ -539,10 +525,10 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                           title={leaveTooltip(leaveInfo)}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                            <CalendarOff size={11} />
+                            <CalendarOff size={11} aria-hidden="true" />
                             <span>Congé</span>
                           </div>
-                          <div style={{ fontSize: '0.5625rem', fontWeight: 400, opacity: 0.8, marginTop: 2, textTransform: 'capitalize' }}>
+                          <div style={{ fontSize: 11, fontWeight: 400, marginTop: 2 }}>
                             {LEAVE_TYPE_LABELS[leaveInfo.type] ?? leaveInfo.type}
                           </div>
                         </div>
@@ -553,8 +539,8 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                   // assumer que le conge sera refuse). On confirme avant d'affecter.
                   if (leaveInfo?.status === 'pending') {
                     return (
-                      <td key={dateStr} style={{ padding: 4, textAlign: 'center', background: dirty ? '#fff8e8' : undefined }}>
-                        <select
+                      <td key={dateStr} style={{ padding: 4, textAlign: 'center', background: dirty ? 'var(--ds-warning-bg)' : undefined }}>
+                        <select aria-label={`Shift de ${row.firstName} ${row.lastName} le ${format(d, 'dd/MM')}`}
                           value={current ?? REPOS}
                           onChange={async e => {
                             const v = e.target.value;
@@ -565,10 +551,10 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                             }
                             setCell(row.employeeId, dateStr, v === REPOS ? null : (v as ShiftCode));
                           }}
-                          className={`w-full text-xs rounded border px-2 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${current ? 'font-medium' : ''}`}
+                          className={`ds-input sm ${current ? 'font-medium' : ''}`}
                           style={{
-                            borderStyle: 'dashed', borderColor: '#ffb381',
-                            ...(current ? shiftStyle(current) : { background: 'var(--odoo-bg-hover)', color: 'var(--prj-orange)' }),
+                            borderStyle: 'dashed', borderColor: 'var(--ds-warning)',
+                            ...(current ? shiftStyle(current) : { background: 'var(--ds-card)', color: 'var(--ds-warning)' }),
                           }}
                           title={`⚠ ${leaveTooltip(leaveInfo)}`}
                         >
@@ -580,23 +566,23 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                           ))}
                         </select>
                         {current && (
-                          <span className="odoo-tag odoo-tag-orange" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 3, fontSize: '0.625rem' }}>
-                            <AlertTriangle size={9} /> {SHIFT_HOURS[current].start}-{SHIFT_HOURS[current].end}
+                          <span className="odoo-tag odoo-tag-orange" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 3 }}>
+                            <AlertTriangle size={10} aria-hidden="true" /> {SHIFT_HOURS[current].start}-{SHIFT_HOURS[current].end}
                           </span>
                         )}
                       </td>
                     );
                   }
                   return (
-                    <td key={dateStr} style={{ padding: 4, textAlign: 'center', background: dirty ? '#fff8e8' : undefined }}>
-                      <select
+                    <td key={dateStr} style={{ padding: 4, textAlign: 'center', background: dirty ? 'var(--ds-warning-bg)' : undefined }}>
+                      <select aria-label={`Shift de ${row.firstName} ${row.lastName} le ${format(d, 'dd/MM')}`}
                         value={current ?? REPOS}
                         onChange={e => {
                           const v = e.target.value;
                           setCell(row.employeeId, dateStr, v === REPOS ? null : (v as ShiftCode));
                         }}
-                        className={`w-full text-xs rounded border border-gray-200 px-2 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${current ? 'font-medium' : 'bg-white text-gray-400'}`}
-                        style={current ? { ...shiftStyle(current), borderColor: 'transparent' } : undefined}
+                        className={`ds-input sm ${current ? 'font-medium' : ''}`}
+                        style={current ? { ...shiftStyle(current), borderColor: 'transparent' } : { color: 'var(--ds-muted)' }}
                       >
                         <option value={REPOS}>Repos</option>
                         {(shifts as Record<string, any>[]).map(s => (
@@ -606,7 +592,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                         ))}
                       </select>
                       {current && (
-                        <div style={{ fontSize: '0.625rem', color: 'var(--odoo-text-muted)', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: 'var(--ds-muted)', marginTop: 2 }}>
                           {SHIFT_HOURS[current].start}-{SHIFT_HOURS[current].end}
                         </div>
                       )}
@@ -620,15 +606,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
             })}
           </tbody>
         </table>
-      </div>
-
-      <div className="hr-panel-foot" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#fff8e8', border: '1px solid #ffeeba', marginRight: 4, verticalAlign: 'middle' }} /> cellule modifiée (non sauvegardée)</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--theme-accent-light)', border: '1px solid var(--theme-accent)', marginRight: 4, verticalAlign: 'middle' }} /> congé approuvé — affectation impossible</span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--odoo-bg-hover)', border: '1px dashed #ffb381', marginRight: 4, verticalAlign: 'middle' }} /> congé en attente — modification possible avec confirmation</span>
-        <span style={{ color: 'var(--odoo-text-light)' }}>Sauvegarder pré-remplit aussi le pointage attendu.</span>
-      </div>
-      </section>
+      </DataPanel>
     </>
   );
 }

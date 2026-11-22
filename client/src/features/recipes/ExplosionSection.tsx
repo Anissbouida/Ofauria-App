@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Layers, Loader2 } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 
+import { EmptyState, LoadingState } from '../../components/ds';
 /**
  * Explosion à plat (mig 400) : déplie la nomenclature sur tous les niveaux
  * (sous-recettes incluses) et cumule chaque ingrédient élémentaire avec sa
@@ -21,7 +22,7 @@ export default function ExplosionSection({ recipeId }: { recipeId: string }) {
 
   return (
     <div className="odoo-section" style={{ marginTop: 16 }}>
-      <button
+      <button type="button" aria-expanded={open}
         onClick={() => setOpen(o => !o)}
         className="odoo-section-header"
         style={{ width: '100%', cursor: 'pointer', border: 'none', background: 'transparent', font: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
@@ -34,43 +35,39 @@ export default function ExplosionSection({ recipeId }: { recipeId: string }) {
       {open && (
         <div style={{ padding: '0.5rem 0' }}>
           {isLoading && (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-              <Loader2 size={14} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
-            </div>
+            <LoadingState bare />
           )}
           {!isLoading && data && data.lines.length === 0 && (
-            <div style={{ padding: 12, color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>
-              Aucun ingrédient (recette sans composition matière).
-            </div>
+            <EmptyState bare icon={Layers} title="Aucun ingrédient" text="Cette recette n'a pas encore de composition matière." />
           )}
           {!isLoading && data && data.lines.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
               <table className="odoo-table">
                 <thead><tr>
                   <th>Ingrédient</th>
-                  <th style={{ textAlign: 'right' }}>Quantité totale</th>
-                  <th style={{ textAlign: 'right' }}>Coût roulé</th>
-                  <th style={{ textAlign: 'right' }}>Part</th>
+                  <th className="ds-num">Quantité totale</th>
+                  <th className="ds-num">Coût roulé</th>
+                  <th className="ds-num">Part (%)</th>
                 </tr></thead>
                 <tbody>
                   {data.lines.map(l => (
                     <tr key={l.ingredient_id}>
-                      <td style={{ fontWeight: 500 }}>{l.ingredient_name}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      <td className="ds-strong">{l.ingredient_name}</td>
+                      <td className="ds-num">
                         {l.total_qty.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {l.unit}
                       </td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{dh(l.rolled_cost)}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
-                        {total > 0 ? `${(l.rolled_cost / total * 100).toFixed(1)}%` : '—'}
+                      <td className="ds-num">{dh(l.rolled_cost)}</td>
+                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>
+                        {total > 0 ? (l.rolled_cost / total * 100).toFixed(1) : '—'}
                       </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr style={{ fontWeight: 700 }}>
+                  <tr>
                     <td>Total matière (roulé)</td>
                     <td />
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{dh(total)}</td>
+                    <td className="ds-num">{dh(total)}</td>
                     <td />
                   </tr>
                 </tfoot>

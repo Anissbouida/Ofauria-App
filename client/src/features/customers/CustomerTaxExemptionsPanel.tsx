@@ -4,6 +4,7 @@ import { ShieldCheck, Plus, Trash2, Check, X } from 'lucide-react';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { customersApi, type CustomerTaxExemption } from '../../api/customers.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 // Attestations d'exonération de TVA de la fiche client (phase 5.7). Référentiel daté
 // (numéro, motif, validité). L'application à la TVA des factures reste différée aux
@@ -14,6 +15,7 @@ const emptyForm = (): Form => ({ certificateNumber: '', reason: '', validFrom: n
 
 export default function CustomerTaxExemptionsPanel({ customerId }: { customerId: string }) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const { data: rows = [] } = useQuery({ queryKey: ['customer-tax-exemptions', customerId], queryFn: () => customersApi.listExemptions(customerId) });
   const [form, setForm] = useState<Form | null>(null);
   const invalidate = () => qc.invalidateQueries({ queryKey: ['customer-tax-exemptions', customerId] });
@@ -41,7 +43,7 @@ export default function CustomerTaxExemptionsPanel({ customerId }: { customerId:
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--odoo-text-muted)' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)' }}>
           <ShieldCheck size={12} /> Exonérations de TVA
         </div>
         {!form && <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setForm(emptyForm())}><Plus size={12} /> Ajouter</button>}
@@ -62,7 +64,8 @@ export default function CustomerTaxExemptionsPanel({ customerId }: { customerId:
               {r.reason && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{r.reason}</div>}
               <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Du {r.valid_from}{r.valid_to ? ` au ${r.valid_to}` : ' (sans fin)'}</div>
             </div>
-            <button type="button" className="odoo-btn-secondary" title="Supprimer" onClick={() => del.mutate(r.id)}><Trash2 size={12} /></button>
+            <button type="button" className="ds-icon-btn" title="Supprimer" aria-label="Supprimer l'exonération" disabled={del.isPending} style={{ color: 'var(--ds-danger)' }}
+              onClick={async () => { if (await confirm('Supprimer cette exonération de TVA ?', { title: 'Supprimer l\'exonération', confirmLabel: 'Supprimer', danger: true })) del.mutate(r.id); }}><Trash2 size={14} /></button>
           </div>
         ))}
       </div>

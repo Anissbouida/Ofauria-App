@@ -1,4 +1,4 @@
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -24,6 +24,7 @@ import CustomerHistoryPanel from './CustomerHistoryPanel';
 import CustomerDataProtectionPanel from './CustomerDataProtectionPanel';
 import { ListKpi } from '../sales/ListTemplate';
 import { TYPE_META, displayName, isMoral, needsIce, PAYMENT_LABELS, type CustomerType } from './CustomersPage';
+import { LoadingState, ErrorState, EmptyState, TableFooter } from '../../components/ds';
 
 /**
  * Fiche client 360 (refonte Ventes, maquette planche 4) : tuiles (CA, encours contre
@@ -42,10 +43,10 @@ const BL_STATUS: Record<string, { label: string; tone: StatusTone; icon?: Lucide
 };
 const BUCKETS: Array<{ key: AgingBucket; label: string; color: string }> = [
   { key: 'current', label: 'Non échu', color: 'var(--odoo-purple)' },
-  { key: 'd30', label: 'Échu 1 à 30 j', color: '#D97706' },
-  { key: 'd60', label: 'Échu 31 à 60 j', color: '#C2410C' },
-  { key: 'd90', label: 'Échu 61 à 90 j', color: '#B42318' },
-  { key: 'over90', label: 'Plus de 90 j', color: '#7F1D1D' },
+  { key: 'd30', label: 'Échu 1 à 30 j', color: 'var(--ds-warning)' },
+  { key: 'd60', label: 'Échu 31 à 60 j', color: 'var(--ds-warning)' },
+  { key: 'd90', label: 'Échu 61 à 90 j', color: 'var(--ds-danger)' },
+  { key: 'over90', label: 'Plus de 90 j', color: 'var(--ds-danger)' },
 ];
 const n2 = (v: number) => (v || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const n0 = (v: number) => Math.round(v || 0).toLocaleString('fr-FR');
@@ -103,13 +104,13 @@ export default function CustomerRecordPage() {
     return out.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [quotes, stats, notes, statement, recCustomer]);
 
-  if (isLoading) return <div className="prj sal-page"><div className="prj-panel sal-empty"><Loader2 className="animate-spin" size={20} /><span>Chargement de la fiche…</span></div></div>;
+  if (isLoading) return <div className="prj sal-page"><LoadingState label="Chargement de la fiche…" /></div>;
   const c = stats?.customer as Row | undefined;
   if (error || !c) {
     return (
       <div className="prj sal-page">
-        <div className="prj-panel sal-empty"><Users size={28} style={{ opacity: 0.4 }} /><strong>Client introuvable</strong>
-          <button type="button" className="odoo-btn-secondary" onClick={() => navigate('/customers')}>Retour aux clients</button></div>
+        <ErrorState title="Client introuvable" text="La fiche a peut-être été archivée ou supprimée." />
+        <div><button type="button" className="odoo-btn-secondary" onClick={() => navigate('/customers')}>Retour aux clients</button></div>
       </div>
     );
   }
@@ -212,46 +213,45 @@ export default function CustomerRecordPage() {
               {shownDocs.length ? (<>
                 <div className="prj-scroll sal-panel">
                   <table className="odoo-table" style={{ margin: 0 }}>
-                    <thead><tr><th>Pièce</th><th>N°</th><th>Date</th><th>Statut</th><th style={{ textAlign: 'right' }}>Montant TTC</th><th style={{ textAlign: 'right' }}>Reste dû</th></tr></thead>
+                    <thead><tr><th>Pièce</th><th>N°</th><th>Date</th><th>Statut</th><th className="ds-num">Montant TTC ({currencySymbol()})</th><th className="ds-num">Reste dû ({currencySymbol()})</th></tr></thead>
                     <tbody>
                       {(showAll ? shownDocs : shownDocs.slice(0, PAGE)).map(d => (
                         <tr key={d.key} onClick={d.href ? () => navigate(d.href!) : undefined} style={{ cursor: d.href ? 'pointer' : 'default' }}>
                           <td><span className="odoo-tag odoo-tag-grey">{KIND_LABEL[d.kind]}</span></td>
-                          <td><span className="sal-num">{d.number}</span>{d.sub && <span className="sal-sub">{d.sub}</span>}</td>
+                          <td><span className="ds-ref">{d.number}</span>{d.sub && <span className="sal-sub">{d.sub}</span>}</td>
                           <td style={{ whiteSpace: 'nowrap' }}>{day(d.date)}</td>
                           <td><StatusTag tone={d.tone} icon={d.icon} label={d.status} /></td>
-                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{n2(d.amount)}</td>
-                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: d.owed ? 600 : 400, color: d.owed ? 'var(--prj-orange)' : 'var(--odoo-text-muted)' }}>{d.owed == null ? '—' : n2(d.owed)}</td>
+                          <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{n2(d.amount)}</td>
+                          <td className="ds-num" style={{ whiteSpace: 'nowrap', fontWeight: d.owed ? 600 : 400, color: d.owed ? 'var(--ds-warning)' : 'var(--ds-muted)' }}>{d.owed == null ? '—' : n2(d.owed)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <div className="sal-foot">
-                  <span>{showAll ? shownDocs.length : Math.min(PAGE, shownDocs.length)} pièce{shownDocs.length > 1 ? 's' : ''} sur {shownDocs.length} · 20 dernières commandes et 20 derniers tickets{!isDirection ? ' · devis, livraisons et factures réservés à la direction' : ''}</span>
-                  {shownDocs.length > PAGE && <button type="button" className="sal-link" onClick={() => setShowAll(v => !v)}>{showAll ? 'Réduire' : 'Voir toutes les pièces'}</button>}
-                </div>
-              </>) : <div className="sal-empty">Aucune pièce pour ce client.</div>}
+                <TableFooter note={<>{showAll ? shownDocs.length : Math.min(PAGE, shownDocs.length)} pièce{shownDocs.length > 1 ? 's' : ''} sur {shownDocs.length} · 20 dernières commandes et 20 derniers tickets{!isDirection ? ' · devis, livraisons et factures réservés à la direction' : ''}</>}>
+                  {shownDocs.length > PAGE && <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => setShowAll(v => !v)}>{showAll ? 'Réduire' : 'Voir toutes les pièces'}</button>}
+                </TableFooter>
+              </>) : <EmptyState bare icon={FileText} title="Aucune pièce pour ce client" />}
             </>)}
 
             {tab === 'receivables' && (recCustomer?.docs.length ? (<>
               <div className="prj-scroll">
                 <table className="odoo-table" style={{ margin: 0 }}>
-                  <thead><tr><th>Pièce</th><th>Date</th><th>Échéance</th><th style={{ textAlign: 'right' }}>Montant</th><th style={{ textAlign: 'right' }}>Déjà payé</th><th style={{ textAlign: 'right' }}>Reste dû</th></tr></thead>
+                  <thead><tr><th>Pièce</th><th>Date</th><th>Échéance</th><th className="ds-num">Montant ({currencySymbol()})</th><th className="ds-num">Déjà payé ({currencySymbol()})</th><th className="ds-num">Reste dû ({currencySymbol()})</th></tr></thead>
                   <tbody>{recCustomer.docs.map(d => (
                     <tr key={d.kind + d.id} style={{ cursor: 'default' }}>
-                      <td><span className="sal-num">{d.number}</span><span className="sal-sub">{d.kind === 'ticket' ? 'Ticket sur compte' : 'Facture'}</span></td>
+                      <td><span className="ds-ref">{d.number}</span><span className="sal-sub">{d.kind === 'ticket' ? 'Ticket sur compte' : 'Facture'}</span></td>
                       <td style={{ whiteSpace: 'nowrap' }}>{day(d.doc_date)}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>{day(d.due_date)}{d.days_late > 0 && <span className="sal-late-txt">{d.days_late} j de retard</span>}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n2(d.amount)}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--odoo-text-muted)' }}>{d.paid > 0 ? n2(d.paid) : '—'}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{n2(d.remaining)}</td>
+                      <td className="ds-num">{n2(d.amount)}</td>
+                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{d.paid > 0 ? n2(d.paid) : '—'}</td>
+                      <td className="ds-num ds-strong">{n2(d.remaining)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
               </div>
-              <div className="sal-foot"><span>Encaissement, relevé de compte et règlement sur plusieurs factures : écran Créances.</span><button type="button" className="sal-link" onClick={() => navigate('/sales?tab=unpaid')}>Ouvrir les créances</button></div>
-            </>) : <div className="sal-empty">{isDirection ? 'Aucune créance : le client est à jour.' : 'Créances réservées à la direction.'}</div>)}
+              <TableFooter note="Encaissement, relevé de compte et règlement sur plusieurs factures : écran Créances."><button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => navigate('/sales?tab=unpaid')}>Ouvrir les créances</button></TableFooter>
+            </>) : <EmptyState bare icon={Wallet} title={isDirection ? 'Aucune créance' : 'Créances réservées à la direction'} text={isDirection ? 'Le client est à jour.' : undefined} />)}
 
             {tab === 'addresses' && <div className="prj-tab-body"><CustomerAddressesPanel customerId={id} /><CustomerTaxExemptionsPanel customerId={id} /></div>}
             {tab === 'loyalty' && <div className="prj-tab-body"><CustomerLoyalty customerId={id} /></div>}

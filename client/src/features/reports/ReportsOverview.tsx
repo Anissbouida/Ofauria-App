@@ -244,12 +244,12 @@ export default function ReportsOverview(p: Props) {
         <div className="kl-sec"><h2>Produits</h2><small>{productData.length} produits · {cost ? 'marge réelle' : 'CA'}</small></div>
         <div className="kl-rep-grid">
           <div className="kl-widget wide" style={{ padding: '8px 8px 4px' }}>
-            <table className="odoo-table" style={{ border: 0 }}>
+            <table className="odoo-table ds-dense" style={{ border: 0 }}>
               <thead><tr>
                 <th>Produit</th><th>Catégorie</th>
-                <th style={{ textAlign: 'right' }}>CA</th>
-                <th style={{ textAlign: 'right' }}>Marge</th>
-                <th style={{ textAlign: 'right' }}>Marge %</th>
+                <th className="ds-num">CA</th>
+                <th className="ds-num">Marge</th>
+                <th className="ds-num">Marge %</th>
               </tr></thead>
               <tbody>
                 {topByMargin.length === 0 ? <tr><td colSpan={5} className="kl-viz-empty">Aucune donnée.</td></tr>
@@ -259,9 +259,9 @@ export default function ReportsOverview(p: Props) {
                         <span className={`kl-rep-rank${i < 3 ? ' top' : ''}`}>{i + 1}</span>
                         <span style={{ fontWeight: 500 }}>{r.name}</span></span></td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>{r.category || '—'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{dh(r.rev)}</td>
+                      <td className="ds-num" style={{ fontWeight: 600 }}>{dh(r.rev)}</td>
                       <td style={{ textAlign: 'right' }} className={r.hasCost ? (r.margin >= 0 ? '' : 'kl-rep-tone-r') : ''}>{r.hasCost ? dh(r.margin) : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{r.hasCost
+                      <td className="ds-num">{r.hasCost
                         ? <span className={`kl-pill ${r.marginPct >= 60 ? 'g' : r.marginPct >= 40 ? 'o' : 'r'}`}>{r.marginPct.toFixed(0)} %</span>
                         : <span style={{ color: 'var(--theme-text-muted)' }}>n/d</span>}</td>
                     </tr>
@@ -298,7 +298,7 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub: 
   return (
     <div className="kl-cell" style={{ cursor: 'default', minHeight: 54 }}>
       <span className="tx"><span className="t1">{label}</span><span className="t2">{sub}</span></span>
-      <span className="tr" style={{ fontWeight: 600, color: tone === 'r' ? 'var(--prj-red)' : tone === 'o' ? 'var(--prj-orange)' : 'var(--theme-text-strong)' }}>{value}</span>
+      <span className="tr" style={{ fontWeight: 600, color: tone === 'r' ? 'var(--ds-danger)' : tone === 'o' ? 'var(--ds-warning)' : 'var(--ds-ink)' }}>{value}</span>
     </div>
   );
 }

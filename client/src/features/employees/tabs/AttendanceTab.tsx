@@ -1,18 +1,19 @@
-import { money } from '../../../utils/money';
+import { currencySymbol } from '../../../utils/money';
 import { useState } from 'react';
 import SearchSelect from '../../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, attendanceApi, leavesApi } from '../../../api/employees.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Users, CalendarOff, ChevronLeft, ChevronRight, Search, Moon } from 'lucide-react';
+import { Users, CalendarOff, ChevronLeft, ChevronRight, Moon } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
 import { ROLE_LABELS, SHIFT_SHORT_LABELS } from '@ofauria/shared';
 import type { ShiftCode } from '@ofauria/shared';
-import { ATTENDANCE_STATUS, MONTH_NAMES, LEAVE_TYPE_LABELS, shiftTag } from '../shared';
+import { ATTENDANCE_STATUS, MONTH_NAMES, LEAVE_TYPE_LABELS, shiftTag, amount } from '../shared';
 import OvertimeQuotaPanel from './OvertimeQuotaPanel';
-import { PromptDialog, EmptyState, LoadingPanel, Segmented, inputCls } from '../ui';
-import { ListToolbar } from '../../sales/ListTemplate';
+import { PromptDialog, EmptyPanel, LoadingPanel, Segmented, inputCls } from '../ui';
+import { StatusTag } from '../../../components/ui/StatusTag';
+import { Toolbar, SearchBar, DataPanel, TableFooter, SectionHeader, NoResultState, ErrorState } from '../../../components/ds';
 
 /* ═══════════════════════ ATTENDANCE TAB ═══════════════════════ */
 export default function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -31,7 +32,7 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
     : activeEmployees;
 
   // Daily records
-  const { data: records = [], isLoading } = useQuery({
+  const { data: records = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['attendance', selectedDate],
     queryFn: () => attendanceApi.list(selectedDate, selectedDate),
     enabled: attView === 'daily',
@@ -67,7 +68,7 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
 
   // M8-05 : récapitulatif calculé au serveur, avec la même fonction que le bulletin
   // (pointage réel seulement, demi-journée = 0,5, shift double payé en plus, congés et fériés couverts).
-  const { data: recap, isLoading: monthlyLoading } = useQuery({
+  const { data: recap, isLoading: monthlyLoading, isError: monthlyError, refetch: refetchRecap } = useQuery({
     queryKey: ['attendance', 'recap', summaryMonth, summaryYear], // rafraîchi par chaque pointage enregistré
     queryFn: () => attendanceApi.monthlyRecap(summaryMonth, summaryYear),
     enabled: attView === 'monthly',
@@ -76,24 +77,31 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
   const getEmployeeMonthlySummary = (empId: string) => recap?.rows.find(r => r.employeeId === empId) ?? EMPTY;
   const baseDays = recap?.baseDays ?? 26;
 
+  const role = (emp: Record<string, any>) => ROLE_LABELS[emp.role as keyof typeof ROLE_LABELS] || emp.role;
+  const dim = (v: number) => (v > 0 ? undefined : 'var(--ds-muted)');
+  // États communs aux deux vues : aucun salarié actif, ou recherche sans résultat.
+  const listState = activeEmployees.length === 0 ? <EmptyPanel icon={Users}>Aucun employé actif</EmptyPanel>
+    : filteredEmployees.length === 0 ? <NoResultState text={`Aucun employé trouvé pour « ${searchAtt} ».`} onReset={() => setSearchAtt('')} /> : null;
+
   return (
     <>
-      {/* Barre d'outils : recherche, jour ou mois, puis bascule de vue (contrôle segmenté) */}
-      <ListToolbar search={searchAtt} onSearch={setSearchAtt} placeholder="Rechercher un employé...">
+      {/* Barre d'outils : recherche, jour ou mois, puis bascule de vue à droite. */}
+      <Toolbar>
+        <SearchBar value={searchAtt} onChange={setSearchAtt} placeholder="Rechercher un employé…" />
         {attView === 'daily' ? (
           <div className="hr-tools">
-            <button onClick={() => {
+            <button type="button" onClick={() => {
               const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1);
               setSelectedDate(format(d, 'yyyy-MM-dd'));
-            }} className="odoo-pager-btn" aria-label="Jour précédent"><ChevronLeft size={14} /></button>
+            }} className="ds-icon-btn" aria-label="Jour précédent"><ChevronLeft size={16} /></button>
             <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
               className="odoo-filter-dropdown" aria-label="Jour" />
-            <button onClick={() => {
+            <button type="button" onClick={() => {
               const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1);
               setSelectedDate(format(d, 'yyyy-MM-dd'));
-            }} className="odoo-pager-btn" aria-label="Jour suivant"><ChevronRight size={14} /></button>
-            <span className="hr-tools-label" style={{ fontWeight: 500, marginLeft: 4 }}>
-              {format(new Date(selectedDate + 'T12:00:00'), 'EEEE dd MMMM yyyy', { locale: fr })}
+            }} className="ds-icon-btn" aria-label="Jour suivant"><ChevronRight size={16} /></button>
+            <span className="hr-tools-label" style={{ marginLeft: 4 }}>
+              {format(new Date(selectedDate + 'T12:00:00'), 'EEEE d MMMM yyyy', { locale: fr })}
             </span>
           </div>
         ) : (
@@ -108,32 +116,35 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
             <input type="number" value={summaryYear} onChange={e => setSummaryYear(parseInt(e.target.value))} className="odoo-filter-dropdown" style={{ width: 96 }} aria-label="Année" />
           </div>
         )}
-        <span className="hr-spacer" />
         <Segmented label="Vue du pointage" value={attView} onChange={setAttView}
           options={[{ key: 'daily', label: 'Pointage journalier' }, { key: 'monthly', label: 'Récapitulatif mensuel' }]} />
-      </ListToolbar>
+      </Toolbar>
 
       {attView === 'monthly' && <OvertimeQuotaPanel year={summaryYear} />}
 
-      {/* Monthly summary view */}
+      {/* Récapitulatif mensuel */}
       {attView === 'monthly' && (
         monthlyLoading ? (
           <LoadingPanel />
-        ) : (
-          <div className="prj-panel hr-plain"><div className="prj-scroll">
-            <table className="odoo-table">
+        ) : monthlyError ? (
+          <ErrorState title="Le récapitulatif n'a pas pu être chargé" onRetry={() => void refetchRecap()} />
+        ) : listState ?? (
+          <DataPanel label="Récapitulatif mensuel du pointage"
+            footer={<TableFooter note={`${filteredEmployees.length} employé${filteredEmployees.length > 1 ? 's' : ''} · base ${baseDays} jours`} />}>
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th>Employé</th>
-                  <th style={{ textAlign: 'center' }}>Présent</th>
-                  <th style={{ textAlign: 'center' }}>Retard</th>
-                  <th style={{ textAlign: 'center' }}>Demi-j.</th>
-                  <th style={{ textAlign: 'center' }}>Absent</th>
-                  <th style={{ textAlign: 'center' }}>H. Sup</th>
-                  <th style={{ textAlign: 'center' }}>J. Travaillés</th>
-                  <th style={{ textAlign: 'right' }}>Salaire base</th>
-                  <th style={{ textAlign: 'right' }}>Taux/jour</th>
-                  <th style={{ textAlign: 'right' }} title="Base − absences + shifts doubles, comme le bulletin (hors ancienneté, heures sup et primes)">Salaire au pointage</th>
+                  <th>Poste</th>
+                  <th className="ds-num">Présent (j)</th>
+                  <th className="ds-num">Retard (j)</th>
+                  <th className="ds-num">Demi-journée</th>
+                  <th className="ds-num">Absent (j)</th>
+                  <th className="ds-num">Heures sup</th>
+                  <th className="ds-num">Jours travaillés</th>
+                  <th className="ds-num">Salaire de base ({currencySymbol()})</th>
+                  <th className="ds-num">Taux par jour ({currencySymbol()})</th>
+                  <th className="ds-num" title="Base − absences + shifts doubles, comme le bulletin (hors ancienneté, heures sup et primes)">Salaire au pointage ({currencySymbol()})</th>
                 </tr>
               </thead>
               <tbody>
@@ -144,36 +155,20 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                   const calculatedSalary = s.attendanceSalary ?? 0;
                   return (
                     <tr key={emp.id as string}>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                          <Users size={11} style={{ color: 'var(--theme-accent)' }} />
-                          {emp.first_name as string} {emp.last_name as string}
-                          <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {ROLE_LABELS[emp.role as keyof typeof ROLE_LABELS] || emp.role}</span>
-                        </span>
+                      <td className="ds-strong">{emp.first_name as string} {emp.last_name as string}</td>
+                      <td>{role(emp)}</td>
+                      <td className="ds-num" style={{ color: dim(s.present) }}>{s.present}</td>
+                      <td className="ds-num" style={{ color: dim(s.late) }}>{s.late}</td>
+                      <td className="ds-num" style={{ color: dim(s.halfDay) }}>{s.halfDay}</td>
+                      <td className="ds-num" style={{ color: s.absentMarked > 0 ? 'var(--ds-danger)' : 'var(--ds-muted)', fontWeight: s.absentMarked > 0 ? 600 : undefined }}>{s.absentMarked}</td>
+                      <td className="ds-num" style={{ color: dim(s.overtimeMin) }}>
+                        {s.overtimeMin > 0 ? `${Math.floor(s.overtimeMin / 60)} h ${String(s.overtimeMin % 60).padStart(2, '0')}` : '0'}
                       </td>
-                      <td style={{ textAlign: 'center' }}><span style={{ color: 'var(--prj-green)', fontWeight: 500 }}>{s.present}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ color: s.late > 0 ? 'var(--prj-orange)' : 'var(--odoo-text-light)' }}>{s.late}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ color: s.halfDay > 0 ? 'var(--theme-accent)' : 'var(--odoo-text-light)' }}>{s.halfDay}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ color: s.absentMarked > 0 ? 'var(--prj-red)' : 'var(--odoo-text-light)' }}>{s.absentMarked}</span></td>
-                      <td style={{ textAlign: 'center', color: s.overtimeMin > 0 ? 'var(--odoo-text)' : 'var(--odoo-text-light)' }}>
-                        {s.overtimeMin > 0 ? `${Math.floor(s.overtimeMin / 60)}h${String(s.overtimeMin % 60).padStart(2, '0')}` : '0'}
-                      </td>
-                      <td style={{ textAlign: 'center', fontWeight: 600 }}>
-                        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--prj-green)' }}>{s.workedDays}</span>
-                        <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.6875rem' }}> / {baseDays}</span>
-                      </td>
-                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
-                        {baseSalary > 0 ? money(baseSalary) : '—'}
-                      </td>
-                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
-                        {baseSalary > 0 ? money(dailyRate) : '—'}
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {baseSalary > 0 ? (
-                          <span style={{ fontWeight: 700, color: calculatedSalary < baseSalary ? 'var(--prj-red)' : 'var(--prj-green)' }}>
-                            {money(calculatedSalary)}
-                          </span>
-                        ) : '—'}
+                      <td className="ds-num"><span className="ds-strong">{s.workedDays}</span> <span style={{ color: 'var(--ds-muted)' }}>/ {baseDays}</span></td>
+                      <td className="ds-num">{baseSalary > 0 ? amount(baseSalary) : '—'}</td>
+                      <td className="ds-num">{baseSalary > 0 ? amount(dailyRate) : '—'}</td>
+                      <td className="ds-num ds-strong" title={baseSalary > 0 && calculatedSalary < baseSalary ? 'Inférieur au salaire de base (absences)' : undefined}>
+                        {baseSalary > 0 ? amount(calculatedSalary) : '—'}
                       </td>
                     </tr>
                   );
@@ -181,49 +176,50 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
               </tbody>
               <tfoot>
                 <tr>
-                  <td style={{ fontWeight: 700, padding: '0.5rem 0.75rem' }} colSpan={6}>Total</td>
-                  <td style={{ textAlign: 'center', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
+                  <td colSpan={7}>Total</td>
+                  <td className="ds-num">
                     {Math.round(filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).workedDays, 0) * 100) / 100}
                   </td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
-                    {money(filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).baseSalary, 0))}
+                  <td className="ds-num">
+                    {amount(filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).baseSalary, 0))}
                   </td>
                   <td></td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
-                    {money(filteredEmployees.reduce((sum, emp) => sum + (getEmployeeMonthlySummary(emp.id as string).attendanceSalary ?? 0), 0))}
+                  <td className="ds-num">
+                    {amount(filteredEmployees.reduce((sum, emp) => sum + (getEmployeeMonthlySummary(emp.id as string).attendanceSalary ?? 0), 0))}
                   </td>
                 </tr>
               </tfoot>
             </table>
-          </div></div>
+          </DataPanel>
         )
       )}
 
-      {/* Daily view */}
+      {/* Pointage du jour */}
       {attView === 'daily' && (
         isLoading ? (
           <LoadingPanel />
-        ) : (
-        <section className="prj-panel hr-plain">
-        <div className="prj-panel-head hr-panel-head">
-          <span>Pointage du jour</span>
+        ) : isError ? (
+          <ErrorState title="Le pointage n'a pas pu être chargé" onRetry={() => void refetch()} />
+        ) : listState ?? (
+        <>
+        <SectionHeader title="Pointage du jour">
           <div className="hr-legend">
-            <span><i style={{ background: '#93c5fd' }} />présence prévue (planning)</span>
-            <span><i style={{ background: 'var(--prj-green)' }} />pointage confirmé</span>
-            <span><i style={{ background: '#8b5cf6' }} />en congé</span>
+            <span><span className="odoo-tag odoo-tag-blue">Présent</span> prévu au planning, non pointé</span>
+            <span><span className="odoo-tag odoo-tag-green">Présent</span> pointage confirmé</span>
           </div>
-        </div>
-        <div className="prj-scroll">
+        </SectionHeader>
+        <DataPanel label="Pointage du jour" footer={<TableFooter note={`${filteredEmployees.length} employé${filteredEmployees.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 24 }}></th>
                 <th>Employé</th>
+                <th>Poste</th>
                 <th>Prévu</th>
-                <th style={{ textAlign: 'center' }}>Statut</th>
-                <th style={{ textAlign: 'center' }}>Arrivée</th>
-                <th style={{ textAlign: 'center' }}>Départ</th>
-                <th style={{ textAlign: 'center' }}>H. Sup</th>
+                <th>Pointage</th>
+                <th>Statut</th>
+                <th>Arrivée</th>
+                <th>Départ</th>
+                <th>Heures sup (h)</th>
               </tr>
             </thead>
             <tbody>
@@ -236,25 +232,14 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                 const isOnLeave = leave?.status === 'approved';
                 const isLeavePending = leave?.status === 'pending';
                 return (
-                  <tr key={emp.id as string} className={isOnLeave ? 'row-warning' : ''}>
-                    <td>
-                      {(() => {
-                        const dotLabel = isOnLeave ? 'En congé' : hasCheckIn ? 'Pointage enregistré' : isExpected ? 'Présence prévue, non pointé' : 'Non prévu, non pointé';
-                        return <span className={`odoo-status-dot ${isOnLeave ? 'neutral' : hasCheckIn ? 'ok' : (isExpected ? 'warning' : 'neutral')}`} title={dotLabel} aria-label={dotLabel} role="img" />;
-                      })()}
-                    </td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                        <Users size={11} style={{ color: 'var(--theme-accent)' }} />
-                        {emp.first_name as string} {emp.last_name as string}
-                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {ROLE_LABELS[emp.role as keyof typeof ROLE_LABELS] || emp.role}</span>
-                      </span>
-                    </td>
+                  <tr key={emp.id as string}>
+                    <td className="ds-strong">{emp.first_name as string} {emp.last_name as string}</td>
+                    <td>{role(emp)}</td>
                     <td>
                       {leave ? (
                         <span className={`odoo-tag ${isOnLeave ? 'odoo-tag-purple' : 'odoo-tag-orange'}`}
                           title={`${LEAVE_TYPE_LABELS[leave.type as string] ?? leave.type} ${isLeavePending ? '(en attente)' : ''} — du ${(leave.start_date as string).slice(0, 10)} au ${(leave.end_date as string).slice(0, 10)}`}>
-                          <CalendarOff size={10} style={{ marginRight: 3 }} />
+                          <CalendarOff size={10} aria-hidden="true" style={{ marginRight: 3 }} />
                           {LEAVE_TYPE_LABELS[leave.type as string] ?? leave.type}{isLeavePending ? ' (en attente)' : ''}
                         </span>
                       ) : plannedShift ? (
@@ -262,21 +247,25 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                           {SHIFT_SHORT_LABELS[plannedShift]}
                         </span>
                       ) : (
-                        <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.6875rem' }}>— Non planifié —</span>
+                        <span style={{ color: 'var(--ds-muted)' }}>Non planifié</span>
                       )}
                     </td>
-                    <td style={{ textAlign: 'center' }}>
+                    <td>
+                      {isOnLeave ? <StatusTag tone="cancelled" icon={CalendarOff} label="En congé" />
+                        : hasCheckIn ? <StatusTag tone="done" label="Pointé" />
+                        : isExpected ? <StatusTag tone="todo" label="À pointer" />
+                        : <StatusTag tone="draft" label="Non prévu" />}
+                    </td>
+                    <td>
                       {isOnLeave ? (
-                        <span className="odoo-tag odoo-tag-purple">
-                          <CalendarOff size={10} style={{ marginRight: 3 }} /> En congé
-                        </span>
+                        <span style={{ color: 'var(--ds-muted)' }}>—</span>
                       ) : (
-                        <div style={{ display: 'inline-flex', gap: 2 }}>
+                        <div role="group" aria-label="Statut du jour" style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
                           {ATTENDANCE_STATUS.map(s => {
                             const isActive = (rec as Record<string, any>)?.status === s.value;
                             const isExpectedPresent = isExpected && !hasCheckIn && s.value === 'present';
                             return (
-                              <button key={s.value}
+                              <button key={s.value} type="button" aria-pressed={isActive}
                                 onClick={() => upsertMutation.mutate({
                                   employeeId: emp.id, date: selectedDate, status: s.value,
                                   checkIn: (rec as Record<string, any>)?.check_in || undefined,
@@ -291,12 +280,12 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                         </div>
                       )}
                     </td>
-                    <td style={{ textAlign: 'center' }}>
+                    <td>
                       {/* key inclut selectedDate : sans ca, defaultValue est
                           fige au 1er render et changer de jour affichait les
                           heures du jour precedent (risque d'ecraser le bon
                           jour au onBlur). */}
-                      <input key={`ci-${emp.id}-${selectedDate}`} type="time" className={`${inputCls} text-center disabled:bg-gray-100 disabled:cursor-not-allowed`} style={{ width: 112, margin: '0 auto' }}
+                      <input key={`ci-${emp.id}-${selectedDate}`} type="time" aria-label={`Heure d'arrivée de ${emp.first_name} ${emp.last_name}`} className={`${inputCls} sm`} style={{ width: 112 }}
                         disabled={isOnLeave}
                         defaultValue={(rec as Record<string, any>)?.check_in as string || ''}
                         onBlur={e => {
@@ -308,8 +297,8 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                           });
                         }} />
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input key={`co-${emp.id}-${selectedDate}`} type="time" className={`${inputCls} text-center disabled:bg-gray-100 disabled:cursor-not-allowed`} style={{ width: 112, margin: '0 auto' }}
+                    <td>
+                      <input key={`co-${emp.id}-${selectedDate}`} type="time" aria-label={`Heure de départ de ${emp.first_name} ${emp.last_name}`} className={`${inputCls} sm`} style={{ width: 112 }}
                         disabled={isOnLeave}
                         defaultValue={(rec as Record<string, any>)?.check_out as string || ''}
                         onBlur={e => {
@@ -321,8 +310,8 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                           });
                         }} />
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input key={`ot-${emp.id}-${selectedDate}`} type="number" className={`${inputCls} text-center disabled:bg-gray-100 disabled:cursor-not-allowed`} style={{ width: 80, margin: '0 auto' }} min="0" step="0.5"
+                    <td>
+                      <input key={`ot-${emp.id}-${selectedDate}`} type="number" aria-label={`Heures supplémentaires de ${emp.first_name} ${emp.last_name}`} className={`${inputCls} sm`} style={{ width: 80 }} min="0" step="0.5"
                         disabled={isOnLeave}
                         defaultValue={Math.round(((rec as Record<string, any>)?.overtime_minutes as number || 0) / 60 * 100) / 100 || 0}
                         onBlur={e => {
@@ -344,14 +333,14 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                         const rest = r.is_rest_day ?? (new Date(`${selectedDate}T12:00:00`).getDay() === 0);
                         const base = { employeeId: emp.id, date: selectedDate, status: r.status || 'present', checkIn: r.check_in || undefined, checkOut: r.check_out || undefined };
                         return (
-                          <div style={{ fontSize: '0.625rem', color: 'var(--odoo-text-muted)', marginTop: 3, display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
-                            <span style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}
+                          <div style={{ fontSize: 12, color: 'var(--ds-muted)', marginTop: 3, display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <button type="button" style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textDecoration: 'underline dotted' }}
                               title="Part de nuit (21h-6h) des heures sup, calculée depuis l'arrivée et le départ. Cliquer pour corriger."
                               onClick={() => setNightEdit({ base, otMin, nightMin })}>
                               dont nuit {Math.round(nightMin / 60 * 100) / 100} h
-                            </span>
-                            <button type="button" onClick={() => upsertMutation.mutate({ ...base, isRestDay: !rest })}
-                              className={`odoo-tag ${rest ? 'odoo-tag-purple' : 'odoo-tag-grey'}`} style={{ border: 'none', cursor: 'pointer', fontSize: '0.5625rem' }}
+                            </button>
+                            <button type="button" onClick={() => upsertMutation.mutate({ ...base, isRestDay: !rest })} aria-pressed={!!rest}
+                              className={`odoo-tag ${rest ? 'odoo-tag-purple' : 'odoo-tag-grey'}`} style={{ border: 'none', cursor: 'pointer' }}
                               title="Jour de repos hebdomadaire travaillé : majoration 50 % (jour) / 100 % (nuit)">
                               repos
                             </button>
@@ -364,12 +353,8 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
               })}
             </tbody>
           </table>
-          {activeEmployees.length === 0 && <EmptyState icon={Users}>Aucun employé actif</EmptyState>}
-          {activeEmployees.length > 0 && filteredEmployees.length === 0 && searchAtt && (
-            <EmptyState icon={Search}>Aucun employé trouvé pour « {searchAtt} »</EmptyState>
-          )}
-        </div>
-        </section>
+        </DataPanel>
+        </>
         )
       )}
 

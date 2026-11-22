@@ -16,7 +16,7 @@ export default function ProcessingRegisterCard() {
       <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
         <ShieldCheck size={16} /> Registre des traitements (loi 09-08)
       </h3>
-      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--theme-text-muted)' }}>
+      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--ds-muted)' }}>
         Données personnelles traitées par l'application et droits exerçables. Les durées de conservation et la base légale de chaque
         traitement sont à fixer par le responsable du traitement avec son conseil (déclarations à la CNDP).
       </p>
@@ -42,7 +42,7 @@ export default function ProcessingRegisterCard() {
                       <StatusTag tone={t.rights.access ? 'done' : 'draft'} label={t.rights.access ? 'Accès' : 'Pas d\'accès'} />
                       <StatusTag tone={t.rights.erasure ? 'done' : 'draft'} label={t.rights.erasure ? 'Effacement' : 'Pas d\'effacement'} />
                     </div>
-                    <span style={{ color: 'var(--theme-text-muted)' }}>{t.rights.note}</span>
+                    <span style={{ color: 'var(--ds-muted)' }}>{t.rights.note}</span>
                   </td>
                 </tr>
               ))}

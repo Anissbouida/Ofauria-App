@@ -39,7 +39,7 @@ export default function NumberingTab() {
       </PageNote>
 
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--ds-muted)' }}>
           <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto' }} />
         </div>
       ) : !rows.length ? (
@@ -59,15 +59,15 @@ export default function NumberingTab() {
                     {s.label}
                     {s.gapless && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Continue</span>}
                   </td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>{s.pattern} <span style={{ color: 'var(--odoo-text-muted)' }}>· {s.padding} chiffres</span></td>
+                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>{s.pattern} <span style={{ color: 'var(--ds-muted)' }}>· {s.padding} chiffres</span></td>
                   <td>{RESET_LABELS[s.reset_period]}</td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{s.next_number}</td>
-                  <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>
+                  <td className="ds-ref">{s.next_number}</td>
+                  <td style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>
                     {s.updated_by_name ? `${s.updated_by_name}, ${new Date(s.updated_at).toLocaleDateString('fr-FR')}` : 'Format d\'origine'}
                   </td>
                   <td>
                     {canEdit('settings') && (
-                      <button className="odoo-btn-secondary" onClick={() => setEditing(s)} aria-label={`Modifier la série ${s.label}`} style={{ padding: '2px 8px' }}>
+                      <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(s)} aria-label={`Modifier la série ${s.label}`} style={{ padding: '2px 8px' }}>
                         <Pencil size={13} />
                       </button>
                     )}
@@ -117,8 +117,8 @@ function SequenceEditor({ seq, onClose }: { seq: DocumentSequence; onClose: () =
     save.mutate();
   };
 
-  const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
-  const label: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)' };
+  const label: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
 
   return (
     <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
@@ -142,7 +142,7 @@ function SequenceEditor({ seq, onClose }: { seq: DocumentSequence; onClose: () =
           </select>
         </label>
       </div>
-      <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {TOKENS.map(([t, l]) => (
           <button key={t} type="button" className="odoo-filter-chip" onClick={() => setForm({ ...form, pattern: form.pattern + t })} title={`Ajouter ${t}`}>
             <code>{t}</code> {l}
@@ -150,11 +150,11 @@ function SequenceEditor({ seq, onClose }: { seq: DocumentSequence; onClose: () =
         ))}
       </div>
       {preview && (preview.valid
-        ? <div style={{ fontSize: '0.875rem' }}>Exemple : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{preview.sample}</strong> <span style={{ color: 'var(--odoo-text-muted)' }}>(le compteur reprend après le dernier numéro existant)</span></div>
+        ? <div style={{ fontSize: '0.875rem' }}>Exemple : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{preview.sample}</strong> <span style={{ color: 'var(--ds-muted)' }}>(le compteur reprend après le dernier numéro existant)</span></div>
         : <StatusBanner tone="warning" icon={Hash} title="Modèle invalide">{preview.error}</StatusBanner>)}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-        <button className="odoo-btn-primary" onClick={submit} disabled={!changed || !preview?.valid || save.isPending}>
+        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
+        <button type="button" className="odoo-btn-primary" onClick={submit} disabled={!changed || !preview?.valid || save.isPending}>
           {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
         </button>
       </div>

@@ -14,6 +14,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { RowMenu } from '../../components/ui/RowMenu';
 
 /**
  * Référentiel : tables de valeurs paramétrables (catégories, unités, motifs…).
@@ -86,12 +87,12 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
     <div style={{ display: 'grid', gap: 16 }}>
       <div className="prj-toolbar">
         <label className="prj-search" style={{ maxWidth: 420 }}>
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
           <input id="ref-search" type="search" placeholder="Rechercher une table…"
             value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une table" />
         </label>
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
           {tables.length} tables · {totalActive} valeurs actives{totalInactive > 0 ? ` · ${totalInactive} inactives` : ''}
         </span>
       </div>
@@ -112,15 +113,15 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
               <div className="prj-panel prj-scroll">
                 {/* Largeurs fixes : les colonnes restent alignees d'un domaine a l'autre. */}
                 <table className="odoo-table" style={{ tableLayout: 'fixed', width: '100%' }}>
-                  <thead><tr><th style={{ width: '30%' }}>Table</th><th>Description</th><th style={{ textAlign: 'right', width: 90 }}>Actives</th><th style={{ width: 120 }}></th><th style={{ width: 36 }}></th></tr></thead>
+                  <thead><tr><th style={{ width: '30%' }}>Table</th><th>Description</th><th className="ds-num" style={{ width: 90 }}>Actives</th><th style={{ width: 120 }}></th><th style={{ width: 36 }}></th></tr></thead>
                   <tbody>
                     {s.tables.map(t => (
                       <tr key={String(t.id)} onClick={() => onOpenTable(String(t.id))} style={{ cursor: 'pointer' }}>
                         <td style={{ fontWeight: 500 }}>{String(t.label)}</td>
-                        <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>{String(t.description || '')}</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(t.active_count) || 0}</td>
+                        <td style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>{String(t.description || '')}</td>
+                        <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(t.active_count) || 0}</td>
                         <td>{Number(t.inactive_count) > 0 && <StatusTag tone="cancelled" label={`${Number(t.inactive_count)} inactive(s)`} />}</td>
-                        <td><ChevronRight size={14} style={{ color: 'var(--odoo-text-muted)' }} /></td>
+                        <td><ChevronRight size={14} style={{ color: 'var(--ds-muted)' }} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -130,7 +131,7 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
           </section>
         );
       })}
-      {!sections.length && <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.875rem' }}>Aucune table ne correspond à la recherche.</p>}
+      {!sections.length && <p style={{ color: 'var(--ds-muted)', fontSize: '0.875rem' }}>Aucune table ne correspond à la recherche.</p>}
 
       {recent.length > 0 && (
         <section style={{ display: 'grid', gap: 6 }}>
@@ -248,19 +249,19 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
     if (await confirm(msg, { danger: true, confirmLabel: isNative ? 'Supprimer' : 'Désactiver' })) remove.mutate(String(e.id));
   };
   const parentLabel = form?.metadata.parent_id ? String(entries.find(e => String(e.id) === String(form.metadata.parent_id))?.label || '') : '';
-  const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)', width: '100%' };
+  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
   const iconBtn: React.CSSProperties = { padding: '2px 6px', display: 'inline-flex', alignItems: 'center' };
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <button className="odoo-btn-secondary" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <button type="button" className="odoo-btn-secondary" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <ChevronLeft size={13} /> Référentiel
         </button>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>{String(table?.label || tableId)}</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
             {activeCount} active(s){inactiveCount > 0 ? ` · ${inactiveCount} inactive(s)` : ''}
           </div>
         </div>
@@ -268,7 +269,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
 
       <div className="prj-toolbar">
         <label className="prj-search" style={{ maxWidth: 420 }}>
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
           <input id="ref-entry-search" type="search" placeholder="Rechercher par libellé, code…"
             value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une valeur" />
         </label>
@@ -281,11 +282,11 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
         <button className={showAudit ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setShowAudit(!showAudit)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <History size={13} /> Historique
         </button>
-        <button className="odoo-btn-secondary" onClick={() => referentielApi.exportCsv(tableId, entries, String(table?.label || tableId))} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <button type="button" className="odoo-btn-secondary" onClick={() => referentielApi.exportCsv(tableId, entries, String(table?.label || tableId))} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Download size={13} /> Exporter
         </button>
         {canCreate('settings') && (
-          <button className="odoo-btn-primary" onClick={() => openNew()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button type="button" className="odoo-btn-primary" onClick={() => openNew()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Plus size={13} /> {isHierarchical ? 'Nouvelle catégorie' : 'Ajouter'}
           </button>
         )}
@@ -303,7 +304,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                   <td>{who(l)}</td>
                 </tr>
               ))}
-              {!(audit as Row[] | undefined)?.length && <tr><td colSpan={3} style={{ color: 'var(--odoo-text-muted)', textAlign: 'center' }}>Aucune modification enregistrée</td></tr>}
+              {!(audit as Row[] | undefined)?.length && <tr><td colSpan={3} style={{ color: 'var(--ds-muted)', textAlign: 'center' }}>Aucune modification enregistrée</td></tr>}
             </tbody>
           </table>
         </div>
@@ -339,18 +340,18 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                         {canHaveChildren && childCount > 0 ? (
                           <button type="button" onClick={() => setCollapsed(c => ({ ...c, [id]: !c[id] }))}
                             aria-label={collapsed[id] ? 'Déplier' : 'Replier'}
-                            style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--odoo-text-muted)', display: 'inline-flex' }}>
+                            style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--ds-muted)', display: 'inline-flex' }}>
                             {collapsed[id] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                           </button>
                         ) : <span style={{ width: 14, display: 'inline-block' }} />}
                         {e.color ? <span style={{ width: 10, height: 10, borderRadius: 2, background: String(e.color), display: 'inline-block' }} /> : null}
                         <span style={{ fontWeight: isHierarchical && depth === 0 ? 600 : 400 }}>{String(e.label)}</span>
-                        {canHaveChildren && childCount > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>({childCount})</span>}
+                        {canHaveChildren && childCount > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>({childCount})</span>}
                       </span>
                     </td>
-                    {isHierarchical && <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{LEVEL_LABELS[level - 1] ?? ''}</td>}
+                    {isHierarchical && <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{LEVEL_LABELS[level - 1] ?? ''}</td>}
                     {hasCode && <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>{String(e.code || '')}</td>}
-                    <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{String(e.description || '')}</td>
+                    <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{String(e.description || '')}</td>
                     <td>
                       <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
                         {Boolean(e._requires_po) && <span className="odoo-tag odoo-tag-purple">BC requis</span>}
@@ -364,31 +365,24 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                         {inactive && <StatusTag tone="cancelled" label="Inactive" />}
                       </span>
                     </td>
-                    <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    <td className="ds-actions">
                       {inactive ? (
                         canEdit('settings') && (
-                          <button className="odoo-btn-secondary" style={iconBtn} title="Réactiver" aria-label={`Réactiver ${e.label}`} onClick={() => reactivate.mutate(id)}>
+                          <button type="button" className="odoo-btn-secondary" style={iconBtn} title="Réactiver" aria-label={`Réactiver ${e.label}`} onClick={() => reactivate.mutate(id)}>
                             <RotateCw size={13} />
                           </button>
                         )
                       ) : (
-                        <span style={{ display: 'inline-flex', gap: 4 }}>
-                          {canHaveChildren && canCreate('settings') && (
-                            <button className="odoo-btn-secondary" style={iconBtn} title={level === 1 ? 'Ajouter une sous-catégorie' : 'Ajouter un type'}
-                              aria-label={`Ajouter sous ${e.label}`} onClick={() => openNew(e)}>
-                              <Plus size={13} />
-                            </button>
-                          )}
+                        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
                           {canEdit('settings') && (
-                            <button className="odoo-btn-secondary" style={iconBtn} title="Modifier" aria-label={`Modifier ${e.label}`} onClick={() => openEdit(e)}>
-                              <Pencil size={13} />
+                            <button type="button" className="ds-icon-btn" title="Modifier" aria-label={`Modifier ${e.label}`} onClick={() => openEdit(e)}>
+                              <Pencil size={15} aria-hidden="true" />
                             </button>
                           )}
-                          {canDelete('settings') && (
-                            <button className="odoo-btn-secondary" style={iconBtn} title={isNative ? 'Supprimer' : 'Désactiver'} aria-label={`Désactiver ${e.label}`} onClick={() => deactivate(e, depth)}>
-                              <Trash2 size={13} />
-                            </button>
-                          )}
+                          <RowMenu label={`Plus d'actions pour ${e.label}`} items={[
+                            ...(canHaveChildren && canCreate('settings') ? [{ label: level === 1 ? 'Ajouter une sous-catégorie' : 'Ajouter un type', icon: Plus, onSelect: () => openNew(e) }] : []),
+                            ...(canDelete('settings') ? [{ label: isNative ? 'Supprimer' : 'Désactiver', icon: Trash2, danger: true, onSelect: () => deactivate(e, depth) }] : []),
+                          ]} />
                         </span>
                       )}
                     </td>
@@ -407,9 +401,9 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
               <div style={{ fontWeight: 600 }}>
                 {form.id ? 'Modifier la valeur' : isHierarchical && !form.metadata.parent_id ? 'Nouvelle catégorie' : 'Nouvelle valeur'}
-                {parentLabel && <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)', marginLeft: 6 }}>sous « {parentLabel} »</span>}
+                {parentLabel && <span style={{ fontWeight: 400, color: 'var(--ds-muted)', marginLeft: 6 }}>sous « {parentLabel} »</span>}
               </div>
-              <button type="button" onClick={() => setForm(null)} aria-label="Fermer" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--odoo-text-muted)' }}><X size={16} /></button>
+              <button type="button" onClick={() => setForm(null)} aria-label="Fermer" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ds-muted)' }}><X size={16} /></button>
             </div>
             <div style={{ padding: 16, display: 'grid', gap: 12 }}>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -465,15 +459,15 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                       onChange={e => setForm({ ...form, metadata: { ...form.metadata, is_base: e.target.checked, ...(e.target.checked ? { to_base: 1 } : {}) } })} />
                     Unité de base de sa famille (facteur 1)
                   </label>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0 }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', margin: 0 }}>
                     Le facteur exprime 1 unité dans l'unité de base (ex. 1 kg = 1000 g → facteur 1000). La conversion n'opère qu'entre unités d'une même famille.
                   </p>
                 </>
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-              <button className="odoo-btn-secondary" onClick={() => setForm(null)}>Annuler</button>
-              <button className="odoo-btn-primary" disabled={!form.label.trim() || save.isPending} onClick={() => save.mutate(form)}>
+              <button type="button" className="odoo-btn-secondary" onClick={() => setForm(null)}>Annuler</button>
+              <button type="button" className="odoo-btn-primary" disabled={!form.label.trim() || save.isPending} onClick={() => save.mutate(form)}>
                 {form.id ? 'Enregistrer' : 'Ajouter'}
               </button>
             </div>

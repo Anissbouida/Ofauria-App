@@ -1,7 +1,8 @@
 import { money as fmtMoney } from '../../utils/money';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Clock, Inbox, Send, History, UserCheck, Trash2, Loader2, ChevronDown, ChevronRight, FileDown, Truck, ClipboardCheck } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Send, History, UserCheck, ChevronDown, ChevronRight, FileDown, ClipboardCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ROLE_LABELS, APPROVAL_DOC_TYPES, APPROVAL_REQUEST_STATUS_LABELS, type ApprovalDocTypeDef } from '@ofauria/shared';
@@ -12,10 +13,14 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
-import { StagePipeline, type StageDef } from '../../components/purchasing/ProcessBoard';
 import SearchSelect from '../../components/ui/SearchSelect';
 import SalesPageShell from '../sales/SalesPageShell';
 import { FilterChips } from '../sales/ListTemplate';
+import { PurHeaderActions } from '../purchasing/PurHeaderActions';
+import {
+  KpiGrid, KpiCard, Tabs, DataPanel, TableFooter, EmptyState, LoadingState, SectionHeader, Alert, FormField,
+} from '../../components/ds';
+import { currencySymbol } from '../../utils/money';
 import './approvals.css';
 
 /**
@@ -25,6 +30,7 @@ import './approvals.css';
 
 const DOC_TYPES = APPROVAL_DOC_TYPES as Record<string, ApprovalDocTypeDef>;
 const money = (v: string | number | null | undefined) => v === null || v === undefined ? '' : fmtMoney(Number(v));
+const amount = (v: string | number | null | undefined) => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const when = (d: string) => format(new Date(d), 'dd MMM yyyy à HH:mm', { locale: fr });
 const STATUS_TONE: Record<string, StatusTone> = { pending: 'todo', approved: 'done', rejected: 'blocked', cancelled: 'cancelled' };
 const RequestStatusTag = ({ status }: { status: string }) => (
@@ -50,7 +56,7 @@ function Steps({ r }: { r: ApprovalRequest }) {
             </div>
             <div className="ui-timeline-detail">
               {done && s.decided_at && <>{s.decided_by_name} · {when(s.decided_at)}{s.reason ? ` · ${s.reason}` : ''}</>}
-              {s.status === 'pending' && s.due_at && <><Clock size={11} style={{ verticalAlign: -1 }} /> attendue avant le {when(s.due_at)}{s.escalated_at ? ' · en retard, administrateur prévenu' : ''}</>}
+              {s.status === 'pending' && s.due_at && <><Clock size={11} aria-hidden="true" style={{ verticalAlign: -1 }} /> attendue avant le {when(s.due_at)}{s.escalated_at ? ' · en retard, administrateur prévenu' : ''}</>}
             </div>
           </li>
         );
@@ -65,7 +71,8 @@ const KIND_TAG: Record<string, { label: string; cls: string }> = {
   asset: { label: 'Immobilisation', cls: 'odoo-tag-orange' },
 };
 const qty = (v: unknown) => Number(v ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
-const dateOnly = (d: unknown) => (d ? format(new Date(String(d)), 'dd MMM yyyy', { locale: fr }) : '—');
+const dateOnly = (d: unknown) => (d ? format(new Date(String(d)), 'd MMM yyyy', { locale: fr }) : '—');
+const muted: React.CSSProperties = { color: 'var(--ds-muted)', fontSize: 12, fontWeight: 400 };
 
 /**
  * Contenu du bon de commande soumis : l'approbateur décide sur pièce (fournisseur,
@@ -77,8 +84,8 @@ function PurchaseOrderDetails({ poId }: { poId: string }) {
     queryFn: () => purchaseOrdersApi.getById(poId),
     retry: false,
   });
-  if (isLoading) return <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}><Loader2 size={12} className="animate-spin" style={{ verticalAlign: -2 }} /> Chargement du bon…</div>;
-  if (isError || !po) return <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Détails du bon non accessibles avec votre profil.</div>;
+  if (isLoading) return <LoadingState bare label="Chargement du bon…" />;
+  if (isError || !po) return <p style={{ ...muted, fontSize: 14, margin: 0 }}>Détails du bon non accessibles avec votre profil.</p>;
 
   const items = (po.items ?? []) as Record<string, any>[];
   const total = items.reduce((t, it) => t + Number(it.quantity_ordered ?? 0) * Number(it.unit_price ?? 0), 0);
@@ -90,37 +97,37 @@ function PurchaseOrderDetails({ poId }: { poId: string }) {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch { notify.error('PDF indisponible'); }
   };
-  const cell: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid var(--odoo-border)', fontSize: '0.8125rem' };
-  const num: React.CSSProperties = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, fontSize: '0.8125rem' }}>
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-end', fontSize: 14 }}>
         <div>
-          <div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={11} /> Fournisseur</div>
-          <div style={{ fontWeight: 600 }}>{po.supplier_name}</div>
-          {(po.supplier_contact || po.supplier_phone) && (
-            <div style={{ color: 'var(--odoo-text-muted)' }}>{[po.supplier_contact, po.supplier_phone].filter(Boolean).join(' · ')}</div>
-          )}
+          <div style={muted}>Fournisseur</div>
+          <div className="ds-strong">{po.supplier_name}</div>
+          {(po.supplier_contact || po.supplier_phone) && <div style={muted}>{[po.supplier_contact, po.supplier_phone].filter(Boolean).join(' · ')}</div>}
         </div>
         <div>
-          <div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Commandé le</div>
+          <div style={muted}>Commandé le</div>
           <div>{dateOnly(po.order_date)}{po.created_by_name ? ` par ${po.created_by_name}` : ''}</div>
         </div>
         <div>
-          <div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Livraison prévue</div>
+          <div style={muted}>Livraison prévue</div>
           <div>{dateOnly(po.expected_delivery_date)}</div>
         </div>
+        <span className="ds-grow" />
+        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={downloadPdf}>
+          <FileDown size={13} aria-hidden="true" /> Voir le PDF du bon
+        </button>
       </div>
-      {po.notes && <div style={{ fontSize: '0.8125rem' }}><b>Notes :</b> {po.notes}</div>}
-      <div style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, overflowX: 'auto' }}>
-        <table className="odoo-table">
+      {po.notes && <div style={{ fontSize: 14 }}><span className="ds-strong">Notes :</span> {po.notes}</div>}
+      <DataPanel label="Lignes du bon de commande">
+        <table className="odoo-table ds-dense">
           <thead>
-            <tr style={{ textAlign: 'left', color: 'var(--theme-text-muted)' }}>
-              <th style={{ ...cell, fontWeight: 500, fontSize: '0.75rem' }}>Article</th>
-              <th style={{ ...num, fontWeight: 500, fontSize: '0.75rem' }}>Quantité</th>
-              <th style={{ ...num, fontWeight: 500, fontSize: '0.75rem' }}>Prix unit. HT</th>
-              <th style={{ ...num, fontWeight: 500, fontSize: '0.75rem' }}>Total HT</th>
+            <tr>
+              <th>Article</th>
+              <th className="ds-num">Quantité</th>
+              <th className="ds-num">Prix unitaire HT ({currencySymbol()})</th>
+              <th className="ds-num">Total HT ({currencySymbol()})</th>
             </tr>
           </thead>
           <tbody>
@@ -129,113 +136,174 @@ function PurchaseOrderDetails({ poId }: { poId: string }) {
               const lineTotal = Number(it.quantity_ordered ?? 0) * Number(it.unit_price ?? 0);
               return (
                 <tr key={it.id as string}>
-                  <td style={cell}>
+                  <td>
                     {it.ingredient_name as string}
-                    {tag && <span className={`odoo-tag ${tag.cls}`} style={{ marginLeft: 6, fontSize: '0.625rem' }}>{tag.label}</span>}
+                    {tag && <span className={`odoo-tag ${tag.cls}`} style={{ marginLeft: 6 }}>{tag.label}</span>}
                   </td>
-                  <td style={num}>
+                  <td className="ds-num">
                     {qty(it.quantity_ordered)} {it.ingredient_unit === 'unit' ? 'u' : it.ingredient_unit}
                     {it.line_container_label && Number(it.qty_container) > 0 && (
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{qty(it.qty_container)} × {String(it.line_container_label).toLowerCase()}</div>
+                      <div style={muted}>{qty(it.qty_container)} × {String(it.line_container_label).toLowerCase()}</div>
                     )}
                   </td>
-                  <td style={num}>{it.unit_price != null ? money(it.unit_price) : <span style={{ color: 'var(--prj-orange)' }}>à définir</span>}</td>
-                  <td style={{ ...num, fontWeight: 600 }}>{money(lineTotal)}</td>
+                  <td className="ds-num">{it.unit_price != null ? amount(it.unit_price) : <span style={{ color: 'var(--ds-warning)' }}>à définir</span>}</td>
+                  <td className="ds-num ds-strong">{amount(lineTotal)}</td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={3} style={{ ...cell, borderBottom: 'none', textAlign: 'right', fontWeight: 600 }}>{items.length} ligne{items.length > 1 ? 's' : ''} · Total HT</td>
-              <td style={{ ...num, borderBottom: 'none', fontWeight: 700 }}>{money(total)}</td>
+              <td colSpan={3} className="ds-num">{items.length} ligne{items.length > 1 ? 's' : ''} · total HT</td>
+              <td className="ds-num">{amount(total)}</td>
             </tr>
           </tfoot>
         </table>
-      </div>
-      <div>
-        <button type="button" className="odoo-btn-secondary" onClick={downloadPdf} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <FileDown size={13} /> Voir le PDF du bon
-        </button>
-      </div>
+      </DataPanel>
     </div>
   );
 }
 
-function RequestCard({ r, decide, cancel }: {
+/** Détail d'une demande, affiché sous sa ligne : pièce, circuit, effet, et motif de la décision. */
+function RequestDetail({ r, reason, onReason, reasonError }: {
   r: ApprovalRequest;
-  decide?: (id: string, action: 'approve' | 'reject', reason: string) => void;
-  cancel?: (id: string) => void;
+  /** Saisie du motif (boîte « À approuver » seulement). */
+  reason?: string; onReason?: (v: string) => void; reasonError?: boolean;
 }) {
-  const [reason, setReason] = useState('');
-  // Ouvert d'office quand il faut décider : on approuve sur pièce.
-  const [showDetails, setShowDetails] = useState(!!decide && r.status === 'pending');
   const values = r.summary?.values ?? {};
   const def = DOC_TYPES[r.doc_type];
   return (
-    <article className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 10 }}>
-      <header style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: '1rem', letterSpacing: '-0.01em' }}>{r.doc_label}</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-            {def?.label ?? r.doc_type} · règle « {r.rule_label} » ({r.summary?.condition ?? 'toujours'})
-            {r.store_name ? ` · ${r.store_name}` : ''}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {r.amount && <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(r.amount)}</span>}
-          <RequestStatusTag status={r.status} />
-        </div>
-      </header>
-      <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-        Demandé par <b style={{ color: 'var(--odoo-text)' }}>{r.requested_by_name}</b> le {when(r.requested_at)}
+    <div style={{ display: 'grid', gap: 12, padding: '12px 8px' }}>
+      <div style={{ fontSize: 13, color: 'var(--ds-muted)' }}>
+        Règle « {r.rule_label} » ({r.summary?.condition ?? 'toujours'}){r.store_name ? ` · ${r.store_name}` : ''}
         {Object.keys(values).length > 0 && (
           <> · {Object.entries(values).map(([k, v]) => `${def?.fields[k]?.label ?? k} : ${typeof v === 'number' ? v.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : String(v)}${def?.fields[k]?.unit ? ` ${def.fields[k].unit}` : ''}`).join(' · ')}</>
         )}
       </div>
-      {r.doc_type === 'purchase_order' && (
-        <div style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: '8px 12px' }}>
-          <button type="button" onClick={() => setShowDetails(v => !v)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: '0.8125rem', width: '100%', textAlign: 'left' }}>
-            {showDetails ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Détails du bon de commande
-          </button>
-          {showDetails && <div style={{ marginTop: 10 }}><PurchaseOrderDetails poId={r.doc_id} /></div>}
-        </div>
-      )}
+      {r.doc_type === 'purchase_order' && <PurchaseOrderDetails poId={r.doc_id} />}
       <Steps r={r} />
-      {r.status !== 'pending' && r.decision_reason && <div style={{ fontSize: '0.8125rem' }}><b>Motif :</b> {r.decision_reason}</div>}
+      {r.status !== 'pending' && r.decision_reason && <div style={{ fontSize: 14 }}><span className="ds-strong">Motif :</span> {r.decision_reason}</div>}
       {r.status === 'approved' && r.apply_error && (
         <StatusBanner tone="danger" icon={XCircle} title="Approuvée, mais l'effet n'a pas pu être appliqué">{r.apply_error}</StatusBanner>
       )}
-      {r.status === 'approved' && r.applied_at && !r.apply_error && (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--prj-green)' }}><CheckCircle2 size={12} style={{ verticalAlign: -2 }} /> {def?.effect}</div>
+      {r.status === 'approved' && r.applied_at && !r.apply_error && def?.effect && (
+        <Alert tone="success" icon={CheckCircle2}>{def.effect}</Alert>
       )}
-      {decide && r.status === 'pending' && (
-        <div style={{ display: 'grid', gap: 8 }}>
-          <textarea id={`approval-reason-${r.id}`} value={reason} onChange={e => setReason(e.target.value)} rows={2}
-            placeholder="Motif (obligatoire pour refuser, facultatif pour approuver)"
-            style={{ width: '100%', fontSize: '0.8125rem', padding: '8px 10px', border: '1px solid var(--odoo-border)', borderRadius: 10, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }} />
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="odoo-btn-danger" disabled={!reason.trim()} onClick={() => decide(r.id, 'reject', reason)}><XCircle size={14} /> Refuser</button>
-            <button type="button" className="odoo-btn-primary" onClick={() => decide(r.id, 'approve', reason)}><CheckCircle2 size={14} /> Approuver</button>
-          </div>
-        </div>
+      {onReason && r.status === 'pending' && (
+        <FormField label="Motif" htmlFor={`approval-reason-${r.id}`}
+          hint="Obligatoire pour refuser, facultatif pour approuver."
+          error={reasonError ? 'Saisissez le motif du refus : le demandeur le recevra.' : undefined}>
+          <textarea id={`approval-reason-${r.id}`} className="ds-input" rows={2} value={reason ?? ''} onChange={e => onReason(e.target.value)}
+            aria-invalid={reasonError || undefined} style={{ minHeight: 60 }} />
+        </FormField>
       )}
-      {cancel && r.status === 'pending' && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={() => cancel(r.id)}>Retirer la demande</button>
-        </div>
-      )}
-    </article>
+    </div>
   );
 }
 
+/** Tableau des demandes (« À approuver » et « Mes demandes ») : une ligne par pièce, détail déplié dessous. */
+function RequestsTable({ rows, label, footer, decide, cancel, busy }: {
+  rows: ApprovalRequest[]; label: string; footer: string;
+  decide?: (id: string, action: 'approve' | 'reject', reason: string) => void;
+  cancel?: (id: string) => void;
+  busy?: boolean;
+}) {
+  // Ouvert d'office sur la première pièce à décider : on approuve sur pièce.
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [missing, setMissing] = useState<Record<string, boolean>>({});
+  const isOpen = (id: string, i: number) => open[id] ?? (!!decide && i === 0);
+  const colSpan = decide ? 9 : 8;
+  // Motif obligatoire pour refuser : sans motif, la ligne se déplie sur le champ, en erreur.
+  const reject = (id: string) => {
+    const reason = (reasons[id] ?? '').trim();
+    if (!reason) {
+      setOpen(o => ({ ...o, [id]: true })); setMissing(m => ({ ...m, [id]: true }));
+      setTimeout(() => document.getElementById(`approval-reason-${id}`)?.focus(), 0);
+      return;
+    }
+    decide?.(id, 'reject', reasons[id]);
+  };
+  return (
+    <DataPanel label={label} footer={<TableFooter note={footer} />}>
+      <table className="odoo-table">
+        <thead>
+          <tr>
+            <th style={{ width: 44 }}><span className="sr-only">Détail</span></th>
+            <th>Pièce</th><th>Objet</th>
+            {decide && <th>Demandeur</th>}
+            <th>Demandée le</th><th>Règle</th>
+            <th className="ds-num">Montant ({currencySymbol()})</th>
+            <th>Statut</th>
+            <th className="ds-actions">{decide ? 'Décision' : <span className="sr-only">Actions</span>}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const opened = isOpen(r.id, i);
+            const late = r.steps.some(s => s.status === 'pending' && s.escalated_at);
+            return (
+              <Fragment key={r.id}>
+                <tr onClick={() => setOpen(o => ({ ...o, [r.id]: !opened }))} style={{ cursor: 'pointer' }}>
+                  <td>
+                    <button type="button" className="ds-icon-btn" aria-expanded={opened}
+                      aria-label={`${opened ? 'Replier' : 'Afficher'} le détail de ${r.doc_label}`}
+                      onClick={e => { e.stopPropagation(); setOpen(o => ({ ...o, [r.id]: !opened })); }}>
+                      {opened ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                  </td>
+                  <td className="ds-ref">{r.doc_label}</td>
+                  <td>{DOC_TYPES[r.doc_type]?.label ?? r.doc_type}{r.store_name && <div style={muted}>{r.store_name}</div>}</td>
+                  {decide && <td>{r.requested_by_name ?? '—'}</td>}
+                  <td style={{ whiteSpace: 'nowrap' }}>{when(r.requested_at)}</td>
+                  <td>{r.rule_label}</td>
+                  <td className="ds-num ds-strong">{amount(r.amount)}</td>
+                  <td>
+                    <RequestStatusTag status={r.status} />
+                    {r.status === 'pending' && late && <span style={{ marginLeft: 4 }}><StatusTag tone="late" label="En retard" /></span>}
+                    {r.apply_error && <span style={{ marginLeft: 4 }}><StatusTag tone="blocked" label="Effet non appliqué" /></span>}
+                  </td>
+                  <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                    {decide && r.status === 'pending' && (
+                      <>
+                        <button type="button" className="ds-btn-danger ds-btn-sm" disabled={busy} onClick={() => reject(r.id)}>Refuser</button>
+                        <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={busy} onClick={() => decide(r.id, 'approve', reasons[r.id] ?? '')}>Approuver</button>
+                      </>
+                    )}
+                    {cancel && r.status === 'pending' && (
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={() => cancel(r.id)}>Retirer</button>
+                    )}
+                  </td>
+                </tr>
+                {opened && (
+                  <tr>
+                    <td colSpan={colSpan} style={{ background: 'var(--ds-bg)', height: 'auto' }}>
+                      <RequestDetail r={r}
+                        reason={decide ? reasons[r.id] ?? '' : undefined}
+                        onReason={decide ? v => { setReasons(x => ({ ...x, [r.id]: v })); if (v.trim()) setMissing(m => ({ ...m, [r.id]: false })); } : undefined}
+                        reasonError={!!missing[r.id]} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </DataPanel>
+  );
+}
+
+type TabKey = 'inbox' | 'mine' | 'history' | 'delegations';
+
 export default function ApprovalsPage() {
+  // Monté dans Achats (la coquille pose déjà fil d'Ariane, titre et description) ou seul sur /approvals.
+  const standalone = useLocation().pathname.startsWith('/approvals');
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const isManager = user?.role === 'admin' || user?.role === 'manager';
-  const [tab, setTab] = useState<'inbox' | 'mine' | 'history' | 'delegations'>('inbox');
+  const [tab, setTab] = useState<TabKey>('inbox');
   const [histStatus, setHistStatus] = useState('');
 
   const inbox = useQuery({ queryKey: ['approvals', 'inbox'], queryFn: approvalsApi.inbox });
@@ -292,144 +360,161 @@ export default function ApprovalsPage() {
     onError: (err) => notify.error(apiErrorMessage(err, 'Retrait refusé')),
   });
 
-  // En-tête à la charte Achats : pipeline cliquable (comme BC / Factures / Demandes de prix).
-  // Les tuiles servent de navigation entre les sections et portent les métriques de décision.
   const today = format(new Date(), 'yyyy-MM-dd');
   const activeDelegations = (delegations.data ?? []).filter(d => d.starts_on.slice(0, 10) <= today && d.ends_on.slice(0, 10) >= today).length;
-  const stages: Array<StageDef & { key: typeof tab }> = [
-    { key: 'inbox', label: 'À approuver', hint: 'en attente de décision', icon: Inbox },
-    { key: 'mine', label: 'Mes demandes', hint: "pièces que j'ai soumises", icon: Send },
-    ...(isManager ? [{ key: 'history' as const, label: 'Traitées (30 j)', hint: 'historique des décisions', icon: History }] : []),
-    { key: 'delegations', label: 'Délégations', hint: 'pendant une absence', icon: UserCheck },
+  const tabs: Array<{ key: TabKey; label: string; count?: number }> = [
+    { key: 'inbox', label: 'À approuver', count: inboxRows.length },
+    { key: 'mine', label: 'Mes demandes', count: myPending },
+    ...(isManager ? [{ key: 'history' as const, label: 'Traitées (30 j)', count: req30 }] : []),
+    { key: 'delegations', label: 'Délégations', count: activeDelegations },
   ];
-  const stageStats: Record<string, { count: number; sub: string; late?: number; alertLabel?: string }> = {
-    inbox: { count: inboxRows.length, sub: pendingAmount > 0 ? money(pendingAmount) : '', late: overdue, alertLabel: 'en retard' },
-    mine: { count: myPending, sub: '' },
-    history: { count: req30, sub: rej30 > 0 ? `${rej30} refus` : '' },
-    delegations: { count: activeDelegations, sub: activeDelegations > 0 ? 'active' : '' },
-  };
   const pipelineSummary = isManager
     ? `Taux d'approbation ${approveRate == null ? '—' : `${approveRate} %`} · délai moyen ${avgDelay} · ${activeRules} circuit${activeRules > 1 ? 's' : ''} actif${activeRules > 1 ? 's' : ''}`
     : `${inboxRows.length} pièce${inboxRows.length > 1 ? 's' : ''} en attente de votre décision`;
+  const histRows = statsHistory.data?.rows ?? [];
+  const delegateButton = (
+    <button type="button" className="odoo-btn-secondary" onClick={() => setTab('delegations')}>
+      <UserCheck size={14} aria-hidden="true" /> Déléguer
+    </button>
+  );
 
-  return (
-    <div className="approvals-page">
-    <SalesPageShell icon={ClipboardCheck} title="Approbations" summary={pipelineSummary}>
-      <StagePipeline title="Où en sont les approbations" summary={pipelineSummary}
-        stages={stages} stats={stageStats} isActive={k => tab === k} onPick={k => setTab(k as typeof tab)} />
+  const content = (
+    <>
+      <KpiGrid>
+        <KpiCard label="À approuver" value={String(inboxRows.length)}
+          sub={overdue > 0 ? `${overdue} en retard` : pendingAmount > 0 ? money(pendingAmount) : 'en attente de votre décision'} tone={overdue > 0 ? 'red' : undefined} />
+        <KpiCard label="Mes demandes en attente" value={String(myPending)} sub="pièces que j'ai soumises" />
+        {isManager && <KpiCard label="Taux d'approbation" value={approveRate == null ? '—' : `${approveRate} %`} sub={`${req30} demande${req30 > 1 ? 's' : ''} sur 30 jours${rej30 > 0 ? ` · ${rej30} refus` : ''}`} />}
+        {isManager && <KpiCard label="Délai moyen de décision" value={avgDelay} sub={`${activeRules} circuit${activeRules > 1 ? 's' : ''} actif${activeRules > 1 ? 's' : ''}`} />}
+      </KpiGrid>
+
+      <Tabs label="Vues des approbations" value={tab} onChange={setTab} tabs={tabs} />
 
       {tab === 'inbox' && (
-        <section style={{ display: 'grid', gap: 12 }}>
-          {inbox.isLoading && <Loader2 className="animate-spin" size={18} />}
-          {!inbox.isLoading && !inbox.data?.length && (
-            <StatusBanner tone="success" icon={CheckCircle2} title="Rien à approuver">Aucune pièce n'attend votre décision — tout est traité.</StatusBanner>
-          )}
-          {inboxRows.length > 0 && byType.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-              <span>{inboxRows.length} pièce(s){pendingAmount > 0 ? ` · ${money(pendingAmount)}` : ''} :</span>
-              {byType.map(([label, n]) => <span key={label} className="odoo-tag odoo-tag-grey">{label} · {n}</span>)}
-            </div>
-          )}
-          {inbox.data?.map(r => <RequestCard key={r.id} r={r} decide={(id, action, reason) => decideMutation.mutate({ id, action, reason })} />)}
-        </section>
+        inbox.isLoading ? <LoadingState /> : !inboxRows.length ? (
+          <EmptyState icon={CheckCircle2} title="Rien à approuver" text="Aucune pièce n'attend votre décision : tout est traité." />
+        ) : (
+          <RequestsTable rows={inboxRows} label="Pièces à approuver" busy={decideMutation.isPending}
+            footer={`${inboxRows.length} pièce${inboxRows.length > 1 ? 's' : ''}${pendingAmount > 0 ? ` · ${money(pendingAmount)}` : ''}${byType.length ? ` · ${byType.map(([l, n]) => `${l} ${n}`).join(', ')}` : ''}`}
+            decide={(id, action, reason) => decideMutation.mutate({ id, action, reason })} />
+        )
       )}
 
       {tab === 'mine' && (
-        <section style={{ display: 'grid', gap: 12 }}>
-          {mine.isLoading && <Loader2 className="animate-spin" size={18} />}
-          {!mine.isLoading && !mine.data?.length && <StatusBanner tone="neutral" icon={Send} title="Aucune demande">Vous n'avez soumis aucune pièce à approbation.</StatusBanner>}
-          {mine.data?.map(r => <RequestCard key={r.id} r={r} cancel={async id => { if (await confirm('Retirer cette demande ? La pièce reste en attente, vous pourrez la soumettre de nouveau.')) cancelMutation.mutate(id); }} />)}
-        </section>
+        mine.isLoading ? <LoadingState /> : !mine.data?.length ? (
+          <EmptyState icon={Send} title="Aucune demande" text="Vous n'avez soumis aucune pièce à approbation." />
+        ) : (
+          <RequestsTable rows={mine.data} label="Mes demandes" busy={cancelMutation.isPending}
+            footer={`${mine.data.length} demande${mine.data.length > 1 ? 's' : ''} · ${myPending} en attente`}
+            cancel={async id => { if (await confirm('Retirer cette demande ? La pièce reste en attente, vous pourrez la soumettre de nouveau.')) cancelMutation.mutate(id); }} />
+        )
       )}
 
       {tab === 'history' && isManager && (
-        <section style={{ display: 'grid', gap: 12 }}>
-          <div className="prj-toolbar">
-            <FilterChips label="Filtrer par statut" value={histStatus} onChange={setHistStatus} chips={[
-              { key: '', label: 'Tous les statuts', count: statsHistory.data?.rows.length },
-              ...(['approved', 'rejected', 'pending', 'cancelled'] as const).map(st => ({
-                key: st, label: APPROVAL_REQUEST_STATUS_LABELS[st], count: (statsHistory.data?.rows ?? []).filter(r => r.status === st).length,
-              })),
-            ]} />
-            <span className="prj-note" style={{ marginLeft: 'auto' }}>
-              {history.data ? `${history.data.total} demande${history.data.total > 1 ? 's' : ''}` : ''}
-              {avgHours != null ? `${history.data ? ' · ' : ''}délai moyen ${avgDelay}` : ''}
-            </span>
-          </div>
-          <div className="prj-panel prj-scroll">
-            <table className="odoo-table">
-              <thead><tr><th>Pièce</th><th>Règle</th><th style={{ textAlign: 'right' }}>Montant</th><th>Demandeur</th><th>Demandée le</th><th>Statut</th><th>Décidée par</th><th>Motif</th></tr></thead>
-              <tbody>
-                {history.data?.rows.map(r => (
-                  <tr key={r.id}>
-                    <td style={{ fontWeight: 600 }}>{r.doc_label}<div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{DOC_TYPES[r.doc_type]?.label}</div></td>
-                    <td>{r.rule_label}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(r.amount)}</td>
-                    <td>{r.requested_by_name}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{when(r.requested_at)}</td>
-                    <td><RequestStatusTag status={r.status} />{r.apply_error && <span style={{ marginLeft: 4 }}><StatusTag tone="blocked" label="effet non appliqué" /></span>}</td>
-                    <td>{r.decided_by_name ?? '—'}{r.decided_at && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{when(r.decided_at)}</div>}</td>
-                    <td style={{ fontSize: '0.8125rem' }}>{r.decision_reason ?? '—'}</td>
-                  </tr>
-                ))}
-                {history.data && !history.data.rows.length && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--odoo-text-muted)' }}>Aucune demande</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <>
+          <FilterChips label="Filtrer par statut" value={histStatus} onChange={setHistStatus} chips={[
+            { key: '', label: 'Tous les statuts', count: histRows.length },
+            ...(['approved', 'rejected', 'pending', 'cancelled'] as const).map(st => ({
+              key: st, label: APPROVAL_REQUEST_STATUS_LABELS[st], count: histRows.filter(r => r.status === st).length,
+            })),
+          ]} />
+          {history.isLoading ? <LoadingState /> : !history.data?.rows.length ? (
+            <EmptyState icon={History} title="Aucune demande" text="Les demandes traitées sur les 30 derniers jours s'affichent ici." />
+          ) : (
+            <DataPanel label="Demandes traitées"
+              footer={<TableFooter note={`${history.data.total} demande${history.data.total > 1 ? 's' : ''}${avgHours != null ? ` · délai moyen ${avgDelay}` : ''}`} />}>
+              <table className="odoo-table">
+                <thead><tr><th>Pièce</th><th>Objet</th><th>Demandeur</th><th>Demandée le</th><th>Règle</th><th className="ds-num">Montant ({currencySymbol()})</th><th>Statut</th><th>Décidée par</th><th>Motif</th></tr></thead>
+                <tbody>
+                  {history.data.rows.map(r => (
+                    <tr key={r.id}>
+                      <td className="ds-ref">{r.doc_label}</td>
+                      <td>{DOC_TYPES[r.doc_type]?.label ?? r.doc_type}</td>
+                      <td>{r.requested_by_name ?? '—'}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{when(r.requested_at)}</td>
+                      <td>{r.rule_label}</td>
+                      <td className="ds-num ds-strong">{amount(r.amount)}</td>
+                      <td><RequestStatusTag status={r.status} />{r.apply_error && <span style={{ marginLeft: 4 }}><StatusTag tone="blocked" label="Effet non appliqué" /></span>}</td>
+                      <td>{r.decided_by_name ?? '—'}{r.decided_at && <div style={{ ...muted, whiteSpace: 'nowrap' }}>{when(r.decided_at)}</div>}</td>
+                      <td>{r.decision_reason ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </DataPanel>
+          )}
+        </>
       )}
 
       {tab === 'delegations' && (
-        <section style={{ display: 'grid', gap: 12 }}>
-          <StatusBanner tone="neutral" icon={UserCheck} title="Déléguer mes approbations pendant une absence">
-            Le délégué peut trancher les étapes qui m'attendent, à ma place, entre les deux dates. Chaque décision reste signée de son nom.
-          </StatusBanner>
-          <div className="prj-panel">
-          <div className="prj-panel-head">Nouvelle délégation</div>
-          <div className="prj-panel-body" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
-            <div style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Délégué
-              <SearchSelect size="md" width={260} ariaLabel="Délégué" placeholder="Choisir…" value={delegate.toUserId}
-                onChange={id => setDelegate({ ...delegate, toUserId: id })}
-                options={(delegates.data ?? []).map(d => ({ id: d.id, label: d.name, sublabel: d.role_label }))} />
+        <>
+          <SectionHeader title="Nouvelle délégation" note="Le délégué tranche à ma place entre les deux dates ; chaque décision reste signée de son nom." />
+          <section className="ds-panel" aria-label="Nouvelle délégation" style={{ padding: 20, overflow: 'visible' }}>
+            <div className="ds-form-grid cols-4" style={{ alignItems: 'end' }}>
+              <div style={{ gridColumn: 'span 2' }}>
+                <FormField label="Délégué" required>
+                  <SearchSelect size="md" width="100%" ariaLabel="Délégué" placeholder="Choisir…" value={delegate.toUserId}
+                    onChange={id => setDelegate({ ...delegate, toUserId: id })}
+                    options={(delegates.data ?? []).map(d => ({ id: d.id, label: d.name, sublabel: d.role_label }))} />
+                </FormField>
+              </div>
+              <FormField label="Du" htmlFor="delegation-start" required>
+                <input id="delegation-start" className="ds-input" type="date" value={delegate.startsOn} onChange={e => setDelegate({ ...delegate, startsOn: e.target.value })} />
+              </FormField>
+              <FormField label="Au" htmlFor="delegation-end" required>
+                <input id="delegation-end" className="ds-input" type="date" value={delegate.endsOn} min={delegate.startsOn} onChange={e => setDelegate({ ...delegate, endsOn: e.target.value })} />
+              </FormField>
             </div>
-            <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Du
-              <input id="delegation-start" type="date" value={delegate.startsOn} onChange={e => setDelegate({ ...delegate, startsOn: e.target.value })}
-                style={{ fontSize: '0.8125rem', padding: '4px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }} />
-            </label>
-            <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Au
-              <input id="delegation-end" type="date" value={delegate.endsOn} min={delegate.startsOn} onChange={e => setDelegate({ ...delegate, endsOn: e.target.value })}
-                style={{ fontSize: '0.8125rem', padding: '4px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }} />
-            </label>
-            <button type="button" className="odoo-btn-primary" disabled={!delegate.toUserId || !delegate.endsOn || addDelegation.isPending} onClick={() => addDelegation.mutate()}>Déléguer</button>
-          </div>
-          </div>
-          <div className="prj-panel prj-scroll">
-            <table className="odoo-table">
-              <thead><tr><th>De</th><th>À</th><th>Du</th><th>Au</th><th /></tr></thead>
-              <tbody>
-                {delegations.data?.map(d => {
-                  const active = d.starts_on.slice(0, 10) <= format(new Date(), 'yyyy-MM-dd') && d.ends_on.slice(0, 10) >= format(new Date(), 'yyyy-MM-dd');
-                  return (
-                    <tr key={d.id} style={{ opacity: active ? 1 : 0.6 }}>
-                      <td>{d.from_name}{d.from_user_id === user?.id && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>moi</span>}</td>
-                      <td>{d.to_name}{d.to_user_id === user?.id && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>moi</span>}</td>
-                      <td>{format(new Date(d.starts_on), 'dd MMM yyyy', { locale: fr })}</td>
-                      <td>{format(new Date(d.ends_on), 'dd MMM yyyy', { locale: fr })}{active && <span style={{ marginLeft: 6 }}><StatusTag tone="done" label="active" /></span>}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        {(d.from_user_id === user?.id || user?.role === 'admin') && (
-                          <button type="button" className="odoo-pager-btn" title="Retirer" aria-label="Retirer la délégation" style={{ color: 'var(--prj-red)' }} onClick={() => removeDelegation.mutate(d.id)}><Trash2 size={13} /></button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {delegations.data && !delegations.data.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--odoo-text-muted)' }}>Aucune délégation</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </section>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button type="button" className="odoo-btn-primary" disabled={!delegate.toUserId || !delegate.endsOn || addDelegation.isPending} onClick={() => addDelegation.mutate()}>Enregistrer la délégation</button>
+            </div>
+          </section>
+
+          <SectionHeader title="Délégations enregistrées" note={activeDelegations > 0 ? `${activeDelegations} active${activeDelegations > 1 ? 's' : ''}` : undefined} />
+          {delegations.isLoading ? <LoadingState /> : !delegations.data?.length ? (
+            <EmptyState icon={UserCheck} title="Aucune délégation" text="Déléguez vos approbations pendant une absence pour que les pièces ne restent pas bloquées." />
+          ) : (
+            <DataPanel label="Délégations enregistrées" footer={<TableFooter note={`${delegations.data.length} délégation${delegations.data.length > 1 ? 's' : ''}`} />}>
+              <table className="odoo-table">
+                <thead><tr><th>De</th><th>À</th><th>Du</th><th>Au</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+                <tbody>
+                  {delegations.data.map(d => {
+                    const active = d.starts_on.slice(0, 10) <= today && d.ends_on.slice(0, 10) >= today;
+                    const ended = d.ends_on.slice(0, 10) < today;
+                    return (
+                      <tr key={d.id}>
+                        <td className="ds-strong">{d.from_name}{d.from_user_id === user?.id && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>moi</span>}</td>
+                        <td>{d.to_name}{d.to_user_id === user?.id && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>moi</span>}</td>
+                        <td>{dateOnly(d.starts_on)}</td>
+                        <td>{dateOnly(d.ends_on)}</td>
+                        <td><StatusTag tone={active ? 'done' : ended ? 'cancelled' : 'draft'} label={active ? 'Active' : ended ? 'Terminée' : 'À venir'} /></td>
+                        <td className="ds-actions">
+                          {(d.from_user_id === user?.id || user?.role === 'admin') && (
+                            <button type="button" className="ds-btn-danger ds-btn-sm" disabled={removeDelegation.isPending}
+                              onClick={async () => { if (await confirm(`Retirer la délégation de ${d.from_name} à ${d.to_name} ?`, { title: 'Retirer une délégation', confirmLabel: 'Retirer', danger: true })) removeDelegation.mutate(d.id); }}>
+                              Retirer
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </DataPanel>
+          )}
+        </>
       )}
-    </SalesPageShell>
+    </>
+  );
+
+  // Dans Achats : pas de seconde barre ni de second titre, le bouton va dans l'en-tête du module.
+  if (!standalone) return <><PurHeaderActions>{delegateButton}</PurHeaderActions>{content}</>;
+  return (
+    <div className="approvals-page">
+      <SalesPageShell icon={ClipboardCheck} title="Approbations" summary={pipelineSummary} actions={delegateButton}>
+        {content}
+      </SalesPageShell>
     </div>
   );
 }

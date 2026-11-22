@@ -20,9 +20,10 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { crmApi, type Opportunity } from '../../api/crm.api';
-import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
-import { ListToolbar, FilterChips, ListKpi, ListPanel, ListEmpty, NextStep } from '../sales/ListTemplate';
+import { ListToolbar, FilterChips, ListKpi, ListPanel, NextStep } from '../sales/ListTemplate';
 import SalesPageShell from '../sales/SalesPageShell';
 
 /**
@@ -129,7 +130,6 @@ export default function QuotesPage() {
         </section>
       )}
 
-      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="N°, objet, client, prospect…" />
       <FilterChips label="Filtrer par étape" value={status} onChange={setStatus} chips={[
         { key: '', label: 'Tous', count: allCount },
         ...(follow ? [{ key: 'follow', label: 'À relancer', count: follow, tone: 'late' as const, icon: Clock }] : []),
@@ -142,42 +142,42 @@ export default function QuotesPage() {
         { key: 'cancelled', label: 'Annulés', count: by.cancelled?.count ?? 0 },
       ]} />
 
-      {isLoading ? <ListEmpty icon={Loader2} title="Chargement des devis…" /> : !data?.data.length ? (
-        <ListEmpty icon={FileSignature} title={status || search ? 'Aucun devis pour ces filtres' : 'Aucun devis'}
-          text={status || search ? 'Changez d\'étape ou effacez la recherche.' : 'Un devis chiffre une offre pour un client ou un prospect. Une fois accepté, il devient une commande en un clic.'}
-          action={status || search
-            ? <button type="button" className="odoo-btn-secondary" onClick={() => { setStatus(''); setSearchInput(''); }}>Effacer les filtres</button>
-            : <button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={13} /> Nouveau devis</button>} />
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="N°, objet, client, prospect…" />
+
+      {isLoading ? <LoadingState label="Chargement des devis…" /> : !data?.data.length ? (
+        status || search
+          ? <NoResultState onReset={() => { setStatus(''); setSearchInput(''); }} text="Aucun devis ne correspond aux filtres." />
+          : <EmptyState icon={FileSignature} title="Aucun devis"
+              text="Un devis chiffre une offre pour un client ou un prospect. Une fois accepté, il devient une commande en un clic."
+              action={<button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setEditing('new')}><Plus size={13} /> Nouveau devis</button>} />
       ) : (
-        <ListPanel footer={<div style={{ borderTop: '1px solid var(--odoo-border)' }}><Pager page={page} total={data.total} onPage={setPage} note={`${data.total} devis`} /></div>}>
+        <ListPanel footer={<TableFooter page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} note="devis" />}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Client</th><th>Objet</th><th>Date</th><th>Valable jusqu'au</th><th>Statut</th><th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
+            <thead><tr><th>N°</th><th>Client</th><th>Objet</th><th>Date</th><th>Valable jusqu'au</th><th>Statut</th><th className="ds-num">Total TTC ({currencySymbol()})</th><th className="ds-actions">Actions</th></tr></thead>
             <tbody>{data.data.map(q => (
               <tr key={q.id} onClick={() => setOpenId(q.id)}>
-                <td style={{ whiteSpace: 'nowrap' }}><span className="sal-num">{q.number}</span></td>
+                <td style={{ whiteSpace: 'nowrap' }}><span className="ds-ref">{q.number}</span></td>
                 <td>
-                  <span style={{ fontWeight: 500 }}>{q.client_label}</span>
+                  <span className="ds-strong">{q.client_label}</span>
                   <span className="sal-sub">{q.customer_id ? (q.with_tax ? 'Professionnel' : 'Client') : 'Prospect'}</span>
                 </td>
-                <td>{q.title || <span style={{ color: 'var(--theme-text-muted)' }}>{q.item_count} article(s)</span>}</td>
+                <td>{q.title || <span style={{ color: 'var(--ds-muted)' }}>{q.item_count} article(s)</span>}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{fr(q.quote_date)}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   {fr(q.valid_until)}
                   {q.is_overdue && <span className="sal-late-txt">validité dépassée</span>}
-                  {!q.is_overdue && q.expires_soon && <span className="sal-sub" style={{ color: 'var(--prj-orange)', fontWeight: 600 }}>expire bientôt</span>}
+                  {!q.is_overdue && q.expires_soon && <span className="sal-sub" style={{ color: 'var(--ds-warning)', fontWeight: 600 }}>expire bientôt</span>}
                 </td>
                 <td>
                   <QuoteStatusTag status={q.status} />
                   {q.lost_reason_label && <span className="sal-sub">{q.lost_reason_label}</span>}
                   {q.order_number && <span className="sal-sub sal-mono">{q.order_number}</span>}
                 </td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                  <strong>{n2(q.total)}</strong> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{currencySymbol()}</span>
-                  <span className="sal-sub">{q.with_tax ? 'TTC (HT + TVA)' : 'TTC'}</span>
+                <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
+                  <span className="ds-strong">{n2(q.total)}</span>
+                  {q.with_tax && <span className="sal-sub">HT + TVA</span>}
                 </td>
-                <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                  <div className="sal-actions">{nextStep(q)}<RowMenu items={menuItems(q)} /></div>
-                </td>
+                <td className="ds-actions" onClick={e => e.stopPropagation()}>{nextStep(q)}<RowMenu items={menuItems(q)} /></td>
               </tr>
             ))}</tbody>
           </table>
@@ -349,7 +349,7 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
                   <td><input style={field} type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
                   <td><input style={field} type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
                   {withTax && <td><select style={field} value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })}>{TVA_RATES.map(r => <option key={r} value={r}>{r === '' ? '—' : `${r} %`}</option>)}</select></td>}
-                  <td style={{ textAlign: 'right' }}>{l.description && l.unitPrice !== '' ? amount : ''}</td>
+                  <td className="ds-num">{l.description && l.unitPrice !== '' ? amount : ''}</td>
                   {del}
                 </tr>
               );
@@ -360,7 +360,7 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
                   <td><input style={field} type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
                   <td><input style={field} type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
                   {withTax && <td><select style={field} value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })}>{TVA_RATES.map(r => <option key={r} value={r}>{r === '' ? '—' : `${r} %`}</option>)}</select></td>}
-                  <td style={{ textAlign: 'right' }}>{l.productId ? amount : ''}</td>
+                  <td className="ds-num">{l.productId ? amount : ''}</td>
                   {del}
                 </tr>
               );
@@ -374,10 +374,10 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
             <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, sectionLine()])} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Section</button>
             <table style={{ fontSize: '0.875rem', minWidth: 280 }}>
               <tbody>
-                <tr><td>Sous-total {withTax ? 'HT' : 'TTC'}</td><td style={{ textAlign: 'right' }}>{money(subtotal)}</td></tr>
-                {pct > 0 && <tr><td>Remise {pct} %</td><td style={{ textAlign: 'right' }}>−{money(discount)}</td></tr>}
-                {withTax && <tr><td>TVA</td><td style={{ textAlign: 'right' }}>{money(tax)}</td></tr>}
-                <tr style={{ fontWeight: 700 }}><td>Total TTC</td><td style={{ textAlign: 'right' }}>{money(total)}</td></tr>
+                <tr><td>Sous-total {withTax ? 'HT' : 'TTC'}</td><td className="ds-num">{money(subtotal)}</td></tr>
+                {pct > 0 && <tr><td>Remise {pct} %</td><td className="ds-num">−{money(discount)}</td></tr>}
+                {withTax && <tr><td>TVA</td><td className="ds-num">{money(tax)}</td></tr>}
+                <tr style={{ fontWeight: 700 }}><td>Total TTC</td><td className="ds-num">{money(total)}</td></tr>
               </tbody>
             </table>
           </div>
@@ -447,7 +447,7 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[55] flex items-center justify-center bg-black/40 p-4">
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 960, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        {isLoading || !q ? <div style={{ padding: 24 }}><Loader2 className="animate-spin" size={18} /></div> : (<>
+        {isLoading || !q ? <LoadingState bare /> : (<>
           <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1, flexWrap: 'wrap', gap: 6 }}>
             <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Devis {q.number}</span></div>
             <QuoteStatusTag status={q.status} />
@@ -527,12 +527,12 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
               <div><div style={lab}>Client</div><strong>{q.client_label}</strong>{!q.customer_id && <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 6 }}>prospect</span>}
                 <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{[q.customer_phone ?? q.prospect_phone, q.customer_email ?? q.prospect_email].filter(Boolean).join(' · ')}</div></div>
               <div><div style={lab}>Objet</div>{q.title || '—'}</div>
-              <div><div style={lab}>Date · validité</div>{fr(q.quote_date)} → <span style={{ color: q.is_overdue ? '#dc3545' : undefined }}>{fr(q.valid_until)}</span></div>
+              <div><div style={lab}>Date · validité</div>{fr(q.quote_date)} → <span style={{ color: q.is_overdue ? 'var(--ds-danger)' : undefined }}>{fr(q.valid_until)}</span></div>
               <div><div style={lab}>Proforma</div>{q.proforma_number ?? '—'}</div>
             </div>
 
             <table className="odoo-table">
-              <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>Prix unit. {q.with_tax ? 'HT' : 'TTC'}</th>{q.with_tax && <th style={{ textAlign: 'right' }}>TVA</th>}<th style={{ textAlign: 'right' }}>Montant</th></tr></thead>
+              <thead><tr><th>Article</th><th className="ds-num">Qté</th><th className="ds-num">Prix unit. {q.with_tax ? 'HT' : 'TTC'}</th>{q.with_tax && <th className="ds-num">TVA</th>}<th className="ds-num">Montant</th></tr></thead>
               <tbody>{(q.items ?? []).map(i => {
                 // Section (phase 11, D3-24) : intitulé de lot sur toute la largeur.
                 if ((i.line_type ?? 'product') === 'section') return (
@@ -543,19 +543,19 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
                 return (
                   <tr key={i.id}>
                     <td>{i.product_name || i.description}{i.product_name && i.description && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{i.description}</div>}</td>
-                    <td style={{ textAlign: 'right' }}>{i.quantity}</td>
-                    <td style={{ textAlign: 'right' }}>{i.unit_price != null ? n2(i.unit_price) : '—'}</td>
-                    {q.with_tax && <td style={{ textAlign: 'right' }}>{i.tva_rate != null ? `${Number(i.tva_rate)} %` : '—'}</td>}
-                    <td style={{ textAlign: 'right' }}>{n2(i.subtotal)}</td>
+                    <td className="ds-num">{i.quantity}</td>
+                    <td className="ds-num">{i.unit_price != null ? n2(i.unit_price) : '—'}</td>
+                    {q.with_tax && <td className="ds-num">{i.tva_rate != null ? `${Number(i.tva_rate)} %` : '—'}</td>}
+                    <td className="ds-num">{n2(i.subtotal)}</td>
                   </tr>
                 );
               })}</tbody>
               <tfoot>
-                <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Sous-total {q.with_tax ? 'HT' : 'TTC'}</td><td style={{ textAlign: 'right' }}>{n2(q.subtotal)}</td></tr>
-                {Number(q.promotion_amount) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Promotions</td><td style={{ textAlign: 'right' }}>−{n2(q.promotion_amount)}</td></tr>}
-                {Number(q.discount_pct) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Remise {Number(q.discount_pct)} %</td><td style={{ textAlign: 'right' }}>−{n2(Number(q.discount_amount) - Number(q.promotion_amount ?? 0))}</td></tr>}
-                {q.with_tax && <tr><td colSpan={4} style={{ textAlign: 'right' }}>TVA</td><td style={{ textAlign: 'right' }}>{n2(q.tax_amount)}</td></tr>}
-                <tr style={{ fontWeight: 700 }}><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Total TTC</td><td style={{ textAlign: 'right' }}>{money(q.total)}</td></tr>
+                <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Sous-total {q.with_tax ? 'HT' : 'TTC'}</td><td className="ds-num">{n2(q.subtotal)}</td></tr>
+                {Number(q.promotion_amount) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Promotions</td><td className="ds-num">−{n2(q.promotion_amount)}</td></tr>}
+                {Number(q.discount_pct) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Remise {Number(q.discount_pct)} %</td><td className="ds-num">−{n2(Number(q.discount_amount) - Number(q.promotion_amount ?? 0))}</td></tr>}
+                {q.with_tax && <tr><td colSpan={4} style={{ textAlign: 'right' }}>TVA</td><td className="ds-num">{n2(q.tax_amount)}</td></tr>}
+                <tr style={{ fontWeight: 700 }}><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Total TTC</td><td className="ds-num">{money(q.total)}</td></tr>
               </tfoot>
             </table>
             {(q.delivery_terms || q.notes || q.internal_notes) && (

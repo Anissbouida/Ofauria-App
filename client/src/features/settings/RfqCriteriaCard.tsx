@@ -5,6 +5,7 @@ import { PageNote } from './SettingsPrimitives';
 import { rfqApi, RFQ_CRITERION_TYPE_LABELS, type RfqCriterion, type RfqCriterionType } from '../../api/rfq.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Paramètres › Achats : critères de notation des demandes de prix (mig 459).
@@ -46,51 +47,51 @@ export default function RfqCriteriaCard() {
         </PageNote>
       </div>
 
-      {isLoading ? <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement…</div> : (
+      {isLoading ? <LoadingState bare /> : (
         <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th style={{ width: 20 }} /><th>Critère</th><th>Type</th><th style={{ textAlign: 'right', width: 90 }}>Poids</th><th style={{ textAlign: 'center', width: 70 }}>Actif</th><th style={{ width: 40 }} /></tr></thead>
+          <thead><tr><th style={{ width: 20 }} /><th>Critère</th><th>Type</th><th className="ds-num" style={{ width: 90 }}>Poids</th><th style={{ textAlign: 'center', width: 70 }}>Actif</th><th style={{ width: 40 }} /></tr></thead>
           <tbody>
             {(criteria as RfqCriterion[]).map(c => (
               <tr key={c.id} style={{ opacity: c.active ? 1 : 0.55 }}>
-                <td style={{ color: 'var(--theme-text-muted)' }}><GripVertical size={12} /></td>
+                <td style={{ color: 'var(--ds-muted)' }}><GripVertical size={12} /></td>
                 <td>
                   <input className="input" style={{ width: '100%', maxWidth: 220 }} defaultValue={c.label}
                     onBlur={e => { const v = e.target.value.trim(); if (v && v !== c.label) update.mutate({ id: c.id, patch: { label: v } }); }} />
                 </td>
-                <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{RFQ_CRITERION_TYPE_LABELS[c.type]}</td>
-                <td style={{ textAlign: 'right' }}>
+                <td style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{RFQ_CRITERION_TYPE_LABELS[c.type]}</td>
+                <td className="ds-num">
                   <input className="input" type="number" min={0} max={100} style={{ width: 70, textAlign: 'right' }} defaultValue={c.weight}
                     onBlur={e => { const v = Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0))); if (v !== c.weight) update.mutate({ id: c.id, patch: { weight: v } }); }} />
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   <input type="checkbox" checked={c.active} onChange={e => update.mutate({ id: c.id, patch: { active: e.target.checked } })} aria-label={`Activer ${c.label}`} />
                 </td>
-                <td style={{ textAlign: 'right' }}>
-                  <button className="odoo-pager-btn" title="Retirer ce critère" style={{ color: 'var(--prj-red)' }} onClick={() => remove.mutate(c.id)}><Trash2 size={13} /></button>
+                <td className="ds-num">
+                  <button type="button" className="odoo-pager-btn" title="Retirer ce critère" style={{ color: 'var(--ds-danger)' }} onClick={() => remove.mutate(c.id)} aria-label="Retirer ce critère"><Trash2 size={13} /></button>
                 </td>
               </tr>
             ))}
           </tbody>
-          <tfoot><tr style={{ fontSize: '0.75rem', color: activeWeight === 0 ? 'var(--prj-red)' : 'var(--theme-text-muted)' }}>
+          <tfoot><tr style={{ fontSize: '0.75rem', color: activeWeight === 0 ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>
             <td colSpan={3} style={{ textAlign: 'right' }}>Somme des poids actifs</td>
-            <td style={{ textAlign: 'right', fontWeight: 600 }}>{activeWeight}</td><td colSpan={2}>{activeWeight === 0 ? 'au moins un critère actif requis' : ''}</td>
+            <td className="ds-num" style={{ fontWeight: 600 }}>{activeWeight}</td><td colSpan={2}>{activeWeight === 0 ? 'au moins un critère actif requis' : ''}</td>
           </tr></tfoot>
         </table>
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 8, borderTop: '1px solid var(--odoo-border)', paddingTop: 10 }}>
-        <div><label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--theme-text-muted)', marginBottom: 2 }}>Nouveau critère</label>
+        <div><label style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)', marginBottom: 2 }}>Nouveau critère</label>
           <input className="input" placeholder="ex. Référence, SAV…" value={label} onChange={e => setLabel(e.target.value)} style={{ width: 200 }} /></div>
-        <div><label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--theme-text-muted)', marginBottom: 2 }}>Type</label>
+        <div><label style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)', marginBottom: 2 }}>Type</label>
           <select className="input" value={type} onChange={e => setType(e.target.value as RfqCriterionType)}>
             <option value="manual">{RFQ_CRITERION_TYPE_LABELS.manual}</option>
             <option value="price" disabled={hasType('price')}>{RFQ_CRITERION_TYPE_LABELS.price}</option>
             <option value="supplier" disabled={hasType('supplier')}>{RFQ_CRITERION_TYPE_LABELS.supplier}</option>
             <option value="delivery" disabled={hasType('delivery')}>{RFQ_CRITERION_TYPE_LABELS.delivery}</option>
           </select></div>
-        <div><label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--theme-text-muted)', marginBottom: 2 }}>Poids</label>
+        <div><label style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)', marginBottom: 2 }}>Poids</label>
           <input className="input" type="number" min={0} max={100} value={weight} onChange={e => setWeight(e.target.value)} style={{ width: 70, textAlign: 'right' }} /></div>
-        <button className="odoo-btn-primary" disabled={!label.trim() || create.isPending} onClick={() => create.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <button type="button" className="odoo-btn-primary" disabled={!label.trim() || create.isPending} onClick={() => create.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Ajouter
         </button>
       </div>

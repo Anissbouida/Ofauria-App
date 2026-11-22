@@ -1,4 +1,4 @@
-import { Fragment, useCallback, type ReactNode } from 'react';
+import { Fragment, createContext, useCallback, useContext, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ExternalLink, type LucideIcon } from 'lucide-react';
 import './module-shell.css';
@@ -24,6 +24,14 @@ export const MODULE_SECTIONS: { key: ModuleSection; label: string }[] = [
   { key: 'reports', label: 'Rapports' },
   { key: 'setup', label: 'Paramétrage' },
 ];
+
+/**
+ * Position de l'écran actif dans son module (Design System, 2026-11-22) : les pages qui
+ * posent leur propre barre (SalesPageShell, bar={false}) y lisent « Module › Rubrique »
+ * pour afficher le même fil d'Ariane à trois niveaux que la barre de la coquille.
+ */
+export const ModuleCrumbContext = createContext<{ module: string; section?: string } | null>(null);
+export const useModuleCrumb = () => useContext(ModuleCrumbContext);
 
 export interface ModuleView<K extends string = string> {
   key: K;
@@ -96,7 +104,7 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
       {bar && <div className="odoo-control-bar">
         <div className="odoo-breadcrumb" aria-label="Fil d'Ariane">
           <span>{title}</span>
-          {current && current.section !== 'dashboard' && (
+          {current && sectionLabel && (
             <><span className="odoo-breadcrumb-separator">›</span><span>{sectionLabel}</span></>
           )}
           <span className="odoo-breadcrumb-separator">›</span>
@@ -135,7 +143,9 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
           })}
         </aside>
 
-        <div className={`module-shell-main${flush ? ' flush' : ''}`}>{children}</div>
+        <div className={`module-shell-main${flush ? ' flush' : ''}`}>
+          <ModuleCrumbContext.Provider value={{ module: title, section: sectionLabel }}>{children}</ModuleCrumbContext.Provider>
+        </div>
       </div>
     </div>
   );

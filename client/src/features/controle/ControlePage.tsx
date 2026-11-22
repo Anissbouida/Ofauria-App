@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ShoppingCart, Truck, Factory, Trash2, AlertTriangle, CheckCircle2, Loader2, X, Filter,
-  Camera, Package, Recycle, Clock, Store, Boxes, Plus, ArrowRight, LayoutDashboard, Thermometer, Siren,
-  ClipboardCheck, Settings, MessageSquareWarning,
-  ListChecks,
-} from 'lucide-react';
+import { ShoppingCart, Truck, Factory, Trash2, AlertTriangle, CheckCircle2, Loader2, Filter, Camera, Package, Recycle, Clock, Store, Boxes, Plus, ArrowRight, LayoutDashboard, Thermometer, Siren, ClipboardCheck, Settings, MessageSquareWarning, ListChecks } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { controleApi, type ControlIndicator, type LossFamily } from '../../api/controle.api';
@@ -22,6 +17,7 @@ import {
 } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar, ListEmpty } from '../sales/ListTemplate';
 import { StageChips, Segmented, Panel, PagerFoot, PageLoading } from './KlUi';
+import { DataPanel, KpiCard, KpiGrid, NoResultState, SectionHeader } from '../../components/ds';
 import GoodsEntryRegisterTab from '../stock/GoodsEntryRegisterTab';
 import PurchasingPilotageTab from '../purchasing/PurchasingPilotageTab';
 import ProductionControl from './ProductionControl';
@@ -46,7 +42,24 @@ import { money, currencySymbol } from '../../utils/money';
 type Tab = 'overview' | 'achats' | 'production' | 'pertes' | 'haccp' | 'tracabilite' | 'sav' | 'qualite';
 
 const n = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const DOT = { danger: 'var(--prj-red)', warning: 'var(--prj-orange)', ok: 'var(--prj-green)', unknown: 'var(--theme-text-muted)' } as const;
+/** Ton d'un indicateur (tuile) et étiquette de statut d'un contrôle, selon sa gravité. */
+const KPI_TONE = { danger: 'red', warning: 'orange', ok: 'green', unknown: undefined } as const;
+const SEVERITY_TAG = {
+  danger: { tone: 'blocked', label: 'Urgent' }, warning: { tone: 'todo', label: 'À traiter' },
+  ok: { tone: 'done', label: 'Conforme' }, unknown: { tone: 'draft', label: 'Non mesuré' },
+} as const;
+
+/** Description d'une ligne sous le titre de chaque écran (gabarit de page du Design System). */
+const PAGE_LEADS: Record<Tab, string> = {
+  overview: 'Où en sont les contrôles de la période et ce qui demande une action.',
+  achats: 'Contrôles à réception, registre des entrées et rapprochement commande, réception, facture.',
+  production: 'Rendements, pesées et préparations contrôlés sur la période.',
+  pertes: 'Registre des pertes de produits et de matières, valorisées au coût de revient.',
+  haccp: 'Températures, nettoyage et actions correctives du plan de maîtrise sanitaire.',
+  tracabilite: 'Recherche d\'un lot, de la matière au client, et suivi des rappels.',
+  sav: 'Réclamations des clients, de la saisie à la clôture.',
+  qualite: 'Non-conformités, plans de contrôle et libération des lots.',
+};
 
 function Dot({ color }: { color: string }) {
   return <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: color, flexShrink: 0, display: 'inline-block' }} />;
@@ -84,7 +97,7 @@ export default function ControlePage() {
     <button type="button" onClick={() => setDeclaring(true)} className="odoo-btn-primary"
       title="Perte de produit fini ou de matière première"
       style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <Plus size={13} /> Déclarer une perte
+      <Plus size={13} aria-hidden="true" /> Déclarer une perte
     </button>
   ) : tab === 'sav' ? (
     <button type="button" className="odoo-btn-primary" onClick={() => setCreatingComplaint(true)}
@@ -99,13 +112,13 @@ export default function ControlePage() {
 
   return (
     <ModuleShell title="Contrôle & Qualité" views={views} current={current} onSelect={select} flush actions={actions}>
-      <ModulePage title={current?.label}>
+      <ModulePage title={current?.label} summary={tab ? PAGE_LEADS[tab] : undefined}>
         {(tab === 'overview' || tab === 'production' || tab === 'pertes' || tab === 'sav') && (
           <div className="prj-toolbar">
             <PeriodFilter label="Période" title="Période analysée"
               period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-            <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-              <strong style={{ color: 'var(--odoo-text)' }}>{periodLabel(period, customFrom, customTo)}</strong>
+            <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>
+              <strong style={{ color: 'var(--ds-ink)' }}>{periodLabel(period, customFrom, customTo)}</strong>
             </span>
           </div>
         )}
@@ -154,79 +167,76 @@ function Overview({ range, onTab }: { range: Record<string, string>; onTab: (t: 
   if (isLoading) return <PageLoading />;
   return (
     <>
-      {/* Où en sont mes contrôles : une tuile par domaine (tableau de bord au design Ventes). */}
-      <section aria-label="Où en sont mes contrôles">
-        <div className="kl-sec">
-          <h2>Où en sont mes contrôles</h2>
-          <small>{alerts.length ? `${alerts.length} contrôle${alerts.length > 1 ? 's' : ''} demandent une action` : 'Aucune anomalie sur la période'}</small>
-        </div>
-        <div className="kl-hero" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 16 }}>
-          {DOMAINS.map(d => {
-            const items = byDomain(d.key);
-            const value = items.reduce((s, i) => s + Math.abs(i.value ?? 0), 0);
-            const danger = items.filter(i => i.severity === 'danger').length;
-            const Icon = d.icon;
-            return (
-              <button key={d.key} type="button" className="kl-widget" title={d.hint}
-                onClick={() => (d.key === 'ventes' ? navigate('/boutique') : onTab(d.key as Tab))}
-                style={{ textAlign: 'left', border: 0, cursor: 'pointer', font: 'inherit', color: 'inherit' }}>
-                <div className="kl-wlabel"><span className="kl-sq"><Icon size={13} /></span>{d.label}</div>
-                <div className="kl-big" style={{ fontSize: 34, color: items.length ? undefined : 'var(--theme-text-muted)' }}>{items.length}</div>
-                <div className="kl-sub" style={{ fontSize: 13 }}>
-                  {danger > 0 && <span style={{ color: 'var(--prj-red)', fontWeight: 600 }}>{danger} urgent{danger > 1 ? 's' : ''} · </span>}
-                  {value > 0 ? `${money(value)} · ` : ''}{d.hint}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {alerts.length === 0 ? (
+      {/* Gabarit du tableau de bord : alerte, indicateurs par domaine, puis les contrôles à traiter en tableau. */}
+      {alerts.length === 0 && (
         <StatusBanner tone="success" icon={CheckCircle2} title="Tous les contrôles sont au vert">
           Aucun écart, blocage ni perte sur la période choisie.
         </StatusBanner>
-      ) : (
-        <section aria-label="Contrôles par domaine" style={{ display: 'grid', gap: 20 }}>
-          {DOMAINS.map(d => {
-            const items = data.filter(i => i.domain === d.key);
-            if (items.length === 0) return null;
-            const Icon = d.icon;
-            return (
-              <div key={d.key}>
-                <div className="kl-sec"><h2 style={{ fontSize: 17 }}>{d.label}</h2><small>{d.hint}</small></div>
-                <div className="kl-group">
+      )}
+      <SectionHeader title="Où en sont mes contrôles"
+        note={alerts.length ? `${alerts.length} contrôle${alerts.length > 1 ? 's' : ''} demande${alerts.length > 1 ? 'nt' : ''} une action` : 'Aucune anomalie sur la période'} />
+      <KpiGrid label="Où en sont mes contrôles">
+        {DOMAINS.map(d => {
+          const items = byDomain(d.key);
+          const value = items.reduce((s, i) => s + Math.abs(i.value ?? 0), 0);
+          const danger = items.filter(i => i.severity === 'danger').length;
+          return (
+            <KpiCard key={d.key} label={d.label} value={items.length}
+              tone={danger > 0 ? 'red' : items.length > 0 ? 'orange' : undefined}
+              sub={`${danger > 0 ? `${danger} urgent${danger > 1 ? 's' : ''} · ` : ''}${value > 0 ? `${money(value)} · ` : ''}${d.hint}`}
+              onClick={() => (d.key === 'ventes' ? navigate('/boutique') : onTab(d.key as Tab))} />
+          );
+        })}
+      </KpiGrid>
+
+      {alerts.length > 0 && DOMAINS.map(d => {
+        const items = data.filter(i => i.domain === d.key);
+        if (items.length === 0) return null;
+        return (
+          <section key={d.key} aria-label={`Contrôles : ${d.label}`} style={{ display: 'grid', gap: 12 }}>
+            <SectionHeader title={d.label} note={d.hint} />
+            <DataPanel label={`Contrôles : ${d.label}`}>
+              <table className="odoo-table">
+                <thead>
+                  <tr>
+                    <th>Contrôle</th>
+                    <th>Statut</th>
+                    <th className="ds-num">Nombre</th>
+                    <th className="ds-num">Valeur ({currencySymbol()})</th>
+                    <th className="ds-actions"><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
                   {items.map(i => (
-                    <div key={i.key} className="kl-cell ico" style={{ cursor: 'default', opacity: i.severity === 'ok' ? 0.75 : 1 }}>
-                      <span className={`kl-ic ${i.severity === 'danger' ? 'r' : i.severity === 'warning' ? 'o' : i.severity === 'ok' ? 'g' : 'x'}`}><Icon size={16} /></span>
-                      <span className="tx">
-                        <span className="t1" style={{ fontWeight: i.severity === 'ok' ? 400 : 600 }}>{i.label}</span>
-                        <span className="t2">
+                    <tr key={i.key}>
+                      <td>
+                        <span className={i.severity === 'ok' ? undefined : 'ds-strong'}>{i.label}</span>
+                        <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
                           {i.hint}
                           {i.key === 'recu_non_facture' && (i.aged ?? 0) > 0 && ` · ${i.aged} de plus de 30 j`}
                           {i.key === 'pertes' && (i.missing ?? 0) > 0 && ` · ${i.missing} sans coût de revient`}
-                        </span>
-                      </span>
-                      <span className="tr" title="Nombre">{i.count === null ? '—' : i.count}</span>
-                      <span className={`tr${(i.value ?? 0) < 0 ? ' red' : ''}`} style={{ minWidth: 96, textAlign: 'right' }}>
-                        {i.value === null || i.value === 0 ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span> : <>{n(i.value)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}</span></>}
-                      </span>
-                      <span style={{ minWidth: 92, textAlign: 'right' }}>
+                        </div>
+                      </td>
+                      <td><StatusTag tone={SEVERITY_TAG[i.severity].tone} label={SEVERITY_TAG[i.severity].label} /></td>
+                      <td className="ds-num">{i.count === null ? '—' : i.count}</td>
+                      <td className="ds-num" style={(i.value ?? 0) < 0 ? { color: 'var(--ds-danger)', fontWeight: 600 } : undefined}>
+                        {i.value === null || i.value === 0 ? '—' : n(i.value)}
+                      </td>
+                      <td className="ds-actions">
                         {i.severity !== 'ok' && i.severity !== 'unknown' && (
-                          <button type="button" onClick={() => go(i)} className={i.severity === 'danger' ? 'odoo-btn-danger' : 'odoo-btn-secondary'}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            Traiter <ArrowRight size={12} />
+                          <button type="button" onClick={() => go(i)} className="odoo-btn-secondary ds-btn-sm">
+                            Traiter <ArrowRight size={12} aria-hidden="true" />
                           </button>
                         )}
-                      </span>
-                    </div>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              </div>
-            );
-          })}
-        </section>
-      )}
+                </tbody>
+              </table>
+            </DataPanel>
+          </section>
+        );
+      })}
       <p className="klc-note">
         Conventions : un écart négatif est un manque. Les manquants de ventes sont valorisés au prix de vente (manque à gagner) ; les pertes au coût de revient.
       </p>
@@ -240,16 +250,14 @@ function DomainIndicators({ range, domain }: { range: Record<string, string>; do
   const { data = [], isLoading } = useIndicators(range);
   if (isLoading) return <PageLoading />;
   const items = data.filter(i => i.domain === domain);
+  if (!items.length) return null;
   return (
-    <div className="prj-kpis">
+    <KpiGrid>
       {items.map(i => (
-        <div key={i.key} className="prj-kpi">
-          <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Dot color={DOT[i.severity]} /> {i.label}</span></div>
-          <div className="prj-kpi-value">{i.count ?? '—'}</div>
-          <div className="prj-kpi-sub">{i.value ? `${money(i.value)} · ` : ''}{i.hint}</div>
-        </div>
+        <KpiCard key={i.key} label={i.label} value={i.count ?? '—'} tone={KPI_TONE[i.severity]}
+          sub={`${i.value ? `${money(i.value)} · ` : ''}${i.hint}`} />
       ))}
-    </div>
+    </KpiGrid>
   );
 }
 
@@ -299,7 +307,7 @@ const FAMILIES: Array<StageDef & { key: 'all' | LossFamily }> = [
   { key: 'matiere', label: 'Matières premières', hint: 'périmées, casse, fond', icon: Boxes },
 ];
 const FAMILY_DOT: Record<LossFamily, string> = {
-  production: 'var(--prj-orange)', invendu: '#c99a06', vitrine: '#3b82f6', perime: 'var(--prj-red)', recyclage: 'var(--prj-green)', matiere: '#6f42c1',
+  production: 'var(--ds-warning)', invendu: '#c99a06', vitrine: 'var(--ds-accent)', perime: 'var(--ds-danger)', recyclage: 'var(--ds-success)', matiere: '#6f42c1',
 };
 
 function LossRegister({ range, periodText }: { range: Record<string, string>; periodText: string }) {
@@ -368,15 +376,13 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
       )}
 
       {(summary?.top?.length ?? 0) > 0 && (
-        <section className="prj-panel klc-body">
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 6 }}>
-            Ce qui coûte le plus · {periodText}
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 20px', fontSize: '0.8125rem' }}>
+        <section className="ds-panel klc-body" aria-label="Ce qui coûte le plus">
+          <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Ce qui coûte le plus · {periodText}</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 20px', fontSize: 14 }}>
             {summary!.top.map(t => (
               <span key={`${t.item_name}-${t.source}`}>
                 <strong>{t.item_name}</strong>
-                <span style={{ color: 'var(--theme-text-muted)' }}> · {Number(t.quantity).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} {t.source === 'produit' ? 'u' : t.unit} · </span>
+                <span style={{ color: 'var(--ds-muted)' }}> · {Number(t.quantity).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} {t.source === 'produit' ? 'u' : t.unit} · </span>
                 <strong>{money(Number(t.value))}</strong>
               </span>
             ))}
@@ -385,19 +391,15 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
       )}
 
       <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher un article, un motif, un déclarant...">
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
         <SelectFilter label="Origine" icon={Filter} value={source} onChange={setSource}
           options={[{ key: 'produit', label: 'Produits finis' }, { key: 'matiere', label: 'Matières premières' }]} allLabel="Toutes" />
-        {hasFilters && (
-          <button type="button" onClick={() => { setFamily('all'); setSource(''); setSearchInput(''); setSearch(''); }}
-            className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer les filtres
-          </button>
-        )}
       </ListToolbar>
 
       {isLoading ? <PageLoading /> : rows.length === 0 ? (
-        <ListEmpty icon={Trash2} title={hasFilters ? 'Aucune perte pour ces filtres.' : 'Aucune perte enregistrée sur la période.'} />
+        hasFilters
+          ? <NoResultState text="Aucune perte ne correspond aux filtres." onReset={() => { setFamily('all'); setSource(''); setSearchInput(''); setSearch(''); }} />
+          : <ListEmpty icon={Trash2} title="Aucune perte enregistrée sur la période" text="Les pertes déclarées en production, en boutique et au stock s'affichent ici." />
       ) : (
         <Panel style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}
           footer={<PagerFoot page={page} total={data?.total ?? 0} onPage={setPage} note={`Pertes · ${periodText}`} />}>
@@ -408,42 +410,42 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
                 <th>Article</th>
                 <th>Famille</th>
                 <th>Motif</th>
-                <th style={{ textAlign: 'right' }}>Quantité</th>
-                <th style={{ textAlign: 'right' }}>Coût unitaire</th>
-                <th style={{ textAlign: 'right' }}>Valeur</th>
+                <th className="ds-num">Quantité</th>
+                <th className="ds-num">Coût unitaire ({currencySymbol()})</th>
+                <th className="ds-num">Valeur ({currencySymbol()})</th>
                 <th>Déclaré par</th>
-                <th style={{ width: 36 }}></th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {rows.map(r => (
                 <tr key={`${r.source}-${r.id}`}>
-                  <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{format(new Date(r.occurred_at), 'dd/MM/yyyy HH:mm', { locale: fr })}</td>
+                  <td style={{ color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>{format(new Date(r.occurred_at), 'd MMM yyyy HH:mm', { locale: fr })}</td>
                   <td>
-                    <span style={{ fontWeight: 500 }}>{r.item_name}</span>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.source === 'produit' ? 'Produit fini' : 'Matière première'}</div>
+                    <span className="ds-strong">{r.item_name}</span>
+                    <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{r.source === 'produit' ? 'Produit fini' : 'Matière première'}</div>
                   </td>
                   <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <Dot color={FAMILY_DOT[r.family]} /> {FAMILIES.find(f => f.key === r.family)?.label}
                     </span>
                   </td>
-                  <td style={{ fontSize: '0.75rem' }}>
+                  <td>
                     {reasonLabel(r)}
-                    {r.note && <div style={{ color: 'var(--theme-text-muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.note}>{r.note}</div>}
+                    {r.note && <div style={{ fontSize: 12, color: 'var(--ds-muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.note}>{r.note}</div>}
                   </td>
-                  <td style={{ textAlign: 'right' }}>{Number(r.quantity).toLocaleString('fr-FR', { maximumFractionDigits: 3 })} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{r.unit}</span></td>
-                  <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{r.unit_cost ? n(Number(r.unit_cost)) : '—'}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="ds-num">{Number(r.quantity).toLocaleString('fr-FR', { maximumFractionDigits: 3 })} <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{r.unit}</span></td>
+                  <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{r.unit_cost ? n(Number(r.unit_cost)) : '—'}</td>
+                  <td className="ds-num">
                     {r.cost_missing
                       ? <StatusTag tone="todo" label="coût manquant" />
-                      : <strong>{n(Number(r.value))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></strong>}
+                      : <span className="ds-strong">{n(Number(r.value))}</span>}
                   </td>
-                  <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{r.declared_by_name ?? '—'}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td style={{ color: 'var(--ds-muted)' }}>{r.declared_by_name ?? '—'}</td>
+                  <td className="ds-actions">
                     {r.photo_url && (
-                      <button type="button" className="odoo-pager-btn" aria-label="Voir la photo" title="Voir la photo" onClick={() => setPhoto(serverUrl(r.photo_url!))}>
-                        <Camera size={13} />
+                      <button type="button" className="ds-icon-btn" aria-label="Voir la photo" title="Voir la photo" onClick={() => setPhoto(serverUrl(r.photo_url!))}>
+                        <Camera size={15} aria-hidden="true" />
                       </button>
                     )}
                   </td>
@@ -451,9 +453,9 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
               ))}
             </tbody>
             <tfoot>
-              <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
-                <td colSpan={6} style={{ color: 'var(--theme-text-muted)' }}>Total du filtre — {data?.total ?? 0} perte{(data?.total ?? 0) > 1 ? 's' : ''}{(data?.missingCost ?? 0) > 0 ? ` (dont ${data!.missingCost} sans coût)` : ''}</td>
-                <td style={{ textAlign: 'right' }}>{n(data?.sumValue ?? 0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></td>
+              <tr>
+                <td colSpan={6}>Total du filtre — {data?.total ?? 0} perte{(data?.total ?? 0) > 1 ? 's' : ''}{(data?.missingCost ?? 0) > 0 ? ` (dont ${data!.missingCost} sans coût)` : ''}</td>
+                <td className="ds-num">{n(data?.sumValue ?? 0)}</td>
                 <td colSpan={2}></td>
               </tr>
             </tfoot>
@@ -462,7 +464,7 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
       )}
 
       {photo && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setPhoto(null)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Photo de la perte" onClick={() => setPhoto(null)}>
           <img src={photo} alt="Photo de la perte" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 4 }} />
         </div>
       )}

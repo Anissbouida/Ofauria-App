@@ -85,13 +85,13 @@ export default function CountryPackTab() {
                     <td>
                       {formatValue(p.key, p.value)}
                       {p.upcoming.map(u => (
-                        <div key={u.effectiveFrom} style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+                        <div key={u.effectiveFrom} style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
                           À partir du {d(u.effectiveFrom)} : {formatValue(p.key, u.value)}
                         </div>
                       ))}
                     </td>
                     <td>{d(p.effectiveFrom)}</td>
-                    <td style={{ color: 'var(--odoo-text-muted)' }}>{p.legalRef ?? '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{p.legalRef ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

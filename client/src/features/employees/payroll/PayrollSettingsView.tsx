@@ -1,11 +1,11 @@
-import { money, currencySymbol } from '../../../utils/money';
+import { currencySymbol } from '../../../utils/money';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Save, Pencil, Info, Building2, Scale, ListChecks, CalendarDays, Clock } from 'lucide-react';
+import { Plus, Pencil, Info, Building2, Scale, ListChecks, CalendarDays, Clock } from 'lucide-react';
 import { payrollConfigApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
-import { apiErrorMessage } from '../shared';
+import { apiErrorMessage, amount } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag } from '../../../components/ui/StatusTag';
@@ -145,7 +145,7 @@ export default function PayrollSettingsView() {
   const suffixed = (input: ReactNode, suffix?: string) => (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
       {input}
-      {suffix && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{suffix}</span>}
+      {suffix && <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{suffix}</span>}
     </span>
   );
   const field = (key: string, label: string, suffix?: string) => (
@@ -163,7 +163,7 @@ export default function PayrollSettingsView() {
   const grid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12 } as const;
   // Carte du design Ventes (prj-panel) : fond, coins et ombre viennent de la classe.
   const card = { padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 } as const;
-  const checkLabel = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' } as const;
+  const checkLabel = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 } as const;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -221,7 +221,7 @@ export default function PayrollSettingsView() {
           </Field>
         </div>
         {isAdmin && (
-          <div><SubmitButton pending={saveSettings.isPending} onClick={() => saveSettings.mutate()}><Save size={13} /> Enregistrer</SubmitButton></div>
+          <div><SubmitButton pending={saveSettings.isPending} onClick={() => saveSettings.mutate()}>Enregistrer</SubmitButton></div>
         )}
       </section>
 
@@ -229,7 +229,7 @@ export default function PayrollSettingsView() {
         <section className="prj-panel" style={card}>
           <SectionTitle icon={Scale}>
             Barème légal — {scale.label}
-            <span style={{ fontWeight: 400, color: 'var(--theme-text-muted)', marginLeft: 8 }}>
+            <span style={{ fontWeight: 400, color: 'var(--ds-muted)', marginLeft: 8 }}>
               en vigueur depuis le {new Date(scale.effective_from).toLocaleDateString('fr-FR')}
             </span>
           </SectionTitle>
@@ -253,20 +253,20 @@ export default function PayrollSettingsView() {
           <div>
             <span style={fieldLabel}>Barème IR annuel (IR = revenu net imposable × taux − somme à déduire)</span>
             <table className="odoo-table" style={{ maxWidth: 520 }}>
-              <thead><tr><th>Jusqu'à ({currencySymbol()}/an)</th><th style={{ textAlign: 'right' }}>Taux</th><th style={{ textAlign: 'right' }}>Somme à déduire</th></tr></thead>
+              <thead><tr><th>Jusqu'à ({currencySymbol()}/an)</th><th className="ds-num">Taux (%)</th><th className="ds-num">Somme à déduire ({currencySymbol()})</th></tr></thead>
               <tbody>
                 {brackets.map((b, i) => (
                   <tr key={i}>
                     <td>{b.upTo === null ? 'Au-delà' : (
-                      <input className={inputCls} disabled={!isAdmin} value={b.upTo} style={{ width: 110 }}
+                      <input className={`${inputCls} sm`} aria-label={`Plafond de la tranche ${i + 1}`} disabled={!isAdmin} value={b.upTo} style={{ width: 110 }}
                         onChange={e => { const n = [...brackets]; n[i] = { ...b, upTo: parseFloat(e.target.value) || 0 }; setBrackets(n); }} />
                     )}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <input className={inputCls} disabled={!isAdmin} value={pctIn(b.rate)} style={{ width: 70 }}
-                        onChange={e => { const n = [...brackets]; n[i] = { ...b, rate: pctOut(e.target.value) || 0 }; setBrackets(n); }} /> %
+                    <td className="ds-num">
+                      <input className={`${inputCls} sm`} aria-label={`Taux de la tranche ${i + 1}`} disabled={!isAdmin} value={pctIn(b.rate)} style={{ width: 70 }}
+                        onChange={e => { const n = [...brackets]; n[i] = { ...b, rate: pctOut(e.target.value) || 0 }; setBrackets(n); }} />
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <input className={inputCls} disabled={!isAdmin} value={b.deduction} style={{ width: 100 }}
+                    <td className="ds-num">
+                      <input className={`${inputCls} sm`} aria-label={`Somme à déduire de la tranche ${i + 1}`} disabled={!isAdmin} value={b.deduction} style={{ width: 100 }}
                         onChange={e => { const n = [...brackets]; n[i] = { ...b, deduction: parseFloat(e.target.value) || 0 }; setBrackets(n); }} />
                     </td>
                   </tr>
@@ -274,19 +274,19 @@ export default function PayrollSettingsView() {
               </tbody>
             </table>
           </div>
-          {scale.notes && <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{scale.notes}</p>}
+          {scale.notes && <p style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{scale.notes}</p>}
           {isAdmin && (
             <div><SubmitButton pending={saveScale.isPending} onClick={async () => {
               if (!(await confirm('Modifier le barème légal ?\n\nLes bulletins payés gardent leurs montants. Les autres seront recalculés à la prochaine génération.',
                 { title: 'Modifier le barème', confirmLabel: 'Enregistrer' }))) return;
               saveScale.mutate();
-            }}><Save size={13} /> Enregistrer le barème</SubmitButton></div>
+            }}>Enregistrer le barème</SubmitButton></div>
           )}
           {/* G0-13 : une nouvelle loi de finances = une nouvelle version datée. Un
               barème déjà utilisé par des bulletins ne se modifie plus. */}
           {isAdmin && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
                 {Number(scale.payslip_count) > 0
                   ? `${scale.payslip_count} bulletin(s) calculé(s) avec ce barème : ses taux ne sont plus modifiables.`
                   : 'Aucun bulletin calculé avec ce barème : il reste modifiable.'}
@@ -312,28 +312,27 @@ export default function PayrollSettingsView() {
 
       <section className="prj-panel" style={card}>
         <SectionTitle icon={ListChecks} actions={isAdmin ? (
-          <button className="odoo-btn-secondary" onClick={() => setEditRub({ kind: 'gain', soumis_cnss: true, soumis_ir: true, is_active: true })}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Nouvelle rubrique</button>
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setEditRub({ kind: 'gain', soumis_cnss: true, soumis_ir: true, is_active: true })}><Plus size={13} aria-hidden="true" /> Nouvelle rubrique</button>
         ) : undefined}>Rubriques de paie</SectionTitle>
         <table className="odoo-table">
           <thead>
             <tr>
               <th>Code</th><th>Libellé</th><th>Type</th>
-              <th style={{ textAlign: 'center' }}>CNSS</th><th style={{ textAlign: 'center' }}>IR</th>
-              <th style={{ textAlign: 'right' }}>Exonéré jusqu'à</th><th>Statut</th>{isAdmin && <th style={{ width: 40 }}></th>}
+              <th>CNSS</th><th>IR</th>
+              <th className="ds-num">Exonéré jusqu'à ({currencySymbol()}/mois)</th><th>Statut</th>{isAdmin && <th className="ds-actions"><span className="sr-only">Actions</span></th>}
             </tr>
           </thead>
           <tbody>
             {rubriques.map(r => (
-              <tr key={r.id} style={{ opacity: r.is_active ? 1 : 0.5 }}>
-                <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{r.code}</td>
-                <td title={r.notes ?? undefined}>{r.label}</td>
+              <tr key={r.id}>
+                <td className="ds-ref">{r.code}</td>
+                <td className="ds-strong" title={r.notes ?? undefined}>{r.label}</td>
                 <td><span className={`odoo-tag ${r.kind === 'gain' ? 'odoo-tag-green' : 'odoo-tag-orange'}`}>{r.kind === 'gain' ? 'Gain' : 'Retenue'}</span></td>
-                <td style={{ textAlign: 'center' }}>{r.kind === 'gain' ? (r.soumis_cnss ? 'Soumis' : 'Exonéré') : '—'}</td>
-                <td style={{ textAlign: 'center' }}>{r.kind === 'gain' ? (r.soumis_ir ? 'Soumis' : 'Exonéré') : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{r.plafond_exoneration_mensuel != null ? `${money(parseFloat(r.plafond_exoneration_mensuel))}/mois` : '—'}</td>
+                <td>{r.kind === 'gain' ? (r.soumis_cnss ? 'Soumis' : 'Exonéré') : '—'}</td>
+                <td>{r.kind === 'gain' ? (r.soumis_ir ? 'Soumis' : 'Exonéré') : '—'}</td>
+                <td className="ds-num">{r.plafond_exoneration_mensuel != null ? amount(parseFloat(r.plafond_exoneration_mensuel)) : '—'}</td>
                 <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Active' : 'Inactive'} /></td>
-                {isAdmin && <td><button className="odoo-pager-btn" title="Modifier" onClick={() => setEditRub({ ...r })}><Pencil size={13} /></button></td>}
+                {isAdmin && <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setEditRub({ ...r })}><Pencil size={13} aria-hidden="true" /> Modifier</button></td>}
               </tr>
             ))}
           </tbody>
@@ -350,11 +349,11 @@ export default function PayrollSettingsView() {
               onClick={() => saveRub.mutate(editRub)}>Enregistrer</SubmitButton>
           </>}>
           {!editRub.id && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Field label="Code">
+            <div className="ds-form-grid">
+              <Field label="Code" required>
                 <input className={inputCls} value={editRub.code ?? ''} onChange={e => setEditRub({ ...editRub, code: e.target.value.toUpperCase() })} placeholder="PRIME_XXX" />
               </Field>
-              <Field label="Type">
+              <Field label="Type" required>
                 <select className={inputCls} value={editRub.kind} onChange={e => setEditRub({ ...editRub, kind: e.target.value })}>
                   <option value="gain">Gain (entre dans le brut)</option>
                   <option value="retenue">Retenue (déduite du net)</option>
@@ -362,7 +361,7 @@ export default function PayrollSettingsView() {
               </Field>
             </div>
           )}
-          <Field label="Libellé">
+          <Field label="Libellé" required>
             <input className={inputCls} value={editRub.label ?? ''} onChange={e => setEditRub({ ...editRub, label: e.target.value })} />
           </Field>
           {editRub.kind === 'gain' && (

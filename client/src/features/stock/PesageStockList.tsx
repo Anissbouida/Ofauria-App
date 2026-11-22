@@ -5,8 +5,8 @@ import { TransferToPesage } from './TransferToPesage';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
-import { ChipsRow, SortSelect, PagerFoot } from './StockUi';
+import { ListToolbar, FilterChips } from '../sales/ListTemplate';
+import { ChipsRow, SortSelect, PagerFoot, HeaderActions } from './StockUi';
 import {
   Loader2, PackageOpen, AlertTriangle, Beaker, ChevronDown, ChevronRight, CalendarClock, Trash2,
   CheckCircle2, BatteryLow, X, Archive,
@@ -14,6 +14,7 @@ import {
 import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { fmtQty, type InventoryItem } from './types';
+import { DataPanel, EmptyState, LoadingState, NoResultState } from '../../components/ds';
 
 /**
  * Poste de pesée : contenants ouverts (ex-« stock entamé »), regroupés par ingrédient.
@@ -33,7 +34,7 @@ const SITUATIONS: Array<StageDef & { key: Situation }> = [
   { key: 'low', label: 'Bientôt vide', hint: 'moins d\'un jour de pesée', icon: BatteryLow },
   { key: 'ok', label: 'OK', hint: 'rien à faire', icon: CheckCircle2 },
 ];
-const DOT: Record<Situation, string> = { expired: '#dc3545', empty: '#adb5bd', urgent: '#d9822b', low: '#c99a06', ok: '#28a745' };
+const DOT: Record<Situation, string> = { expired: 'var(--ds-danger)', empty: 'var(--ds-muted)', urgent: 'var(--ds-warning)', low: 'var(--ds-warning)', ok: 'var(--ds-success)' };
 const EMPTY_EPS = 0.01;
 
 type Row = Record<string, any>;
@@ -46,7 +47,7 @@ type SortKey = 'urgency' | 'dlc' | 'name' | 'qty' | 'autonomy';
 const dlcText = (days: number | null) => days === null ? null
   : days < 0 ? `dépassée de ${-days} j` : days === 0 ? 'aujourd\'hui' : `dans ${days} j`;
 const dlcColor = (days: number | null) => days === null ? 'var(--theme-text-muted)'
-  : days < 0 ? '#dc3545' : days <= 3 ? '#d9822b' : days <= 7 ? '#b38600' : 'var(--theme-text-muted)';
+  : days < 0 ? 'var(--ds-danger)' : days <= 3 ? 'var(--ds-warning)' : days <= 7 ? 'var(--ds-warning)' : 'var(--theme-text-muted)';
 
 export function PesageStockList({ rows, isLoading, inventory = [], canOpen = false }: {
   rows: Row[];
@@ -114,7 +115,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
     const lots = (r.lots as Row[]) || [];
     if (r._situation === 'expired') {
       const lot = lots.find(l => l.is_expired || (l.expiration_date && new Date(l.expiration_date as string) < new Date())) ?? lots[0];
-      return lot ? { label: 'Déclarer la perte', run: () => setLotAction({ row: r, lot, type: 'waste' }), cls: 'odoo-btn-danger', title: 'Sortir du stock le lot périmé' } : null;
+      return lot ? { label: 'Déclarer la perte', run: () => setLotAction({ row: r, lot, type: 'waste' }), cls: 'ds-btn-danger', title: 'Sortir du stock le lot périmé' } : null;
     }
     if (r._situation === 'empty' && lots[0]) {
       return { label: 'Solder le reste', run: () => setLotAction({ row: r, lot: lots[0], type: 'waste' }), cls: 'odoo-btn-secondary', title: 'Contenant vide : solder le fond restant' };
@@ -126,7 +127,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
   };
 
   if (isLoading) {
-    return <ListEmpty icon={Loader2} title="Chargement du poste de pesée…" />;
+    return <LoadingState label="Chargement du poste de pesée…" />;
   }
 
   const unit = (r: Row) => (r.ingredient_unit as string) || '';
@@ -142,6 +143,25 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
         </StatusBanner>
       )}
 
+      {canOpen && (
+        <HeaderActions>
+          <button type="button" className="odoo-btn-primary" onClick={() => setOpenFor({ ingredientId: null })}
+            title="Préparer le poste de pesée à l'avance (le matin, avant une grosse production)">
+            <PackageOpen size={14} aria-hidden="true" /> Ouvrir un contenant
+          </button>
+        </HeaderActions>
+      )}
+
+      <ChipsRow summary={`${rows.length} ingrédient${rows.length > 1 ? 's' : ''} ouvert${rows.length > 1 ? 's' : ''} · ${totalToHandle} à traiter`}>
+        <FilterChips label="Poste de pesée · contenants ouverts" value={situation} onChange={k => setSituation(k as Situation | '')} chips={[
+          { key: '', label: 'Tous', count: rows.length },
+          ...SITUATIONS.map(x => ({
+            key: x.key, label: x.label, count: counts[x.key], icon: x.icon,
+            tone: x.key === 'expired' && counts.expired > 0 ? 'late' as const : undefined,
+          })),
+        ]} />
+      </ChipsRow>
+
       <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un ingrédient…">
         <SortSelect<SortKey> value={sortBy} onChange={setSortBy} options={[
           { key: 'urgency', label: 'par urgence' },
@@ -156,46 +176,27 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
             <X size={12} /> Effacer les filtres
           </button>
         )}
-        <span className="stk-grow" />
-        {canOpen && (
-          <button type="button" className="odoo-btn-primary" onClick={() => setOpenFor({ ingredientId: null })}
-            title="Préparer le poste de pesée à l'avance (le matin, avant une grosse production)"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <PackageOpen size={13} /> Ouvrir un contenant
-          </button>
-        )}
       </ListToolbar>
 
-      <ChipsRow summary={`${rows.length} ingrédient${rows.length > 1 ? 's' : ''} ouvert${rows.length > 1 ? 's' : ''} · ${totalToHandle} à traiter`}>
-        <FilterChips label="Poste de pesée · contenants ouverts" value={situation} onChange={k => setSituation(k as Situation | '')} chips={[
-          { key: '', label: 'Tous', count: rows.length },
-          ...SITUATIONS.map(x => ({
-            key: x.key, label: x.label, count: counts[x.key], icon: x.icon,
-            tone: x.key === 'expired' && counts.expired > 0 ? 'late' as const : undefined,
-          })),
-        ]} />
-      </ChipsRow>
-
       {rows.length === 0 ? (
-        <ListEmpty icon={Beaker} title="Aucun contenant ouvert au poste de pesée."
+        <EmptyState icon={Beaker} title="Aucun contenant ouvert au poste de pesée."
           text="Ils s'ouvrent au moment de la pesée d'un bon, ou à l'avance avec « Ouvrir un contenant »." />
       ) : filtered.length === 0 ? (
-        <ListEmpty icon={Beaker} title="Aucun ingrédient ne correspond aux filtres."
-          action={<button type="button" className="odoo-btn-secondary" onClick={() => { setSearch(''); setSituation(''); }}>Effacer les filtres</button>} />
+        <NoResultState text="Aucun ingrédient ne correspond aux filtres." onReset={() => { setSearch(''); setSituation(''); }} />
       ) : (
-        <ListPanel footer={<PagerFoot page={page} total={filtered.length} onPage={setPage}
+        <DataPanel footer={<PagerFoot page={page} total={filtered.length} onPage={setPage}
             note={`${filtered.length} ingrédient${filtered.length > 1 ? 's' : ''} au poste de pesée · cliquez une ligne pour voir ses contenants`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
                 <th>Ingrédient</th>
-                <th style={{ textAlign: 'right' }}>Au pesage</th>
-                <th style={{ textAlign: 'right' }}>Autonomie</th>
+                <th className="ds-num">Au pesage</th>
+                <th className="ds-num">Autonomie</th>
                 <th>Contenants ouverts</th>
                 <th>DLC la plus proche</th>
-                <th style={{ textAlign: 'right' }}>En réserve</th>
-                <th style={{ textAlign: 'right' }}>Prochaine action</th>
-                <th style={{ width: 28 }}></th>
+                <th className="ds-num">En réserve</th>
+                <th className="ds-actions">Prochaine action</th>
+                <th style={{ width: 28 }}><span className="sr-only">Détail</span></th>
               </tr>
             </thead>
             <tbody>
@@ -208,19 +209,19 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
                   <Fragment key={id}>
                     <tr onClick={() => setExpanded(isOpen ? null : id)} style={{ cursor: 'pointer' }} aria-expanded={isOpen}>
                       <td>
-                        <span style={{ fontWeight: 600 }}>{r.ingredient_name as string}</span>
+                        <span className="ds-strong">{r.ingredient_name as string}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
                           <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: DOT[r._situation] }} />
                           {SITUATIONS.find(s => s.key === r._situation)?.label}
                         </div>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="ds-num">
                         <span style={{ fontWeight: 700, color: r._situation === 'empty' ? 'var(--theme-text-muted)' : 'var(--odoo-text)' }}>{fmtQty(r._qty)}</span>
                         <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>{unit(r)}</span>
                       </td>
-                      <td style={{ textAlign: 'right', fontSize: '0.8125rem' }}>
+                      <td className="ds-num" style={{ fontSize: '0.8125rem' }}>
                         {r._autonomy === null ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span> : (
-                          <span style={{ color: r._autonomy < 1 ? '#b38600' : 'var(--theme-text-muted)', fontWeight: r._autonomy < 1 ? 600 : 400 }}
+                          <span style={{ color: r._autonomy < 1 ? 'var(--ds-warning)' : 'var(--theme-text-muted)', fontWeight: r._autonomy < 1 ? 600 : 400 }}
                             title={`Consommation moyenne : ${fmtQty(r._avg)} ${unit(r)} / jour`}>
                             {r._autonomy < 1 ? '< 1 jour' : `${Math.floor(r._autonomy)} j`}
                           </span>
@@ -238,11 +239,11 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
                           </>
                         ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                       </td>
-                      <td style={{ textAlign: 'right', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                      <td className="ds-num" style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
                         {r._reserve > 0 ? <>{fmtQty(r._reserve)} {unit(r)}</> : <span title="Plus rien en réserve : à commander">épuisée</span>}
                       </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                        {action && <button type="button" className={action.cls} onClick={action.run} title={action.title}>{action.label}</button>}
+                      <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                        {action && <button type="button" className={`${action.cls} ds-btn-sm`} onClick={action.run} title={action.title}>{action.label}</button>}
                       </td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                     </tr>
@@ -257,9 +258,9 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
                                 <th>Fournisseur</th>
                                 <th>Ouvert le</th>
                                 <th>DLC</th>
-                                <th style={{ textAlign: 'right' }}>Au pesage</th>
-                                <th style={{ textAlign: 'right' }}>En réserve</th>
-                                <th></th>
+                                <th className="ds-num">Au pesage</th>
+                                <th className="ds-num">En réserve</th>
+                                <th className="ds-actions">Actions</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -271,7 +272,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
                                 const lotName = (lot.supplier_lot_number || lot.lot_number || '—') as string;
                                 return (
                                   <tr key={(lot.lot_id as string) ?? i}>
-                                    <td><span className="sal-num">{lotName}</span></td>
+                                    <td><span className="ds-ref">{lotName}</span></td>
                                     <td style={{ color: 'var(--theme-text-muted)' }}>{(lot.supplier_name as string) || '—'}</td>
                                     <td style={{ color: 'var(--theme-text-muted)' }}>{lot.first_opened_at ? format(new Date(lot.first_opened_at as string), 'dd/MM/yyyy') : '—'}</td>
                                     <td style={{ fontSize: '0.8125rem' }}>
@@ -282,9 +283,9 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
                                         </>
                                       ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                                     </td>
-                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtQty(pq)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>{unit(r)}</span></td>
-                                    <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{eq > 0 ? `${fmtQty(eq)} ${unit(r)}` : '—'}</td>
-                                    <td style={{ textAlign: 'right' }}>
+                                    <td className="ds-num" style={{ fontWeight: 600 }}>{fmtQty(pq)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>{unit(r)}</span></td>
+                                    <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{eq > 0 ? `${fmtQty(eq)} ${unit(r)}` : '—'}</td>
+                                    <td className="ds-actions">
                                       <PesageLotActions lotId={lot.lot_id as string} lotNumber={lotName} ingredientName={r.ingredient_name as string}
                                         pesageQuantity={pq} economatQuantity={eq} unit={unit(r)}
                                         isExpired={!!lot.is_expired || (lotDays !== null && lotDays < 0)} />
@@ -302,7 +303,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
               })}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
 
       {/* Ouvrir un contenant de la réserve (à l'avance, ou pour recharger un ingrédient bientôt vide) */}
@@ -312,9 +313,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
             style={{ width: '100%', maxWidth: 760, maxHeight: '90vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
             <div className="odoo-control-bar">
               <div className="odoo-breadcrumb">
-                <PackageOpen size={14} style={{ color: 'var(--theme-accent)' }} />
-                <span>Poste de pesée</span>
-                <span className="odoo-breadcrumb-separator">/</span>
+                <PackageOpen size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
                 <span className="odoo-breadcrumb-current">Ouvrir un contenant de la réserve</span>
               </div>
               <div style={{ flex: 1 }} />

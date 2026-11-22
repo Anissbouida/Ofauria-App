@@ -1,13 +1,14 @@
 import { money } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Banknote, ShieldAlert, ShieldCheck, Undo2 } from 'lucide-react';
+import { Banknote, ShieldAlert, ShieldCheck, Undo2, X } from 'lucide-react';
 import { StatusTag } from '../ui/StatusTag';
 import { paymentsApi, type PaymentMode, type TreasuryAccount } from '../../api/accounting.api';
 import { StatusBanner } from '../ui/StatusBanner';
 import ReasonCodeDialog from './ReasonCodeDialog';
 import ModalBackdrop from '../ui/ModalBackdrop';
 import { useAuth } from '../../context/AuthContext';
+import { FormField, FormFooter } from '../ds';
 
 /**
  * Règlement typé (mig 310, D7).
@@ -45,13 +46,13 @@ export function paymentModeLabel(p: { payment_mode?: unknown; payment_method?: u
   return String(p.payment_method ?? '—');
 }
 
-export function PaymentModeSelect({ value, onChange, name = 'paymentMode', exclude }: {
-  value: string; onChange: (code: string) => void; name?: string; exclude?: string[];
+export function PaymentModeSelect({ value, onChange, name = 'paymentMode', exclude, id }: {
+  value: string; onChange: (code: string) => void; name?: string; exclude?: string[]; id?: string;
 }) {
   const { modes } = usePaymentModes();
   return (
-    <select name={name} value={value} onChange={e => onChange(e.target.value)}
-      className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+    <select id={id} name={name} value={value} onChange={e => onChange(e.target.value)} className="ds-input"
+      aria-label={id ? undefined : 'Mode de règlement'}>
       {modes.filter(m => !exclude?.includes(m.code)).map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
     </select>
   );
@@ -145,28 +146,31 @@ export function ReissuePaymentDialog({ payment, pending, onClose, onSubmit }: {
         style={{ width: '100%', maxWidth: 440, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Ré-émettre le règlement de {money(amount)}</span></div>
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
-          if (!valid) return;
+          if (!valid || pending) return;
           onSubmit({ paymentMode: mode, paymentDate: date,
             ...(isInstrument ? { checkNumber: ref.trim(), checkDate: date } : { reference: ref.trim() || undefined }) });
-        }} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-            Le nouveau règlement est lié au paiement annulé : la trace « remplace » reste dans l'historique.
-          </p>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Mode de règlement *</label>
-          <PaymentModeSelect value={mode} onChange={setMode} />
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>
-            {isInstrument ? `N° ${def?.legacy_method === 'traite' ? 'd\'effet' : 'de chèque'} *` : def?.requires_reference ? 'Référence *' : 'Référence'}
-          </label>
-          <input value={ref} onChange={e => setRef(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm" />
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Date *</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm" />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Retour</button>
-            <button type="submit" disabled={!valid || pending} className="odoo-btn-primary">Ré-émettre</button>
+        }}>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--ds-muted)' }}>
+              Le nouveau règlement est lié au paiement annulé : la trace « remplace » reste dans l'historique.
+            </p>
+            <FormField label="Mode de règlement" htmlFor="reissue-mode" required>
+              <PaymentModeSelect id="reissue-mode" value={mode} onChange={setMode} />
+            </FormField>
+            <FormField htmlFor="reissue-ref" required={isInstrument || !!def?.requires_reference}
+              label={isInstrument ? `N° ${def?.legacy_method === 'traite' ? 'd\'effet' : 'de chèque'}` : 'Référence'}>
+              <input id="reissue-ref" value={ref} onChange={e => setRef(e.target.value)} className="ds-input" />
+            </FormField>
+            <FormField label="Date" htmlFor="reissue-date" required>
+              <input id="reissue-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input" />
+            </FormField>
           </div>
+          <FormFooter onCancel={onClose} submitLabel="Ré-émettre" busy={pending} disabled={!valid} />
         </form>
       </div>
     </ModalBackdrop>

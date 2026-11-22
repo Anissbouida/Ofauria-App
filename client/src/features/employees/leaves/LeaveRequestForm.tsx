@@ -52,23 +52,23 @@ export default function LeaveRequestForm({ onClose }: { onClose: () => void }) {
           disabled={!ready || (preview?.days ?? 1) <= 0 || (!!insufficient && !allowNegative)}>Enregistrer</SubmitButton>
       </>}>
         <form ref={formRef} onSubmit={e => { e.preventDefault(); create.mutate(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Employé *">
+          <Field label="Employé" required>
             <SearchSelect value={form.employeeId} onChange={id => setForm({ ...form, employeeId: id })}
               placeholder="Choisir un employé…" width="100%" size="md" ariaLabel="Employé"
               options={(employees as Record<string, any>[]).filter(e => e.is_active).map(e => ({ id: e.id as string, label: `${e.first_name as string} ${e.last_name as string}` }))} /></Field>
-          <Field label="Type *">
+          <Field label="Type" required>
             <select className={inputCls} required value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
               {leaveTypes.map(lt => <option key={lt.code} value={lt.code}>{lt.label}</option>)}
             </select></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Du *">
+          <div className="ds-form-grid">
+            <Field label="Du" required>
               <input type="date" className={inputCls} required value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value, endDate: form.endDate || e.target.value })} /></Field>
-            <Field label="Au *">
+            <Field label="Au" required>
               <input type="date" className={inputCls} required min={form.startDate} value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} /></Field>
           </div>
           {ready && (
             isFetching || !preview ? (
-              <StatusBanner tone="neutral" icon={Hourglass} title="Calcul..." />
+              <StatusBanner tone="neutral" icon={Hourglass} title="Calcul…" />
             ) : (
               <StatusBanner tone={insufficient ? 'danger' : 'info'} icon={insufficient ? AlertTriangle : CalendarDays}
                 title={`${preview.days} jour${preview.days > 1 ? 's' : ''} ${preview.unit === 'ouvrable' ? 'ouvrable' : 'calendaire'}${preview.days > 1 ? 's' : ''}${insufficient ? ' — solde insuffisant' : ''}`}>
@@ -85,7 +85,7 @@ export default function LeaveRequestForm({ onClose }: { onClose: () => void }) {
             )
           )}
           {insufficient && user?.role === 'admin' && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
               <input type="checkbox" checked={allowNegative} onChange={e => setAllowNegative(e.target.checked)} />
               Autoriser un congé anticipé (solde négatif)
             </label>

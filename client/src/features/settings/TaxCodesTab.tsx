@@ -57,8 +57,8 @@ export default function TaxCodesTab() {
     code: c?.code ?? '', label: c?.label ?? '', rate: c ? String(Number(c.rate)) : '', kind: c?.kind ?? 'standard',
     recoverable: c?.recoverable ?? true, validFrom: today, legalRef: c?.legal_ref ?? '',
   });
-  const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)' };
+  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
   const replacing = draft && existing.find(c => c.code === draft.code.trim().toUpperCase());
 
   return (
@@ -71,7 +71,7 @@ export default function TaxCodesTab() {
           <input id="tax-show-past" type="checkbox" checked={showPast} onChange={e => setShowPast(e.target.checked)} /> Afficher l'historique
         </label>
         {!draft && canCreate('settings') && (
-          <button className="odoo-btn-primary" onClick={() => newRateFor()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button type="button" className="odoo-btn-primary" onClick={() => newRateFor()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Plus size={13} /> Nouveau taux
           </button>
         )}
@@ -82,22 +82,22 @@ export default function TaxCodesTab() {
       ) : (
         <div className="prj-panel prj-scroll">
           <table className="odoo-table">
-            <thead><tr><th>Code</th><th>Libellé</th><th style={{ textAlign: 'right' }}>Taux</th><th>Nature</th><th>Déductible</th><th>Du</th><th>Au</th><th>Statut</th><th>Référence</th><th></th></tr></thead>
+            <thead><tr><th>Code</th><th>Libellé</th><th className="ds-num">Taux</th><th>Nature</th><th>Déductible</th><th>Du</th><th>Au</th><th>Statut</th><th>Référence</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
               {shown.map(c => (
                 <tr key={c.id} style={{ opacity: c.status === 'past' ? 0.6 : 1 }}>
                   <td style={{ fontFamily: 'ui-monospace, monospace' }}>{c.code}</td>
                   <td>{c.label}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(c.rate).toLocaleString('fr-FR')} %</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(c.rate).toLocaleString('fr-FR')} %</td>
                   <td>{KINDS.find(k => k[0] === c.kind)?.[1] ?? c.kind}</td>
                   <td>{c.recoverable ? 'Oui' : 'Non'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{d(c.valid_from)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{d(c.valid_to)}</td>
                   <td><StatusTag tone={STATUS[c.status].tone} icon={STATUS[c.status].icon} label={STATUS[c.status].label} /></td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{c.legal_ref ?? ''}</td>
+                  <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{c.legal_ref ?? ''}</td>
                   <td>
                     {c.status !== 'past' && !draft && canCreate('settings') && (
-                      <button className="odoo-btn-secondary" style={{ padding: '2px 8px', whiteSpace: 'nowrap' }} onClick={() => newRateFor(c)}>Changer le taux</button>
+                      <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', whiteSpace: 'nowrap' }} onClick={() => newRateFor(c)}>Changer le taux</button>
                     )}
                   </td>
                 </tr>
@@ -138,13 +138,13 @@ export default function TaxCodesTab() {
             </label>
           </div>
           {replacing && replacing.status === 'current' && (
-            <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
               Le taux actuel ({Number(replacing.rate).toLocaleString('fr-FR')} %) s'arrêtera le {draft.validFrom ? d(dayBefore(draft.validFrom)) : '…'}.
             </div>
           )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
-            <button className="odoo-btn-primary" disabled={add.isPending || !draft.code.trim() || !draft.label.trim() || draft.rate === '' || !draft.validFrom}
+            <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
+            <button type="button" className="odoo-btn-primary" disabled={add.isPending || !draft.code.trim() || !draft.label.trim() || draft.rate === '' || !draft.validFrom}
               onClick={() => add.mutate()}>
               {add.isPending ? 'Enregistrement…' : 'Enregistrer le taux'}
             </button>

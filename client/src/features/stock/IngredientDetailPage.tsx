@@ -30,6 +30,8 @@ import { money, currencySymbol } from '../../utils/money';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ModulePage } from '../../components/layout/ModuleShell';
 import { SubViews } from './StockUi';
+import { Breadcrumb, EmptyState, KpiCard, KpiGrid } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
 
 const CATEGORY_COLORS: Record<string, string> = {
   farines: 'bg-amber-100 text-amber-700',
@@ -309,11 +311,8 @@ export default function IngredientDetailPage() {
   if (!item && !ingredient) {
     return (
       <div className="prj sal-page">
-        <div className="prj-panel sal-empty">
-          <Package size={28} style={{ opacity: 0.4 }} />
-          <strong>Ingrédient introuvable</strong>
-          <button onClick={() => navigate('/stock')} className="odoo-btn-secondary">Retour au stock</button>
-        </div>
+        <EmptyState icon={Package} title="Ingrédient introuvable" text="Il a peut-être été supprimé ou converti en consommable."
+          action={<button type="button" onClick={() => navigate('/stock')} className="odoo-btn-secondary">Retour au stock</button>} />
       </div>
     );
   }
@@ -339,33 +338,34 @@ export default function IngredientDetailPage() {
   // Lots bloqués par un contrôle réception non conforme (épic labo L5, mig 428).
   const blockedLots = lots.filter(l => l.status === 'blocked');
 
-  const kpiTile = (label: string, value: string, icon: typeof Package, opts: { color?: string; title?: string; onClick?: () => void; sub?: string } = {}) => {
-    const Icon = icon;
-    return (
-      <button type="button" className="prj-kpi" onClick={opts.onClick} disabled={!opts.onClick} title={opts.title}>
-        <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon size={13} /> {label}</span></div>
-        <div className="prj-kpi-value" style={{ color: opts.color }}>{value}</div>
-        {opts.sub && <div className="prj-kpi-sub">{opts.sub}</div>}
-      </button>
-    );
-  };
-
   return (
     <div className="odoo-scope">
       {/* ══════ BARRE : retour + fil d'Ariane (design Ventes, 2026-11-18) ══════ */}
       <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <button type="button" className="sal-link" style={{ marginLeft: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => navigate('/stock')} title="Retour à la liste">
-            <ArrowLeft size={14} /> Stock
-          </button>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">{ingredientName || '—'}</span>
-        </div>
+        <Breadcrumb items={[
+          { label: 'Stock', onClick: () => navigate('/stock') },
+          { label: 'Réserve', onClick: () => navigate('/stock') },
+          { label: ingredientName || '—' },
+        ]} />
         <div style={{ flex: 1 }} />
         {canManage && (
-          <button onClick={() => setShowDelete(true)} className="odoo-btn-danger" title="Supprimer">
-            <Trash2 size={13} />
+          <button type="button" onClick={() => setShowEdit(true)} className="odoo-btn-secondary">
+            <Edit3 size={14} aria-hidden="true" /> Modifier
           </button>
+        )}
+        {canManage && (
+          <button type="button" onClick={() => setShowAdjust(true)} className="odoo-btn-secondary">
+            <TrendingDown size={14} aria-hidden="true" /> Ajuster le stock
+          </button>
+        )}
+        <button type="button" onClick={() => setShowOrderRequest(true)} className="odoo-btn-primary">
+          <ShoppingCart size={14} aria-hidden="true" /> Commander
+        </button>
+        {canManage && (
+          <RowMenu label="Autres actions" items={[
+            { label: 'Convertir en consommable', icon: Boxes, onSelect: () => { setConvertCategoryId(''); setShowConvert(true); } },
+            { label: 'Supprimer l\'ingrédient', icon: Trash2, danger: true, onSelect: () => setShowDelete(true) },
+          ]} />
         )}
       </div>
 
@@ -388,34 +388,13 @@ export default function IngredientDetailPage() {
               <span>Unité : {unit || '—'}</span>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {canManage && (
-              <button onClick={() => setShowEdit(true)} className="odoo-btn-secondary">
-                <Edit3 size={13} /> Modifier
-              </button>
-            )}
-            {canManage && (
-              <button onClick={() => setShowAdjust(true)} className="odoo-btn-secondary">
-                <TrendingDown size={13} /> Ajuster
-              </button>
-            )}
-            {canManage && (
-              <button onClick={() => { setConvertCategoryId(''); setShowConvert(true); }} className="odoo-btn-secondary"
-                title="Cet article n'est pas un ingrédient ? Le déplacer vers Consommables">
-                <Boxes size={13} /> Convertir en consommable
-              </button>
-            )}
-            <button onClick={() => setShowOrderRequest(true)} className="odoo-btn-primary">
-              <ShoppingCart size={13} /> Commander
-            </button>
-          </div>
         </div>
       </section>
 
       {/* ══════ ALERTES ══════ */}
       {isLow && (
         <StatusBanner tone="warning" icon={AlertTriangle} title="Stock bas"
-          actions={<button onClick={() => setShowOrderRequest(true)} className="odoo-btn-secondary"><ShoppingCart size={12} /> Demander</button>}>
+          actions={<button type="button" onClick={() => setShowOrderRequest(true)} className="odoo-btn-secondary"><ShoppingCart size={12} aria-hidden="true" /> Commander</button>}>
           {qty.toFixed(1)} {unit} restant(s), seuil minimum {threshold.toFixed(0)} {unit}
         </StatusBanner>
       )}
@@ -426,18 +405,20 @@ export default function IngredientDetailPage() {
       )}
 
       {/* ══════ CHIFFRES CLÉS (clic = onglet Lots ou modification) ══════ */}
-      <section className="prj-kpis stk-kpis" aria-label="Chiffres clés">
-        {kpiTile(`Total (${unit})`, qty.toFixed(qty % 1 === 0 ? 0 : 1), Package, { color: isOut ? 'var(--prj-red)' : isLow ? 'var(--prj-orange)' : undefined, onClick: () => setActiveTab('lots') })}
-        {kpiTile('En réserve', fmtQty(scelleQty), Package, { title: 'Contenants intacts (ex-Économat)', onClick: () => setActiveTab('lots') })}
-        {kpiTile('Au pesage', fmtQty(entameQty), PackageOpen, { title: 'Contenants ouverts (ex-Pesage)', onClick: () => setActiveTab('lots') })}
-        {kpiTile('Seuil min', threshold.toFixed(0), AlertTriangle, { onClick: canManage ? () => setShowEdit(true) : undefined })}
-        {kpiTile('Lots actifs', String(lotsCount), Boxes, { onClick: () => setActiveTab('lots') })}
-        {kpiTile(`${currencySymbol()} / ${unit}`, unitCost.toFixed(2), Package)}
-      </section>
+      <KpiGrid label="Chiffres clés">
+        <KpiCard label={`Stock total (${unit})`} value={qty.toFixed(qty % 1 === 0 ? 0 : 1)}
+          sub={isOut ? 'En rupture' : isLow ? 'Sous le seuil' : 'Réserve et poste de pesée'} tone={isOut ? 'red' : isLow ? 'orange' : undefined}
+          onClick={() => setActiveTab('lots')} />
+        <KpiCard label={`En réserve (${unit})`} value={fmtQty(scelleQty)} sub="Contenants intacts" onClick={() => setActiveTab('lots')} />
+        <KpiCard label={`Au pesage (${unit})`} value={fmtQty(entameQty)} sub="Contenants ouverts" onClick={() => setActiveTab('lots')} />
+        <KpiCard label={`Seuil minimum (${unit})`} value={threshold.toFixed(0)} onClick={canManage ? () => setShowEdit(true) : undefined} />
+        <KpiCard label="Lots actifs" value={String(lotsCount)} onClick={() => setActiveTab('lots')} />
+        <KpiCard label={`Coût unitaire (${currencySymbol()} / ${unit})`} value={unitCost.toFixed(2)} />
+      </KpiGrid>
 
       {/* ══════ ONGLETS (contrôle segmenté) ══════ */}
       <SubViews label="Contenu de la fiche" value={activeTab} onChange={setActiveTab} views={[
-        { key: 'lots', label: 'Lots & Traçabilité', icon: ShieldCheck },
+        { key: 'lots', label: 'Lots et traçabilité', icon: ShieldCheck },
         { key: 'suppliers', label: 'Fournisseurs', icon: Truck },
         { key: 'history', label: 'Historique', icon: Clock },
       ]} />
@@ -455,7 +436,7 @@ export default function IngredientDetailPage() {
           {activeLots.length > 0 && (
             <div className="odoo-section">
               <div className="odoo-section-header">
-                <Boxes size={14} style={{ color: 'var(--prj-green)' }} /> Lots actifs ({activeLots.length})
+                <Boxes size={14} style={{ color: 'var(--ds-success)' }} /> Lots actifs ({activeLots.length})
               </div>
               {activeLots.map((lot, i) => (
                 <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
@@ -478,7 +459,7 @@ export default function IngredientDetailPage() {
           {blockedLots.length > 0 && (
             <div className="odoo-section">
               <div className="odoo-section-header">
-                <Ban size={14} style={{ color: 'var(--prj-red)' }} /> Bloqués — contrôle réception non conforme ({blockedLots.length})
+                <Ban size={14} style={{ color: 'var(--ds-danger)' }} /> Bloqués — contrôle réception non conforme ({blockedLots.length})
               </div>
               {blockedLots.map((lot, i) => (
                 <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
@@ -496,7 +477,7 @@ export default function IngredientDetailPage() {
           {quarantinedLots.length > 0 && (
             <div className="odoo-section">
               <div className="odoo-section-header">
-                <Shield size={14} style={{ color: 'var(--prj-orange)' }} /> Quarantaine ({quarantinedLots.length})
+                <Shield size={14} style={{ color: 'var(--ds-warning)' }} /> Quarantaine ({quarantinedLots.length})
               </div>
               {quarantinedLots.map((lot, i) => (
                 <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
@@ -534,13 +515,7 @@ export default function IngredientDetailPage() {
           )}
 
           {lots.length === 0 && (
-            <div className="odoo-section">
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-                <Boxes size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-                <p style={{ fontSize: '0.8125rem' }}>Aucun lot enregistré pour cet ingrédient</p>
-                <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Les lots sont créés automatiquement lors de la réception des bons de commande</p>
-              </div>
-            </div>
+            <EmptyState icon={Boxes} title="Aucun lot enregistré" text="Les lots sont créés automatiquement à la réception des bons de commande." />
           )}
         </div>
       )}
@@ -552,10 +527,7 @@ export default function IngredientDetailPage() {
             <Clock size={12} /> Historique des mouvements
           </div>
           {(transactions as Transaction[]).length === 0 ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-              <Clock size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-              <p style={{ fontSize: '0.8125rem' }}>Aucun mouvement enregistré</p>
-            </div>
+            <EmptyState bare icon={Clock} title="Aucun mouvement enregistré" text="Réceptions, sorties, ajustements et pertes apparaîtront ici." />
           ) : (
             <div>
               {(transactions as Transaction[]).map((tx, i) => {
@@ -574,14 +546,14 @@ export default function IngredientDetailPage() {
                   }}>
                     <div style={{
                       width: 24, height: 24, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: isPositive ? '#d4edda' : '#f8d7da', flexShrink: 0,
+                      backgroundColor: isPositive ? 'var(--ds-success-bg)' : 'var(--ds-danger-bg)', flexShrink: 0,
                     }}>
-                      {tx.type === 'restock' ? <Package size={12} style={{ color: '#155724' }} /> :
-                       tx.type === 'purchase_order' ? <Package size={12} style={{ color: '#155724' }} /> :
-                       tx.type === 'production' ? <Factory size={12} style={{ color: '#1f6391' }} /> :
-                       tx.type === 'adjustment' ? <TrendingDown size={12} style={{ color: '#b85d1a' }} /> :
-                       tx.type === 'waste' ? <Ban size={12} style={{ color: '#721c24' }} /> :
-                       tx.type === 'usage' ? <Beaker size={12} style={{ color: '#b85d1a' }} /> :
+                      {tx.type === 'restock' ? <Package size={12} style={{ color: 'var(--ds-success)' }} /> :
+                       tx.type === 'purchase_order' ? <Package size={12} style={{ color: 'var(--ds-success)' }} /> :
+                       tx.type === 'production' ? <Factory size={12} style={{ color: 'var(--ds-info)' }} /> :
+                       tx.type === 'adjustment' ? <TrendingDown size={12} style={{ color: 'var(--ds-warning)' }} /> :
+                       tx.type === 'waste' ? <Ban size={12} style={{ color: 'var(--ds-danger)' }} /> :
+                       tx.type === 'usage' ? <Beaker size={12} style={{ color: 'var(--ds-warning)' }} /> :
                        <Beaker size={12} style={{ color: 'var(--theme-text-muted)' }} />}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -590,13 +562,13 @@ export default function IngredientDetailPage() {
                          tx.type === 'purchase_order' ? 'Bon de commande' :
                          tx.type === 'production' ? 'Production' :
                          tx.type === 'adjustment' ? 'Ajustement' :
-                         tx.type === 'waste' ? 'Perte / Déchet' :
+                         tx.type === 'waste' ? 'Perte' :
                          tx.type === 'usage' ? 'Utilisation' : tx.type}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginTop: 1, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
                         <span className="odoo-tag odoo-tag-purple" style={{ fontSize: '0.625rem' }}>
                           <span style={{
-                            width: 12, height: 12, borderRadius: '50%', backgroundColor: '#efe6ee',
+                            width: 12, height: 12, borderRadius: '50%', backgroundColor: 'var(--ds-tint)',
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 700,
                           }}>{initials}</span>
                           {tx.performed_by_name || 'Système'}
@@ -606,7 +578,7 @@ export default function IngredientDetailPage() {
                       </div>
                       {tx.note && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontStyle: 'italic', marginTop: 2 }}>{tx.note}</div>}
                     </div>
-                    <span style={{ fontWeight: 600, color: isPositive ? 'var(--prj-green)' : 'var(--prj-red)', flexShrink: 0 }}>
+                    <span style={{ fontWeight: 600, color: isPositive ? 'var(--ds-success)' : 'var(--ds-danger)', flexShrink: 0 }}>
                       {isPositive ? '+' : ''}{parseFloat(tx.quantity_change).toFixed(1)} {unit}
                     </span>
                   </div>
@@ -654,18 +626,18 @@ export default function IngredientDetailPage() {
       {showDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
           <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#fdf0ed', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Trash2 size={16} style={{ color: '#dc3545' }} />
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#721c24' }}>Supprimer l'ingrédient</h2>
+            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--ds-danger-bg)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Trash2 size={16} style={{ color: 'var(--ds-danger)' }} />
+              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--ds-danger)' }}>Supprimer l'ingrédient</h2>
             </div>
-            <div style={{ padding: '1rem', backgroundColor: '#fff' }}>
+            <div style={{ padding: '1rem', backgroundColor: 'var(--ds-card)' }}>
               <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', marginBottom: '0.75rem' }}>
                 Voulez-vous vraiment supprimer <strong>{ingredientName}</strong> ? Cette action est irréversible et supprimera toutes les données associées.
               </p>
               {qty > 0 && (
                 <div style={{
-                  fontSize: '0.75rem', color: '#856404', backgroundColor: '#fff3cd',
-                  border: '1px solid #ffeeba', borderRadius: 4, padding: '0.5rem 0.625rem',
+                  fontSize: '0.75rem', color: 'var(--ds-warning)', backgroundColor: 'var(--ds-warning-bg)',
+                  border: '1px solid var(--ds-warning)', borderRadius: 4, padding: '0.5rem 0.625rem',
                   marginBottom: '0.75rem',
                 }}>
                   <strong>⚠ Stock actif : {qty.toFixed(2)} {unit}.</strong>{' '}
@@ -673,13 +645,12 @@ export default function IngredientDetailPage() {
                 </div>
               )}
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: '0.75rem' }}>
-                <button onClick={() => setShowDelete(false)} className="odoo-btn-secondary">Annuler</button>
+                <button type="button" onClick={() => setShowDelete(false)} className="odoo-btn-secondary" disabled={deleteIngredientMutation.isPending}>Annuler</button>
                 {qty > 0 ? (
                   <button
                     onClick={() => deleteIngredientMutation.mutate({ force: true })}
                     disabled={deleteIngredientMutation.isPending}
-                    className="odoo-btn-primary"
-                    style={{ backgroundColor: '#dc3545', borderColor: '#dc3545' }}
+                    className="ds-btn-danger solid"
                     title="Jette le stock restant et supprime l'ingrédient"
                   >
                     <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Forcer la suppression'}
@@ -688,8 +659,7 @@ export default function IngredientDetailPage() {
                   <button
                     onClick={() => deleteIngredientMutation.mutate({})}
                     disabled={deleteIngredientMutation.isPending}
-                    className="odoo-btn-primary"
-                    style={{ backgroundColor: '#dc3545', borderColor: '#dc3545' }}
+                    className="ds-btn-danger solid"
                   >
                     <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Supprimer'}
                   </button>
@@ -707,9 +677,9 @@ export default function IngredientDetailPage() {
               <Boxes size={16} style={{ color: 'var(--theme-accent)' }} />
               <h2 style={{ fontSize: '0.9375rem', fontWeight: 600 }}>Convertir en consommable</h2>
               <div style={{ flex: 1 }} />
-              <button onClick={() => setShowConvert(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><X size={16} /></button>
+              <button type="button" onClick={() => setShowConvert(false)} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
             </div>
-            <div style={{ padding: '1rem', backgroundColor: '#fff' }}>
+            <div style={{ padding: '1rem', backgroundColor: 'var(--ds-card)' }}>
               <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', marginBottom: '0.75rem' }}>
                 <strong>{ingredientName}</strong> sera déplacé vers l'onglet <strong>Consommables</strong> avec la catégorie choisie.
                 {qty > 0 && <> Son stock (<strong>{qty.toFixed(2)} {unit}</strong>) est transféré.</>} La ligne ingrédient est ensuite supprimée.
@@ -790,27 +760,27 @@ function LotLabelModal({ lot, ingredientName, onClose }: { lot: Lot; ingredientN
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
           <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText size={16} className="text-blue-600" /> Étiquette de lot</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={18} /></button>
         </div>
         {/* Zone imprimable */}
         <div id="lot-label-print" style={{ padding: '1rem 1.25rem' }}>
-          <div style={{ border: '2px solid #111', borderRadius: 8, padding: '0.875rem 1rem' }}>
-            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#111' }}>{ingredientName}</div>
+          <div style={{ border: '2px solid var(--ds-ink)', borderRadius: 8, padding: '0.875rem 1rem' }}>
+            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--ds-ink)' }}>{ingredientName}</div>
             <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.9rem', marginTop: 4 }}>
               Lot : {lot.supplier_lot_number || lot.lot_number}
             </div>
             <div style={{ marginTop: 6, fontSize: '0.95rem' }}>
-              <span style={{ fontWeight: 700, background: isDluo ? '#eef2ff' : '#fde8e8', padding: '1px 6px', borderRadius: 4 }}>
+              <span style={{ fontWeight: 700, background: isDluo ? 'var(--ds-info-bg)' : 'var(--ds-danger-bg)', padding: '1px 6px', borderRadius: 4 }}>
                 {isDluo ? 'DLUO' : 'DLC'}
               </span>{' '}
               <span style={{ fontWeight: 700 }}>{dateStr}</span>
             </div>
             <div style={{ marginTop: 8, fontSize: '0.8rem' }}>
-              <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.68rem', color: '#555' }}>Allergènes</div>
+              <div style={{ fontWeight: 700, fontSize: '0.68rem', color: 'var(--ds-body)' }}>Allergènes</div>
               {allergens.length > 0 ? (
                 <div style={{ fontWeight: 600 }}>{allergens.join(' · ')}</div>
               ) : (
-                <div style={{ color: '#888' }}>Aucun déclaré</div>
+                <div style={{ color: 'var(--ds-muted)' }}>Aucun déclaré</div>
               )}
             </div>
           </div>
@@ -862,7 +832,7 @@ function OrderRequestModal({ ingredientName, unit, container, isLow, supplierHin
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--ds-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <ShoppingCart size={16} style={{ color: 'var(--theme-accent)' }} />
             <div>
@@ -870,15 +840,15 @@ function OrderRequestModal({ ingredientName, unit, container, isLow, supplierHin
               <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ingredientName}</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
           const qty = parseFloat(form.quantity);
           if (isNaN(qty) || qty <= 0) return;
           onSave({ quantity: qty, reason: form.reason, note: form.note || undefined, supplierId: form.supplierId || null });
-        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
-          <div style={{ border: '1px solid #d6e9f8', borderRadius: 4, backgroundColor: '#eaf3fb', padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#1f6391' }}>
+        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: 'var(--ds-card)' }}>
+          <div style={{ border: '1px solid var(--ds-info-bg)', borderRadius: 4, backgroundColor: 'var(--ds-info-bg)', padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: 'var(--ds-info)' }}>
             La demande apparaîtra dans Stock › À commander, où le gérant crée directement le bon de commande auprès du fournisseur.
           </div>
           <div>
@@ -932,7 +902,7 @@ function OrderRequestModal({ ingredientName, unit, container, isLow, supplierHin
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button type="submit" disabled={isLoading} className="odoo-btn-primary">
-              <ShoppingCart size={13} /> {isLoading ? 'Ajout...' : 'Ajouter à la liste'}
+              <ShoppingCart size={13} /> {isLoading ? 'Ajout…' : 'Ajouter à la liste'}
             </button>
           </div>
         </form>
@@ -982,7 +952,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
       <div onClick={onToggle}
         style={{
           padding: '0.5rem 0.875rem', display: 'flex', alignItems: 'center', gap: '0.625rem',
-          cursor: 'pointer', backgroundColor: '#fff', fontSize: '0.8125rem',
+          cursor: 'pointer', backgroundColor: 'var(--ds-card)', fontSize: '0.8125rem',
         }}>
         <span className={`odoo-status-dot ${dotClass}`} role="img" title={dotLabel} aria-label={dotLabel} />
 
@@ -1005,7 +975,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
             {lot.supplier_name && <span>{lot.supplier_name}</span>}
             {lot.location_code && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }} title={lot.location_name || undefined}>
-                <MapPin size={10} style={{ color: 'var(--theme-primary, #2563eb)' }} /> {lot.location_code}
+                <MapPin size={10} style={{ color: 'var(--theme-primary, var(--ds-info))' }} /> {lot.location_code}
               </span>
             )}
             {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && (
@@ -1025,10 +995,10 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
               Valeur : {money(remaining * parseFloat(lot.unit_cost))}
             </div>
           )}
-          <div style={{ width: 64, height: 4, backgroundColor: '#e9ecef', borderRadius: 2, overflow: 'hidden', marginTop: 4, marginLeft: 'auto' }}>
+          <div style={{ width: 64, height: 4, backgroundColor: 'var(--ds-hair)', borderRadius: 2, overflow: 'hidden', marginTop: 4, marginLeft: 'auto' }}>
             <div style={{
               height: '100%', width: `${pct}%`,
-              backgroundColor: pct > 50 ? '#28a745' : pct > 20 ? '#ffc107' : '#dc3545',
+              backgroundColor: pct > 50 ? 'var(--ds-success)' : pct > 20 ? 'var(--ds-warning)' : 'var(--ds-danger)',
             }} />
           </div>
         </div>
@@ -1039,11 +1009,11 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
       </div>
 
       {isExpanded && (
-        <div style={{ padding: '0.5rem 0.875rem 0.875rem', backgroundColor: '#f9fafb', borderTop: '1px solid var(--theme-bg-separator)' }}>
+        <div style={{ padding: '0.5rem 0.875rem 0.875rem', backgroundColor: 'var(--ds-bg)', borderTop: '1px solid var(--theme-bg-separator)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
             {/* Supply chain */}
-            <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
-              <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
+              <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <ShieldCheck size={11} /> Chaîne d'approvisionnement
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -1063,7 +1033,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
               </div>
               <div style={{ display: 'flex', gap: '1rem', marginTop: 6, fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
                 {lot.expiration_date && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: isExpired ? '#dc3545' : 'var(--theme-text-muted)', fontWeight: isExpired ? 600 : 400 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: isExpired ? 'var(--ds-danger)' : 'var(--theme-text-muted)', fontWeight: isExpired ? 600 : 400 }}>
                     <CalendarClock size={10} /> DLC : {format(new Date(lot.expiration_date), 'dd/MM/yyyy')}
                   </span>
                 )}
@@ -1080,8 +1050,8 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
 
             {/* Forward traceability */}
             {traceability.length > 0 && (
-              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
-                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#1f6391', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
+                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--ds-info)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Factory size={11} /> Productions utilisant ce lot ({traceability.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1094,14 +1064,14 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
                         cursor: 'pointer', fontSize: '0.75rem',
                       }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Factory size={11} style={{ color: '#1f6391' }} />
+                        <Factory size={11} style={{ color: 'var(--ds-info)' }} />
                         <span style={{ fontWeight: 500 }}>
                           {format(new Date(t.plan_date), 'dd/MM/yyyy')} — {t.plan_type === 'morning' ? 'Matin' : t.plan_type === 'afternoon' ? 'Après-midi' : t.plan_type}
                         </span>
                         <StatusTag tone={planStatusTag(t.plan_status).tone} icon={planStatusTag(t.plan_status).icon}
                           label={t.plan_status === 'completed' ? 'Terminé' : t.plan_status === 'in_progress' ? 'En cours' : t.plan_status} />
                       </div>
-                      <span style={{ fontWeight: 600, color: '#1f6391' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--ds-info)' }}>
                         {parseFloat(t.quantity_used).toFixed(1)} {lot.ingredient_unit}
                       </span>
                     </div>
@@ -1111,25 +1081,25 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
             )}
 
             {traceability.length === 0 && (
-              <div style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--theme-text-muted)', backgroundColor: '#fff', border: '1px solid var(--theme-bg-separator)', borderRadius: 3 }}>
+              <div style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--theme-text-muted)', backgroundColor: 'var(--ds-card)', border: '1px solid var(--theme-bg-separator)', borderRadius: 3 }}>
                 Aucune production liée à ce lot
               </div>
             )}
 
             {/* Repartition Economat / Pesage */}
             {(economat > 0 || pesage > 0) && (
-              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: '#fff' }}>
-                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 3, padding: '0.625rem 0.75rem', backgroundColor: 'var(--ds-card)' }}>
+                <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Package size={11} /> Répartition par zone
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <div style={{ flex: 1, border: '1px solid #ffe5d0', borderRadius: 3, padding: '0.375rem 0.5rem' }}>
-                    <div style={{ fontSize: '0.625rem', color: '#b85d1a', textTransform: 'uppercase', fontWeight: 600 }}>En réserve</div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 600, color: '#b85d1a' }}>{economat.toFixed(2)} {lot.ingredient_unit}</div>
+                  <div style={{ flex: 1, border: '1px solid var(--ds-warning-bg)', borderRadius: 3, padding: '0.375rem 0.5rem' }}>
+                    <div style={{ fontSize: '0.625rem', color: 'var(--ds-warning)', fontWeight: 600 }}>En réserve</div>
+                    <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--ds-warning)' }}>{economat.toFixed(2)} {lot.ingredient_unit}</div>
                   </div>
-                  <div style={{ flex: 1, border: '1px solid #d4edda', borderRadius: 3, padding: '0.375rem 0.5rem' }}>
-                    <div style={{ fontSize: '0.625rem', color: '#28a745', textTransform: 'uppercase', fontWeight: 600 }}>Au pesage</div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 600, color: '#28a745' }}>{pesage.toFixed(2)} {lot.ingredient_unit}</div>
+                  <div style={{ flex: 1, border: '1px solid var(--ds-success-bg)', borderRadius: 3, padding: '0.375rem 0.5rem' }}>
+                    <div style={{ fontSize: '0.625rem', color: 'var(--ds-success)', fontWeight: 600 }}>Au pesage</div>
+                    <div style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--ds-success)' }}>{pesage.toFixed(2)} {lot.ingredient_unit}</div>
                   </div>
                 </div>
               </div>
@@ -1151,7 +1121,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
                   </button>
                 )}
                 {onWaste && (
-                  <button onClick={(e) => { e.stopPropagation(); onWaste(); }} className="odoo-btn-danger">
+                  <button onClick={(e) => { e.stopPropagation(); onWaste(); }} className="ds-btn-danger">
                     <Ban size={11} /> Lot aux pertes
                   </button>
                 )}
@@ -1204,7 +1174,7 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 420, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--ds-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <TrendingDown size={16} style={{ color: 'var(--theme-accent)' }} />
             <div>
@@ -1212,7 +1182,7 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
               <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ingredientName}</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
@@ -1220,7 +1190,7 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
           if (isNaN(qty) || qty <= 0) return;
           const signedQty = form.type === 'restock' ? qty : -qty;
           onSave({ quantity: signedQty, type: form.type, note: form.note || undefined, reasonCode: form.type === 'waste' ? form.reasonCode : undefined });
-        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
+        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: 'var(--ds-card)' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Type d'ajustement</label>
             <select className="input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
@@ -1258,7 +1228,7 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button type="submit" disabled={isLoading} className="odoo-btn-primary">
-              <Save size={13} /> {isLoading ? 'Ajustement...' : 'Sauvegarder'}
+              <Save size={13} /> {isLoading ? 'Ajustement…' : 'Enregistrer l\'ajustement'}
             </button>
           </div>
         </form>

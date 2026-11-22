@@ -5,7 +5,8 @@ import { employeeDocumentsApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { apiErrorMessage, saveBlobResponse } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
-import { SectionTitle, SubmitButton, fieldLabel, inputCls, panel, smallBtn } from '../ui';
+import { RowMenu } from '../../../components/ui/RowMenu';
+import { SectionTitle, SubmitButton, Field, inputCls, panel } from '../ui';
 
 export const DOC_TYPES: Record<string, string> = {
   cin: 'CIN', contrat: 'Contrat signé', avenant: 'Avenant signé', cnss: 'Attestation CNSS', diplome: 'Diplôme',
@@ -56,55 +57,55 @@ export default function EmployeeDocuments({ employeeId }: { employeeId: string }
   return (
     <section className="prj-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px' }}>
       <SectionTitle icon={FolderOpen} actions={!draft && (
-        <button type="button" className="odoo-btn-secondary" style={smallBtn}
-          onClick={() => setDraft({ docType: 'contrat', title: '', expiresOn: '' })}><Upload size={11} /> Ajouter</button>
+        <button type="button" className="odoo-btn-secondary ds-btn-sm"
+          onClick={() => setDraft({ docType: 'contrat', title: '', expiresOn: '' })}><Upload size={13} aria-hidden="true" /> Ajouter</button>
       )}>Documents</SectionTitle>
       {draft && (
         <div className="grid grid-cols-3 gap-3 items-end" style={panel}>
-          <div><label style={fieldLabel}>Type</label>
+          <Field label="Type" required>
             <select className={inputCls} value={draft.docType} onChange={e => setDraft({ ...draft, docType: e.target.value })}>
               {Object.entries(DOC_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
-          </div>
-          <div><label style={fieldLabel}>Titre</label>
+          </Field>
+          <Field label="Titre">
             <input className={inputCls} value={draft.title} placeholder={DOC_TYPES[draft.docType]} onChange={e => setDraft({ ...draft, title: e.target.value })} />
-          </div>
-          <div><label style={fieldLabel}>Échéance (si elle expire)</label>
+          </Field>
+          <Field label="Échéance (si elle expire)">
             <input className={inputCls} type="date" value={draft.expiresOn} onChange={e => setDraft({ ...draft, expiresOn: e.target.value })} />
-          </div>
+          </Field>
           <input ref={fileRef} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = ''; }} />
           <div className="col-span-3" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
             <SubmitButton pending={upload.isPending} onClick={() => fileRef.current?.click()}>
-              {upload.isPending ? 'Envoi...' : 'Choisir le fichier (PDF/image, 5 Mo)'}
+              {upload.isPending ? 'Envoi…' : 'Choisir le fichier (PDF/image, 5 Mo)'}
             </SubmitButton>
           </div>
         </div>
       )}
-      {docs.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>Aucun document.</p> : (
+      {docs.length === 0 ? <p style={{ fontSize: 14, color: 'var(--ds-muted)', margin: 0 }}>Aucun document.</p> : (
         <table className="odoo-table">
-          <thead><tr><th>Type</th><th>Titre</th><th>Échéance</th><th style={{ textAlign: 'right' }}>Taille</th><th style={{ width: 60 }}></th></tr></thead>
+          <thead><tr><th>Type</th><th>Titre</th><th>Échéance</th><th className="ds-num">Taille (Ko)</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {docs.map(d => {
               const expired = d.expires_on && d.expires_on < today;
               return (
                 <tr key={d.id}>
                   <td>{DOC_TYPES[d.doc_type] ?? d.doc_type}</td>
-                  <td>{d.title}</td>
-                  <td style={{ color: expired ? 'var(--prj-red)' : undefined, fontSize: '0.75rem' }}>
+                  <td className="ds-strong">{d.title}</td>
+                  <td style={{ color: expired ? 'var(--ds-danger)' : undefined, fontWeight: expired ? 600 : undefined }}>
                     {d.expires_on ? `${d.expires_on.slice(8, 10)}/${d.expires_on.slice(5, 7)}/${d.expires_on.slice(0, 4)}${expired ? ' (expiré)' : ''}` : '—'}
                   </td>
-                  <td style={{ textAlign: 'right', fontSize: '0.75rem' }}>{Math.max(1, Math.round(d.size_bytes / 1024))} Ko</td>
-                  <td>
-                    <div style={{ display: 'inline-flex', gap: 2 }}>
-                      <button className="odoo-pager-btn" title="Télécharger" onClick={() => download(d)}><Download size={12} /></button>
-                      <button className="odoo-pager-btn" title="Supprimer" style={{ color: 'var(--prj-red)' }}
-                        onClick={async () => {
-                          if (!(await confirm(`Supprimer « ${d.title} » ?`, { title: 'Supprimer le document', confirmLabel: 'Supprimer', danger: true }))) return;
-                          remove.mutate(d.id);
-                        }}><Trash2 size={12} /></button>
-                    </div>
+                  <td className="ds-num">{Math.max(1, Math.round(d.size_bytes / 1024))}</td>
+                  <td className="ds-actions">
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => download(d)}><Download size={13} aria-hidden="true" /> Télécharger</button>
+                    <RowMenu label={`Plus d'actions pour ${d.title}`} items={[{
+                      label: 'Supprimer', icon: Trash2, danger: true,
+                      onSelect: async () => {
+                        if (!(await confirm(`Supprimer « ${d.title} » ?`, { title: 'Supprimer le document', confirmLabel: 'Supprimer', danger: true }))) return;
+                        remove.mutate(d.id);
+                      },
+                    }]} />
                   </td>
                 </tr>
               );

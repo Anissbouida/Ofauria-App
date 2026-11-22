@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { LoadingPanel } from '../employees/ui';
+import { DataPanel, Toolbar, SearchBar, FormFooter } from '../../components/ds';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Loader2, Save, Search, ShieldCheck, Eye } from 'lucide-react';
+import { ChevronDown, ChevronRight, ShieldCheck, Eye } from 'lucide-react';
 import { MODULE_LABELS } from '@ofauria/shared';
 import { rolesApi, usersApi, type RoleRow } from '../../api/users.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -74,13 +75,9 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
         avant cet écran. Le rôle administrateur garde tout.
       </StatusBanner>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label className="prj-search" style={{ padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Search size={13} aria-hidden />
-          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher une permission ou un module"
-            aria-label="Rechercher une permission" style={{ border: 0, outline: 'none', background: 'transparent', minWidth: 220, fontSize: '0.875rem' }} />
-        </label>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+      <Toolbar>
+        <SearchBar value={query} onChange={setQuery} placeholder="Rechercher une permission ou un module" label="Rechercher une permission" />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ds-muted)' }}>
           <Eye size={13} aria-hidden /> Aperçu pour
         </span>
         <SearchSelect value={previewUser} onChange={setPreviewUser} placeholder="Choisir un utilisateur" width={240}
@@ -88,22 +85,19 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
           options={(users as { id: string; first_name: string; last_name: string; email: string; role: string }[])
             .map(u => ({ id: u.id, label: `${u.first_name} ${u.last_name}`, sublabel: u.email, detail: u.role }))} />
         {previewUser && preview && (
-          <span style={{ fontSize: '0.8125rem' }}><strong>{preview.keys.length}</strong> permission(s) sur {data.keys.length}</span>
+          <span style={{ fontSize: 13 }}><strong>{preview.keys.length}</strong> permission(s) sur {data.keys.length}</span>
         )}
-        <div style={{ flex: 1 }} />
-        <button type="button" className="odoo-btn-secondary" disabled={!changed.length || save.isPending} onClick={() => setDraft({})}>Annuler</button>
-        <button type="button" className="odoo-btn-primary" disabled={!changed.length || save.isPending} onClick={() => save.mutate()}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-          Enregistrer{changed.length ? ` (${changed.length})` : ''}
-        </button>
-      </div>
+      </Toolbar>
 
-      <div className="prj-panel hr-plain"><div className="prj-scroll">
+      {/* Pied de formulaire : Annuler puis Enregistrer, à droite, sous la matrice. */}
+      <DataPanel label="Permissions par action" footer={
+        <FormFooter dirty={changed.length > 0} onCancel={() => setDraft({})} onSubmit={() => save.mutate()} busy={save.isPending}
+          disabled={!changed.length} submitLabel={`Enregistrer${changed.length ? ` (${changed.length})` : ''}`} />
+      }>
         <table className="odoo-table" style={{ minWidth: 600 }}>
           <thead>
             <tr>
-              <th style={{ position: 'sticky', left: 0, background: 'var(--odoo-bg)', zIndex: 1 }}>Permission</th>
+              <th style={{ position: 'sticky', left: 0, background: 'var(--ds-card)', zIndex: 1 }}>Permission</th>
               {previewUser && <th style={{ textAlign: 'center' }}>Aperçu</th>}
               {cols.map(r => <th key={r.code} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{r.label}</th>)}
             </tr>
@@ -112,15 +106,15 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
             {groups.map(([mod, keys]) => {
               const isOpen = open[mod] ?? !!query;
               return [
-                <tr key={mod} style={{ background: 'var(--odoo-bg-alt)' }}>
-                  <td style={{ position: 'sticky', left: 0, background: 'var(--odoo-bg-alt)' }}>
+                <tr key={mod} className="ds-group">
+                  <td style={{ position: 'sticky', left: 0, background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
                     <button type="button" onClick={() => setOpen(o => ({ ...o, [mod]: !isOpen }))} aria-expanded={isOpen}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 0, cursor: 'pointer', fontWeight: 600, color: 'inherit' }}>
-                      {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {moduleLabel(mod)}
-                      <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)' }}>({keys.length})</span>
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'none', border: 0, padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit' }}>
+                      {isOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />} {moduleLabel(mod)}
+                      <small>{keys.length} permission{keys.length > 1 ? 's' : ''}</small>
                     </button>
                   </td>
-                  {previewUser && <td style={{ textAlign: 'center', fontSize: '0.8125rem' }}>{keys.filter(k => previewSet.has(k.key)).length}/{keys.length}</td>}
+                  {previewUser && <td style={{ textAlign: 'center', fontSize: 13 }}>{keys.filter(k => previewSet.has(k.key)).length}/{keys.length}</td>}
                   {cols.map(r => {
                     const h = held(r.code); const n = keys.filter(k => h.has(k.key)).length;
                     return (
@@ -134,9 +128,9 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
                 </tr>,
                 ...(isOpen ? keys.map(k => (
                   <tr key={k.key}>
-                    <td style={{ position: 'sticky', left: 0, background: 'var(--odoo-bg)', paddingLeft: 28 }}>
+                    <td style={{ position: 'sticky', left: 0, background: 'var(--ds-card)', paddingLeft: 28 }}>
                       <div>{k.label}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', fontFamily: 'monospace' }}>{k.key}</div>
+                      <div className="ds-ref" style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>{k.key}</div>
                     </td>
                     {previewUser && <td style={{ textAlign: 'center' }}>{previewSet.has(k.key) ? 'Oui' : '—'}</td>}
                     {cols.map(r => (
@@ -151,7 +145,7 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
             })}
           </tbody>
         </table>
-      </div></div>
+      </DataPanel>
     </div>
   );
 }

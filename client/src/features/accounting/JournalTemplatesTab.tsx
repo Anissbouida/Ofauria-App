@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { NotebookPen, Plus, X, Loader2, Power, Trash2, Play } from 'lucide-react';
+import { NotebookPen, Plus, X, Loader2, Power, Trash2, Play, Pencil } from 'lucide-react';
 import { entryTemplatesApi, planComptableApi, journalsApi, type EntryTemplate, type EntryTemplateLine } from '../../api/ledger.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -9,9 +9,12 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { money as fmtMoney } from '../../utils/money';
+import { LoadingState, DataPanel, EmptyState, TableFooter } from '../../components/ds';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { AccHeaderActions } from './AccHeaderActions';
+import { RowMenu } from '../../components/ui/RowMenu';
 
 const money = (v: number) => fmtMoney(v);
-const inp: React.CSSProperties = { padding: '0.4rem 0.55rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit' };
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 type EditLine = { account_id: string; side: 'debit' | 'credit'; amount: number; label: string };
@@ -32,40 +35,48 @@ export default function JournalTemplatesTab() {
       <StatusBanner tone="info" icon={NotebookPen} title="Modèles d'écritures">
         Figez la structure d'une écriture récurrente (provision, abonnement, OD mensuelle) : journal, comptes, sens et montants par défaut. À l'usage, choisissez une date, ajustez les montants si besoin — l'écriture équilibrée est passée au journal.
       </StatusBanner>
-      <div><button className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouveau modèle</button></div>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
-          <thead><tr><th>Modèle</th><th>Journal</th><th>Périodicité</th><th style={{ textAlign: 'right' }}>Lignes</th><th style={{ textAlign: 'right' }}>Montant</th><th>État</th><th /></tr></thead>
+      <AccHeaderActions>
+        <button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} aria-hidden="true" /> Nouveau modèle</button>
+      </AccHeaderActions>
+      {isLoading ? <LoadingState /> : rows.length === 0 ? (
+        <EmptyState icon={NotebookPen} title="Aucun modèle d'écriture" text="Créez un modèle pour vos écritures récurrentes : provision, abonnement, OD mensuelle."
+          action={<button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} aria-hidden="true" /> Nouveau modèle</button>} />
+      ) : (
+      <DataPanel label="Modèles d'écritures" footer={<TableFooter note={`${rows.length} modèle${rows.length > 1 ? 's' : ''}`} />}>
+        <table className="odoo-table ds-dense">
+          <thead><tr><th>Modèle</th><th>Journal</th><th>Périodicité</th><th className="ds-num">Lignes</th><th className="ds-num">Montant</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun modèle. Créez-en un pour vos écritures récurrentes.</td></tr>}
             {rows.map(t => (
               <tr key={t.id}>
-                <td style={{ fontWeight: 500, cursor: 'pointer' }} onClick={() => setEditing(t.id)}>{t.name}</td>
+                <td><button type="button" className="ds-strong" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left' }} onClick={() => setEditing(t.id)} title="Modifier le modèle">{t.name}</button></td>
                 <td>{t.journal_name || t.journal_code}</td>
                 <td>
                   {t.recurrence ? (
                     <>
                       <div>{RECURRENCE_LABEL[t.recurrence]}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--theme-text-muted)' }}>
+                      <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
                         {t.next_run_on && (!t.end_on || day(t.next_run_on) <= day(t.end_on)) ? `Prochaine : ${frDate(t.next_run_on)}` : 'Terminée'}
                       </div>
                     </>
                   ) : <span style={{ color: 'var(--theme-text-muted)' }}>Manuel</span>}
                 </td>
-                <td style={{ textAlign: 'right' }}>{t.line_count ?? 0}</td>
-                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(Number(t.total_debit || 0))}</td>
-                <td><span className={`odoo-tag ${t.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{t.is_active ? 'Actif' : 'Inactif'}</span></td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {t.is_active && <button className="odoo-btn-primary" style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem' }} onClick={() => setUsing(t)}><Play size={12} /> Utiliser</button>}
-                  <button className="odoo-btn-secondary" style={{ padding: '0.25rem 0.45rem', marginLeft: 6 }} title={t.is_active ? 'Désactiver' : 'Activer'} onClick={() => toggle.mutate({ id: t.id, active: !t.is_active })}><Power size={12} /></button>
-                  <button className="odoo-btn-secondary" style={{ padding: '0.25rem 0.45rem', marginLeft: 6 }} title="Supprimer" onClick={async () => { if (await confirm(`Supprimer le modèle « ${t.name} » ?`, { danger: true })) remove.mutate(t.id); }}><Trash2 size={12} /></button>
+                <td className="ds-num">{t.line_count ?? 0}</td>
+                <td className="ds-num">{money(Number(t.total_debit || 0))}</td>
+                <td><StatusTag tone={t.is_active ? 'done' : 'draft'} label={t.is_active ? 'Actif' : 'Inactif'} /></td>
+                <td className="ds-actions">
+                  {t.is_active && <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setUsing(t)}><Play size={12} aria-hidden="true" /> Utiliser</button>}
+                  <RowMenu items={[
+                    { label: 'Modifier', icon: Pencil, onSelect: () => setEditing(t.id) },
+                    { label: t.is_active ? 'Désactiver' : 'Activer', icon: Power, onSelect: () => toggle.mutate({ id: t.id, active: !t.is_active }) },
+                    { label: 'Supprimer', icon: Trash2, danger: true, onSelect: async () => { if (await confirm(`Supprimer le modèle « ${t.name} » ?`, { title: 'Supprimer le modèle', danger: true, confirmLabel: 'Supprimer' })) remove.mutate(t.id); } },
+                  ]} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
+      )}
       {editing && <TemplateEditor id={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { invalidate(); setEditing(null); }} />}
       {using && <UseTemplateModal template={using} onClose={() => setUsing(null)} />}
     </div>
@@ -124,23 +135,23 @@ function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: 
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(760px, 97vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><NotebookPen size={16} /> {id ? 'Modifier le modèle' : 'Nouveau modèle d’écriture'}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 2, minWidth: 220 }}><span style={{ color: 'var(--theme-text-muted)' }}>Nom</span><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. Provision loyer mensuel" style={{ ...inp, width: '100%' }} /></label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 2, minWidth: 220 }}><span style={{ color: 'var(--theme-text-muted)' }}>Nom</span><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. Provision loyer mensuel" className="ds-input sm" style={{ width: '100%' }} /></label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1, minWidth: 140 }}><span style={{ color: 'var(--theme-text-muted)' }}>Journal</span>
-              <select value={journalCode} onChange={e => setJournalCode(e.target.value)} style={{ ...inp, width: '100%' }}>
+              <select value={journalCode} onChange={e => setJournalCode(e.target.value)} className="ds-input sm" style={{ width: '100%' }}>
                 {journals.map(j => <option key={j.code} value={j.code}>{j.code} — {j.label}</option>)}
                 {!journals.some(j => j.code === journalCode) && <option value={journalCode}>{journalCode}</option>}
               </select>
             </label>
           </div>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Note (optionnel)</span><input type="text" value={description} onChange={e => setDescription(e.target.value)} style={{ ...inp, width: '100%' }} /></label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Note (optionnel)</span><input type="text" value={description} onChange={e => setDescription(e.target.value)} className="ds-input sm" style={{ width: '100%' }} /></label>
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1, minWidth: 170 }}><span style={{ color: 'var(--theme-text-muted)' }}>Périodicité</span>
-              <select value={recurrence} onChange={e => setRecurrence(e.target.value as typeof recurrence)} style={{ ...inp, width: '100%' }}>
+              <select value={recurrence} onChange={e => setRecurrence(e.target.value as typeof recurrence)} className="ds-input sm" style={{ width: '100%' }}>
                 <option value="">Manuel (à utiliser à la demande)</option>
                 <option value="monthly">Mensuelle</option>
                 <option value="quarterly">Trimestrielle</option>
@@ -150,9 +161,9 @@ function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: 
             {recurrence && (
               <>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', minWidth: 160 }}><span style={{ color: 'var(--theme-text-muted)' }}>{existing?.run_count ? 'Prochaine échéance' : 'Première échéance'}</span>
-                  <input type="date" value={firstRunOn} onChange={e => setFirstRunOn(e.target.value)} style={{ ...inp, width: '100%' }} /></label>
+                  <input type="date" value={firstRunOn} onChange={e => setFirstRunOn(e.target.value)} className="ds-input sm" style={{ width: '100%' }} /></label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', minWidth: 160 }}><span style={{ color: 'var(--theme-text-muted)' }}>Dernière échéance (optionnel)</span>
-                  <input type="date" value={endOn} onChange={e => setEndOn(e.target.value)} style={{ ...inp, width: '100%' }} /></label>
+                  <input type="date" value={endOn} onChange={e => setEndOn(e.target.value)} className="ds-input sm" style={{ width: '100%' }} /></label>
               </>
             )}
           </div>
@@ -167,13 +178,13 @@ function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: 
             {lines.map((l, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 200 }}><SearchSelect options={accountOptions} value={l.account_id} onChange={v => setLine(i, { account_id: v })} placeholder="Compte…" width="100%" /></div>
-                <select value={l.side} onChange={e => setLine(i, { side: e.target.value as 'debit' | 'credit' })} style={{ ...inp, width: 100 }}>
+                <select value={l.side} onChange={e => setLine(i, { side: e.target.value as 'debit' | 'credit' })} className="ds-input sm" style={{ width: 100 }}>
                   <option value="debit">Débit</option>
                   <option value="credit">Crédit</option>
                 </select>
-                <input type="number" step="0.01" min="0" value={l.amount || ''} onChange={e => setLine(i, { amount: Number(e.target.value) || 0 })} placeholder="0.00" style={{ ...inp, width: 110, textAlign: 'right' }} />
-                <input type="text" value={l.label} onChange={e => setLine(i, { label: e.target.value })} placeholder="Libellé" style={{ ...inp, flex: 1, minWidth: 120 }} />
-                <button className="odoo-btn-secondary" style={{ padding: '0.3rem 0.4rem' }} disabled={lines.length <= 2} onClick={() => setLines(a => a.filter((_, j) => j !== i))}><Trash2 size={13} /></button>
+                <input type="number" step="0.01" min="0" value={l.amount || ''} onChange={e => setLine(i, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="ds-input sm" style={{ width: 110, textAlign: 'right' }} />
+                <input type="text" value={l.label} onChange={e => setLine(i, { label: e.target.value })} placeholder="Libellé" className="ds-input sm" style={{ flex: 1, minWidth: 120 }} />
+                <button className="odoo-btn-secondary" style={{ padding: '0.3rem 0.4rem' }} disabled={lines.length <= 2} onClick={() => setLines(a => a.filter((_, j) => j !== i))} aria-label="Supprimer"><Trash2 size={13} /></button>
               </div>
             ))}
             <button className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setLines(a => [...a, { account_id: '', side: 'debit', amount: 0, label: '' }])}><Plus size={13} /> Ajouter une ligne</button>
@@ -182,7 +193,7 @@ function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: '0.85rem', borderTop: '1px solid var(--odoo-border)', paddingTop: 10 }}>
             <span style={{ color: 'var(--theme-text-muted)' }}>Débit {money(totalDebit)}</span>
             <span style={{ color: 'var(--theme-text-muted)' }}>Crédit {money(totalCredit)}</span>
-            <span style={{ fontWeight: 600, color: balanced ? '#28a745' : '#dc3545' }}>{balanced ? 'Équilibré' : 'Déséquilibré'}</span>
+            <span style={{ fontWeight: 600, color: balanced ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{balanced ? 'Équilibré' : 'Déséquilibré'}</span>
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
@@ -216,21 +227,21 @@ function UseTemplateModal({ template, onClose }: { template: EntryTemplate; onCl
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(680px, 97vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Play size={16} /> Utiliser « {template.name} »</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Date</span><input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} /></label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1, minWidth: 200 }}><span style={{ color: 'var(--theme-text-muted)' }}>Libellé (optionnel)</span><input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder={template.name} style={{ ...inp, width: '100%' }} /></label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Date</span><input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1, minWidth: 200 }}><span style={{ color: 'var(--theme-text-muted)' }}>Libellé (optionnel)</span><input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder={template.name} className="ds-input sm" style={{ width: '100%' }} /></label>
           </div>
-          <table className="odoo-table">
-            <thead><tr><th>Compte</th><th>Sens</th><th style={{ textAlign: 'right' }}>Montant</th></tr></thead>
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Compte</th><th>Sens</th><th className="ds-num">Montant</th></tr></thead>
             <tbody>{lines.map(l => (
               <tr key={l.id}>
                 <td>{l.account_code} — {l.account_name}</td>
                 <td>{l.side === 'debit' ? 'Débit' : 'Crédit'}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <input type="number" step="0.01" min="0" value={amt(l)} onChange={e => l.id && setAmounts(a => ({ ...a, [l.id!]: Number(e.target.value) || 0 }))} style={{ ...inp, width: 120, textAlign: 'right' }} />
+                <td className="ds-num">
+                  <input type="number" step="0.01" min="0" value={amt(l)} onChange={e => l.id && setAmounts(a => ({ ...a, [l.id!]: Number(e.target.value) || 0 }))} className="ds-input sm" style={{ width: 120, textAlign: 'right' }} />
                 </td>
               </tr>
             ))}</tbody>
@@ -238,7 +249,7 @@ function UseTemplateModal({ template, onClose }: { template: EntryTemplate; onCl
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: '0.85rem' }}>
             <span style={{ color: 'var(--theme-text-muted)' }}>Débit {money(totalDebit)}</span>
             <span style={{ color: 'var(--theme-text-muted)' }}>Crédit {money(totalCredit)}</span>
-            <span style={{ fontWeight: 600, color: balanced ? '#28a745' : '#dc3545' }}>{balanced ? 'Équilibré' : 'Déséquilibré'}</span>
+            <span style={{ fontWeight: 600, color: balanced ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{balanced ? 'Équilibré' : 'Déséquilibré'}</span>
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>

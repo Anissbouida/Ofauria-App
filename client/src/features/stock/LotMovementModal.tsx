@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { money } from '../../utils/money';
+import { Alert } from '../../components/ds';
 
 /** Ce que la modale a besoin de connaitre d'un lot, quel que soit l'ecran d'origine. */
 export interface LotMovementLot {
@@ -120,18 +121,18 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
       onClick={(e) => e.stopPropagation()}>
       <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: meta.danger ? '#fdf0ed' : '#f9fafb', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Icon size={16} style={{ color: meta.danger ? '#dc3545' : 'var(--theme-accent)' }} />
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: meta.danger ? 'var(--ds-danger-bg)' : 'var(--ds-bg)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Icon size={16} aria-hidden="true" style={{ color: meta.danger ? 'var(--ds-danger)' : 'var(--theme-accent)' }} />
           <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: meta.danger ? '#721c24' : 'var(--theme-text-strong)' }}>{meta.title}</h2>
+            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: meta.danger ? 'var(--ds-danger)' : 'var(--theme-text-strong)' }}>{meta.title}</h2>
             <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
               {lot.ingredient_name}{lot.lot_number ? ` · lot ${lot.lot_number}` : ''}
             </p>
           </div>
-          <button type="button" onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
 
-        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
+        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: 'var(--ds-card)' }}>
           {!lockType && available.length > 1 && (
             <div className="odoo-view-switcher" style={{ display: 'flex', width: '100%' }}>
               {available.map(t => (
@@ -143,22 +144,22 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
             </div>
           )}
 
-          <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, backgroundColor: '#f9fafb', padding: '0.5rem 0.75rem', fontSize: '0.75rem', display: 'flex', gap: '1rem' }}>
+          <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, backgroundColor: 'var(--ds-bg)', padding: '0.5rem 0.75rem', fontSize: '0.75rem', display: 'flex', gap: '1rem' }}>
             <div>En réserve : <strong style={{ fontFamily: 'monospace' }}>{fmt(scelle)} {lot.unit}</strong></div>
-            <div>Au pesage : <strong style={{ fontFamily: 'monospace', color: '#6f42c1' }}>{fmt(entame)} {lot.unit}</strong></div>
+            <div>Au pesage : <strong style={{ fontFamily: 'monospace' }}>{fmt(entame)} {lot.unit}</strong></div>
             {expired && <span style={{ marginLeft: 'auto' }}><StatusTag tone="late" label="Lot périmé" /></span>}
           </div>
 
           {type !== 'losses' && (
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 4 }}>
                 {type === 'open' ? 'Quantité à ouvrir' : type === 'return' ? 'Quantité remise en réserve' : 'Quantité perdue'}
                 <span style={{ fontWeight: 400 }}> (max {fmt(zoneQty)} {lot.unit})</span>
               </label>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <input type="text" inputMode="decimal" value={quantity} autoFocus
                   onChange={(e) => setQuantity(e.target.value.replace(/[^0-9.,]/g, ''))}
-                  className="input" style={{ flex: 1, fontFamily: 'monospace', textAlign: 'right' }} />
+                  className="ds-input ds-num" style={{ flex: 1 }} aria-invalid={!qtyOk && !!quantity || undefined} />
                 <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{lot.unit}</span>
                 <button type="button" className="odoo-btn-secondary" onClick={() => setQuantity(fmt(zoneQty))}>Tout</button>
               </div>
@@ -168,7 +169,7 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
                 </p>
               )}
               {!qtyOk && quantity && (
-                <p style={{ fontSize: '0.75rem', color: '#dc3545', marginTop: 4 }}>Quantité invalide ou supérieure au disponible ({fmt(zoneQty)} {lot.unit}).</p>
+                <p role="alert" style={{ fontSize: 12, fontWeight: 600, color: 'var(--ds-danger)', marginTop: 4 }}>Quantité invalide ou supérieure au disponible ({fmt(zoneQty)} {lot.unit}).</p>
               )}
             </div>
           )}
@@ -176,14 +177,14 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
           {type === 'losses' ? (
             <>
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 6 }}>Motif</label>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 }}>Motif</label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.375rem' }}>
                   {LOSS_REASONS.map(opt => (
                     <button key={opt.v} type="button" onClick={() => setLossReason(opt.v)}
                       style={{
                         padding: '0.5rem 0.625rem', borderRadius: 3, textAlign: 'left',
                         border: `1px solid ${lossReason === opt.v ? 'var(--theme-accent)' : 'var(--theme-bg-separator)'}`,
-                        backgroundColor: lossReason === opt.v ? '#f3edf2' : '#fff',
+                        backgroundColor: lossReason === opt.v ? 'var(--ds-tint)' : 'var(--ds-card)',
                         boxShadow: lossReason === opt.v ? 'inset 0 0 0 1px var(--theme-accent)' : 'none',
                       }}>
                       <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>{opt.label}</div>
@@ -193,29 +194,26 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
                 </div>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Note (optionnel)</label>
-                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input" style={{ width: '100%' }} placeholder="Détails additionnels..." />
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 4 }}>Note (facultatif)</label>
+                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="ds-input" placeholder="Détails additionnels…" />
               </div>
-              <div className="odoo-alert danger" style={{ margin: 0 }}>
-                <AlertTriangle size={14} style={{ marginTop: 2, flexShrink: 0 }} />
-                <div>
-                  <span className="odoo-alert-title">Action irréversible</span> — {fmt(scelle + entame)} {lot.unit} retirés du stock
-                  {lostValue != null && lostValue > 0 ? ` (${money(lostValue)})` : ''}.
-                </div>
-              </div>
+              <Alert tone="danger" icon={AlertTriangle}>
+                Action irréversible — {fmt(scelle + entame)} {lot.unit} retirés du stock
+                {lostValue != null && lostValue > 0 ? ` (${money(lostValue)})` : ''}.
+              </Alert>
             </>
           ) : (
             <div>
               {type === 'waste' && (
                 <>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 6 }}>Motif</label>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 }}>Motif</label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', marginBottom: '0.75rem' }}>
                     {wasteReasons.map(r => (
                       <button key={r.code} type="button" onClick={() => setWasteCode(r.code)} title={r.description ?? undefined}
                         style={{
                           padding: '0.375rem 0.625rem', borderRadius: 3, fontSize: '0.75rem',
                           border: `1px solid ${wasteCode === r.code ? 'var(--theme-accent)' : 'var(--theme-bg-separator)'}`,
-                          backgroundColor: wasteCode === r.code ? '#f3edf2' : '#fff',
+                          backgroundColor: wasteCode === r.code ? 'var(--ds-tint)' : 'var(--ds-card)',
                           fontWeight: wasteCode === r.code ? 600 : 400, color: 'var(--theme-text-strong)',
                         }}>
                         {r.label}
@@ -224,18 +222,18 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
                   </div>
                 </>
               )}
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
-                {type === 'waste' ? (wasteCode === 'autre' ? 'Précision (obligatoire)' : 'Précision (optionnel)') : 'Note (optionnel)'}
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 4 }}>
+                {type === 'waste' ? (wasteCode === 'autre' ? 'Précision (obligatoire)' : 'Précision (facultatif)') : 'Note (facultatif)'}
               </label>
-              <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} className="input" style={{ width: '100%', borderColor: type === 'waste' && !reasonOk ? '#b85d1a' : undefined }}
+              <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} className="ds-input" style={{ borderColor: type === 'waste' && !reasonOk ? 'var(--ds-warning)' : undefined }}
                 placeholder={type === 'waste' ? 'Ex : sac percé à la livraison' : type === 'open' ? 'Ex : pré-ouverture du matin' : 'Ex : reliquat refermé'} />
             </div>
           )}
 
           <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
             <button type="button" onClick={onClose} disabled={mutation.isPending} className="odoo-btn-secondary">Annuler</button>
-            <button type="button" onClick={() => mutation.mutate()} disabled={!canSubmit || mutation.isPending}
-              className={meta.danger ? 'odoo-btn-danger' : 'odoo-btn-primary'}>
+            <button type="button" onClick={() => mutation.mutate()} disabled={!canSubmit || mutation.isPending} aria-busy={mutation.isPending || undefined}
+              className={meta.danger ? 'ds-btn-danger' : 'odoo-btn-primary'}>
               {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />} {meta.label}
             </button>
           </div>

@@ -7,6 +7,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
+import { LoadingState } from '../../components/ds';
 const REASONS: [string, string][] = [
   ['panne', 'Panne'], ['maintenance', 'Maintenance'], ['reglage', 'Réglage'],
   ['electricite', 'Électricité'], ['operateur', 'Opérateur'], ['rupture', 'Rupture'], ['autre', 'Autre'],
@@ -54,18 +55,18 @@ export default function WorkCenterOeeModal({ workCenter, onClose }: { workCenter
   const trsGood = policies.num('production.oee_thresholds', 'good');
   const trsAlert = policies.num('production.oee_thresholds', 'alert');
   const trsColor = oee?.trs_pct == null || trsGood === null || trsAlert === null ? undefined
-    : oee.trs_pct >= trsGood ? '#2e7d32' : oee.trs_pct >= trsAlert ? '#b45309' : '#c62828';
+    : oee.trs_pct >= trsGood ? 'var(--ds-success)' : oee.trs_pct >= trsAlert ? 'var(--ds-warning)' : 'var(--ds-danger)';
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(620px, 97vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Gauge size={16} /> TRS & arrêts — {workCenter.name}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
         </div>
 
         <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {isLoading && <div style={{ color: 'var(--theme-text-muted)' }}><Loader2 size={14} className="animate-spin" style={{ display: 'inline' }} /> Chargement…</div>}
+          {isLoading && <LoadingState bare />}
           {oee && (
             <>
               <div style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>7 derniers jours · {oee.active_days} jour(s) d'activité</div>
@@ -82,7 +83,7 @@ export default function WorkCenterOeeModal({ workCenter, onClose }: { workCenter
                 <span>Réel : {oee.reel_min} min</span>
               </div>
               {(oee.availability_pct == null || oee.performance_pct == null) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#b45309' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: 'var(--ds-warning)' }}>
                   <AlertTriangle size={13} /> Indicateur partiel : définissez une capacité (disponibilité) et chronométrez des étapes sur ce poste (performance). Qualité non incluse.
                 </div>
               )}
@@ -127,7 +128,7 @@ export default function WorkCenterOeeModal({ workCenter, onClose }: { workCenter
                   {downtimes.map(d => (
                     <tr key={d.id}>
                       <td style={{ fontSize: '0.8rem' }}>{new Date(d.from_time).toLocaleString('fr-FR')}</td>
-                      <td style={{ textAlign: 'right' }}>{d.minutes} min{!d.to_time ? ' (en cours)' : ''}</td>
+                      <td className="ds-num">{d.minutes} min{!d.to_time ? ' (en cours)' : ''}</td>
                       <td>{REASONS.find(r => r[0] === d.reason)?.[1] ?? d.reason}</td>
                       <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.8rem' }}>{d.notes || ''}</td>
                     </tr>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { LoadingPanel, Segmented } from '../employees/ui';
+import { LoadingPanel, Segmented, HrHeaderActions } from '../employees/ui';
+import { DataPanel, TableFooter, Toolbar, SectionHeader } from '../../components/ds';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, ShieldCheck, ShieldAlert, Eye, Lock, Trash2, Check } from 'lucide-react';
 import * as shared from '@ofauria/shared';
@@ -49,40 +50,41 @@ export default function RolesPanel() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <SecurityModePanel />
-      <div className="prj-toolbar">
+      <Toolbar>
         <Segmented label="Droits des rôles" value={view} onChange={setView}
           options={[{ key: 'modules', label: 'Rôles et droits par module' }, { key: 'actions', label: 'Permissions par action' }]} />
-      </div>
+      </Toolbar>
       {view === 'actions' ? <RoleActionMatrix roles={roles} /> : <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.02em', margin: '6px 0 0' }}>Rôles</h2>
-        <button className="odoo-btn-primary" onClick={() => { setCreating(true); setSelected(null); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouveau rôle
+      {/* Action principale de la vue, à droite du fil d'Ariane. */}
+      <HrHeaderActions>
+        <button type="button" className="odoo-btn-primary" onClick={() => { setCreating(true); setSelected(null); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} aria-hidden="true" /> Nouveau rôle
         </button>
-      </div>
+      </HrHeaderActions>
+      <SectionHeader title="Rôles" note="Cliquer sur un rôle pour régler ses droits" />
       {(creating || duplicateOf) && <CreateRoleForm key={duplicateOf?.code ?? 'new'} roles={roles} from={duplicateOf}
         onDone={(code) => { setCreating(false); setDuplicateOf(null); if (code) setSelected(code); }} />}
       {isLoading ? <LoadingPanel /> : (
-        <div className="prj-panel hr-plain"><div className="prj-scroll">
+        <DataPanel label="Rôles" footer={<TableFooter note={`${roles.length} rôle${roles.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>Rôle</th><th>Rôle de base</th><th>Modules</th><th>Utilisateurs</th><th>Statut</th></tr></thead>
+            <thead><tr><th>Rôle</th><th>Rôle de base</th><th className="ds-num">Modules</th><th className="ds-num">Utilisateurs</th><th>Statut</th></tr></thead>
             <tbody>
               {roles.map(r => (
-                <tr key={r.code} onClick={() => { setSelected(r.code); setCreating(false); }}
-                  style={{ cursor: 'pointer', background: r.code === selected ? 'color-mix(in srgb, var(--theme-accent) 8%, transparent)' : undefined }}>
+                <tr key={r.code} className={r.code === selected ? 'ds-selected' : undefined} aria-selected={r.code === selected}
+                  onClick={() => { setSelected(r.code); setCreating(false); }} style={{ cursor: 'pointer' }}>
                   <td>
-                    <strong>{r.label}</strong>
+                    <span className="ds-strong">{r.label}</span>
                     {r.is_system && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Système</span>}
                   </td>
                   <td>{r.is_system ? '—' : (BASE_ROLES.find(b => b[0] === r.base_role)?.[1] ?? r.base_role)}</td>
-                  <td>{r.code === 'admin' ? 'Tous' : r.module_count}</td>
-                  <td>{r.user_count}</td>
+                  <td className="ds-num">{r.code === 'admin' ? 'Tous' : r.module_count}</td>
+                  <td className="ds-num">{r.user_count}</td>
                   <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Actif' : 'Désactivé'} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div></div>
+        </DataPanel>
       )}
       {current && <RoleEditor key={current.code} role={current} onDeleted={() => setSelected(null)}
         onDuplicate={() => { setDuplicateOf(current); setCreating(false); }} />}
@@ -119,9 +121,9 @@ function SecurityModePanel() {
     <div style={{ display: 'grid', gap: 8 }}>
       <StatusBanner tone={tone} icon={data.mode === 'enforce' ? ShieldCheck : data.mode === 'log' ? Eye : ShieldAlert} title={title}
         actions={
-          <div className="prj-views">
+          <div className="prj-views" role="group" aria-label="Mode de contrôle">
             {(['log', 'enforce', 'off'] as const).map(m => (
-              <button key={m} className={data.mode === m ? 'active' : ''} disabled={save.isPending} onClick={() => data.mode !== m && setMode(m)}>
+              <button key={m} type="button" aria-pressed={data.mode === m} className={data.mode === m ? 'active' : ''} disabled={save.isPending} onClick={() => data.mode !== m && setMode(m)}>
                 {m === 'log' ? 'Observer' : m === 'enforce' ? 'Bloquer' : 'Désactiver'}
               </button>
             ))}
@@ -131,23 +133,23 @@ function SecurityModePanel() {
         {data.mode === 'log' && ' Laissez tourner quelques jours, vérifiez la liste ci-dessous, puis passez en « Bloquer ».'}
       </StatusBanner>
       {denials.length > 0 && (
-        <div className="prj-panel hr-plain"><div className="prj-scroll">
+        <DataPanel>
           <table className="odoo-table">
-            <thead><tr><th>Appel hors droits (14 jours)</th><th>Rôle</th><th>Modules requis</th><th>Utilisateurs</th><th>Appels</th><th>Dernier</th></tr></thead>
+            <thead><tr><th>Appel hors droits (14 jours)</th><th>Rôle</th><th>Modules requis</th><th>Utilisateurs</th><th className="ds-num">Appels</th><th>Dernier appel</th></tr></thead>
             <tbody>
               {denials.map(d => (
                 <tr key={`${d.route}|${d.role_code}`}>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>{d.route}</td>
+                  <td className="ds-ref">{d.route}</td>
                   <td>{d.role_code}</td>
                   <td>{(d.modules ?? []).map(m => MODULE_LABELS[m as AppModule] ?? m).join(', ')}</td>
                   <td>{d.user_names}</td>
-                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{d.hits}</td>
+                  <td className="ds-num">{d.hits}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{new Date(d.last_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div></div>
+        </DataPanel>
       )}
     </div>
   );
@@ -163,33 +165,32 @@ function CreateRoleForm({ roles, onDone, from }: { roles: RoleRow[]; onDone: (co
     onSuccess: (r) => { queryClient.invalidateQueries({ queryKey: ['roles'] }); notify.success(`Rôle « ${r.label} » créé`); onDone(r.code); },
     onError: (err) => notify.error(errorMessage(err, 'Création refusée')),
   });
-  const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+  const lab: React.CSSProperties = { display: 'grid', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)' };
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg-alt)' }}>
+    <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 12, padding: 16, display: 'grid', gap: 12, background: 'var(--ds-card)' }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <label style={{ ...lab, flex: '1 1 220px' }}>Libellé
-          <input id="role-label" style={field} value={label} onChange={e => setLabel(e.target.value)} placeholder="Responsable boutique" maxLength={60} />
+        <label style={{ ...lab, flex: '1 1 220px' }}><span>Libellé<span className="ds-req" aria-hidden="true"> *</span></span>
+          <input id="role-label" className="ds-input" value={label} onChange={e => setLabel(e.target.value)} placeholder="Responsable boutique" maxLength={60} />
         </label>
         <label style={{ ...lab, width: 190 }}>Rôle de base
-          <select id="role-base" style={field} value={baseRole} onChange={e => setBaseRole(e.target.value)}>
+          <select id="role-base" className="ds-input" value={baseRole} onChange={e => setBaseRole(e.target.value)}>
             {BASE_ROLES.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
           </select>
         </label>
         <label style={{ ...lab, width: 210 }}>Copier les droits de
-          <select id="role-copy" style={field} value={copyFrom} onChange={e => setCopyFrom(e.target.value)}>
+          <select id="role-copy" className="ds-input" value={copyFrom} onChange={e => setCopyFrom(e.target.value)}>
             <option value="">Son rôle de base</option>
             {roles.filter(r => r.code !== 'admin').map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
           </select>
         </label>
       </div>
-      <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)' }}>
         Le rôle de base fixe ce que l'application montre et filtre (écrans de caisse, catégories des chefs, magasin).
         Les droits par module se règlent ensuite dans le tableau du rôle.
       </p>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button className="odoo-btn-secondary" onClick={() => onDone()}>Annuler</button>
-        <button className="odoo-btn-primary" disabled={label.trim().length < 2 || create.isPending} onClick={() => create.mutate()}>Créer le rôle</button>
+        <button type="button" className="odoo-btn-secondary" onClick={() => onDone()} disabled={create.isPending}>Annuler</button>
+        <button type="button" className="odoo-btn-primary" disabled={label.trim().length < 2 || create.isPending} aria-busy={create.isPending || undefined} onClick={() => create.mutate()}>Créer le rôle</button>
       </div>
     </div>
   );
@@ -260,8 +261,8 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
     return !sameSet(c.verbs, s?.verbs);
   });
   const chip = (on: boolean): React.CSSProperties => ({
-    background: on ? 'var(--odoo-purple)' : 'var(--odoo-bg)', color: on ? '#fff' : 'var(--odoo-text)',
-    borderColor: on ? 'var(--odoo-purple)' : 'var(--odoo-border)', padding: '0.2rem 0.55rem', fontSize: '0.7rem',
+    background: on ? 'var(--ds-tint)' : 'var(--ds-card)', color: 'var(--ds-ink)', fontWeight: on ? 600 : undefined,
+    borderColor: on ? 'var(--ds-accent)' : 'var(--ds-line)', padding: '0.2rem 0.55rem', fontSize: 12,
   });
 
   if (role.code === 'admin') {
@@ -271,28 +272,27 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
     <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 600 }}>Droits du rôle « {role.label} »</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+          <h3 className="ds-subhead">Droits du rôle « {role.label} »</h3>
+          <div style={{ fontSize: 13, color: 'var(--ds-muted)' }}>
             S'appliquent aux {role.user_count} utilisateur(s) du rôle qui n'ont pas de droits propres. Effet sous 30 secondes.
           </div>
         </div>
         {role.code !== 'admin' && role.is_system && (
-          <button className="odoo-btn-secondary" onClick={onDuplicate}>Dupliquer</button>
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={onDuplicate}>Dupliquer</button>
         )}
         {!role.is_system && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="odoo-btn-secondary" onClick={onDuplicate}>Dupliquer</button>
-            <button className="odoo-btn-secondary" onClick={() => toggleActive.mutate()}>{role.is_active ? 'Désactiver' : 'Réactiver'}</button>
-            <button className="odoo-btn-danger" disabled={role.user_count > 0} title={role.user_count > 0 ? 'Rôle attribué à des utilisateurs' : undefined}
-              onClick={async () => { if (await confirm(`Supprimer le rôle « ${role.label} » ?`, { danger: true, confirmLabel: 'Supprimer' })) remove.mutate(); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Trash2 size={13} /> Supprimer
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={onDuplicate}>Dupliquer</button>
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => toggleActive.mutate()}>{role.is_active ? 'Désactiver' : 'Réactiver'}</button>
+            <button type="button" className="ds-btn-danger ds-btn-sm" disabled={role.user_count > 0} title={role.user_count > 0 ? 'Rôle attribué à des utilisateurs' : undefined}
+              onClick={async () => { if (await confirm(`Supprimer le rôle « ${role.label} » ?`, { title: 'Supprimer le rôle', danger: true, confirmLabel: 'Supprimer' })) remove.mutate(); }}>
+              <Trash2 size={13} aria-hidden="true" /> Supprimer
             </button>
           </div>
         )}
       </div>
       {isLoading || !Object.keys(perms).length ? <LoadingPanel /> : (
-        <div className="prj-panel hr-plain"><div className="prj-scroll">
+        <DataPanel>
           <table className="odoo-table">
             <thead><tr><th>Module</th>{ACTIONS.map(([, l]) => <th key={l} style={{ textAlign: 'center', width: 90 }}>{l}</th>)}</tr></thead>
             <tbody>
@@ -300,8 +300,8 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
                 const p = perms[mod];
                 const verbs = verbsFor(mod);
                 return [
-                  <tr key={mod} style={{ opacity: p?.canView ? 1 : 0.65 }}>
-                    <td>{MODULE_LABELS[mod] ?? mod}</td>
+                  <tr key={mod}>
+                    <td className={p?.canView ? 'ds-strong' : undefined}>{MODULE_LABELS[mod] ?? mod}</td>
                     {ACTIONS.map(([f, l]) => (
                       <td key={f} style={{ textAlign: 'center' }}>
                         <input type="checkbox" id={`rp-${role.code}-${mod}-${f}`} aria-label={`${l} ${MODULE_LABELS[mod] ?? mod}`}
@@ -311,18 +311,18 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
                   </tr>,
                   p?.canView && (
                     <tr key={`${mod}-scope`}>
-                      <td colSpan={1 + ACTIONS.length} style={{ background: 'var(--odoo-bg-alt)' }}>
+                      <td colSpan={1 + ACTIONS.length} style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
                         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 16 }}>
-                          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem' }}>
+                          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
                             <span style={{ fontWeight: 600 }}>Portée des données</span>
-                            <select className="odoo-input" style={{ width: 'auto', padding: '2px 6px' }}
+                            <select className="ds-input sm" style={{ width: 'auto' }}
                               value={(p.scope as DataScope) ?? 'store'} onChange={e => setScope(mod, e.target.value as DataScope)}>
                               {DATA_SCOPES.map(s => <option key={s} value={s}>{DATA_SCOPE_LABELS[s]}</option>)}
                             </select>
                           </label>
                           {verbs.length > 0 && (
                             <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Actions métier</span>
+                              <span style={{ fontSize: 12, fontWeight: 600 }}>Actions métier</span>
                               {verbs.map(v => {
                                 const on = (p.verbs ?? []).includes(v);
                                 return (
@@ -342,10 +342,10 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
               })}
             </tbody>
           </table>
-        </div></div>
+        </DataPanel>
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <button className="odoo-btn-primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
+        <button type="button" className="odoo-btn-primary" disabled={!dirty || save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>
           {save.isPending ? 'Enregistrement…' : 'Enregistrer les droits'}
         </button>
       </div>

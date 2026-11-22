@@ -138,14 +138,14 @@ export default function ProductLabelTab({ productId }: { productId: string }) {
 
       {data.ingredients.length > 0 && (
         <table className="odoo-table" style={{ width: '100%' }}>
-          <thead><tr><th style={{ textAlign: 'left' }}>Ingrédient</th><th style={{ textAlign: 'right' }}>Part du poids</th><th style={{ textAlign: 'left' }}>Allergènes</th></tr></thead>
+          <thead><tr><th style={{ textAlign: 'left' }}>Ingrédient</th><th className="ds-num">Part du poids</th><th style={{ textAlign: 'left' }}>Allergènes</th></tr></thead>
           <tbody>
             {data.ingredients.map(i => (
               <tr key={i.ingredientId}>
                 <td>{i.name}</td>
-                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{i.sharePct === null ? '—' : `${i.sharePct.toLocaleString('fr-FR')} %`}</td>
+                <td className="ds-num">{i.sharePct === null ? '—' : `${i.sharePct.toLocaleString('fr-FR')} %`}</td>
                 <td style={{ fontSize: '0.8rem' }}>
-                  {!i.reviewed ? <span style={{ color: '#c62828', fontWeight: 600 }}>Non renseigné</span>
+                  {!i.reviewed ? <span style={{ color: 'var(--ds-danger)', fontWeight: 600 }}>Non renseigné</span>
                     : i.contains.length + i.traces.length === 0 ? <span style={{ color: 'var(--theme-text-muted)' }}>Aucun</span>
                     : [i.contains.length ? `Contient : ${i.contains.join(', ')}` : '', i.traces.length ? `Traces : ${i.traces.join(', ')}` : ''].filter(Boolean).join(' · ')}
                 </td>

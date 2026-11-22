@@ -37,17 +37,17 @@ export default function UnitsTab() {
       </StatusBanner>
       <div className="prj-panel prj-scroll">
         <table className="odoo-table">
-          <thead><tr><th>Code</th><th>Libellé</th><th>Dimension</th><th style={{ textAlign: 'right' }}>Facteur</th><th style={{ textAlign: 'right' }}>Décimales</th>
-            <th style={{ textAlign: 'right' }}>Articles</th><th style={{ textAlign: 'right' }}>Lignes de fiche</th><th>État</th></tr></thead>
+          <thead><tr><th>Code</th><th>Libellé</th><th>Dimension</th><th className="ds-num">Facteur</th><th className="ds-num">Décimales</th>
+            <th className="ds-num">Articles</th><th className="ds-num">Lignes de fiche</th><th>État</th></tr></thead>
           <tbody>{data.units.map(u => (
             <tr key={u.id}>
               <td style={{ fontFamily: 'monospace' }}>{u.code}</td>
               <td>{u.label}{u.is_system && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Système</span>}</td>
               <td>{u.dimension ? DIM[u.dimension] ?? u.dimension : <span style={{ color: 'var(--odoo-danger, #b91c1c)' }}>non renseignée</span>}</td>
-              <td style={{ textAlign: 'right' }}>{u.factor != null ? `${u.factor.toLocaleString('fr-FR')} ${u.is_base ? '(base)' : base(u.dimension)}` : '—'}</td>
-              <td style={{ textAlign: 'right' }}>{u.decimals}</td>
-              <td style={{ textAlign: 'right' }}>{u.items || '—'}</td>
-              <td style={{ textAlign: 'right' }}>{u.composition_lines || '—'}</td>
+              <td className="ds-num">{u.factor != null ? `${u.factor.toLocaleString('fr-FR')} ${u.is_base ? '(base)' : base(u.dimension)}` : '—'}</td>
+              <td className="ds-num">{u.decimals}</td>
+              <td className="ds-num">{u.items || '—'}</td>
+              <td className="ds-num">{u.composition_lines || '—'}</td>
               <td><StatusTag tone={u.is_active ? 'done' : 'draft'} label={u.is_active ? 'Active' : 'Inactive'} /></td>
             </tr>
           ))}</tbody>
@@ -59,15 +59,15 @@ export default function UnitsTab() {
             Ces fiches portent une unité absente du référentiel : ajoutez l'unité ou corrigez la fiche.
           </StatusBanner>
           <table className="odoo-table">
-            <thead><tr><th>Fiches</th><th>Unité saisie</th><th style={{ textAlign: 'right' }}>Lignes</th><th>Exemple</th></tr></thead>
+            <thead><tr><th>Fiches</th><th>Unité saisie</th><th className="ds-num">Lignes</th><th>Exemple</th></tr></thead>
             <tbody>{data.unmatched.map(m => (
               <tr key={`${m.table_name}|${m.unit}`}><td>{TABLE[m.table_name] ?? m.table_name}</td><td style={{ fontFamily: 'monospace' }}>{m.unit}</td>
-                <td style={{ textAlign: 'right' }}>{m.lines}</td><td>{m.example}</td></tr>
+                <td className="ds-num">{m.lines}</td><td>{m.example}</td></tr>
             ))}</tbody>
           </table>
         </>
       ) : (
-        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--odoo-text-muted)' }}>Toutes les fiches ont une unité rattachée au référentiel.</p>
+        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--ds-muted)' }}>Toutes les fiches ont une unité rattachée au référentiel.</p>
       )}
     </div>
   );

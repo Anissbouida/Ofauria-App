@@ -4,6 +4,9 @@ import { Printer, Plus, Pencil, Trash2, Zap, CheckCircle2 } from 'lucide-react';
 import { printersApi, type PrinterConfig, type SystemPrinter } from '../../api/printer.api';
 import { Search, Usb } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import { LoadingState } from '../../components/ds';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { RowMenu } from '../../components/ui/RowMenu';
 
 const PRINTER_MODELS = ['EPSON', 'STAR', 'TANCA', 'DARUMA', 'BROTHER', 'CUSTOM'] as const;
 const TYPES: Array<{ value: PrinterConfig['type']; label: string }> = [
@@ -30,6 +33,7 @@ const EMPTY_FORM: FormData = {
 
 export default function PrinterSettingsCard() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<PrinterConfig | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
@@ -133,7 +137,7 @@ export default function PrinterSettingsCard() {
 
       {/* Liste */}
       {isLoading ? (
-        <p className="text-sm text-gray-400">Chargement...</p>
+        <LoadingState bare />
       ) : printers.length === 0 && !showForm ? (
         <div className="text-center py-6 text-gray-400 text-sm">
           Aucune imprimante configuree. L'impression passera par le navigateur (sans tiroir-caisse).
@@ -146,7 +150,7 @@ export default function PrinterSettingsCard() {
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{p.name}</span>
                   {p.is_default && (
-                    <span className="odoo-tag odoo-tag-purple">Par defaut</span>
+                    <span className="odoo-tag odoo-tag-purple">Par défaut</span>
                   )}
                   <span className="text-xs text-gray-500">{TYPES.find(t => t.value === p.type)?.label}</span>
                 </div>
@@ -154,21 +158,15 @@ export default function PrinterSettingsCard() {
                   {p.printer_model} - {p.interface}://{p.connection_string} - {p.paper_width} car.
                 </div>
               </div>
-              <button onClick={() => testMutation.mutate(p.id)} disabled={testMutation.isPending}
-                className="odoo-btn-secondary" style={{ padding: '6px 9px' }} title="Test impression" aria-label="Test impression">
-                <CheckCircle2 size={15} />
+              <button type="button" onClick={() => testMutation.mutate(p.id)} disabled={testMutation.isPending}
+                className="odoo-btn-secondary ds-btn-sm">
+                <CheckCircle2 size={13} aria-hidden="true" /> Tester
               </button>
-              <button onClick={() => drawerMutation.mutate(p.id)} disabled={drawerMutation.isPending}
-                className="odoo-btn-secondary" style={{ padding: '6px 9px' }} title="Ouvrir tiroir" aria-label="Ouvrir tiroir">
-                <Zap size={15} />
-              </button>
-              <button onClick={() => startEdit(p)} className="odoo-btn-secondary" style={{ padding: '6px 9px' }} title="Modifier" aria-label="Modifier">
-                <Pencil size={15} />
-              </button>
-              <button onClick={() => { if (confirm(`Supprimer "${p.name}" ?`)) deleteMutation.mutate(p.id); }}
-                className="odoo-btn-danger" style={{ padding: '6px 9px' }} title="Supprimer" aria-label="Supprimer">
-                <Trash2 size={15} />
-              </button>
+              <RowMenu label={`Plus d'actions pour ${p.name}`} items={[
+                { label: 'Ouvrir le tiroir', icon: Zap, disabled: drawerMutation.isPending, onSelect: () => drawerMutation.mutate(p.id) },
+                { label: 'Modifier', icon: Pencil, onSelect: () => startEdit(p) },
+                { label: 'Supprimer', icon: Trash2, danger: true, onSelect: async () => { if (await confirm(`Supprimer l'imprimante « ${p.name} » ?`, { title: 'Supprimer l\'imprimante', confirmLabel: 'Supprimer', danger: true })) deleteMutation.mutate(p.id); } },
+              ]} />
             </div>
           ))}
         </div>
@@ -183,7 +181,7 @@ export default function PrinterSettingsCard() {
           <div className="mt-3 text-sm">
             {systemQuery.isLoading && <p className="text-gray-400">Recherche…</p>}
             {systemQuery.data && !systemQuery.data.available && (
-              <p style={{ color: 'var(--prj-orange)' }}>Aucun système d'impression sur la machine du serveur (CUPS absent). Une thermique USB doit être branchée sur la machine qui fait tourner Kalum, ou être en réseau (TCP).</p>
+              <p style={{ color: 'var(--ds-warning)' }}>Aucun système d'impression sur la machine du serveur (CUPS absent). Une thermique USB doit être branchée sur la machine qui fait tourner Kalum, ou être en réseau (TCP).</p>
             )}
             {systemQuery.data?.available && systemQuery.data.printers.length === 0 && <p className="text-gray-500">Aucune imprimante détectée.</p>}
             {systemQuery.data?.printers.map(p => (
@@ -216,14 +214,14 @@ export default function PrinterSettingsCard() {
           <h3 className="font-medium mb-3">{editing ? 'Modifier' : 'Nouvelle imprimante'}</h3>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Nom *</label>
+              <label className="ds-field-label block mb-1">Nom <span className="ds-req" aria-hidden="true">*</span></label>
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="Ex: Caisse principale"
                 className="input" />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
+              <label className="ds-field-label block mb-1">Type</label>
               <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as PrinterConfig['type'] })}
                 className="input">
                 {TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -231,7 +229,7 @@ export default function PrinterSettingsCard() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Modele</label>
+              <label className="ds-field-label block mb-1">Modèle</label>
               <select value={form.printerModel} onChange={(e) => setForm({ ...form, printerModel: e.target.value as PrinterConfig['printer_model'] })}
                 className="input">
                 {PRINTER_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
@@ -239,7 +237,7 @@ export default function PrinterSettingsCard() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Interface</label>
+              <label className="ds-field-label block mb-1">Interface</label>
               <select value={form.interface} onChange={(e) => setForm({ ...form, interface: e.target.value as PrinterConfig['interface'] })}
                 className="input">
                 <option value="tcp">TCP (reseau)</option>
@@ -250,7 +248,7 @@ export default function PrinterSettingsCard() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Largeur (car. par ligne)</label>
+              <label className="ds-field-label block mb-1">Largeur (car. par ligne)</label>
               <select value={form.paperWidth} onChange={(e) => setForm({ ...form, paperWidth: parseInt(e.target.value) })}
                 className="input">
                 <option value={32}>32 (papier 58 mm)</option>
@@ -261,7 +259,7 @@ export default function PrinterSettingsCard() {
             </div>
 
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Chaine de connexion *</label>
+              <label className="ds-field-label block mb-1">Chaîne de connexion <span className="ds-req" aria-hidden="true">*</span></label>
               <input value={form.connectionString} onChange={(e) => setForm({ ...form, connectionString: e.target.value })}
                 placeholder={
                   form.interface === 'tcp' ? 'tcp://192.168.1.100:9100' :

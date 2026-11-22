@@ -10,6 +10,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { ReportViz, toCsv, type VizType } from './ReportViz';
+import { LoadingState } from '../../components/ds';
 
 const inp: React.CSSProperties = { padding: '0.4rem 0.55rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit' };
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -164,7 +165,7 @@ function BuilderView() {
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Nom du rapport" aria-label="Nom du rapport" />
           <div style={{ display: 'flex', gap: 6 }}>
             <button type="button" className="odoo-btn-primary" onClick={save} style={{ flex: 1, justifyContent: 'center' }}><Save size={13} /> {editingId ? 'Enregistrer' : 'Créer'}</button>
-            {editingId && <button type="button" className="odoo-btn-secondary" onClick={reset} title="Nouveau rapport"><Plus size={13} /></button>}
+            {editingId && <button type="button" className="odoo-btn-secondary" onClick={reset} title="Nouveau rapport" aria-label="Nouveau rapport"><Plus size={13} /></button>}
           </div>
         </div>
         <section>
@@ -230,7 +231,7 @@ function AddToDashboard({ tile, onClose }: { tile: DashboardTile; onClose: () =>
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(460px, 96vw)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><LayoutGrid size={16} /> Ajouter à un tableau de bord</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Titre de la tuile</span><input value={title} onChange={e => setTitle(e.target.value)} style={inp} /></label>
@@ -333,7 +334,7 @@ function Tile({ tile, onRemove, onResize, onUp, onDown, isFirst, isLast }: {
       <div style={{ padding: '0 14px 14px', minHeight: 60, flex: 1 }}>
         {isError ? <p className="kl-viz-empty" style={{ color: 'var(--prj-red)' }}>Erreur de chargement.</p>
           : result ? <ReportViz columns={result.columns} rows={result.rows} viz={tile.viz} />
-            : <div style={{ padding: 20, textAlign: 'center' }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div>}
+            : <LoadingState />}
       </div>
     </div>
   );

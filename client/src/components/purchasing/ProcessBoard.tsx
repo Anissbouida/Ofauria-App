@@ -127,18 +127,18 @@ export function StagePipeline({ title, summary, stages, stats, isActive, onPick 
   const variant = useContext(ProcessBoardVariant);
   const last = stages[stages.length - 1]?.key;
   if (variant === 'chips') {
-    // Pastilles numérotées : l'ordre du circuit reste lisible, le clic filtre comme une carte.
+    // Pastilles dans l'ordre du circuit (sans numéro, maquette 2026-11-22) : le clic filtre comme une carte.
     return (
       <div className="pb-stage-chips">
         <div className="prj-chips" role="group" aria-label={title}>
-          {stages.map((s, idx) => {
+          {stages.map(s => {
             const st = stats[s.key] ?? { count: 0, sub: '' };
             const active = isActive(s.key);
             return (
               <button key={s.key} type="button" onClick={() => onPick(s.key)} aria-pressed={active}
                 title={[st.sub, s.hint].filter(Boolean).join(' · ')}
                 className={`prj-chip${active ? ' active' : ''}${st.count ? '' : ' empty'}`}>
-                <span className="pb-chip-num">{idx + 1}</span> {s.label} <small>{st.count}</small>
+                {s.label} <small>{st.count}</small>
                 {(st.late ?? 0) > 0 && <span className="pb-chip-late">{st.late} {st.alertLabel ?? 'en retard'}</span>}
               </button>
             );

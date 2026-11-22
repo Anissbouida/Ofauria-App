@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { Loader2, Target, CheckCircle2, Info, Lock, Unlock, Trash2, Save } from 'lucide-react';
+import { Target, Info, Lock, Unlock, Trash2, Save } from 'lucide-react';
 import { managementApi, type BudgetComparison, type BudgetRow } from '../../api/management.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { money, currencySymbol } from '../../utils/money';
+import { LoadingState, DataPanel, Segmented, SectionHeader } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 /**
  * Comptabilité › Budget (mig 317) : budget annuel par compte du CPC et par mois,
@@ -17,14 +20,14 @@ import { money, currencySymbol } from '../../utils/money';
  */
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
-const COLORS = { budget: '#2a78d6', actual: '#eb6834' };
+const COLORS = { budget: 'var(--ds-info)', actual: 'var(--ds-warning)' };
 const dh = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
-const tableWrap: React.CSSProperties = { overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 };
 
 export default function BudgetTab() {
   const qc = useQueryClient();
   const [year, setYear] = useState(new Date().getFullYear());
   const [view, setView] = useState<'compare' | 'edit'>('compare');
+  const confirm = useConfirm();
   const { data, isLoading, error } = useQuery({ queryKey: ['budget', year], queryFn: () => managementApi.budget(year), retry: false });
   const refresh = () => qc.invalidateQueries({ queryKey: ['budget', year] });
   const status = useMutation({
@@ -48,47 +51,45 @@ export default function BudgetTab() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
-        <select value={year} onChange={e => setYear(Number(e.target.value))} className="odoo-search-input" aria-label="Exercice">
+      <div className="prj-toolbar">
+        <select value={year} onChange={e => setYear(Number(e.target.value))} className="ds-input sm" style={{ width: 'auto' }} aria-label="Exercice">
           {years.map(y => <option key={y} value={y}>Exercice {y}</option>)}
         </select>
         {b && (
           <>
-            <strong style={{ fontSize: '0.8125rem' }}>{b.name}</strong>
+            <strong className="ds-strong">{b.name}</strong>
             <StatusTag tone={b.status === 'approved' ? 'done' : 'draft'} label={b.status === 'approved' ? 'Approuvé' : 'Brouillon'} />
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button type="button" className={view === 'compare' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('compare')}>Budget vs réel</button>
-              <button type="button" className={view === 'edit' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('edit')}>Saisie</button>
-            </div>
+            <Segmented label="Affichage" value={view} onChange={setView}
+              options={[{ key: 'compare', label: 'Budget vs réel' }, { key: 'edit', label: 'Saisie' }]} />
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}
               title="Appliqué à l'envoi des bons de commande, budget approuvé seulement">
               Contrôle des BC
               <select value={b.control_action} disabled={control.isPending} onChange={e => control.mutate({ action: e.target.value as 'none' | 'warn' | 'block', period: b.control_period })}
-                className="odoo-search-input" aria-label="Action sur dépassement">
+                className="ds-input sm" style={{ width: 'auto' }} aria-label="Action sur dépassement">
                 <option value="none">Aucun</option><option value="warn">Alerte</option><option value="block">Blocage</option>
               </select>
               <select value={b.control_period} disabled={control.isPending || b.control_action === 'none'} onChange={e => control.mutate({ action: b.control_action, period: e.target.value as 'annual' | 'cumulative' })}
-                className="odoo-search-input" aria-label="Période de contrôle">
+                className="ds-input sm" style={{ width: 'auto' }} aria-label="Période de contrôle">
                 <option value="annual">sur l'année</option><option value="cumulative">au cumul du mois</option>
               </select>
             </label>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            <AccHeaderActions>
               {b.status === 'draft' ? (
                 <>
-                  <button type="button" className="odoo-btn-primary" disabled={status.isPending} onClick={() => status.mutate('approved')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Lock size={13} /> Approuver</button>
-                  <button type="button" className="odoo-btn-danger" aria-label="Supprimer le budget" disabled={remove.isPending}
-                    onClick={() => { if (window.confirm(`Supprimer le budget ${year} ?`)) remove.mutate(); }}><Trash2 size={13} /></button>
+                  <button type="button" className="ds-btn-danger" disabled={remove.isPending}
+                    onClick={async () => { if (await confirm(`Supprimer le budget ${year} ? Les montants saisis seront perdus.`, { title: 'Supprimer le budget', danger: true, confirmLabel: 'Supprimer' })) remove.mutate(); }}><Trash2 size={13} aria-hidden="true" /> Supprimer</button>
+                  <button type="button" className="odoo-btn-primary" disabled={status.isPending} onClick={() => status.mutate('approved')}><Lock size={13} aria-hidden="true" /> Approuver</button>
                 </>
               ) : (
-                <button type="button" className="odoo-btn-secondary" disabled={status.isPending} onClick={() => status.mutate('draft')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Unlock size={13} /> Repasser en brouillon</button>
+                <button type="button" className="odoo-btn-secondary" disabled={status.isPending} onClick={() => status.mutate('draft')}><Unlock size={13} aria-hidden="true" /> Repasser en brouillon</button>
               )}
-            </div>
+            </AccHeaderActions>
           </>
         )}
       </div>
 
       {error ? <StatusBanner tone="danger" icon={Info} title="Budget indisponible">{String((error as any)?.response?.data?.error?.message ?? error)}</StatusBanner>
-        : isLoading || !data ? <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 size={20} className="animate-spin" /></div>
+        : isLoading || !data ? <LoadingState />
         : !b ? <CreateBudget year={year} onCreated={refresh} />
           : view === 'edit' ? <EditGrid key={b.id} budgetId={b.id} rows={data.rows} locked={b.status === 'approved'} onSaved={refresh} />
             : <Comparison data={data} />}
@@ -113,10 +114,10 @@ function CreateBudget({ year, onCreated }: { year: number; onCreated: () => void
       <StatusBanner tone="info" icon={Target} title={`Pas encore de budget pour ${year}`}>
         Le budget se saisit par compte du CPC (charges et produits) et par mois. Le plus simple : partir du réel {year - 1} et appliquer une hausse attendue.
       </StatusBanner>
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      <div className="ds-panel" style={{ padding: 16, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
           Point de départ
-          <select value={init} onChange={e => setInit(e.target.value as typeof init)} className="odoo-search-input">
+          <select value={init} onChange={e => setInit(e.target.value as typeof init)} className="ds-input sm" style={{ width: 'auto' }}>
             <option value="previous_actual">Réel {year - 1}, mois par mois</option>
             <option value="empty">Budget vide</option>
           </select>
@@ -125,11 +126,11 @@ function CreateBudget({ year, onCreated }: { year: number; onCreated: () => void
           <>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
               Évolution des produits (%)
-              <input type="number" value={revenuePct} onChange={e => setRevenuePct(Number(e.target.value))} className="odoo-search-input" style={{ width: 110 }} />
+              <input type="number" value={revenuePct} onChange={e => setRevenuePct(Number(e.target.value))} className="ds-input sm" style={{ width: 110 }} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
               Évolution des charges (%)
-              <input type="number" value={chargesPct} onChange={e => setChargesPct(Number(e.target.value))} className="odoo-search-input" style={{ width: 110 }} />
+              <input type="number" value={chargesPct} onChange={e => setChargesPct(Number(e.target.value))} className="ds-input sm" style={{ width: 110 }} />
             </label>
           </>
         )}
@@ -169,13 +170,12 @@ function EditGrid({ budgetId, rows, locked, onSaved }: { budgetId: string; rows:
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Montants en {currencySymbol()} HT. « ÷12 » répartit un montant annuel.</span>
-          <button type="button" className="odoo-btn-primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}
-            style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Save size={13} /> Enregistrer{dirty ? ` (${dirty})` : ''}</button>
+          <button type="button" className="odoo-btn-primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()} style={{ marginLeft: 'auto' }}><Save size={13} /> Enregistrer{dirty ? ` (${dirty})` : ''}</button>
         </div>
       )}
-      <div style={tableWrap}>
-        <table className="odoo-table" style={{ margin: 0, minWidth: 1200 }}>
-          <thead><tr><th style={{ minWidth: 220 }}>Compte</th>{MONTHS.map(m => <th key={m} style={{ textAlign: 'right' }}>{m}</th>)}<th style={{ textAlign: 'right' }}>Année</th><th /></tr></thead>
+      <DataPanel>
+        <table className="odoo-table ds-dense" style={{ minWidth: 1200 }}>
+          <thead><tr><th style={{ minWidth: 220 }}>Compte</th>{MONTHS.map(m => <th className="ds-num" key={m}>{m}</th>)}<th className="ds-num">Année</th><th /></tr></thead>
           <tbody>
             {[7, 6].map(cls => [
               <tr key={`h${cls}`}><td colSpan={15} style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem' }}>{cls === 7 ? 'Produits' : 'Charges'}</td></tr>,
@@ -188,10 +188,10 @@ function EditGrid({ budgetId, rows, locked, onSaved }: { budgetId: string; rows:
                       <td key={m} style={{ padding: 2 }}>
                         <input value={value(r, m)} disabled={locked} inputMode="decimal" aria-label={`${r.label} ${mn}`}
                           onChange={e => setEdits(ed => ({ ...ed, [cellKey(r.id, m)]: e.target.value }))}
-                          className="odoo-search-input" style={{ width: 72, textAlign: 'right', padding: '4px 6px', background: edits[cellKey(r.id, m)] != null ? '#fff8e8' : undefined }} />
+                          className="odoo-search-input" style={{ width: 72, textAlign: 'right', padding: '4px 6px', background: edits[cellKey(r.id, m)] != null ? 'var(--ds-warning-bg)' : undefined }} />
                       </td>
                     ))}
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{dh(year)}</td>
+                    <td className="ds-num" style={{ fontWeight: 600 }}>{dh(year)}</td>
                     <td>{!locked && <button type="button" className="odoo-btn-secondary" onClick={() => spread(r)} title="Répartir un montant annuel">÷12</button>}</td>
                   </tr>
                 );
@@ -199,7 +199,7 @@ function EditGrid({ budgetId, rows, locked, onSaved }: { budgetId: string; rows:
             ])}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
     </>
   );
 }
@@ -213,7 +213,7 @@ function Variance({ budget, actual, cls }: { budget: number; actual: number; cls
   const pct = budget !== 0 ? Math.round((diff / Math.abs(budget)) * 1000) / 10 : null;
   if (budget === 0 && actual === 0) return <span style={{ color: 'var(--theme-text-muted)' }}>—</span>;
   return (
-    <span style={{ color: favorable ? '#155724' : '#dc3545', fontWeight: 600 }}>
+    <span style={{ color: favorable ? 'var(--ds-success)' : 'var(--ds-danger)', fontWeight: 600 }}>
       {diff >= 0 ? '+' : ''}{dh(diff)}{pct != null && <span style={{ fontWeight: 400, fontSize: '0.6875rem' }}> ({pct >= 0 ? '+' : ''}{pct} %)</span>}
     </span>
   );
@@ -233,11 +233,11 @@ function Comparison({ data }: { data: BudgetComparison }) {
     return (
       <tr key={key} style={{ fontWeight: 700, background: 'var(--odoo-bg-hover)' }}>
         <td>{label}</td>
-        <td style={{ textAlign: 'right' }}>{dh(sumTo(t.budget))}</td>
-        <td style={{ textAlign: 'right' }}>{dh(sumTo(t.actual))}</td>
-        <td style={{ textAlign: 'right' }}><Variance budget={sumTo(t.budget)} actual={sumTo(t.actual)} cls={cls} /></td>
-        <td style={{ textAlign: 'right' }}>{dh(t.budget.reduce((s, v) => s + v, 0))}</td>
-        <td style={{ textAlign: 'right' }}>{key === 'charges' ? dh(data.totals.charges.committed ?? 0) : ''}</td>
+        <td className="ds-num">{dh(sumTo(t.budget))}</td>
+        <td className="ds-num">{dh(sumTo(t.actual))}</td>
+        <td className="ds-num"><Variance budget={sumTo(t.budget)} actual={sumTo(t.actual)} cls={cls} /></td>
+        <td className="ds-num">{dh(t.budget.reduce((s, v) => s + v, 0))}</td>
+        <td className="ds-num">{key === 'charges' ? dh(data.totals.charges.committed ?? 0) : ''}</td>
         <td />
       </tr>
     );
@@ -252,14 +252,14 @@ function Comparison({ data }: { data: BudgetComparison }) {
           Cumul à date : {n} mois ({MONTHS[0]} à {MONTHS[n - 1]}). Réel = écritures comptabilisées du magasin et écritures communes. Écart vert = favorable.
         </p>
       )}
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '12px 12px 4px' }}>
+      <div className="ds-panel" style={{ padding: '16px 16px 8px' }}>
         <div style={{ fontSize: '0.8125rem', fontWeight: 600, marginBottom: 6 }}>Résultat mensuel ({currencySymbol()}) — budget et réel</div>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={chart} barGap={2} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-            <CartesianGrid vertical={false} stroke="#e9ecef" />
-            <XAxis dataKey="mois" tick={{ fontSize: 11, fill: '#6c757d' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: '#6c757d' }} axisLine={false} tickLine={false} tickFormatter={v => dh(Number(v))} width={70} />
-            <ReferenceLine y={0} stroke="#adb5bd" />
+            <CartesianGrid vertical={false} stroke="var(--ds-hair)" />
+            <XAxis dataKey="mois" tick={{ fontSize: 11, fill: 'var(--ds-muted)' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: 'var(--ds-muted)' }} axisLine={false} tickLine={false} tickFormatter={v => dh(Number(v))} width={70} />
+            <ReferenceLine y={0} stroke="var(--ds-muted)" />
             <Tooltip formatter={(v: number) => money(v, { decimals: 0 })} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="Budget" fill={COLORS.budget} radius={[4, 4, 0, 0]} maxBarSize={18} />
@@ -267,22 +267,22 @@ function Comparison({ data }: { data: BudgetComparison }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div style={tableWrap}>
-        <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th>Compte</th><th style={{ textAlign: 'right' }}>Budget à date</th><th style={{ textAlign: 'right' }}>Réel à date</th><th style={{ textAlign: 'right' }}>Écart</th><th style={{ textAlign: 'right' }}>Budget annuel</th>
-            <th style={{ textAlign: 'right' }} title="Bons de commande envoyés, ni reçus ni facturés">Engagé</th>
-            <th style={{ textAlign: 'right' }} title="Budget annuel − réel − engagé">Disponible</th></tr></thead>
+      <DataPanel>
+        <table className="odoo-table ds-dense">
+          <thead><tr><th>Compte</th><th className="ds-num">Budget à date</th><th className="ds-num">Réel à date</th><th className="ds-num">Écart</th><th className="ds-num">Budget annuel</th>
+            <th className="ds-num" title="Bons de commande envoyés, ni reçus ni facturés">Engagé</th>
+            <th className="ds-num" title="Budget annuel − réel − engagé">Disponible</th></tr></thead>
           <tbody>
             {[7, 6].map(cls => [
               ...rows.filter(r => r.account_class === cls).map(r => (
                 <tr key={r.id}>
                   <td><span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{r.code}</span> {r.label}</td>
-                  <td style={{ textAlign: 'right' }}>{dh(r.budget_ytd)}</td>
-                  <td style={{ textAlign: 'right' }}>{dh(r.actual_ytd)}</td>
-                  <td style={{ textAlign: 'right' }}><Variance budget={r.budget_ytd} actual={r.actual_ytd} cls={r.account_class} /></td>
-                  <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{dh(r.budget_year)}</td>
-                  <td style={{ textAlign: 'right' }}>{cls === 6 && r.committed ? dh(r.committed) : ''}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: r.available < 0 ? '#dc3545' : undefined }}>{cls === 6 && r.budget_year ? dh(r.available) : ''}</td>
+                  <td className="ds-num">{dh(r.budget_ytd)}</td>
+                  <td className="ds-num">{dh(r.actual_ytd)}</td>
+                  <td className="ds-num"><Variance budget={r.budget_ytd} actual={r.actual_ytd} cls={r.account_class} /></td>
+                  <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{dh(r.budget_year)}</td>
+                  <td className="ds-num">{cls === 6 && r.committed ? dh(r.committed) : ''}</td>
+                  <td className="ds-num" style={{ fontWeight: 600, color: r.available < 0 ? 'var(--ds-danger)' : undefined }}>{cls === 6 && r.budget_year ? dh(r.available) : ''}</td>
                 </tr>
               )),
               totalRow(cls === 7 ? 'Total produits' : 'Total charges', cls === 7 ? 'produits' : 'charges', cls as 6 | 7),
@@ -290,7 +290,7 @@ function Comparison({ data }: { data: BudgetComparison }) {
             {totalRow('Résultat', 'resultat', 0)}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
     </>
   );
 }
@@ -300,20 +300,20 @@ function StoreResults({ year }: { year: number }) {
   if (data.length === 0) return null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <h3 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><CheckCircle2 size={14} /> Résultat {year} par magasin (réel)</h3>
-      <div style={tableWrap}>
-        <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th>Magasin</th><th style={{ textAlign: 'right' }}>Produits</th><th style={{ textAlign: 'right' }}>Charges</th><th style={{ textAlign: 'right' }}>Résultat</th></tr></thead>
+      <SectionHeader title={`Résultat ${year} par magasin`} note="réel" />
+      <DataPanel>
+        <table className="odoo-table ds-dense">
+          <thead><tr><th>Magasin</th><th className="ds-num">Produits</th><th className="ds-num">Charges</th><th className="ds-num">Résultat</th></tr></thead>
           <tbody>{data.map(s => (
             <tr key={s.store_id ?? 'none'}>
               <td>{s.store_name ?? 'Écritures communes (sans magasin)'}</td>
-              <td style={{ textAlign: 'right' }}>{dh(s.produits)}</td>
-              <td style={{ textAlign: 'right' }}>{dh(s.charges)}</td>
-              <td style={{ textAlign: 'right', fontWeight: 600, color: s.resultat < 0 ? '#dc3545' : '#155724' }}>{dh(s.resultat)}</td>
+              <td className="ds-num">{dh(s.produits)}</td>
+              <td className="ds-num">{dh(s.charges)}</td>
+              <td className="ds-num" style={{ fontWeight: 600, color: s.resultat < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{dh(s.resultat)}</td>
             </tr>
           ))}</tbody>
         </table>
-      </div>
+      </DataPanel>
     </div>
   );
 }

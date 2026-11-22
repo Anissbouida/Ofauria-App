@@ -34,7 +34,7 @@ export default function CustomFieldsCard({ entity, id, readOnly = false }: { ent
       <CustomFieldsEditor entity={entity} values={values} onChange={setValues} errors={errors} readOnly={readOnly} title="Champs personnalisés" />
       {!readOnly && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-          <button type="button" className="odoo-btn-secondary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>Enregistrer les champs</button>
+          <button type="button" className="odoo-btn-secondary" disabled={!dirty || save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>Enregistrer les champs</button>
         </div>
       )}
     </div>

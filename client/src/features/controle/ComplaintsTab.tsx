@@ -21,6 +21,7 @@ import ComplaintFormModal from '../../components/sav/ComplaintFormModal';
 import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar } from '../sales/ListTemplate';
 import { StageChips, Panel, PagerFoot, PageLoading } from './KlUi';
+import { EmptyState, FormField, NoResultState, SectionHeader } from '../../components/ds';
 import { InterventionFormModal } from '../maintenance/forms';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useNavigate } from 'react-router-dom';
@@ -89,15 +90,15 @@ export default function ComplaintsTab({ range, periodText, creating, onCreatingC
           <option value="">Toutes priorités</option>
           {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', cursor: 'pointer' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
           <input type="checkbox" checked={overdueOnly} onChange={e => setOverdueOnly(e.target.checked)} /> En retard seulement
         </label>
       </ListToolbar>
 
       {isLoading ? <PageLoading /> : rows.length === 0 ? (
-        <StatusBanner tone="success" icon={CheckCircle2} title="Aucune réclamation">
-          Rien à traiter sur la période et les filtres choisis.
-        </StatusBanner>
+        (status || priority || overdueOnly || search)
+          ? <NoResultState text="Aucune réclamation ne correspond aux filtres." onReset={() => { setStatus(''); setPriority(''); setOverdueOnly(false); setSearchInput(''); setSearch(''); }} />
+          : <EmptyState icon={CheckCircle2} title="Aucune réclamation sur la période" text="Les réclamations saisies ici ou depuis la caisse s'affichent dans cette liste." />
       ) : (
         <Panel footer={<PagerFoot page={page} total={data?.total ?? 0} onPage={setPage} note={`${data?.total ?? 0} réclamation${(data?.total ?? 0) > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
@@ -109,15 +110,15 @@ export default function ComplaintsTab({ range, periodText, creating, onCreatingC
             <tbody>
               {rows.map(c => (
                 <tr key={c.id} onClick={() => setOpenId(c.id)} style={{ cursor: 'pointer' }}>
-                  <td className="font-mono" style={{ whiteSpace: 'nowrap' }}>{c.number}</td>
-                  <td>{c.customer_label || '—'}</td>
+                  <td className="ds-ref" style={{ whiteSpace: 'nowrap' }}>{c.number}</td>
+                  <td className="ds-strong">{c.customer_label || '—'}</td>
                   <td><span className="odoo-tag" style={{ background: c.category_color ? `${c.category_color}22` : undefined, color: c.category_color || undefined }}>{c.category_label || c.category_code}</span></td>
                   <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.subject}>{c.subject}</td>
-                  <td>{c.product_name || '—'}{c.lot_number ? <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> · {c.lot_number}</span> : null}</td>
+                  <td>{c.product_name || '—'}{c.lot_number ? <span style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}> · {c.lot_number}</span> : null}</td>
                   <td><span className={`odoo-tag ${PRIORITY_TAG[c.priority]}`}>{PRIORITY_LABELS[c.priority]}</span></td>
                   <td><StatusTag tone={STATUS_TONE[c.status] ?? 'draft'} label={STATUS_LABELS[c.status]} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}><Due c={c} /></td>
-                  <td>{c.assigned_name || <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}</td>
+                  <td>{c.assigned_name || <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -132,10 +133,10 @@ export default function ComplaintsTab({ range, periodText, creating, onCreatingC
 }
 
 function Due({ c }: { c: Complaint }) {
-  if (!c.due_at || !['open', 'in_progress'].includes(c.status)) return <span style={{ color: 'var(--theme-text-muted)' }}>—</span>;
+  if (!c.due_at || !['open', 'in_progress'].includes(c.status)) return <span style={{ color: 'var(--ds-muted)' }}>—</span>;
   const d = new Date(c.due_at);
   const text = formatDistanceToNow(d, { locale: fr, addSuffix: true });
-  return <span style={{ color: c.is_overdue ? 'var(--prj-red)' : 'var(--theme-text-muted)', fontWeight: c.is_overdue ? 600 : 400 }}>{c.is_overdue ? `en retard (${text})` : text}</span>;
+  return <span style={{ color: c.is_overdue ? 'var(--ds-danger)' : 'var(--ds-muted)', fontWeight: c.is_overdue ? 600 : 400 }}>{c.is_overdue ? `en retard (${text})` : text}</span>;
 }
 
 /* ═══════════════════════ FICHE ═══════════════════════ */
@@ -176,7 +177,7 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
   const row = (k: string, v: React.ReactNode) => (
     <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 8, fontSize: '0.8125rem', padding: '4px 0' }}>
-      <span style={{ color: 'var(--theme-text-muted)' }}>{k}</span><span>{v ?? '—'}</span>
+      <span style={{ color: 'var(--ds-muted)' }}>{k}</span><span>{v ?? '—'}</span>
     </div>
   );
 
@@ -191,10 +192,10 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           <>
             <header className="kl-sheet-head">
               <div className="ord-who">
-                <h2><span className="font-mono" style={{ fontSize: 'inherit' }}>{c.number}</span></h2>
+                <h2><span className="ds-ref" style={{ fontSize: 'inherit' }}>{c.number}</span></h2>
                 <p>{c.subject}</p>
               </div>
-              <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
+              <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
             </header>
 
             <div className="kl-sheet-body" style={{ gap: 16 }}>
@@ -204,37 +205,37 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
               </div>
               {c.is_overdue && (
                 <StatusBanner tone="danger" icon={Clock} title="Délai de traitement dépassé">
-                  À traiter avant le {format(new Date(c.due_at!), 'dd/MM/yyyy HH:mm')} ; priorité {PRIORITY_LABELS[c.priority].toLowerCase()}.
+                  À traiter avant le {format(new Date(c.due_at!), 'd MMM yyyy HH:mm', { locale: fr })} ; priorité {PRIORITY_LABELS[c.priority].toLowerCase()}.
                 </StatusBanner>
               )}
 
               {/* Actions selon l'étape */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {c.status === 'open' && (
-                  <button className="odoo-btn-primary" onClick={() => { if (!c.assigned_to) assignMe.mutate(); setStatus.mutate({ status: 'in_progress' }); }}>
+                  <button type="button" className="odoo-btn-primary" onClick={() => { if (!c.assigned_to) assignMe.mutate(); setStatus.mutate({ status: 'in_progress' }); }}>
                     <PlayCircle size={13} /> Prendre en charge
                   </button>
                 )}
                 {(c.status === 'open' || c.status === 'in_progress') && (
                   <>
-                    <button className="odoo-btn-primary" onClick={() => setResolving('resolved')}><CheckCircle2 size={13} /> Résoudre</button>
-                    <button className="odoo-btn-secondary" onClick={() => setResolving('rejected')}><XCircle size={13} /> Non fondée</button>
+                    <button type="button" className="odoo-btn-primary" onClick={() => setResolving('resolved')}><CheckCircle2 size={13} /> Résoudre</button>
+                    <button type="button" className="odoo-btn-secondary" onClick={() => setResolving('rejected')}><XCircle size={13} /> Non fondée</button>
                   </>
                 )}
                 {c.status === 'resolved' && (
-                  <button className="odoo-btn-primary" onClick={() => setStatus.mutate({ status: 'closed' })}><Lock size={13} /> Clôturer</button>
+                  <button type="button" className="odoo-btn-primary" onClick={() => setStatus.mutate({ status: 'closed' })}><Lock size={13} /> Clôturer</button>
                 )}
                 {['resolved', 'closed', 'rejected'].includes(c.status) && (
-                  <button className="odoo-btn-secondary" onClick={() => setStatus.mutate({ status: 'open' })}><RotateCcw size={13} /> Rouvrir</button>
+                  <button type="button" className="odoo-btn-secondary" onClick={() => setStatus.mutate({ status: 'open' })}><RotateCcw size={13} /> Rouvrir</button>
                 )}
                 {['open', 'in_progress'].includes(c.status) && (
                   c.assigned_to === user?.id
-                    ? <button className="odoo-btn-secondary" onClick={() => unassign.mutate()}><User size={13} /> Me retirer</button>
-                    : <button className="odoo-btn-secondary" onClick={() => assignMe.mutate()}><User size={13} /> Me l'affecter</button>
+                    ? <button type="button" className="odoo-btn-secondary" onClick={() => unassign.mutate()}><User size={13} /> Me retirer</button>
+                    : <button type="button" className="odoo-btn-secondary" onClick={() => assignMe.mutate()}><User size={13} /> Me l'affecter</button>
                 )}
                 {/* Pont vers la Maintenance (mig 359) : panne chez le client, installation défectueuse… */}
                 {['open', 'in_progress'].includes(c.status) && hasModule('maintenance') && (
-                  <button className="odoo-btn-secondary" onClick={() => setIntervention(true)}><Wrench size={13} /> Créer une intervention</button>
+                  <button type="button" className="odoo-btn-secondary" onClick={() => setIntervention(true)}><Wrench size={13} /> Créer une intervention</button>
                 )}
                 {['open', 'in_progress'].includes(c.status) && (
                   <select className="odoo-filter-dropdown" value={c.priority} onChange={e => setPriority.mutate(e.target.value as ComplaintPriority)} title="Changer la priorité">
@@ -245,20 +246,25 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
               {resolving && (
                 <div className="kl-widget" style={{ display: 'grid', gap: 10 }}>
-                  <strong style={{ fontSize: '0.875rem' }}>{resolving === 'resolved' ? 'Réponse donnée au client' : 'Réclamation non fondée'}</strong>
+                  <h3 className="ds-subhead">{resolving === 'resolved' ? 'Réponse donnée au client' : 'Réclamation non fondée'}</h3>
                   {resolving === 'resolved' && (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 10 }}>
-                      <select className="input" value={resolutionCode} onChange={e => setResolutionCode(e.target.value as ResolutionCode)}>
-                        {(Object.entries(RESOLUTION_LABELS) as [ResolutionCode, string][]).filter(([k]) => k !== 'not_founded').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
-                      <input className="input" type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder={`Montant (${currencySymbol()})`} />
+                      <FormField label="Réponse" htmlFor="cpl-res-code">
+                        <select id="cpl-res-code" className="ds-input" value={resolutionCode} onChange={e => setResolutionCode(e.target.value as ResolutionCode)}>
+                          {(Object.entries(RESOLUTION_LABELS) as [ResolutionCode, string][]).filter(([k]) => k !== 'not_founded').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                      </FormField>
+                      <FormField label={`Montant (${currencySymbol()})`} htmlFor="cpl-res-amount">
+                        <input id="cpl-res-amount" className="ds-input" type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} />
+                      </FormField>
                     </div>
                   )}
-                  <textarea className="input" style={{ minHeight: 70 }} value={resolution} onChange={e => setResolution(e.target.value)}
-                    placeholder={resolving === 'resolved' ? 'Ce qui a été fait pour le client…' : 'Pourquoi la réclamation n\'est pas retenue…'} />
+                  <FormField label={resolving === 'resolved' ? 'Ce qui a été fait pour le client' : 'Pourquoi la réclamation n\'est pas retenue'} htmlFor="cpl-res-text">
+                    <textarea id="cpl-res-text" className="ds-input" style={{ minHeight: 70 }} value={resolution} onChange={e => setResolution(e.target.value)} />
+                  </FormField>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button className="odoo-btn-secondary" onClick={() => setResolving(null)}>Annuler</button>
-                    <button className="odoo-btn-primary" disabled={setStatus.isPending}
+                    <button type="button" className="odoo-btn-secondary" onClick={() => setResolving(null)}>Annuler</button>
+                    <button type="button" className="odoo-btn-primary" disabled={setStatus.isPending}
                       onClick={() => setStatus.mutate(resolving === 'resolved'
                         ? { status: 'resolved', resolutionCode, resolution: resolution.trim() || undefined, resolutionAmount: amount ? Number(amount) : null }
                         : { status: 'rejected', note: resolution.trim() || undefined })}>
@@ -272,7 +278,7 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
               <div className="kl-widget" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0 24px' }}>
                 <div>
-                  {row('Client', <>{c.customer_label}{c.customer_phone ? <span style={{ color: 'var(--theme-text-muted)' }}> · {c.customer_phone}</span> : null}</>)}
+                  {row('Client', <>{c.customer_label}{c.customer_phone ? <span style={{ color: 'var(--ds-muted)' }}> · {c.customer_phone}</span> : null}</>)}
                   {row('Motif', getLabel(c.category_code) || c.category_label || c.category_code)}
                   {row('Canal', CHANNEL_LABELS[c.channel])}
                   {row('Article', c.product_name)}
@@ -280,11 +286,11 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                   {row('Quantité', c.quantity ? Number(c.quantity).toLocaleString('fr-FR') : null)}
                 </div>
                 <div>
-                  {row('Ticket', c.sale_number && <span className="font-mono">{c.sale_number}</span>)}
-                  {row('Commande', c.order_number && <span className="font-mono">{c.order_number}</span>)}
-                  {row('Facture', c.invoice_number && <span className="font-mono">{c.invoice_number}</span>)}
-                  {row('Déclarée le', `${format(new Date(c.created_at), 'dd/MM/yyyy HH:mm')} par ${c.created_by_name || '—'}`)}
-                  {row('Délai', c.due_at ? format(new Date(c.due_at), 'dd/MM/yyyy HH:mm') : null)}
+                  {row('Ticket', c.sale_number && <span className="ds-ref">{c.sale_number}</span>)}
+                  {row('Commande', c.order_number && <span className="ds-ref">{c.order_number}</span>)}
+                  {row('Facture', c.invoice_number && <span className="ds-ref">{c.invoice_number}</span>)}
+                  {row('Déclarée le', `${format(new Date(c.created_at), 'd MMM yyyy HH:mm', { locale: fr })} par ${c.created_by_name || '—'}`)}
+                  {row('Délai', c.due_at ? format(new Date(c.due_at), 'd MMM yyyy HH:mm', { locale: fr }) : null)}
                   {row('Responsable', c.assigned_name)}
                 </div>
               </div>
@@ -292,7 +298,7 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
               {c.resolution_code && (
                 <StatusBanner tone={c.status === 'rejected' ? 'neutral' : 'success'} icon={c.status === 'rejected' ? XCircle : CheckCircle2}
                   title={`${RESOLUTION_LABELS[c.resolution_code]}${c.resolution_amount ? ` · ${money(Number(c.resolution_amount))}` : ''}`}>
-                  {c.resolution || '—'}{c.resolved_by_name ? ` — ${c.resolved_by_name}, ${format(new Date(c.resolved_at!), 'dd/MM/yyyy')}` : ''}
+                  {c.resolution || '—'}{c.resolved_by_name ? ` — ${c.resolved_by_name}, ${format(new Date(c.resolved_at!), 'd MMM yyyy', { locale: fr })}` : ''}
                 </StatusBanner>
               )}
 
@@ -300,11 +306,11 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
               {/* Journal */}
               <div>
-                <div className="kl-sec"><h2>Journal</h2></div>
+                <SectionHeader title="Journal" />
                 <ol className="kl-widget" style={{ listStyle: 'none', margin: 0, display: 'grid', gap: 6 }}>
                   {(c.events ?? []).map(e => (
                     <li key={e.id} style={{ fontSize: '0.8125rem', display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8 }}>
-                      <span style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(e.created_at), 'dd/MM HH:mm')}</span>
+                      <span style={{ color: 'var(--ds-muted)' }}>{format(new Date(e.created_at), 'dd/MM HH:mm')}</span>
                       <span>
                         <strong>{e.by_name || '—'}</strong> · {eventLabel(e.event_type, e.from_value, e.to_value)}
                         {e.note && <span style={{ display: 'block', whiteSpace: 'pre-wrap' }}>{e.note}</span>}
@@ -313,9 +319,9 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                   ))}
                 </ol>
                 <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <input className="input" style={{ flex: 1 }} value={note} onChange={e => setNote(e.target.value)} placeholder="Ajouter une note (appel du client, décision…)"
+                  <input className="ds-input" style={{ flex: 1 }} value={note} onChange={e => setNote(e.target.value)} aria-label="Ajouter une note" placeholder="Ajouter une note (appel du client, décision…)"
                     onKeyDown={e => { if (e.key === 'Enter' && note.trim()) comment.mutate(); }} />
-                  <button className="odoo-btn-secondary" disabled={!note.trim() || comment.isPending} onClick={() => comment.mutate()}><Send size={13} /></button>
+                  <button type="button" className="odoo-btn-secondary" disabled={!note.trim() || comment.isPending} onClick={() => comment.mutate()} aria-label="Ajouter la note"><Send size={13} aria-hidden="true" /></button>
                 </div>
               </div>
             </div>

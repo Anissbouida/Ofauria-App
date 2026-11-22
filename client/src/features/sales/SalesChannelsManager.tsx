@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { salesChannelsApi, type SalesChannel } from '../../api/sales-channels.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Gestion des canaux de vente (mig 172) : liste, création, défaut, (dés)activation.
@@ -11,6 +13,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
  */
 export default function SalesChannelsManager() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { data: channels = [], isLoading } = useQuery({
     queryKey: ['sales-channels'],
     queryFn: salesChannelsApi.list,
@@ -58,7 +61,7 @@ export default function SalesChannelsManager() {
     updateMutation.mutate({ id: channel.id, data: { isDefault: true } });
   };
 
-  if (isLoading) return <div className="odoo-setting-help">Chargement…</div>;
+  if (isLoading) return <LoadingState bare label="Chargement des canaux…" />;
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
@@ -82,7 +85,8 @@ export default function SalesChannelsManager() {
               </button>
             )}
             {!c.is_default && c.is_active && (
-              <button type="button" onClick={() => deactivateMutation.mutate(c.id)} className="odoo-btn-danger">
+              <button type="button" className="ds-btn-danger ds-btn-sm" disabled={deactivateMutation.isPending}
+                onClick={async () => { if (await confirm(`Désactiver le canal « ${c.label} » ? Il ne sera plus proposé à la vente.`, { title: 'Désactiver le canal', confirmLabel: 'Désactiver', danger: true })) deactivateMutation.mutate(c.id); }}>
                 Désactiver
               </button>
             )}
@@ -113,14 +117,14 @@ export default function SalesChannelsManager() {
               onClick={() => createMutation.mutate({ code: newCode, label: newLabel, color: newColor })}
               disabled={!newCode || !newLabel || createMutation.isPending}
               className="odoo-btn-primary">
-              Créer
+              Créer le canal
             </button>
           </div>
         </div>
       ) : (
         <div>
           <button type="button" onClick={() => setShowAddForm(true)} className="odoo-btn-secondary">
-            + Ajouter un canal
+            Ajouter un canal
           </button>
         </div>
       )}

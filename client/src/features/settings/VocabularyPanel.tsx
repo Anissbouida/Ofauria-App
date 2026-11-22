@@ -71,7 +71,7 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
       </StatusBanner>
 
       <div className="prj-panel" style={{ padding: '14px 18px', fontSize: '0.875rem' }} aria-label="Aperçu">
-        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Aperçu</div>
+        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4 }}>Aperçu</div>
         Menu « {term('production')} » › « {term('production_plans')} » › bouton « {term('new_plan')} ».
         Chaque {term('production_plan').toLowerCase()} suit une {term('recipe').toLowerCase()} :
         {' '}{term('base_preps').toLowerCase()} puis {term('finished_product').toLowerCase()},
@@ -90,7 +90,7 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
               {items.map(it => (
                 <tr key={it.key}>
                   <td>{it.designates}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{it.sectorValue ?? it.fallback}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>{it.sectorValue ?? it.fallback}</td>
                   <td>
                     <input className="input" value={value(it)} maxLength={80} disabled={!canEdit} aria-label={`Terme pour ${it.designates}`}
                       onChange={e => setDrafts(d => ({ ...d, [it.key]: e.target.value }))} />

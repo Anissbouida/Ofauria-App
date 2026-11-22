@@ -1,4 +1,4 @@
-import { money, currencySymbol } from '../../../utils/money';
+import { currencySymbol } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileText, CalendarOff, HandCoins, Plus, X, UserX, CalendarDays } from 'lucide-react';
@@ -8,7 +8,8 @@ import { notify } from '../../../components/ui/InlineNotification';
 import { MONTH_NAMES, apiErrorMessage, saveBlobResponse } from '../shared';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../../components/ui/StatusTag';
-import { Field, SectionTitle, EmptyState, LoadingPanel, inputCls, panel, smallBtn } from '../ui';
+import { Field, LoadingPanel, HrHeaderActions, inputCls, panel } from '../ui';
+import { KpiGrid, KpiCard, SectionHeader, DataPanel, TableFooter, EmptyState, FormFooter } from '../../../components/ds';
 
 const fmt = (v: unknown) => (parseFloat(String(v ?? 0)) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const frd = (s?: string | null) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : '—');
@@ -85,93 +86,79 @@ export default function MySpace() {
   }
   const e = profile.employee;
   const pendingAdvance = (adv?.requests ?? []).some((r: Record<string, any>) => r.status === 'pending');
-  // Carte du design Ventes (prj-panel) : fond, coins et ombre viennent de la classe.
-  const box = { padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 } as const;
-  const formBox = { ...panel, background: 'var(--odoo-bg-hover)', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 } as const;
+  const formBox = { ...panel, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 } as const;
   const full = { gridColumn: '1 / -1' } as const;
-  const empty = { fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 } as const;
+  const cur = currencySymbol();
+  const hasSlips = !!slips && (slips.monthly.length > 0 || slips.periodic.length > 0);
+  const hasAdvances = (adv?.requests ?? []).length > 0 || (adv?.advances ?? []).length > 0;
+  const section = { display: 'grid', gap: 12 } as const;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="prj-kpis">
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Bonjour</span></div>
-          <div className="prj-kpi-value" style={{ fontSize: '1.1rem' }}>{e.firstName} {e.lastName}</div>
-          <div className="prj-kpi-sub">{e.role}{e.hireDate && ` · depuis le ${frd(e.hireDate)}`}</div>
-        </div>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Congés disponibles</span></div>
-          <div className="prj-kpi-value">{profile.leave ? `${fmt(profile.leave.available)} j` : '—'}</div>
-          <div className="prj-kpi-sub">
-            {profile.leave ? <>acquis {fmt(profile.leave.acquiredThisYear)} · pris {fmt(profile.leave.takenThisYear)}{profile.leave.pending > 0 && ` · ${fmt(profile.leave.pending)} en attente`}</> : 'date d\'embauche manquante'}
-          </div>
-        </div>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Avance à rembourser</span></div>
-          <div className="prj-kpi-value">{money(profile.advanceOutstanding)}</div>
-        </div>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Contrat</span></div>
-          <div className="prj-kpi-value" style={{ fontSize: '1.1rem' }}>{profile.contract ? String(profile.contract.contract_type).toUpperCase() : '—'}</div>
-          <div className="prj-kpi-sub">
-            {profile.contract && (profile.contract.end_date ? `jusqu'au ${frd(profile.contract.end_date)}` : 'durée indéterminée')}
-            {profile.contract?.trial_end_date && ` · essai jusqu'au ${frd(profile.contract.trial_end_date)}`}
-          </div>
-        </div>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Éditions : actions secondaires, en haut à droite de la page. */}
+      <HrHeaderActions>
+        <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => attestation('travail')}><FileText size={13} aria-hidden="true" /> Attestation de travail</button>
+        <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => attestation('salaire')}><FileText size={13} aria-hidden="true" /> Attestation de salaire</button>
+      </HrHeaderActions>
 
-      <section className="prj-panel" style={box}>
-        <SectionTitle icon={FileText}>Mes attestations</SectionTitle>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button className="odoo-btn-secondary" style={smallBtn} onClick={() => attestation('travail')}><FileText size={12} /> Attestation de travail</button>
-          <button className="odoo-btn-secondary" style={smallBtn} onClick={() => attestation('salaire')}><FileText size={12} /> Attestation de salaire</button>
-        </div>
-      </section>
+      <KpiGrid>
+        <KpiCard label="Bonjour" value={`${e.firstName} ${e.lastName}`} sub={<>{e.role}{e.hireDate && ` · depuis le ${frd(e.hireDate)}`}</>} />
+        <KpiCard label="Congés disponibles (j)" value={profile.leave ? fmt(profile.leave.available) : '—'}
+          sub={profile.leave ? <>acquis {fmt(profile.leave.acquiredThisYear)} · pris {fmt(profile.leave.takenThisYear)}{profile.leave.pending > 0 && ` · ${fmt(profile.leave.pending)} en attente`}</> : 'date d\'embauche manquante'} />
+        <KpiCard label={`Avance à rembourser (${cur})`} value={fmt(profile.advanceOutstanding)} />
+        <KpiCard label="Contrat" value={profile.contract ? String(profile.contract.contract_type).toUpperCase() : '—'}
+          sub={<>{profile.contract && (profile.contract.end_date ? `jusqu'au ${frd(profile.contract.end_date)}` : 'durée indéterminée')}
+            {profile.contract?.trial_end_date && ` · essai jusqu'au ${frd(profile.contract.trial_end_date)}`}</>} />
+      </KpiGrid>
 
-      <section className="prj-panel" style={box}>
-        <SectionTitle icon={FileText}>Mes bulletins de paie</SectionTitle>
-        {!slips || (slips.monthly.length === 0 && slips.periodic.length === 0) ? <EmptyState icon={FileText}>Aucun bulletin disponible.</EmptyState> : (
-          <table className="odoo-table">
-            <thead><tr><th>Période</th><th style={{ textAlign: 'right' }}>Brut</th><th style={{ textAlign: 'right' }}>Net</th><th style={{ textAlign: 'right' }}>Avance retenue</th><th>Payé</th><th style={{ width: 40 }}></th></tr></thead>
-            <tbody>
-              {slips.monthly.map((p: Record<string, any>) => (
-                <tr key={p.id}>
-                  <td>{MONTH_NAMES[p.month - 1]} {p.year}</td>
-                  <td style={{ textAlign: 'right' }}>{fmt(p.gross_salary)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(p.net_salary)}</td>
-                  <td style={{ textAlign: 'right' }}>{parseFloat(p.advance_deduction) > 0 ? fmt(p.advance_deduction) : '—'}</td>
-                  <td>{p.paid ? frd(String(p.paid_at).slice(0, 10)) : 'à venir'}</td>
-                  <td><button className="odoo-pager-btn" title="Télécharger le bulletin" onClick={() => pdf(p.id)}><FileText size={13} /></button></td>
-                </tr>
-              ))}
-              {slips.periodic.map((p: Record<string, any>) => (
-                <tr key={p.id}>
-                  <td>{p.kind} du {frd(p.start)} au {frd(p.end_d)}</td>
-                  <td style={{ textAlign: 'right' }}>—</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(p.net_amount)}</td>
-                  <td style={{ textAlign: 'right' }}>{parseFloat(p.advance_deduction) > 0 ? fmt(p.advance_deduction) : '—'}</td>
-                  <td>{frd(String(p.paid_at).slice(0, 10))}</td>
-                  <td></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <section style={section} aria-label="Mes bulletins de paie">
+        <SectionHeader title="Mes bulletins de paie" />
+        {!hasSlips ? <EmptyState icon={FileText} title="Aucun bulletin disponible" /> : (
+          <DataPanel label="Mes bulletins de paie" footer={<TableFooter note={`${slips!.monthly.length + slips!.periodic.length} bulletin(s)`} />}>
+            <table className="odoo-table">
+              <thead><tr><th>Période</th><th className="ds-num">Brut ({cur})</th><th className="ds-num">Net ({cur})</th><th className="ds-num">Avance retenue ({cur})</th><th>Paiement</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+              <tbody>
+                {slips!.monthly.map((p: Record<string, any>) => (
+                  <tr key={p.id}>
+                    <td className="ds-strong">{MONTH_NAMES[p.month - 1]} {p.year}</td>
+                    <td className="ds-num">{fmt(p.gross_salary)}</td>
+                    <td className="ds-num ds-strong">{fmt(p.net_salary)}</td>
+                    <td className="ds-num">{parseFloat(p.advance_deduction) > 0 ? fmt(p.advance_deduction) : '—'}</td>
+                    <td>{p.paid ? <StatusTag tone="done" label={`Payé le ${frd(String(p.paid_at).slice(0, 10))}`} /> : <StatusTag tone="todo" label="À venir" />}</td>
+                    <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => pdf(p.id)}><FileText size={13} aria-hidden="true" /> Télécharger</button></td>
+                  </tr>
+                ))}
+                {slips!.periodic.map((p: Record<string, any>) => (
+                  <tr key={p.id}>
+                    <td className="ds-strong">{p.kind} du {frd(p.start)} au {frd(p.end_d)}</td>
+                    <td className="ds-num">—</td>
+                    <td className="ds-num ds-strong">{fmt(p.net_amount)}</td>
+                    <td className="ds-num">{parseFloat(p.advance_deduction) > 0 ? fmt(p.advance_deduction) : '—'}</td>
+                    <td><StatusTag tone="done" label={`Payé le ${frd(String(p.paid_at).slice(0, 10))}`} /></td>
+                    <td className="ds-actions"></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </DataPanel>
         )}
       </section>
 
-      <section className="prj-panel" style={box}>
-        <SectionTitle icon={CalendarOff} actions={!leaveForm && e.isActive ? (
-          <button className="odoo-btn-primary" style={smallBtn} onClick={() => setLeaveForm({ type: 'annual', startDate: '', endDate: '', reason: '' })}><Plus size={11} /> Demander un congé</button>
-        ) : undefined}>Mes congés</SectionTitle>
+      <section style={section} aria-label="Mes congés">
+        <SectionHeader title="Mes congés">
+          {!leaveForm && e.isActive && (
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setLeaveForm({ type: 'annual', startDate: '', endDate: '', reason: '' })}><Plus size={13} aria-hidden="true" /> Demander un congé</button>
+          )}
+        </SectionHeader>
         {leaveForm && (
           <div style={formBox}>
-            <Field label="Type">
+            <Field label="Type" required>
               <select className={inputCls} value={leaveForm.type} onChange={ev => setLeaveForm({ ...leaveForm, type: ev.target.value })}>
                 {leaveTypes.map(lt => <option key={lt.code} value={lt.code}>{lt.label}</option>)}
               </select></Field>
-            <Field label="Du">
+            <Field label="Du" required>
               <input className={inputCls} type="date" value={leaveForm.startDate} onChange={ev => setLeaveForm({ ...leaveForm, startDate: ev.target.value, endDate: leaveForm.endDate || ev.target.value })} /></Field>
-            <Field label="Au">
+            <Field label="Au" required>
               <input className={inputCls} type="date" min={leaveForm.startDate} value={leaveForm.endDate} onChange={ev => setLeaveForm({ ...leaveForm, endDate: ev.target.value })} /></Field>
             <Field label="Motif" style={full}>
               <input className={inputCls} value={leaveForm.reason} onChange={ev => setLeaveForm({ ...leaveForm, reason: ev.target.value })} /></Field>
@@ -183,65 +170,71 @@ export default function MySpace() {
                 </StatusBanner>
               </div>
             )}
-            <div style={{ ...full, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="odoo-btn-secondary" onClick={() => setLeaveForm(null)}>Annuler</button>
-              <button className="odoo-btn-primary" disabled={!leaveReady || requestLeave.isPending || (preview?.days ?? 1) <= 0} onClick={() => requestLeave.mutate()}>Envoyer la demande</button>
+            <div style={{ ...full, margin: '0 -12px -12px' }}>
+              <FormFooter onCancel={() => setLeaveForm(null)} submitLabel="Envoyer la demande" busy={requestLeave.isPending}
+                disabled={!leaveReady || (preview?.days ?? 1) <= 0} onSubmit={() => requestLeave.mutate()} />
             </div>
           </div>
         )}
-        {leaves.length === 0 ? <p style={empty}>Aucune demande.</p> : (
-          <table className="odoo-table">
-            <thead><tr><th>Type</th><th>Période</th><th style={{ textAlign: 'right' }}>Jours</th><th>Statut</th><th style={{ width: 40 }}></th></tr></thead>
-            <tbody>
-              {leaves.map(l => (
-                <tr key={l.id}>
-                  <td>{leaveLabel(l.type)}</td><td>{frd(l.start_date)} → {frd(l.end_date)}</td>
-                  <td style={{ textAlign: 'right' }}>{parseFloat(l.days)}</td><td>{tag(l.status)}</td>
-                  <td>{l.status === 'pending' && <button className="odoo-pager-btn" title="Annuler la demande" style={{ color: 'var(--prj-red)' }} onClick={async () => { if (await confirm('Annuler cette demande de congé ?', { title: 'Annuler la demande', confirmLabel: 'Annuler la demande', cancelLabel: 'Garder', danger: true })) cancelLeave.mutate(l.id); }}><X size={13} /></button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {leaves.length === 0 ? <EmptyState icon={CalendarOff} title="Aucune demande de congé" /> : (
+          <DataPanel label="Mes congés" footer={<TableFooter note={`${leaves.length} demande${leaves.length > 1 ? 's' : ''}`} />}>
+            <table className="odoo-table">
+              <thead><tr><th>Type</th><th>Période</th><th className="ds-num">Durée (j)</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+              <tbody>
+                {leaves.map(l => (
+                  <tr key={l.id}>
+                    <td className="ds-strong">{leaveLabel(l.type)}</td><td>{frd(l.start_date)} → {frd(l.end_date)}</td>
+                    <td className="ds-num">{parseFloat(l.days)}</td><td>{tag(l.status)}</td>
+                    <td className="ds-actions">{l.status === 'pending' && <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={async () => { if (await confirm('Annuler cette demande de congé ?', { title: 'Annuler la demande', confirmLabel: 'Annuler la demande', cancelLabel: 'Garder', danger: true })) cancelLeave.mutate(l.id); }}><X size={13} aria-hidden="true" /> Annuler</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </DataPanel>
         )}
       </section>
 
-      <section className="prj-panel" style={box}>
-        <SectionTitle icon={HandCoins} actions={!advForm && !pendingAdvance && e.isActive ? (
-          <button className="odoo-btn-primary" style={smallBtn} onClick={() => setAdvForm({ amount: '', monthlyDeduction: '', reason: '' })}><Plus size={11} /> Demander une avance</button>
-        ) : undefined}>Mes avances sur salaire</SectionTitle>
+      <section style={section} aria-label="Mes avances sur salaire">
+        <SectionHeader title="Mes avances sur salaire">
+          {!advForm && !pendingAdvance && e.isActive && (
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setAdvForm({ amount: '', monthlyDeduction: '', reason: '' })}><Plus size={13} aria-hidden="true" /> Demander une avance</button>
+          )}
+        </SectionHeader>
         {advForm && (
           <div style={formBox}>
-            <Field label={`Montant (${currencySymbol()})`}>
+            <Field label={`Montant (${cur})`} required>
               <input className={inputCls} type="number" min="0" step="10" value={advForm.amount} onChange={ev => setAdvForm({ ...advForm, amount: ev.target.value })} /></Field>
             <Field label="Retenue par paie (facultatif)">
               <input className={inputCls} type="number" min="0" step="10" value={advForm.monthlyDeduction} onChange={ev => setAdvForm({ ...advForm, monthlyDeduction: ev.target.value })} /></Field>
             <Field label="Motif">
               <input className={inputCls} value={advForm.reason} onChange={ev => setAdvForm({ ...advForm, reason: ev.target.value })} /></Field>
-            <div style={{ ...full, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="odoo-btn-secondary" onClick={() => setAdvForm(null)}>Annuler</button>
-              <button className="odoo-btn-primary" disabled={!(parseFloat(advForm.amount) > 0) || requestAdvance.isPending} onClick={() => requestAdvance.mutate()}>Envoyer la demande</button>
+            <div style={{ ...full, margin: '0 -12px -12px' }}>
+              <FormFooter onCancel={() => setAdvForm(null)} submitLabel="Envoyer la demande" busy={requestAdvance.isPending}
+                disabled={!(parseFloat(advForm.amount) > 0)} onSubmit={() => requestAdvance.mutate()} />
             </div>
           </div>
         )}
-        {(adv?.requests ?? []).length === 0 && (adv?.advances ?? []).length === 0 ? <p style={empty}>Aucune avance.</p> : (
-          <table className="odoo-table">
-            <thead><tr><th>Date</th><th>Objet</th><th style={{ textAlign: 'right' }}>Montant</th><th style={{ textAlign: 'right' }}>Reste dû</th><th>Statut</th><th style={{ width: 40 }}></th></tr></thead>
-            <tbody>
-              {(adv?.requests ?? []).filter((r: Record<string, any>) => r.status !== 'approved').map((r: Record<string, any>) => (
-                <tr key={r.id} title={r.decision_note ?? undefined}>
-                  <td>{frd(String(r.created_at).slice(0, 10))}</td><td>Demande{r.reason ? ` · ${r.reason}` : ''}</td>
-                  <td style={{ textAlign: 'right' }}>{fmt(r.amount)}</td><td style={{ textAlign: 'right' }}>—</td><td>{tag(r.status)}</td>
-                  <td>{r.status === 'pending' && <button className="odoo-pager-btn" title="Annuler la demande" style={{ color: 'var(--prj-red)' }} onClick={async () => { if (await confirm('Annuler cette demande d\'avance ?', { title: 'Annuler la demande', confirmLabel: 'Annuler la demande', cancelLabel: 'Garder', danger: true })) cancelAdvance.mutate(r.id); }}><X size={13} /></button>}</td>
-                </tr>
-              ))}
-              {(adv?.advances ?? []).map((a: Record<string, any>) => (
-                <tr key={a.id}>
-                  <td>{frd(a.advance_date)}</td><td>Avance versée</td>
-                  <td style={{ textAlign: 'right' }}>{fmt(a.amount)}</td><td style={{ textAlign: 'right' }}>{fmt(a.remaining_amount)}</td><td>{tag(a.status)}</td><td></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {!hasAdvances ? <EmptyState icon={HandCoins} title="Aucune avance" /> : (
+          <DataPanel label="Mes avances sur salaire">
+            <table className="odoo-table">
+              <thead><tr><th>Date</th><th>Objet</th><th className="ds-num">Montant ({cur})</th><th className="ds-num">Reste dû ({cur})</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+              <tbody>
+                {(adv?.requests ?? []).filter((r: Record<string, any>) => r.status !== 'approved').map((r: Record<string, any>) => (
+                  <tr key={r.id} title={r.decision_note ?? undefined}>
+                    <td>{frd(String(r.created_at).slice(0, 10))}</td><td className="ds-strong">Demande{r.reason ? ` · ${r.reason}` : ''}</td>
+                    <td className="ds-num">{fmt(r.amount)}</td><td className="ds-num">—</td><td>{tag(r.status)}</td>
+                    <td className="ds-actions">{r.status === 'pending' && <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={async () => { if (await confirm('Annuler cette demande d\'avance ?', { title: 'Annuler la demande', confirmLabel: 'Annuler la demande', cancelLabel: 'Garder', danger: true })) cancelAdvance.mutate(r.id); }}><X size={13} aria-hidden="true" /> Annuler</button>}</td>
+                  </tr>
+                ))}
+                {(adv?.advances ?? []).map((a: Record<string, any>) => (
+                  <tr key={a.id}>
+                    <td>{frd(a.advance_date)}</td><td className="ds-strong">Avance versée</td>
+                    <td className="ds-num">{fmt(a.amount)}</td><td className="ds-num">{fmt(a.remaining_amount)}</td><td>{tag(a.status)}</td><td className="ds-actions"></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </DataPanel>
         )}
       </section>
     </div>

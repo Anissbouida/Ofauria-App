@@ -143,13 +143,13 @@ export default function ParametersPanel({ keys, domains, searchable = !keys && !
       {searchable && (
         <div className="prj-toolbar">
           <label className="prj-search" style={{ maxWidth: 420 }}>
-            <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+            <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
             <input id="parameters-search" type="search"
               placeholder="Rechercher un paramètre…" value={q} onChange={e => setQ(e.target.value)} aria-label="Rechercher un paramètre" />
           </label>
         </div>
       )}
-      {!shown.length && !extras && <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.875rem' }}>Aucun paramètre {q ? 'ne correspond à la recherche' : 'accessible'}.</p>}
+      {!shown.length && !extras && <p style={{ color: 'var(--ds-muted)', fontSize: '0.875rem' }}>Aucun paramètre {q ? 'ne correspond à la recherche' : 'accessible'}.</p>}
       {groups.map(([theme, params], i) => (
         <section key={theme} id={settingAnchor(theme)} data-toc={theme} className="odoo-company-card odoo-params-group">
           <h3>
@@ -234,7 +234,7 @@ function ParameterRow({ param }: { param: BusinessParameter }) {
           )}
           {param.available && !isDefault && <span className="odoo-params-custom" title="Valeur personnalisée (différente de la valeur par défaut)" />}
           {last && (
-            <button type="button" className="odoo-params-icon" aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}
+            <button type="button" className="odoo-params-icon" aria-label="Voir l'historique des modifications" aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}
               title={`Modifié le ${new Date(last.changed_at).toLocaleDateString('fr-FR')}${last.by_name ? ` par ${last.by_name}` : ''} : voir l'historique`}>
               <History size={13} />
             </button>
@@ -242,7 +242,7 @@ function ParameterRow({ param }: { param: BusinessParameter }) {
           {!disabled && !draftIsDefault && (
             // Ne fait que préparer le brouillon : l'enregistrement passe par la barre commune.
             <button type="button" className="odoo-params-icon" title="Revenir à la valeur par défaut (à enregistrer ensuite)"
-              onClick={() => setDraft({ ...draft, ...Object.fromEntries(param.fields.map(f => [f.name, param.defaults[f.name]])) })}>
+              onClick={() => setDraft({ ...draft, ...Object.fromEntries(param.fields.map(f => [f.name, param.defaults[f.name]])) })} aria-label="Revenir à la valeur par défaut (à enregistrer ensuite)">
               <RotateCcw size={13} />
             </button>
           )}

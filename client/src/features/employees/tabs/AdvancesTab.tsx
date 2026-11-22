@@ -5,20 +5,21 @@ import { employeesApi, advancesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import { format } from 'date-fns';
 import {
-  Plus, Pencil, Users, Check, ChevronDown, ChevronUp, Trash2, RotateCcw, HandCoins, Info,
+  Plus, Pencil, ChevronDown, ChevronUp, Trash2, RotateCcw, HandCoins, Info,
 } from 'lucide-react';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../../components/ui/StatusTag';
-import { ListEmpty } from '../../sales/ListTemplate';
-import { HrModal, Field, LoadingPanel, Segmented, inputCls } from '../ui';
+import { RowMenu } from '../../../components/ui/RowMenu';
+import { HrModal, Field, LoadingPanel, Segmented, SubmitButton, HrHeaderActions, inputCls } from '../ui';
+import { KpiGrid, KpiCard, Toolbar, DataPanel, TableFooter, EmptyState, ErrorState } from '../../../components/ds';
 import { notify } from '../../../components/ui/InlineNotification';
 import SearchSelect from '../../../components/ui/SearchSelect';
 import { useAuth } from '../../../context/AuthContext';
-import { MONTH_NAMES, isoDate } from '../shared';
+import { MONTH_NAMES, isoDate, amount as fmt } from '../shared';
 import AdvanceRequestsPanel from './AdvanceRequestsPanel';
 
-const HINT = { fontSize: '0.75rem', marginTop: 4, color: 'var(--odoo-text-muted)' } as const;
+const HINT = { fontSize: 12, margin: 0, color: 'var(--ds-muted)' } as const;
 
 /* ═══════════════════════ ADVANCES TAB (avances sur salaire) ═══════════════════════ */
 export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -41,7 +42,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
   const { user } = useAuth();
   const confirm = useConfirm();
 
-  const { data: advances = [], isLoading } = useQuery({
+  const { data: advances = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['salary-advances', statusFilter],
     queryFn: () => advancesApi.list(statusFilter === 'open' ? { status: 'open' } : undefined),
   });
@@ -119,63 +120,66 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
     return r.repaymentDate as string;
   };
 
+  const openEdit = (a: Record<string, any>) => {
+    setEditingAdvance(a);
+    setEditAmount(pn(a.amount).toFixed(2));
+    setEditMonthly(pn(a.monthly_deduction) > 0 ? pn(a.monthly_deduction).toFixed(2) : '');
+    setEditDate(isoDate(a.advance_date));
+    setEditMethod((a.payment_method as string) || 'cash');
+    setEditNotes((a.notes as string) || '');
+  };
+  const isAdmin = user?.role === 'admin';
+
   return (
     <>
+      {/* Action principale de la page, à droite du fil d'Ariane. */}
+      <HrHeaderActions>
+        <button type="button" onClick={() => { setFormAmount(''); setFormMonthly(''); setFormEmployeeId(''); setShowForm(true); }} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} aria-hidden="true" /> Accorder une avance
+        </button>
+      </HrHeaderActions>
+
       <AdvanceRequestsPanel />
-      <div className="prj-toolbar" style={{ justifyContent: 'space-between' }}>
+
+      <KpiGrid>
+        <KpiCard label={`Avances en cours (${currencySymbol()})`} value={fmt(totalOutstanding)} sub="à récupérer sur les paies" tone={totalOutstanding > 0 ? 'orange' : undefined} />
+        <KpiCard label="Employés concernés" value={employeesConcerned} />
+        <KpiCard label={`Total accordé${statusFilter === 'open' ? ' (en cours)' : ''} (${currencySymbol()})`} value={fmt(totalGranted)} />
+        <KpiCard label={`Déjà remboursé (${currencySymbol()})`} value={fmt(totalRepaid)} />
+      </KpiGrid>
+
+      <Toolbar>
         <Segmented label="Filtre des avances" value={statusFilter} onChange={setStatusFilter}
           options={[{ key: 'open', label: 'En cours' }, { key: 'all', label: 'Toutes' }]} />
-        <button onClick={() => { setFormAmount(''); setFormMonthly(''); setFormEmployeeId(''); setShowForm(true); }} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Accorder une avance
-        </button>
-      </div>
-
-      {/* Tuiles d'indicateurs */}
-      <div className="prj-kpis">
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Avances en cours</span><HandCoins size={14} /></div>
-          <div className="prj-kpi-value" style={{ color: totalOutstanding > 0 ? 'var(--prj-orange)' : undefined }}>
-            {totalOutstanding.toFixed(2)} <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{currencySymbol()}</span>
-          </div>
-          <div className="prj-kpi-sub">à récupérer sur les paies</div>
-        </div>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Employés concernés</span><Users size={14} /></div>
-          <div className="prj-kpi-value">{employeesConcerned}</div>
-        </div>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Total accordé{statusFilter === 'open' ? ' (en cours)' : ''}</span></div>
-          <div className="prj-kpi-value">{totalGranted.toFixed(2)} <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{currencySymbol()}</span></div>
-        </div>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Déjà remboursé</span></div>
-          <div className="prj-kpi-value" style={{ color: totalRepaid > 0 ? 'var(--prj-green)' : undefined }}>
-            {totalRepaid.toFixed(2)} <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{currencySymbol()}</span>
-          </div>
-        </div>
-      </div>
+      </Toolbar>
 
       {isLoading ? (
         <LoadingPanel />
+      ) : isError ? (
+        <ErrorState onRetry={() => void refetch()} />
       ) : rows.length === 0 ? (
-        <ListEmpty icon={HandCoins} title={statusFilter === 'open' ? 'Aucune avance en cours.' : 'Aucune avance enregistrée.'}
-          text="La retenue se fait automatiquement au moment de payer le salaire (onglet Paie)." />
+        <EmptyState icon={HandCoins} title={statusFilter === 'open' ? 'Aucune avance en cours' : 'Aucune avance enregistrée'}
+          text="La retenue se fait automatiquement au moment de payer le salaire (écran Paie)." />
       ) : (
-        <div className="prj-panel hr-plain"><div className="prj-scroll">
+        <DataPanel label="Avances sur salaire" footer={<TableFooter note={<>
+          {rows.length} avance{rows.length > 1 ? 's' : ''} · L'avance sort de la caisse au moment de l'octroi (visible dans Caisse et la trésorerie) mais n'est pas une charge :
+          c'est une créance sur l'employé (compte 3431). La charge salaire est reconnue au fil des retenues, proposées automatiquement au paiement de la paie.
+        </>} />}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 20 }}></th>
+                <th style={{ width: 20 }}><span className="sr-only">Retenues</span></th>
                 <th>Employé</th>
+                <th>Poste</th>
                 <th>Date</th>
-                <th style={{ textAlign: 'right' }}>Montant</th>
-                <th style={{ textAlign: 'right' }}>Remboursé</th>
-                <th style={{ textAlign: 'right' }}>Solde</th>
-                <th style={{ textAlign: 'right' }} title="Plan d'étalement : retenue proposée à chaque paie">Retenue/mois</th>
-                <th style={{ textAlign: 'center' }}>Statut</th>
+                <th className="ds-num">Montant ({currencySymbol()})</th>
+                <th className="ds-num">Remboursé ({currencySymbol()})</th>
+                <th className="ds-num">Solde ({currencySymbol()})</th>
+                <th className="ds-num" title="Plan d'étalement : retenue proposée à chaque paie">Retenue par mois ({currencySymbol()})</th>
+                <th>Statut</th>
                 <th>Mode</th>
-                <th style={{ textAlign: 'center', width: 60 }}></th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -183,70 +187,64 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                 const reps = (a.repayments || []) as Record<string, any>[];
                 const isExpanded = expanded.has(a.id as string);
                 const meta = STATUS_META[a.status as string] || STATUS_META.open;
+                const who = `${a.first_name} ${a.last_name}`;
                 return (
                   <Fragment key={a.id as string}>
                     <tr onClick={() => reps.length > 0 && toggleExpand(a.id as string)} style={{ cursor: reps.length > 0 ? 'pointer' : 'default' }}>
-                      <td>{reps.length > 0 && (isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}</td>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                          <Users size={11} style={{ color: 'var(--theme-accent)' }} />
-                          {a.first_name as string} {a.last_name as string}
-                          <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {getRoleLabel(a.employee_role as string)}</span>
-                        </span>
-                      </td>
-                      <td style={{ color: 'var(--odoo-text-muted)' }}>{isoDate(a.advance_date) ? format(new Date(isoDate(a.advance_date)), 'dd/MM/yyyy') : ''}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 500 }}>{pn(a.amount).toFixed(2)}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--prj-green)' }}>{(pn(a.amount) - pn(a.remaining_amount)).toFixed(2)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--prj-orange)' }}>{pn(a.remaining_amount).toFixed(2)}</td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td>{reps.length > 0 && (
+                        <button type="button" className="ds-icon-btn" aria-expanded={isExpanded} aria-label={`${isExpanded ? 'Masquer' : 'Afficher'} les retenues de ${who}`}
+                          onClick={ev => { ev.stopPropagation(); toggleExpand(a.id as string); }}>
+                          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      )}</td>
+                      <td className="ds-strong">{who}</td>
+                      <td>{getRoleLabel(a.employee_role as string)}</td>
+                      <td>{isoDate(a.advance_date) ? format(new Date(isoDate(a.advance_date)), 'dd/MM/yyyy') : ''}</td>
+                      <td className="ds-num">{fmt(pn(a.amount))}</td>
+                      <td className="ds-num">{fmt(pn(a.amount) - pn(a.remaining_amount))}</td>
+                      <td className="ds-num ds-strong">{fmt(pn(a.remaining_amount))}</td>
+                      <td className="ds-num">
                         {pn(a.monthly_deduction) > 0 ? (
                           <span title={pn(a.remaining_amount) > 0 ? `≈ ${Math.ceil(pn(a.remaining_amount) / pn(a.monthly_deduction))} paie(s) restante(s)` : 'Plan soldé'}>
-                            {pn(a.monthly_deduction).toFixed(2)}
+                            {fmt(pn(a.monthly_deduction))}
                             {pn(a.remaining_amount) > 0 && (
-                              <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}> · {Math.ceil(pn(a.remaining_amount) / pn(a.monthly_deduction))} paies</span>
+                              <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}> · {Math.ceil(pn(a.remaining_amount) / pn(a.monthly_deduction))} paies</span>
                             )}
                           </span>
-                        ) : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>}
+                        ) : '—'}
                       </td>
-                      <td style={{ textAlign: 'center' }}><StatusTag tone={meta.tone} label={meta.label} /></td>
-                      <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>{getPaymentLabel(a.payment_method as string)}</td>
-                      <td style={{ textAlign: 'center' }}>
-                        {user?.role === 'admin' && (
-                          <div style={{ display: 'inline-flex', gap: 2 }}>
-                            <button onClick={ev => {
-                              ev.stopPropagation();
-                              setEditingAdvance(a);
-                              setEditAmount(pn(a.amount).toFixed(2));
-                              setEditMonthly(pn(a.monthly_deduction) > 0 ? pn(a.monthly_deduction).toFixed(2) : '');
-                              setEditDate(isoDate(a.advance_date));
-                              setEditMethod((a.payment_method as string) || 'cash');
-                              setEditNotes((a.notes as string) || '');
-                            }} className="odoo-pager-btn" title={reps.length > 0 ? 'Modifier le plan de retenue / notes' : 'Modifier l\'avance'}>
-                              <Pencil size={12} />
+                      <td><StatusTag tone={meta.tone} label={meta.label} /></td>
+                      <td>{getPaymentLabel(a.payment_method as string)}</td>
+                      <td className="ds-actions" onClick={ev => ev.stopPropagation()}>
+                        {isAdmin && (
+                          <>
+                            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => openEdit(a)}
+                              title={reps.length > 0 ? 'Modifier le plan de retenue / notes' : 'Modifier l\'avance'}>
+                              <Pencil size={13} aria-hidden="true" /> Modifier
                             </button>
                             {reps.length === 0 && (
-                              <button onClick={async ev => {
-                                ev.stopPropagation();
-                                if (!(await confirm(`Supprimer l'avance de ${money(pn(a.amount))} pour ${a.first_name} ${a.last_name} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`,
-                                  { title: 'Supprimer l\'avance', confirmLabel: 'Supprimer', danger: true }))) return;
-                                deleteMutation.mutate(a.id as string);
-                              }} className="odoo-pager-btn" title="Supprimer (aucun remboursement)" style={{ color: 'var(--prj-red)' }}>
-                                <Trash2 size={12} />
-                              </button>
+                              <RowMenu label={`Plus d'actions pour l'avance de ${who}`} items={[{
+                                label: 'Supprimer', icon: Trash2, danger: true,
+                                onSelect: async () => {
+                                  if (!(await confirm(`Supprimer l'avance de ${money(pn(a.amount))} pour ${who} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`,
+                                    { title: 'Supprimer l\'avance', confirmLabel: 'Supprimer', danger: true }))) return;
+                                  deleteMutation.mutate(a.id as string);
+                                },
+                              }]} />
                             )}
-                          </div>
+                          </>
                         )}
                       </td>
                     </tr>
                     {isExpanded && reps.map(r => (
-                      <tr key={r.id as string} style={{ background: 'color-mix(in srgb, var(--kl-bg, var(--theme-bg-page)) 60%, transparent)' }}>
+                      <tr key={r.id as string} style={{ background: 'color-mix(in srgb, var(--ds-bg) 60%, transparent)' }}>
                         <td></td>
-                        <td colSpan={3} style={{ paddingLeft: 28, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
-                          <RotateCcw size={10} style={{ display: 'inline', marginRight: 4 }} />
+                        <td colSpan={4} style={{ color: 'var(--ds-muted)' }}>
+                          <RotateCcw size={12} aria-hidden="true" style={{ display: 'inline', marginRight: 4 }} />
                           {repaymentLabel(r)}
                         </td>
-                        <td style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--prj-green)' }}>+ {pn(r.amount).toFixed(2)}</td>
-                        <td colSpan={5} style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-light)' }}>{r.repaymentDate as string}</td>
+                        <td className="ds-num">+ {fmt(pn(r.amount))}</td>
+                        <td colSpan={5} style={{ color: 'var(--ds-muted)' }}>{r.repaymentDate as string}</td>
                       </tr>
                     ))}
                   </Fragment>
@@ -254,12 +252,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
               })}
             </tbody>
           </table>
-        </div>
-        <p className="hr-panel-foot" style={{ margin: 0 }}>
-          L'avance sort de la caisse au moment de l'octroi (visible dans Caisse et la trésorerie) mais n'est pas une charge :
-          c'est une créance sur l'employé (compte 3431). La charge salaire est reconnue au fil des retenues, proposées automatiquement au paiement de la paie.
-        </p>
-        </div>
+        </DataPanel>
       )}
 
       {/* ─── Grant advance modal ─── */}
@@ -267,10 +260,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
         <HrModal icon={HandCoins} crumb="Avance" title="Accorder une avance" width={520} onClose={() => setShowForm(false)}
           footer={<>
             <button type="button" className="odoo-btn-secondary" onClick={() => setShowForm(false)}>Annuler</button>
-            <button type="submit" form="advance-grant-form" disabled={createMutation.isPending} className="odoo-btn-primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <HandCoins size={13} /> {createMutation.isPending ? 'Enregistrement...' : 'Accorder l\'avance'}
-            </button>
+            <SubmitButton pending={createMutation.isPending} onClick={() => (document.getElementById('advance-grant-form') as HTMLFormElement | null)?.requestSubmit()}>Accorder l'avance</SubmitButton>
           </>}>
           <form id="advance-grant-form" onSubmit={e => {
             e.preventDefault();
@@ -291,17 +281,17 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
               monthlyDeduction: monthly > 0 ? monthly : undefined,
             });
           }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Field label="Employé *">
+            <Field label="Employé" required>
               <SearchSelect value={formEmployeeId} onChange={setFormEmployeeId}
                 placeholder="Sélectionner un employé…" width="100%" size="md" ariaLabel="Employé"
                 options={(employees as Record<string, any>[]).filter(e2 => e2.is_active).map(e2 => ({ id: e2.id as string, label: `${e2.first_name as string} ${e2.last_name as string}` }))} />
             </Field>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Field label={`Montant (${currencySymbol()}) *`}>
+            <div className="ds-form-grid">
+              <Field label={`Montant (${currencySymbol()})`} required>
                 <input name="amount" type="number" step="0.01" min="0.01" required
                   value={formAmount} onChange={e => setFormAmount(e.target.value)} className={inputCls} />
               </Field>
-              <Field label="Date *">
+              <Field label="Date" required>
                 <input name="advanceDate" type="date" required defaultValue={format(new Date(), 'yyyy-MM-dd')} className={inputCls} />
               </Field>
             </div>
@@ -322,12 +312,12 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                   <p style={HINT}>Le système proposera ce montant à chaque paie jusqu'au solde de l'avance (modifiable au moment du paiement).</p>
                 );
                 if (monthlyNum > amountNum) return (
-                  <p style={{ ...HINT, color: 'var(--prj-red)' }}>La retenue par mois dépasse le montant de l'avance.</p>
+                  <p style={{ ...HINT, color: 'var(--ds-danger)', fontWeight: 600 }}>La retenue par mois dépasse le montant de l'avance.</p>
                 );
                 const nbMonths = Math.ceil(amountNum / monthlyNum);
                 const lastAmount = Math.round((amountNum - monthlyNum * (nbMonths - 1)) * 100) / 100;
                 return (
-                  <p style={{ ...HINT, color: 'var(--odoo-purple)' }}>
+                  <p style={{ ...HINT, color: 'var(--ds-info)' }}>
                     Étalement : {nbMonths} paie{nbMonths > 1 ? 's' : ''} — {nbMonths > 1 ? `${nbMonths - 1} × ${money(monthlyNum)}` : money(monthlyNum)}
                     {lastAmount !== monthlyNum && nbMonths > 1 ? ` + 1 × ${money(lastAmount)}` : ''}
                   </p>
@@ -335,7 +325,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
               })()}
             </Field>
             <Field label="Notes">
-              <input name="notes" type="text" placeholder="Motif, accord de remboursement..." className={inputCls} />
+              <input name="notes" type="text" placeholder="Motif, accord de remboursement…" className={inputCls} />
             </Field>
           </form>
         </HrModal>
@@ -352,10 +342,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
             tag={<StatusTag tone={meta.tone} label={meta.label} />}
             footer={<>
               <button type="button" className="odoo-btn-secondary" onClick={() => setEditingAdvance(null)}>Annuler</button>
-              <button type="submit" form="advance-edit-form" disabled={updateMutation.isPending} className="odoo-btn-primary"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Check size={13} /> {updateMutation.isPending ? 'Enregistrement...' : 'Enregistrer les modifications'}
-              </button>
+              <SubmitButton pending={updateMutation.isPending} onClick={() => (document.getElementById('advance-edit-form') as HTMLFormElement | null)?.requestSubmit()}>Enregistrer</SubmitButton>
             </>}>
             <form id="advance-edit-form" onSubmit={e => {
               e.preventDefault();
@@ -384,8 +371,8 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                   Le plan de retenue et les notes restent ajustables — les prochaines paies suivront le nouveau plan.
                 </StatusBanner>
               )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Field label={`Montant (${currencySymbol()}) *`}>
+              <div className="ds-form-grid">
+                <Field label={`Montant (${currencySymbol()})`} required>
                   <input type="number" step="0.01" min="0.01" required disabled={hasReps}
                     value={editAmount} onChange={e => setEditAmount(e.target.value)} className={inputCls} />
                 </Field>
@@ -410,12 +397,12 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                   );
                   const refAmount = hasReps ? pn(editingAdvance.amount) : (parseFloat(editAmount) || 0);
                   if (monthlyNum > refAmount) return (
-                    <p style={{ ...HINT, color: 'var(--prj-red)' }}>La retenue par mois dépasse le montant de l'avance.</p>
+                    <p style={{ ...HINT, color: 'var(--ds-danger)', fontWeight: 600 }}>La retenue par mois dépasse le montant de l'avance.</p>
                   );
                   if (remaining <= 0) return null;
                   const nbLeft = Math.ceil(remaining / monthlyNum);
                   return (
-                    <p style={{ ...HINT, color: 'var(--odoo-purple)' }}>
+                    <p style={{ ...HINT, color: 'var(--ds-info)' }}>
                       Solde restant {money(remaining)} → {nbLeft} paie{nbLeft > 1 ? 's' : ''} de {money(monthlyNum)} max.
                     </p>
                   );
@@ -423,7 +410,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
               </Field>
               <Field label="Notes">
                 <input type="text" value={editNotes} onChange={e => setEditNotes(e.target.value)}
-                  placeholder="Motif, accord de remboursement..." className={inputCls} />
+                  placeholder="Motif, accord de remboursement…" className={inputCls} />
               </Field>
             </form>
           </HrModal>

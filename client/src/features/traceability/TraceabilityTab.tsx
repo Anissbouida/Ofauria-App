@@ -13,6 +13,8 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { ListKpi } from '../sales/ListTemplate';
 import { Panel, SectionTitle, PageLoading } from '../controle/KlUi';
+import { EmptyState, NoResultState } from '../../components/ds';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 /**
  * Contrôle & Qualité › Traçabilité & rappels (mig 316).
@@ -79,24 +81,24 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
       </form>
 
       {term.length >= 2 && (isFetching ? <Loading /> : hits.length === 0 ? (
-        <StatusBanner tone="info" icon={Info} title="Aucun lot trouvé" />
+        <NoResultState text="Aucun lot ne correspond à cette recherche." onReset={() => { setInput(''); setTerm(''); }} />
       ) : (
         <Panel>
           <table className="odoo-table">
-            <thead><tr><th>Type</th><th>Lot</th><th>Article</th><th>Fournisseur / magasin</th><th>Date</th><th>DLC</th><th>Statut</th><th /></tr></thead>
+            <thead><tr><th>Type</th><th>Lot</th><th>Article</th><th>Fournisseur / magasin</th><th>Date</th><th>DLC</th><th>Statut</th><th className="ds-actions">Action</th></tr></thead>
             <tbody>
               {hits.map(h => (
                 <tr key={`${h.kind}-${h.id}`} style={{ cursor: 'pointer' }} onClick={() => onPick(h)}>
                   <td><span className={`odoo-tag ${h.kind === 'ingredient_lot' ? 'odoo-tag-blue' : 'odoo-tag-purple'}`}>{h.kind === 'ingredient_lot' ? 'Ingrédient' : 'Produit fini'}</span></td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', fontWeight: 600 }}>
+                  <td className="ds-ref">
                     {h.lot_number}{h.supplier_lot_number && <div style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}>fourn. {h.supplier_lot_number}</div>}
                   </td>
-                  <td>{h.item_name}</td>
+                  <td className="ds-strong">{h.item_name}</td>
                   <td>{h.supplier_name ?? '—'}</td>
                   <td>{d(h.received_at)}</td>
                   <td>{d(h.expiration_date)}</td>
                   <td>{h.status}</td>
-                  <td style={{ textAlign: 'right' }}><button type="button" className="odoo-btn-secondary">{h.kind === 'ingredient_lot' ? 'Aval' : 'Amont'}</button></td>
+                  <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm">{h.kind === 'ingredient_lot' ? 'Voir l\'aval' : 'Voir l\'amont'}</button></td>
                 </tr>
               ))}
             </tbody>
@@ -106,20 +108,18 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
 
       <SectionTitle icon={Siren}>Rappels</SectionTitle>
       {isLoading ? <Loading /> : recalls.length === 0 ? (
-        <StatusBanner tone="success" icon={CheckCircle2} title="Aucun rappel">
-          Pour ouvrir un rappel, recherchez le lot en cause puis utilisez « Ouvrir un rappel ».
-        </StatusBanner>
+        <EmptyState icon={CheckCircle2} title="Aucun rappel" text="Pour ouvrir un rappel, recherchez le lot en cause puis utilisez « Ouvrir un rappel »." />
       ) : (
         <Panel>
           <table className="odoo-table">
-            <thead><tr><th>Référence</th><th>Origine</th><th>Motif</th><th style={{ textAlign: 'right' }}>Lots</th><th>Ouvert le</th><th>Statut</th></tr></thead>
+            <thead><tr><th>Référence</th><th>Origine</th><th>Motif</th><th className="ds-num">Lots</th><th>Ouvert le</th><th>Statut</th></tr></thead>
             <tbody>
               {recalls.map(r => (
                 <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => onRecall(r.id)}>
-                  <td style={{ fontWeight: 600 }}>{r.reference}</td>
+                  <td><span className="ds-ref">{r.reference}</span></td>
                   <td>{r.origin_label}</td>
                   <td style={{ maxWidth: 280 }}>{r.reason}</td>
-                  <td style={{ textAlign: 'right' }}>{r.items_count}</td>
+                  <td className="ds-num">{r.items_count}</td>
                   <td>{dt(r.created_at)}<div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.created_by_name}</div></td>
                   <td><RecallStatusTag status={r.status} /></td>
                 </tr>
@@ -140,7 +140,7 @@ function OpenRecallButton({ originKind, originId, onCreated }: { originKind: 'in
     onError: (e) => notify.error(e),
   });
   return (
-    <button type="button" className="odoo-btn-danger" disabled={create.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+    <button type="button" className="ds-btn-danger" disabled={create.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
       onClick={() => {
         const reason = window.prompt('Motif du rappel (contamination, corps étranger, alerte fournisseur…)');
         if (reason && reason.trim().length >= 3) create.mutate(reason.trim());
@@ -154,7 +154,7 @@ function OpenRecallButton({ originKind, originId, onCreated }: { originKind: 'in
 function Header({ onBack, title, children }: { onBack: () => void; title: string; children?: React.ReactNode }) {
   return (
     <div className="klc-record-head no-print">
-      <button type="button" className="odoo-btn-secondary" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ArrowLeft size={13} /> Retour</button>
+      <button type="button" className="odoo-btn-secondary" onClick={onBack}><ArrowLeft size={13} aria-hidden="true" /> Retour</button>
       <h2>{title}</h2>
       <div className="klc-section-actions">{children}</div>
     </div>
@@ -171,10 +171,10 @@ function LotSalesRow({ lot, colSpan }: { lot: ProductLotTrace; colSpan: number }
         <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Aucune vente ni livraison tracée pour ce lot (les ventes ne sont rattachées aux lots que depuis la mise en service).</span>
       ) : (
         <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th>Date</th><th>Pièce</th><th style={{ textAlign: 'right' }}>Qté du lot</th><th>Client</th></tr></thead>
+          <thead><tr><th>Date</th><th>Pièce</th><th className="ds-num">Qté du lot</th><th>Client</th></tr></thead>
           <tbody>{data.map((s, i) => (
             <tr key={`${s.sale_id ?? s.delivery_note_id}-${i}`}><td>{dt(s.created_at)}</td>
-              <td>{s.kind === 'delivery' ? <>BL {s.delivery_note_number} <span className="odoo-tag odoo-tag-blue">pro</span></> : (s.sale_number ?? '—')}</td><td style={{ textAlign: 'right' }}>{q(s.quantity)}</td>
+              <td>{s.kind === 'delivery' ? <>BL {s.delivery_note_number} <span className="odoo-tag odoo-tag-blue">pro</span></> : (s.sale_number ?? '—')}</td><td className="ds-num">{q(s.quantity)}</td>
               <td>{s.customer_name ? `${s.customer_name}${s.customer_phone ? ` · ${s.customer_phone}` : ''}` : <span style={{ color: 'var(--theme-text-muted)' }}>anonyme</span>}</td></tr>
           ))}</tbody>
         </table>
@@ -214,10 +214,10 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
       {data.plans.length > 0 && (
         <Panel>
           <table className="odoo-table">
-            <thead><tr><th>Production</th><th>Magasin</th><th>Statut</th><th style={{ textAlign: 'right' }}>Quantité du lot utilisée</th><th>Voie</th></tr></thead>
+            <thead><tr><th>Production</th><th>Magasin</th><th>Statut</th><th className="ds-num">Quantité du lot utilisée</th><th>Voie</th></tr></thead>
             <tbody>{data.plans.map(p => (
               <tr key={p.id}><td>{d(p.plan_date)}</td><td>{p.store_name ?? '—'}</td><td>{p.status}</td>
-                <td style={{ textAlign: 'right' }}>{p.qty_used != null ? `${q(p.qty_used)} ${lot.unit ?? ''}` : '—'}</td>
+                <td className="ds-num">{p.qty_used != null ? `${q(p.qty_used)} ${lot.unit ?? ''}` : '—'}</td>
                 <td>{p.depth === 0 ? 'directe' : `via semi-fini (niveau ${p.depth})`}</td></tr>
             ))}</tbody>
           </table>
@@ -227,10 +227,10 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
       {data.semiLots.length > 0 && (
         <Panel>
           <table className="odoo-table">
-            <thead><tr><th>Semi-fini</th><th>Lot</th><th style={{ textAlign: 'right' }}>Produit</th><th style={{ textAlign: 'right' }}>Restant</th><th>Statut</th></tr></thead>
+            <thead><tr><th>Semi-fini</th><th>Lot</th><th className="ds-num">Produit</th><th className="ds-num">Restant</th><th>Statut</th></tr></thead>
             <tbody>{data.semiLots.map(s => (
               <tr key={s.id}><td>{s.recipe_name}</td><td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{s.lot_number}</td>
-                <td style={{ textAlign: 'right' }}>{q(s.quantity_produced)} {s.unit}</td><td style={{ textAlign: 'right' }}>{q(s.quantity_remaining)} {s.unit}</td><td>{s.status}</td></tr>
+                <td className="ds-num">{q(s.quantity_produced)} {s.unit}</td><td className="ds-num">{q(s.quantity_remaining)} {s.unit}</td><td>{s.status}</td></tr>
             ))}</tbody>
           </table>
         </Panel>
@@ -239,7 +239,7 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
       {data.productLots.length > 0 && (
         <Panel>
           <table className="odoo-table">
-            <thead><tr><th>Produit</th><th>Lot</th><th>Lien</th><th>Magasin</th><th>DLC</th><th style={{ textAlign: 'right' }}>Produit</th><th style={{ textAlign: 'right' }}>Vendu</th><th style={{ textAlign: 'right' }}>Perdu</th><th style={{ textAlign: 'right' }}>En stock</th><th /></tr></thead>
+            <thead><tr><th>Produit</th><th>Lot</th><th>Lien</th><th>Magasin</th><th>DLC</th><th className="ds-num">Produit</th><th className="ds-num">Vendu</th><th className="ds-num">Perdu</th><th className="ds-num">En stock</th><th /></tr></thead>
             <tbody>{data.productLots.map(l => [
               <tr key={l.id} className={l.remaining_qty > 0 ? 'row-warning' : undefined}>
                 <td style={{ fontWeight: 600 }}>{l.product_name}</td>
@@ -247,11 +247,11 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
                 <td><CertaintyTag c={l.certainty} /></td>
                 <td>{l.store_name ?? '—'}</td>
                 <td>{d(l.expires_at)}</td>
-                <td style={{ textAlign: 'right' }}>{q(l.quantity_total)}</td>
-                <td style={{ textAlign: 'right' }}>{q(l.sold_qty)}</td>
-                <td style={{ textAlign: 'right' }}>{q(l.wasted_qty + l.recycled_qty)}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{q(l.remaining_qty)}</td>
-                <td style={{ textAlign: 'right' }}>
+                <td className="ds-num">{q(l.quantity_total)}</td>
+                <td className="ds-num">{q(l.sold_qty)}</td>
+                <td className="ds-num">{q(l.wasted_qty + l.recycled_qty)}</td>
+                <td className="ds-num" style={{ fontWeight: 600 }}>{q(l.remaining_qty)}</td>
+                <td className="ds-num">
                   <button type="button" className="odoo-btn-secondary" onClick={() => setOpenSales(openSales === l.id ? null : l.id)}>Ventes ({l.sales_count})</button>
                 </td>
               </tr>,
@@ -297,7 +297,7 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
       ) : (
         <Panel>
           <table className="odoo-table">
-            <thead><tr><th>Ingrédient</th><th>Lot</th><th>Lien</th><th>Fournisseur</th><th>DLC</th><th style={{ textAlign: 'right' }}>Utilisé</th><th>Voie</th><th /></tr></thead>
+            <thead><tr><th>Ingrédient</th><th>Lot</th><th>Lien</th><th>Fournisseur</th><th>DLC</th><th className="ds-num">Utilisé</th><th>Voie</th><th /></tr></thead>
             <tbody>{data.ingredientLots.map((l, i) => (
               <tr key={`${l.id}-${i}`}>
                 <td style={{ fontWeight: 600 }}>{l.ingredient_name}</td>
@@ -305,9 +305,9 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
                 <td><CertaintyTag c={l.certainty} /></td>
                 <td>{l.supplier_name ?? '—'}</td>
                 <td>{d(l.expiration_date)}</td>
-                <td style={{ textAlign: 'right' }}>{q(l.qty_used)} {l.unit ?? ''}</td>
+                <td className="ds-num">{q(l.qty_used)} {l.unit ?? ''}</td>
                 <td>{l.depth === 0 ? 'directe' : `semi-fini niv. ${l.depth}`}</td>
-                <td style={{ textAlign: 'right' }}><button type="button" className="odoo-btn-secondary" onClick={() => onLot(l.id)}>Aval</button></td>
+                <td className="ds-num"><button type="button" className="odoo-btn-secondary" onClick={() => onLot(l.id)}>Aval</button></td>
               </tr>
             ))}</tbody>
           </table>
@@ -322,6 +322,7 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
 function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
   const qc = useQueryClient();
   const { data: r, isLoading } = useQuery({ queryKey: ['recall', id], queryFn: () => traceabilityApi.recall(id) });
+  const confirm = useConfirm();
   const refresh = () => { qc.invalidateQueries({ queryKey: ['recall', id] }); qc.invalidateQueries({ queryKey: ['recalls'] }); };
   const block = useMutation({ mutationFn: () => traceabilityApi.block(id), onSuccess: () => { refresh(); notify.success('Lots bloqués, boutiques prévenues'); }, onError: (e) => notify.error(e) });
   const dispo = useMutation({
@@ -337,8 +338,8 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
       <Header onBack={onBack} title={`Rappel ${r.reference}`}>
         <button type="button" className="odoo-btn-secondary" onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Rapport</button>
         {r.status === 'open' && (
-          <button type="button" className="odoo-btn-danger" disabled={block.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            onClick={() => { if (window.confirm(`Bloquer les ${r.items.length} lot(s) ? Ils ne pourront plus être utilisés ni vendus.`)) block.mutate(); }}>
+          <button type="button" className="ds-btn-danger" disabled={block.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            onClick={async () => { if (await confirm(`Bloquer les ${r.items.length} lot(s) ? Ils ne pourront plus être utilisés ni vendus.`, { title: 'Bloquer les lots', confirmLabel: 'Bloquer les lots', danger: true })) block.mutate(); }}>
             <Lock size={13} /> Bloquer les lots
           </button>
         )}
@@ -374,7 +375,7 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
 
       <Panel>
         <table className="odoo-table">
-          <thead><tr><th>Type</th><th>Article</th><th>Lot</th><th>Lien</th><th>Magasin</th><th style={{ textAlign: 'right' }}>Vendu</th><th style={{ textAlign: 'right' }}>En stock</th><th>Statut</th><th>Destination</th></tr></thead>
+          <thead><tr><th>Type</th><th>Article</th><th>Lot</th><th>Lien</th><th>Magasin</th><th className="ds-num">Vendu</th><th className="ds-num">En stock</th><th>Statut</th><th>Destination</th></tr></thead>
           <tbody>{r.items.map(i => (
             <tr key={i.id} className={(i.current_remaining ?? 0) > 0 && !i.disposition ? 'row-warning' : undefined}>
               <td>{i.item_kind === 'ingredient_lot' ? 'Ingrédient' : i.item_kind === 'semi_finished_lot' ? 'Semi-fini' : 'Produit fini'}</td>
@@ -382,8 +383,8 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
               <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{i.lot_number ?? '—'}</td>
               <td><CertaintyTag c={i.certainty} /></td>
               <td>{i.store_name ?? '—'}</td>
-              <td style={{ textAlign: 'right' }}>{i.item_kind === 'product_lot' ? <>{q(i.qty_sold)}{i.sales_count ? <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{i.sales_count} ticket(s)</div> : null}</> : '—'}</td>
-              <td style={{ textAlign: 'right', fontWeight: 600 }}>{q(i.current_remaining)} {i.unit && i.unit !== 'u' ? i.unit : ''}</td>
+              <td className="ds-num">{i.item_kind === 'product_lot' ? <>{q(i.qty_sold)}{i.sales_count ? <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{i.sales_count} ticket(s)</div> : null}</> : '—'}</td>
+              <td className="ds-num" style={{ fontWeight: 600 }}>{q(i.current_remaining)} {i.unit && i.unit !== 'u' ? i.unit : ''}</td>
               <td>{i.current_status}</td>
               <td>
                 {r.status === 'closed' ? (i.disposition ? DISPOSITION_LABELS[i.disposition] : '—') : (

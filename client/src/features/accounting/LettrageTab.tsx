@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Link2, Unlink, Lock, Calendar, CheckCircle2, Info, Wand2, GitMerge } from 'lucide-react';
+import { Loader2, Link2, Unlink, Lock, CheckCircle2, Info, Wand2, GitMerge } from 'lucide-react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -9,6 +9,8 @@ import { apiErrorMessage } from '../../api/errors';
 import { lettrageApi } from '../../api/ledger.api';
 import type { LettrageLine, LettrageStatus } from '../../api/ledger.api';
 import { currencySymbol } from '../../utils/money';
+import { KpiCard, KpiGrid, LoadingState, EmptyState, Segmented, Toolbar } from '../../components/ds';
+import { DateRangeField } from './AccToolbarFields';
 
 /**
  * Lettrage manuel (mig 420) : sur un compte de tiers (et un tiers pour un
@@ -154,7 +156,43 @@ export default function LettrageTab() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
+      {!!(autoQ.data && (autoQ.data.invoices || autoQ.data.partial)) && (
+        <StatusBanner tone="orange" icon={Wand2}
+          title={[autoQ.data.invoices ? `${autoQ.data.invoices} facture(s) soldée(s) à lettrer` : '',
+                  autoQ.data.partial ? `${autoQ.data.partial} partiellement réglée(s) à pré-lettrer` : ''].filter(Boolean).join(' · ')}
+          actions={<button type="button" className="odoo-btn-primary" disabled={autoMut.isPending} onClick={askAuto}>
+            {autoMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Rapprocher automatiquement
+          </button>}>
+          {auxiliaryId ? 'Sur ce tiers' : 'Sur tout le compte'}, chaque facture et ses règlements se rapprochent d'après le lien des pièces : soldés, ils sont lettrés ; partiels, ils sont pré-lettrés (le reste dû est l'écart).
+        </StatusBanner>
+      )}
+
+      {ready && linesQ.data && t && (
+        <>
+        {t.open_lines > 1 && openBalance === 0 && status !== 'lettered' && (
+          <StatusBanner tone="info" icon={CheckCircle2} title="Le compte est soldé"
+            actions={<button type="button" className="odoo-btn-secondary" onClick={() => setSelected(new Set(selectableLines.map(l => l.id)))}>Tout sélectionner</button>}>
+            Les lignes non lettrées se compensent exactement : sélectionnez-les toutes et lettrez-les ensemble.
+          </StatusBanner>
+        )}
+        {linesQ.data.closed_until && (
+          <StatusBanner tone="neutral" icon={Lock} title={`Lettrage figé jusqu'au ${fmtDate(linesQ.data.closed_until)}`}>
+            Ces lignes appartiennent à un exercice clôturé : leur solde non lettré a été repris en à-nouveaux. Lettrez la ligne d'à-nouveaux avec les règlements de l'exercice en cours.
+          </StatusBanner>
+        )}
+          <KpiGrid>
+            <KpiCard label="Reste à lettrer" value={sign(openBalance)} sub={<>{t.open_lines} ligne(s) non lettrée(s)</>} tone={openBalance === 0 ? 'green' : openBalance > 0 ? undefined : 'red'} />
+            <KpiCard label="Non lettré débit" value={n(t.open_debit) || '0,00'} sub={currencySymbol()} />
+            <KpiCard label="Non lettré crédit" value={n(t.open_credit) || '0,00'} sub={currencySymbol()} />
+            <KpiCard label="Groupes lettrés" value={t.groups} sub="factures ↔ règlements" />
+            {t.partial_groups > 0 && (
+              <KpiCard label="Pré-lettrés" value={t.partial_groups} sub={<>{t.partial_lines} ligne(s) · reste dû rapproché</>} tone="orange" />
+            )}
+          </KpiGrid>
+        </>
+      )}
+
+      <Toolbar>
         <SearchSelect
           options={(accountsQ.data ?? []).map(a => ({ id: a.id, label: `${a.code} — ${a.label}`, sublabel: a.open_lines ? `${a.open_lines} ligne(s) à lettrer` : 'Tout est lettré' }))}
           value={accountId}
@@ -171,125 +209,49 @@ export default function LettrageTab() {
             width={260}
           />
         )}
-        <div style={{ display: 'inline-flex', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'hidden' }}>
-          {(Object.keys(STATUS_LABELS) as LettrageStatus[]).map(s => (
-            <button key={s} type="button" onClick={() => setStatus(s)}
-              className={status === s ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-              style={{ borderRadius: 0, border: 'none', fontSize: '0.75rem' }}>
-              {STATUS_LABELS[s]}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="odoo-search-input" style={{ width: 140 }} aria-label="Du" />
-          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="odoo-search-input" style={{ width: 140 }} aria-label="Au" />
-        </div>
-      </div>
-
-      {!!(autoQ.data && (autoQ.data.invoices || autoQ.data.partial)) && (
-        <StatusBanner tone="orange" icon={Wand2}
-          title={[autoQ.data.invoices ? `${autoQ.data.invoices} facture(s) soldée(s) à lettrer` : '',
-                  autoQ.data.partial ? `${autoQ.data.partial} partiellement réglée(s) à pré-lettrer` : ''].filter(Boolean).join(' · ')}
-          actions={<button type="button" className="odoo-btn-primary" disabled={autoMut.isPending} onClick={askAuto}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {autoMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Rapprocher automatiquement
-          </button>}>
-          {auxiliaryId ? 'Sur ce tiers' : 'Sur tout le compte'}, chaque facture et ses règlements se rapprochent d'après le lien des pièces : soldés, ils sont lettrés ; partiels, ils sont pré-lettrés (le reste dû est l'écart).
-        </StatusBanner>
-      )}
+        <DateRangeField from={from} to={to} onFrom={setFrom} onTo={setTo} />
+        <Segmented label="Lignes affichées" value={status} onChange={setStatus}
+          options={(Object.keys(STATUS_LABELS) as LettrageStatus[]).map(s => ({ key: s, label: STATUS_LABELS[s] }))} />
+      </Toolbar>
 
       {!ready ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Link2 size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>
-            {accountsQ.isLoading ? 'Chargement…' : account?.is_collective ? 'Choisissez le tiers dont vous voulez lettrer le compte.' : 'Choisissez un compte de tiers.'}
-          </p>
-        </div>
+        accountsQ.isLoading ? <LoadingState />
+          : <EmptyState icon={Link2} title={account?.is_collective ? 'Choisissez le tiers dont vous voulez lettrer le compte' : 'Choisissez un compte de tiers'} text="Les lignes à lettrer s'affichent une fois le compte choisi." />
       ) : linesQ.isLoading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        </div>
+        <LoadingState />
       ) : linesQ.data && (
         <>
-          <div className="odoo-stat-grid">
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">Reste à lettrer</div>
-              <div className="odoo-stat-card-value" style={{ color: openBalance === 0 ? '#2e7d32' : openBalance > 0 ? '#1565c0' : '#c62828' }}>{sign(openBalance)}</div>
-              <div className="odoo-stat-card-sub">{t!.open_lines} ligne(s) non lettrée(s)</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">Non lettré débit</div>
-              <div className="odoo-stat-card-value" style={{ color: '#1565c0' }}>{n(t!.open_debit) || '0,00'}</div>
-              <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">Non lettré crédit</div>
-              <div className="odoo-stat-card-value" style={{ color: '#c62828' }}>{n(t!.open_credit) || '0,00'}</div>
-              <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">Groupes lettrés</div>
-              <div className="odoo-stat-card-value">{t!.groups}</div>
-              <div className="odoo-stat-card-sub">factures ↔ règlements</div>
-            </div>
-            {t!.partial_groups > 0 && (
-              <div className="odoo-stat-card">
-                <div className="odoo-stat-card-label">Pré-lettrés</div>
-                <div className="odoo-stat-card-value" style={{ color: '#c77700' }}>{t!.partial_groups}</div>
-                <div className="odoo-stat-card-sub">{t!.partial_lines} ligne(s) · reste dû rapproché</div>
-              </div>
-            )}
-          </div>
-
-          {t!.open_lines > 1 && openBalance === 0 && status !== 'lettered' && (
-            <StatusBanner tone="info" icon={CheckCircle2} title="Le compte est soldé"
-              actions={<button type="button" className="odoo-btn-secondary" onClick={() => setSelected(new Set(selectableLines.map(l => l.id)))}>Tout sélectionner</button>}>
-              Les lignes non lettrées se compensent exactement : sélectionnez-les toutes et lettrez-les ensemble.
-            </StatusBanner>
-          )}
-          {linesQ.data.closed_until && (
-            <StatusBanner tone="neutral" icon={Lock} title={`Lettrage figé jusqu'au ${fmtDate(linesQ.data.closed_until)}`}>
-              Ces lignes appartiennent à un exercice clôturé : leur solde non lettré a été repris en à-nouveaux. Lettrez la ligne d'à-nouveaux avec les règlements de l'exercice en cours.
-            </StatusBanner>
-          )}
-
-          <div className="odoo-section" style={{ padding: 0, position: 'relative' }}>
+          <div className="odoo-section ds-panel" style={{ padding: 0, position: 'relative' }}>
             {status !== 'lettered' && (
-              <div style={{
-                position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-                padding: '8px 14px', background: 'var(--theme-bg-secondary)', borderBottom: '1px solid var(--theme-bg-separator)', fontSize: '0.8125rem',
-              }}>
-                <span style={{ fontWeight: 600 }}>{sel.length} sélectionnée(s)</span>
-                <span style={{ ...mono, color: 'var(--theme-text-muted)' }}>D {n(selDebit / 100) || '0,00'} · C {n(selCredit / 100) || '0,00'}</span>
+              <div className="ds-bulk" role="status" style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+                <strong>{sel.length} ligne{sel.length > 1 ? 's' : ''} sélectionnée{sel.length > 1 ? 's' : ''}</strong>
+                <span className="ds-num" style={{ color: 'var(--ds-muted)' }}>· débit {n(selDebit / 100) || '0,00'} · crédit {n(selCredit / 100) || '0,00'}</span>
                 {sel.length > 0 && (
-                  <span style={{ ...mono, fontWeight: 600, color: ecart === 0 ? '#2e7d32' : '#c62828' }}>
+                  <span className="ds-num" style={{ fontWeight: 600, color: ecart === 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
                     {ecart === 0 ? 'Soldé' : `Écart ${sign(ecart)}`}
                   </span>
                 )}
-                <span style={{ flex: 1 }} />
-                {sel.length > 0 && <button type="button" className="odoo-btn-secondary" onClick={() => setSelected(new Set())}>Effacer</button>}
+                <span className="ds-grow" />
+                {sel.length > 0 && <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => setSelected(new Set())}>Annuler la sélection</button>}
                 {canPartial && (
-                  <button type="button" className="odoo-btn-secondary" disabled={partialMut.isPending}
-                    onClick={() => partialMut.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={partialMut.isPending}
+                    onClick={() => partialMut.mutate()}
                     title="Rapprocher une pièce et ses acomptes sans attendre le solde ; le reste dû est l'écart">
                     <GitMerge size={13} /> Pré-lettrer
                   </button>
                 )}
-                <button type="button" className="odoo-btn-primary" disabled={!canLetter || letterMut.isPending}
-                  onClick={() => letterMut.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: canLetter ? 1 : 0.5 }}
+                <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={!canLetter || letterMut.isPending}
+                  onClick={() => letterMut.mutate()}
                   title={canLetter ? undefined : 'Sélectionnez au moins deux lignes dont le débit égale le crédit'}>
                   <Link2 size={13} /> Lettrer
                 </button>
               </div>
             )}
             {lines.length === 0 ? (
-              <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
-                {status === 'open' ? 'Rien à lettrer : toutes les lignes de ce compte sont lettrées.' : 'Aucune ligne.'}
-              </div>
+              <EmptyState bare icon={CheckCircle2} title={status === 'open' ? 'Rien à lettrer' : 'Aucune ligne'}
+                text={status === 'open' ? 'Toutes les lignes de ce compte sont lettrées sur la période.' : 'Aucune ligne sur la période choisie.'} />
             ) : (
-              <table className="odoo-table" style={{ margin: 0 }}>
+              <table className="odoo-table ds-dense">
                 <thead>
                   <tr>
                     <th style={{ width: 32 }}>
@@ -297,19 +259,19 @@ export default function LettrageTab() {
                     </th>
                     <th style={{ width: 56 }}>Lettre</th>
                     <th style={{ width: 86 }}>Date</th>
-                    <th style={{ width: 130 }}>N° écriture</th>
-                    <th style={{ width: 40 }}>Jr</th>
+                    <th style={{ width: 130 }}>N° d'écriture</th>
+                    <th style={{ width: 64 }}>Journal</th>
                     <th style={{ width: 110 }}>Pièce</th>
                     <th>Libellé</th>
-                    <th style={{ width: 105, textAlign: 'right' }}>Débit</th>
-                    <th style={{ width: 105, textAlign: 'right' }}>Crédit</th>
-                    <th style={{ width: 100 }} />
+                    <th className="ds-num" style={{ width: 120 }}>Débit ({currencySymbol()})</th>
+                    <th className="ds-num" style={{ width: 120 }}>Crédit ({currencySymbol()})</th>
+                    <th className="ds-actions" style={{ width: 110 }}><span className="ds-sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {lines.map(l => (
-                    <tr key={l.id} onClick={() => selectable(l) && toggle(l.id)}
-                      style={{ cursor: selectable(l) ? 'pointer' : 'default', background: selected.has(l.id) ? 'var(--odoo-bg-alt)' : undefined }}>
+                    <tr key={l.id} onClick={() => selectable(l) && toggle(l.id)} className={selected.has(l.id) ? 'ds-selected' : undefined}
+                      style={{ cursor: selectable(l) ? 'pointer' : 'default' }}>
                       <td onClick={e => e.stopPropagation()}>
                         {l.frozen ? <Lock size={12} style={{ color: 'var(--theme-text-muted)' }} aria-label="Exercice clôturé" />
                           : !l.lettrage_id && <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} aria-label={`Sélectionner ${l.entry_number}`} />}
@@ -317,22 +279,21 @@ export default function LettrageTab() {
                       <td>{l.code && <span className={`odoo-tag ${l.lettrage_partiel_id ? 'odoo-tag-orange' : 'odoo-tag-green'}`} style={{ ...mono, fontWeight: 600 }}
                         title={l.lettrage_partiel_id ? 'Pré-lettré : pièce et acomptes rapprochés, reste dû à solder' : l.lettered_at ? `Lettré le ${new Date(l.lettered_at).toLocaleString('fr-FR')}` : undefined}>{l.code}</span>}
                         {/* Partiel / total ne repose pas sur la seule couleur : mention visible du partiel. */}
-                        {l.code && l.lettrage_partiel_id && <small style={{ display: 'block', marginTop: 2, fontSize: 11, fontWeight: 600, color: '#B45309' }}>partiel</small>}</td>
-                      <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(l.entry_date)}</td>
-                      <td style={{ ...mono, fontSize: '0.75rem', color: '#185fa5' }}>{l.entry_number}</td>
-                      <td style={{ ...mono, fontSize: '0.6875rem' }}>{l.journal_code}</td>
-                      <td style={{ fontSize: '0.75rem' }}>{l.piece_ref ?? ''}</td>
-                      <td style={{ fontSize: '0.8125rem' }}>
+                        {l.code && l.lettrage_partiel_id && <small style={{ display: 'block', marginTop: 2, fontSize: 11, fontWeight: 600, color: 'var(--ds-warning)' }}>partiel</small>}</td>
+                      <td>{fmtDate(l.entry_date)}</td>
+                      <td className="ds-ref">{l.entry_number}</td>
+                      <td>{l.journal_code}</td>
+                      <td className="ds-ref" style={{ fontWeight: 400 }}>{l.piece_ref ?? ''}</td>
+                      <td className="ds-strong">
                         {l.source_kind === 'opening' && <span className="odoo-tag odoo-tag-blue" style={{ marginRight: 6 }}>À-nouveau</span>}
                         {l.label || l.description}
                       </td>
-                      <td style={{ ...mono, textAlign: 'right' }}>{n(l.debit)}</td>
-                      <td style={{ ...mono, textAlign: 'right' }}>{n(l.credit)}</td>
-                      <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                      <td className="ds-num">{n(l.debit)}</td>
+                      <td className="ds-num">{n(l.credit)}</td>
+                      <td className="ds-actions" onClick={e => e.stopPropagation()}>
                         {(l.lettrage_id || l.lettrage_partiel_id) && !l.frozen && (
-                          <button type="button" className="odoo-btn-secondary" disabled={unletterMut.isPending} onClick={() => askUnletter(l)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.6875rem', padding: '2px 8px' }}>
-                            <Unlink size={11} /> {l.lettrage_partiel_id ? 'Défaire' : 'Délettrer'}
+                          <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={unletterMut.isPending} onClick={() => askUnletter(l)}>
+                            <Unlink size={12} aria-hidden="true" /> {l.lettrage_partiel_id ? 'Défaire' : 'Délettrer'}
                           </button>
                         )}
                       </td>
@@ -342,9 +303,7 @@ export default function LettrageTab() {
               </table>
             )}
             {linesQ.data.truncated && (
-              <div style={{ padding: '8px 14px', fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
-                <Info size={12} /> Affichage limité aux 3 000 premières lignes : resserrez la période.
-              </div>
+              <div className="ds-foot"><Info size={13} aria-hidden="true" /> Affichage limité aux 3 000 premières lignes : resserrez la période.</div>
             )}
           </div>
         </>

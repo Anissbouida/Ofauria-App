@@ -8,6 +8,9 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { money, currencySymbol } from '../../utils/money';
+import { EmptyState, LoadingState } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit', fontSize: '0.85rem', width: '100%' };
 const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 };
@@ -19,6 +22,7 @@ const lbl: React.CSSProperties = { fontSize: '0.76rem', color: 'var(--theme-text
  * préféré/bloqué, et le prix d'achat daté (saisi ou alimenté à la réception).
  */
 export default function SupplierItemsSection({ kind, purchasableId, unit }: { kind: 'ingredient' | 'packaging'; purchasableId: string; unit?: string }) {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const key = ['supplier-items', kind, purchasableId];
   const { data: items = [], isLoading } = useQuery({ queryKey: key, queryFn: () => supplierItemsApi.byPurchasable(kind, purchasableId) });
@@ -47,50 +51,46 @@ export default function SupplierItemsSection({ kind, purchasableId, unit }: { ki
           <div style={{ fontWeight: 600, fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Truck size={16} /> Fournisseurs <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}>({items.length})</span></div>
           <div style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>Le fournisseur <b>préféré</b> (⭐) est proposé par défaut à l'achat. Le prix se remplit aussi tout seul à la réception.</div>
         </div>
-        {avail.length > 0 && <button className="odoo-btn-primary" onClick={() => setShowAdd(true)}><Plus size={14} /> Ajouter un fournisseur</button>}
+        {avail.length > 0 && <button type="button" className="odoo-btn-secondary" onClick={() => setShowAdd(true)}><Plus size={14} aria-hidden="true" /> Ajouter un fournisseur</button>}
       </div>
 
-      {isLoading && <div style={{ padding: 24, color: 'var(--theme-text-muted)' }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /> Chargement…</div>}
+      {isLoading && <LoadingState bare label="Chargement des fournisseurs…" />}
 
       {!isLoading && items.length === 0 && (
-        <div style={{ border: '1px dashed var(--odoo-border)', borderRadius: 8, padding: '28px 16px', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Truck size={28} style={{ opacity: 0.4, marginBottom: 8 }} />
-          <div style={{ fontSize: '0.9rem', marginBottom: 4 }}>Aucun fournisseur pour cet article.</div>
-          <div style={{ fontSize: '0.8rem', marginBottom: 12 }}>Ajoutez-en un pour gérer le multi-sourcing et suivre les prix d'achat.</div>
-          {avail.length > 0 && <button className="odoo-btn-primary" onClick={() => setShowAdd(true)}><Plus size={14} /> Ajouter un fournisseur</button>}
-        </div>
+        <EmptyState bare icon={Truck} title="Aucun fournisseur pour cet article" text="Ajoutez-en un pour comparer plusieurs sources et suivre les prix d'achat."
+          action={avail.length > 0 ? <button type="button" className="odoo-btn-primary" onClick={() => setShowAdd(true)}><Plus size={14} aria-hidden="true" /> Ajouter un fournisseur</button> : undefined} />
       )}
 
       {items.length > 0 && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 8, overflowX: 'auto' }}>
           <table className="odoo-table" style={{ margin: 0 }}>
             <thead><tr>
               <th>Fournisseur</th>
-              <th style={{ textAlign: 'right' }}>Prix d'achat{unit ? ` / ${unit}` : ''}</th>
-              <th style={{ textAlign: 'right' }} title="Quantité contenue dans un contenant d'achat (sac, carton…)">Qté/contenant</th>
-              <th style={{ textAlign: 'right' }} title="Délai de livraison du fournisseur, en jours">Délai livr.</th>
-              <th style={{ textAlign: 'right' }} title="Quantité minimale de commande imposée par le fournisseur (MOQ)">Qté min.</th>
-              <th>Réf.</th>
-              <th style={{ width: 120, textAlign: 'right' }}>Actions</th>
+              <th className="ds-num">Prix d'achat{unit ? ` / ${unit}` : ''}</th>
+              <th className="ds-num" title="Quantité contenue dans un contenant d'achat (sac, carton…)">Quantité par contenant</th>
+              <th className="ds-num" title="Délai de livraison du fournisseur, en jours">Délai de livraison (j)</th>
+              <th className="ds-num" title="Quantité minimale de commande imposée par le fournisseur">Quantité minimale</th>
+              <th>Référence</th>
+              <th className="ds-actions">Actions</th>
             </tr></thead>
             <tbody>
               {items.map(it => (
                 <Fragment key={it.id}>
                   <tr style={{ opacity: it.is_blocked ? 0.5 : 1, background: it.is_preferred ? 'rgba(245,158,11,0.06)' : undefined }}>
-                    <td style={{ fontWeight: 500 }}>
-                      {it.is_preferred && <Star size={13} style={{ display: 'inline', color: '#f59e0b', fill: '#f59e0b', marginRight: 5, verticalAlign: '-2px' }} />}
+                    <td className="ds-strong">
+                      {it.is_preferred && <Star size={13} aria-label="Fournisseur préféré" style={{ display: 'inline', color: 'var(--ds-warning)', fill: 'var(--ds-warning)', marginRight: 5, verticalAlign: '-2px' }} />}
                       {it.supplier_name}
                       {it.is_blocked && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="Bloqué" /></span>}
                       {!it.supplier_active && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="Inactif" /></span>}
                     </td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>
                       {priceEdit?.id === it.id ? (
                         <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
                           <input type="number" step="0.01" min="0" autoFocus value={priceEdit.val} style={{ ...inp, width: 100, textAlign: 'right', padding: '0.25rem 0.4rem' }}
                             onChange={e => setPriceEdit({ id: it.id, val: e.target.value })}
                             onKeyDown={e => { if (e.key === 'Enter' && priceEdit.val) addPrice.mutate({ id: it.id, price: Number(priceEdit.val) }); if (e.key === 'Escape') setPriceEdit(null); }} />
-                          <button className="odoo-btn-primary" style={{ padding: '0.25rem 0.4rem' }} disabled={!priceEdit.val || addPrice.isPending} onClick={() => addPrice.mutate({ id: it.id, price: Number(priceEdit.val) })}><Check size={12} /></button>
-                          <button className="odoo-btn-secondary" style={{ padding: '0.25rem 0.4rem' }} onClick={() => setPriceEdit(null)}><X size={12} /></button>
+                          <button type="button" aria-label="Enregistrer le prix" className="odoo-btn-primary" style={{ padding: '0.25rem 0.4rem' }} disabled={!priceEdit.val || addPrice.isPending} onClick={() => addPrice.mutate({ id: it.id, price: Number(priceEdit.val) })}><Check size={12} /></button>
+                          <button type="button" aria-label="Annuler la saisie du prix" className="odoo-btn-secondary" style={{ padding: '0.25rem 0.4rem' }} onClick={() => setPriceEdit(null)}><X size={12} /></button>
                         </span>
                       ) : (
                         <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -98,21 +98,25 @@ export default function SupplierItemsSection({ kind, purchasableId, unit }: { ki
                             ? <b>{money(Number(it.current_price))}</b>
                             : <span style={{ color: 'var(--theme-text-muted)' }}>à saisir</span>}
                           {it.current_price_source === 'reception' && <span className="odoo-tag odoo-tag-grey" style={{ fontSize: '0.62rem' }} title="Dernier prix relevé à la réception">auto</span>}
-                          <button className="odoo-btn-secondary" style={{ padding: '0.15rem 0.35rem' }} title="Saisir / modifier le prix" onClick={() => setPriceEdit({ id: it.id, val: it.current_price != null ? String(it.current_price) : '' })}><Pencil size={11} /></button>
+                          <button type="button" aria-label="Saisir ou modifier le prix" className="ds-icon-btn" title="Saisir ou modifier le prix" onClick={() => setPriceEdit({ id: it.id, val: it.current_price != null ? String(it.current_price) : '' })}><Pencil size={11} /></button>
                         </span>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{it.qty_per_container != null ? `${it.qty_per_container}${unit ? ' ' + unit : ''}` : '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{it.lead_time_days != null ? `${it.lead_time_days} j` : '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{it.moq != null ? it.moq : '—'}</td>
+                    <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{it.qty_per_container != null ? `${it.qty_per_container}${unit ? ' ' + unit : ''}` : '—'}</td>
+                    <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{it.lead_time_days != null ? it.lead_time_days : '—'}</td>
+                    <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{it.moq != null ? it.moq : '—'}</td>
                     <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.82rem' }}>{it.supplier_reference || '—'}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.4rem', marginRight: 3 }} title="Historique des prix" onClick={() => setHistId(histId === it.id ? null : it.id)}>{histId === it.id ? <ChevronDown size={12} /> : <Clock size={12} />}</button>
-                      {!it.is_preferred && !it.is_blocked && (
-                        <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.4rem', marginRight: 3 }} title="Définir comme préféré" onClick={() => prefer.mutate(it.id)}><Star size={12} /></button>
-                      )}
-                      <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.4rem', marginRight: 3 }} title={it.is_blocked ? 'Débloquer' : 'Bloquer'} onClick={() => block.mutate({ id: it.id, v: !it.is_blocked })}><Ban size={12} /></button>
-                      <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.4rem', color: '#dc2626' }} title="Retirer" onClick={() => archive.mutate(it.id)}><Trash2 size={12} /></button>
+                    <td className="ds-actions">
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-expanded={histId === it.id} onClick={() => setHistId(histId === it.id ? null : it.id)}>
+                        {histId === it.id ? <ChevronDown size={12} aria-hidden="true" /> : <Clock size={12} aria-hidden="true" />} Historique
+                      </button>
+                      <RowMenu items={[
+                        ...(!it.is_preferred && !it.is_blocked ? [{ label: 'Définir comme préféré', icon: Star, onSelect: () => prefer.mutate(it.id) }] : []),
+                        { label: it.is_blocked ? 'Débloquer' : 'Bloquer', icon: Ban, onSelect: () => block.mutate({ id: it.id, v: !it.is_blocked }) },
+                        { label: 'Retirer le fournisseur', icon: Trash2, danger: true, onSelect: async () => {
+                          if (await confirm(`Retirer ${it.supplier_name} des fournisseurs de cet article ?`, { title: 'Retirer le fournisseur', confirmLabel: 'Retirer', danger: true })) archive.mutate(it.id);
+                        } },
+                      ]} />
                     </td>
                   </tr>
                   {histId === it.id && <PriceHistoryRow supplierItemId={it.id} colSpan={7} />}
@@ -153,7 +157,7 @@ function AddSupplierModal({ kind, purchasableId, unit, avail, onClose, onSaved }
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(560px, 96vw)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Truck size={16} /> Ajouter un fournisseur</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <label style={field}><span style={lbl}>Fournisseur</span>
@@ -216,7 +220,7 @@ function PriceHistoryRow({ supplierItemId, colSpan }: { supplierItemId: string; 
               <tr key={pr.id}>
                 <td style={{ padding: '2px 6px', fontVariantNumeric: 'tabular-nums', fontWeight: pr.valid_to ? 400 : 600 }}>{Number(pr.price).toFixed(2)} {pr.currency}</td>
                 <td style={{ padding: '2px 6px' }}>{new Date(pr.valid_from).toLocaleDateString('fr-FR')}</td>
-                <td style={{ padding: '2px 6px' }}>{pr.valid_to ? new Date(pr.valid_to).toLocaleDateString('fr-FR') : <b style={{ color: '#2e7d32' }}>en vigueur</b>}</td>
+                <td style={{ padding: '2px 6px' }}>{pr.valid_to ? new Date(pr.valid_to).toLocaleDateString('fr-FR') : <b style={{ color: 'var(--ds-success)' }}>en vigueur</b>}</td>
                 <td style={{ padding: '2px 6px', color: 'var(--theme-text-muted)' }}>{sourceLabel[pr.source] ?? pr.source}</td>
               </tr>
             ))}</tbody>

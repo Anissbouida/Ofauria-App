@@ -6,6 +6,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 /**
  * Fiche client › Portail (phase 10.3) : émettre, consulter et révoquer le jeton
@@ -14,6 +15,7 @@ import { apiErrorMessage } from '../../api/errors';
  */
 export default function CustomerPortalPanel({ customerId }: { customerId: string }) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const { canEdit } = usePermissions();
   const editable = canEdit('customers');
   const { data: status, isLoading } = useQuery({
@@ -85,7 +87,8 @@ export default function CustomerPortalPanel({ customerId }: { customerId: string
             <>
               {validitySelect}
               <button className="odoo-btn-secondary" disabled={issue.isPending} onClick={() => issue.mutate()}>Régénérer le lien</button>
-              <button className="odoo-btn-secondary" disabled={revoke.isPending} onClick={() => revoke.mutate()}><Trash2 size={13} /> Révoquer</button>
+              <button type="button" className="ds-btn-danger ds-btn-sm" disabled={revoke.isPending}
+                onClick={async () => { if (await confirm('Révoquer l\'accès au portail ? Le lien du client cessera de fonctionner.', { title: 'Révoquer l\'accès', confirmLabel: 'Révoquer', danger: true })) revoke.mutate(); }}><Trash2 size={13} /> Révoquer l'accès</button>
             </>
           )}
         </div>

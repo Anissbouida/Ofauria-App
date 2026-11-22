@@ -5,11 +5,9 @@ import { customersApi } from '../../api/customers.api';
 import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
 import { usersApi } from '../../api/users.api';
 import {
-  Plus, Search, Pencil, Users, ShoppingCart, X, Loader2, Phone, Mail,
-  ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, CreditCard, User,
+  Plus, Pencil, Users, ShoppingCart, X, Loader2, Phone, ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, CreditCard, User,
   FileBadge2, UserPlus, CheckCircle2, Moon, AlertTriangle, Filter, Award, MessageSquare, Contact,
-  Archive, RotateCcw, History,
-} from 'lucide-react';
+  Archive, RotateCcw } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { apiErrorMessage } from '../../api/errors';
@@ -22,9 +20,11 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  StagePipeline, SelectFilter, Pager, PAGE_SIZE, type StageDef,
-} from '../../components/purchasing/ProcessBoard';
+import { SelectFilter, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { RowMenu } from '../../components/ui/RowMenu';
+import SalesPageShell from '../sales/SalesPageShell';
+import { FilterChips } from '../sales/ListTemplate';
+import { KpiGrid, KpiCard, Toolbar, SearchBar, Segmented, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
 
 /**
  * Fichier clients (aligné sur le standard des listes ERP, cf. Achats › Fournisseurs) :
@@ -87,7 +87,7 @@ const CUS_STAGES: StageDef[] = [
   { key: 'dormant', label: 'Dormants', hint: `aucun achat depuis ${DORMANT_DAYS} j`, icon: Moon },
 ];
 const STAGE_DOT: Record<string, string> = {
-  incomplete: '#d9822b', new: '#3b82f6', active: '#28a745', dormant: '#adb5bd',
+  incomplete: 'var(--ds-warning)', new: 'var(--ds-info)', active: 'var(--ds-success)', dormant: 'var(--ds-muted)',
 };
 
 export function needsIce(c: Customer): boolean {
@@ -111,7 +111,7 @@ export const PAYMENT_LABELS: Record<string, string> = { cash: 'Espèces', card: 
 
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400';
-const sectionTitle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', margin: '6px 0 2px' };
+const sectionTitle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)', margin: '6px 0 2px' };
 const muted: React.CSSProperties = { color: 'var(--theme-text-muted)' };
 const panelStyle: React.CSSProperties = { width: '100%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 };
 const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd MMM yyyy', { locale: fr }) : null);
@@ -295,26 +295,9 @@ export default function CustomersPage() {
   };
 
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <Users size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Ventes</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">Clients</span>
-          <span className="spsh-summary" style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
-            {base.length} client{base.length > 1 ? 's' : ''} · {money(totalCa)} de CA
-          </span>
-        </div>
-        <div style={{ flex: 1 }} />
-        <button onClick={openNew} className="odoo-btn-primary">
-          <Plus size={13} /> Nouveau client
-        </button>
-      </div>
-
-      <div className="sal-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Style Apple (2026-11) : grand titre, résumé dessous. */}
-        <header className="kl-largetitle"><h1>Clients</h1><p>{base.length} client{base.length > 1 ? 's' : ''} · {money(totalCa)} de CA</p></header>
+    <SalesPageShell icon={Users} parent="Ventes" title="Clients" list
+      summary={`${base.length} client${base.length > 1 ? 's' : ''} · ${money(totalCa)} de CA`}
+      actions={<button type="button" onClick={openNew} className="odoo-btn-primary"><Plus size={13} /> Nouveau client</button>}>
         {noIceCount > 0 && (
           <StatusBanner tone="warning" icon={AlertTriangle}
             title={`${noIceCount} client${noIceCount > 1 ? 's' : ''} professionnel${noIceCount > 1 ? 's' : ''} sans ICE`}
@@ -325,68 +308,45 @@ export default function CustomersPage() {
           </StatusBanner>
         )}
 
-        <StagePipeline
-          title="Où en sont mes clients"
-          summary={`${base.length} client${base.length > 1 ? 's' : ''} · ${money(totalCa)} de CA · ${totalPoints.toLocaleString('fr-FR')} points`}
-          stages={CUS_STAGES}
-          stats={Object.fromEntries(CUS_STAGES.map(s => {
-            const st = stageStats[s.key];
-            const sub = s.key === 'active' || s.key === 'dormant' ? `${money(st.ca)}` : '';
-            return [s.key, { count: st.count, sub, late: s.key === 'incomplete' ? st.noIce : 0, alertLabel: 'sans ICE' }];
-          }))}
-          isActive={k => stage === k}
-          onPick={k => setStage(stage === k ? '' : k)}
-        />
+        <KpiGrid>
+          <KpiCard label="Clients" value={String(base.length)} sub={`${totalPoints.toLocaleString('fr-FR')} points de fidélité`} />
+          <KpiCard label="CA cumulé" value={money(totalCa)} sub="commandes et ventes en caisse" />
+          <KpiCard label="Actifs" value={String(stageStats.active.count)} sub={money(stageStats.active.ca)} />
+          <KpiCard label="Dormants" value={String(stageStats.dormant.count)} sub={`aucun achat depuis ${DORMANT_DAYS} j · ${money(stageStats.dormant.ca)}`} tone={stageStats.dormant.count ? 'orange' : undefined} />
+        </KpiGrid>
 
-        <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-          <Search size={14} style={{ ...muted, flexShrink: 0 }} />
-          <input type="text" placeholder="Rechercher par nom, société, téléphone, email, ville ou ICE"
-            aria-label="Rechercher un client"
-            value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input"
-            style={{ flex: '1 1 220px', minWidth: 0 }} />
-          {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={muted} />}
+        <FilterChips label="Filtrer par situation" value={stage} onChange={setStage} chips={[
+          { key: '', label: 'Tous', count: base.length },
+          ...CUS_STAGES.map(s => ({ key: s.key, label: s.label, count: stageStats[s.key].count, tone: s.key === 'incomplete' && stageStats[s.key].noIce ? 'late' as const : undefined })),
+        ]} />
+
+        <Toolbar>
+          <SearchBar value={searchInput} onChange={setSearchInput} label="Rechercher un client"
+            placeholder="Nom, société, téléphone, email, ville ou ICE…" busy={isFetching && !isLoading} />
           <SelectFilter label="Type" icon={Filter} value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />
-          <button type="button" onClick={() => setArchivedView(v => !v)} className={archivedView ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-            title="Clients archivés" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Archive size={13} /> {archivedView ? 'Archivés' : 'Actifs'}
-          </button>
           <SelectFilter label="Fidélité" icon={Award} value={tierFilter} onChange={setTierFilter} options={tierOptions(tiers)} />
           <SelectFilter label="Ville" icon={MapPin} value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="Toutes" />
-          {stage && (
-            <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              Situation : {CUS_STAGES.find(s => s.key === stage)?.label}
-              <button type="button" onClick={() => setStage('')} aria-label="Retirer le filtre de situation" style={{ display: 'inline-flex' }}>
-                <X size={11} />
-              </button>
-            </span>
-          )}
           {hasFilters && (
-            <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <X size={12} /> Effacer les filtres
-            </button>
+            <button type="button" onClick={resetFilters} className="ds-btn-ghost ds-btn-sm"><X size={12} /> Effacer les filtres</button>
           )}
-        </div>
+          <Segmented label="Fiches" value={archivedView ? 'archived' : 'active'} onChange={k => setArchivedView(k === 'archived')} options={[
+            { key: 'active', label: 'Actifs' },
+            { key: 'archived', label: 'Archivés', icon: Archive },
+          ]} />
+        </Toolbar>
 
         {isLoading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', ...muted }}>
-            <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-            <p style={{ fontSize: '0.8125rem' }}>Chargement des clients...</p>
-          </div>
+          <LoadingState label="Chargement des clients…" />
         ) : sorted.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center', ...muted }}>
-            <Users size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-            <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
-              {stage ? 'Aucun client dans cette situation' : 'Aucun client'}
-            </p>
-            {(hasFilters || stage) && (
-              <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>
-                Aucun résultat pour ces filtres —{' '}
-                <button type="button" onClick={() => { resetFilters(); setStage(''); }} style={{ textDecoration: 'underline', color: 'inherit' }}>les effacer</button>
-              </p>
-            )}
-          </div>
+          hasFilters || stage
+            ? <NoResultState onReset={() => { resetFilters(); setStage(''); }} text="Aucun client ne correspond aux filtres." />
+            : <EmptyState icon={Users} title={archivedView ? 'Aucun client archivé' : 'Aucun client'}
+                text={archivedView ? undefined : 'Les fiches clients servent aux commandes, aux factures et à la fidélité.'}
+                action={archivedView ? undefined : <button type="button" onClick={openNew} className="odoo-btn-secondary ds-btn-sm"><Plus size={13} /> Nouveau client</button>} />
         ) : (
-          <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+          <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+          <DataPanel label="Clients" footer={<TableFooter page={page} pageSize={PAGE_SIZE} total={sorted.length} onPage={setPage}
+            note={`client${sorted.length > 1 ? 's' : ''} · dormant au-delà de ${DORMANT_DAYS} jours sans achat`} />}>
             <table className="odoo-table">
               <thead>
                 <tr>
@@ -398,11 +358,10 @@ export default function CustomersPage() {
                   <th style={{ minWidth: 170 }}>Situation</th>
                   {sortableTh('last_purchase', 'Dernier achat')}
                   {sortableTh('purchases', 'Achats', 'right')}
-                  {sortableTh('loyalty_points', 'Fidélité', 'right')}
-                  {sortableTh('total_spent', 'CA cumulé', 'right')}
+                  {sortableTh('loyalty_points', 'Fidélité (pts)', 'right')}
+                  {sortableTh('total_spent', `CA cumulé (${currencySymbol()})`, 'right')}
                   {cfColumns.map(d => <th key={d.id}>{d.label}</th>)}
-                  <th style={{ textAlign: 'right' }}>Prochaine action</th>
-                  <th style={{ textAlign: 'right', width: 70 }}>Actions</th>
+                  <th className="ds-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -419,7 +378,7 @@ export default function CustomersPage() {
                   return (
                     <tr key={c.id as string} onClick={() => navigate(`/customers/${c.id as string}`)} style={{ cursor: 'pointer' }}>
                       <td>
-                        <span style={{ fontWeight: 500 }}>{primary}</span>
+                        <span className="ds-strong">{primary}</span>
                         {secondary && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{secondary}{c.contact_role ? ` · ${c.contact_role}` : ''}</div>}
                       </td>
                       <td style={{ whiteSpace: 'nowrap', ...muted }}>
@@ -435,7 +394,7 @@ export default function CustomersPage() {
                         {c.ice ? (
                           <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--odoo-text)' }}>{c.ice}</span>
                         ) : needsIce(c) ? (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#b85d1a', fontWeight: 600, fontSize: '0.75rem' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-warning)', fontWeight: 600, fontSize: '0.75rem' }}>
                             <AlertTriangle size={11} /> À saisir
                           </span>
                         ) : <span style={muted}>—</span>}
@@ -450,38 +409,33 @@ export default function CustomersPage() {
                       <td style={{ whiteSpace: 'nowrap', ...muted }}>
                         {fmtDate(c.last_purchase_at) ?? <span style={{ fontStyle: 'italic' }}>jamais</span>}
                       </td>
-                      <td style={{ textAlign: 'right' }}>{purchasesCount(c) || <span style={muted}>—</span>}</td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {points > 0 ? <>{points.toLocaleString('fr-FR')} <span style={{ ...muted, fontSize: '0.6875rem' }}>pts</span></> : <span style={muted}>—</span>}
+                      <td className="ds-num">{purchasesCount(c) || <span style={muted}>—</span>}</td>
+                      <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
+                        {points > 0 ? points.toLocaleString('fr-FR') : <span style={muted}>—</span>}
                         {tier && <div><span className={`odoo-tag ${tier.tag}`}>{tier.label}</span></div>}
                       </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {spent > 0 ? <><span style={{ fontWeight: 600 }}>{n(spent)}</span> <span style={{ ...muted, fontSize: '0.6875rem' }}>{currencySymbol()}</span></>
-                          : <span style={muted}>—</span>}
+                      <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
+                        {spent > 0 ? <span className="ds-strong">{n(spent)}</span> : <span style={muted}>—</span>}
                       </td>
                       {cfColumns.map(d => <td key={d.id} style={muted}>{formatCfValue(d, (c.custom_fields as CfValues | undefined)?.[d.code]) || '—'}</td>)}
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                        {action && <button type="button" onClick={action.run} className="odoo-btn-primary">{action.label}</button>}
-                      </td>
-                      <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'inline-flex', gap: 2 }}>
-                          <button onClick={() => openEdit(c)} className="odoo-pager-btn" title="Modifier" aria-label="Modifier"><Pencil size={13} /></button>
-                          {archivedView
-                            ? <button onClick={() => restoreMutation.mutate(c.id as string)} className="odoo-pager-btn" title="Restaurer" aria-label="Restaurer" style={{ color: '#16a34a' }}><RotateCcw size={13} /></button>
-                            : <button onClick={() => askDelete(c)} className="odoo-pager-btn" title="Archiver" aria-label="Archiver" style={{ color: '#dc3545' }}><Archive size={13} /></button>}
-                        </div>
+                      <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                        {action && <button type="button" onClick={action.run} className="odoo-btn-secondary ds-btn-sm">{action.label}</button>}
+                        <RowMenu items={[
+                          { label: 'Voir la fiche', icon: Contact, onSelect: () => navigate(`/customers/${c.id as string}`) },
+                          { label: 'Modifier', icon: Pencil, onSelect: () => openEdit(c) },
+                          archivedView
+                            ? { label: 'Restaurer', icon: RotateCcw, onSelect: () => restoreMutation.mutate(c.id as string) }
+                            : { label: 'Archiver', icon: Archive, danger: true, onSelect: () => askDelete(c) },
+                        ]} />
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-            <Pager page={page} total={sorted.length} onPage={setPage}
-              note={`Situation calculée sur le dernier achat (commande ou vente caisse) — dormant au-delà de ${DORMANT_DAYS} jours.`} />
+          </DataPanel>
           </div>
         )}
-      </div>
-
 
       {showForm && (
         <CustomerFormModal
@@ -491,7 +445,7 @@ export default function CustomersPage() {
           isPending={saveMutation.isPending}
         />
       )}
-    </div>
+    </SalesPageShell>
   );
 }
 
@@ -550,7 +504,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
           <div className="odoo-breadcrumb">
             <Users size={14} style={{ color: 'var(--theme-accent)' }} />
             <span>Client</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">{title}</span>
           </div>
           <div style={{ flex: 1 }} />

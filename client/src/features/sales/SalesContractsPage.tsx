@@ -11,7 +11,8 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { FilterChips, ListPanel, ListEmpty, NextStep, ListKpi } from './ListTemplate';
+import { FilterChips, ListPanel, NextStep, ListKpi } from './ListTemplate';
+import { TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
 
 /**
  * Ventes › Contrats-cadres (phase 11, D3-37). Engagement de volume (quantité
@@ -83,6 +84,12 @@ export default function SalesContractsPage() {
       </section>
       <p className="prj-note">Engagement de volume ou de valeur sur une période, consommé par les commandes rattachées (appels).</p>
 
+      <FilterChips label="Filtrer les contrats" value={view} onChange={k => setView(k as '' | SalesContract['status'])} chips={[
+        { key: 'active', label: 'Actifs', count: stats.active },
+        { key: 'closed', label: 'Clôturés', count: stats.closed },
+        { key: '', label: 'Tous', count: contracts.length },
+      ]} />
+
       {form && (
         <section className="prj-panel" style={{ padding: 16, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -120,37 +127,33 @@ export default function SalesContractsPage() {
               <input className="odoo-input" type="date" value={f.endDate ?? ''} onChange={e => setF({ ...f, endDate: e.target.value })} />
             </label>
           </div>
-          <div>
-            <button className="odoo-btn-primary" disabled={!f.customerId || create.isPending} onClick={() => create.mutate()}>
-              {create.isPending ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Créer
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setForm(false)}>Annuler</button>
+            <button type="button" className="odoo-btn-primary" disabled={!f.customerId || create.isPending} onClick={() => create.mutate()}>
+              {create.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Créer le contrat
             </button>
           </div>
         </section>
       )}
 
-      <FilterChips label="Filtrer les contrats" value={view} onChange={k => setView(k as '' | SalesContract['status'])} chips={[
-        { key: 'active', label: 'Actifs', count: stats.active },
-        { key: 'closed', label: 'Clôturés', count: stats.closed },
-        { key: '', label: 'Tous', count: contracts.length },
-      ]} />
-
-      {isLoading ? <ListEmpty icon={Loader2} title="Chargement des contrats…" /> : !filtered.length ? (
-        <ListEmpty icon={Handshake} title={contracts.length ? 'Aucun contrat pour ce filtre' : 'Aucun contrat-cadre'}
-          text={contracts.length ? undefined : '« Nouveau contrat » pour engager un client sur un volume ou un montant.'} />
+      {isLoading ? <LoadingState label="Chargement des contrats…" /> : !filtered.length ? (
+        contracts.length
+          ? <NoResultState onReset={() => setView('')} text="Aucun contrat ne correspond au filtre." />
+          : <EmptyState icon={Handshake} title="Aucun contrat-cadre" text="« Nouveau contrat » pour engager un client sur un volume ou un montant." />
       ) : (
-        <ListPanel>
+        <ListPanel footer={<TableFooter note={`${filtered.length} contrat${filtered.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Client</th><th>Base</th><th style={{ textAlign: 'right' }}>Engagé</th><th>Consommé</th><th style={{ textAlign: 'right' }}>Restant</th><th>État</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
+            <thead><tr><th>N°</th><th>Client</th><th>Base</th><th className="ds-num">Engagé</th><th>Consommé</th><th className="ds-num">Restant</th><th>État</th><th className="ds-actions">Actions</th></tr></thead>
             <tbody>
               {filtered.map(c => {
                 const pct = c.committed > 0 ? Math.min(100, Math.round((c.consumed / c.committed) * 100)) : 0;
                 const fmt = c.basis === 'value' ? money : num;
                 return (
                   <tr key={c.id} style={{ cursor: 'default' }}>
-                    <td><span className="sal-num">{c.number}</span></td>
-                    <td style={{ fontWeight: 500 }}>{custName(c)}</td>
+                    <td><span className="ds-ref">{c.number}</span></td>
+                    <td className="ds-strong">{custName(c)}</td>
                     <td>{c.basis === 'value' ? 'Valeur' : <>Volume<span className="sal-sub">{c.product_name ?? ''}</span></>}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt(c.committed)}</td>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{fmt(c.committed)}</td>
                     <td style={{ minWidth: 150 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span className={`prj-bar ${pct >= 100 ? 'red' : pct >= 85 ? 'orange' : ''}`} style={{ flex: 1 }}><span style={{ width: `${pct}%` }} /></span>
@@ -158,9 +161,9 @@ export default function SalesContractsPage() {
                       </div>
                       <span className="sal-sub">{fmt(c.consumed)}</span>
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(c.remaining)}</td>
+                    <td className="ds-num ds-strong" style={{ whiteSpace: 'nowrap' }}>{fmt(c.remaining)}</td>
                     <td>{c.status === 'active' ? <StatusTag tone="done" label="Actif" /> : <StatusTag tone="cancelled" icon={Archive} label="Clôturé" />}</td>
-                    <td style={{ textAlign: 'right' }}>{c.status === 'active' && (
+                    <td className="ds-actions">{c.status === 'active' && (
                       <NextStep icon={Lock} label="Clôturer" disabled={close.isPending} onClick={async () => {
                         if (await confirm(`Clôturer le contrat ${c.number} ? Les commandes ne pourront plus y être rattachées.`, { title: 'Clôturer le contrat', confirmLabel: 'Clôturer' })) close.mutate(c.id);
                       }} />

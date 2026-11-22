@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import ModalBackdrop from '../ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import { FormField } from '../ds';
 
 /**
  * Saisie d'un motif codé pour une action sensible sur un document d'achat (mig 306).
@@ -48,28 +49,30 @@ export default function ReasonCodeDialog({
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{title}</span></div>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit({ reasonCodeId, note: note.trim() || undefined }); }}
-          style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {description && <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{description}</p>}
-          <label htmlFor="reason-code" style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Motif *</label>
-          <select id="reason-code" value={reasonCodeId} onChange={(e) => setReasonCodeId(e.target.value)} autoFocus
-            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
-            <option value="">{isLoading ? 'Chargement…' : '— Choisir un motif —'}</option>
-            {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-          <label htmlFor="reason-note" style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>
-            Précision{requiresNote ? ' *' : ''}
-          </label>
-          <textarea id="reason-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000}
-            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-            placeholder={requiresNote ? 'Obligatoire pour ce motif' : 'Facultatif'} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Retour</button>
-            <button type="submit" disabled={!valid || pending} className={danger ? 'odoo-btn-danger' : 'odoo-btn-primary'}
+        <form onSubmit={(e) => { e.preventDefault(); if (valid && !pending) onSubmit({ reasonCodeId, note: note.trim() || undefined }); }}>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {description && <p style={{ margin: 0, fontSize: 14, color: 'var(--ds-muted)' }}>{description}</p>}
+            <FormField label="Motif" htmlFor="reason-code" required>
+              <select id="reason-code" value={reasonCodeId} onChange={(e) => setReasonCodeId(e.target.value)} autoFocus className="ds-input">
+                <option value="">{isLoading ? 'Chargement…' : '— Choisir un motif —'}</option>
+                {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Précision" htmlFor="reason-note" required={requiresNote}
+              hint={requiresNote ? 'Obligatoire pour ce motif (3 caractères au moins).' : 'Facultatif'}>
+              <textarea id="reason-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000}
+                className="ds-input" style={{ minHeight: 64 }} />
+            </FormField>
+          </div>
+          {/* « Retour » et non « Annuler » : l'action confirmée est souvent elle-même une annulation. */}
+          <div className="ds-form-foot" style={{ justifyContent: 'flex-end' }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={pending}>Retour</button>
+            <button type="submit" disabled={!valid || pending} aria-busy={pending || undefined}
+              className={danger ? 'ds-btn-danger solid' : 'odoo-btn-primary'}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              {pending && <Loader2 size={12} className="animate-spin" />}
+              {pending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
               {confirmLabel}
             </button>
           </div>

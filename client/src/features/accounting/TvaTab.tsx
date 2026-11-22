@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Download, Lock, Percent, Hourglass, Ban } from 'lucide-react';
+import { Download, Lock, Percent, Hourglass, Ban } from 'lucide-react';
 import { tvaDeclarationApi, purchaseLedgerApi } from '../../api/ledger.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { purchasingReportsApi } from '../../api/purchasing-reports.api';
@@ -14,7 +14,10 @@ const REASON_LABEL: Record<string, string> = {
   exempt_supplier: 'Fournisseur non assujetti', manual: 'Décision manuelle',
 };
 import { useAuth } from '../../context/AuthContext';
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
+import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, SectionHeader, Toolbar } from '../../components/ds';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { AccHeaderActions } from './AccHeaderActions';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -67,10 +70,7 @@ export default function TvaTab() {
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>La declaration TVA est reservee a l'administrateur ou au gerant.</p>
-      </div>
+      <EmptyState icon={Lock} title="La declaration TVA est reservee a l'administrateur ou au gerant." />
     );
   }
 
@@ -92,7 +92,57 @@ export default function TvaTab() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={!data}>
+          <Download size={13} aria-hidden="true" /> Exporter CSV
+        </button>
+      </AccHeaderActions>
+
+      {data && (
+        <>
+        {data.regime?.mode === 'encaissement' && (
+          <StatusBanner tone="info" icon={Percent} title={`Régime des encaissements depuis le ${(data.regime.since ?? '').split('-').reverse().join('/')}`}>
+            La TVA des factures et tickets à crédit est déclarée au fur et à mesure des règlements.
+            {(data.awaiting_collection ?? 0) > 0 && ` TVA facturée non encore encaissée au ${endDate.split('-').reverse().join('/')} : ${money(data.awaiting_collection ?? 0)}.`}
+          </StatusBanner>
+        )}
+        {data.regime?.missing_since && (
+          <StatusBanner tone="warning" icon={Hourglass} title="Régime des encaissements sans date de bascule">
+            La déclaration reste calculée au régime des débits. Renseignez la date de bascule dans Paramètres › Ventes › Régime de TVA.
+          </StatusBanner>
+        )}
+        {data.pending_payment && data.pending_payment.count > 0 && (
+          <StatusBanner tone="info" icon={Hourglass} title={`TVA en attente de règlement : ${money(data.pending_payment.amount)}`}>
+            {data.pending_payment.count} facture(s) fournisseur non soldée(s) au {endDate.split('-').reverse().join('/')} : leur TVA sera déductible le mois de leur règlement.
+          </StatusBanner>
+        )}
+        {(() => {
+          // Mig 312 (D9 G-D9-09) : signalements, sans exclusion automatique (décision de l'expert-comptable).
+          const noIce = statement.filter(r => r.flag_no_ice && r.is_vat_recoverable);
+          const internal = statement.filter(r => r.flag_internal_number && r.is_vat_recoverable);
+          if (!noIce.length && !internal.length) return null;
+          return (
+            <StatusBanner tone="warning" icon={FileSearch} title="Déductions à justifier">
+              {noIce.length > 0 && `${noIce.length} facture(s) d'un fournisseur sans ICE (${money(noIce.reduce((t, r) => t + parseFloat(r.amount_tva), 0))} de TVA). `}
+              {internal.length > 0 && `${internal.length} facture(s) sans numéro du fournisseur (numéro interne). `}
+              Complétez la fiche fournisseur ou la facture avant de déposer la déclaration.
+            </StatusBanner>
+          );
+        })()}
+        {(data.excluded ?? []).map(x => (
+          <StatusBanner key={x.reason} tone="warning" icon={Ban} title={`TVA non récupérable : ${money(x.amount)}`}>
+            {x.count} facture(s) — {REASON_LABEL[x.reason] ?? x.reason}. Cette TVA reste une charge.
+          </StatusBanner>
+        ))}
+        <KpiGrid>
+          <KpiCard label="TVA collectée (ventes)" value={n(data.total_collected)} sub="comptes 445x" />
+          <KpiCard label="TVA déductible (achats)" value={n(data.total_deductible)} sub="comptes 345x" />
+          <KpiCard label="TVA due" value={n(due)} sub={due >= 0 ? 'à payer à la DGI' : 'crédit à reporter'} tone={due >= 0 ? 'red' : 'green'} />
+        </KpiGrid>
+        </>
+      )}
+
+      <Toolbar>
         <SearchSelect
           options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
           value={String(month)}
@@ -107,153 +157,83 @@ export default function TvaTab() {
           placeholder="Année"
           width={110}
         />
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} className="odoo-btn-secondary" disabled={!data}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: !data ? 0.5 : 1 }}>
-          <Download size={13} /> Exporter CSV
-        </button>
-      </div>
+      </Toolbar>
 
       {isLoading || !data ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        </div>
+        <LoadingState />
       ) : (
         <>
-          <div className="odoo-stat-grid">
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">TVA collectée (ventes)</div>
-              <div className="odoo-stat-card-value" style={{ color: '#0e7c3a' }}>{n(data.total_collected)}</div>
-              <div className="odoo-stat-card-sub">comptes 445x</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">TVA déductible (achats)</div>
-              <div className="odoo-stat-card-value" style={{ color: '#1565c0' }}>{n(data.total_deductible)}</div>
-              <div className="odoo-stat-card-sub">comptes 345x</div>
-            </div>
-            <div className="odoo-stat-card" style={{ border: `1.5px solid ${due >= 0 ? '#c62828' : '#0e7c3a'}` }}>
-              <div className="odoo-stat-card-label">TVA due</div>
-              <div className="odoo-stat-card-value" style={{ color: due >= 0 ? '#c62828' : '#0e7c3a' }}>{n(due)}</div>
-              <div className="odoo-stat-card-sub">{due >= 0 ? 'à payer à la DGI' : 'crédit à reporter'}</div>
-            </div>
-          </div>
-
-          <div className="odoo-section" style={{ padding: 0 }}>
-            <table className="odoo-table" style={{ margin: 0 }}>
+          <DataPanel label="Déclaration de TVA">
+            <table className="odoo-table ds-dense">
+              <thead>
+                <tr><th style={{ width: 80 }}>Compte</th><th>Libellé</th><th className="ds-num">Montant ({currencySymbol()})</th></tr>
+              </thead>
               <tbody>
-                <tr>
-                  <td colSpan={3} style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#0e7c3a' }}>
-                    <Percent size={12} style={{ display: 'inline', marginRight: 4 }} />TVA collectée sur ventes
-                  </td>
-                </tr>
+                <tr className="ds-group"><td colSpan={3}>TVA collectée sur ventes</td></tr>
                 {data.collected.length === 0 ? (
-                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucune TVA collectée sur la période</td></tr>
+                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune TVA collectée sur la période</td></tr>
                 ) : data.collected.map(c => (
                   <tr key={c.code}>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', width: 70 }}>{c.code}</td>
+                    <td className="ds-ref" style={{ width: 70 }}>{c.code}</td>
                     <td>{c.label} <span style={{ color: 'var(--theme-text-muted)' }}>· {c.tva_rate}%</span></td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(c.amount)}</td>
+                    <td className="ds-num">{n(c.amount)}</td>
                   </tr>
                 ))}
 
-                <tr>
-                  <td colSpan={3} style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#1565c0' }}>
-                    <Percent size={12} style={{ display: 'inline', marginRight: 4 }} />TVA déductible sur achats
-                  </td>
-                </tr>
+                <tr className="ds-group"><td colSpan={3}>TVA déductible sur achats</td></tr>
                 {data.deductible.length === 0 ? (
-                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucune TVA déductible sur la période</td></tr>
+                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune TVA déductible sur la période</td></tr>
                 ) : data.deductible.map(d => (
                   <tr key={d.code}>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', width: 70 }}>{d.code}</td>
+                    <td className="ds-ref" style={{ width: 70 }}>{d.code}</td>
                     <td>{d.label} <span style={{ color: 'var(--theme-text-muted)' }}>· {d.tva_rate}%</span></td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(d.amount)}</td>
+                    <td className="ds-num">{n(d.amount)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ fontWeight: 600, background: 'var(--theme-bg-secondary)' }}>
-                  <td colSpan={2} style={{ textAlign: 'right' }}>TVA due (collectée − déductible) :</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: due >= 0 ? '#c62828' : '#0e7c3a' }}>{n(due)}</td>
+                <tr>
+                  <td className="ds-num" colSpan={2}>TVA due (collectée − déductible)</td>
+                  <td className="ds-num" style={{ color: due >= 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{n(due)}</td>
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </DataPanel>
 
-          <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
+          <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>
             Base de la déclaration mensuelle CA20. TVA collectée : écritures de la période. TVA déductible : factures fournisseurs
             dont le règlement complet est intervenu dans la période (le droit à déduction naît au paiement).
           </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-            {data.regime?.mode === 'encaissement' && (
-              <StatusBanner tone="info" icon={Percent} title={`Régime des encaissements depuis le ${(data.regime.since ?? '').split('-').reverse().join('/')}`}>
-                La TVA des factures et tickets à crédit est déclarée au fur et à mesure des règlements.
-                {(data.awaiting_collection ?? 0) > 0 && ` TVA facturée non encore encaissée au ${endDate.split('-').reverse().join('/')} : ${money(data.awaiting_collection ?? 0)}.`}
-              </StatusBanner>
-            )}
-            {data.regime?.missing_since && (
-              <StatusBanner tone="warning" icon={Hourglass} title="Régime des encaissements sans date de bascule">
-                La déclaration reste calculée au régime des débits. Renseignez la date de bascule dans Paramètres › Ventes › Régime de TVA.
-              </StatusBanner>
-            )}
-            {data.pending_payment && data.pending_payment.count > 0 && (
-              <StatusBanner tone="info" icon={Hourglass} title={`TVA en attente de règlement : ${money(data.pending_payment.amount)}`}>
-                {data.pending_payment.count} facture(s) fournisseur non soldée(s) au {endDate.split('-').reverse().join('/')} : leur TVA sera déductible le mois de leur règlement.
-              </StatusBanner>
-            )}
-            {(() => {
-              // Mig 312 (D9 G-D9-09) : signalements, sans exclusion automatique (décision de l'expert-comptable).
-              const noIce = statement.filter(r => r.flag_no_ice && r.is_vat_recoverable);
-              const internal = statement.filter(r => r.flag_internal_number && r.is_vat_recoverable);
-              if (!noIce.length && !internal.length) return null;
-              return (
-                <StatusBanner tone="warning" icon={FileSearch} title="Déductions à justifier">
-                  {noIce.length > 0 && `${noIce.length} facture(s) d'un fournisseur sans ICE (${money(noIce.reduce((t, r) => t + parseFloat(r.amount_tva), 0))} de TVA). `}
-                  {internal.length > 0 && `${internal.length} facture(s) sans numéro du fournisseur (numéro interne). `}
-                  Complétez la fiche fournisseur ou la facture avant de déposer la déclaration.
-                </StatusBanner>
-              );
-            })()}
-            {(data.excluded ?? []).map(x => (
-              <StatusBanner key={x.reason} tone="warning" icon={Ban} title={`TVA non récupérable : ${money(x.amount)}`}>
-                {x.count} facture(s) — {REASON_LABEL[x.reason] ?? x.reason}. Cette TVA reste une charge.
-              </StatusBanner>
-            ))}
-          </div>
-
-          <div className="odoo-section" style={{ padding: 0, marginTop: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px' }}>
-              <strong style={{ fontSize: '0.8125rem' }}>Relevé des déductions ({statement.length})</strong>
-              <div style={{ flex: 1 }} />
-              <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 6 }}
-                onClick={() => purchasingReportsApi.exportPurchaseJournal(startDate, endDate).catch(() => notify.error('Export impossible'))}>
-                <Download size={12} /> Journal des achats</button>
-              <button className="odoo-btn-secondary" disabled={statement.length === 0} onClick={exportStatement}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Download size={12} /> Exporter</button>
-            </div>
-            <table className="odoo-table" style={{ margin: 0 }}>
+          <SectionHeader title="Relevé des déductions" note={`${statement.length} facture${statement.length > 1 ? 's' : ''}`}>
+            <button type="button" className="odoo-btn-secondary ds-btn-sm"
+              onClick={() => purchasingReportsApi.exportPurchaseJournal(startDate, endDate).catch(() => notify.error('Export impossible'))}>
+              <Download size={12} aria-hidden="true" /> Journal des achats</button>
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={statement.length === 0} onClick={exportStatement}><Download size={12} aria-hidden="true" /> Exporter</button>
+          </SectionHeader>
+          <DataPanel label="Relevé des déductions">
+            <table className="odoo-table ds-dense">
               <thead><tr><th>Fournisseur</th><th style={{ width: 130 }}>ICE</th><th style={{ width: 120 }}>Facture</th><th style={{ width: 95 }}>Droit né le</th>
-                <th style={{ width: 100, textAlign: 'right' }}>HT</th><th style={{ width: 90, textAlign: 'right' }}>TVA</th><th>Règlements</th></tr></thead>
+                <th className="ds-num" style={{ width: 110 }}>HT ({currencySymbol()})</th><th className="ds-num" style={{ width: 110 }}>TVA ({currencySymbol()})</th><th>Règlements</th></tr></thead>
               <tbody>
                 {statement.length === 0 ? (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucune facture déductible sur la période</td></tr>
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune facture déductible sur la période</td></tr>
                 ) : statement.map(r => (
                   <tr key={r.invoice_id} style={!r.is_vat_recoverable ? { opacity: 0.6 } : undefined}>
-                    <td>{r.supplier_name}</td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{r.supplier_ice || <span className="odoo-tag odoo-tag-orange">sans ICE</span>}</td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{r.supplier_invoice_number || r.invoice_number}</td>
+                    <td className="ds-strong">{r.supplier_name}</td>
+                    <td className="ds-ref">{r.supplier_ice || <StatusTag tone="todo" label="sans ICE" />}</td>
+                    <td className="ds-ref">{r.supplier_invoice_number || r.invoice_number}</td>
                     <td style={{ fontSize: '0.75rem' }}>{r.vat_recoverable_from ? String(r.vat_recoverable_from).slice(0, 10).split('-').reverse().join('/') : '—'}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(r.amount_ht)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
-                      {n(r.amount_tva)} {!r.is_vat_recoverable && <span className="odoo-tag odoo-tag-red" title={REASON_LABEL[r.vat_non_recoverable_reason ?? ''] ?? ''}>exclue</span>}
+                    <td className="ds-num">{n(r.amount_ht)}</td>
+                    <td className="ds-num">
+                      {n(r.amount_tva)} {!r.is_vat_recoverable && <StatusTag tone="blocked" label="exclue" title={REASON_LABEL[r.vat_non_recoverable_reason ?? ''] ?? ''} />}
                     </td>
                     <td style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.payments || '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
         </>
       )}
     </>

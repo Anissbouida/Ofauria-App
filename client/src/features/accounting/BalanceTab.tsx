@@ -1,11 +1,14 @@
 import { useState, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Download, Lock, Scale, Calendar } from 'lucide-react';
+import { Download, Lock, Scale } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
 import type { BalanceRow } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
+import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, TableFooter, Toolbar } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
+import { DateRangeField } from './AccToolbarFields';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -25,8 +28,8 @@ function n(v: string | number): string {
 }
 
 const CLASS_LABELS: Record<number, string> = {
-  1: 'Financement permanent', 2: 'Actif immobilise', 3: 'Actif circulant',
-  4: 'Passif circulant', 5: 'Tresorerie', 6: 'Charges', 7: 'Produits',
+  1: 'Financement permanent', 2: 'Actif immobilisé', 3: 'Actif circulant',
+  4: 'Passif circulant', 5: 'Trésorerie', 6: 'Charges', 7: 'Produits',
 };
 
 export default function BalanceTab() {
@@ -60,10 +63,7 @@ export default function BalanceTab() {
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>La balance est reservee a l'administrateur ou au gerant.</p>
-      </div>
+      <EmptyState icon={Lock} title="La balance est réservée à l'administrateur ou au gérant." />
     );
   }
 
@@ -77,87 +77,60 @@ export default function BalanceTab() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-            className="odoo-search-input" style={{ width: 140 }} />
-          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-            className="odoo-search-input" style={{ width: 140 }} />
-        </div>
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} className="odoo-btn-secondary" disabled={rows.length === 0}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: rows.length === 0 ? 0.5 : 1 }}>
-          <Download size={13} /> Exporter CSV
+      {/* Contrôle d'équilibre */}
+      <KpiGrid>
+        <KpiCard label="Total débit" value={n(totals.debit)} sub={currencySymbol()} />
+        <KpiCard label="Total crédit" value={n(totals.credit)} sub={currencySymbol()} />
+        <KpiCard label="Équilibre" value={Math.abs(totals.ecart) < 0.01 ? '✓ OK' : n(totals.ecart)} sub="débit − crédit" tone={Math.abs(totals.ecart) < 0.01 ? 'green' : 'red'} />
+      </KpiGrid>
+
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={rows.length === 0}>
+          <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <EditionButtons kind="balance" params={{ startDate, endDate }} />
-      </div>
+      </AccHeaderActions>
 
-      {/* Controle d'equilibre */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Total debit</div>
-          <div className="odoo-stat-card-value" style={{ color: '#1565c0' }}>{n(totals.debit)}</div>
-          <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Total credit</div>
-          <div className="odoo-stat-card-value" style={{ color: '#c62828' }}>{n(totals.credit)}</div>
-          <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Equilibre</div>
-          <div className="odoo-stat-card-value" style={{ color: Math.abs(totals.ecart) < 0.01 ? '#0e7c3a' : '#c62828' }}>
-            {Math.abs(totals.ecart) < 0.01 ? '✓ OK' : n(totals.ecart)}
-          </div>
-          <div className="odoo-stat-card-sub">debit − credit</div>
-        </div>
-      </div>
+      <Toolbar>
+        <DateRangeField from={startDate} to={endDate} onFrom={setStartDate} onTo={setEndDate} />
+      </Toolbar>
 
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        </div>
+        <LoadingState />
       ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Scale size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucun mouvement sur la periode</p>
-        </div>
+        <EmptyState icon={Scale} title="Aucun mouvement sur la période" text="Élargissez la période pour afficher les comptes mouvementés." />
       ) : (
-        <div className="odoo-section" style={{ padding: 0 }}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Balance générale" footer={<TableFooter note={`${rows.length} compte${rows.length > 1 ? 's' : ''} · débit ${n(totals.debit) || '0,00'} · crédit ${n(totals.credit) || '0,00'} ${currencySymbol()}`} />}>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th style={{ width: 90 }}>Compte</th>
-                <th>Libelle</th>
-                <th style={{ width: 130, textAlign: 'right' }} title="Solde au début de la période, à-nouveaux compris">Ouverture</th>
-                <th style={{ width: 120, textAlign: 'right' }}>Debit</th>
-                <th style={{ width: 120, textAlign: 'right' }}>Credit</th>
-                <th style={{ width: 130, textAlign: 'right' }} title="Ouverture + mouvements de la période">Clôture</th>
+                <th>Libellé</th>
+                <th className="ds-num" style={{ width: 130 }} title="Solde au début de la période, à-nouveaux compris">Ouverture ({currencySymbol()})</th>
+                <th className="ds-num" style={{ width: 120 }}>Débit ({currencySymbol()})</th>
+                <th className="ds-num" style={{ width: 120 }}>Crédit ({currencySymbol()})</th>
+                <th className="ds-num" style={{ width: 130 }} title="Ouverture + mouvements de la période">Clôture ({currencySymbol()})</th>
               </tr>
             </thead>
             <tbody>
               {byClass.map(([cls, items]) => (
                 <Fragment key={`cls-${cls}`}>
-                  <tr style={{ background: 'var(--theme-bg-secondary)' }}>
-                    <td colSpan={6} style={{ fontWeight: 600, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                      Classe {cls} — {CLASS_LABELS[cls]}
-                    </td>
+                  <tr className="ds-group">
+                    <td colSpan={6}>Classe {cls} — {CLASS_LABELS[cls]}<small>{items.length} compte{items.length > 1 ? 's' : ''}</small></td>
                   </tr>
                   {items.map(r => {
                     const bal = r.closing ?? (parseFloat(r.balance) || 0);
                     const open = r.opening ?? 0;
                     return (
                       <tr key={r.code}>
-                        <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.code}</td>
-                        <td>{r.label}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>
+                        <td className="ds-ref">{r.code}</td>
+                        <td className="ds-strong">{r.label}</td>
+                        <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>
                           {open === 0 ? '—' : `${n(Math.abs(open))} ${open > 0 ? 'D' : 'C'}`}
                         </td>
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(r.total_debit)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(r.total_credit)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: bal >= 0 ? '#1565c0' : '#c62828' }}>
+                        <td className="ds-num">{n(r.total_debit)}</td>
+                        <td className="ds-num">{n(r.total_credit)}</td>
+                        <td className="ds-num ds-strong">
                           {Math.round(bal * 100) === 0 ? '0,00' : `${n(Math.abs(bal))} ${bal > 0 ? 'D' : 'C'}`}
                         </td>
                       </tr>
@@ -167,15 +140,15 @@ export default function BalanceTab() {
               ))}
             </tbody>
             <tfoot>
-              <tr style={{ background: 'var(--theme-bg-secondary)', fontWeight: 600 }}>
-                <td colSpan={3} style={{ textAlign: 'right' }}>Totaux des mouvements :</td>
-                <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(totals.debit)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(totals.credit)}</td>
+              <tr>
+                <td className="ds-num" colSpan={3}>Totaux des mouvements</td>
+                <td className="ds-num">{n(totals.debit)}</td>
+                <td className="ds-num">{n(totals.credit)}</td>
                 <td></td>
               </tr>
             </tfoot>
           </table>
-        </div>
+        </DataPanel>
       )}
     </>
   );

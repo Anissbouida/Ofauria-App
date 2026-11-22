@@ -11,12 +11,12 @@ import {
   Layers, Search, ChevronDown, ChevronRight, Snowflake,
   Package, Clock, ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
-import { StatusBanner } from '../../components/ui/StatusBanner';
+import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, NoResultState, SearchBar, TableFooter, Toolbar } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-const secHeader: React.CSSProperties = { fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--theme-text-muted)', marginBottom: 8 };
+const secHeader: React.CSSProperties = { fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 8 };
 const emptyTxt: React.CSSProperties = { fontSize: '0.75rem', color: 'var(--theme-text-muted)' };
 const tileBox: React.CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: '8px 10px', fontSize: '0.8125rem', display: 'grid', gap: 4 };
 
@@ -199,78 +199,47 @@ export default function SemiFinisTab() {
 
   return (
     <>
-      <StatusBanner tone="info" icon={Layers} title="Produits de base (semi-finis)">
-        Recettes intermédiaires stockées au frigo et réutilisées comme composants d'autres produits. Suivez leur stock disponible, leurs lots et les réservations des plans de production.
-      </StatusBanner>
+      {/* ─── Indicateurs ─── */}
+      <KpiGrid>
+        <KpiCard label="Produits de base" value={baseRecipes.length} sub="Recettes intermédiaires" />
+        <KpiCard label="En stock" value={totalWithStock} sub="Au frigo" />
+        <KpiCard label="Lots actifs" value={totalLotsActifs} sub="En cours" />
+        <KpiCard label="Expiration sous 24 h" value={expiringCount} sub={expiringCount > 0 ? 'Lots à utiliser en priorité' : 'Aucun lot imminent'} tone={expiringCount > 0 ? 'red' : undefined} />
+      </KpiGrid>
 
-      {/* ─── Stat tiles ─── */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Produits de base</div>
-          <div className="odoo-stat-card-value">{baseRecipes.length}</div>
-          <div className="odoo-stat-card-sub">recettes</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">En stock</div>
-          <div className="odoo-stat-card-value">{totalWithStock}</div>
-          <div className="odoo-stat-card-sub">au frigo</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Lots actifs</div>
-          <div className="odoo-stat-card-value">{totalLotsActifs}</div>
-          <div className="odoo-stat-card-sub">en cours</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Expiration ≤24h</div>
-          <div className="odoo-stat-card-value" style={{ color: expiringCount > 0 ? '#dc3545' : undefined }}>{expiringCount}</div>
-          <div className="odoo-stat-card-sub">imminents</div>
-        </div>
-      </div>
-
-      {/* ─── Search panel ─── */}
-      <div className="odoo-search-panel">
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Rechercher un produit de base..."
-          className="odoo-search-input"
-        />
+      {/* ─── Barre d'outils ─── */}
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} placeholder="Rechercher un produit de base" />
         {stores.length > 1 && (
-          <div style={{ marginLeft: 'auto' }}>
-            <SearchSelect
-              options={(stores as Record<string, any>[]).map(s => ({ id: s.id as string, label: s.name as string }))}
-              value={storeId}
-              onChange={id => id && setSelectedStoreId(id)}
-              placeholder="Magasin"
-            />
-          </div>
+          <SearchSelect
+            options={(stores as Record<string, any>[]).map(s => ({ id: s.id as string, label: s.name as string }))}
+            value={storeId}
+            onChange={id => id && setSelectedStoreId(id)}
+            placeholder="Magasin"
+          />
         )}
-      </div>
+      </Toolbar>
 
       {/* ─── List ─── */}
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
-          Chargement...
-        </div>
+        <LoadingState />
       ) : filtered.length === 0 ? (
-        <StatusBanner tone="info" icon={Layers} title="Aucun produit de base">
-          Créez des recettes marquées comme « recette de base » dans le module Recettes.
-        </StatusBanner>
+        search
+          ? <NoResultState text="Aucun produit de base ne correspond à la recherche." onReset={() => setSearch('')} />
+          : <EmptyState icon={Layers} title="Aucun produit de base"
+              text="Les recettes marquées « préparation de base » dans les fiches techniques apparaissent ici, avec leur stock au frigo et leurs lots." />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <DataPanel label="Produits de base" footer={<TableFooter note={`${filtered.length} sur ${baseRecipes.length} produit(s) de base`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 24 }}></th>
                 <SortHeader label="Nom" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Rendement" sortKey="yield" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Coût" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Stock frigo" sortKey="stock" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <th style={{ textAlign: 'right' }}>Réservé</th>
+                <SortHeader label={`Coût (${currencySymbol()})`} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Stock au frigo" sortKey="stock" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <th className="ds-num">Réservé</th>
                 <SortHeader label="Lots" sortKey="lots" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Proche exp." sortKey="expiry" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Prochaine expiration" sortKey="expiry" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
               </tr>
             </thead>
             <tbody>
@@ -306,7 +275,7 @@ export default function SemiFinisTab() {
                 })}
               </tbody>
             </table>
-        </div>
+        </DataPanel>
       )}
     </>
   );
@@ -395,70 +364,53 @@ function SemiFiniRow({
 
   return (
     <>
-      <tr onClick={onToggle} style={{ cursor: 'pointer' }}>
-        <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+      <tr onClick={onToggle} style={{ cursor: 'pointer' }} aria-expanded={isExpanded}>
         <td>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+          <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {isExpanded
-              ? <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />
-              : <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-            <Layers size={13} style={{ color: 'var(--theme-accent)' }} />
+              ? <ChevronDown size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
+              : <ChevronRight size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
             {recipe.name}
             {recipe.product_name && recipe.product_name !== recipe.name && (
-              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', fontWeight: 400 }}>· {recipe.product_name}</span>
+              <span style={{ color: 'var(--ds-muted)', fontSize: 12, fontWeight: 400 }}>· {recipe.product_name}</span>
             )}
           </span>
         </td>
-        <td style={{ textAlign: 'right' }}>
-          <span style={{ fontWeight: 500 }}>{yieldQty}</span>
-          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{recipe.yield_unit}</span>
+        {/* Rendement, stock et réservé gardent l'unité de la fiche (elle varie d'une ligne à l'autre). */}
+        <td className="ds-num">
+          {yieldQty}
+          <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 3 }}>{recipe.yield_unit}</span>
         </td>
-        <td style={{ textAlign: 'right' }}>
-          {cost != null ? (
-            <>
-              <span style={{ fontWeight: 600 }}>{cost.toFixed(2)}</span>
-              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}</span>
-            </>
-          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-        </td>
-        <td style={{ textAlign: 'right' }}>
+        <td className="ds-num">{cost != null ? <span className="ds-strong">{cost.toFixed(2)}</span> : '—'}</td>
+        <td className="ds-num">
           {stockQty > 0 ? (
-            <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, justifyContent: 'flex-end' }}>
-              <Snowflake size={11} style={{ color: 'var(--theme-accent)' }} />
-              <span style={{ fontWeight: 600 }}>{stockQty.toFixed(2)}</span>
-              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{recipe.yield_unit}</span>
-            </span>
-          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+            <>
+              <span className="ds-strong">{stockQty.toFixed(2)}</span>
+              <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 3 }}>{recipe.yield_unit}</span>
+            </>
+          ) : '—'}
         </td>
-        <td style={{ textAlign: 'right' }}>
+        <td className="ds-num">
           {reservedQty > 0 ? (
-            <span className="odoo-tag odoo-tag-orange" title="Réservé par les plans de production en cours">
+            <span style={{ color: 'var(--ds-warning)', fontWeight: 600 }} title="Réservé par les plans de production en cours">
               {reservedQty.toFixed(2)} {recipe.yield_unit}
             </span>
-          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+          ) : '—'}
         </td>
-        <td style={{ textAlign: 'right' }}>
-          {nbLots > 0 ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', color: 'var(--theme-text-muted)' }}>
-              <Package size={11} /> {nbLots}
-            </span>
-          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-        </td>
-        <td style={{ textAlign: 'right' }}>
+        <td className="ds-num">{nbLots > 0 ? nbLots : '—'}</td>
+        <td className="ds-num">
           {earliestExpiry ? (
             isExpiring ? (
-              <StatusTag tone="late" label={format(earliestExpiry, 'dd/MM', { locale: fr })} title="DLC dépassée ou sous 24 h" />
-            ) : (
-              <span style={{ color: 'var(--theme-text-muted)' }}>{format(earliestExpiry, 'dd/MM', { locale: fr })}</span>
-            )
-          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+              <StatusTag tone="late" label={format(earliestExpiry, 'd MMM', { locale: fr })} title="DLC dépassée ou sous 24 h" />
+            ) : format(earliestExpiry, 'd MMM', { locale: fr })
+          ) : '—'}
         </td>
       </tr>
 
       {/* Expanded panel */}
       {isExpanded && (
         <tr>
-          <td colSpan={8} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '16px 20px' }}>
+          <td colSpan={7} style={{ background: 'var(--ds-bg)', padding: '16px 20px' }}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               {/* Composition */}
               <div>
@@ -513,7 +465,7 @@ function SemiFiniRow({
                     {reservedQty > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--theme-text-muted)' }}>Réservé par plans en cours</span>
-                        <span style={{ fontWeight: 600, color: '#b85d1a' }}>{reservedQty.toFixed(2)} {recipe.yield_unit}</span>
+                        <span style={{ fontWeight: 600, color: 'var(--ds-warning)' }}>{reservedQty.toFixed(2)} {recipe.yield_unit}</span>
                       </div>
                     )}
                     {lineage?.current?.last_produced_at && (
@@ -541,7 +493,7 @@ function SemiFiniRow({
                               <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{format(new Date(r.plan_date), 'dd MMM yyyy', { locale: fr })} · {r.plan_status} · {r.target_role}</div>
                             </td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              <span style={{ fontWeight: 600, color: '#b85d1a', fontVariantNumeric: 'tabular-nums' }}>{parseFloat(r.quantity_from_stock).toFixed(2)} {recipe.yield_unit}</span>
+                              <span style={{ fontWeight: 600, color: 'var(--ds-warning)', fontVariantNumeric: 'tabular-nums' }}>{parseFloat(r.quantity_from_stock).toFixed(2)} {recipe.yield_unit}</span>
                               <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)', marginLeft: 6, verticalAlign: 'middle' }} />
                             </td>
                           </tr>
@@ -591,13 +543,13 @@ function SemiFiniRow({
                             <tr key={i}>
                               <td>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ width: 6, height: 6, borderRadius: 999, background: positive ? '#1a9d5a' : '#b85d1a', flexShrink: 0 }} />
+                                  <span style={{ width: 6, height: 6, borderRadius: 999, background: positive ? 'var(--ds-success)' : 'var(--ds-warning)', flexShrink: 0 }} />
                                   {typeLabel[tx.type] || tx.type}
                                   {tx.plan_notes && <span style={{ color: 'var(--theme-text-muted)' }}>· {tx.plan_notes}</span>}
                                 </span>
                               </td>
                               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: positive ? '#1a9d5a' : '#b85d1a' }}>{positive ? '+' : ''}{qty.toFixed(2)}</span>
+                                <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: positive ? 'var(--ds-success)' : 'var(--ds-warning)' }}>{positive ? '+' : ''}{qty.toFixed(2)}</span>
                                 <span style={{ color: 'var(--theme-text-muted)', marginLeft: 8 }}>{format(new Date(tx.created_at), 'dd/MM HH:mm', { locale: fr })}</span>
                               </td>
                             </tr>

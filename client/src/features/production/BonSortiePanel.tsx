@@ -19,6 +19,7 @@ import './production.css';
 import '../projects/projects.css';
 import '../sales/sales.css';
 
+import { EmptyState, LoadingState } from '../../components/ds';
 /**
  * Panneau du bon de sortie (demande d'ingredients d'un plan de production).
  *
@@ -347,16 +348,11 @@ export function BonSortiePanel({
   };
 
   if (isLoading) return (
-    <section className="prj-panel sal-empty">
-      <Loader2 size={24} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-    </section>
+    <LoadingState label="Chargement du bon de sortie…" />
   );
 
   if (!bon) return (
-    <section className="prj-panel sal-empty">
-      <Package size={28} style={{ opacity: 0.4 }} />
-      <strong>Aucun bon de sortie pour ce plan</strong>
-    </section>
+    <EmptyState icon={Package} title="Aucun bon de sortie pour ce plan" text="Le bon de sortie est créé à la confirmation du plan, quand des ingrédients sont à préparer." />
   );
 
   const isClosed = bon.status === 'cloture';
@@ -490,7 +486,7 @@ export function BonSortiePanel({
             <div className="bsi-lines-progress">
               <span className="bsi-lines-progress-label">
                 <strong>{pesees}</strong> / {totalLines} ingrédient{totalLines > 1 ? 's' : ''} pesé{pesees > 1 ? 's' : ''}
-                {manquants > 0 && <> · <span style={{ color: '#a94442' }}>{manquants} manquant{manquants > 1 ? 's' : ''}</span></>}
+                {manquants > 0 && <> · <span style={{ color: 'var(--ds-danger)' }}>{manquants} manquant{manquants > 1 ? 's' : ''}</span></>}
               </span>
               <div className="bsi-lines-progress-track">
                 <div className={`bsi-lines-progress-bar ${allDone ? 'is-done' : ''}`} style={{ width: `${progressPct}%` }} />
@@ -524,10 +520,10 @@ export function BonSortiePanel({
               <th style={{ width: 28 }}></th>
               <th>Ingrédient</th>
               <th>État</th>
-              <th style={{ textAlign: 'right' }}>Demandé</th>
-              {isMagasinier && <th style={{ textAlign: 'right' }}>Plage tolérée</th>}
+              <th className="ds-num">Demandé</th>
+              {isMagasinier && <th className="ds-num">Plage tolérée</th>}
               <th style={{ textAlign: 'right', width: isMagasinier ? 170 : undefined }}>{isMagasinier ? 'Poids pesé' : 'Reçu'}</th>
-              {isMagasinier && <th style={{ textAlign: 'right' }}>Écart</th>}
+              {isMagasinier && <th className="ds-num">Écart</th>}
               {isMagasinier && <th style={{ width: 44 }}></th>}
             </tr>
           </thead>
@@ -690,9 +686,9 @@ export function BonSortiePanel({
                 </td>
               )}
               {isMagasinier && (
-                <td style={{ textAlign: 'right' }}>
+                <td className="ds-num">
                   {ev?.ready && (
-                    <button onClick={saveLine} disabled={ligneMutation.isPending} className="bsi-save-btn" title="Enregistrer cette pesée">
+                    <button onClick={saveLine} disabled={ligneMutation.isPending} className="bsi-save-btn" title="Enregistrer cette pesée" aria-label="Enregistrer cette pesée">
                       {ligneMutation.isPending && ligneMutation.variables?.ligneId === line.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                     </button>
                   )}
@@ -704,7 +700,7 @@ export function BonSortiePanel({
                 <td></td>
                 <td colSpan={7}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <AlertTriangle size={13} style={{ color: '#b85d1a', flexShrink: 0 }} />
+                    <AlertTriangle size={13} style={{ color: 'var(--ds-warning)', flexShrink: 0 }} />
                     <input type="text" value={entry.reason}
                       onChange={(e) => setEntry(line.id as string, { reason: e.target.value })}
                       onKeyDown={(e) => { if (e.key === 'Enter') saveLine(); }}
@@ -764,7 +760,7 @@ export function BonSortiePanel({
             {bon.prelevement_at && <p>Réception acceptée le {format(new Date(bon.prelevement_at as string), 'dd/MM/yyyy à HH:mm')}{bon.prelevement_by_name ? ` par ${bon.prelevement_by_name as string}` : ''}</p>}
             {bon.closed_at && <p>Livré le {format(new Date(bon.closed_at as string), 'dd/MM/yyyy à HH:mm')}</p>}
             {bon.derogation_dlc_motif && (
-              <p style={{ color: '#b45309', fontWeight: 600 }}>
+              <p style={{ color: 'var(--ds-warning)', fontWeight: 600 }}>
                 ⚠ Dérogation DLC{bon.derogation_dlc_at ? ` le ${format(new Date(bon.derogation_dlc_at as string), 'dd/MM/yyyy à HH:mm')}` : ''} : {bon.derogation_dlc_motif as string}
               </p>
             )}
@@ -775,14 +771,14 @@ export function BonSortiePanel({
                     <RefreshCw size={13} /> Régénérer le bon
                   </button>
                   {!showDerog && (
-                    <button onClick={() => setShowDerog(true)} disabled={regenerateMutation.isPending} className="odoo-btn-secondary" style={{ color: '#b45309', borderColor: '#fcd34d' }}>
+                    <button onClick={() => setShowDerog(true)} disabled={regenerateMutation.isPending} className="odoo-btn-secondary" style={{ color: 'var(--ds-warning)', borderColor: '#fcd34d' }}>
                       ⚠ Régénérer avec dérogation DLC
                     </button>
                   )}
                 </div>
                 {showDerog && (
                   <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <span style={{ color: '#92400e' }}>Les lots à DLC dépassée seront alloués. Cette décision est tracée (auteur, date, motif) sur le bon.</span>
+                    <span style={{ color: 'var(--ds-warning)' }}>Les lots à DLC dépassée seront alloués. Cette décision est tracée (auteur, date, motif) sur le bon.</span>
                     <textarea value={derogMotif} onChange={(e) => setDerogMotif(e.target.value)} rows={2}
                       placeholder="Motif de la dérogation (obligatoire, 5 caractères min.) — ex. : contrôle organoleptique OK, DLC à J+1, utilisation en cuisson"
                       style={{ width: '100%', fontSize: '0.75rem', border: '1px solid #fcd34d', borderRadius: 6, padding: '4px 8px', background: '#fff' }} />

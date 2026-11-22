@@ -9,6 +9,7 @@ import { ordersApi } from '../../api/orders.api';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { TYPE_LABELS, isPro, customerName, num, n, fmtDate, isLate, daysLate } from './OrdersPage';
 import { orderSteps, orderHistory } from './OrderRecordPage';
+import { LoadingState } from '../../components/ds';
 
 /** Statut d'une commande en étiquette commune (couleur + icône + libellé). */
 export const ORDER_TONE: Record<string, { tone: StatusTone; icon?: LucideIcon }> = {
@@ -113,7 +114,7 @@ export function OrderPane({ row, next, menu, busy }: {
       </div>
 
       {isLoading && !o ? (
-        <div className="kl-widget kl-empty"><Loader2 className="animate-spin" size={20} /><span>Chargement…</span></div>
+        <LoadingState label="Chargement…" />
       ) : st === 'cancelled' ? (
         <div className="kl-widget"><div className="ord-state">Commande annulée</div>
           <div className="ord-state-sub">{advance > 0 ? `L'avance de ${money(advance)} reste acquise.` : 'Aucune somme versée.'}</div></div>

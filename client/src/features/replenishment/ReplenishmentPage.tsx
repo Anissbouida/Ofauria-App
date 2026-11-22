@@ -10,13 +10,16 @@ import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty, type FilterChip } from '../sales/ListTemplate';
+import { ListToolbar, FilterChips, type FilterChip } from '../sales/ListTemplate';
 import {
   Plus, Package, ArrowRight, Clock, AlertTriangle, CheckCircle,
   Send, ShoppingBag, Trash2, Calendar, Search, X, Lightbulb, Truck,
   Loader2, PackageOpen, ChevronRight, Hash, User, Layers, PackageCheck,
   type LucideIcon,
 } from 'lucide-react';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { DataPanel, EmptyState, LoadingState, NoResultState, TableFooter } from '../../components/ds';
 
 const STORE_ROLES = ['cashier', 'saleswoman'];
 
@@ -70,6 +73,7 @@ export default function ReplenishmentPage() {
   const ws = useWorkshops(); // libellés des ateliers (mig 511)
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -129,38 +133,38 @@ export default function ReplenishmentPage() {
     <SalesPageShell icon={ShoppingBag} parent="Production" title="Demandes boutique" list
       summary={<><b>{filtered.length}</b> / {allRequests.length} demande(s){statCounts.submitted > 0 ? <> · <b>{statCounts.submitted}</b> en attente</> : null}</>}
       actions={(isStoreStaff || isAdmin) ? (
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
-          <Plus size={14} /> Nouveau
+        <button type="button" onClick={() => setShowForm(true)} className="odoo-btn-primary">
+          <Plus size={14} aria-hidden="true" /> Nouvelle demande
         </button>
       ) : undefined}>
-
-      {/* ══════ BARRE D'OUTILS ══════ */}
-      <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="Rechercher par numéro ou demandeur..." />
 
       {/* ══════ STATUTS en pastilles avec compteurs ══════ */}
       <FilterChips chips={chips} value={statusFilter} onChange={setStatusFilter} label="Filtrer par statut" />
 
+      {/* ══════ BARRE D'OUTILS ══════ */}
+      <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="Rechercher par numéro ou demandeur…" />
+
       {/* ══════ REQUEST TABLE (.odoo-table) ══════ */}
       {isLoading ? (
-        <section className="prj-panel sal-empty">
-          <Loader2 size={20} className="animate-spin" /><span>Chargement…</span>
-        </section>
+        <LoadingState label="Chargement des demandes…" />
       ) : filtered.length === 0 ? (
-        <ListEmpty icon={PackageOpen} title="Aucune demande d'approvisionnement" text="Les demandes apparaîtront ici" />
+        (searchQuery || statusFilter)
+          ? <NoResultState text="Aucune demande ne correspond aux filtres." onReset={() => { setSearchQuery(''); setStatusFilter(''); }} />
+          : <EmptyState icon={PackageOpen} title="Aucune demande d'approvisionnement" text="Les demandes de la boutique apparaîtront ici." />
       ) : (
-        <ListPanel>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Demandes boutique" footer={<TableFooter note={`${filtered.length} demande${filtered.length > 1 ? 's' : ''}${filtered.length !== allRequests.length ? ` sur ${allRequests.length}` : ''}`} />}>
+          <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 24 }}></th>
-                <th>N° Demande</th>
+                <th style={{ width: 24 }}><span className="sr-only">État</span></th>
+                <th>N° demande</th>
                 <th>Statut</th>
                 <th>Priorité</th>
                 <th>Rôle</th>
                 <th>Date</th>
                 <th>Demandeur</th>
-                <th style={{ textAlign: 'right' }}>Progression</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th className="ds-num">Progression</th>
+                <th className="ds-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -183,9 +187,9 @@ export default function ReplenishmentPage() {
 
                 return (
                   <tr key={r.id as string} onClick={() => navigate(`/replenishment/${r.id}`)}>
-                    <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                    <td><span className={`odoo-status-dot ${dotClass}`} aria-hidden="true" /></td>
                     <td>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                      <span className="ds-ref">
                         #{r.request_number || (r.id as string).slice(0, 8)}
                       </span>
                     </td>
@@ -216,21 +220,20 @@ export default function ReplenishmentPage() {
                         {r.requested_by_name as string || '—'}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="ds-num">
                       <span style={{ fontWeight: 600, fontSize: '0.75rem' }}>{completedCount}/{itemCount}</span>
                       <div style={{ width: 60, height: 3, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden', marginTop: 3, marginLeft: 'auto' }}>
                         <div style={{
                           height: '100%', width: `${progress}%`,
-                          backgroundColor: progress >= 100 ? '#28a745' : 'var(--theme-accent)',
+                          backgroundColor: progress >= 100 ? 'var(--ds-success)' : 'var(--theme-accent)',
                         }} />
                       </div>
                     </td>
-                    <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                    <td className="ds-actions" onClick={e => e.stopPropagation()}>
                       {['submitted', 'acknowledged'].includes(r.status as string) && (isAdmin || (isStoreStaff && r.requested_by === user?.id)) && (
-                        <button onClick={() => cancelMutation.mutate(r.id as string)}
-                          className="odoo-pager-btn" title="Annuler" style={{ color: '#dc3545' }}>
-                          <Trash2 size={13} />
-                        </button>
+                        <RowMenu items={[{ label: 'Annuler la demande', icon: Trash2, danger: true, onSelect: async () => {
+                          if (await confirm(`Annuler la demande #${r.request_number || (r.id as string).slice(0, 8)} ?`, { title: 'Annuler la demande', confirmLabel: 'Annuler la demande', danger: true })) cancelMutation.mutate(r.id as string);
+                        } }]} />
                       )}
                     </td>
                   </tr>
@@ -238,7 +241,7 @@ export default function ReplenishmentPage() {
               })}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
 
       {showForm && (
@@ -487,7 +490,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Rechercher un produit..." className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
+              {search && <button type="button" aria-label="Effacer la recherche" onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
             </div>
             <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
               placeholder="Notes (optionnel)" className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-56" />

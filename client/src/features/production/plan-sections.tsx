@@ -80,7 +80,7 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
               <th>Fournisseur</th>
               <th>Reçu le</th>
               <th>DLC</th>
-              <th style={{ textAlign: 'right' }}>Quantité utilisée</th>
+              <th className="ds-num">Quantité utilisée</th>
             </tr>
           </thead>
           <tbody>
@@ -102,7 +102,7 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
                       ? (isExpired ? <StatusTag tone="late" label={`Expiré ${format(expDate, 'dd/MM/yyyy')}`} /> : <span style={{ color: 'var(--theme-text-muted)' }}>{format(expDate, 'dd/MM/yyyy')}</span>)
                       : '—'}
                   </td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  <td className="ds-num">
                     <strong>{parseFloat(usage.quantity_used as string).toFixed(2)}</strong>
                     <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{(usage.ingredient_unit as string) || ''}</span>
                   </td>

@@ -4,15 +4,23 @@ import { useQuery } from '@tanstack/react-query';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Users, TrendingDown, Banknote, Activity, Clock, Percent, Download, CalendarRange, BarChart3, ArrowLeftRight, PieChart, type LucideIcon } from 'lucide-react';
+import { Users, Banknote, Activity, Percent, Download, CalendarRange, BarChart3, ArrowLeftRight, PieChart, type LucideIcon } from 'lucide-react';
 import { employeesApi } from '../../../api/employees.api';
 import { downloadCsv, MONTH_NAMES } from '../shared';
-import { EmptyPanel, LoadingPanel } from '../ui';
+import { EmptyPanel, LoadingPanel, HrHeaderActions } from '../ui';
+import { KpiGrid, KpiCard, SectionHeader, Toolbar, DataPanel, TableFooter, ErrorState } from '../../../components/ds';
 
-// Palette categorielle validee (bleu, orange, vert d'eau), ordre fixe.
-const SERIES = { s1: '#2a78d6', s2: '#eb6834', s3: 'var(--prj-green)' };
-const GRID = 'var(--kl-hair, #e9ecef)';
-const TICK = { fontSize: 12, fill: 'var(--kl-muted, #6c757d)' };
+// Couleurs des graphiques = jetons du Design System : accent pour la série principale (déclinée
+// en teintes pour un empilement), --ds-warning pour la série d'alerte (sorties).
+const SERIES = {
+  s1: 'var(--ds-accent)',
+  s2: 'color-mix(in srgb, var(--ds-accent) 55%, var(--ds-card))',
+  s3: 'color-mix(in srgb, var(--ds-accent) 28%, var(--ds-card))',
+  warn: 'var(--ds-warning)',
+};
+const SEP = 'var(--ds-card)';
+const GRID = 'var(--ds-hair)';
+const TICK = { fontSize: 12, fill: 'var(--ds-muted)' };
 const dh = (v: number) => `${Math.round(v).toLocaleString('fr-FR').replace(/ /g, ' ')}`;
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v.toLocaleString('fr-FR')} %`);
 const short = (m: number) => MONTH_NAMES[m - 1].slice(0, 3);
@@ -24,7 +32,7 @@ function ChartWidget({ icon: Icon, title, summary, children }: { icon: LucideIco
   return (
     <div className="kl-widget">
       <div className="kl-wlabel" style={{ justifyContent: 'space-between' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span className="kl-sq"><Icon size={13} /></span>{title}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span className="kl-sq"><Icon size={13} aria-hidden="true" /></span>{title}</span>
         {summary && <span style={{ fontWeight: 400 }}>{summary}</span>}
       </div>
       <div style={{ marginTop: 12 }}>{children}</div>
@@ -54,7 +62,7 @@ function Breakdown({ rows, unit }: { rows: Array<{ label: string; value: number 
  */
 export default function HrAnalyticsTab() {
   const [year, setYear] = useState(new Date().getFullYear());
-  const { data, isLoading } = useQuery<Record<string, any>>({
+  const { data, isLoading, isError, refetch } = useQuery<Record<string, any>>({
     queryKey: ['hr-analytics', year],
     queryFn: () => employeesApi.hrAnalytics(year),
   });
@@ -66,47 +74,54 @@ export default function HrAnalyticsTab() {
     months.map(m => [MONTH_NAMES[m.month - 1], String(m.headcount), String(m.entries), String(m.exits), m.grossPayroll, m.employerCharges,
       m.otherPayroll, m.laborCost, m.revenue, m.laborCostRatio, m.absenteeismRate, m.hoursWorked, m.costPerHour]));
 
-  const stat = (Icon: LucideIcon, label: string, value: ReactNode, sub?: string, title?: string) => (
-    <div className="kl-widget" title={title}>
-      <div className="kl-wlabel"><span className="kl-sq"><Icon size={13} /></span>{label}</div>
-      <div className="kl-big" style={{ fontSize: 30 }}>{value}</div>
-      {sub && <div className="kl-sub">{sub}</div>}
-    </div>
-  );
+  // Infobulle d'explication du calcul autour d'une tuile (KpiCard n'a pas d'attribut title).
+  const tip = (title: string, card: ReactNode) => <div title={title} style={{ display: 'grid' }}>{card}</div>;
 
   return (
     <>
-      <div className="prj-toolbar">
+      {/* Export : action secondaire, en haut à droite de la page. */}
+      <HrHeaderActions>
+        <button type="button" className="odoo-btn-secondary" onClick={exportCsv} disabled={!months.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Download size={13} aria-hidden="true" /> Exporter
+        </button>
+      </HrHeaderActions>
+
+      {/* Barre d'outils : filtre de période. */}
+      <Toolbar>
         <label className="hr-tools">
-          <CalendarRange size={14} style={{ color: 'var(--theme-text-muted)' }} /> <span className="hr-tools-label">Année</span>
+          <CalendarRange size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /> <span className="hr-tools-label">Année</span>
           <input type="number" className="odoo-filter-dropdown" style={{ width: 96 }} value={year} onChange={e => setYear(parseInt(e.target.value, 10))} />
         </label>
-        <span className="hr-spacer" />
-        <button className="odoo-btn-secondary" onClick={exportCsv} disabled={!months.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Download size={13} /> CSV
-        </button>
-      </div>
+      </Toolbar>
 
       {isLoading ? (
         <LoadingPanel />
+      ) : isError ? (
+        <ErrorState title="Les indicateurs n'ont pas pu être chargés" onRetry={() => void refetch()} />
       ) : !t ? (
         <EmptyPanel icon={BarChart3}>Aucune donnée RH pour {year}</EmptyPanel>
       ) : (
         <>
-          <section aria-label={`Indicateurs RH ${year}`}>
-            <div className="kl-sec"><h2>Indicateurs RH {year}</h2><small>Effectif, coûts, absentéisme et heures sur l'année</small></div>
-            <div className="kl-stats">
-              {stat(Users, 'Effectif', String(t.headcount), `moyen ${t.averageHeadcount} · +${t.entries} / −${t.exits}`)}
-              {stat(TrendingDown, 'Turnover', pct(t.turnoverRate), `rotation ${pct(t.rotationRate)}`, 'Sorties de l\'année / effectif moyen')}
-              {stat(Banknote, 'Coût de main-d\'œuvre', money(t.laborCost, { decimals: 0 }), `brut ${dh(t.grossPayroll)} · charges ${dh(t.employerCharges)}`)}
-              {stat(Percent, 'Masse salariale / CA', pct(t.laborCostRatio), t.revenue ? `CA ${money(t.revenue, { decimals: 0 })}` : 'CA comptable indisponible', 'Coût de main-d\'œuvre / chiffre d\'affaires comptable HT (comptes 71)')}
-              {stat(Activity, 'Absentéisme', pct(t.absenteeismRate), `${t.absenceDays} j / ${t.theoreticalDays} j ouvrables pointés`)}
-              {stat(Clock, 'Coût horaire', t.costPerHour ? <>{t.costPerHour.toLocaleString("fr-FR")}<small>{currencySymbol()}/h</small></> : '—', `${dh(t.hoursWorked)} h travaillées · HS ${money(t.overtimeCost, { decimals: 0 })}`)}
-            </div>
+          <section aria-label={`Indicateurs RH ${year}`} style={{ display: 'grid', gap: 16 }}>
+            <SectionHeader title={`Indicateurs RH ${year}`} note="Effectif, coûts, absentéisme et heures sur l'année" />
+            {/* Six tuiles en 3 + 3 (jamais 5 + 1). */}
+            <KpiGrid label="Effectif et coûts">
+              <KpiCard label="Effectif" value={String(t.headcount)} sub={`moyen ${t.averageHeadcount} · +${t.entries} / −${t.exits}`} />
+              {tip('Sorties de l\'année / effectif moyen',
+                <KpiCard label="Turnover" value={pct(t.turnoverRate)} sub={`rotation ${pct(t.rotationRate)}`} />)}
+              <KpiCard label="Coût de main-d'œuvre" value={money(t.laborCost, { decimals: 0 })} sub={`brut ${dh(t.grossPayroll)} · charges ${dh(t.employerCharges)}`} />
+            </KpiGrid>
+            <KpiGrid label="Ratios et heures">
+              {tip('Coût de main-d\'œuvre / chiffre d\'affaires comptable HT (comptes 71)',
+                <KpiCard label="Masse salariale / CA" value={pct(t.laborCostRatio)} sub={t.revenue ? `CA ${money(t.revenue, { decimals: 0 })}` : 'CA comptable indisponible'} />)}
+              <KpiCard label="Absentéisme" value={pct(t.absenteeismRate)} sub={`${t.absenceDays} j / ${t.theoreticalDays} j ouvrables pointés`} />
+              <KpiCard label="Coût horaire" value={t.costPerHour ? `${t.costPerHour.toLocaleString('fr-FR')} ${currencySymbol()}/h` : '—'}
+                sub={`${dh(t.hoursWorked)} h travaillées · HS ${money(t.overtimeCost, { decimals: 0 })}`} />
+            </KpiGrid>
           </section>
 
-          <section aria-label="Évolution mensuelle">
-            <div className="kl-sec"><h2>Évolution mensuelle</h2></div>
+          <section aria-label="Évolution mensuelle" style={{ display: 'grid', gap: 16 }}>
+            <SectionHeader title="Évolution mensuelle" />
             <div className="kl-hero">
             <ChartWidget icon={Banknote} title="Coût de main-d'œuvre mensuel" summary={currencySymbol()}>
               <ResponsiveContainer width="100%" height={230}>
@@ -116,9 +131,9 @@ export default function HrAnalyticsTab() {
                   <YAxis tick={TICK} axisLine={false} tickLine={false} tickFormatter={v => dh(Number(v))} width={60} />
                   <Tooltip formatter={(v: number) => money(v, { decimals: 0 })} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="grossPayroll" name="Brut (mensuels)" stackId="c" fill={SERIES.s1} stroke="#fff" strokeWidth={1} />
-                  <Bar dataKey="employerCharges" name="Charges patronales" stackId="c" fill={SERIES.s2} stroke="#fff" strokeWidth={1} />
-                  <Bar dataKey="otherPayroll" name="Hebdo / quinzaine" stackId="c" fill={SERIES.s3} stroke="#fff" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="grossPayroll" name="Brut (mensuels)" stackId="c" fill={SERIES.s1} stroke={SEP} strokeWidth={1} />
+                  <Bar dataKey="employerCharges" name="Charges patronales" stackId="c" fill={SERIES.s2} stroke={SEP} strokeWidth={1} />
+                  <Bar dataKey="otherPayroll" name="Hebdo / quinzaine" stackId="c" fill={SERIES.s3} stroke={SEP} strokeWidth={1} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartWidget>
@@ -144,7 +159,7 @@ export default function HrAnalyticsTab() {
                   <Tooltip />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="entries" name="Entrées" fill={SERIES.s1} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="exits" name="Sorties" fill={SERIES.s2} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="exits" name="Sorties" fill={SERIES.warn} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartWidget>
@@ -163,8 +178,8 @@ export default function HrAnalyticsTab() {
             </div>
           </section>
 
-          <section aria-label="Répartitions">
-            <div className="kl-sec"><h2>Répartitions</h2></div>
+          <section aria-label="Répartitions" style={{ display: 'grid', gap: 16 }}>
+            <SectionHeader title="Répartitions" />
             <div className="kl-stats">
               {([['Par poste', data!.breakdowns.byRole], ['Par contrat', data!.breakdowns.byContract],
                 ['Par ancienneté', data!.breakdowns.bySeniority], ['Motifs de sortie', data!.breakdowns.exitReasons]] as Array<[string, Array<{ label: string; value: number }>]>)
@@ -179,38 +194,35 @@ export default function HrAnalyticsTab() {
             </div>
           </section>
 
-          <section aria-label="Détail mensuel">
-            <div className="kl-sec"><h2>Détail mensuel</h2></div>
-            <div className="prj-panel hr-plain">
-            <div className="prj-scroll">
+          <section aria-label="Détail mensuel" style={{ display: 'grid', gap: 16 }}>
+            <SectionHeader title="Détail mensuel" />
+            <DataPanel label="Détail mensuel" footer={<TableFooter note={<>
+              Coût de main-d'œuvre = brut et charges patronales des bulletins mensuels + net des paies hebdomadaires et par quinzaine.
+              CA = chiffre d'affaires comptable HT (comptes 71). Absentéisme = absences pointées, demi-journées et congés non payés par l'employeur, sur les jours ouvrables (hors repos et fériés).
+            </>} />}>
               <table className="odoo-table">
                 <thead><tr>
-                  <th>Mois</th><th style={{ textAlign: 'right' }}>Effectif</th><th style={{ textAlign: 'right' }}>Entr. / Sort.</th>
-                  <th style={{ textAlign: 'right' }}>Coût total</th><th style={{ textAlign: 'right' }}>CA</th><th style={{ textAlign: 'right' }}>Ratio</th>
-                  <th style={{ textAlign: 'right' }}>Absentéisme</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coût horaire</th>
+                  <th>Mois</th><th className="ds-num">Effectif</th><th className="ds-num">Entrées / sorties</th>
+                  <th className="ds-num">Coût total ({currencySymbol()})</th><th className="ds-num">CA ({currencySymbol()})</th><th className="ds-num">Ratio</th>
+                  <th className="ds-num">Absentéisme</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coût horaire ({currencySymbol()}/h)</th>
                 </tr></thead>
                 <tbody>
                   {months.map(m => (
                     <tr key={m.month}>
-                      <td>{MONTH_NAMES[m.month - 1]}</td>
-                      <td style={{ textAlign: 'right' }}>{m.headcount}</td>
-                      <td style={{ textAlign: 'right' }}>+{m.entries} / −{m.exits}</td>
-                      <td style={{ textAlign: 'right' }}>{dh(m.laborCost)}</td>
-                      <td style={{ textAlign: 'right' }}>{m.revenue ? dh(m.revenue) : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{pct(m.laborCostRatio)}</td>
-                      <td style={{ textAlign: 'right' }}>{m.tracked ? pct(m.absenteeismRate) : 'non pointé'}</td>
-                      <td style={{ textAlign: 'right' }}>{m.hoursWorked ? dh(m.hoursWorked) : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{m.costPerHour ? m.costPerHour.toLocaleString('fr-FR') : '—'}</td>
+                      <td className="ds-strong">{MONTH_NAMES[m.month - 1]}</td>
+                      <td className="ds-num">{m.headcount}</td>
+                      <td className="ds-num">+{m.entries} / −{m.exits}</td>
+                      <td className="ds-num">{dh(m.laborCost)}</td>
+                      <td className="ds-num">{m.revenue ? dh(m.revenue) : '—'}</td>
+                      <td className="ds-num">{pct(m.laborCostRatio)}</td>
+                      <td className="ds-num">{m.tracked ? pct(m.absenteeismRate) : 'non pointé'}</td>
+                      <td className="ds-num">{m.hoursWorked ? dh(m.hoursWorked) : '—'}</td>
+                      <td className="ds-num">{m.costPerHour ? m.costPerHour.toLocaleString('fr-FR') : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
-            <p className="hr-panel-foot" style={{ margin: 0 }}>
-              Coût de main-d'œuvre = brut et charges patronales des bulletins mensuels + net des paies hebdomadaires et par quinzaine.
-              CA = chiffre d'affaires comptable HT (comptes 71). Absentéisme = absences pointées, demi-journées et congés non payés par l'employeur, sur les jours ouvrables (hors repos et fériés).
-            </p>
-            </div>
+            </DataPanel>
           </section>
         </>
       )}

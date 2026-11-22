@@ -6,6 +6,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
+import { EmptyState, ErrorState, LoadingState } from '../../components/ds';
 type Version = {
   version_number: number;
   change_note?: string | null;
@@ -57,7 +58,7 @@ export default function VersionsSection({ recipeId }: { recipeId: string }) {
 
   return (
     <div className="odoo-section" style={{ marginTop: 16 }}>
-      <button
+      <button type="button" aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className="odoo-section-header"
         style={{ width: '100%', cursor: 'pointer', border: 'none', background: 'transparent', font: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
@@ -72,44 +73,41 @@ export default function VersionsSection({ recipeId }: { recipeId: string }) {
       {open && (
         <div style={{ padding: '0.5rem 0' }}>
           {isLoading && (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-              <Loader2 size={14} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
-            </div>
+            <LoadingState bare />
           )}
           {isError && !isLoading && (
-            <div style={{ padding: 12, color: 'var(--theme-danger, #dc3545)', fontSize: '0.85rem' }}>Impossible de charger l'historique.</div>
+            <ErrorState bare title="L'historique n'a pas pu être chargé" />
           )}
           {!isLoading && !isError && versions.length === 0 && (
-            <div style={{ padding: 12, color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>Aucune version enregistrée pour l'instant.</div>
+            <EmptyState bare icon={History} title="Aucune version enregistrée" text="Une version est créée à chaque modification de la composition ou de la finance." />
           )}
           {!isLoading && !isError && versions.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
               <table className="odoo-table">
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'right' }}>Version</th>
+                    <th className="ds-num">Version</th>
                     <th>Date</th>
                     <th>Auteur</th>
                     <th>Note</th>
-                    <th />
+                    <th className="ds-actions"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {versions.map((v) => (
                     <tr key={v.version_number}>
-                      <td style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>#{v.version_number}</td>
+                      <td className="ds-num ds-strong">{v.version_number}</td>
                       <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(v.changed_at)}</td>
                       <td>{v.changed_by_name || '—'}</td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>{v.change_note || '—'}</td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="ds-actions">
                         <button
                           type="button"
-                          className="odoo-btn-secondary"
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          className="odoo-btn-secondary ds-btn-sm"
                           disabled={restore.isPending}
                           onClick={() => onRestore(v.version_number)}
                         >
-                          <RotateCcw size={12} /> Restaurer
+                          <RotateCcw size={12} aria-hidden="true" /> Restaurer
                         </button>
                       </td>
                     </tr>

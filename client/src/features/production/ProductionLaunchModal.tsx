@@ -697,11 +697,11 @@ export default function ProductionLaunchModal({
               <BookOpen size={14} />
             </button>
             <div className="text-center">
-              <p className="text-[10px] text-gray-400 uppercase">Plan</p>
+              <p className="text-[10px] text-gray-400 ">Plan</p>
               <p className="text-sm font-semibold text-gray-700">{planned}</p>
             </div>
             <div className="text-center">
-              <p className="text-[10px] text-gray-400 uppercase">Reel</p>
+              <p className="text-[10px] text-gray-400 ">Reel</p>
               <input
                 type="number"
                 min={0}
@@ -770,7 +770,7 @@ export default function ProductionLaunchModal({
         {/* Waiting items */}
         {waitingItems.length > 0 && (
           <div className="mt-4">
-            <p className="text-xs font-medium text-gray-400 uppercase mb-2 flex items-center gap-1">
+            <p className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-1">
               <AlertTriangle size={12} />
               En attente ({waitingItems.length})
             </p>
@@ -936,7 +936,7 @@ export default function ProductionLaunchModal({
         </div>
         <div className="divide-y divide-gray-50">
           {/* Header */}
-          <div className="grid grid-cols-12 gap-2 px-4 py-2 text-[10px] font-medium text-gray-400 uppercase">
+          <div className="grid grid-cols-12 gap-2 px-4 py-2 text-[10px] font-medium text-gray-400 ">
             <div className="col-span-4">Produit</div>
             <div className="col-span-2 text-center">Planifie</div>
             <div className="col-span-2 text-center">Produit</div>
@@ -988,7 +988,7 @@ export default function ProductionLaunchModal({
             </p>
           </div>
           <div className="divide-y divide-amber-50">
-            <div className="grid grid-cols-12 gap-2 px-4 py-2 text-[10px] font-medium text-gray-400 uppercase">
+            <div className="grid grid-cols-12 gap-2 px-4 py-2 text-[10px] font-medium text-gray-400 ">
               <div className="col-span-5">Produit</div>
               <div className="col-span-2 text-center">Perdu</div>
               <div className="col-span-5">Motif</div>
@@ -1064,7 +1064,7 @@ export default function ProductionLaunchModal({
               )}
             </div>
           </div>
-          <button onClick={() => setRecipeFullscreen(false)} className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors">
+          <button type="button" onClick={() => setRecipeFullscreen(false)} aria-label="Fermer la recette" className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors">
             <X size={20} className="text-gray-500" />
           </button>
         </div>
@@ -1119,7 +1119,7 @@ export default function ProductionLaunchModal({
                     {composition.map((c, idx) => (
                       <div key={(c.id as string) || idx} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50">
                         <span className="text-base font-medium text-gray-900 flex items-center gap-2">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${c.type === 'recipe' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${c.type === 'recipe' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
                             {c.type === 'recipe' ? 'Préparation' : 'Ingrédient'}
                           </span>
                           {c.name as string}
@@ -1223,10 +1223,10 @@ export default function ProductionLaunchModal({
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setRecipeFullscreen(true)} className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors" title="Plein ecran">
+            <button onClick={() => setRecipeFullscreen(true)} className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors" title="Plein ecran" aria-label="Plein ecran">
               <Eye size={14} />
             </button>
-            <button onClick={() => setRecipeProductId(null)} className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors" title="Fermer">
+            <button onClick={() => setRecipeProductId(null)} className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors" title="Fermer" aria-label="Fermer">
               <X size={14} />
             </button>
           </div>
@@ -1238,7 +1238,7 @@ export default function ProductionLaunchModal({
             <div className="rounded-xl border border-gray-100 overflow-hidden">
               <div className="px-3 py-2 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
                 <Scale size={13} className="text-emerald-600" />
-                <span className="font-semibold text-emerald-800 text-xs uppercase tracking-wider">Ingredients ({ingredients.length})</span>
+                <span className="font-semibold text-emerald-800 text-xs ">Ingredients ({ingredients.length})</span>
               </div>
               <div className="divide-y divide-gray-50">
                 {ingredients.map((ing, idx) => (
@@ -1258,14 +1258,14 @@ export default function ProductionLaunchModal({
             <div className="rounded-xl border border-gray-100 overflow-hidden">
               <div className="px-3 py-2 bg-violet-50 border-b border-violet-100 flex items-center gap-2">
                 <Layers size={13} className="text-violet-600" />
-                <span className="font-semibold text-violet-800 text-xs uppercase tracking-wider">Nomenclature ({composition.length})</span>
+                <span className="font-semibold text-violet-800 text-xs ">Nomenclature ({composition.length})</span>
                 {recipeData.pieces_par_fournee && <span className="text-[11px] text-violet-700 ml-1">· fournée de {recipeData.pieces_par_fournee as number} p.</span>}
               </div>
               <div className="divide-y divide-gray-50">
                 {composition.map((c, idx) => (
                   <div key={(c.id as string) || idx} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50/50">
                     <span className="text-sm font-medium text-gray-800 flex items-center gap-2">
-                      <span className={`text-[9px] px-1 py-0.5 rounded font-bold uppercase ${c.type === 'recipe' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                      <span className={`text-[9px] px-1 py-0.5 rounded font-bold ${c.type === 'recipe' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
                         {c.type === 'recipe' ? 'Prépa' : 'Ingr.'}
                       </span>
                       {c.name as string}
@@ -1284,7 +1284,7 @@ export default function ProductionLaunchModal({
             <div className="rounded-xl border border-gray-100 overflow-hidden">
               <div className="px-3 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center gap-2">
                 <Layers size={13} className="text-indigo-600" />
-                <span className="font-semibold text-indigo-800 text-xs uppercase tracking-wider">Sous-recettes ({subRecipesData.length})</span>
+                <span className="font-semibold text-indigo-800 text-xs ">Sous-recettes ({subRecipesData.length})</span>
               </div>
               <div className="divide-y divide-gray-50">
                 {subRecipesData.map((sr, idx) => (
@@ -1304,7 +1304,7 @@ export default function ProductionLaunchModal({
             <div className="rounded-xl border border-gray-100 overflow-hidden">
               <div className="px-3 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
                 <ClipboardList size={13} className="text-amber-600" />
-                <span className="font-semibold text-amber-800 text-xs uppercase tracking-wider">Instructions de preparation</span>
+                <span className="font-semibold text-amber-800 text-xs ">Instructions de preparation</span>
               </div>
               <div className="px-3 py-3">
                 <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
@@ -1405,7 +1405,7 @@ export default function ProductionLaunchModal({
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2 flex-wrap">
           <Scale size={14} className="text-gray-500" />
-          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-gray-700 ">
             {stepIngredients ? 'À peser pour cette étape' : `Recette · ${ingredients.length} ingrédient${ingredients.length > 1 ? 's' : ''}`}
           </span>
           {scaled && (
@@ -1738,7 +1738,7 @@ export default function ProductionLaunchModal({
                     <td className="py-1.5 text-right">
                       {!l.base && (
                         <button type="button" onClick={() => apply(lines.filter((x) => x.key !== l.key))}
-                          className="p-1 text-gray-400 hover:text-red-600" title="Retirer cette sortie">
+                          className="p-1 text-gray-400 hover:text-red-600" title="Retirer cette sortie" aria-label="Retirer cette sortie">
                           <X size={14} />
                         </button>
                       )}
@@ -1854,7 +1854,7 @@ export default function ProductionLaunchModal({
         <div className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-sm">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-3">
-              <button onClick={onClose} className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors">
+              <button type="button" onClick={onClose} aria-label="Fermer" className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors">
                 <X size={20} className="text-gray-500" />
               </button>
               <div>
@@ -1988,15 +1988,15 @@ export default function ProductionLaunchModal({
                       <div className="grid grid-cols-3 gap-2 text-center">
                         <div className="bg-indigo-50 rounded-xl p-3">
                           <div className="text-xl font-bold text-indigo-700">{item.nb_contenants || Math.ceil(planned / productionProfile.quantite_nette_cible)}</div>
-                          <div className="text-[9px] text-gray-500 uppercase mt-0.5">{productionProfile.contenant_nom}</div>
+                          <div className="text-[9px] text-gray-500 mt-0.5">{productionProfile.contenant_nom}</div>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3">
                           <div className="text-xl font-bold text-gray-700">{productionProfile.quantite_nette_cible}</div>
-                          <div className="text-[9px] text-gray-500 uppercase mt-0.5">Net / format</div>
+                          <div className="text-[9px] text-gray-500 mt-0.5">Net / format</div>
                         </div>
                         <div className="bg-purple-50 rounded-xl p-3">
                           <div className="text-xl font-bold text-purple-700">{item.quantite_brute_totale || planned}</div>
-                          <div className="text-[9px] text-gray-500 uppercase mt-0.5">Qte brute totale</div>
+                          <div className="text-[9px] text-gray-500 mt-0.5">Qte brute totale</div>
                         </div>
                       </div>
                     )}
@@ -2427,7 +2427,9 @@ export default function ProductionLaunchModal({
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <button
+              type="button"
               onClick={onClose}
+              aria-label="Fermer"
               className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors"
             >
               <X size={20} className="text-gray-500" />

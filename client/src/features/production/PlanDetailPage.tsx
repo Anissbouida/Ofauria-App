@@ -35,6 +35,7 @@ import './production.css';
 import '../projects/projects.css';
 import '../sales/sales.css';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { Breadcrumb, EmptyState, ErrorState, LoadingState } from '../../components/ds';
 import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity, formatQty } from '../../utils/units';
 import ProductionLaunchModal from './ProductionLaunchModal';
@@ -66,7 +67,7 @@ export default function PlanDetailPage() {
   // Admin/manager ont aussi le privilege magasinier (peuvent prendre en charge la preparation BSI).
   const isMagasinier = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
 
-  const { data: plan, isLoading } = useQuery({
+  const { data: plan, isLoading, isError, refetch } = useQuery({
     queryKey: ['production', id],
     queryFn: () => productionApi.getById(id!),
     enabled: !!id,
@@ -510,19 +511,32 @@ export default function PlanDetailPage() {
   }, [searchParams, planItems.length]);
 
   // Loading state
+  const listLabel = sectorLabel('production_plans', 'Plans de production');
+  const crumbs = (current?: string) => (
+    <div className="odoo-control-bar">
+      <button type="button" onClick={() => navigate('/production')} className="ds-icon-btn" title={`Retour aux ${listLabel.toLowerCase()}`} aria-label={`Retour aux ${listLabel.toLowerCase()}`}>
+        <ArrowLeft size={16} aria-hidden="true" />
+      </button>
+      <Breadcrumb icon={Factory} items={[
+        { label: sectorLabel('production', 'Production') },
+        { label: listLabel, onClick: () => navigate('/production') },
+        ...(current ? [{ label: current }] : []),
+      ]} />
+    </div>
+  );
+
   if (isLoading) return (
-    <div className="odoo-scope pd"><div className="pd-page">
-      <section className="prj-panel sal-empty"><Loader2 size={24} className="animate-spin" /><span>Chargement du plan...</span></section>
+    <div className="odoo-scope pd">{crumbs()}<div className="pd-page">
+      <LoadingState label="Chargement du plan…" />
     </div></div>
   );
 
   if (!plan) return (
-    <div className="odoo-scope pd"><div className="pd-page">
-      <section className="prj-panel sal-empty">
-        <PackageOpen size={28} style={{ opacity: 0.4 }} />
-        <strong>Plan non trouve</strong>
-        <button onClick={() => navigate('/production')} className="odoo-btn-secondary"><ArrowLeft size={14} /> Retour a la production</button>
-      </section>
+    <div className="odoo-scope pd">{crumbs()}<div className="pd-page">
+      {isError
+        ? <ErrorState title="Le plan n'a pas pu être chargé" onRetry={() => refetch()} />
+        : <EmptyState icon={PackageOpen} title="Plan introuvable" text="Il a peut-être été supprimé."
+            action={<button type="button" onClick={() => navigate('/production')} className="odoo-btn-secondary"><ArrowLeft size={14} aria-hidden="true" /> Retour aux plans</button>} />}
     </div></div>
   );
 
@@ -607,7 +621,7 @@ export default function PlanDetailPage() {
               return (
                 <button onClick={() => restoreMutation.mutate(waiting.map(it => it.id as string))}
                   disabled={restoreMutation.isPending} className="odoo-btn-primary"
-                  style={{ padding: '2px 8px', fontSize: '0.6875rem', backgroundColor: '#28a745', borderColor: '#28a745' }}
+                  style={{ padding: '2px 8px', fontSize: '0.6875rem', backgroundColor: 'var(--ds-success)', borderColor: 'var(--ds-success)' }}
                   title="Re-verifier la dispo et relancer les articles en attente.">
                   <RotateCcw size={11} /> Restaurer ({waiting.length}) &amp; relancer
                 </button>
@@ -622,8 +636,8 @@ export default function PlanDetailPage() {
             <th style={{ width: 24 }}></th>
             <th>Ingrédient</th>
             {isMagasinier && <th>Disponibilité</th>}
-            <th style={{ textAlign: 'right' }}>Besoin</th>
-            {isMagasinier && <th style={{ textAlign: 'right' }}>Dispo</th>}
+            <th className="ds-num">Besoin</th>
+            {isMagasinier && <th className="ds-num">Dispo</th>}
             {isMagasinier && <th>Statut</th>}
             {isMagasinier && <th></th>}
           </tr>
@@ -646,13 +660,13 @@ export default function PlanDetailPage() {
                     <div style={{ width: 80, height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
                       <div style={{
                         height: '100%', width: `${pct}%`,
-                        backgroundColor: sufficient ? '#28a745' : '#dc3545',
+                        backgroundColor: sufficient ? 'var(--ds-success)' : 'var(--ds-danger)',
                       }} />
                     </div>
                     <span style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)' }}>{pct}%</span>
                   </td>
                 )}
-                <td style={{ textAlign: 'right' }}>
+                <td className="ds-num">
                   {(() => {
                     const f = smartFormatQuantity(needed, need.unit as string);
                     const digits = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
@@ -663,7 +677,7 @@ export default function PlanDetailPage() {
                   })()}
                 </td>
                 {isMagasinier && (
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="ds-num">
                     {(() => {
                       const f = smartFormatQuantity(available, need.unit as string);
                       const digits = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
@@ -684,13 +698,13 @@ export default function PlanDetailPage() {
                   </td>
                 )}
                 {isMagasinier && (
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="ds-num">
                     {!sufficient && (
                       requestedVerifications.has(need.ingredient_id as string) ? (
                         <StatusTag tone="progress" icon={Send} label="Envoyée" title="Demande envoyée" />
                       ) : (
                         <button onClick={() => setRestockNeed(need)} className="odoo-btn-primary"
-                          style={{ padding: '2px 8px', fontSize: '0.6875rem', backgroundColor: '#1f6391', borderColor: '#1f6391' }}
+                          style={{ padding: '2px 8px', fontSize: '0.6875rem', backgroundColor: 'var(--ds-info)', borderColor: 'var(--ds-info)' }}
                           title="Demander au responsable stock de vérifier la dispo">
                           <Send size={11} /> Demander
                         </button>
@@ -731,9 +745,9 @@ export default function PlanDetailPage() {
               <tr>
                 <th style={{ width: 24 }}></th>
                 <th>Semi-fini</th>
-                <th style={{ textAlign: 'right' }}>Besoin</th>
-                <th style={{ textAlign: 'right' }}>En stock</th>
-                <th style={{ textAlign: 'right' }}>À produire</th>
+                <th className="ds-num">Besoin</th>
+                <th className="ds-num">En stock</th>
+                <th className="ds-num">À produire</th>
                 <th>Avancement</th>
                 <th>{sectorLabel('production_plan', 'Plan de production')}</th>
                 <th>Statut</th>
@@ -755,17 +769,17 @@ export default function PlanDetailPage() {
                   <tr key={dep.id as string} style={{ cursor: 'default' }}>
                     <td><span className={`odoo-status-dot ${isFulfilled ? 'ok' : 'warning'}`} /></td>
                     <td style={{ fontWeight: 600 }}>{dep.sub_recipe_name as string}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{needed.toFixed(1)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: fromStock > 0 ? '#155724' : 'var(--theme-text-muted)' }}>
+                    <td className="ds-num">{needed.toFixed(1)}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: fromStock > 0 ? 'var(--ds-success)' : 'var(--theme-text-muted)' }}>
                       {fromStock > 0 ? fromStock.toFixed(1) : '—'}
                     </td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: toProduce > 0 ? '#b85d1a' : 'var(--theme-text-muted)' }}>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: toProduce > 0 ? 'var(--ds-warning)' : 'var(--theme-text-muted)' }}>
                       {toProduce > 0 ? toProduce.toFixed(1) : '—'}
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <div style={{ width: 80, height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${itemPct}%`, backgroundColor: isFulfilled ? '#155724' : 'var(--theme-accent)' }} />
+                          <div style={{ height: '100%', width: `${itemPct}%`, backgroundColor: isFulfilled ? 'var(--ds-success)' : 'var(--theme-accent)' }} />
                         </div>
                         <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{itemPct}%</span>
                       </div>
@@ -774,7 +788,7 @@ export default function PlanDetailPage() {
                     <td>
                       <StatusTag tone={isFulfilled ? 'done' : 'todo'} label={isFulfilled ? 'Disponible' : 'En attente'} />
                     </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="ds-num">
                       {depPlanId && (
                         <button type="button" onClick={() => navigate(`/production/${depPlanId}`)} className="odoo-btn-secondary"
                           style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
@@ -808,7 +822,7 @@ export default function PlanDetailPage() {
         {plan.status === 'in_progress' && totalActive > 0 && (
           <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8, textTransform: 'none', letterSpacing: 0 }}>
             <div style={{ width: 100, height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${progressPct}%`, backgroundColor: progressPct >= 100 ? '#155724' : 'var(--theme-accent)', transition: 'width 0.3s' }} />
+              <div style={{ height: '100%', width: `${progressPct}%`, backgroundColor: progressPct >= 100 ? 'var(--ds-success)' : 'var(--theme-accent)', transition: 'width 0.3s' }} />
             </div>
             <span>{producedCount} / {totalActive}</span>
           </span>
@@ -820,8 +834,8 @@ export default function PlanDetailPage() {
             <tr>
               <th style={{ width: 24 }}></th>
               <th>Produit</th>
-              <th style={{ textAlign: 'right' }}>Qté</th>
-              <th style={{ textAlign: 'right' }}>Fait</th>
+              <th className="ds-num">Qté</th>
+              <th className="ds-num">Fait</th>
               <th>N° lot</th>
               <th>Date de production</th>
               <th>Produit par</th>
@@ -908,14 +922,14 @@ export default function PlanDetailPage() {
                       </div>
                     )}
                   </td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  <td className="ds-num">
                     <strong>{planned}</strong>
                     {item.quantite_brute_totale && (item.quantite_brute_totale as number) !== planned && (
                       <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }} title="Quantité brute totale (formats)">brut {item.quantite_brute_totale as number}</div>
                     )}
                   </td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                    {actual != null ? <strong style={{ color: actual >= planned ? '#155724' : '#b85d1a' }}>{actual}</strong> : empty}
+                  <td className="ds-num">
+                    {actual != null ? <strong style={{ color: actual >= planned ? 'var(--ds-success)' : 'var(--ds-warning)' }}>{actual}</strong> : empty}
                   </td>
                   <td style={{ fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>{(isProduced || isInProgress) && lotNumber ? lotNumber : empty}</td>
                   <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>
@@ -935,7 +949,7 @@ export default function PlanDetailPage() {
                     ) : empty}
                   </td>
                   <td><StatusTag tone={statusTag.tone} icon={statusTag.icon} label={statusTag.label} /></td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="ds-num">
                     {plan.status === 'in_progress' && isChef && itemStatus === 'pending' && !isWaiting ? (
                       <button type="button" onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="odoo-btn-primary">
                         <Play size={12} /> Lancer
@@ -1254,20 +1268,8 @@ export default function PlanDetailPage() {
 
   return (
     <div className="odoo-scope pd">
-      {/* ══════════════ BARRE : retour + fil d'Ariane ══════════════ */}
-      <div className="odoo-control-bar">
-        <button onClick={() => navigate('/production')} className="odoo-pager-btn" title="Retour">
-          <ArrowLeft size={14} />
-        </button>
-        <div className="odoo-breadcrumb">
-          <Factory size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/production')}>Production</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">
-            {plan.of_number ? `${plan.of_number} · ` : ''}Plan du {format(new Date(plan.plan_date), 'dd MMM yyyy', { locale: fr })}
-          </span>
-        </div>
-      </div>
+      {/* ══════════════ BARRE : retour + fil d'Ariane jusqu'au numéro du plan ══════════════ */}
+      {crumbs((plan.of_number as string) || (plan.id as string).slice(0, 8).toUpperCase())}
 
       <div className="pd-page">
       {/* ══════════════ EN-TETE FICHE : titre, meta, actions, processus ══════════════ */}
@@ -1276,7 +1278,7 @@ export default function PlanDetailPage() {
           <span className="prj-hero-icon">{isSemiFini ? <Beaker size={22} /> : <Factory size={22} />}</span>
           <div className="plan-header-main" style={{ minWidth: 260 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <h1>Plan du {format(new Date(plan.plan_date), 'EEEE dd MMMM yyyy', { locale: fr })}</h1>
+              <h1>Plan du {format(new Date(plan.plan_date), 'EEEE d MMMM yyyy', { locale: fr })}</h1>
               <StatusTag tone={planTag.tone} icon={planTag.icon} label={planStatusBadge || planTag.label} />
               {isSemiFini && <span className="odoo-tag odoo-tag-purple"><Beaker size={10} /> Semi-fini</span>}
               <PlanHeaderTags plan={plan} />
@@ -1389,7 +1391,7 @@ export default function PlanDetailPage() {
               : 'Ingrédients prêts — confirmer ou refuser la réception'}
             actions={!bannerRejecting ? (
               <>
-                <button onClick={() => setBannerRejecting(true)} className="odoo-btn-danger">
+                <button onClick={() => setBannerRejecting(true)} className="ds-btn-danger">
                   <XCircle size={13} /> Refuser
                 </button>
                 <button onClick={() => acceptReceptionMutation.mutate({ andStart: false })} disabled={acceptReceptionMutation.isPending}
@@ -1431,7 +1433,7 @@ export default function PlanDetailPage() {
                   </button>
                   <button onClick={() => rejectReceptionMutation.mutate(bannerRejectReason.trim())}
                     disabled={rejectReceptionMutation.isPending || !bannerRejectReason.trim()}
-                    className="odoo-btn-danger">
+                    className="ds-btn-danger">
                     {rejectReceptionMutation.isPending ? 'Envoi...' : 'Confirmer le refus'}
                   </button>
                 </div>
@@ -1499,12 +1501,12 @@ export default function PlanDetailPage() {
                   <div className="odoo-smart-button-label">À produire ({yieldUnit})</div>
                 </div>
                 <div className="odoo-smart-button">
-                  <div className="odoo-smart-button-value" style={{ color: actualQty > 0 ? '#28a745' : undefined }}>{actualQty.toFixed(2)}</div>
+                  <div className="odoo-smart-button-value" style={{ color: actualQty > 0 ? 'var(--ds-success)' : undefined }}>{actualQty.toFixed(2)}</div>
                   <div className="odoo-smart-button-label">Produit ({yieldUnit})</div>
                 </div>
                 <div className="odoo-smart-button">
                   <div className="odoo-smart-button-value" style={{
-                    color: itemStatus === 'completed' ? '#28a745' : actualQty > 0 ? '#b85d1a' : undefined
+                    color: itemStatus === 'completed' ? 'var(--ds-success)' : actualQty > 0 ? 'var(--ds-warning)' : undefined
                   }}>
                     {itemStatus === 'completed' ? '100%' : qtyNeeded > 0 ? `${Math.round(actualQty / qtyNeeded * 100)}%` : '0%'}
                   </div>
@@ -1515,7 +1517,7 @@ export default function PlanDetailPage() {
               {/* Recipe instructions */}
               {instructions && (
                 <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--theme-bg-card)' }}>
-                  <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <BookOpen size={11} /> Instructions
                   </div>
                   <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{instructions}</p>
@@ -1535,7 +1537,7 @@ export default function PlanDetailPage() {
                     <thead>
                       <tr>
                         <th>Ingrédient</th>
-                        <th style={{ textAlign: 'right' }}>Quantité</th>
+                        <th className="ds-num">Quantité</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1546,7 +1548,7 @@ export default function PlanDetailPage() {
                         return (
                           <tr key={idx} style={{ cursor: 'default' }}>
                             <td style={{ fontWeight: 500 }}>{ri.ingredient_name as string}</td>
-                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            <td className="ds-num">
                               <strong>{scaledQty.toFixed(3)}</strong>
                               <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{unit}</span>
                             </td>
@@ -1648,7 +1650,7 @@ export default function PlanDetailPage() {
                 <li>{needs.length} ingrédient{needs.length > 1 ? 's' : ''} à prélever</li>
                 {activeBon && <li>Bon de sortie {activeBon.numero as string}</li>}
                 {lotUsage.length > 0 && <li>{lotUsage.length} lot{lotUsage.length > 1 ? 's' : ''} utilisé{lotUsage.length > 1 ? 's' : ''}{nearestDlc ? `, DLC la plus proche le ${format(nearestDlc, 'dd/MM/yyyy')}` : ''}</li>}
-                {isMagasinier && insufficientNeeds.length > 0 && <li style={{ color: '#a71d2a' }}>{insufficientNeeds.length} ingrédient(s) insuffisant(s)</li>}
+                {isMagasinier && insufficientNeeds.length > 0 && <li style={{ color: 'var(--ds-danger)' }}>{insufficientNeeds.length} ingrédient(s) insuffisant(s)</li>}
               </ul>
               <button type="button" className="plan-phase-link" onClick={() => setPlanTab('ingredients')}>Voir les ingrédients →</button>
             </div>
@@ -1660,9 +1662,9 @@ export default function PlanDetailPage() {
               <ul className="plan-phase-list">
                 <li>{hasResults ? `${qtyDone} pièce(s) produite(s) sur ${qtyPlanned}` : `${qtyPlanned} pièce(s) prévue(s), ${items.length} article(s)`}</li>
                 {deps.length > 0 && <li>Semi-finis : {depsFulfilled} / {deps.length} disponible(s)</li>}
-                {waitingCount > 0 && <li style={{ color: '#946300' }}>{waitingCount} article(s) en liste d'attente</li>}
+                {waitingCount > 0 && <li style={{ color: 'var(--ds-warning)' }}>{waitingCount} article(s) en liste d'attente</li>}
                 {plan.status === 'completed' && !isSemiFini && (
-                  <li>Rendement : {avgRendement != null ? `${avgRendement.toFixed(1)} %` : <strong style={{ color: '#946300' }}>non saisi</strong>}{recordedYields > 0 ? ` · pertes ${pertesTotal}` : ''}</li>
+                  <li>Rendement : {avgRendement != null ? `${avgRendement.toFixed(1)} %` : <strong style={{ color: 'var(--ds-warning)' }}>non saisi</strong>}{recordedYields > 0 ? ` · pertes ${pertesTotal}` : ''}</li>
                 )}
               </ul>
               {productionTabVisible
@@ -1786,7 +1788,7 @@ export default function PlanDetailPage() {
                 <tr>
                   <th>Produit</th>
                   <th>Catégorie</th>
-                  <th style={{ textAlign: 'right' }}>Du stock / demandé</th>
+                  <th className="ds-num">Du stock / demandé</th>
                 </tr>
               </thead>
               <tbody>
@@ -1794,8 +1796,8 @@ export default function PlanDetailPage() {
                   <tr key={ri.id as string} style={{ cursor: 'default' }}>
                     <td style={{ fontWeight: 500 }}>{ri.product_name as string}</td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{ri.category_name as string}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                      <strong style={{ color: '#155724' }}>{(ri.fulfilled_from_stock as number) || 0}</strong>
+                    <td className="ds-num">
+                      <strong style={{ color: 'var(--ds-success)' }}>{(ri.fulfilled_from_stock as number) || 0}</strong>
                       <span style={{ color: 'var(--theme-text-muted)' }}> / {(ri.requested_quantity as number) || 0}</span>
                     </td>
                   </tr>
@@ -1840,7 +1842,7 @@ export default function PlanDetailPage() {
                 <tr>
                   <th style={{ width: 24 }}></th>
                   <th>Produit</th>
-                  <th style={{ textAlign: 'right' }}>Qté planifiée</th>
+                  <th className="ds-num">Qté planifiée</th>
                   <th>Statut</th>
                   <th style={{ width: 190 }}></th>
                 </tr>
@@ -1850,9 +1852,9 @@ export default function PlanDetailPage() {
                   <tr key={item.id as string} style={{ cursor: 'default' }}>
                     <td><span className="odoo-status-dot warning" /></td>
                     <td style={{ fontWeight: 500 }}>{item.product_name as string}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{item.planned_quantity as number}</td>
+                    <td className="ds-num">{item.planned_quantity as number}</td>
                     <td><StatusTag tone="todo" label="En attente" /></td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="ds-num">
                       {isChef && (
                         <span style={{ display: 'inline-flex', gap: 6 }}>
                           <button type="button" onClick={() => restoreMutation.mutate([item.id as string])} disabled={restoreMutation.isPending}
@@ -1862,7 +1864,7 @@ export default function PlanDetailPage() {
                           <button type="button"
                             onClick={() => cancelItemsMutation.mutate({ itemIds: [item.id as string], reason: 'Annule depuis la liste d\'attente' })}
                             disabled={cancelItemsMutation.isPending}
-                            className="odoo-btn-danger" style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
+                            className="ds-btn-danger" style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
                             <XCircle size={11} /> Annuler
                           </button>
                         </span>
@@ -1874,7 +1876,7 @@ export default function PlanDetailPage() {
                   <tr key={item.id as string} style={{ cursor: 'default' }}>
                     <td><span className="odoo-status-dot ok" /></td>
                     <td style={{ fontWeight: 500 }}>{item.product_name as string}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{item.planned_quantity as number}</td>
+                    <td className="ds-num">{item.planned_quantity as number}</td>
                     <td><StatusTag tone="done" label="Restauré" /></td>
                     <td></td>
                   </tr>
@@ -2063,7 +2065,7 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
             <h3 className="text-base font-bold text-blue-900">Demander au responsable stock</h3>
             <p className="text-xs text-blue-700 mt-0.5">Une notification sera envoyee au magasinier/economat pour verifier la dispo.</p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-blue-100 rounded-lg">
+          <button type="button" onClick={onClose} aria-label="Fermer" className="p-1 hover:bg-blue-100 rounded-lg">
             <XCircle size={18} className="text-blue-700" />
           </button>
         </div>

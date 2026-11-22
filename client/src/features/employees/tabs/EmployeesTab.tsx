@@ -1,16 +1,20 @@
 import { money, currencySymbol } from '../../../utils/money';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import {
-  Plus, Pencil, UserCog, Users, Banknote, ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
+  Plus, Pencil, Users, ArrowUpDown, ArrowUp, ArrowDown, Trash2, RotateCcw, AlertOctagon,
 } from 'lucide-react';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { LoadingPanel } from '../ui';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../../sales/ListTemplate';
+import { RowMenu, type RowMenuItem } from '../../../components/ui/RowMenu';
+import { HrHeaderActions } from '../ui';
+import { FilterChips } from '../../sales/ListTemplate';
+import {
+  KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState,
+} from '../../../components/ds';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import HrAlertsPanel from '../contracts/HrAlertsPanel';
@@ -25,7 +29,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  const { data: employees = [], isLoading } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
+  const { data: employees = [], isLoading, isError, refetch } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
   const { getLabel: getRoleLabel, getColor: getRoleColor } = useReferentiel('employee_roles');
   const { getLabel: getContractLabel } = useReferentiel('contract_types');
   // Suppression/reactivation employes : backend reserve admin. On masque les
@@ -181,10 +185,10 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
     else { setSortKey(key); setSortDir('asc'); }
   };
   const SortIcon = ({ col }: { col: string }) => {
-    if (sortKey !== col) return <ArrowUpDown size={13} className="ml-1 inline" style={{ opacity: 0.35 }} />;
+    if (sortKey !== col) return <ArrowUpDown size={13} className="ml-1 inline" aria-hidden="true" style={{ opacity: 0.35 }} />;
     return sortDir === 'asc'
-      ? <ArrowUp size={13} className="ml-1 inline" style={{ color: 'var(--theme-accent)' }} />
-      : <ArrowDown size={13} className="ml-1 inline" style={{ color: 'var(--theme-accent)' }} />;
+      ? <ArrowUp size={13} className="ml-1 inline" aria-hidden="true" style={{ color: 'var(--ds-accent)' }} />
+      : <ArrowDown size={13} className="ml-1 inline" aria-hidden="true" style={{ color: 'var(--ds-accent)' }} />;
   };
 
   const inactiveCount = employees.length - activeCount;
@@ -228,128 +232,124 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
     return 0;
   });
 
+  const filtered = !!searchEmp || statusFilter !== 'active';
+  const resetFilters = () => { setSearchEmp(''); setStatusFilter('active'); };
+  const contractEntries = Object.entries(contractCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  // Infobulle d'explication du calcul autour d'une tuile (KpiCard n'a pas d'attribut title).
+  const tip = (title: string, card: ReactNode) => <div title={title} style={{ display: 'grid' }}>{card}</div>;
+
+  /** Actions secondaires d'une ligne (menu « ⋯ ») ; l'action visible est « Ouvrir ». */
+  const rowMenu = (e: Record<string, any>): RowMenuItem[] => {
+    const fullName = `${e.first_name} ${e.last_name}`;
+    const items: RowMenuItem[] = [{ label: 'Modifier', icon: Pencil, onSelect: () => openEmployee(e.id as string, true) }];
+    if (e.is_active && canDeleteEmployee) items.push({
+      label: 'Désactiver', icon: Trash2, danger: true, disabled: deactivateMutation.isPending,
+      onSelect: async () => {
+        if (!(await confirm(`Désactiver ${fullName} ?\n\nL'employé sera masqué des listes actives.\nSon historique (paie, présence, paiements) reste préservé.\nVous pourrez le réactiver à tout moment.`,
+          { title: 'Désactiver l\'employé', confirmLabel: 'Désactiver', danger: true }))) return;
+        deactivateMutation.mutate(e.id as string);
+      },
+    });
+    if (!e.is_active && canDeleteEmployee) items.push({
+      label: 'Réactiver', icon: RotateCcw, disabled: reactivateMutation.isPending,
+      onSelect: async () => {
+        if (!(await confirm(`Réactiver ${fullName} ? Il réapparaitra dans les listes actives.`,
+          { title: 'Réactiver l\'employé', confirmLabel: 'Réactiver' }))) return;
+        reactivateMutation.mutate(e.id as string);
+      },
+    });
+    if (canDeleteEmployee) items.push({
+      label: 'Supprimer définitivement', icon: AlertOctagon, danger: true, disabled: hardDeleteMutation.isPending,
+      onSelect: () => void handleHardDelete(e),
+    });
+    return items;
+  };
+
   return (
     <>
+      {/* Action principale de la page, à droite du fil d'Ariane. */}
+      <HrHeaderActions>
+        <button type="button" onClick={() => navigate('/employees/new')} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} aria-hidden="true" /> Nouvel employé
+        </button>
+      </HrHeaderActions>
+
       <HrAlertsPanel onOpenEmployee={id => openEmployee(id)} />
 
-      {/* Tuiles d'indicateurs (gabarit Liste Ventes) */}
-      <div className="prj-kpis">
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Effectif actif</span><Users size={14} /></div>
-          <div className="prj-kpi-value" style={{ color: activeCount > 0 ? 'var(--prj-green)' : undefined }}>{activeCount}</div>
-          <div className="prj-kpi-sub" title="Repartition mensuel / quinzaine / hebdomadaire">
-            {activeMonthly.length - activeBiweeklyCount} mensuel{activeBiweeklyCount > 0 && <> · {activeBiweeklyCount} quinzaine</>} · {activeWeekly.length} hebdo
-            {employees.length - activeCount > 0 && <> · {employees.length - activeCount} inactif(s)</>}
-          </div>
-        </div>
-        <div className="prj-kpi" title="Somme des salaires mensuels des employés actifs mensuels + équivalent mensuel des hebdos (salaire hebdo × 52/12 semaines)">
-          <div className="prj-kpi-head"><span>Masse salariale</span><Banknote size={14} /></div>
-          <div className="prj-kpi-value">
-            {formatMoney(massMonthlyEquiv)} <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--theme-text-muted)' }}>{currencySymbol()}/mois</span>
-          </div>
-          <div className="prj-kpi-sub">
-            {formatMoney(massMonthly)} mensuel
-            {massWeekly > 0 && <> + {formatMoney(massWeekly * WEEKS_PER_MONTH)} hebdo eq.</>}
-          </div>
-        </div>
-        <div className="prj-kpi" title="Coût annuel projeté = masse salariale mensuelle × 12 (indicatif, hors primes/cotisations)">
-          <div className="prj-kpi-head"><span>Coût annuel projeté</span><Banknote size={14} /></div>
-          <div className="prj-kpi-value">
-            {formatMoney(massMonthlyEquiv * 12)} <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--theme-text-muted)' }}>{currencySymbol()}</span>
-          </div>
-          <div className="prj-kpi-sub">
-            {withSalaryCount > 0 ? <>salaire moyen {money(avgSalary, { decimals: 0 })}/mois</> : 'aucun salaire renseigné'}
-          </div>
-        </div>
-        <div className="prj-kpi" title="Répartition par type de contrat des employés actifs">
-          <div className="prj-kpi-head"><span>Contrats</span><FileText size={14} /></div>
-          <div className="prj-kpi-value" style={{ fontSize: '1.125rem' }}>
-            {Object.entries(contractCounts).length === 0
-              ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
-              : Object.entries(contractCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([code, count], idx) => (
-                <span key={code} style={{ marginRight: 10 }}>
-                  <span style={{ fontWeight: 700 }}>{count}</span>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--theme-text-muted)', marginLeft: 3 }}>
-                    {getContractLabel(code).slice(0, 4)}
-                  </span>
-                  {idx < 2 && Object.entries(contractCounts).length > idx + 1 && (
-                    <span style={{ color: 'var(--theme-text-muted)' }}> ·</span>
-                  )}
-                </span>
-              ))}
-          </div>
-          <div className="prj-kpi-sub">sur {activeCount} actif(s)</div>
-        </div>
-      </div>
+      <KpiGrid>
+        {tip('Répartition mensuel / quinzaine / hebdomadaire',
+          <KpiCard label="Effectif actif" value={activeCount}
+            sub={<>{activeMonthly.length - activeBiweeklyCount} mensuel{activeBiweeklyCount > 0 && <> · {activeBiweeklyCount} quinzaine</>} · {activeWeekly.length} hebdo
+              {inactiveCount > 0 && <> · {inactiveCount} inactif(s)</>}</>} />)}
+        {tip('Somme des salaires mensuels des employés actifs mensuels + équivalent mensuel des hebdos (salaire hebdo × 52/12 semaines)',
+          <KpiCard label={`Masse salariale (${currencySymbol()}/mois)`} value={formatMoney(massMonthlyEquiv)}
+            sub={<>{formatMoney(massMonthly)} mensuel{massWeekly > 0 && <> + {formatMoney(massWeekly * WEEKS_PER_MONTH)} hebdo eq.</>}</>} />)}
+        {tip('Coût annuel projeté = masse salariale mensuelle × 12 (indicatif, hors primes/cotisations)',
+          <KpiCard label={`Coût annuel projeté (${currencySymbol()})`} value={formatMoney(massMonthlyEquiv * 12)}
+            sub={withSalaryCount > 0 ? <>salaire moyen {money(avgSalary, { decimals: 0 })}/mois</> : 'aucun salaire renseigné'} />)}
+        {tip('Répartition par type de contrat des employés actifs',
+          <KpiCard label="Contrats"
+            value={contractEntries.length === 0 ? '—' : contractEntries.map(([code, count]) => `${count} ${getContractLabel(code).slice(0, 4)}`).join(' · ')}
+            sub={`sur ${activeCount} actif(s)`} />)}
+      </KpiGrid>
 
-      {/* Barre d'outils : recherche, action principale ; puis pastilles de statut */}
-      <ListToolbar search={searchEmp} onSearch={setSearchEmp} placeholder="Rechercher employé, CIN...">
-        <span className="hr-spacer" />
-        <button onClick={() => navigate('/employees/new')} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouvel employé
-        </button>
-      </ListToolbar>
+      {/* Pastilles de statut, puis barre d'outils (recherche). */}
       <FilterChips label="Statut des employés" value={statusFilter} onChange={k => setStatusFilter(k as typeof statusFilter)}
         chips={[{ key: 'active', label: 'Actifs', count: activeCount }, { key: 'inactive', label: 'Inactifs', count: inactiveCount }, { key: 'all', label: 'Tous', count: employees.length }]} />
+      <Toolbar>
+        <SearchBar value={searchEmp} onChange={setSearchEmp} placeholder="Rechercher un employé, un CIN…" />
+      </Toolbar>
 
       {isLoading ? (
-        <LoadingPanel label="Chargement des employés..." />
+        <LoadingState label="Chargement des employés…" />
+      ) : isError ? (
+        <ErrorState onRetry={() => void refetch()} />
+      ) : employees.length === 0 ? (
+        <EmptyState icon={Users} title="Aucun employé" text="Les fiches des salariés apparaîtront ici."
+          action={<button type="button" className="odoo-btn-primary" onClick={() => navigate('/employees/new')}>Nouvel employé</button>} />
       ) : sortedEmp.length === 0 ? (
-        <ListEmpty icon={Users} title="Aucun employé trouvé" />
+        <NoResultState text="Aucun employé ne correspond aux filtres." onReset={filtered ? resetFilters : undefined} />
       ) : (
-        <ListPanel footer={<div className="hr-panel-foot">{sortedEmp.length} employé{sortedEmp.length > 1 ? 's' : ''}</div>}>
+        <DataPanel label="Employés" footer={<TableFooter note={`${sortedEmp.length} employé${sortedEmp.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 24 }}></th>
                 <th onClick={() => toggleSort('name')} style={{ cursor: 'pointer' }}>Employé <SortIcon col="name" /></th>
+                <th>CIN</th>
                 <th onClick={() => toggleSort('role')} style={{ cursor: 'pointer' }}>Rôle <SortIcon col="role" /></th>
                 <th onClick={() => toggleSort('contract')} style={{ cursor: 'pointer' }}>Contrat <SortIcon col="contract" /></th>
                 <th>Téléphone</th>
-                <th onClick={() => toggleSort('salary')} style={{ cursor: 'pointer', textAlign: 'right' }}>Salaire <SortIcon col="salary" /></th>
+                <th className="ds-num" onClick={() => toggleSort('salary')} style={{ cursor: 'pointer' }}>Salaire ({currencySymbol()}) <SortIcon col="salary" /></th>
                 <th onClick={() => toggleSort('status')} style={{ cursor: 'pointer' }}>Statut <SortIcon col="status" /></th>
-                <th style={{ textAlign: 'right', width: 90 }}>Actions</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {sortedEmp.map((e: Record<string, any>) => (
                 <tr key={e.id as string} onClick={() => openEmployee(e.id as string)} style={{ cursor: 'pointer' }}>
-                  <td><span className={`odoo-status-dot ${e.is_active ? 'ok' : 'neutral'}`} /></td>
-                  <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                      <Users size={11} style={{ color: 'var(--theme-accent)' }} />
-                      {e.first_name as string} {e.last_name as string}
-                      {e.cin ? <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', fontFamily: 'ui-monospace, monospace' }}>· {e.cin as string}</span> : null}
-                    </span>
-                  </td>
+                  <td className="ds-strong">{e.first_name as string} {e.last_name as string}</td>
+                  <td className="ds-ref">{e.cin as string || '—'}</td>
                   <td>
                     <span className="odoo-tag odoo-tag-purple"
                       style={getRoleColor(e.role as string) ? { backgroundColor: getRoleColor(e.role as string) + '22', color: getRoleColor(e.role as string) } : undefined}>
                       {getRoleLabel(e.role as string)}
                     </span>
                   </td>
-                  <td><span className="odoo-tag odoo-tag-grey">{getContractLabel(e.contract_type as string || 'cdi')}</span></td>
-                  <td style={{ color: 'var(--odoo-text-muted)' }}>{e.phone as string || '—'}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td>{getContractLabel(e.contract_type as string || 'cdi')}</td>
+                  <td>{e.phone as string || '—'}</td>
+                  <td className="ds-num">
                     {(() => {
                       const isWeekly = e.pay_frequency === 'weekly';
 
                       const sal = isWeekly ? e.weekly_salary : e.monthly_salary;
-                      if (!sal) return <span style={{ color: 'var(--odoo-text-light)' }}>—</span>;
+                      if (!sal) return '—';
                       const val = parseFloat(sal as string);
                       const eqMonth = isWeekly ? val * WEEKS_PER_MONTH : val;
                       return (
-                        <span title={isWeekly ? `Salaire hebdo × 52/12 ≈ ${money(eqMonth, { decimals: 0 })}/mois equivalent` : 'Salaire mensuel'}>
-                          <span style={{ fontWeight: 600 }}>{val.toFixed(0)}</span>
-                          <span style={{ color: 'var(--odoo-text-muted)', fontWeight: 400, fontSize: '0.6875rem', marginLeft: 3 }}>
-                            {currencySymbol()}/{isWeekly ? 'sem' : 'mois'}
-                          </span>
-                          {isWeekly && (
-                            <div style={{ fontSize: '0.625rem', color: 'var(--odoo-text-light)' }}>
-                              ≈ {money(eqMonth, { decimals: 0 })}/mois
-                            </div>
-                          )}
+                        <span title={isWeekly ? `Salaire hebdo × 52/12 ≈ ${money(eqMonth, { decimals: 0 })}/mois équivalent` : 'Salaire mensuel'}>
+                          <span className="ds-strong">{val.toFixed(0)}</span>
+                          <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 3 }}>/{isWeekly ? 'sem' : 'mois'}</span>
                         </span>
                       );
                     })()}
@@ -357,55 +357,15 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                   <td>
                     <StatusTag tone={e.is_active ? 'done' : 'cancelled'} label={e.is_active ? 'Actif' : 'Inactif'} />
                   </td>
-                  <td style={{ textAlign: 'right' }} onClick={(ev) => ev.stopPropagation()}>
-                    <div style={{ display: 'inline-flex', gap: 2 }}>
-                      <button onClick={() => openEmployee(e.id as string)} className="odoo-pager-btn" title="Ouvrir la fiche">
-                        <UserCog size={13} />
-                      </button>
-                      <button onClick={() => openEmployee(e.id as string, true)} className="odoo-pager-btn" title="Modifier">
-                        <Pencil size={13} />
-                      </button>
-                      {e.is_active && canDeleteEmployee && (
-                        <button
-                          onClick={async () => {
-                            const fullName = `${e.first_name} ${e.last_name}`;
-                            if (!(await confirm(`Désactiver ${fullName} ?\n\nL'employé sera masqué des listes actives.\nSon historique (paie, présence, paiements) reste préservé.\nVous pourrez le réactiver à tout moment.`,
-                              { title: 'Désactiver l\'employé', confirmLabel: 'Désactiver', danger: true }))) return;
-                            deactivateMutation.mutate(e.id as string);
-                          }}
-                          disabled={deactivateMutation.isPending}
-                          className="odoo-pager-btn" title="Désactiver" style={{ color: 'var(--prj-red)' }}>
-                          <Trash2 size={13} />
-                        </button>
-                      )}
-                      {canDeleteEmployee && (
-                        <button
-                          onClick={() => handleHardDelete(e)}
-                          disabled={hardDeleteMutation.isPending}
-                          className="odoo-pager-btn" title="Supprimer définitivement" style={{ color: 'var(--prj-red)' }}>
-                          <AlertOctagon size={13} />
-                        </button>
-                      )}
-                      {!e.is_active && canDeleteEmployee && (
-                        <button
-                          onClick={async () => {
-                            const fullName = `${e.first_name} ${e.last_name}`;
-                            if (!(await confirm(`Réactiver ${fullName} ? Il réapparaitra dans les listes actives.`,
-                              { title: 'Réactiver l\'employé', confirmLabel: 'Réactiver' }))) return;
-                            reactivateMutation.mutate(e.id as string);
-                          }}
-                          disabled={reactivateMutation.isPending}
-                          className="odoo-pager-btn" title="Réactiver" style={{ color: 'var(--prj-green)' }}>
-                          <RotateCcw size={13} />
-                        </button>
-                      )}
-                    </div>
+                  <td className="ds-actions" onClick={(ev) => ev.stopPropagation()}>
+                    <button type="button" onClick={() => openEmployee(e.id as string)} className="odoo-btn-secondary ds-btn-sm">Ouvrir</button>
+                    <RowMenu items={rowMenu(e)} label={`Plus d'actions pour ${e.first_name} ${e.last_name}`} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
 
     </>

@@ -114,3 +114,8 @@ export function shiftTag(code: string): string {
 export function shiftStyle(code: string): { background: string; color: string } {
   return TONE_STYLE[SHIFT_TONES[code as keyof typeof SHIFT_TONES] ?? 'grey'];
 }
+
+/** Montant ou quantité sans unité (l'unité est dans l'en-tête de colonne) : « 1 234,50 ». */
+export function amount(v: number | string | null | undefined, decimals = 2): string {
+  return (Number(v) || 0).toLocaleString('fr-FR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}

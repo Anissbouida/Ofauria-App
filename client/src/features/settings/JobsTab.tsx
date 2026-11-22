@@ -52,7 +52,7 @@ export default function JobsTab() {
       </StatusBanner>
       <div className="prj-panel prj-scroll">
         <table className="odoo-table">
-          <thead><tr><th style={{ width: 60 }}>Active</th><th>Tâche</th><th>Fréquence</th><th>Dernier passage</th><th>Résultat</th><th>Prochain</th><th></th></tr></thead>
+          <thead><tr><th style={{ width: 60 }}>Active</th><th>Tâche</th><th>Fréquence</th><th>Dernier passage</th><th>Résultat</th><th>Prochain</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>{jobs.map((j: ScheduledJob) => (
             <Fragment key={j.key}>
               <tr style={{ opacity: j.enabled ? 1 : 0.55 }}>
@@ -60,7 +60,7 @@ export default function JobsTab() {
                   onChange={e => update.mutate({ key: j.key, data: { enabled: e.target.checked } })} /></td>
                 <td>
                   <div style={{ fontWeight: 600 }}>{j.label} <span className="odoo-tag odoo-tag-grey" style={{ fontWeight: 400 }}>{DOMAINS[j.domain] ?? j.domain}</span></div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{j.description}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{j.description}</div>
                 </td>
                 <td>
                   {editable ? (
@@ -72,35 +72,35 @@ export default function JobsTab() {
                     </select>
                   ) : freqLabel(j.interval_minutes)}
                 </td>
-                <td style={{ whiteSpace: 'nowrap' }}>{dt(j.last_run_at)}{j.last_duration_ms != null && <div style={{ fontSize: '0.7rem', color: 'var(--odoo-text-muted)' }}>{j.last_duration_ms} ms</div>}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{dt(j.last_run_at)}{j.last_duration_ms != null && <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{j.last_duration_ms} ms</div>}</td>
                 <td style={{ maxWidth: 320 }}>
                   {j.last_status && <StatusTag tone={j.last_status === 'ok' ? 'done' : 'blocked'} label={j.last_status === 'ok' ? 'OK' : 'Erreur'} />}{' '}
-                  <span style={{ fontSize: '0.8125rem', color: j.last_status === 'error' ? 'var(--prj-red)' : 'var(--odoo-text-muted)' }}>{j.last_message ?? (j.last_run_at ? '' : 'Jamais lancée')}</span>
+                  <span style={{ fontSize: '0.8125rem', color: j.last_status === 'error' ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>{j.last_message ?? (j.last_run_at ? '' : 'Jamais lancée')}</span>
                 </td>
-                <td style={{ whiteSpace: 'nowrap', color: 'var(--odoo-text-muted)' }}>{j.enabled ? dt(j.next_run_at) : '—'}</td>
+                <td style={{ whiteSpace: 'nowrap', color: 'var(--ds-muted)' }}>{j.enabled ? dt(j.next_run_at) : '—'}</td>
                 <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                   {editable && j.implemented && (
-                    <button className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={run.isPending}
+                    <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={run.isPending}
                       onClick={() => run.mutate(j.key)}>
                       {run.isPending && run.variables === j.key ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Lancer
                     </button>
                   )}{' '}
-                  <button className="odoo-pager-btn" aria-label="Historique" title="Historique des passages" onClick={() => setOpen(open === j.key ? null : j.key)}>
+                  <button type="button" className="odoo-pager-btn" aria-label="Historique" title="Historique des passages" onClick={() => setOpen(open === j.key ? null : j.key)}>
                     {open === j.key ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </button>
                 </td>
               </tr>
               {open === j.key && (
                 <tr><td colSpan={7} style={{ background: 'var(--odoo-bg-alt)' }}>
-                  {j.runs.length === 0 ? <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Aucun passage.</span> : (
+                  {j.runs.length === 0 ? <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucun passage.</span> : (
                     <table className="odoo-table" style={{ margin: 0 }}>
-                      <thead><tr><th>Début</th><th>Déclenché</th><th>Statut</th><th style={{ textAlign: 'right' }}>Éléments</th><th>Message</th></tr></thead>
+                      <thead><tr><th>Début</th><th>Déclenché</th><th>Statut</th><th className="ds-num">Éléments</th><th>Message</th></tr></thead>
                       <tbody>{j.runs.map(r => (
                         <tr key={r.id}>
                           <td style={{ whiteSpace: 'nowrap' }}>{dt(r.started_at)}</td>
                           <td>{TRIGGERS[r.trigger]}</td>
                           <td><StatusTag tone={r.status === 'ok' ? 'done' : r.status === 'error' ? 'blocked' : 'progress'} label={r.status === 'ok' ? 'OK' : r.status === 'error' ? 'Erreur' : 'En cours'} /></td>
-                          <td style={{ textAlign: 'right' }}>{r.items}</td>
+                          <td className="ds-num">{r.items}</td>
                           <td style={{ fontSize: '0.8125rem' }}>{r.message}</td>
                         </tr>
                       ))}</tbody>

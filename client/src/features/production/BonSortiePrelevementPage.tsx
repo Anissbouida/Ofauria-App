@@ -24,7 +24,7 @@ export default function BonSortiePrelevementPage() {
     <div className="odoo-scope pd">
       {/* Barre : retour + fil d'Ariane (design Ventes) ; l'en-tête de fiche est dans le panneau. */}
       <div className="odoo-control-bar">
-        <button onClick={() => navigate('/stock?tab=bons')} className="odoo-pager-btn" title="Retour aux bons de sortie">
+        <button onClick={() => navigate('/stock?tab=bons')} className="odoo-pager-btn" title="Retour aux bons de sortie" aria-label="Retour aux bons de sortie">
           <ArrowLeft size={14} />
         </button>
         <div className="odoo-breadcrumb">

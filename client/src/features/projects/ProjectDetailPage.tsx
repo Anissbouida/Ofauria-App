@@ -1,10 +1,8 @@
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  FolderKanban, ArrowLeft, Pencil, PlayCircle, PauseCircle, CheckCircle2, XCircle, RotateCcw, Plus, Trash2, Loader2, Link2, X, Check, Columns3, List,
-} from 'lucide-react';
+import { FolderKanban, ArrowLeft, Pencil, PlayCircle, PauseCircle, CheckCircle2, XCircle, RotateCcw, Plus, Trash2, Link2, X, Check, Columns3, List, Timer } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -15,6 +13,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { Breadcrumb, EmptyState, LoadingState } from '../../components/ds';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import {
@@ -54,7 +53,7 @@ export default function ProjectDetailPage() {
   const delTask = useMutation({ mutationFn: (taskId: string) => projectsApi.deleteTask(taskId), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
   const delTime = useMutation({ mutationFn: (tid: string) => projectsApi.deleteTime(tid), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
 
-  if (isLoading || !p) return <div className="odoo-scope" style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={28} className="animate-spin" /></div>;
+  if (isLoading || !p) return <div className="odoo-scope"><LoadingState bare label="Chargement du projet…" /></div>;
 
   const tasks = p.tasks ?? [];
   const pct = p.task_count ? Math.round((p.task_done / p.task_count) * 100) : 0;
@@ -93,31 +92,31 @@ export default function ProjectDetailPage() {
   return (
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
       <div className="odoo-control-bar">
-        <button className="odoo-btn-secondary" aria-label="Retour aux projets" onClick={() => navigate('/projects?tab=projects')}><ArrowLeft size={14} /></button>
-        <div className="odoo-breadcrumb">
-          <FolderKanban size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Projets</span><span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current font-mono">{p.number}</span>
-        </div>
+        <button type="button" className="ds-icon-btn" aria-label="Retour aux projets" onClick={() => navigate('/projects?tab=projects')}><ArrowLeft size={16} aria-hidden="true" /></button>
+        <Breadcrumb icon={FolderKanban} items={[
+          { label: 'Projets', onClick: () => navigate('/projects') },
+          { label: 'Projets', onClick: () => navigate('/projects?tab=projects') },
+          { label: <span className="ds-ref">{p.number}</span> },
+        ]} />
         <div style={{ flex: 1 }} />
         {editable && (
           <>
-            <button className="odoo-btn-secondary" onClick={() => setEditing(true)}><Pencil size={13} /> Modifier</button>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(true)}><Pencil size={13} /> Modifier</button>
             {['draft', 'active', 'on_hold'].includes(p.status) && (
-              <button className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler ce projet ?', { title: 'Annuler le projet', danger: true })) setStatus.mutate('cancelled'); }}><XCircle size={13} /> Annuler</button>
+              <button type="button" className="ds-btn-danger" onClick={async () => { if (await confirm('Annuler ce projet ?', { title: 'Annuler le projet', confirmLabel: 'Annuler le projet', cancelLabel: 'Retour', danger: true })) setStatus.mutate('cancelled'); }}><XCircle size={13} aria-hidden="true" /> Annuler le projet</button>
             )}
-            {p.status === 'active' && <button className="odoo-btn-secondary" onClick={() => setStatus.mutate('on_hold')}><PauseCircle size={13} /> Mettre en pause</button>}
-            {p.status === 'draft' && <button className="odoo-btn-primary" onClick={() => setStatus.mutate('active')}><PlayCircle size={13} /> Lancer</button>}
-            {p.status === 'on_hold' && <button className="odoo-btn-primary" onClick={() => setStatus.mutate('active')}><PlayCircle size={13} /> Reprendre</button>}
-            {p.status === 'active' && <button className="odoo-btn-primary" onClick={() => setStatus.mutate('completed')}><CheckCircle2 size={13} /> Terminer</button>}
-            {p.status === 'completed' && <button className="odoo-btn-secondary" onClick={() => setStatus.mutate('active')}><RotateCcw size={13} /> Rouvrir</button>}
-            {p.status === 'cancelled' && <button className="odoo-btn-secondary" onClick={() => setStatus.mutate('draft')}><RotateCcw size={13} /> Repasser en brouillon</button>}
+            {p.status === 'active' && <button type="button" className="odoo-btn-secondary" onClick={() => setStatus.mutate('on_hold')}><PauseCircle size={13} /> Mettre en pause</button>}
+            {p.status === 'draft' && <button type="button" className="odoo-btn-primary" onClick={() => setStatus.mutate('active')}><PlayCircle size={13} /> Lancer</button>}
+            {p.status === 'on_hold' && <button type="button" className="odoo-btn-primary" onClick={() => setStatus.mutate('active')}><PlayCircle size={13} /> Reprendre</button>}
+            {p.status === 'active' && <button type="button" className="odoo-btn-primary" onClick={() => setStatus.mutate('completed')}><CheckCircle2 size={13} /> Terminer</button>}
+            {p.status === 'completed' && <button type="button" className="odoo-btn-secondary" onClick={() => setStatus.mutate('active')}><RotateCcw size={13} /> Rouvrir</button>}
+            {p.status === 'cancelled' && <button type="button" className="odoo-btn-secondary" onClick={() => setStatus.mutate('draft')}><RotateCcw size={13} /> Repasser en brouillon</button>}
           </>
         )}
       </div>
 
       <div className="prj prj-detail">
-        {p.is_overdue && <StatusBanner tone="danger" icon={XCircle} title="Échéance dépassée">Prévu pour le {format(new Date(p.due_date!), 'dd MMMM yyyy', { locale: fr })}.</StatusBanner>}
+        {p.is_overdue && <StatusBanner tone="danger" icon={XCircle} title="Échéance dépassée">Prévu pour le {format(new Date(p.due_date!), 'd MMMM yyyy', { locale: fr })}.</StatusBanner>}
 
         <section className="prj-panel prj-hero">
           <div className="prj-hero-top">
@@ -128,7 +127,7 @@ export default function ProjectDetailPage() {
                 <StatusTag tone={STATUS_TONE[p.status] ?? 'draft'} icon={p.status === 'on_hold' ? PauseCircle : undefined} label={PROJECT_STATUS_LABELS[p.status] ?? p.status} />
               </div>
               <div className="prj-hero-meta">
-                <span className="font-mono">{p.number}</span>
+                <span className="ds-ref">{p.number}</span>
                 <span>{p.customer_label || 'Interne'}</span>
                 {p.order_number && <span>Commande {p.order_number}</span>}
                 {p.manager_name && <span>Responsable : {p.manager_name}</span>}
@@ -154,7 +153,7 @@ export default function ProjectDetailPage() {
             <div className="prj-kpi-head"><span>Avancement</span><span>{p.task_done} / {p.task_count} tâches</span></div>
             <div className="prj-kpi-value">{pct} %</div>
             <div className="prj-bar"><span style={{ width: `${pct}%` }} /></div>
-            {p.task_late > 0 && <div className="prj-kpi-sub" style={{ color: 'var(--prj-red)' }}>{p.task_late} en retard</div>}
+            {p.task_late > 0 && <div className="prj-kpi-sub" style={{ color: 'var(--ds-danger)' }}>{p.task_late} en retard</div>}
           </div>
           <div className="prj-kpi">
             <div className="prj-kpi-head"><span>Temps passé</span><span>{p.estimated_hours ? `prévu ${h1(p.estimated_hours)} h` : 'sans prévision'}</span></div>
@@ -170,7 +169,7 @@ export default function ProjectDetailPage() {
           </div>
           <div className="prj-kpi">
             <div className="prj-kpi-head"><span>Marge</span><span>{BILLING_LABELS[p.billing_type]}</span></div>
-            <div className="prj-kpi-value" style={{ color: revenue ? (margin < 0 ? 'var(--prj-red)' : 'var(--prj-green)') : undefined }}>{revenue ? money(margin, { decimals: 0 }) : '—'}</div>
+            <div className="prj-kpi-value" style={{ color: revenue ? (margin < 0 ? 'var(--ds-danger)' : 'var(--ds-success)') : undefined }}>{revenue ? money(margin, { decimals: 0 }) : '—'}</div>
             <div className="prj-kpi-sub">{revenue ? `${Math.round((margin / revenue) * 100)} % de ${money(revenue, { decimals: 0 })}` : 'projet non facturé'}</div>
           </div>
         </section>
@@ -189,39 +188,39 @@ export default function ProjectDetailPage() {
                     <button type="button" className={taskLayout === 'board' ? 'active' : ''} aria-pressed={taskLayout === 'board'} onClick={() => setTaskLayout('board')}><Columns3 size={14} /> Kanban</button>
                     <button type="button" className={taskLayout === 'list' ? 'active' : ''} aria-pressed={taskLayout === 'list'} onClick={() => setTaskLayout('list')}><List size={14} /> Liste</button>
                   </div>
-                  {editable && <button className="odoo-btn-secondary" onClick={() => setTaskModal({})}><Plus size={12} /> Tâche</button>}
+                  {editable && <button type="button" className="odoo-btn-secondary" onClick={() => setTaskModal({})}><Plus size={12} /> Tâche</button>}
                 </div>
               )}
-              {tab === 'purchases' && editable && <button className="odoo-btn-secondary" onClick={() => setLinkModal(true)}><Link2 size={12} /> Rattacher une facture</button>}
+              {tab === 'purchases' && editable && <button type="button" className="odoo-btn-secondary" onClick={() => setLinkModal(true)}><Link2 size={12} /> Rattacher une facture</button>}
             </div>
 
             <div className="prj-tab-body">
               {tab === 'tasks' && (tasks.length === 0 ? (
-                <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune tâche. Découpez le projet en étapes à affecter.</p>
+                <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucune tâche. Découpez le projet en étapes à affecter.</p>
               ) : taskLayout === 'board' ? (
                 <TaskBoard tasks={tasks} editable={editable} onMove={(taskId, status) => setTaskStatus.mutate({ taskId, status })}
                   onOpen={t => editable && setTaskModal({ task: t })} />
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table className="odoo-table">
-                    <thead><tr><th style={{ width: 40 }} /><th>Tâche</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th style={{ textAlign: 'right' }}>Heures</th><th>Statut</th><th /></tr></thead>
+                    <thead><tr><th style={{ width: 40 }} /><th>Tâche</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th className="ds-num">Heures (h)</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
                     <tbody>{tasks.map(t => (
                       <tr key={t.id} style={{ opacity: t.status === 'cancelled' ? 0.5 : 1 }}>
                         <td><input type="checkbox" aria-label={`Fait : ${t.title}`} checked={t.status === 'done'} disabled={!editable} onChange={e => setTaskStatus.mutate({ taskId: t.id, status: e.target.checked ? 'done' : 'todo' })} /></td>
                         <td onClick={() => editable && setTaskModal({ task: t })} style={{ cursor: editable ? 'pointer' : 'default' }}>
-                          <strong style={{ textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}</strong>
-                          {t.description && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{t.description}</div>}
+                          <span className="ds-strong" style={{ textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>{t.title}</span>
+                          {t.description && <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{t.description}</div>}
                         </td>
                         <td>{t.assignee_name || '—'}</td>
                         <td><span className={`odoo-tag ${PRIORITY_TAG[t.priority]}`}>{PRIORITY_LABELS[t.priority]}</span></td>
-                        <td style={{ color: t.is_overdue ? 'var(--prj-red)' : undefined, fontWeight: t.is_overdue ? 600 : 400 }}>{t.due_date ? format(new Date(t.due_date), 'dd/MM/yyyy') : '—'}</td>
-                        <td style={{ textAlign: 'right' }}>{h1(t.hours_spent)}{t.estimated_hours ? ` / ${h1(t.estimated_hours)}` : ''}</td>
+                        <td style={{ color: t.is_overdue ? 'var(--ds-danger)' : undefined, fontWeight: t.is_overdue ? 600 : 400 }}>{t.due_date ? format(new Date(t.due_date), 'd MMM yyyy', { locale: fr }) : '—'}</td>
+                        <td className="ds-num">{h1(t.hours_spent)}{t.estimated_hours ? ` / ${h1(t.estimated_hours)}` : ''}</td>
                         <td>
                           <select className="odoo-filter-dropdown" aria-label="Statut" value={t.status} disabled={!editable} onChange={e => setTaskStatus.mutate({ taskId: t.id, status: e.target.value as TaskStatus })}>
                             {Object.entries(TASK_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                           </select>
                         </td>
-                        <td>{canDelete('projects') && <button className="odoo-btn-secondary" title="Supprimer" aria-label={`Supprimer ${t.title}`} onClick={async () => { if (await confirm(`Supprimer la tâche « ${t.title} » ?`, { danger: true })) delTask.mutate(t.id); }}><Trash2 size={12} /></button>}</td>
+                        <td className="ds-actions">{canDelete('projects') && <button type="button" className="ds-icon-btn" title="Supprimer" aria-label={`Supprimer ${t.title}`} onClick={async () => { if (await confirm(`Supprimer la tâche « ${t.title} » ?`, { title: 'Supprimer la tâche', confirmLabel: 'Supprimer', danger: true })) delTask.mutate(t.id); }}><Trash2 size={15} aria-hidden="true" /></button>}</td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -231,20 +230,20 @@ export default function ProjectDetailPage() {
               {tab === 'time' && (
                 <>
                   {editable && isOpen && <TimeEntryForm projectId={p.id} tasks={tasks} compact />}
-                  {!time?.rows.length ? <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune heure déclarée.</p> : (
+                  {!time?.rows.length ? <EmptyState bare icon={Timer} title="Aucune heure déclarée" /> : (
                     <div style={{ overflowX: 'auto' }}>
                       <table className="odoo-table">
-                        <thead><tr><th>Date</th><th>Qui</th><th>Tâche / activité</th><th>Note</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'right' }}>Facturable</th><th /></tr></thead>
+                        <thead><tr><th>Date</th><th>Personne</th><th>Tâche ou activité</th><th>Note</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coût ({currencySymbol()})</th><th className="ds-num">Facturable ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
                         <tbody>{time.rows.map(t => (
                           <tr key={t.id}>
-                            <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.work_date), 'EEE dd/MM', { locale: fr })}</td>
+                            <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.work_date), 'EEE d MMM', { locale: fr })}</td>
                             <td>{t.employee_name}</td>
                             <td>{t.task_title || t.activity_label || '—'}</td>
-                            <td style={{ color: 'var(--theme-text-muted)' }}>{t.note || ''}</td>
-                            <td style={{ textAlign: 'right' }}>{h1(t.hours)}</td>
-                            <td style={{ textAlign: 'right' }}>{n2(t.cost)}</td>
-                            <td style={{ textAlign: 'right' }}>{t.billable ? n2(t.amount) : <span style={{ color: 'var(--theme-text-muted)' }}>non fact.</span>}</td>
-                            <td>{!t.invoice_id && canDelete('projects') && <button className="odoo-btn-secondary" title="Supprimer" aria-label="Supprimer la saisie" onClick={() => delTime.mutate(t.id)}><Trash2 size={12} /></button>}</td>
+                            <td style={{ color: 'var(--ds-muted)' }}>{t.note || ''}</td>
+                            <td className="ds-num">{h1(t.hours)}</td>
+                            <td className="ds-num">{n2(t.cost)}</td>
+                            <td className="ds-num">{t.billable ? n2(t.amount) : <span style={{ color: 'var(--ds-muted)' }}>non fact.</span>}</td>
+                            <td className="ds-actions">{!t.invoice_id && canDelete('projects') && <button type="button" className="ds-icon-btn" title="Supprimer" aria-label="Supprimer la saisie" onClick={async () => { if (await confirm('Supprimer cette saisie de temps ?', { title: 'Supprimer la saisie', confirmLabel: 'Supprimer', danger: true })) delTime.mutate(t.id); }}><Trash2 size={15} aria-hidden="true" /></button>}</td>
                           </tr>
                         ))}</tbody>
                       </table>
@@ -254,20 +253,20 @@ export default function ProjectDetailPage() {
               )}
 
               {tab === 'purchases' && (!invoices?.length ? (
-                <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune facture rattachée : leur coût entre dans la marge du projet.</p>
+                <EmptyState bare icon={Link2} title="Aucune facture rattachée" text="Le coût des factures rattachées entre dans la marge du projet." />
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table className="odoo-table">
-                    <thead><tr><th>Facture</th><th>Type</th><th>Fournisseur / catégorie</th><th>Date</th><th>Statut</th><th style={{ textAlign: 'right' }}>Montant HT</th><th /></tr></thead>
+                    <thead><tr><th>Facture</th><th>Type</th><th>Fournisseur ou catégorie</th><th>Date</th><th>Statut</th><th className="ds-num">Montant HT ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
                     <tbody>{invoices.map(inv => (
                       <tr key={inv.id}>
-                        <td className="font-mono">{inv.invoice_number}</td>
+                        <td className="ds-ref">{inv.invoice_number}</td>
                         <td><span className={`odoo-tag ${inv.invoice_type === 'received' ? 'odoo-tag-orange' : 'odoo-tag-blue'}`}>{inv.invoice_type === 'received' ? 'Coût' : 'Produit'}</span></td>
                         <td>{inv.supplier_name || inv.category_name || '—'}</td>
-                        <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(inv.invoice_date), 'dd/MM/yyyy')}</td>
-                        <td>{inv.status === 'cancelled' ? <StatusTag tone="cancelled" label="Annulée" /> : <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{inv.status}</span>}</td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n2(inv.amount)}</td>
-                        <td>{editable && <button className="odoo-btn-secondary" title="Détacher" aria-label={`Détacher ${inv.invoice_number}`} onClick={async () => { if (await confirm(`Détacher la facture ${inv.invoice_number} du projet ?`)) unlinkInvoice.mutate(inv.id); }}><Trash2 size={12} /></button>}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(inv.invoice_date), 'd MMM yyyy', { locale: fr })}</td>
+                        <td>{inv.status === 'cancelled' ? <StatusTag tone="cancelled" label="Annulée" /> : <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{inv.status}</span>}</td>
+                        <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{n2(inv.amount)}</td>
+                        <td className="ds-actions">{editable && <button type="button" className="ds-icon-btn" title="Détacher" aria-label={`Détacher ${inv.invoice_number}`} onClick={async () => { if (await confirm(`Détacher la facture ${inv.invoice_number} du projet ?`)) unlinkInvoice.mutate(inv.id); }}><Trash2 size={15} aria-hidden="true" /></button>}</td>
                       </tr>
                     ))}</tbody>
                   </table>
@@ -277,7 +276,7 @@ export default function ProjectDetailPage() {
               {tab === 'notes' && (
                 <div style={{ display: 'grid', gap: 12, fontSize: '0.875rem' }}>
                   {p.description && <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{p.description}</p>}
-                  {p.notes && <p style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--theme-text-muted)' }}>{p.notes}</p>}
+                  {p.notes && <p style={{ margin: 0, whiteSpace: 'pre-wrap', color: 'var(--ds-muted)' }}>{p.notes}</p>}
                 </div>
               )}
             </div>
@@ -289,17 +288,17 @@ export default function ProjectDetailPage() {
               <div className="prj-stack" aria-hidden="true">
                 <span style={{ width: seg(externalCost), background: 'var(--odoo-purple)' }} />
                 <span style={{ width: seg(laborCost), background: 'color-mix(in srgb, var(--odoo-purple) 45%, transparent)' }} />
-                {margin > 0 && <span style={{ width: seg(margin), background: 'var(--prj-green)' }} />}
+                {margin > 0 && <span style={{ width: seg(margin), background: 'var(--ds-success)' }} />}
               </div>
               <dl className="prj-legend">
                 <dt><span className="prj-swatch" style={{ background: 'var(--odoo-purple)' }} />Achats rattachés</dt><dd>{money(externalCost, { decimals: 0 })}</dd>
                 <dt><span className="prj-swatch" style={{ background: 'color-mix(in srgb, var(--odoo-purple) 45%, transparent)' }} />Main-d’œuvre ({h1(p.hours_spent)} h)</dt><dd>{money(laborCost, { decimals: 0 })}</dd>
                 {revenue > 0 && <>
-                  <dt><span className="prj-swatch" style={{ background: margin < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }} />{margin < 0 ? 'Perte' : 'Marge'}</dt>
-                  <dd style={{ color: margin < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }}>{money(margin, { decimals: 0 })}</dd>
+                  <dt><span className="prj-swatch" style={{ background: margin < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }} />{margin < 0 ? 'Perte' : 'Marge'}</dt>
+                  <dd style={{ color: margin < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{money(margin, { decimals: 0 })}</dd>
                 </>}
               </dl>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', borderTop: '1px solid var(--odoo-border)', paddingTop: 10 }}>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', borderTop: '1px solid var(--odoo-border)', paddingTop: 10 }}>
                 {revenue > 0 ? `${p.billing_type === 'fixed' ? 'Forfait' : 'Facturable'} ${money(revenue, { decimals: 0 })}` : 'Projet non facturé'}
                 {p.billing_type === 'time' && Number(p.unbilled_amount) > 0 ? ` · reste à facturer ${money(p.unbilled_amount, { decimals: 0 })}` : ''}
               </div>
@@ -352,28 +351,27 @@ function LinkInvoiceModal({ projectId, onClose, onLinked }: { projectId: string;
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(680px, 96vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Link2 size={16} /> Rattacher une facture</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' }}>
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="N° de facture ou fournisseur…"
-            style={{ padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit' }} />
+          <input type="search" className="ds-input" value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une facture" placeholder="N° de facture ou fournisseur…" />
           <div style={{ overflowY: 'auto' }}>
-            {isLoading ? <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div>
-              : rows.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune facture disponible. Les factures déjà rattachées à un autre projet ou annulées ne sont pas listées.</p>
+            {isLoading ? <LoadingState bare />
+              : rows.length === 0 ? <EmptyState bare icon={Link2} title="Aucune facture disponible" text="Les factures déjà rattachées à un autre projet ou annulées ne sont pas listées." />
               : (
                 <table className="odoo-table">
-                  <thead><tr><th>Facture</th><th>Type</th><th>Fournisseur</th><th>Date</th><th style={{ textAlign: 'right' }}>HT</th><th /></tr></thead>
+                  <thead><tr><th>Facture</th><th>Type</th><th>Fournisseur</th><th>Date</th><th className="ds-num">Montant HT ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
                   <tbody>{rows.map((inv: ProjectInvoice) => (
                     <tr key={inv.id}>
-                      <td className="font-mono">{inv.invoice_number}</td>
+                      <td className="ds-ref">{inv.invoice_number}</td>
                       <td><span className={`odoo-tag ${inv.invoice_type === 'received' ? 'odoo-tag-orange' : 'odoo-tag-blue'}`}>{inv.invoice_type === 'received' ? 'Coût' : 'Produit'}</span></td>
                       <td>{inv.supplier_name || '—'}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(inv.invoice_date), 'dd/MM/yyyy')}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n2(inv.amount)}</td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(inv.invoice_date), 'd MMM yyyy', { locale: fr })}</td>
+                      <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{n2(inv.amount)}</td>
+                      <td className="ds-num">
                         {inv.project_id === projectId
                           ? <StatusTag tone="done" label="Rattachée" />
-                          : <button className="odoo-btn-primary" style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem' }} disabled={link.isPending} onClick={() => link.mutate(inv.id)}><Plus size={12} /> Rattacher</button>}
+                          : <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={link.isPending} onClick={() => link.mutate(inv.id)}><Plus size={12} /> Rattacher</button>}
                       </td>
                     </tr>
                   ))}</tbody>

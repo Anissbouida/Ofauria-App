@@ -6,7 +6,9 @@ import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChefHat, Layers, Pencil, AlertTriangle, Lock, Copy } from 'lucide-react';
+import { ArrowLeft, ChefHat, Pencil, AlertTriangle, Lock, Copy } from 'lucide-react';
+import { Breadcrumb, EmptyState, ErrorState, KpiCard, KpiGrid, LoadingState, PageHeader, SectionHeader } from '../../components/ds';
+import { StatusTag } from '../../components/ui/StatusTag';
 import RecipeDuplicateDialog from './RecipeDuplicateDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import RecipeCreateDialog from './RecipeCreateDialog';
@@ -37,7 +39,7 @@ export default function NomenclaturePage() {
   const [editIdentity, setEditIdentity] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
 
-  const { data: recipe, isLoading, error } = useQuery({
+  const { data: recipe, isLoading, error, refetch } = useQuery({
     queryKey: ['recipe', id], queryFn: () => recipesApi.getById(id!), enabled: !!id,
     retry: (n, e) => (e as { response?: { status?: number } })?.response?.status !== 403 && n < 1,
   });
@@ -45,18 +47,34 @@ export default function NomenclaturePage() {
   const forbidden = (error as { response?: { status?: number } } | null)?.response?.status === 403;
   const { data: etapesStatus } = useQuery({ queryKey: ['recipe-etapes-status', id], queryFn: () => recipesApi.etapesStatus(id!), enabled: !!id });
 
+  const listLabel = sectorLabel('recipes', 'Fiches techniques');
+  const bar = (current?: string) => (
+    <div className="odoo-control-bar">
+      <button type="button" onClick={() => navigate('/recipes?tab=product')} className="ds-icon-btn" title={`Retour aux ${T.recipesLc}`} aria-label={`Retour aux ${T.recipesLc}`}>
+        <ArrowLeft size={16} aria-hidden="true" />
+      </button>
+      <Breadcrumb icon={ChefHat} items={[
+        { label: sectorLabel('production', 'Production') },
+        { label: listLabel, onClick: () => navigate('/recipes?tab=product') },
+        ...(current ? [{ label: current }] : []),
+      ]} />
+    </div>
+  );
+
   if (isLoading) {
-    return <div className="odoo-scope pd"><div className="pd-page"><section className="prj-panel sal-empty"><span>Chargement…</span></section></div></div>;
+    return <div className="odoo-scope pd">{bar()}<div className="pd-page"><LoadingState label="Chargement de la fiche…" /></div></div>;
   }
   if (!recipe) {
+    const back = <button type="button" onClick={() => navigate('/recipes?tab=product')} className="odoo-btn-secondary">Retour aux {T.recipesLc}</button>;
     return (
       <div className="odoo-scope pd">
+        {bar()}
         <div className="pd-page">
-          <section className="prj-panel sal-empty">
-            <ChefHat size={28} style={{ opacity: 0.4 }} />
-            <strong>{forbidden ? "Vous n'avez pas accès aux fiches techniques." : `${T.recipe} introuvable.`}</strong>
-            <button onClick={() => navigate('/recipes?tab=product')} className="odoo-btn-secondary">Retour aux {T.recipesLc}</button>
-          </section>
+          {forbidden
+            ? <EmptyState icon={Lock} title="Vous n'avez pas accès aux fiches techniques" text="La consultation des fiches est réservée à la production, au magasin et à la direction." action={back} />
+            : error
+              ? <ErrorState title="La fiche n'a pas pu être chargée" onRetry={() => refetch()} />
+              : <EmptyState icon={ChefHat} title={`${T.recipe} introuvable`} text="Elle a peut-être été archivée ou supprimée." action={back} />}
         </div>
       </div>
     );
@@ -67,52 +85,43 @@ export default function NomenclaturePage() {
   const readOnly = r.can_edit === false;
   const readOnlyReason = readOnly ? `Fiche de l'atelier ${r.workshop_label ?? '?'} : vous n'en êtes pas membre, elle est en lecture seule.` : null;
 
-  const margeColor = kpi && kpi.margePct >= 50 ? 'var(--prj-green)' : kpi && kpi.margePct >= 30 ? 'var(--prj-orange)' : 'var(--prj-red)';
+  const margeTone = kpi && kpi.margePct >= 50 ? 'green' as const : kpi && kpi.margePct >= 30 ? 'orange' as const : 'red' as const;
+  const usedBy = Array.isArray((recipe as { used_by?: { name?: string }[] }).used_by)
+    ? [...new Set((recipe as { used_by: { name?: string }[] }).used_by.map((u) => u.name).filter(Boolean))] : [];
 
   return (
     <div className="odoo-scope pd">
-      {/* Barre : retour + fil d'Ariane (design Ventes). */}
+      {/* Barre : retour + fil d'Ariane jusqu'au nom de la fiche, actions à droite. */}
       <div className="odoo-control-bar">
-        <button onClick={() => navigate('/recipes?tab=product')} className="odoo-pager-btn" title={`Retour aux ${T.recipesLc}`} aria-label={`Retour aux ${T.recipesLc}`}>
-          <ArrowLeft size={14} />
+        <button type="button" onClick={() => navigate('/recipes?tab=product')} className="ds-icon-btn" title={`Retour aux ${T.recipesLc}`} aria-label={`Retour aux ${T.recipesLc}`}>
+          <ArrowLeft size={16} aria-hidden="true" />
         </button>
-        <div className="odoo-breadcrumb">
-          <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/recipes?tab=product')}>{sectorLabel('recipes', 'Fiches techniques')}</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">{recipe.name}</span>
-        </div>
+        <Breadcrumb icon={ChefHat} items={[
+          { label: sectorLabel('production', 'Production') },
+          { label: listLabel, onClick: () => navigate('/recipes?tab=product') },
+          { label: recipe.name },
+        ]} />
+        <div style={{ flex: 1 }} />
+        {/* Copie de la fiche entière (constat 109) : permise même en lecture seule. */}
+        <button type="button" onClick={() => setDuplicating(true)} className="odoo-btn-secondary" title="Dupliquer la fiche entière (nouvelle fiche indépendante)">
+          <Copy size={13} aria-hidden="true" /> Dupliquer
+        </button>
+        {!readOnly && (
+          <button type="button" onClick={() => setEditIdentity(true)} className="odoo-btn-secondary" title="Modifier le nom ou la catégorie">
+            <Pencil size={13} aria-hidden="true" /> Modifier le nom
+          </button>
+        )}
       </div>
 
       <div className="pd-page">
-        {/* En-tête de fiche : nom, produit lié, modification de l'identité. */}
-        <section className="prj-panel prj-hero">
-          <div className="prj-hero-top">
-            <span className="prj-hero-icon"><Layers size={22} /></span>
-            <div style={{ flex: 1, minWidth: 260 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h1>{recipe.name}</h1>
-                {!readOnly && <button type="button" onClick={() => setEditIdentity(true)} className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
-                  <Pencil size={13} />
-                </button>}
-                {/* Copie de la fiche entière (constat 109) : permise même en lecture seule. */}
-                <button type="button" onClick={() => setDuplicating(true)} className="odoo-pager-btn" title="Dupliquer la fiche entière (nouvelle fiche indépendante)" aria-label="Dupliquer la fiche">
-                  <Copy size={13} />
-                </button>
-              </div>
-              <div className="prj-hero-meta">
-                {recipe.product_name && <span>{recipe.product_name}</span>}
-                {Array.isArray((recipe as { used_by?: { name?: string }[] }).used_by) && (recipe as { used_by?: { name?: string }[] }).used_by!.length > 0 && (
-                  <span><span style={{ fontWeight: 500 }}>Utilisée par :</span>{' '}
-                    {[...new Set((recipe as { used_by: { name?: string }[] }).used_by.map((u) => u.name).filter(Boolean))].join(' · ')}</span>
-                )}
-              </div>
-            </div>
-          </div>
-          <p className="prj-note" style={{ margin: 0 }}>
-            La composition est définie <strong>par format (contenant)</strong> : chaque contenant a sa propre liste de quantités. Sélectionne ou ajoute un format ci-dessous.
-          </p>
-        </section>
+        {/* En-tête de fiche : nom, statut de lecture, produit lié. */}
+        <PageHeader title={recipe.name}
+          aside={readOnly ? <StatusTag tone="draft" icon={Lock} label="Lecture seule" /> : undefined}
+          description={<>
+            {recipe.product_name && <>{recipe.product_name} · </>}
+            {usedBy.length > 0 && <>Utilisée par : {usedBy.join(', ')} · </>}
+            Composition définie par format : chaque contenant a sa propre liste de quantités.
+          </>} />
         {(recipe as { compo_vide?: boolean }).compo_vide && (
           <StatusBanner tone="danger" icon={AlertTriangle} title="Fiche incomplète : aucun composant">
             Cette fiche n'a encore aucun ingrédient ni préparation de base : son coût est inconnu et elle ne peut pas servir en production. Complète la composition ci-dessous.
@@ -153,26 +162,17 @@ export default function NomenclaturePage() {
             matière en second plan — auparavant elle montrait la matière seule, ce qui
             rendait la marge inexplicable pour qui refaisait le calcul.
             Restent visibles en haut pendant l'édition de la composition. */}
-        <div className="prj-kpis pd-sticky-kpis">
-          <div className="prj-kpi">
-            <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Layers size={13} /> Rendement {kpi?.contenantNom ? `(${kpi.contenantNom})` : `(pièces/${T.batch.toLowerCase()})`}</span></div>
-            <div className="prj-kpi-value">
-              {kpi ? (kpi.unite === 'kg' ? `${kpi.rendement.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg` : kpi.rendement) : '—'}
-            </div>
-          </div>
-          <div className="prj-kpi" title={`Matière + main d'œuvre + énergie + frais de structure, ramenés ${kpi?.unite === 'kg' ? 'au kilo' : 'à une pièce'}.`}>
-            <div className="prj-kpi-head"><span>Coût prod. / {kpi?.unite ?? 'pièce'}</span></div>
-            <div className="prj-kpi-value">{kpi ? dh(kpi.coutProd) : '—'}</div>
-            {kpi && <div className="prj-kpi-sub">matière {dh(kpi.coutMatiere)}</div>}
-          </div>
-          <div className="prj-kpi">
-            <div className="prj-kpi-head"><span>Prix / {kpi?.unite ?? 'pièce'}</span></div>
-            <div className="prj-kpi-value">{kpi ? dh(kpi.prix) : '—'}</div>
-          </div>
-          <div className="prj-kpi" title="(Prix − coût de production) / prix">
-            <div className="prj-kpi-head"><span>Marge</span></div>
-            <div className="prj-kpi-value" style={{ color: kpi ? margeColor : undefined }}>{kpi ? `${kpi.margePct.toFixed(1)}%` : '—'}</div>
-          </div>
+        <div className="pd-sticky-kpis">
+          <KpiGrid label="Indicateurs du format affiché">
+            <KpiCard label={`Rendement ${kpi?.contenantNom ? `(${kpi.contenantNom})` : `(pièces par ${T.batch.toLowerCase()})`}`}
+              value={kpi ? (kpi.unite === 'kg' ? `${kpi.rendement.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg` : kpi.rendement) : '—'} />
+            <KpiCard label={`Coût de production par ${kpi?.unite ?? 'pièce'}`}
+              value={kpi ? dh(kpi.coutProd) : '—'}
+              sub={kpi ? `Matière ${dh(kpi.coutMatiere)} · avec main-d'œuvre, énergie et structure` : undefined} />
+            <KpiCard label={`Prix par ${kpi?.unite ?? 'pièce'}`} value={kpi ? dh(kpi.prix) : '—'} />
+            <KpiCard label="Marge" value={kpi ? `${kpi.margePct.toFixed(1)} %` : '—'}
+              tone={kpi ? margeTone : undefined} sub={kpi ? '(Prix − coût de production) / prix' : undefined} />
+          </KpiGrid>
         </div>
 
         {/* Allergènes — agrégés sur toute la nomenclature (v_recipe_allergens, mig 343),
@@ -182,18 +182,13 @@ export default function NomenclaturePage() {
         {(() => {
           const allergens = (recipe as { allergens?: string[] | null }).allergens || [];
           return (
-            <section className="prj-panel">
-              <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <AlertTriangle size={15} /> Allergènes
-                {allergens.length > 0 && (
-                  <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: 'var(--prj-red)' }}>{allergens.length}</span>
-                )}
-              </div>
-              <div style={{ padding: '12px 18px', display: 'flex', gap: '0.375rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <section className="ds-panel" style={{ padding: '14px 20px', display: 'grid', gap: 10 }}>
+              <SectionHeader title="Allergènes" note={allergens.length > 0 ? `${allergens.length} déclaré(s)` : undefined} />
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 {allergens.length > 0 ? (
-                  allergens.map((a) => <span key={a} className="odoo-tag odoo-tag-red">{allergenLabel(a)}</span>)
+                  allergens.map((a) => <StatusTag key={a} tone="blocked" icon={AlertTriangle} label={allergenLabel(a)} />)
                 ) : (
-                  <span style={{ fontSize: 13, color: 'var(--theme-text-muted)' }}>
+                  <span style={{ fontSize: 14, color: 'var(--ds-muted)' }}>
                     Aucun allergène déclaré sur les ingrédients de cette nomenclature. Vérifiez que les fiches ingrédients sont renseignées.
                   </span>
                 )}

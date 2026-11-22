@@ -79,13 +79,13 @@ export default function BomVersionBanner({ recipeId }: { recipeId: string }) {
       {showList && (
         <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 10, display: 'grid', gap: 8 }}>
           <table className="odoo-table" style={{ fontSize: '0.8125rem' }}>
-            <thead><tr><th>Version</th><th>Statut</th><th>Valide du</th><th>au</th><th>Motif</th><th style={{ textAlign: 'right' }}>Coût unitaire</th><th /></tr></thead>
+            <thead><tr><th>Version</th><th>Statut</th><th>Valide du</th><th>au</th><th>Motif</th><th className="ds-num">Coût unitaire</th><th /></tr></thead>
             <tbody>{data.versions.map(v => (
               <tr key={v.id}>
                 <td>{v.version_no}</td>
                 <td><StatusTag tone={v.status === 'active' ? 'done' : v.status === 'obsolete' ? 'cancelled' : 'draft'} label={v.status === 'active' ? 'Active' : v.status === 'obsolete' ? 'Obsolète' : 'Brouillon'} /></td>
                 <td>{fr(v.valid_from)}</td><td>{fr(v.valid_to)}</td><td>{v.reason ?? ''}</td>
-                <td style={{ textAlign: 'right' }}>{v.unit_cost != null ? money(v.unit_cost) : '—'}</td>
+                <td className="ds-num">{v.unit_cost != null ? money(v.unit_cost) : '—'}</td>
                 <td>{v.version_no > 1 && <button type="button" className="odoo-btn-secondary" onClick={() => setCmp({ a: v.version_no - 1, b: v.version_no })}>Comparer à {v.version_no - 1}</button>}</td>
               </tr>
             ))}</tbody>

@@ -1,4 +1,4 @@
-import { money } from '../../../utils/money';
+import { money, currencySymbol } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LogOut, FileText, Award, RotateCcw, AlertTriangle } from 'lucide-react';
@@ -8,7 +8,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage, saveBlobResponse } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
-import { SectionTitle, SubmitButton, fieldLabel, inputCls, panel, smallBtn } from '../ui';
+import { SectionTitle, SubmitButton, Field, inputCls, panel } from '../ui';
 
 const REASONS: Record<string, string> = {
   demission: 'Démission', licenciement: 'Licenciement', faute_grave: 'Licenciement pour faute grave',
@@ -67,9 +67,9 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
   return (
     <section className="prj-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px' }}>
       <SectionTitle icon={LogOut} actions={!current && !form && employee.is_active && (
-        <button type="button" className="odoo-btn-secondary" style={{ ...smallBtn, color: 'var(--prj-orange)' }}
+        <button type="button" className="odoo-btn-secondary ds-btn-sm"
           onClick={() => setForm({ exitDate: new Date().toISOString().slice(0, 10), reason: 'demission', noticeWorked: true })}>
-          <LogOut size={11} /> Départ du salarié
+          <LogOut size={13} aria-hidden="true" /> Départ du salarié
         </button>
       )}>Départ</SectionTitle>
 
@@ -77,15 +77,15 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
         <StatusBanner tone="orange" icon={LogOut}
           title={`${REASONS[current.reason] ?? current.reason} — sortie le ${frd(current.exit_date)}`}
           actions={<>
-            <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => pdf('receipt', current.id)}><FileText size={11} /> Reçu pour solde de tout compte</button>
-            <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => pdf('certificate', current.id)}><Award size={11} /> Certificat de travail</button>
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => pdf('receipt', current.id)}><FileText size={13} aria-hidden="true" /> Reçu pour solde de tout compte</button>
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => pdf('certificate', current.id)}><Award size={13} aria-hidden="true" /> Certificat de travail</button>
             {isAdmin && !current.payroll_paid && (
-              <button type="button" className="odoo-btn-secondary" style={{ ...smallBtn, color: 'var(--prj-red)' }} disabled={cancel.isPending}
+              <button type="button" className="ds-btn-danger ds-btn-sm" disabled={cancel.isPending}
                 onClick={async () => {
                   if (!(await confirm('Annuler ce solde de tout compte ? Le contrat est rouvert et le salarié réintégré.', { title: 'Annuler le solde de tout compte', confirmLabel: 'Annuler le solde', cancelLabel: 'Retour', danger: true }))) return;
                   cancel.mutate(current.id);
                 }}>
-                <RotateCcw size={11} /> Annuler
+                <RotateCcw size={13} aria-hidden="true" /> Annuler
               </button>
             )}
           </>}>
@@ -100,32 +100,32 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
       {form && (
         <div style={{ ...panel, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="grid grid-cols-3 gap-3">
-            <div><label style={fieldLabel}>Date de sortie</label>
-              <input className={inputCls} type="date" value={form.exitDate} onChange={e => setForm({ ...form, exitDate: e.target.value })} /></div>
-            <div><label style={fieldLabel}>Motif</label>
+            <Field label="Date de sortie" required>
+              <input className={inputCls} type="date" value={form.exitDate} onChange={e => setForm({ ...form, exitDate: e.target.value })} /></Field>
+            <Field label="Motif" required>
               <select className={inputCls} value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>
                 {Object.entries(REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select></div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', marginTop: 20 }}>
+              </select></Field>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, marginTop: 20 }}>
               <input type="checkbox" checked={!!form.noticeWorked} onChange={e => setForm({ ...form, noticeWorked: e.target.checked })} /> Préavis effectué
             </label>
             {form.reason === 'licenciement' && (
-              <div><label style={fieldLabel}>Dommages-intérêts (mois, sur décision)</label>
-                <input className={inputCls} type="number" min="0" step="0.5" value={form.damagesMonths ?? ''} onChange={e => setForm({ ...form, damagesMonths: e.target.value })} /></div>
+              <Field label="Dommages-intérêts (mois, sur décision)">
+                <input className={inputCls} type="number" min="0" step="0.5" value={form.damagesMonths ?? ''} onChange={e => setForm({ ...form, damagesMonths: e.target.value })} /></Field>
             )}
             {(employee.pay_frequency ?? 'monthly') !== 'monthly' && (
-              <div><label style={fieldLabel}>Paiement du solde</label>
+              <Field label="Paiement du solde">
                 <select className={inputCls} value={form.paymentMethod ?? 'cash'} onChange={e => setForm({ ...form, paymentMethod: e.target.value })}>
                   <option value="cash">Espèces</option><option value="bank">Virement</option><option value="check">Chèque</option>
-                </select></div>
+                </select></Field>
             )}
-            <div className="col-span-3"><label style={fieldLabel}>Notes</label>
-              <input className={inputCls} value={form.notes ?? ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+            <div className="col-span-3"><Field label="Notes">
+              <input className={inputCls} value={form.notes ?? ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field></div>
           </div>
 
           {error ? (
             <StatusBanner tone="danger" icon={AlertTriangle} title="Calcul impossible">{apiErrorMessage(error, 'Calcul impossible')}</StatusBanner>
-          ) : !preview || isFetching ? <p style={muted}>Calcul...</p> : (
+          ) : !preview || isFetching ? <p style={muted}>Calcul…</p> : (
             <>
               <p style={hint}>
                 Ancienneté {preview.seniorityLabel} · salaire de référence {money(preview.referenceSalary)}
@@ -133,15 +133,15 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
                 {preview.notice.owedByEmployee && ' — dû par le salarié'} · indemnité de licenciement : {preview.severance.reason}
               </p>
               <table className="odoo-table">
-                <thead><tr><th>Élément</th><th>Calcul</th><th style={{ textAlign: 'right' }}>Montant</th></tr></thead>
+                <thead><tr><th>Élément</th><th>Calcul</th><th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
                 <tbody>
                   {preview.lines.map((l: Record<string, any>) => (
                     <tr key={l.code}>
-                      <td>{l.label}</td><td style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{l.detail}</td>
-                      <td style={{ textAlign: 'right', color: l.kind === 'retenue' ? 'var(--prj-red)' : undefined }}>{l.kind === 'retenue' ? '− ' : ''}{fmt(l.amount)}</td>
+                      <td className="ds-strong">{l.label}</td><td>{l.detail}</td>
+                      <td className="ds-num">{l.kind === 'retenue' ? '− ' : ''}{fmt(l.amount)}</td>
                     </tr>
                   ))}
-                  {!preview.lines.length && <tr><td colSpan={3} style={{ color: 'var(--odoo-text-muted)' }}>Aucune indemnité due.</td></tr>}
+                  {!preview.lines.length && <tr><td colSpan={3} style={{ color: 'var(--ds-muted)' }}>Aucune indemnité due.</td></tr>}
                 </tbody>
               </table>
               <p style={hint}>
@@ -171,5 +171,5 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
   );
 }
 
-const muted = { fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 } as const;
-const hint = { fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0 } as const;
+const muted = { fontSize: 14, color: 'var(--ds-muted)', margin: 0 } as const;
+const hint = { fontSize: 12, color: 'var(--ds-muted)', margin: 0 } as const;

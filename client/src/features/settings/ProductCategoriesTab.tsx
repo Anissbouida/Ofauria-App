@@ -5,6 +5,7 @@ import { PageNote } from './SettingsPrimitives';
 import { categoriesApi } from '../../api/categories.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Catégories de vente (mig 375) : famille d'appartenance et ordre d'affichage. En caisse,
@@ -12,7 +13,7 @@ import { notify } from '../../components/ui/InlineNotification';
  */
 type Cat = { id: number; name: string; family: string | null; display_order: number };
 type Row = { family: string; order: string };
-const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%', height: 36, boxSizing: 'border-box' };
+const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)', width: '100%', height: 36, boxSizing: 'border-box' };
 
 export default function ProductCategoriesTab() {
   const qc = useQueryClient();
@@ -37,11 +38,11 @@ export default function ProductCategoriesTab() {
       <PageNote help="Tapez un nom de famille existant ou nouveau ; une catégorie sans famille apparaît sous « Autres ». L'ordre règle la place dans la rangée.">
         La caisse affiche les familles, puis les catégories de la famille choisie.
       </PageNote>
-      {isLoading ? <p style={{ fontSize: '0.875rem' }}>Chargement…</p> : (
+      {isLoading ? <LoadingState bare /> : (
         <div className="odoo-section" style={{ margin: 0 }}>
           <table className="odoo-table" style={{ tableLayout: 'fixed' }}>
             <colgroup><col /><col style={{ width: 260 }} /><col style={{ width: 110 }} /></colgroup>
-            <thead><tr><th>Catégorie</th><th>Famille</th><th style={{ textAlign: 'right' }}>Ordre</th></tr></thead>
+            <thead><tr><th>Catégorie</th><th>Famille</th><th className="ds-num">Ordre</th></tr></thead>
             <tbody>{sorted.map(c => {
               const r = rows[c.id] ?? { family: '', order: '0' };
               const dirty = dirtyIds.includes(c.id);
@@ -59,9 +60,9 @@ export default function ProductCategoriesTab() {
           </table>
           <datalist id="category-families">{families.map(f => <option key={f} value={f} />)}</datalist>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-            {dirtyIds.length > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Info size={12} /> {dirtyIds.length} modification(s) non enregistrée(s)</span>}
-            <button className="odoo-btn-secondary" disabled={!dirtyIds.length} onClick={() => setRows(initial)}>Annuler</button>
-            <button className="odoo-btn-primary" disabled={!dirtyIds.length || save.isPending} onClick={() => save.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Save size={13} /> Enregistrer</button>
+            {dirtyIds.length > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Info size={12} /> {dirtyIds.length} modification(s) non enregistrée(s)</span>}
+            <button type="button" className="odoo-btn-secondary" disabled={!dirtyIds.length} onClick={() => setRows(initial)}>Annuler</button>
+            <button type="button" className="odoo-btn-primary" disabled={!dirtyIds.length || save.isPending} onClick={() => save.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Save size={13} /> Enregistrer</button>
           </div>
         </div>
       )}

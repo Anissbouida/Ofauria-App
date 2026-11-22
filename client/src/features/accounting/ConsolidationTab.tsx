@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Info, XCircle, CheckCircle2, ArrowRightLeft, Undo2 } from 'lucide-react';
+import { Info, XCircle, CheckCircle2, Undo2 } from 'lucide-react';
 import { consolidationApi, type Consolidation, type ConsolidationColumn } from '../../api/ledger.api';
 import { storesApi } from '../../api/stores.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { LoadingState, DataPanel } from '../../components/ds';
 
 /**
  * Consolidation multi-établissements (lot Bonus 17, mig 437) : bilan et CPC par
@@ -55,15 +56,15 @@ export default function ConsolidationTab() {
   const { data, isLoading } = useQuery({ queryKey: ['consolidation', year], queryFn: () => consolidationApi.get(year) });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <select value={year} onChange={e => setYear(Number(e.target.value))} className="odoo-search-input" aria-label="Exercice">
-          {years.map(y => <option key={y} value={y}>Exercice {y}</option>)}
-        </select>
-      </div>
       <StatusBanner tone="info" icon={Info} title="Une société, plusieurs établissements">
         Chaque écriture porte son magasin (ou aucun : écritures communes du siège). Les flux entre magasins passent par le compte de liaison 1811, qui s'élimine dans le total combiné ; le combiné doit égaler la liasse de la société.
       </StatusBanner>
-      {isLoading || !data ? <Loader2 size={18} className="animate-spin" /> : <Statements data={data} />}
+      <div className="prj-toolbar">
+        <select value={year} onChange={e => setYear(Number(e.target.value))} className="ds-input sm" style={{ width: 'auto' }} aria-label="Exercice">
+          {years.map(y => <option key={y} value={y}>Exercice {y}</option>)}
+        </select>
+      </div>
+      {isLoading || !data ? <LoadingState /> : <Statements data={data} />}
       <Transfers year={year} transfers={data?.transfers ?? []} />
     </div>
   );
@@ -83,14 +84,14 @@ function Statements({ data }: { data: Consolidation }) {
           Liaisons soldées, chaque établissement équilibré, combiné égal à la liasse (actif {n(data.company.actif)}, résultat {n(data.company.result)}).
         </StatusBanner>
       )}
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table" style={{ width: '100%' }}>
+      <DataPanel>
+        <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th style={{ minWidth: 260 }}>Rubrique</th>
-              {cols.map(c => <th key={c.key} style={{ textAlign: 'right' }}>{c.label}</th>)}
-              <th style={{ textAlign: 'right' }} title="Comptes de liaison entre établissements">Éliminations</th>
-              <th style={{ textAlign: 'right' }}>Total combiné</th>
+              {cols.map(c => <th className="ds-num" key={c.key}>{c.label}</th>)}
+              <th className="ds-num" title="Comptes de liaison entre établissements">Éliminations</th>
+              <th className="ds-num">Total combiné</th>
             </tr>
           </thead>
           <tbody>
@@ -101,9 +102,9 @@ function Statements({ data }: { data: Consolidation }) {
                 return (
                   <tr key={s.title + r.label} style={{ fontWeight: r.strong ? 700 : undefined }}>
                     <td>{r.label}</td>
-                    {cols.map(c => <td key={c.key} style={{ ...mono, textAlign: 'right' }}>{n(r.get(c))}</td>)}
-                    <td style={{ ...mono, textAlign: 'right', color: 'var(--theme-text-muted)' }}>{isLiaison ? n(data.eliminations.liaison) : ''}</td>
-                    <td style={{ ...mono, textAlign: 'right', color: isLiaison && data.combined.liaison_residual ? '#c62828' : undefined }}>
+                    {cols.map(c => <td className="ds-num" key={c.key}>{n(r.get(c))}</td>)}
+                    <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{isLiaison ? n(data.eliminations.liaison) : ''}</td>
+                    <td className="ds-num" style={{ color: isLiaison && data.combined.liaison_residual ? 'var(--ds-danger)' : undefined }}>
                       {isLiaison ? n(data.combined.liaison_residual) : n(r.get(data.combined))}
                     </td>
                   </tr>
@@ -112,7 +113,7 @@ function Statements({ data }: { data: Consolidation }) {
             ])}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
     </>
   );
 }
@@ -138,20 +139,20 @@ function Transfers({ year, transfers }: { year: number; transfers: Consolidation
   });
   const field = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--theme-text-muted)' } as const;
   return (
-    <div className="odoo-section" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <strong style={{ fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: 6 }}><ArrowRightLeft size={14} /> Transferts entre établissements</strong>
+    <div className="odoo-section ds-panel" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <h2 className="ds-subhead">Transferts entre établissements</h2>
       {stores.length < 2 ? (
         <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Un seul établissement : les transferts deviennent possibles dès qu'un second magasin existe.</div>
       ) : (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={field}>Date<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="odoo-search-input" /></label>
+          <label style={field}>Date<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="ds-input sm" style={{ width: 'auto' }} /></label>
           <label style={field}>De
-            <select value={form.from} onChange={e => setForm({ ...form, from: e.target.value })} className="odoo-search-input">
+            <select value={form.from} onChange={e => setForm({ ...form, from: e.target.value })} className="ds-input sm" style={{ width: 'auto' }}>
               <option value="">—</option>{stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
           <label style={field}>Vers
-            <select value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} className="odoo-search-input">
+            <select value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} className="ds-input sm" style={{ width: 'auto' }}>
               <option value="">—</option>{stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
@@ -164,8 +165,8 @@ function Transfers({ year, transfers }: { year: number; transfers: Consolidation
         </div>
       )}
       {transfers.length > 0 && (
-        <table className="odoo-table" style={{ width: '100%' }}>
-          <thead><tr><th>Date</th><th>Libellé</th><th>De</th><th>Vers</th><th>Compte</th><th style={{ textAlign: 'right' }}>Montant</th><th>Écritures</th><th /></tr></thead>
+        <table className="odoo-table ds-dense">
+          <thead><tr><th>Date</th><th>Libellé</th><th>De</th><th>Vers</th><th>Compte</th><th className="ds-num">Montant</th><th>Écritures</th><th /></tr></thead>
           <tbody>
             {transfers.map(t => (
               <tr key={t.transfer_id} style={{ opacity: t.active ? 1 : 0.55 }}>
@@ -173,7 +174,7 @@ function Transfers({ year, transfers }: { year: number; transfers: Consolidation
                 <td>{t.label}{!t.active && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="Annulé" /></span>}</td>
                 <td>{name(t.from_store_id)}</td><td>{name(t.to_store_id)}</td>
                 <td style={mono}>{t.account_code}</td>
-                <td style={{ ...mono, textAlign: 'right' }}>{n(t.amount)}</td>
+                <td className="ds-num">{n(t.amount)}</td>
                 <td style={mono}>{t.entries}</td>
                 <td>{t.active && (
                   <button type="button" className="odoo-btn-secondary" aria-label="Annuler le transfert" disabled={cancel.isPending}

@@ -73,7 +73,7 @@ export default function IngredientMergeCard() {
       <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
         <GitMerge size={16} /> Fusionner deux fiches du même ingrédient
       </h3>
-      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--theme-text-muted)' }}>
+      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--ds-muted)' }}>
         Les recettes, les lots, les bons de commande et le stock de la fiche en trop passent sur la fiche gardée ; son coût devient la moyenne
         des deux, pondérée par les stocks. Les deux fiches doivent avoir la même unité.
       </p>
@@ -106,25 +106,25 @@ export default function IngredientMergeCard() {
             </StatusBanner>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 12, alignItems: 'start' }}>
               <table className="odoo-table" style={{ width: '100%' }}>
-                <thead><tr><th style={{ textAlign: 'left' }}>Établissement</th><th style={{ textAlign: 'right' }}>Fiche en trop</th><th style={{ textAlign: 'right' }}>Fiche gardée</th><th style={{ textAlign: 'right' }}>Après</th></tr></thead>
+                <thead><tr><th style={{ textAlign: 'left' }}>Établissement</th><th className="ds-num">Fiche en trop</th><th className="ds-num">Fiche gardée</th><th className="ds-num">Après</th></tr></thead>
                 <tbody>
-                  {preview.impact.stock.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--theme-text-muted)' }}>Aucun stock sur ces deux fiches.</td></tr>}
+                  {preview.impact.stock.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--ds-muted)' }}>Aucun stock sur ces deux fiches.</td></tr>}
                   {preview.impact.stock.map(s => (
                     <tr key={s.storeId}>
                       <td>{s.storeName}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(s.source, 3)} {preview.source.unit}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(s.target, 3)} {preview.target.unit}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(s.source + s.target, 3)} {preview.target.unit}</td>
+                      <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(s.source, 3)} {preview.source.unit}</td>
+                      <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(s.target, 3)} {preview.target.unit}</td>
+                      <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(s.source + s.target, 3)} {preview.target.unit}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <table className="odoo-table" style={{ width: '100%' }}>
-                <thead><tr><th style={{ textAlign: 'left' }}>Références repointées</th><th style={{ textAlign: 'right' }}>Lignes</th></tr></thead>
+                <thead><tr><th style={{ textAlign: 'left' }}>Références repointées</th><th className="ds-num">Lignes</th></tr></thead>
                 <tbody>
-                  {rows.length === 0 && <tr><td colSpan={2} style={{ color: 'var(--theme-text-muted)' }}>La fiche en trop n'est utilisée nulle part.</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={2} style={{ color: 'var(--ds-muted)' }}>La fiche en trop n'est utilisée nulle part.</td></tr>}
                   {rows.map(([table, n]) => (
-                    <tr key={table}><td>{TABLE_LABELS[table] ?? table}</td><td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n.toLocaleString('fr-FR')}</td></tr>
+                    <tr key={table}><td>{TABLE_LABELS[table] ?? table}</td><td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{n.toLocaleString('fr-FR')}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -143,14 +143,14 @@ export default function IngredientMergeCard() {
         <div>
           <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--theme-text-strong)', margin: '4px 0' }}>Dernières fusions</h4>
           <table className="odoo-table" style={{ width: '100%' }}>
-            <thead><tr><th style={{ textAlign: 'left' }}>Date</th><th style={{ textAlign: 'left' }}>Fiche retirée</th><th style={{ textAlign: 'left' }}>Fiche gardée</th><th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'left' }}>Par</th></tr></thead>
+            <thead><tr><th style={{ textAlign: 'left' }}>Date</th><th style={{ textAlign: 'left' }}>Fiche retirée</th><th style={{ textAlign: 'left' }}>Fiche gardée</th><th className="ds-num">Coût</th><th style={{ textAlign: 'left' }}>Par</th></tr></thead>
             <tbody>
               {history.slice(0, 10).map(h => (
                 <tr key={h.id}>
                   <td>{new Date(h.merged_at).toLocaleDateString('fr-FR')}</td>
                   <td>{h.source_name}</td>
                   <td>{h.target_name}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(Number(h.unit_cost_before) || 0, 4)} → {fmt(Number(h.unit_cost_after) || 0, 4)}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(Number(h.unit_cost_before) || 0, 4)} → {fmt(Number(h.unit_cost_after) || 0, 4)}</td>
                   <td>{h.merged_by_name ?? '—'}</td>
                 </tr>
               ))}

@@ -10,11 +10,9 @@ import ReportsOverview from './ReportsOverview';
 import { format, subDays, subMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, AreaChart, Area,
-  ScatterChart, Scatter, ZAxis, ReferenceLine,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ScatterChart, Scatter, ZAxis, ReferenceLine,
 } from 'recharts';
-import { TrendingUp, ShoppingCart, Banknote, Package, ClipboardList, AlertTriangle, ArrowUpRight, ArrowDownRight, Crown, BarChart3, ChevronRight, Search, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, ArrowDownRight, Search, X } from 'lucide-react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi, ListToolbar, ListPanel, FilterChips } from '../sales/ListTemplate';
@@ -36,10 +34,10 @@ const tabs: { key: Tab; label: string; subtitle: string }[] = [
 ];
 
 const CLASS_META: Record<MenuEngineeringClass, { label: string; color: string; bg: string; border: string; dot: string; advice: string }> = {
-  STAR:   { label: 'Étoiles',     color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', dot: '#15803D', advice: 'Mettre en avant, ne pas changer le prix' },
+  STAR:   { label: 'Étoiles',     color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', dot: 'var(--ds-success)', advice: 'Mettre en avant, ne pas changer le prix' },
   PUZZLE: { label: 'Énigmes',     color: 'text-rose-700',    bg: 'bg-rose-50',    border: 'border-rose-200',    dot: 'var(--theme-accent)', advice: 'Repositionner : visibilité, photo, suggestion en caisse' },
-  HORSE:  { label: 'Chevaux',     color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   dot: '#B45309', advice: 'Réduire le coût matière ou augmenter le prix' },
-  DOG:    { label: 'Poids morts', color: 'text-gray-700',    bg: 'bg-gray-50',    border: 'border-gray-200',    dot: '#94A3B8', advice: 'Refondre ou retirer de la carte' },
+  HORSE:  { label: 'Chevaux',     color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   dot: 'var(--ds-warning)', advice: 'Réduire le coût matière ou augmenter le prix' },
+  DOG:    { label: 'Poids morts', color: 'text-gray-700',    bg: 'bg-gray-50',    border: 'border-gray-200',    dot: 'var(--ds-muted)', advice: 'Refondre ou retirer de la carte' },
 };
 
 function getZoneColor(value: number, opts: { greenMax?: number; greenMin?: number; orangeMax: number }): { text: string; bg: string; ring: string; label: string } {
@@ -400,16 +398,16 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
             ...classes.map(c => ({ key: c, label: CLASS_META[c].label, count: counts[c] || 0 })),
           ]} />
           <ListPanel>
-            <table className="odoo-table">
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th onClick={() => toggleMenuSort('name')} style={{ cursor: 'pointer' }}>Produit<MenuSortIcon col="name" /></th>
                   <th onClick={() => toggleMenuSort('class')} style={{ cursor: 'pointer' }}>Classification<MenuSortIcon col="class" /></th>
-                  <th onClick={() => toggleMenuSort('qty')} style={{ cursor: 'pointer', textAlign: 'right' }}>Vendus<MenuSortIcon col="qty" /></th>
-                  <th onClick={() => toggleMenuSort('revenue')} style={{ cursor: 'pointer', textAlign: 'right' }}>CA<MenuSortIcon col="revenue" /></th>
-                  <th onClick={() => toggleMenuSort('cost')} style={{ cursor: 'pointer', textAlign: 'right' }}>Coût matière<MenuSortIcon col="cost" /></th>
-                  <th onClick={() => toggleMenuSort('pct')} style={{ cursor: 'pointer', textAlign: 'right' }}>% matière<MenuSortIcon col="pct" /></th>
-                  <th onClick={() => toggleMenuSort('contribution')} style={{ cursor: 'pointer', textAlign: 'right' }}>Contribution<MenuSortIcon col="contribution" /></th>
+                  <th className="ds-num" onClick={() => toggleMenuSort('qty')} style={{ cursor: 'pointer' }}>Vendus<MenuSortIcon col="qty" /></th>
+                  <th className="ds-num" onClick={() => toggleMenuSort('revenue')} style={{ cursor: 'pointer' }}>CA<MenuSortIcon col="revenue" /></th>
+                  <th className="ds-num" onClick={() => toggleMenuSort('cost')} style={{ cursor: 'pointer' }}>Coût matière<MenuSortIcon col="cost" /></th>
+                  <th className="ds-num" onClick={() => toggleMenuSort('pct')} style={{ cursor: 'pointer' }}>% matière<MenuSortIcon col="pct" /></th>
+                  <th className="ds-num" onClick={() => toggleMenuSort('contribution')} style={{ cursor: 'pointer' }}>Contribution<MenuSortIcon col="contribution" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -432,18 +430,18 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
                         </span>
                       </td>
                       <td><span className="kl-pill x" style={{ gap: 6 }}><i style={{ width: 7, height: 7, borderRadius: '50%', background: meta.dot, display: 'inline-block' }} />{meta.label}</span></td>
-                      <td style={{ textAlign: 'right' }}>{parseFloat(it.qty_sold).toFixed(0)}</td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(parseFloat(it.revenue) || 0)}</td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="ds-num">{parseFloat(it.qty_sold).toFixed(0)}</td>
+                      <td className="ds-num">{formatCurrency(parseFloat(it.revenue) || 0)}</td>
+                      <td className="ds-num">
                         {formatCurrency(parseFloat(it.total_food_cost) || 0)}
                         {it.has_cost_data && <small style={{ display: 'block', color: 'var(--theme-text-muted)' }}>{it.cost_from_production ? 'production réelle' : it.cost_from_recipe ? 'recette théorique' : 'coût manuel'}</small>}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="ds-num">
                         {it.has_cost_data
                           ? <span className={foodPct > 35 ? 'kl-rep-tone-r' : foodPct > 30 ? 'kl-rep-tone-o' : 'kl-rep-tone-g'} style={{ fontWeight: 600 }}>{foodPct.toFixed(1)} %</span>
                           : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(it.total_contribution) || 0)}</td>
+                      <td className="ds-num" style={{ fontWeight: 600 }}>{formatCurrency(parseFloat(it.total_contribution) || 0)}</td>
                     </tr>
                   );
                 })}
@@ -547,7 +545,7 @@ function CostTab({ costData, costLoading, lossStats }: {
             </div>
             {(costData.energyCost > 0 || costData.packagingCost > 0 || costData.chargesCost > 0 || costData.subcontractingCost > 0 || costData.lossesCost > 0) && (
               <div className="border-t border-gray-100 pt-4 space-y-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Composantes supplementaires (cout de revient complet)</p>
+                <p className="text-xs font-semibold text-gray-500">Composantes supplementaires (cout de revient complet)</p>
                 <CostBar label="Cout energie" value={costData.energyCost} pct={costData.energyCostPct} sales={costData.netSales} color="bg-purple-500" />
                 {costData.packagingCost > 0 && <CostBar label="Cout emballages" value={costData.packagingCost} pct={costData.packagingCostPct} sales={costData.netSales} color="bg-amber-500" />}
                 {costData.chargesCost > 0 && <CostBar label="Charges indirectes" value={costData.chargesCost} pct={costData.chargesCostPct} sales={costData.netSales} color="bg-slate-500" />}
@@ -588,7 +586,7 @@ function CostTab({ costData, costLoading, lossStats }: {
                 <input type="text" placeholder="Rechercher produit..." value={cbSearch} onChange={e => setCbSearch(e.target.value)}
                   className="w-full pl-7 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200" />
                 {cbSearch && (
-                  <button onClick={() => setCbSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
+                  <button onClick={() => setCbSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" aria-label="Effacer"><X size={13} /></button>
                 )}
               </div>
               <SearchSelect
@@ -606,16 +604,16 @@ function CostTab({ costData, costLoading, lossStats }: {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="odoo-table">
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th onClick={() => toggleCbSort('name')} className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Produit<CbSortIcon col="name" /></th>
-                  <th onClick={() => toggleCbSort('qty')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Vendus<CbSortIcon col="qty" /></th>
-                  <th onClick={() => toggleCbSort('revenue')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Revenus<CbSortIcon col="revenue" /></th>
-                  <th onClick={() => toggleCbSort('unit_cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Cout unitaire<CbSortIcon col="unit_cost" /></th>
-                  <th onClick={() => toggleCbSort('food_cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Cout matiere<CbSortIcon col="food_cost" /></th>
-                  <th onClick={() => toggleCbSort('pct')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">% matiere<CbSortIcon col="pct" /></th>
-                  <th onClick={() => toggleCbSort('margin')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Marge<CbSortIcon col="margin" /></th>
+                  <th onClick={() => toggleCbSort('name')} className="text-left py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Produit<CbSortIcon col="name" /></th>
+                  <th onClick={() => toggleCbSort('qty')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Vendus<CbSortIcon col="qty" /></th>
+                  <th onClick={() => toggleCbSort('revenue')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Revenus<CbSortIcon col="revenue" /></th>
+                  <th onClick={() => toggleCbSort('unit_cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Cout unitaire<CbSortIcon col="unit_cost" /></th>
+                  <th onClick={() => toggleCbSort('food_cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Cout matiere<CbSortIcon col="food_cost" /></th>
+                  <th onClick={() => toggleCbSort('pct')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">% matiere<CbSortIcon col="pct" /></th>
+                  <th onClick={() => toggleCbSort('margin')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Marge<CbSortIcon col="margin" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -761,7 +759,7 @@ function CostKpisRow({ costData, loading, detailed = false }: {
       {cards.map((c) => (
         <div key={c.title} className={`bg-white rounded-xl border border-gray-100 p-5 ring-1 ${c.zone.ring}`}>
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{c.title}</p>
+            <p className="text-xs font-semibold text-gray-500">{c.title}</p>
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${c.zone.bg} ${c.zone.text}`}>{c.zone.label}</span>
           </div>
           <p className={`text-3xl font-bold mt-2 ${c.zone.text}`}>{loading ? '…' : c.pct.toFixed(1) + '%'}</p>

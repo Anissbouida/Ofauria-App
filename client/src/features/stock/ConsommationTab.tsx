@@ -8,10 +8,11 @@ import {
 } from 'lucide-react';
 import { inventoryApi } from '../../api/inventory.api';
 import SearchSelect from '../../components/ui/SearchSelect';
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { ListKpi, ListEmpty } from '../sales/ListTemplate';
-import { SubViews } from './StockUi';
+import { ListKpi } from '../sales/ListTemplate';
+import { SubViews, HeaderActions } from './StockUi';
+import { EmptyState, KpiGrid, LoadingState } from '../../components/ds';
 
 /**
  * Deux vues complementaires sur les matieres, basculables :
@@ -289,11 +290,50 @@ export default function ConsommationTab() {
 
   return (
     <div className="stk-stack">
-      {/* Bascule Sorties / Entrees */}
-      <SubViews label="Sens des mouvements" value={view} onChange={setView} views={[
-        { key: 'entrees', label: 'Entrées (achats)', icon: ArrowDownToLine },
-        { key: 'sorties', label: 'Sorties (consommation)', icon: ArrowUpFromLine },
-      ]} />
+      <HeaderActions>
+        <button type="button" onClick={handleExport} disabled={rowCount === 0} className="odoo-btn-secondary">
+          <Download size={14} aria-hidden="true" /> Exporter
+        </button>
+      </HeaderActions>
+
+      {/* Note explicative */}
+      {view === 'entrees' ? (
+        <StatusBanner tone="info" icon={Info} title="Vue achats (entrées de stock)">
+          Matière première <strong>achetée et réceptionnée</strong> sur
+          la période, via <strong>bon de commande</strong> ou <strong>achat direct</strong>, valorisée au <strong>prix de
+          réception</strong>. Permet de connaître le montant réellement dépensé en matières par mois ou période.
+          Les emballages n'apparaissent que pour les mouvements de stock saisis (la réception automatique d'emballages
+          par bon de commande n'est pas encore branchée).
+        </StatusBanner>
+      ) : (
+        <StatusBanner tone="info" icon={Info} title="Vue stock (pas trésorerie)">
+          Cette vue montre les matières <strong>physiquement consommées</strong>
+          (sorties de stock). Indépendante du paiement des fournisseurs. Utile pour comprendre où va ton budget
+          matières, repérer tes pertes, optimiser tes achats. Le coût est calculé avec le prix unitaire courant de
+          chaque ingrédient.
+        </StatusBanner>
+      )}
+
+      {/* Bandeau totaux */}
+      {view === 'entrees' ? (
+        <KpiGrid label="Totaux des achats">
+          <ListKpi label="Total acheté" value={money(purchTotals.total)} sub={`${purchData.length} ligne${purchData.length > 1 ? 's' : ''}`} />
+          <ListKpi label="Via bons de commande" value={money(purchTotals.bon_commande)}
+            sub={`${purchTotals.total > 0 ? Math.round((purchTotals.bon_commande / purchTotals.total) * 100) : 0}% du total`} />
+          <ListKpi label="Achat direct" value={money(purchTotals.achat_direct)}
+            sub={`${purchTotals.total > 0 ? Math.round((purchTotals.achat_direct / purchTotals.total) * 100) : 0}% du total`} />
+        </KpiGrid>
+      ) : (
+        <KpiGrid label="Totaux de la consommation">
+          <ListKpi label="Total consommé" value={money(consTotalAll)} sub={`${consData.length} mouvements`} />
+          <ListKpi label="Production" value={money(totalsByType.production.cost)}
+            sub={`${consTotalAll > 0 ? Math.round((totalsByType.production.cost / consTotalAll) * 100) : 0}% du total`} />
+          <ListKpi label="Pertes" value={money(totalsByType.waste.cost)} tone={totalsByType.waste.cost > 0 ? 'red' : undefined}
+            sub={`${consTotalAll > 0 ? Math.round((totalsByType.waste.cost / consTotalAll) * 100) : 0}% du total`} />
+          <ListKpi label="Ajustements" value={money(totalsByType.adjustment.cost)}
+            sub={`${consTotalAll > 0 ? Math.round((totalsByType.adjustment.cost / consTotalAll) * 100) : 0}% du total`} />
+        </KpiGrid>
+      )}
 
       {/* Header : selecteur periode + export */}
       <div className="prj-toolbar">
@@ -327,95 +367,57 @@ export default function ConsommationTab() {
         ) : (
           <>
             <input type="date" value={customFrom} max={customTo} onChange={e => setCustomFrom(e.target.value)}
-              className="odoo-input" style={{ width: 150 }} />
-            <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
+              className="ds-input sm" style={{ width: 150 }} aria-label="Du" />
+            <span style={{ color: 'var(--theme-text-muted)' }} aria-hidden="true">→</span>
             <input type="date" value={customTo} min={customFrom} onChange={e => setCustomTo(e.target.value)}
-              className="odoo-input" style={{ width: 150 }} />
+              className="ds-input sm" style={{ width: 150 }} aria-label="Au" />
           </>
         )}
         <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
           Période : <strong style={{ textTransform: 'capitalize' }}>{periodLabel}</strong>
         </span>
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} disabled={rowCount === 0}
-          className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Download size={13} /> Exporter CSV
-        </button>
+        <span className="stk-grow" />
+        <SubViews label="Sens des mouvements" value={view} onChange={setView} views={[
+          { key: 'entrees', label: 'Entrées (achats)', icon: ArrowDownToLine },
+          { key: 'sorties', label: 'Sorties (consommation)', icon: ArrowUpFromLine },
+        ]} />
       </div>
-
-      {/* Bandeau totaux */}
-      {view === 'entrees' ? (
-        <section className="prj-kpis" aria-label="Totaux des achats">
-          <ListKpi label="Total acheté" value={money(purchTotals.total)} sub={`${purchData.length} ligne${purchData.length > 1 ? 's' : ''}`} />
-          <ListKpi label="Via bons de commande" value={money(purchTotals.bon_commande)}
-            sub={`${purchTotals.total > 0 ? Math.round((purchTotals.bon_commande / purchTotals.total) * 100) : 0}% du total`} />
-          <ListKpi label="Achat direct" value={money(purchTotals.achat_direct)}
-            sub={`${purchTotals.total > 0 ? Math.round((purchTotals.achat_direct / purchTotals.total) * 100) : 0}% du total`} />
-        </section>
-      ) : (
-        <section className="prj-kpis" aria-label="Totaux de la consommation">
-          <ListKpi label="Total consommé" value={money(consTotalAll)} sub={`${consData.length} mouvements`} />
-          <ListKpi label="Production" value={money(totalsByType.production.cost)}
-            sub={`${consTotalAll > 0 ? Math.round((totalsByType.production.cost / consTotalAll) * 100) : 0}% du total`} />
-          <ListKpi label="Pertes" value={money(totalsByType.waste.cost)} tone={totalsByType.waste.cost > 0 ? 'red' : undefined}
-            sub={`${consTotalAll > 0 ? Math.round((totalsByType.waste.cost / consTotalAll) * 100) : 0}% du total`} />
-          <ListKpi label="Ajustements" value={money(totalsByType.adjustment.cost)}
-            sub={`${consTotalAll > 0 ? Math.round((totalsByType.adjustment.cost / consTotalAll) * 100) : 0}% du total`} />
-        </section>
-      )}
-
-      {/* Note explicative */}
-      {view === 'entrees' ? (
-        <StatusBanner tone="info" icon={Info} title="Vue achats (entrées de stock)">
-          Matière première <strong>achetée et réceptionnée</strong> sur
-          la période, via <strong>bon de commande</strong> ou <strong>achat direct</strong>, valorisée au <strong>prix de
-          réception</strong>. Permet de connaître le montant réellement dépensé en matières par mois ou période.
-          Les emballages n'apparaissent que pour les mouvements de stock saisis (la réception automatique d'emballages
-          par bon de commande n'est pas encore branchée).
-        </StatusBanner>
-      ) : (
-        <StatusBanner tone="info" icon={Info} title="Vue stock (pas trésorerie)">
-          Cette vue montre les matières <strong>physiquement consommées</strong>
-          (sorties de stock). Indépendante du paiement des fournisseurs. Utile pour comprendre où va ton budget
-          matières, repérer tes pertes, optimiser tes achats. Le coût est calculé avec le prix unitaire courant de
-          chaque ingrédient.
-        </StatusBanner>
-      )}
 
       {/* Detail par categorie -> article */}
       {isLoading ? (
-        <ListEmpty icon={Loader2} title="Chargement…" />
+        <LoadingState label="Chargement de l'analyse…" />
       ) : byCategory.length === 0 ? (
-        <ListEmpty icon={BarChart3} title={view === 'entrees'
-          ? `Aucun achat de matière première enregistré pour ${periodLabel}.`
-          : `Aucune consommation enregistrée pour ${periodLabel}.`} />
+        <EmptyState icon={BarChart3} title={view === 'entrees' ? 'Aucun achat sur la période' : 'Aucune consommation sur la période'}
+          text={view === 'entrees'
+            ? `Aucun achat de matière première enregistré pour ${periodLabel}.`
+            : `Aucune consommation enregistrée pour ${periodLabel}.`} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {byCategory.map(cat => {
             const isOpen = expandedCats[cat.name] !== false;
             return (
-              <div key={cat.name} className="prj-panel" style={{ overflow: 'hidden' }}>
-                <button onClick={() => setExpandedCats(s => ({ ...s, [cat.name]: !isOpen }))} aria-expanded={isOpen}
+              <section key={cat.name} className="ds-panel" aria-label={cat.name}>
+                <button type="button" onClick={() => setExpandedCats(s => ({ ...s, [cat.name]: !isOpen }))} aria-expanded={isOpen}
                   style={{ width: '100%', padding: '14px 18px', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9375rem' }}>
-                  {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  <strong style={{ textTransform: 'capitalize' }}>{cat.name}</strong>
+                  {isOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                  <strong className="ds-strong" style={{ textTransform: 'capitalize' }}>{cat.name}</strong>
                   <span style={{ color: 'var(--theme-text-muted)' }}>({cat.ingredients.length} article{cat.ingredients.length > 1 ? 's' : ''})</span>
                   <div style={{ flex: 1 }} />
-                  <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{money(cat.total)}</strong>
+                  <strong className="ds-strong" style={{ fontVariantNumeric: 'tabular-nums' }}>{money(cat.total)}</strong>
                   <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
                     {grandTotal > 0 ? Math.round((cat.total / grandTotal) * 100) : 0}%
                   </span>
                 </button>
                 {isOpen && (view === 'entrees' ? (
-                  <table className="odoo-table" style={{ margin: 0, borderTop: '1px solid var(--theme-bg-separator)', boxShadow: 'none', borderRadius: 0 }}>
+                  <div className="ds-scroll" style={{ borderTop: '1px solid var(--ds-hair)' }}><table className="odoo-table">
                     <thead>
                       <tr>
                         <th style={{ width: '30%' }}>Article</th>
-                        <th style={{ textAlign: 'right', width: 110 }}>Qté reçue</th>
-                        <th style={{ textAlign: 'right', width: 130 }}>Coût unitaire moy.</th>
-                        <th style={{ textAlign: 'right', width: 130 }}>Via bon commande</th>
-                        <th style={{ textAlign: 'right', width: 120 }}>Achat direct</th>
-                        <th style={{ textAlign: 'right', width: 130 }}>Montant total</th>
+                        <th className="ds-num">Quantité reçue</th>
+                        <th className="ds-num">Coût unitaire moyen{` (${currencySymbol()})`}</th>
+                        <th className="ds-num">Via bon de commande{` (${currencySymbol()})`}</th>
+                        <th className="ds-num">Achat direct{` (${currencySymbol()})`}</th>
+                        <th className="ds-num">Montant total{` (${currencySymbol()})`}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -424,38 +426,38 @@ export default function ConsommationTab() {
                         const direct = it.byType.achat_direct?.cost || 0;
                         return (
                           <tr key={it.ingredient_id}>
-                            <td>{it.ingredient_name}</td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                            <td className="ds-strong">{it.ingredient_name}</td>
+                            <td className="ds-num">
                               {it.total_qty.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{it.ingredient_unit}</span>
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>
                               {n(it.unit_cost)}
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: bc > 0 ? '#0a58ca' : 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: bc > 0 ? undefined : 'var(--theme-text-muted)' }}>
                               {bc > 0 ? n(bc) : '—'}
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: direct > 0 ? '#b26a00' : 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: direct > 0 ? undefined : 'var(--theme-text-muted)' }}>
                               {direct > 0 ? n(direct) : '—'}
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700 }}>
-                              {money(it.total_cost)}
+                            <td className="ds-num ds-strong">
+                              {n(it.total_cost)}
                             </td>
                           </tr>
                         );
                       })}
                     </tbody>
-                  </table>
+                  </table></div>
                 ) : (
-                  <table className="odoo-table" style={{ margin: 0, borderTop: '1px solid var(--theme-bg-separator)', boxShadow: 'none', borderRadius: 0 }}>
+                  <div className="ds-scroll" style={{ borderTop: '1px solid var(--ds-hair)' }}><table className="odoo-table">
                     <thead>
                       <tr>
                         <th style={{ width: '30%' }}>Ingrédient</th>
-                        <th style={{ textAlign: 'right', width: 110 }}>Qté sortie</th>
-                        <th style={{ textAlign: 'right', width: 110 }}>Coût unitaire</th>
-                        <th style={{ textAlign: 'right', width: 120 }}>Production</th>
-                        <th style={{ textAlign: 'right', width: 100 }}>Pertes</th>
-                        <th style={{ textAlign: 'right', width: 110 }}>Ajustements</th>
-                        <th style={{ textAlign: 'right', width: 130 }}>Total</th>
+                        <th className="ds-num">Quantité sortie</th>
+                        <th className="ds-num">Coût unitaire{` (${currencySymbol()})`}</th>
+                        <th className="ds-num">Production{` (${currencySymbol()})`}</th>
+                        <th className="ds-num">Pertes{` (${currencySymbol()})`}</th>
+                        <th className="ds-num">Ajustements{` (${currencySymbol()})`}</th>
+                        <th className="ds-num">Total{` (${currencySymbol()})`}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -465,32 +467,32 @@ export default function ConsommationTab() {
                         const adj = ing.byType.adjustment?.cost || 0;
                         return (
                           <tr key={ing.ingredient_id}>
-                            <td>{ing.ingredient_name}</td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                            <td className="ds-strong">{ing.ingredient_name}</td>
+                            <td className="ds-num">
                               {ing.total_qty.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{ing.ingredient_unit}</span>
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>
                               {n(ing.unit_cost)}
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: prod > 0 ? '#0e7c3a' : 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: prod > 0 ? undefined : 'var(--theme-text-muted)' }}>
                               {prod > 0 ? n(prod) : '—'}
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: waste > 0 ? '#b71c1c' : 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: waste > 0 ? 'var(--ds-danger)' : 'var(--theme-text-muted)' }}>
                               {waste > 0 ? n(waste) : '—'}
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: adj > 0 ? '#6c757d' : 'var(--theme-text-muted)' }}>
+                            <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>
                               {adj > 0 ? n(adj) : '—'}
                             </td>
-                            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700 }}>
-                              {money(ing.total_cost)}
+                            <td className="ds-num ds-strong">
+                              {n(ing.total_cost)}
                             </td>
                           </tr>
                         );
                       })}
                     </tbody>
-                  </table>
+                  </table></div>
                 ))}
-              </div>
+              </section>
             );
           })}
         </div>

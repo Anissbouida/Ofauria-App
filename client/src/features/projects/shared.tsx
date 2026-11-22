@@ -1,3 +1,4 @@
+import { KpiCard } from '../../components/ds';
 import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -136,13 +137,7 @@ export function TaskBoard({ tasks, editable, onMove, onOpen, showProject }: {
 
 /** Indicateur en tuile, commun aux rubriques du module. */
 export function Kpi({ label, value, sub, tone, aside }: { label: string; value: string; sub?: string; tone?: 'red' | 'green'; aside?: string }) {
-  return (
-    <div className="prj-kpi">
-      <div className="prj-kpi-head"><span>{label}</span>{aside && <span>{aside}</span>}</div>
-      <div className="prj-kpi-value" style={{ color: tone ? `var(--prj-${tone})` : undefined }}>{value}</div>
-      {sub && <div className="prj-kpi-sub">{sub}</div>}
-    </div>
-  );
+  return <KpiCard label={label} value={value} sub={sub} tone={tone} aside={aside} />;
 }
 
 /** Libellé d'un rôle (rôles éditables, repli sur les libellés fixes, sinon le texte tel quel). */

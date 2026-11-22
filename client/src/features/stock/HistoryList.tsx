@@ -9,8 +9,9 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import {
   PeriodFilter, SelectFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey,
 } from '../../components/purchasing/ProcessBoard';
-import { ListToolbar, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { ListToolbar } from '../sales/ListTemplate';
 import { PagerFoot } from './StockUi';
+import { DataPanel, EmptyState, LoadingState, NoResultState } from '../../components/ds';
 
 const HISTORY_STATUSES = [
   { key: 'prelevement', label: 'Remis au chef' },
@@ -73,13 +74,14 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
       </ListToolbar>
 
       {isLoading ? (
-        <ListEmpty icon={Loader2} title="Chargement de l'historique…" />
+        <LoadingState label="Chargement de l'historique…" />
       ) : rows.length === 0 ? (
-        <ListEmpty icon={Archive} title={hasFilters ? 'Aucun bon pour ces filtres.' : 'Aucun bon dans l\'historique pour le moment.'}
-          action={hasFilters ? <button type="button" className="odoo-btn-secondary" onClick={resetFilters}>Effacer les filtres</button> : undefined} />
+        hasFilters
+          ? <NoResultState text="Aucun bon ne correspond aux filtres." onReset={resetFilters} />
+          : <EmptyState icon={Archive} title="Aucun bon dans l'historique" text="Les bons remis, clôturés ou annulés apparaîtront ici." />
       ) : (
         <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
-        <ListPanel footer={<PagerFoot page={page} total={total} onPage={setPage}
+        <DataPanel footer={<PagerFoot page={page} total={total} onPage={setPage}
             note={`Bons remis, vérifiés, clôturés ou annulés · ${periodLabel(period, customFrom, customTo)}`} />}>
           <table className="odoo-table">
             <thead>
@@ -87,12 +89,12 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
                 <th>N° bon</th>
                 <th>Plan de production</th>
                 <th>Statut</th>
-                <th style={{ textAlign: 'right' }}>Lignes</th>
+                <th className="ds-num">Lignes</th>
                 <th>Demandé par</th>
                 <th>Préparé par</th>
                 <th>Validé par</th>
                 <th>Terminé le</th>
-                <th style={{ width: 32 }}></th>
+                <th style={{ width: 32 }}><span className="sr-only">Ouvrir</span></th>
               </tr>
             </thead>
             <tbody>
@@ -110,30 +112,30 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
                     </tr>
                   ),
                   <tr key={bon.id as string} onClick={() => onOpen(bon.plan_id as string)} style={{ cursor: 'pointer' }} title="Ouvrir le bon">
-                    <td><span className="sal-num">{bon.numero as string}</span></td>
+                    <td><span className="ds-ref">{bon.numero as string}</span></td>
                     <td>
-                      <strong>Plan du {bon.plan_date ? format(new Date(bon.plan_date as string), 'dd MMM yyyy', { locale: fr }) : '—'}</strong>
+                      <span className="ds-strong">Plan du {bon.plan_date ? format(new Date(bon.plan_date as string), 'dd MMM yyyy', { locale: fr }) : '—'}</span>
                       {bon.chef_reject_reason && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--prj-red)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--ds-danger)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                           <AlertTriangle size={10} /> Refus préc. : {bon.chef_reject_reason as string}
                         </div>
                       )}
                     </td>
                     <td><StatusTag tone={conf.tone} icon={conf.icon} label={conf.label} /></td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{bon.total_lines as number}</td>
+                    <td className="ds-num" style={{ fontWeight: 600 }}>{bon.total_lines as number}</td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.generated_by_name as string) || '—'}</td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.preparation_by_name as string) || '—'}</td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.prelevement_by_name as string) || '—'}</td>
                     <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>
                       {finalDate ? format(new Date(finalDate), 'dd MMM HH:mm', { locale: fr }) : '—'}
                     </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}><ChevronRight size={14} /></td>
+                    <td style={{ color: 'var(--theme-text-muted)' }}><ChevronRight size={14} aria-hidden="true" /></td>
                   </tr>,
                 ];
               })}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
         </div>
       )}
     </div>

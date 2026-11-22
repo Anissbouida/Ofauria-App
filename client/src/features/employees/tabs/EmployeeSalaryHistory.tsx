@@ -23,7 +23,7 @@ export default function EmployeeSalaryHistory({ employeeId }: { employeeId: stri
     <section className="prj-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px' }}>
       <SectionTitle icon={History}>Historique du salaire</SectionTitle>
       {isLoading ? (
-        <p style={muted}>Chargement...</p>
+        <p style={muted}>Chargement…</p>
       ) : rows.length === 0 ? (
         <p style={muted}>Aucune modification enregistrée.</p>
       ) : (
@@ -46,8 +46,8 @@ export default function EmployeeSalaryHistory({ employeeId }: { employeeId: stri
               return (
                 <tr key={h.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{new Date(h.changed_at).toLocaleDateString('fr-FR')}</td>
-                  <td>{changes.join(' · ') || '—'}{h.reason ? <span style={{ color: 'var(--odoo-text-muted)' }}> — {h.reason}</span> : null}</td>
-                  <td style={{ color: 'var(--odoo-text-muted)' }}>
+                  <td>{changes.join(' · ') || '—'}{h.reason ? <span style={{ color: 'var(--ds-muted)' }}> — {h.reason}</span> : null}</td>
+                  <td>
                     {h.changed_by_first_name ? `${h.changed_by_first_name} ${h.changed_by_last_name ?? ''}` : '—'}
                   </td>
                 </tr>
@@ -60,4 +60,4 @@ export default function EmployeeSalaryHistory({ employeeId }: { employeeId: stri
   );
 }
 
-const muted = { fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 } as const;
+const muted = { fontSize: 14, color: 'var(--ds-muted)', margin: 0 } as const;

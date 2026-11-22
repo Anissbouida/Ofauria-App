@@ -1,10 +1,11 @@
 import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, AlertTriangle, Info } from 'lucide-react';
+import { AlertTriangle, Info } from 'lucide-react';
 import { managementApi } from '../../api/management.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ListKpi, ListPanel } from '../sales/ListTemplate';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Rapports › Marges (mig 317) : marge sur coût de revient par famille, canal ou
@@ -29,7 +30,7 @@ export default function MarginsTab({ from, to }: { from: string; to: string }) {
   if (error) {
     return <StatusBanner tone="danger" icon={AlertTriangle} title="Marges indisponibles">{String((error as any)?.response?.data?.error?.message ?? error)}</StatusBanner>;
   }
-  if (isLoading || !data) return <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 size={20} className="animate-spin" /></div>;
+  if (isLoading || !data) return <LoadingState />;
   const t = data.total;
   const lowCoverage = (t.coverage_pct ?? 0) < 80;
 
@@ -67,22 +68,22 @@ export default function MarginsTab({ from, to }: { from: string; to: string }) {
             </div>
           </div>
           <ListPanel>
-            <table className="odoo-table">
+            <table className="odoo-table ds-dense">
               <thead><tr>
                 <th>{groupLabel}</th>
-                <th style={{ textAlign: 'right' }}>CA</th><th style={{ textAlign: 'right' }}>Couverture</th>
-                <th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'right' }}>Marge</th><th style={{ textAlign: 'right' }}>Taux</th>
-                {groupBy !== 'product' && <th style={{ textAlign: 'right' }}>Produits sans coût</th>}
+                <th className="ds-num">CA</th><th className="ds-num">Couverture</th>
+                <th className="ds-num">Coût</th><th className="ds-num">Marge</th><th className="ds-num">Taux</th>
+                {groupBy !== 'product' && <th className="ds-num">Produits sans coût</th>}
               </tr></thead>
               <tbody>{data.groups.map(g => (
                 <tr key={g.key}>
                   <td style={{ fontWeight: 500 }}>{g.key}</td>
-                  <td style={{ textAlign: 'right' }}>{dh(g.revenue)}</td>
+                  <td className="ds-num">{dh(g.revenue)}</td>
                   <td style={{ textAlign: 'right' }} className={(g.coverage_pct ?? 0) < 50 ? 'kl-rep-tone-o' : undefined}>{pct(g.coverage_pct)}</td>
-                  <td style={{ textAlign: 'right' }}>{g.revenue_costed ? dh(g.cost) : '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{g.revenue_costed ? dh(g.margin) : '—'}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{pct(g.margin_pct)}</td>
-                  {groupBy !== 'product' && <td style={{ textAlign: 'right' }}>{g.products_without_cost + g.products_incoherent} / {g.products}</td>}
+                  <td className="ds-num">{g.revenue_costed ? dh(g.cost) : '—'}</td>
+                  <td className="ds-num">{g.revenue_costed ? dh(g.margin) : '—'}</td>
+                  <td className="ds-num" style={{ fontWeight: 600 }}>{pct(g.margin_pct)}</td>
+                  {groupBy !== 'product' && <td className="ds-num">{g.products_without_cost + g.products_incoherent} / {g.products}</td>}
                 </tr>
               ))}</tbody>
             </table>
@@ -94,15 +95,15 @@ export default function MarginsTab({ from, to }: { from: string; to: string }) {
         <section>
           <div className="kl-sec"><h2>Coûts à corriger</h2><small>plus gros CA d'abord</small></div>
           <ListPanel>
-            <table className="odoo-table">
-              <thead><tr><th>Produit</th><th>Famille</th><th style={{ textAlign: 'right' }}>CA</th><th style={{ textAlign: 'right' }}>Prix moyen vendu</th><th style={{ textAlign: 'right' }}>Coût retenu</th><th>Problème</th></tr></thead>
+            <table className="odoo-table ds-dense">
+              <thead><tr><th>Produit</th><th>Famille</th><th className="ds-num">CA</th><th className="ds-num">Prix moyen vendu</th><th className="ds-num">Coût retenu</th><th>Problème</th></tr></thead>
               <tbody>{data.toFix.map(p => (
                 <tr key={p.name}>
                   <td style={{ fontWeight: 500 }}>{p.name}</td>
                   <td>{p.category ?? '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{dh(p.revenue)}</td>
-                  <td style={{ textAlign: 'right' }}>{p.avg_price.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
-                  <td style={{ textAlign: 'right' }}>{p.unit_cost == null ? '—' : p.unit_cost.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
+                  <td className="ds-num">{dh(p.revenue)}</td>
+                  <td className="ds-num">{p.avg_price.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
+                  <td className="ds-num">{p.unit_cost == null ? '—' : p.unit_cost.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
                   <td>
                     {p.issue === 'missing'
                       ? <span className="kl-pill x">Pas de coût de revient</span>

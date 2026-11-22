@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Target, Loader2, Plus, Power, X, ChevronRight, ChevronDown, Split, Eraser, CheckCircle2, Trash2 } from 'lucide-react';
+import { Lock, Target, Plus, Power, X, ChevronRight, ChevronDown, Split, Eraser, CheckCircle2, Trash2 } from 'lucide-react';
 import { costCentersApi, analyticApi, type CostCenter, type AnalyticBalance } from '../../api/cost-centers.api';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -11,6 +11,9 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
+import { LoadingState, DataPanel, Tabs, Toolbar, EmptyState, SectionHeader } from '../../components/ds';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { AccHeaderActions } from './AccHeaderActions';
 
 /**
  * Comptabilité analytique (mig 386 / 428) : axes et sections, ventilation des
@@ -20,7 +23,6 @@ import { currencySymbol } from '../../utils/money';
 
 const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
-const inp: React.CSSProperties = { padding: '0.4rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit' };
 const mono = { fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' } as const;
 const lbl: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem', color: 'var(--theme-text-muted)' };
 
@@ -34,9 +36,9 @@ function useAxisAndPeriod() {
   const [to, setTo] = useState(now.toISOString().slice(0, 10));
   const controls = (
     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-      <label style={lbl}>Axe<select value={axisId} onChange={e => setAxisId(e.target.value)} style={inp}>{axes.filter(a => a.is_active).map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>
-      <label style={lbl}>Du<input type="date" value={from} onChange={e => setFrom(e.target.value)} style={inp} /></label>
-      <label style={lbl}>Au<input type="date" value={to} onChange={e => setTo(e.target.value)} style={inp} /></label>
+      <label style={lbl}>Axe<select value={axisId} onChange={e => setAxisId(e.target.value)} className="ds-input sm" style={{ width: 'auto' }}>{axes.filter(a => a.is_active).map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>
+      <label style={lbl}>Du<input type="date" value={from} onChange={e => setFrom(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></label>
+      <label style={lbl}>Au<input type="date" value={to} onChange={e => setTo(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></label>
     </div>
   );
   return { axisId, from, to, controls };
@@ -46,13 +48,11 @@ export default function CostCentersTab() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const [view, setView] = useState<'report' | 'ventilation' | 'assign' | 'manage'>('report');
-  if (!isAdmin) return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Réservé à l'administration.</div>;
+  if (!isAdmin) return <EmptyState icon={Lock} title="Réservé à l'administration" />;
   const tabs: [typeof view, string][] = [['report', 'Résultat'], ['ventilation', 'Ventilation'], ['assign', 'Factures'], ['manage', 'Paramétrage']];
   return (
-    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {tabs.map(([k, l]) => <button key={k} className={view === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView(k)}>{l}</button>)}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Tabs label="Comptabilité analytique" value={view} onChange={setView} tabs={tabs.map(([k, l]) => ({ key: k, label: l }))} />
       {view === 'report' ? <Report /> : view === 'ventilation' ? <Ventilation /> : view === 'assign' ? <Assign /> : <Manage />}
     </div>
   );
@@ -69,17 +69,17 @@ function Report() {
   });
   const row = (key: string, title: string, b: AnalyticBalance['unventilated'], muted = false) => (
     <Fragment key={key}>
-      <tr onClick={() => setOpen(open === key ? null : key)} style={{ cursor: 'pointer', ...(muted ? { color: 'var(--theme-text-muted)', fontStyle: 'italic' } : {}) }}>
+      <tr onClick={() => setOpen(open === key ? null : key)} style={{ cursor: 'pointer', ...(muted ? { color: 'var(--theme-text-muted)' } : {}) }}>
         <td>{open === key ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {title}</td>
-        <td style={{ ...mono, textAlign: 'right', color: '#15803d' }}>{b.produits ? money(b.produits) : '—'}</td>
-        <td style={{ ...mono, textAlign: 'right', color: '#dc2626' }}>{b.charges ? money(b.charges) : '—'}</td>
-        <td style={{ ...mono, textAlign: 'right', fontWeight: 600, color: b.result >= 0 ? '#15803d' : '#dc2626' }}>{money(b.result)}</td>
+        <td className="ds-num" style={{ color: 'var(--ds-success)' }}>{b.produits ? money(b.produits) : '—'}</td>
+        <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{b.charges ? money(b.charges) : '—'}</td>
+        <td className="ds-num" style={{ fontWeight: 600, color: b.result >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{money(b.result)}</td>
       </tr>
       {open === key && b.accounts.map(a => (
         <tr key={`${key}-${a.code}`} style={{ background: 'var(--theme-bg-tertiary)', fontSize: '0.8125rem' }}>
           <td style={{ paddingLeft: 28 }}><span style={mono}>{a.code}</span> {a.label}</td>
-          <td style={{ ...mono, textAlign: 'right' }}>{a.produits ? money(a.produits) : ''}</td>
-          <td style={{ ...mono, textAlign: 'right' }}>{a.charges ? money(a.charges) : ''}</td>
+          <td className="ds-num">{a.produits ? money(a.produits) : ''}</td>
+          <td className="ds-num">{a.charges ? money(a.charges) : ''}</td>
           <td />
         </tr>
       ))}
@@ -87,34 +87,34 @@ function Report() {
   );
   return (
     <>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-        {controls}
+      <AccHeaderActions>
         <EditionButtons kind="analytique" params={{ startDate: from, endDate: to, axis: axisId }} disabled={!axisId} />
-      </div>
-      {isLoading || !data ? <div style={{ textAlign: 'center', padding: 32 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /></div> : (
+      </AccHeaderActions>
+      <Toolbar>{controls}</Toolbar>
+      {isLoading || !data ? <LoadingState /> : (
         <>
           {data.ventilated_rate < 100 && (
             <StatusBanner tone="info" icon={Split} title={`${data.ventilated_rate} % des charges et produits ventilés`}>
               La ligne « Non ventilé » ferme l'écart avec le CPC. Ventilez les lignes restantes dans l'onglet Ventilation, ou affectez un centre aux factures.
             </StatusBanner>
           )}
-          <div style={{ overflowX: 'auto' }}>
-            <table className="odoo-table">
-              <thead><tr><th>Section</th><th style={{ textAlign: 'right' }}>Produits</th><th style={{ textAlign: 'right' }}>Charges</th><th style={{ textAlign: 'right' }}>Résultat</th></tr></thead>
+          <DataPanel>
+            <table className="odoo-table ds-dense">
+              <thead><tr><th>Section</th><th className="ds-num">Produits</th><th className="ds-num">Charges</th><th className="ds-num">Résultat</th></tr></thead>
               <tbody>
                 {data.sections.map(s => row(s.id, `${s.code} — ${s.name}`, s))}
                 {(data.unventilated.produits !== 0 || data.unventilated.charges !== 0) && row('none', 'Non ventilé', data.unventilated, true)}
               </tbody>
               <tfoot>
-                <tr style={{ fontWeight: 700, borderTop: '2px solid var(--odoo-border)' }}>
+                <tr>
                   <td>Total (= CPC)</td>
-                  <td style={{ ...mono, textAlign: 'right' }}>{money(data.totals.produits)}</td>
-                  <td style={{ ...mono, textAlign: 'right' }}>{money(data.totals.charges)}</td>
-                  <td style={{ ...mono, textAlign: 'right' }}>{money(data.totals.result)}</td>
+                  <td className="ds-num">{money(data.totals.produits)}</td>
+                  <td className="ds-num">{money(data.totals.charges)}</td>
+                  <td className="ds-num">{money(data.totals.result)}</td>
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </DataPanel>
         </>
       )}
     </>
@@ -159,32 +159,32 @@ function Ventilation() {
   const selTotal = lines.filter(l => selected.has(l.id)).reduce((s, l) => s + amountOf(l), 0);
   return (
     <>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+      <div className="prj-toolbar" style={{ alignItems: 'flex-end' }}>
         {controls}
-        <label style={lbl}>Lignes<select value={status} onChange={e => setStatus(e.target.value as typeof status)} style={inp}><option value="open">À ventiler</option><option value="done">Ventilées</option><option value="all">Toutes</option></select></label>
-        <label style={lbl}>Classe<select value={accountClass} onChange={e => setAccountClass(e.target.value as typeof accountClass)} style={inp}><option value="">Charges et produits</option><option value="6">Charges (6)</option><option value="7">Produits (7)</option></select></label>
-        <label style={{ ...lbl, flex: '1 1 160px' }}>Recherche<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Compte, libellé, n° d'écriture" style={inp} /></label>
+        <label style={lbl}>Lignes<select value={status} onChange={e => setStatus(e.target.value as typeof status)} className="ds-input sm" style={{ width: 'auto' }}><option value="open">À ventiler</option><option value="done">Ventilées</option><option value="all">Toutes</option></select></label>
+        <label style={lbl}>Classe<select value={accountClass} onChange={e => setAccountClass(e.target.value as typeof accountClass)} className="ds-input sm" style={{ width: 'auto' }}><option value="">Charges et produits</option><option value="6">Charges (6)</option><option value="7">Produits (7)</option></select></label>
+        <label style={{ ...lbl, flex: '1 1 160px' }}>Recherche<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Compte, libellé, n° d'écriture" className="ds-input sm" style={{ width: 'auto' }} /></label>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 12px', background: 'var(--theme-bg-secondary)', borderRadius: 4, fontSize: '0.8125rem' }}>
-        <strong>{selected.size} ligne(s)</strong><span style={mono}>{money(selTotal)} {currencySymbol()}</span>
-        <span style={{ flex: 1 }} />
-        <select value={target} onChange={e => setTarget(e.target.value)} style={{ ...inp, minWidth: 220 }} aria-label="Section ou clé">
+      <div className="ds-bulk" role="status" style={{ borderRadius: 12, border: 0 }}>
+        <strong>{selected.size} ligne{selected.size > 1 ? 's' : ''} sélectionnée{selected.size > 1 ? 's' : ''}</strong><span className="ds-num">· {money(selTotal)} {currencySymbol()}</span>
+        <span className="ds-grow" />
+        <select value={target} onChange={e => setTarget(e.target.value)} className="ds-input sm" style={{ minWidth: 220 }} aria-label="Section ou clé">
           <option value="">Ventiler sur…</option>
           <optgroup label="Section (100 %)">{sections.map(c => <option key={c.id} value={`c:${c.id}`}>{c.code} — {c.name}</option>)}</optgroup>
           {keys.length > 0 && <optgroup label="Clé de répartition">{keys.map(k => <option key={k.id} value={`k:${k.id}`}>{k.name} ({k.lines.map(l => `${l.code} ${Number(l.percent)} %`).join(' / ')})</option>)}</optgroup>}
         </select>
-        <button className="odoo-btn-primary" disabled={!selected.size || !target || apply.isPending} onClick={() => apply.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Split size={13} /> Ventiler</button>
-        {status !== 'open' && <button className="odoo-btn-secondary" disabled={!selected.size || clear.isPending} onClick={() => clear.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Eraser size={13} /> Retirer</button>}
+        <button className="odoo-btn-primary" disabled={!selected.size || !target || apply.isPending} onClick={() => apply.mutate()}><Split size={13} /> Ventiler</button>
+        {status !== 'open' && <button className="odoo-btn-secondary" disabled={!selected.size || clear.isPending} onClick={() => clear.mutate()}><Eraser size={13} /> Retirer</button>}
       </div>
       {sections.length === 0 && <StatusBanner tone="warning" icon={Target} title="Aucune section sur cet axe">Créez des sections dans l'onglet Paramétrage (ex. Boulangerie, Pâtisserie, Traiteur).</StatusBanner>}
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
+      <DataPanel>
+        <table className="odoo-table ds-dense">
           <thead><tr>
             <th style={{ width: 30 }}><input type="checkbox" checked={all} onChange={() => setSelected(all ? new Set() : new Set(lines.slice(0, 200).map(l => l.id)))} aria-label="Tout sélectionner" /></th>
-            <th>Date</th><th>Écriture</th><th>Compte</th><th>Libellé</th><th style={{ textAlign: 'right' }}>Montant</th><th>Ventilation</th>
+            <th>Date</th><th>Écriture</th><th>Compte</th><th>Libellé</th><th className="ds-num">Montant</th><th>Ventilation</th>
           </tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
+            {isLoading && <tr><td colSpan={7}><LoadingState bare /></td></tr>}
             {!isLoading && lines.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>{status === 'open' ? 'Tout est ventilé sur la période.' : 'Aucune ligne.'}</td></tr>}
             {lines.map(l => {
               const credit = Number(l.credit) > 0;
@@ -192,10 +192,10 @@ function Ventilation() {
                 <tr key={l.id} onClick={() => toggle(l.id)} style={{ cursor: 'pointer', background: selected.has(l.id) ? 'var(--odoo-bg-alt)' : undefined }}>
                   <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} aria-label={`Sélectionner ${l.entry_number}`} /></td>
                   <td style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{day(l.entry_date)}</td>
-                  <td style={{ ...mono, fontSize: '0.75rem', color: '#185fa5' }}>{l.entry_number}</td>
+                  <td className="ds-ref" style={{ fontSize: '0.75rem', color: 'var(--ds-info)' }}>{l.entry_number}</td>
                   <td style={{ fontSize: '0.8125rem' }}><span style={mono}>{l.account_code}</span> {l.account_label}</td>
                   <td style={{ fontSize: '0.8125rem' }}>{l.label}</td>
-                  <td style={{ ...mono, textAlign: 'right', color: credit ? '#15803d' : undefined }}>{money(amountOf(l))}{credit ? ' C' : ' D'}</td>
+                  <td className="ds-num" style={{ color: credit ? 'var(--ds-success)' : undefined }}>{money(amountOf(l))}{credit ? ' C' : ' D'}</td>
                   <td style={{ fontSize: '0.75rem' }}>
                     {l.ventilation.map(v => <span key={v.cost_center_id} className={`odoo-tag ${v.source === 'invoice' ? 'odoo-tag-blue' : 'odoo-tag-green'}`} style={{ marginRight: 4 }} title={v.source === 'invoice' ? 'Depuis la facture' : v.source === 'key' ? 'Clé de répartition' : 'Saisie'}>{v.code} {money(Number(v.amount))}</span>)}
                   </td>
@@ -204,7 +204,7 @@ function Ventilation() {
             })}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
       {lines.length >= 1000 && <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>1 000 lignes affichées au plus : resserrez la période ou la recherche.</p>}
     </>
   );
@@ -231,8 +231,8 @@ function Assign() {
       <StatusBanner tone="info" icon={CheckCircle2} title="Le centre d'une facture ventile ses écritures">
         Les lignes de charges ou de produits de la facture sont ventilées sur le centre choisi, et suivent ses changements. Une ventilation saisie à la main n'est pas écrasée.
       </StatusBanner>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={kind} onChange={e => setKind(e.target.value as '' | 'received' | 'emitted')} style={inp}>
+      <div className="prj-toolbar">
+        <select value={kind} onChange={e => setKind(e.target.value as '' | 'received' | 'emitted')} className="ds-input sm" style={{ width: 'auto' }}>
           <option value="">Toutes les factures</option>
           <option value="received">Factures fournisseurs (charges)</option>
           <option value="emitted">Factures émises (produits)</option>
@@ -241,19 +241,19 @@ function Assign() {
           <input type="checkbox" checked={onlyUnassigned} onChange={e => setOnlyUnassigned(e.target.checked)} style={{ accentColor: 'var(--theme-accent)' }} /> Non affectées seulement
         </label>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
-          <thead><tr><th>Date</th><th>Facture</th><th>Type</th><th>Tiers</th><th style={{ textAlign: 'right' }}>HT</th><th>Centre de coût</th></tr></thead>
+      <DataPanel>
+        <table className="odoo-table ds-dense">
+          <thead><tr><th>Date</th><th>Facture</th><th>Type</th><th>Tiers</th><th className="ds-num">HT</th><th>Centre de coût</th></tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
+            {isLoading && <tr><td colSpan={6}><LoadingState bare /></td></tr>}
             {!isLoading && invoices.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucune facture.</td></tr>}
             {invoices.map(i => (
               <tr key={i.id}>
                 <td style={{ whiteSpace: 'nowrap' }}>{day(i.invoice_date)}</td>
-                <td style={{ ...mono, fontSize: '0.82rem' }}>{i.invoice_number}</td>
-                <td><span className={`odoo-tag ${i.invoice_type === 'received' ? 'odoo-tag-orange' : 'odoo-tag-blue'}`}>{i.invoice_type === 'received' ? 'Charge' : 'Produit'}</span></td>
+                <td className="ds-ref" style={{ fontSize: '0.82rem' }}>{i.invoice_number}</td>
+                <td><StatusTag tone={i.invoice_type === 'received' ? 'todo' : 'progress'} label={i.invoice_type === 'received' ? 'Charge' : 'Produit'} /></td>
                 <td style={{ fontSize: '0.85rem' }}>{i.party || '—'}</td>
-                <td style={{ ...mono, textAlign: 'right' }}>{money(i.amount)}</td>
+                <td className="ds-num">{money(i.amount)}</td>
                 <td>
                   <SearchSelect value={i.cost_center_id != null ? String(i.cost_center_id) : ''} onChange={id => assign.mutate({ invoiceId: i.id, costCenterId: id || null })}
                     placeholder="— Non affecté —" width={190} ariaLabel="Centre de coût"
@@ -263,7 +263,7 @@ function Assign() {
             ))}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
     </>
   );
 }
@@ -290,46 +290,49 @@ function Manage() {
   const done = () => { setForm(null); qc.invalidateQueries({ queryKey: ['cost-centers'] }); qc.invalidateQueries({ queryKey: ['analytic'] }); };
   return (
     <>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <label style={lbl}>Axe<select value={axisId} onChange={e => setAxisId(e.target.value)} style={inp}>{axes.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>
-        <button className="odoo-btn-secondary" onClick={() => setForm('axis')}><Plus size={14} /> Nouvel axe</button>
-        <span style={{ flex: 1 }} />
-        <button className="odoo-btn-primary" onClick={() => setForm('section')} disabled={!axisId}><Plus size={14} /> Nouvelle section</button>
-        <button className="odoo-btn-secondary" onClick={() => setForm('key')} disabled={sections.filter(s => s.is_active).length < 2}><Plus size={14} /> Nouvelle clé</button>
-      </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
-          <thead><tr><th>Section</th><th>Nom</th><th style={{ textAlign: 'right' }}>Factures</th><th>État</th><th /></tr></thead>
+      <AccHeaderActions>
+        <button type="button" className="odoo-btn-secondary" onClick={() => setForm('axis')}><Plus size={14} aria-hidden="true" /> Nouvel axe</button>
+        <button type="button" className="odoo-btn-secondary" onClick={() => setForm('key')} disabled={sections.filter(s => s.is_active).length < 2}><Plus size={14} aria-hidden="true" /> Nouvelle clé</button>
+        <button type="button" className="odoo-btn-primary" onClick={() => setForm('section')} disabled={!axisId}><Plus size={14} aria-hidden="true" /> Nouvelle section</button>
+      </AccHeaderActions>
+      <Toolbar>
+        <label style={{ ...lbl, flexDirection: 'row', alignItems: 'center', gap: 6 }}>Axe<select value={axisId} onChange={e => setAxisId(e.target.value)} className="ds-input sm" style={{ width: 'auto' }}>{axes.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}</select></label>
+      </Toolbar>
+      <DataPanel>
+        <table className="odoo-table ds-dense">
+          <thead><tr><th>Section</th><th>Nom</th><th className="ds-num">Factures</th><th>État</th><th /></tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
+            {isLoading && <tr><td colSpan={5}><LoadingState bare /></td></tr>}
             {!isLoading && sections.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucune section. Créez-en (ex. Boulangerie, Pâtisserie, Traiteur).</td></tr>}
             {sections.map((c: CostCenter) => (
               <tr key={c.id}>
-                <td style={{ ...mono, fontWeight: 600 }}>{c.code}</td>
-                <td>{c.name}</td>
-                <td style={{ textAlign: 'right' }}>{c.invoices_count}</td>
-                <td><span className={`odoo-tag ${c.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{c.is_active ? 'Active' : 'Inactive'}</span></td>
-                <td style={{ textAlign: 'right' }}>
-                  <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => toggle.mutate({ id: c.id, active: !c.is_active })} title={c.is_active ? 'Désactiver' : 'Activer'}><Power size={12} /></button>
+                <td className="ds-ref">{c.code}</td>
+                <td className="ds-strong">{c.name}</td>
+                <td className="ds-num">{c.invoices_count}</td>
+                <td><StatusTag tone={c.is_active ? 'done' : 'draft'} label={c.is_active ? 'Active' : 'Inactive'} /></td>
+                <td className="ds-num">
+                  <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => toggle.mutate({ id: c.id, active: !c.is_active })} title={c.is_active ? 'Désactiver' : 'Activer'} aria-label={c.is_active ? 'Désactiver' : 'Activer'}><Power size={12} /></button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-      <h4 style={{ margin: 0, fontSize: '0.875rem' }}>Clés de répartition</h4>
-      {keys.length === 0 ? <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune clé. Une clé répartit une charge commune (loyer, électricité) entre plusieurs sections.</p> : (
-        <table className="odoo-table">
+      </DataPanel>
+      <SectionHeader title="Clés de répartition" note={keys.length ? `${keys.length} clé${keys.length > 1 ? 's' : ''}` : undefined} />
+      {keys.length === 0 ? <EmptyState icon={Split} title="Aucune clé de répartition" text="Une clé répartit une charge commune (loyer, électricité) entre plusieurs sections." /> : (
+        <DataPanel label="Clés de répartition">
+        <table className="odoo-table ds-dense">
           <tbody>
             {keys.map(k => (
               <tr key={k.id}>
-                <td style={{ fontWeight: 500 }}>{k.name}</td>
-                <td style={{ fontSize: '0.8125rem' }}>{k.lines.map(l => `${l.code} ${Number(l.percent)} %`).join(' · ')}</td>
-                <td style={{ textAlign: 'right' }}><button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem' }} onClick={() => delKey.mutate(k.id)} title="Supprimer la clé"><Trash2 size={12} /></button></td>
+                <td className="ds-strong">{k.name}</td>
+                <td>{k.lines.map(l => `${l.code} ${Number(l.percent)} %`).join(' · ')}</td>
+                <td className="ds-actions"><button type="button" className="ds-icon-btn" onClick={() => delKey.mutate(k.id)} title="Supprimer la clé" aria-label="Supprimer la clé"><Trash2 size={14} /></button></td>
               </tr>
             ))}
           </tbody>
         </table>
+        </DataPanel>
       )}
       {form === 'section' && <SectionForm axisId={axisId} onClose={() => setForm(null)} onSaved={done} />}
       {form === 'axis' && <AxisForm onClose={() => setForm(null)} onSaved={done} />}
@@ -353,7 +356,7 @@ function Modal({ title, onClose, children, footer }: { title: string; onClose: (
   );
 }
 const field = (label: string, value: string, set: (v: string) => void, placeholder: string) => (
-  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>{label}</span><input type="text" value={value} onChange={e => set(e.target.value)} placeholder={placeholder} style={{ ...inp, width: '100%' }} /></label>
+  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>{label}</span><input type="text" value={value} onChange={e => set(e.target.value)} placeholder={placeholder} className="ds-input sm" style={{ width: '100%' }} /></label>
 );
 
 function SectionForm({ axisId, onClose, onSaved }: { axisId: string; onClose: () => void; onSaved: () => void }) {
@@ -406,7 +409,7 @@ function KeyForm({ axisId, sections, onClose, onSaved }: { axisId: string; secti
   });
   return (
     <Modal title="Nouvelle clé de répartition" onClose={onClose} footer={<>
-      <span style={{ marginRight: 'auto', fontSize: '0.8125rem', color: total === 100 ? '#15803d' : '#dc2626', alignSelf: 'center' }}>Total {total} %</span>
+      <span style={{ marginRight: 'auto', fontSize: '0.8125rem', color: total === 100 ? 'var(--ds-success)' : 'var(--ds-danger)', alignSelf: 'center' }}>Total {total} %</span>
       <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
       <button type="button" className="odoo-btn-primary" disabled={!name.trim() || total !== 100 || lines.length < 2 || save.isPending} onClick={() => save.mutate()}>Créer</button>
     </>}>
@@ -414,7 +417,7 @@ function KeyForm({ axisId, sections, onClose, onSaved }: { axisId: string; secti
       {sections.map(s => (
         <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem' }}>
           <span style={{ flex: 1 }}><span style={mono}>{s.code}</span> {s.name}</span>
-          <input value={pct[s.id] ?? ''} onChange={e => setPct({ ...pct, [s.id]: e.target.value })} inputMode="decimal" placeholder="0" style={{ ...inp, width: 80, textAlign: 'right' }} aria-label={`Pourcentage ${s.code}`} /> %
+          <input value={pct[s.id] ?? ''} onChange={e => setPct({ ...pct, [s.id]: e.target.value })} inputMode="decimal" placeholder="0" className="ds-input sm" style={{ width: 80, textAlign: 'right' }} aria-label={`Pourcentage ${s.code}`} /> %
         </label>
       ))}
     </Modal>

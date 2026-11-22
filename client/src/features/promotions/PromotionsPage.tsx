@@ -26,6 +26,8 @@ import { SelectFilter } from '../../components/purchasing/ProcessBoard';
 import { OdooToggle } from '../settings/SettingsPrimitives';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi, ListToolbar, FilterChips } from '../sales/ListTemplate';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { Tabs, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, KpiGrid, KpiCard } from '../../components/ds';
 
 /**
  * Promotions et fidélité (mig 372). Les promotions s'appliquent seules en caisse (et, si
@@ -43,7 +45,7 @@ const chip = (on: boolean): React.CSSProperties => ({
   background: on ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)', color: on ? 'var(--odoo-purple)' : 'var(--odoo-text)', fontWeight: on ? 600 : 400,
 });
 /** Signal d'état : point de couleur + texte (couleurs de la palette odoo-tag). */
-const DOT: Record<string, string> = { green: '#28a745', blue: '#1f6391', orange: '#d9822b', grey: '#adb5bd', red: '#dc3545', purple: 'var(--odoo-purple)' };
+const DOT: Record<string, string> = { green: 'var(--ds-success)', blue: '#1f6391', orange: 'var(--ds-warning)', grey: 'var(--ds-muted)', red: 'var(--ds-danger)', purple: 'var(--odoo-purple)' };
 function Dot({ color, children }: { color: keyof typeof DOT; children: React.ReactNode }) {
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
     <span style={{ width: 8, height: 8, borderRadius: 999, background: DOT[color], flexShrink: 0 }} />{children}</span>;
@@ -64,22 +66,12 @@ export default function PromotionsPage() {
   const setTab = (t: Tab) => { params.set('tab', t); setParams(params, { replace: true }); };
   const [creating, setCreating] = useState(false);
   return (
-    <SalesPageShell icon={BadgePercent} parent="Ventes" title="Promotions et fidélité" list actions={tab === 'promotions' && isDirection ? (
-      <button className="odoo-btn-primary" onClick={() => setCreating(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle promotion</button>
-    ) : undefined}>
-      <div className="prj-toolbar">
-        <p className="prj-note" style={{ flex: 1, minWidth: 260 }}>Remises automatiques en caisse, sur les commandes et les devis ; points de fidélité gagnés et utilisés par les clients.</p>
-        <div className="prj-views" role="tablist" aria-label="Rubrique">
-          {TABS.filter(t => !t.direction || isDirection).map(t => {
-            const Icon = t.icon; const on = tab === t.key;
-            return (
-              <button key={t.key} type="button" role="tab" aria-selected={on} className={on ? 'active' : ''} onClick={() => setTab(t.key)}>
-                <Icon size={14} /> {t.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+    <SalesPageShell icon={BadgePercent} parent="Ventes" title="Promotions et fidélité" list
+      summary="Remises automatiques en caisse, sur les commandes et les devis ; points de fidélité gagnés et utilisés par les clients."
+      actions={tab === 'promotions' && isDirection ? (
+        <button type="button" className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouvelle promotion</button>
+      ) : undefined}>
+      <Tabs label="Rubrique" value={tab} onChange={setTab} tabs={TABS.filter(t => !t.direction || isDirection).map(t => ({ key: t.key, label: t.label }))} />
       {tab === 'promotions' && <PromotionsTab canEdit={isDirection} creating={creating} onCreated={() => setCreating(false)} />}
       {tab === 'loyalty' && isDirection && <LoyaltyTab />}
       {tab === 'history' && isDirection && <HistoryTab />}
@@ -158,33 +150,34 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
         <ListKpi label="Remises accordées (total)" value={`${money(data.reduce((a, p) => a + Number(p.granted_amount ?? 0), 0))}`} sub={`${n0(data.reduce((a, p) => a + Number(p.uses_count ?? 0), 0))} utilisation(s)`} />
       </section>
 
-      <ListToolbar search={search} onSearch={setSearch} placeholder="Nom ou code promo…">
-        <SelectFilter label="Canal" icon={Filter} value={channel} onChange={setChannel} allLabel="Tous"
-          options={[{ key: 'pos', label: 'Caisse' }, { key: 'orders', label: 'Commandes' }, { key: 'quotes', label: 'Devis' }]} />
-      </ListToolbar>
       <FilterChips label="Filtrer les promotions" value={filter} onChange={k => setFilter(k as ListFilter)}
         chips={FILTERS.filter(f => f.key !== 'ending' || count('ending') > 0 || filter === 'ending').map(f => ({
           key: f.key, label: f.label, count: f.key === 'all' ? data.length : count(f.key),
           tone: f.key === 'ending' ? 'late' as const : undefined, icon: f.key === 'ending' ? Hourglass : undefined,
         }))} />
 
-      {isLoading ? <Loader2 className="animate-spin" size={18} /> : rows.length === 0 ? (
-        <StatusBanner tone="info" icon={BadgePercent} title={data.length ? 'Aucune promotion ici' : 'Aucune promotion'}
-          actions={canEdit ? <button className="odoo-btn-primary" onClick={() => setEditing({ promo: null })}><Plus size={13} /> Nouvelle promotion</button> : undefined}>
-          {data.length ? 'Choisissez une autre situation ci-dessus pour voir les autres promotions.'
-            : 'Créez une remise sur des articles (pourcentage, prix spécial, « 2 achetés = 1 offert »…) ou sur le panier, avec ou sans code promo.'}
-        </StatusBanner>
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Nom ou code promo…">
+        <SelectFilter label="Canal" icon={Filter} value={channel} onChange={setChannel} allLabel="Tous"
+          options={[{ key: 'pos', label: 'Caisse' }, { key: 'orders', label: 'Commandes' }, { key: 'quotes', label: 'Devis' }]} />
+      </ListToolbar>
+
+      {isLoading ? <LoadingState label="Chargement des promotions…" /> : rows.length === 0 ? (
+        data.length
+          ? <NoResultState onReset={() => { setFilter('all'); setSearch(''); setChannel(''); }} text="Aucune promotion ne correspond aux filtres." />
+          : <EmptyState icon={BadgePercent} title="Aucune promotion"
+              text="Créez une remise sur des articles (pourcentage, prix spécial, « 2 achetés = 1 offert »…) ou sur le panier, avec ou sans code promo."
+              action={canEdit ? <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setEditing({ promo: null })}><Plus size={13} /> Nouvelle promotion</button> : undefined} />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <DataPanel label="Promotions" footer={<TableFooter note={`${rows.length} promotion${rows.length > 1 ? 's' : ''} · ${money(rows.reduce((a, p) => a + Number(p.granted_amount ?? 0), 0))} de remises accordées`} />}>
           {/* Colonnes de largeur fixe : chaque information garde sa place d'une ligne à l'autre. */}
           <table className="odoo-table" style={{ tableLayout: 'fixed', minWidth: 1040 }}>
             <colgroup>
               <col style={{ width: 40 }} /><col /><col style={{ width: '24%' }} /><col style={{ width: 220 }} />
-              <col style={{ width: 120 }} /><col style={{ width: 150 }} /><col style={{ width: 90 }} /><col style={{ width: 116 }} />
+              <col style={{ width: 120 }} /><col style={{ width: 160 }} /><col style={{ width: 90 }} /><col style={{ width: 150 }} />
             </colgroup>
             <thead><tr>
               <th></th><th>Promotion</th><th>Avantage</th><th>Validité</th>
-              <th style={{ textAlign: 'right' }}>Utilisations</th><th style={{ textAlign: 'right' }}>Remise accordée</th><th style={{ textAlign: 'center' }}>Active</th><th></th>
+              <th className="ds-num">Utilisations</th><th className="ds-num">Remise accordée ({currencySymbol()})</th><th style={{ textAlign: 'center' }}>Active</th><th className="ds-actions">Actions</th>
             </tr></thead>
             <tbody>{rows.map(p => {
               const expanded = open === p.id;
@@ -196,9 +189,9 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
               return (
                 <Fragment key={p.id}>
                   <tr onClick={() => setOpen(expanded ? null : p.id)} style={{ cursor: 'pointer', height: 68, background: expanded ? 'var(--odoo-purple-light)' : undefined }}>
-                    <td style={{ color: 'var(--odoo-text-muted)', textAlign: 'center' }}>{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
+                    <td style={{ color: 'var(--ds-muted)', textAlign: 'center' }}>{expanded ? <ChevronDown size={14} aria-label="Replier" /> : <ChevronRight size={14} aria-label="Déplier" />}</td>
                     <td>
-                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.name}>{p.name}</div>
+                      <div className="ds-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.name}>{p.name}</div>
                       <div style={{ ...muted, display: 'flex', gap: 6, alignItems: 'center', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden' }}>
                         {[p.on_pos && 'Caisse', p.on_orders && 'Commandes', p.on_quotes && 'Devis'].filter(Boolean).join(' · ')}
                         {p.coupon_code && <span className="odoo-tag odoo-tag-purple font-mono">{p.coupon_code}</span>}
@@ -212,33 +205,33 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
                       <div style={{ whiteSpace: 'nowrap' }}>{periodText(p)}</div>
                       {progress != null && p.state === 'running' && (
                         <div style={{ height: 4, borderRadius: 2, background: 'var(--odoo-border)', overflow: 'hidden', margin: '5px 0 3px', width: 180 }}>
-                          <div style={{ width: `${progress}%`, height: '100%', background: isEnding(p) ? '#d9822b' : 'var(--odoo-purple)' }} />
+                          <div style={{ width: `${progress}%`, height: '100%', background: isEnding(p) ? 'var(--ds-warning)' : 'var(--odoo-purple)' }} />
                         </div>
                       )}
                       {p.state === 'running' && left != null && left <= 7
-                        ? <div style={{ fontSize: '0.75rem', color: '#b85d1a' }}>{left <= 0 ? 'se termine aujourd\'hui' : `se termine dans ${left} j`}</div>
+                        ? <div style={{ fontSize: '0.75rem', color: 'var(--ds-warning)' }}>{left <= 0 ? 'se termine aujourd\'hui' : `se termine dans ${left} j`}</div>
                         : p.state === 'scheduled' && p.starts_on ? <div style={{ ...muted }}>démarre dans {Math.max(1, Math.round((dateMs(p.starts_on) - todayMs()) / DAY))} j</div>
                         : when ? <div style={muted}>{when}</div> : null}
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
                       {n0(p.uses_count)}{p.max_uses ? <span style={muted}> / {n0(p.max_uses)}</span> : ''}
                       {p.max_uses ? <div style={{ height: 3, borderRadius: 2, background: 'var(--odoo-border)', overflow: 'hidden', marginTop: 4, width: 70, marginLeft: 'auto' }}>
                         <div style={{ width: `${Math.min(100, p.uses_count / p.max_uses * 100)}%`, height: '100%', background: 'var(--odoo-purple)' }} /></div> : null}
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(p.granted_amount)}</td>
+                    <td className="ds-num ds-strong" style={{ whiteSpace: 'nowrap' }}>{n2(p.granted_amount)}</td>
                     <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
                       {canEdit ? <OdooToggle checked={p.is_active} disabled={quick.isPending} onChange={v => quick.mutate({ id: p.id, isActive: v })} />
                         : <StatusTag tone={PROMO_STATE[p.state].tone} icon={PROMO_STATE[p.state].icon} label={PROMO_STATE[p.state].label} />}
                     </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      {/* Trois emplacements fixes : un emplacement vide garde l'alignement des autres. */}
-                      {canEdit && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 32px)', justifyContent: 'end', alignItems: 'center' }}>
-                        <button className="odoo-pager-btn" title="Modifier" aria-label="Modifier" onClick={() => setEditing({ promo: p })}><Pencil size={13} /></button>
-                        <button className="odoo-pager-btn" title="Dupliquer" aria-label="Dupliquer" onClick={() => setEditing({ promo: null, copyOf: p })}><Copy size={13} /></button>
-                        {p.ends_on
-                          ? <button className="odoo-pager-btn" title="Prolonger de 7 jours" aria-label="Prolonger de 7 jours" disabled={quick.isPending} onClick={() => quick.mutate({ id: p.id, extendDays: 7 })}><CalendarPlus size={13} /></button>
-                          : <span />}
-                      </div>}
+                    <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                      {canEdit && <>
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setEditing({ promo: p })}><Pencil size={13} /> Modifier</button>
+                        <RowMenu items={[
+                          { label: 'Dupliquer', icon: Copy, onSelect: () => setEditing({ promo: null, copyOf: p }) },
+                          ...(p.ends_on ? [{ label: 'Prolonger de 7 jours', icon: CalendarPlus, disabled: quick.isPending, onSelect: () => quick.mutate({ id: p.id, extendDays: 7 }) }] : []),
+                          ...(p.uses_count === 0 ? [{ label: 'Supprimer', icon: Trash2, danger: true, onSelect: () => del(p) }] : []),
+                        ]} />
+                      </>}
                     </td>
                   </tr>
                   {expanded && (
@@ -258,7 +251,7 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
                             <button className="odoo-btn-secondary" onClick={() => setEditing({ promo: p })} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Pencil size={12} /> Modifier</button>
                             <button className="odoo-btn-secondary" onClick={() => setEditing({ promo: null, copyOf: p })} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Copy size={12} /> Dupliquer</button>
                             {p.ends_on && <button className="odoo-btn-secondary" disabled={quick.isPending} onClick={() => quick.mutate({ id: p.id, extendDays: 7 })} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CalendarPlus size={12} /> Prolonger de 7 jours</button>}
-                            {p.uses_count === 0 && <button className="odoo-btn-secondary" onClick={() => del(p)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}><Trash2 size={12} /> Supprimer</button>}
+                            {p.uses_count === 0 && <button type="button" className="ds-btn-danger ds-btn-sm" onClick={() => del(p)} style={{ marginLeft: 'auto' }}><Trash2 size={12} /> Supprimer</button>}
                           </div>
                         )}
                       </td>
@@ -268,7 +261,7 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
               );
             })}</tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
       <p style={{ ...muted, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Info size={12} /> En caisse : sur chaque article la meilleure promotion qui le concerne, puis la meilleure remise sur le panier. Un code promo n'agit que s'il est saisi à l'encaissement.
@@ -459,7 +452,7 @@ const dec = (v: string) => Number(String(v).replace(',', '.')) || 0;
 const pctTxt = (n: number) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %`;
 /** Couleur d'un niveau (champ color, sinon par rang) ; uniquement des teintes de la palette odoo-tag. */
 const TIER_COLORS: Record<string, { bar: string; tag: string }> = {
-  orange: { bar: '#e8a87c', tag: 'odoo-tag-orange' }, grey: { bar: '#adb5bd', tag: 'odoo-tag-grey' }, yellow: { bar: '#e0b84a', tag: 'odoo-tag-yellow' },
+  orange: { bar: '#e8a87c', tag: 'odoo-tag-orange' }, grey: { bar: 'var(--ds-muted)', tag: 'odoo-tag-grey' }, yellow: { bar: '#e0b84a', tag: 'odoo-tag-yellow' },
   blue: { bar: '#7fb2dc', tag: 'odoo-tag-blue' }, green: { bar: '#7dc191', tag: 'odoo-tag-green' }, purple: { bar: 'var(--odoo-purple)', tag: 'odoo-tag-purple' },
 };
 const tierColor = (t: TierForm, i: number) => TIER_COLORS[t.color ?? ''] ?? Object.values(TIER_COLORS)[i % 6];
@@ -540,7 +533,7 @@ function LoyaltyTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['loyalty'] }); qc.invalidateQueries({ queryKey: ['loyalty-tiers'] }); notify.success('Programme de fidélité enregistré'); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
-  if (isLoading || !ov || !s || !tiers || !initial) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading || !ov || !s || !tiers || !initial) return <LoadingState />;
 
   const set = <K extends keyof SettingsForm>(k: K, v: SettingsForm[K]) => setS(x => ({ ...x!, [k]: v }));
   const setTier = (i: number, patch: Partial<TierForm>) => setTiers(tiers.map((x, k) => (k === i ? { ...x, ...patch } : x)));
@@ -556,25 +549,18 @@ function LoyaltyTab() {
   const baseEarn = Math.floor(t / per) * pts;
   const sorted = tiers.map((x, i) => ({ ...x, i })).sort((a, b) => Number(a.minPoints) - Number(b.minPoints));
   const top = Math.max(1000, ...sorted.map(x => Number(x.minPoints) || 0)) * 1.12;
-  const kpi = (label: string, value: string, sub?: string, Icon?: typeof Coins) => (
-    <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-      <div className="odoo-stat-card-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{Icon && <Icon size={11} />}{label}</div>
-      <div className="odoo-stat-card-value">{value}</div>
-      {sub && <div className="odoo-stat-card-sub">{sub}</div>}
-    </div>
-  );
   const expiryOptions = Array.from(new Set([0, 3, 6, 12, 18, 24, 36, months])).sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b));
   const fmtMult = (v: string) => `×${String(dec(v)).replace('.', ',')}`;
 
   return (
     <>
-      <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
-        {kpi('Points en circulation', n0(ov.outstandingPoints), `${money(ov.outstandingValue)} dus aux clients`, Coins)}
-        {kpi('Clients avec des points', n0(ov.members), undefined, Star)}
-        {kpi('Gagnés sur 30 j', n0(ov.last30.earn?.points ?? 0), `${money(ov.last30.earn?.amount ?? 0)}`, Gift)}
-        {kpi('Utilisés sur 30 j', n0(Math.abs(ov.last30.redeem?.points ?? 0)), `${money(ov.last30.redeem?.amount ?? 0)} de remises`, BadgePercent)}
-        {kpi('Expirés sur 30 j', n0(Math.abs(ov.last30.expire?.points ?? 0)), undefined, Hourglass)}
-      </div>
+      <KpiGrid>
+        <KpiCard label="Points en circulation" value={n0(ov.outstandingPoints)} sub={`${money(ov.outstandingValue)} dus aux clients`} />
+        <KpiCard label="Clients avec des points" value={n0(ov.members)} />
+        <KpiCard label="Gagnés sur 30 j" value={n0(ov.last30.earn?.points ?? 0)} sub={`${money(ov.last30.earn?.amount ?? 0)}`} />
+        <KpiCard label="Utilisés sur 30 j" value={n0(Math.abs(ov.last30.redeem?.points ?? 0))} sub={`${money(ov.last30.redeem?.amount ?? 0)} de remises`} />
+        <KpiCard label="Expirés sur 30 j" value={n0(Math.abs(ov.last30.expire?.points ?? 0))} />
+      </KpiGrid>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)' }}>
         <OdooToggle checked={s.enabled} onChange={v => set('enabled', v)} />
@@ -623,13 +609,13 @@ function LoyaltyTab() {
           </div>
           <table className="odoo-table" style={{ tableLayout: 'fixed' }}>
             <colgroup><col /><col style={{ width: 140 }} /><col style={{ width: 140 }} /></colgroup>
-            <thead><tr><th>Client</th><th style={{ textAlign: 'right' }}>Points gagnés</th><th style={{ textAlign: 'right' }}>Valeur</th></tr></thead>
+            <thead><tr><th>Client</th><th className="ds-num">Points gagnés</th><th className="ds-num">Valeur</th></tr></thead>
             <tbody>
-              <tr><td style={muted}>Sans niveau</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{n0(baseEarn)}</td><td style={{ textAlign: 'right' }}>{money(baseEarn * pv)}</td></tr>
+              <tr><td style={muted}>Sans niveau</td><td className="ds-num ds-strong">{n0(baseEarn)}</td><td className="ds-num">{money(baseEarn * pv)}</td></tr>
               {sorted.map(x => { const e = Math.floor(baseEarn * dec(x.earnMultiplier)); return (
                 <tr key={x.i}>
                   <td><span className={`odoo-tag ${tierColor(x, x.i).tag}`}>{x.label || 'Nouveau niveau'}</span> <span style={muted}>{fmtMult(x.earnMultiplier)}</span></td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{n0(e)}</td><td style={{ textAlign: 'right' }}>{money(e * pv)}</td>
+                  <td className="ds-num ds-strong">{n0(e)}</td><td className="ds-num">{money(e * pv)}</td>
                 </tr>
               ); })}
             </tbody>
@@ -675,7 +661,7 @@ function LoyaltyTab() {
         <table className="odoo-table" style={{ tableLayout: 'fixed' }}>
           <colgroup><col /><col style={{ width: 150 }} /><col style={{ width: 190 }} /><col style={{ width: 150 }} /><col style={{ width: 110 }} /><col style={{ width: 96 }} /></colgroup>
           <thead><tr>
-            <th>Niveau</th><th>Code</th><th style={{ textAlign: 'right' }}>Dès (12 mois)</th><th style={{ textAlign: 'right' }}>Bonus de points</th><th style={{ textAlign: 'right' }}>Clients</th><th></th>
+            <th>Niveau</th><th>Code</th><th className="ds-num">Dès (12 mois)</th><th className="ds-num">Bonus de points</th><th className="ds-num">Clients</th><th></th>
           </tr></thead>
           <tbody>{tiers.map((x, i) => {
             const editing = selected === i;
@@ -688,13 +674,13 @@ function LoyaltyTab() {
                 <td>{editing && x.isNew
                   ? <input style={{ ...ctrl, fontFamily: 'ui-monospace, monospace' }} placeholder="platine" value={x.code} onChange={e => setTier(i, { code: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') })} />
                   : <span className="font-mono" style={muted}>{x.code}</span>}</td>
-                <td style={{ textAlign: 'right' }}>{editing
+                <td className="ds-num">{editing
                   ? <UnitInput value={x.minPoints} onChange={v => setTier(i, { minPoints: v })} unit="pts" />
                   : <>{n0(x.minPoints)} <span style={muted}>pts</span></>}</td>
-                <td style={{ textAlign: 'right' }}>{editing
+                <td className="ds-num">{editing
                   ? <UnitInput value={x.earnMultiplier} onChange={v => setTier(i, { earnMultiplier: v })} prefix="×" step="0.05" min={1} max={10} />
                   : fmtMult(x.earnMultiplier)}</td>
-                <td style={{ textAlign: 'right' }}>{customers == null ? <span style={muted}>—</span> : n0(customers)}</td>
+                <td className="ds-num">{customers == null ? <span style={muted}>—</span> : n0(customers)}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                   {editing
                     ? <button className="odoo-pager-btn" title="Terminer" aria-label="Terminer" onClick={() => setSelected(null)}><ChevronDown size={13} /></button>
@@ -710,8 +696,8 @@ function LoyaltyTab() {
       {dirty && (
         <div style={{ position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
           border: '1px solid #ffe5d0', borderRadius: 4, background: '#fff8f1', boxShadow: '0 -2px 8px rgba(0,0,0,0.06)' }}>
-          <Info size={14} style={{ color: '#b85d1a' }} />
-          <span style={{ flex: 1, fontSize: '0.875rem', color: '#b85d1a' }}>
+          <Info size={14} style={{ color: 'var(--ds-warning)' }} />
+          <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--ds-warning)' }}>
             {tiersInvalid ? 'Complétez le nom, le code et le seuil de chaque niveau avant d\'enregistrer.' : 'Modifications non enregistrées'}
           </span>
           <button className="odoo-btn-secondary" onClick={() => { setS(initial.s); setTiers(initial.tiers); setSelected(null); }}>Annuler</button>
@@ -733,32 +719,31 @@ function HistoryTab() {
   const rows = data.filter(t => !q || (t.customer_name ?? '').toLowerCase().includes(q) || (t.sale_number ?? '').toLowerCase().includes(q));
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap' }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
-        <input className="odoo-search-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Client ou n° de vente…" style={{ flex: '1 1 200px' }} />
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Client ou n° de vente…">
         <SelectFilter label="Mouvement" icon={Filter} value={kind} onChange={v => setKind(v as LoyaltyKind | '')} allLabel="Tous"
           options={(Object.keys(LOYALTY_KIND_LABEL) as LoyaltyKind[]).map(k => ({ key: k, label: LOYALTY_KIND_LABEL[k] }))} />
-      </div>
-      <p style={{ ...muted, margin: 0 }}>Les 200 derniers mouvements. Le détail d'un client est sur sa fiche (Clients › onglet Fidélité).</p>
-      {isLoading ? <Loader2 className="animate-spin" size={18} /> : rows.length === 0 ? (
-        <StatusBanner tone="neutral" icon={History} title="Aucun mouvement">Les points apparaissent ici dès la première vente encaissée à un client identifié.</StatusBanner>
+      </ListToolbar>
+      {isLoading ? <LoadingState label="Chargement des mouvements…" /> : rows.length === 0 ? (
+        data.length
+          ? <NoResultState onReset={() => setSearch('')} text="Aucun mouvement ne correspond à la recherche." />
+          : <EmptyState icon={History} title="Aucun mouvement" text="Les points apparaissent ici dès la première vente encaissée à un client identifié." />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <DataPanel label="Mouvements de points" footer={<TableFooter note={`${rows.length} mouvement${rows.length > 1 ? 's' : ''} · les 200 derniers ; le détail d'un client est sur sa fiche (onglet Fidélité)`} />}>
           <table className="odoo-table">
-            <thead><tr><th>Date</th><th>Client</th><th>Mouvement</th><th style={{ textAlign: 'right' }}>Points</th><th style={{ textAlign: 'right' }}>Valeur</th><th>Origine</th><th>Expire le</th></tr></thead>
+            <thead><tr><th>Date</th><th>Client</th><th>Mouvement</th><th className="ds-num">Points</th><th className="ds-num">Valeur ({currencySymbol()})</th><th>Origine</th><th>Expire le</th></tr></thead>
             <tbody>{rows.map(t => (
               <tr key={t.id}>
                 <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.created_at), 'dd/MM/yyyy HH:mm')}</td>
-                <td>{t.customer_name}</td>
+                <td className="ds-strong">{t.customer_name}</td>
                 <td><Dot color={KIND_DOT[t.kind]}>{LOYALTY_KIND_LABEL[t.kind]}</Dot></td>
-                <td style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: t.points < 0 ? '#721c24' : '#155724' }}>{t.points > 0 ? '+' : '−'}{n0(Math.abs(t.points))}</td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(t.amount)}</td>
+                <td className="ds-num" style={{ fontWeight: 600, color: t.points < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{t.points > 0 ? '+' : '−'}{n0(Math.abs(t.points))}</td>
+                <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{n2(t.amount)}</td>
                 <td style={{ fontSize: '0.8125rem' }}>{t.note}{t.created_by_name && <div style={muted}>{t.created_by_name}</div>}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{t.remaining && t.expires_at ? <>{fr(t.expires_at)}{t.remaining < t.points && <div style={muted}>{n0(t.remaining)} restants</div>}</> : <span style={muted}>—</span>}</td>
               </tr>
             ))}</tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
     </>
   );

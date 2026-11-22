@@ -9,6 +9,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { stockLocationsApi, type StockLocation } from '../../api/stock-locations.api';
 import { convertWeight, readWeight, formatWeight, type WeightUnit } from '../../utils/weight-unit';
 import WeightQtyInput from '../../components/ui/WeightQtyInput';
+import { LoadingState } from '../../components/ds';
 import {
   TrendingUp, TrendingDown, Package, Flame, AlertTriangle, Loader2,
   ChevronDown, ChevronRight, Scale, PieChart
@@ -217,9 +218,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
       )}
 
       {isLoading && (
-        <div className="p-6 flex items-center justify-center gap-2 text-gray-400">
-          <Loader2 size={16} className="animate-spin" /> Chargement...
-        </div>
+        <LoadingState bare />
       )}
 
       {/* Per-item rendement */}
@@ -297,7 +296,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                       {([['magasin_location_id', 'Emplacement magasin', 'MAGASIN', formData.vers_magasin],
                          ['frigo_location_id', 'Emplacement frigo', 'FRIGO', formData.vers_frigo]] as const).map(([key, label, code, qty]) => (
                         <div key={key}>
-                          <label className="text-[10px] font-bold text-gray-500 uppercase">{label}</label>
+                          <label className="text-[10px] font-bold text-gray-500 ">{label}</label>
                           <select value={formData[key]} onChange={e => setFormData(f => ({ ...f, [key]: e.target.value }))}
                             className="w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white">
                             <option value="">{hasCode(code) ? `Par défaut (${code})` : `— Aucun emplacement ${code} —`}</option>

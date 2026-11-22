@@ -132,7 +132,7 @@ export default function RecallPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--odoo-border, #e5e7eb)', borderRadius: 6 }}>
+        <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--odoo-border, var(--ds-sep))', borderRadius: 6 }}>
           <table className="odoo-table" style={{ margin: 0 }}>
             <thead>
               <tr>
@@ -150,7 +150,7 @@ export default function RecallPage() {
                 <tr
                   key={l.id}
                   onClick={() => setSelectedLotId(l.id)}
-                  style={{ cursor: 'pointer', background: l.id === selectedLotId ? 'var(--odoo-purple-light, #f3e8ff)' : undefined }}
+                  style={{ cursor: 'pointer', background: l.id === selectedLotId ? 'var(--ds-tint)' : undefined }}
                 >
                   <td style={{ fontFamily: 'monospace' }}>{l.lot_number}</td>
                   <td>{l.ingredient_name || '—'}</td>
@@ -221,7 +221,7 @@ export default function RecallPage() {
                   <tbody>
                     {deliveries.map((d, i) => (
                       <tr key={`${d.deliveryNoteId}-${d.lotNumber}-${i}`}>
-                        <td><Phone size={11} style={{ verticalAlign: '-1px', marginRight: 4, color: 'var(--odoo-green, #16a34a)' }} />{d.customerName || 'Client'}</td>
+                        <td><Phone size={11} style={{ verticalAlign: '-1px', marginRight: 4, color: 'var(--odoo-green, var(--ds-success))' }} />{d.customerName || 'Client'}</td>
                         <td>{d.customerPhone || '—'}</td>
                         <td>{d.productName}</td>
                         <td style={{ fontFamily: 'monospace' }}>{d.lotNumber}</td>
@@ -257,7 +257,7 @@ export default function RecallPage() {
                     <tr key={`${s.saleItemId}-${i}`}>
                       <td>
                         {s.customerId ? (
-                          <><Phone size={11} style={{ verticalAlign: '-1px', marginRight: 4, color: 'var(--odoo-green, #16a34a)' }} />{s.customerName || 'Client'}</>
+                          <><Phone size={11} style={{ verticalAlign: '-1px', marginRight: 4, color: 'var(--odoo-green, var(--ds-success))' }} />{s.customerName || 'Client'}</>
                         ) : (
                           <span style={{ color: 'var(--odoo-text-muted)' }}>Anonyme (walk-in)</span>
                         )}
@@ -304,7 +304,7 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
 function RecallNodeView({ node, depth }: { node: RecallNode; depth: number }) {
   const lot = node.ingredientLot;
   return (
-    <div style={{ marginLeft: depth > 0 ? 16 : 0, borderLeft: depth > 0 ? '2px solid var(--odoo-purple, #7c3aed)' : undefined, paddingLeft: depth > 0 ? 12 : 0, marginTop: depth > 0 ? 10 : 0 }}>
+    <div style={{ marginLeft: depth > 0 ? 16 : 0, borderLeft: depth > 0 ? '2px solid var(--ds-accent)' : undefined, paddingLeft: depth > 0 ? 12 : 0, marginTop: depth > 0 ? 10 : 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
         {node.recycled && <span className="odoo-tag odoo-tag-purple"><Recycle size={11} style={{ verticalAlign: '-1px' }} /> Recyclé</span>}
         <Package size={14} style={{ color: 'var(--theme-accent)' }} />

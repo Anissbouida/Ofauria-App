@@ -5,6 +5,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
+import { DataPanel, SectionHeader, TableFooter } from '../../components/ds';
 /**
  * Référentiel équipement (M5-05) : chaque équipement physique se rattache à un poste de
  * travail et à une immobilisation. Les immobilisations au nom proche sont proposées ;
@@ -28,17 +29,17 @@ export default function EquipmentLinksPanel({ workCenters }: { workCenters: { id
   const centers = workCenters.filter(w => w.is_active).map(w => ({ id: w.id, label: w.name }));
 
   return (
-    <section className="prj-panel" style={{ marginTop: '1rem' }}>
-      <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Wrench size={14} /> Équipements</div>
-      <div className="prj-scroll">
-      <table className="odoo-table" style={{ margin: 0 }}>
+    <section style={{ display: 'grid', gap: 12 }}>
+      <SectionHeader title="Équipements" note="Rattachement aux postes de travail et aux immobilisations" />
+      <DataPanel label="Équipements" footer={<TableFooter note={`${data.length} équipement(s)`} />}>
+      <table className="odoo-table">
         <thead><tr><th>Équipement</th><th>Poste de travail</th><th>Immobilisation</th></tr></thead>
         <tbody>{data.map(e => (
           <tr key={e.id}>
-            <td>{e.nom}<div style={{ fontSize: 12, color: 'var(--theme-text-muted)' }}>{e.type}</div></td>
+            <td><span className="ds-strong">{e.nom}</span><div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{e.type}</div></td>
             <td>
               <SearchSelect options={centers} value={e.work_center_id ?? ''} onChange={v => link.mutate({ id: e.id, workCenterId: v || null })}
-                placeholder="— Aucun poste —" width={200} ariaLabel={`Poste de ${e.nom}`} />
+                placeholder="Aucun poste" width={200} ariaLabel={`Poste de ${e.nom}`} />
             </td>
             <td>
               {e.fixed_asset_id ? (
@@ -46,18 +47,18 @@ export default function EquipmentLinksPanel({ workCenters }: { workCenters: { id
               ) : e.asset_proposals.length ? (
                 <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
                   {e.asset_proposals.map(a => (
-                    <button key={a.id} type="button" className="odoo-btn-secondary" style={{ padding: '0.15rem 0.45rem' }}
+                    <button key={a.id} type="button" className="odoo-btn-secondary ds-btn-sm"
                       title={`Ressemblance des noms : ${Math.round(a.score * 100)} %`} onClick={() => link.mutate({ id: e.id, fixedAssetId: a.id })}>
                       Rattacher « {a.label} »
                     </button>
                   ))}
                 </span>
-              ) : <span style={{ color: 'var(--theme-text-muted)' }}>Aucune proposition</span>}
+              ) : <span style={{ color: 'var(--ds-muted)' }}>Aucune proposition</span>}
             </td>
           </tr>
         ))}</tbody>
       </table>
-      </div>
+      </DataPanel>
     </section>
   );
 }

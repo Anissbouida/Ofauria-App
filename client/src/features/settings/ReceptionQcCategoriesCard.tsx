@@ -5,6 +5,7 @@ import { PageNote } from './SettingsPrimitives';
 import { expenseCategoriesApi } from '../../api/accounting.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { LoadingState } from '../../components/ds';
 
 type Cat = {
   id: string; name: string; parent_name?: string | null;
@@ -56,9 +57,9 @@ export default function ReceptionQcCategoriesCard() {
       </PageNote>
 
       {isLoading ? (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement…</div>
+        <LoadingState bare />
       ) : rows.length === 0 ? (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune catégorie stockable configurée.</div>
+        <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucune catégorie stockable configurée.</div>
       ) : (
         <table className="odoo-table" style={{ margin: 0 }}>
           <thead><tr>
@@ -70,7 +71,7 @@ export default function ReceptionQcCategoriesCard() {
           <tbody>
             {rows.map(c => (
               <tr key={c.id}>
-                <td>{c.name}{c.parent_name ? <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}> · {c.parent_name}</span> : null}</td>
+                <td>{c.name}{c.parent_name ? <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}> · {c.parent_name}</span> : null}</td>
                 <td style={{ textAlign: 'center' }}><Toggle c={c} field="requires_qc" /></td>
                 <td style={{ textAlign: 'center' }}><Toggle c={c} field="requires_dlc" /></td>
                 <td style={{ textAlign: 'center' }}><Toggle c={c} field="requires_lot" /></td>

@@ -1,16 +1,19 @@
 import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, AlertTriangle, X, TrendingUp, TrendingDown, Package, Recycle, ArrowLeftRight, Loader2, Boxes } from 'lucide-react';
+import { Plus, Pencil, Trash2, AlertTriangle, X, TrendingUp, TrendingDown, Package, Recycle, ArrowLeftRight, Boxes } from 'lucide-react';
 import { packagingApi } from '../../api/packaging.api';
 import { expenseCategoriesApi } from '../../api/accounting.api';
 import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 import { notify } from '../../components/ui/InlineNotification';
 import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
-import { ChipsRow, PagerFoot } from '../stock/StockUi';
+import { ListToolbar, FilterChips } from '../sales/ListTemplate';
+import { ChipsRow, PagerFoot, HeaderActions } from '../stock/StockUi';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { currencySymbol } from '../../utils/money';
 import { apiErrorMessage } from '../../api/errors';
+import { DataPanel, EmptyState, FormField, LoadingState, NoResultState } from '../../components/ds';
 
 /** Situation d'un consommable (exclusive) : mêmes cartes que le stock des ingrédients. */
 const PKG_SITUATIONS: StageDef[] = [
@@ -18,7 +21,7 @@ const PKG_SITUATIONS: StageDef[] = [
   { key: 'low', label: 'Sous le seuil', hint: 'à réapprovisionner', icon: TrendingDown },
   { key: 'ok', label: 'OK', hint: 'rien à faire', icon: TrendingUp },
 ];
-const PKG_DOT: Record<string, string> = { rupture: 'var(--prj-red, #DC2626)', low: 'var(--prj-orange, #B45309)', ok: 'var(--prj-green, #15803D)' };
+const PKG_DOT: Record<string, string> = { rupture: 'var(--ds-danger)', low: 'var(--ds-warning)', ok: 'var(--ds-success)' };
 
 interface PackagingItem {
   id: string;
@@ -68,6 +71,7 @@ function useConsumableLeafOptions() {
 
 export default function PackagingPage({ embedded = false }: { embedded?: boolean } = {}) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -129,10 +133,32 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
     <div className={embedded ? 'stk-stack' : 'odoo-scope stk-stack'}>
       {!embedded && (
         <div className="odoo-breadcrumb">
-          <Package size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Consommables</span>
+          <Package size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+          <span>Stock</span>
+          <span className="odoo-breadcrumb-separator" aria-hidden="true">›</span>
+          <span>Opérations</span>
+          <span className="odoo-breadcrumb-separator" aria-hidden="true">›</span>
+          <span className="odoo-breadcrumb-current">Consommables</span>
         </div>
       )}
+
+      <HeaderActions>
+        <button type="button" onClick={() => setShowCreate(true)} className="odoo-btn-primary">
+          <Plus size={14} aria-hidden="true" /> Nouveau consommable
+        </button>
+      </HeaderActions>
+
+      {/* ══════ SITUATION : une pastille par situation, clic = filtre ══════ */}
+      <ChipsRow summary={`${totalItems} article${totalItems > 1 ? 's' : ''} · ${lowCount + ruptureCount} à réapprovisionner`}>
+        <FilterChips label="Où en sont mes consommables" value={stockFilter === 'all' ? '' : stockFilter}
+          onChange={k => setStockFilter((k || 'all') as 'all' | 'low' | 'ok' | 'rupture')}
+          chips={[
+            { key: '', label: 'Tous', count: totalItems },
+            { key: 'rupture', label: 'Rupture', count: ruptureCount, icon: AlertTriangle, tone: ruptureCount > 0 ? 'late' : undefined },
+            { key: 'low', label: 'Sous le seuil', count: lowCount, icon: TrendingDown },
+            { key: 'ok', label: 'OK', count: totalItems - lowCount - ruptureCount, icon: TrendingUp },
+          ]} />
+      </ChipsRow>
 
       {/* ══════ BARRE D'OUTILS : recherche, catégorie, nouveau ══════ */}
       <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher un consommable…">
@@ -147,32 +173,18 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
             <X size={13} /> Réinitialiser
           </button>
         )}
-        <span className="stk-grow" />
-        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary">
-          <Plus size={14} /> Nouveau
-        </button>
       </ListToolbar>
-
-      {/* ══════ SITUATION : une pastille par situation, clic = filtre ══════ */}
-      <ChipsRow summary={`${totalItems} article${totalItems > 1 ? 's' : ''} · ${lowCount + ruptureCount} à réapprovisionner`}>
-        <FilterChips label="Où en sont mes consommables" value={stockFilter === 'all' ? '' : stockFilter}
-          onChange={k => setStockFilter((k || 'all') as 'all' | 'low' | 'ok' | 'rupture')}
-          chips={[
-            { key: '', label: 'Tous', count: totalItems },
-            { key: 'rupture', label: 'Rupture', count: ruptureCount, icon: AlertTriangle, tone: ruptureCount > 0 ? 'late' : undefined },
-            { key: 'low', label: 'Sous le seuil', count: lowCount, icon: TrendingDown },
-            { key: 'ok', label: 'OK', count: totalItems - lowCount - ruptureCount, icon: TrendingUp },
-          ]} />
-      </ChipsRow>
 
       {/* ══════ TABLE ══════ */}
       {isLoading ? (
-        <ListEmpty icon={Loader2} title="Chargement…" />
+        <LoadingState label="Chargement des consommables…" />
       ) : filtered.length === 0 ? (
-        <ListEmpty icon={Boxes} title="Aucun consommable trouvé"
-          action={hasActiveFilters ? <button type="button" className="odoo-btn-secondary" onClick={resetFilters}>Effacer les filtres</button> : undefined} />
+        hasActiveFilters
+          ? <NoResultState text="Aucun consommable ne correspond aux filtres." onReset={resetFilters} />
+          : <EmptyState icon={Boxes} title="Aucun consommable" text="Emballages, produits d'entretien et fournitures apparaîtront ici avec leur stock."
+              action={<button type="button" className="odoo-btn-primary" onClick={() => setShowCreate(true)}><Plus size={13} aria-hidden="true" /> Nouveau consommable</button>} />
       ) : (
-      <ListPanel footer={<PagerFoot page={page} total={filtered.length} onPage={setPage}
+      <DataPanel footer={<PagerFoot page={page} total={filtered.length} onPage={setPage}
           note={`${filtered.length} consommable${filtered.length > 1 ? 's' : ''}${hasActiveFilters ? ' (filtré)' : ''} sur ${totalItems}`} />}>
         <table className="odoo-table">
           <thead>
@@ -180,11 +192,10 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
               <th>Article</th>
               <th className="hidden sm:table-cell">Catégorie</th>
               <th className="hidden md:table-cell">Format</th>
-              <th style={{ textAlign: 'right' }} className="hidden md:table-cell">Dernier prix</th>
-              <th style={{ textAlign: 'right' }}>Stock</th>
+              <th className="hidden md:table-cell ds-num">Dernier prix</th>
+              <th className="ds-num">Stock</th>
               <th className="hidden lg:table-cell">Fournisseur</th>
-              <th style={{ textAlign: 'right' }}>Prochaine action</th>
-              <th style={{ textAlign: 'right', width: 96 }}>Actions</th>
+              <th className="ds-actions">Prochaine action</th>
             </tr>
           </thead>
           <tbody>
@@ -193,9 +204,9 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
               return (
                 <tr key={it.id}>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
+                    <div className="ds-strong" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       {it.name}
-                      {it.is_recyclable && <Recycle size={12} style={{ color: '#28a745' }} />}
+                      {it.is_recyclable && <Recycle size={12} style={{ color: 'var(--ds-success)' }} aria-label="Recyclable" />}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
                       <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: PKG_DOT[situationOf(it)] }} />
@@ -209,13 +220,13 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                       : <span style={{ color: 'var(--theme-bg-separator)', fontSize: '0.75rem' }}>—</span>}
                   </td>
                   <td className="hidden md:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{it.format || '—'}</td>
-                  <td className="hidden md:table-cell" style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                  <td className="hidden md:table-cell ds-num">
                     {parseFloat(String(it.unit_cost)).toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}/{it.unit}</span>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button onClick={() => setStockDialog(it)}
-                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'ui-monospace, monospace', fontWeight: 700,
-                        color: isRupture ? 'var(--prj-red)' : isLow ? 'var(--prj-orange)' : 'var(--theme-text)' }}>
+                  <td className="ds-num">
+                    <button type="button" onClick={() => setStockDialog(it)} title="Enregistrer un mouvement de stock"
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', font: 'inherit', fontWeight: 700,
+                        color: isRupture ? 'var(--ds-danger)' : isLow ? 'var(--ds-warning)' : 'var(--theme-text)' }}>
                       {stock.toFixed(0)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>{it.unit}</span>
                     </button>
                     {parseFloat(String(it.stock_min_threshold || 0)) > 0 && (
@@ -223,34 +234,31 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                     )}
                   </td>
                   <td className="hidden lg:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{it.supplier || '—'}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {(isRupture || isLow) && (
-                      <button type="button" onClick={() => setStockDialog(it)} className={isRupture ? 'odoo-btn-danger' : 'odoo-btn-primary'}
+                  <td className="ds-actions">
+                    {(isRupture || isLow) ? (
+                      <button type="button" onClick={() => setStockDialog(it)} className={`${isRupture ? 'ds-btn-danger' : 'odoo-btn-primary'} ds-btn-sm`}
                         title="Enregistrer une entrée de stock">
                         Réapprovisionner
                       </button>
+                    ) : (
+                      <button type="button" onClick={() => setStockDialog(it)} className="odoo-btn-secondary ds-btn-sm">
+                        <ArrowLeftRight size={12} aria-hidden="true" /> Mouvement
+                      </button>
                     )}
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: 2 }}>
-                      <button onClick={() => setStockDialog(it)} title="Mouvement de stock" aria-label="Mouvement de stock" className="odoo-pager-btn">
-                        <ArrowLeftRight size={13} />
-                      </button>
-                      <button onClick={() => setEditingItem(it)} title="Modifier" aria-label="Modifier" className="odoo-pager-btn">
-                        <Pencil size={13} />
-                      </button>
-                      <button onClick={() => { if (confirm(`Supprimer "${it.name}" ?`)) deleteMutation.mutate(it.id); }} title="Supprimer" aria-label="Supprimer"
-                        className="odoo-pager-btn" style={{ color: 'var(--prj-red)' }}>
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
+                    <RowMenu items={[
+                      { label: 'Mouvement de stock', icon: ArrowLeftRight, onSelect: () => setStockDialog(it) },
+                      { label: 'Modifier', icon: Pencil, onSelect: () => setEditingItem(it) },
+                      { label: 'Supprimer', icon: Trash2, danger: true, onSelect: async () => {
+                        if (await confirm(`Supprimer le consommable « ${it.name} » ?`, { title: 'Supprimer le consommable', confirmLabel: 'Supprimer', danger: true })) deleteMutation.mutate(it.id);
+                      } },
+                    ]} />
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-      </ListPanel>
+      </DataPanel>
       )}
 
       {/* Modal create/edit */}
@@ -319,25 +327,21 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
       <div className="odoo-scope" style={{ width: '100%', maxWidth: 576, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }} role="dialog" aria-label={isEdit ? 'Modifier le consommable' : 'Nouveau consommable'}>
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
-            <Package size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Consommable</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">{isEdit ? item?.name : 'Nouveau'}</span>
+            <Package size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
+            <span className="odoo-breadcrumb-current">{isEdit ? `Modifier ${item?.name}` : 'Nouveau consommable'}</span>
           </div>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
         <form onSubmit={onSubmit} className="p-5 space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nom</label>
+          <FormField label="Nom" required>
             <input type="text" required value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="Caissette alvéolée brownie"
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
+              className="ds-input" />
+          </FormField>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Catégorie</label>
+          <FormField label="Catégorie" required>
             <CategoryCascadeSelector
               value={form.category_id}
               onChange={(cid) => setForm({ ...form, category_id: cid })}
@@ -345,41 +349,37 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
               type="expense"
               required
             />
-          </div>
+          </FormField>
 
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Format</label>
+            <FormField label="Format">
               <input type="text" value={form.format}
                 onChange={(e) => setForm({ ...form, format: e.target.value })}
                 placeholder="24cm rond..."
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Unite</label>
+                className="ds-input" />
+            </FormField>
+            <FormField label="Unité">
               <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500">
-                <option value="piece">piece (unite)</option>
-                <option value="m">m (metre)</option>
+                className="ds-input">
+                <option value="piece">pièce (unité)</option>
+                <option value="m">m (mètre)</option>
                 <option value="kg">kg</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Cout unitaire ({currencySymbol()})</label>
+            </FormField>
+            <FormField label={<>Coût unitaire ({currencySymbol()})</>} required>
               <input type="number" step="0.01" min="0" required value={form.unit_cost}
                 onChange={(e) => setForm({ ...form, unit_cost: e.target.value })}
                 placeholder="0.30"
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-            </div>
+                className="ds-input" />
+            </FormField>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Fournisseur</label>
+          <FormField label="Fournisseur">
             <input type="text" value={form.supplier}
               onChange={(e) => setForm({ ...form, supplier: e.target.value })}
               placeholder="Nom du fournisseur"
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
+              className="ds-input" />
+          </FormField>
 
           <div className="grid grid-cols-3 gap-2 pt-2">
             <label className="flex items-center gap-2 text-sm cursor-pointer p-2 rounded-lg hover:bg-gray-50">
@@ -399,21 +399,16 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
             </label>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Notes</label>
+          <FormField label="Notes">
             <textarea value={form.notes} rows={2}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
+              className="ds-input" />
+          </FormField>
 
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose}
-              className="flex-1 py-2.5 px-4 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">
-              Annuler
-            </button>
-            <button type="submit" disabled={saveMutation.isPending}
-              className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
-              {saveMutation.isPending ? 'Enregistrement...' : isEdit ? 'Mettre a jour' : 'Creer'}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={saveMutation.isPending}>Annuler</button>
+            <button type="submit" disabled={saveMutation.isPending} aria-busy={saveMutation.isPending || undefined} className="odoo-btn-primary">
+              {saveMutation.isPending ? 'Enregistrement…' : isEdit ? 'Enregistrer' : 'Créer le consommable'}
             </button>
           </div>
         </form>
@@ -436,7 +431,7 @@ function StockAdjustModal({ item, onClose, onSaved }: { item: PackagingItem; onC
       unitCost: type === 'reception' ? parseFloat(unitCost) || undefined : undefined,
     }),
     onSuccess: () => {
-      notify.success('Mouvement enregistre');
+      notify.success('Mouvement enregistré');
       onSaved();
     },
     // Stock insuffisant (diminution > disponible) : message du serveur affiché tel quel.
@@ -449,12 +444,10 @@ function StockAdjustModal({ item, onClose, onSaved }: { item: PackagingItem; onC
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
             <ArrowLeftRight size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Mouvement de stock</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">{item.name}</span>
+            <span className="odoo-breadcrumb-current">Mouvement de stock · {item.name}</span>
           </div>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
         <div className="p-5 space-y-4">
           <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', justifyContent: 'space-between' }}>
@@ -462,56 +455,50 @@ function StockAdjustModal({ item, onClose, onSaved }: { item: PackagingItem; onC
             <strong>{parseFloat(String(item.stock_quantity || 0)).toFixed(0)} {item.unit}</strong>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Type de mouvement</label>
+          <FormField label="Type de mouvement">
             <div className="grid grid-cols-3 gap-2">
               {([
-                { v: 'reception', label: '+ Reception', color: 'bg-green-100 text-green-700 border-green-300' },
-                { v: 'adjustment', label: '± Ajustement', color: 'bg-blue-100 text-blue-700 border-blue-300' },
-                { v: 'waste', label: '- Perte', color: 'bg-red-100 text-red-700 border-red-300' },
+                { v: 'reception', label: '+ Réception', color: 'var(--ds-success)' },
+                { v: 'adjustment', label: '± Ajustement', color: 'var(--ds-accent-ink)' },
+                { v: 'waste', label: '− Perte', color: 'var(--ds-danger)' },
               ] as const).map(opt => (
-                <button key={opt.v} type="button" onClick={() => setType(opt.v)}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${type === opt.v ? opt.color + ' ring-2 ring-offset-1' : 'bg-white border-gray-200 text-gray-500'}`}>
+                <button key={opt.v} type="button" onClick={() => setType(opt.v)} aria-pressed={type === opt.v}
+                  style={{ height: 40, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: 'var(--ds-card)',
+                    border: type === opt.v ? `2px solid ${opt.color}` : '1px solid var(--ds-line)', color: type === opt.v ? opt.color : 'var(--ds-body)' }}>
                   {opt.label}
                 </button>
               ))}
             </div>
-          </div>
+          </FormField>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Quantite</label>
+          <FormField label="Quantité" required>
             <input type="number" step="0.01" min="0" value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               placeholder="0"
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
+              className="ds-input" />
+          </FormField>
 
           {type === 'reception' && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Prix unitaire (mise a jour catalogue)</label>
+            <FormField label="Prix unitaire (met à jour le catalogue)">
               <input type="number" step="0.01" min="0" value={unitCost}
                 onChange={(e) => setUnitCost(e.target.value)}
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-            </div>
+                className="ds-input" />
+            </FormField>
           )}
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Note</label>
+          <FormField label="Note">
             <input type="text" value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Ex: BC-2026-XXX, ajustement inventaire..."
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
+              className="ds-input" />
+          </FormField>
 
-          <div className="flex gap-2 pt-2">
-            <button onClick={onClose}
-              className="flex-1 py-2.5 px-4 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">
-              Annuler
-            </button>
-            <button onClick={() => adjustMutation.mutate()}
-              disabled={adjustMutation.isPending || !quantity}
-              className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
-              Valider
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={adjustMutation.isPending}>Annuler</button>
+            <button type="button" onClick={() => adjustMutation.mutate()}
+              disabled={adjustMutation.isPending || !quantity} aria-busy={adjustMutation.isPending || undefined}
+              className={type === 'waste' ? 'ds-btn-danger' : 'odoo-btn-primary'}>
+              {type === 'waste' ? 'Déclarer la perte' : 'Enregistrer le mouvement'}
             </button>
           </div>
         </div>

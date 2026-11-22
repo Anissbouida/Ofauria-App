@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Hash, Loader2 } from 'lucide-react';
 import api from '../../api/client';
 
+import { LoadingState } from '../../components/ds';
 /**
  * Numéros de série de l'ordre (M9, mig 585) : un par pièce des articles suivis par série,
  * créés à la déclaration (saisis, sinon « numéro de lot-0001… »). Lecture seule.
@@ -19,7 +20,7 @@ export default function SerialsPanel({ planId }: { planId: string }) {
       <div className="odoo-section-header"><Hash size={12} /> Numéros de série
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{data.length}</span>
       </div>
-      {isLoading ? <Loader2 className="animate-spin" size={16} style={{ margin: '1rem' }} /> : data.length === 0 ? (
+      {isLoading ? <LoadingState bare /> : data.length === 0 ? (
         <p className="text-xs text-gray-500" style={{ padding: '0.75rem 1rem' }}>
           Les numéros sont créés à la déclaration de production, un par pièce.
         </p>

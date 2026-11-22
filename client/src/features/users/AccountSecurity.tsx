@@ -63,7 +63,7 @@ export function MfaTag({ u }: { u: UserRow }) {
     return <StatusTag tone="todo" label="À configurer" icon={ShieldAlert}
       title={u.mfaRequiredByRole ? 'Exigée par le rôle : configurée à la prochaine connexion' : 'Exigée pour ce compte : configurée à la prochaine connexion'} />;
   }
-  return <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.8125rem' }}>Non exigée</span>;
+  return <span style={{ color: 'var(--ds-muted)', fontSize: 13 }}>Non exigée</span>;
 }
 
 export type AccountAction =
@@ -163,17 +163,16 @@ export function securityMenuItems(u: UserRow, run: (a: AccountAction, u: UserRow
 
 function Row({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid var(--odoo-border)', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid var(--ds-sep)', flexWrap: 'wrap' }}>
       <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-        <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>{title}</div>
-        <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>{children}</div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
+        <div style={{ fontSize: 13, color: 'var(--ds-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>{children}</div>
       </div>
       {actions && <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{actions}</div>}
     </div>
   );
 }
 
-const btn = { padding: '3px 10px', fontSize: '0.8125rem', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' } as const;
 
 /**
  * Section « Sécurité du compte » de la fiche : lit l'état à jour dans la liste (cache
@@ -189,16 +188,16 @@ export function SecuritySection({ userId, selfId, onDeleted }: { userId: string;
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem', fontWeight: 600, margin: '6px 0 2px' }}>
-        <Lock size={14} /> Sécurité du compte
-      </div>
+      <h3 className="ds-subhead" style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0 2px' }}>
+        <Lock size={14} aria-hidden="true" /> Sécurité du compte
+      </h3>
       <Row title="Double authentification"
         actions={<>
           {u.mfaRequiredForUser
-            ? <button type="button" className="odoo-btn-secondary" style={btn} disabled={busy} onClick={() => void run('mfaUnrequire', u)}><ShieldOff size={13} /> Ne plus exiger</button>
-            : !u.mfaRequiredByRole && <button type="button" className="odoo-btn-secondary" style={btn} disabled={busy} onClick={() => void run('mfaRequire', u)}><ShieldCheck size={13} /> Exiger</button>}
+            ? <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={() => void run('mfaUnrequire', u)}><ShieldOff size={13} /> Ne plus exiger</button>
+            : !u.mfaRequiredByRole && <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={() => void run('mfaRequire', u)}><ShieldCheck size={13} /> Exiger</button>}
           {u.mfaEnabled && !self && (
-            <button type="button" className="odoo-btn-danger" style={btn} disabled={busy} onClick={() => void run('mfaReset', u)}><Smartphone size={13} /> Réinitialiser</button>
+            <button type="button" className="ds-btn-danger ds-btn-sm" disabled={busy} onClick={() => void run('mfaReset', u)}><Smartphone size={13} /> Réinitialiser</button>
           )}
         </>}>
         <MfaTag u={u} />
@@ -211,7 +210,7 @@ export function SecuritySection({ userId, selfId, onDeleted }: { userId: string;
       </Row>
       <Row title="Connexion"
         actions={u.lockedUntil && (
-          <button type="button" className="odoo-btn-secondary" style={btn} disabled={busy} onClick={() => void run('unlock', u)}><Unlock size={13} /> Déverrouiller</button>
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={() => void run('unlock', u)}><Unlock size={13} /> Déverrouiller</button>
         )}>
         {u.lockedUntil
           ? <><StatusTag tone="blocked" label="Verrouillé" /> jusqu'à {formatDateTime(u.lockedUntil)} après {u.failedLoginCount} échecs</>
@@ -219,29 +218,29 @@ export function SecuritySection({ userId, selfId, onDeleted }: { userId: string;
       </Row>
       <Row title="Mot de passe"
         actions={u.mustChangePassword
-          ? <button type="button" className="odoo-btn-secondary" style={btn} disabled={busy} onClick={() => void run('mustChangeOff', u)}>Lever</button>
-          : <button type="button" className="odoo-btn-secondary" style={btn} disabled={busy} onClick={() => void run('mustChange', u)}><KeyRound size={13} /> Imposer un nouveau</button>}>
+          ? <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={() => void run('mustChangeOff', u)}>Lever</button>
+          : <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={() => void run('mustChange', u)}><KeyRound size={13} /> Imposer un nouveau</button>}>
         {u.mustChangePassword ? <StatusTag tone="todo" label="À changer à la prochaine connexion" /> : 'À jour. Pour le remplacer vous-même, saisissez un nouveau mot de passe plus haut.'}
       </Row>
       {!self && (
         <Row title="Sessions ouvertes"
-          actions={<button type="button" className="odoo-btn-secondary" style={btn} disabled={busy || !u.isActive} onClick={() => void run('revoke', u)}><LogOut size={13} /> Tout fermer</button>}>
+          actions={<button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy || !u.isActive} onClick={() => void run('revoke', u)}><LogOut size={13} /> Tout fermer</button>}>
           Déconnecte le compte de tous ses appareils.
         </Row>
       )}
       {!self && (
-        <div style={{ marginTop: 10, padding: 12, border: '1px solid var(--odoo-border)', borderRadius: 10, display: 'grid', gap: 8 }}>
-          <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>Désactivation et suppression</div>
+        <div style={{ marginTop: 10, padding: 12, border: '1px solid var(--ds-sep)', borderRadius: 10, display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Désactivation et suppression</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {u.isActive
-              ? <button type="button" className="odoo-btn-danger" style={btn} disabled={busy} onClick={() => void run('deactivate', u)}><UserX size={13} /> Désactiver le compte</button>
-              : <button type="button" className="odoo-btn-secondary" style={btn} disabled={busy} onClick={() => void run('activate', u)}><UserCheck size={13} /> Réactiver le compte</button>}
-            <button type="button" className="odoo-btn-danger" style={btn} disabled={busy}
+              ? <button type="button" className="ds-btn-danger ds-btn-sm" disabled={busy} onClick={() => void run('deactivate', u)}><UserX size={13} /> Désactiver le compte</button>
+              : <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={() => void run('activate', u)}><UserCheck size={13} /> Réactiver le compte</button>}
+            <button type="button" className="ds-btn-danger ds-btn-sm" disabled={busy}
               onClick={async () => { if (await run('delete', u)) onDeleted(); }}>
               <Trash2 size={13} /> Supprimer définitivement
             </button>
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+          <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
             La suppression n'est possible que pour un compte qui n'a jamais servi (créé par erreur). Un compte utilisé se désactive : son historique reste traçable.
           </div>
         </div>
@@ -292,7 +291,7 @@ export function MfaPolicyModal({ onClose }: { onClose: () => void }) {
             const on = current.includes(code);
             return (
               <button key={code} type="button" className="odoo-filter-chip" aria-pressed={on} onClick={() => toggle(code)}
-                style={{ background: on ? 'var(--odoo-purple)' : 'var(--odoo-bg)', color: on ? '#fff' : 'var(--odoo-text)', borderColor: on ? 'var(--odoo-purple)' : 'var(--odoo-border)', padding: '0.25rem 0.625rem', fontSize: '0.75rem' }}>
+                style={{ background: on ? 'var(--ds-tint)' : 'var(--ds-card)', color: 'var(--ds-ink)', fontWeight: on ? 600 : undefined, borderColor: on ? 'var(--ds-accent)' : 'var(--ds-line)', padding: '0.25rem 0.625rem', fontSize: 12 }}>
                 {on && <Check size={11} />} {label}{!!count && <span style={{ opacity: 0.75 }}> · {count}</span>}
               </button>
             );

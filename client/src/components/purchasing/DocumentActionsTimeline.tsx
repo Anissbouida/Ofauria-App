@@ -35,25 +35,25 @@ export default function DocumentActionsTimeline({ queryKey, fetcher }: {
   fetcher: () => Promise<DocumentActionRow[]>;
 }) {
   const { data: rows = [], isLoading } = useQuery({ queryKey, queryFn: fetcher });
-  if (isLoading) return <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Chargement de l'historique…</div>;
+  if (isLoading) return <div role="status" style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Chargement de l'historique…</div>;
   if (rows.length === 0) return null;
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', marginBottom: 4 }}>
-        <History size={12} /> Historique
-      </div>
-      <table className="odoo-table">
+      <h3 className="ds-subhead" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        <History size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /> Historique
+      </h3>
+      <table className="odoo-table ds-dense">
         <tbody>
           {rows.map(r => (
             <tr key={r.id}>
-              <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)', width: 130 }}>{format(new Date(r.acted_at), 'd MMM yyyy HH:mm', { locale: fr })}</td>
+              <td style={{ whiteSpace: 'nowrap', color: 'var(--ds-muted)', width: 150 }}>{format(new Date(r.acted_at), 'd MMM yyyy HH:mm', { locale: fr })}</td>
               <td style={{ width: 150 }}><span className={`odoo-tag ${ACTION_TAG[r.action] ?? 'odoo-tag-grey'}`}>{ACTION_LABELS[r.action] ?? r.action}</span></td>
               <td>
-                {r.actor_name ?? <span style={{ color: 'var(--theme-text-muted)' }}>{r.channel === 'script' ? 'reprise' : 'système'}</span>}
-                {r.on_behalf_of_name && <span style={{ color: 'var(--theme-text-muted)' }}> pour {r.on_behalf_of_name}</span>}
+                {r.actor_name ?? <span style={{ color: 'var(--ds-muted)' }}>{r.channel === 'script' ? 'reprise' : 'système'}</span>}
+                {r.on_behalf_of_name && <span style={{ color: 'var(--ds-muted)' }}> pour {r.on_behalf_of_name}</span>}
               </td>
-              <td style={{ color: 'var(--theme-text-muted)' }}>
-                {r.reason_label && <b style={{ color: 'var(--theme-text)' }}>{r.reason_label}</b>}
+              <td style={{ color: 'var(--ds-muted)' }}>
+                {r.reason_label && <span className="ds-strong">{r.reason_label}</span>}
                 {r.reason_label && r.note ? ' · ' : ''}{r.note}
               </td>
             </tr>

@@ -1,8 +1,8 @@
 import { money, currencySymbol } from '../../utils/money';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus, Search, ChevronRight, ChevronLeft, X, Clock,
+  Plus, ChevronLeft, X, Clock,
   CheckCircle2, XCircle, AlertTriangle, ArrowRight,
   FileText, ChefHat, Calculator, Factory, Star, Shield, Package,
   RotateCw, History, Ban, GitBranch
@@ -16,6 +16,8 @@ import { fr } from 'date-fns/locale';
 import { StagePipeline, StageProgress, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
+import { KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
 
 /* ═══ Constants ═══ */
 const STAGES = [
@@ -128,42 +130,24 @@ export default function ProductPipelinePage() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      {/* ══════ Barre d'action ══════ */}
-      <div className="odoo-control-bar">
-        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary">
-          <Plus size={14} /> Nouveau pipeline
-        </button>
-        <div style={{ flex: 1 }} />
-        <span className="odoo-pager">
-          <strong>{visiblePipelines.length}</strong> pipeline{visiblePipelines.length > 1 ? 's' : ''}
-        </span>
-      </div>
-
       <StatusBanner tone="info" icon={GitBranch} title="Intégration de nouveaux produits en 7 étapes">
         De la proposition au catalogue : chaque produit franchit les étapes recette, coût, test de production,
         dégustation puis validation avant sa mise en vente.
       </StatusBanner>
 
-      {/* ══════ STAT TILES (statut) ══════ */}
-      <div className="odoo-stat-grid">
+      {/* ══════ Indicateurs (filtres par statut) ══════ */}
+      <KpiGrid>
         {([
-          { label: 'En cours', value: stats.active_count || 0, filter: 'active', icon: Clock },
-          { label: 'Terminés', value: stats.completed_count || 0, filter: 'completed', icon: CheckCircle2 },
-          { label: 'Rejetés', value: stats.rejected_count || 0, filter: 'rejected', icon: XCircle },
-          { label: 'Total', value: stats.total_count || 0, filter: '', icon: Package },
-        ] as const).map(card => {
-          const Icon = card.icon;
-          return (
-            <button key={card.label}
-              onClick={() => { setStatusFilter(card.filter); setStageFilter(null); }}
-              className={`odoo-stat-card ${statusFilter === card.filter ? 'active' : ''}`}>
-              <div className="odoo-stat-card-label"><Icon size={11} style={{ display: 'inline', marginRight: 4 }} />{card.label}</div>
-              <div className="odoo-stat-card-value">{String(card.value)}</div>
-              <div className="odoo-stat-card-sub">{card.filter === '' ? 'au total' : 'pipeline' + (Number(card.value) > 1 ? 's' : '')}</div>
-            </button>
-          );
-        })}
-      </div>
+          { label: 'En cours', value: stats.active_count || 0, filter: 'active' },
+          { label: 'Terminés', value: stats.completed_count || 0, filter: 'completed' },
+          { label: 'Rejetés', value: stats.rejected_count || 0, filter: 'rejected' },
+          { label: 'Total', value: stats.total_count || 0, filter: '' },
+        ] as const).map(card => (
+          <KpiCard key={card.label} label={card.label} value={String(card.value)}
+            sub={card.filter === '' ? 'au total' : 'pipeline' + (Number(card.value) > 1 ? 's' : '')}
+            active={statusFilter === card.filter} onClick={() => { setStatusFilter(card.filter); setStageFilter(null); }} />
+        ))}
+      </KpiGrid>
 
       {/* ══════ Répartition par étape (pipelines actifs) ══════ */}
       <StagePipeline
@@ -175,36 +159,27 @@ export default function ProductPipelinePage() {
         onPick={(k) => { setStatusFilter('active'); setStageFilter(stageFilter === k ? null : k); }}
       />
 
-      {/* ══════ Recherche ══════ */}
-      <div className="odoo-search-panel">
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher un pipeline..."
-          value={search} onChange={e => setSearch(e.target.value)} className="odoo-search-input" />
-        {search && (
-          <span className="odoo-filter-chip">
-            Recherche: {search}
-            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
-          </span>
-        )}
+      {/* ══════ Barre d'outils ══════ */}
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} label="Rechercher un pipeline" placeholder="Rechercher un pipeline…" />
         {stageFilter && (
-          <span className="odoo-filter-chip">
-            {STAGES.find(st => st.key === stageFilter)?.label}
-            <span className="odoo-filter-chip-remove" onClick={() => setStageFilter(null)}>×</span>
-          </span>
+          <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => setStageFilter(null)}>
+            <X size={12} /> Étape : {STAGES.find(st => st.key === stageFilter)?.label}
+          </button>
         )}
-      </div>
+        <span style={{ flex: 1 }} />
+        <button type="button" onClick={() => setShowCreate(true)} className="odoo-btn-primary"><Plus size={14} /> Nouveau pipeline</button>
+      </Toolbar>
 
-      {/* ══════ Liste (table) ══════ */}
+      {/* ══════ Tableau ══════ */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4rem' }}>
-          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        </div>
+        <LoadingState label="Chargement des pipelines…" />
       ) : visiblePipelines.length === 0 ? (
-        <StatusBanner tone="info" icon={Package} title="Aucun pipeline trouvé">
-          Lancez l'intégration d'un nouveau produit avec « Nouveau pipeline ».
-        </StatusBanner>
+        search || stageFilter || statusFilter
+          ? <NoResultState onReset={() => { setSearch(''); setStageFilter(null); setStatusFilter(''); }} text="Aucun pipeline ne correspond aux filtres." />
+          : <EmptyState icon={Package} title="Aucun pipeline" text="Lancez l'intégration d'un nouveau produit avec « Nouveau pipeline »." />
       ) : (
-        <div className="odoo-section">
+        <DataPanel label="Pipelines produit" footer={<TableFooter note={`${visiblePipelines.length} pipeline${visiblePipelines.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -213,21 +188,18 @@ export default function ProductPipelinePage() {
                 <th>Avancement</th>
                 <th>Statut</th>
                 <th>Responsable</th>
-                <th style={{ textAlign: 'right' }}>Créé le</th>
+                <th>Créé le</th>
               </tr>
             </thead>
             <tbody>
               {visiblePipelines.map(p => {
                 const stageIdx = STAGES.findIndex(st => st.key === p.current_stage);
                 const sc = STATUS_CONFIG[String(p.status)] || STATUS_CONFIG.active;
-                const tagColor = sc.color === 'blue' ? 'odoo-tag-blue'
-                  : sc.color === 'green' ? 'odoo-tag-green'
-                  : sc.color === 'red' ? 'odoo-tag-red' : 'odoo-tag-grey';
-                const StatusIcon = sc.icon;
+                const tone: StatusTone = sc.color === 'blue' ? 'progress' : sc.color === 'green' ? 'done' : sc.color === 'red' ? 'blocked' : 'draft';
                 return (
                   <tr key={String(p.id)} onClick={() => openDetail(String(p.id))} style={{ cursor: 'pointer' }}>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{String(p.name)}</div>
+                      <div className="ds-strong">{String(p.name)}</div>
                       {Boolean(p.description) && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {String(p.description)}
@@ -245,17 +217,13 @@ export default function ProductPipelinePage() {
                         Étape {stageIdx + 1}/7 — {STAGES[stageIdx]?.label || ''}
                       </span>
                     </td>
-                    <td>
-                      <span className={`odoo-tag ${tagColor}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <StatusIcon size={11} />{sc.label}
-                      </span>
-                    </td>
+                    <td><StatusTag tone={tone} icon={sc.icon} label={sc.label} /></td>
                     <td>
                       {Boolean(p.responsible_first_name)
                         ? `${String(p.responsible_first_name)} ${String(p.responsible_last_name || '')}`.trim()
                         : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}
                     </td>
-                    <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>
+                    <td style={{ color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
                       {Boolean(p.created_at) ? format(new Date(String(p.created_at)), 'dd MMM yyyy', { locale: fr }) : '—'}
                     </td>
                   </tr>
@@ -263,7 +231,7 @@ export default function ProductPipelinePage() {
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {/* Create Modal */}
@@ -344,7 +312,7 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Barre d'action */}
       <div className="odoo-control-bar">
-        <button onClick={onBack} className="odoo-pager-btn" title="Retour à la liste"><ChevronLeft size={16} /></button>
+        <button onClick={onBack} className="odoo-pager-btn" title="Retour à la liste" aria-label="Retour à la liste"><ChevronLeft size={16} /></button>
         <div className="odoo-breadcrumb">
           <GitBranch size={14} style={{ color: 'var(--theme-accent)' }} />
           <span>Pipeline</span>
@@ -354,7 +322,7 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowHistory(!showHistory)} className="odoo-btn-secondary"><History size={14} /> Historique</button>
         {isActive && (
-          <button onClick={() => { const reason = prompt('Raison de l\'annulation:'); if (reason !== null) cancelMutation.mutate(reason); }} className="odoo-btn-danger"><Ban size={14} /> Annuler</button>
+          <button onClick={() => { const reason = prompt('Raison de l\'annulation:'); if (reason !== null) cancelMutation.mutate(reason); }} className="ds-btn-danger"><Ban size={14} /> Annuler</button>
         )}
       </div>
 
@@ -1043,7 +1011,7 @@ function AdminDecisionPanel({ pipelineId, onDecided }: { pipelineId: string; onD
         <button
           onClick={() => decisionMutation.mutate({ decision: 'rejected', comments })}
           disabled={decisionMutation.isPending}
-          className="odoo-btn-danger" style={{ justifyContent: 'center' }}
+          className="ds-btn-danger" style={{ justifyContent: 'center' }}
         >
           <XCircle size={14} />
           Rejeter

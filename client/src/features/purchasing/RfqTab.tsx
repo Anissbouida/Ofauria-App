@@ -1,13 +1,13 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  FileQuestion, Send, Plus, Search, Loader2, CheckCircle2, XCircle, Trophy, Trash2, X, Inbox, FilePenLine, Clock, Ban, RotateCcw, Award, Filter,
+  FileQuestion, Send, Plus, XCircle, Trophy, Trash2, X, Inbox, FilePenLine, Clock, Ban, RotateCcw, Award, Filter, ClipboardList,
 } from 'lucide-react';
 import '../projects/projects.css';
 import './purchasing.css';
-import { ListKpi } from '../sales/ListTemplate';
 import { PurHeaderActions } from './PurHeaderActions';
 import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { rfqApi, RFQ_STATUS_LABELS, type Rfq, type RfqStatus, type RfqItem, type RfqItemInput, type Quotation, type RfqSupplier } from '../../api/rfq.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
@@ -20,7 +20,12 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { StagePipeline, ViewSwitch, SelectFilter, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { StagePipeline, SelectFilter, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import {
+  Alert, DataPanel, EmptyState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, LoadingState, NoResultState,
+  SearchBar, SectionHeader, Segmented, TableFooter, Toolbar,
+} from '../../components/ds';
 import { money, currencySymbol } from '../../utils/money';
 
 /**
@@ -40,7 +45,10 @@ const STAGES: Array<StageDef & { key: RfqStatus }> = [
   { key: 'quoted', label: 'Devis reçus', hint: 'à comparer', icon: Inbox },
   { key: 'awarded', label: 'Attribués', hint: 'BC créé', icon: Trophy },
 ];
-const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4, display: 'block' };
+/** Date d'affichage du Design System : « 21 nov. 2026 ». */
+const day = (d: string | null | undefined) => (d ? format(new Date(d), 'd MMM yyyy', { locale: fr }) : '—');
+const muted: CSSProperties = { color: 'var(--ds-muted)' };
+const sub: CSSProperties = { fontSize: 12, fontWeight: 400, color: 'var(--ds-muted)' };
 
 // Vue « En cours » (à traiter) vs « Historique » (clôturés), comme les onglets BC et Factures.
 const OPEN_STATUSES: RfqStatus[] = ['draft', 'sent', 'quoted'];
@@ -71,63 +79,70 @@ export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId
     setView(targetView); setStatus(st);
   };
   const statusOptions = (view === 'open' ? OPEN_STATUSES : HISTORY_STATUSES).map(k => ({ key: k, label: RFQ_STATUS_LABELS[k] }));
+  const overdue = (by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0);
+  const filtered = !!status || !!searchInput.trim();
   return (
     <>
-      <section className="prj-kpis" aria-label="Indicateurs">
-        <ListKpi label="En attente de devis" value={String(by.sent?.count ?? 0)} sub="envoyées aux fournisseurs" />
-        <ListKpi label="Devis à comparer" value={String(by.quoted?.count ?? 0)} sub="au moins un devis reçu" tone={(by.quoted?.count ?? 0) > 0 ? 'orange' : undefined} />
-        <ListKpi label="Date limite dépassée" value={String((by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0))} sub="à relancer ou clôturer"
-          tone={(by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0) > 0 ? 'red' : undefined} />
-        <ListKpi label="Clôturées" value={String(historyCount)} sub="attribuées, annulées ou sans suite" />
-      </section>
-      <div className="prj-toolbar">
-        <label className="prj-search">
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="search" aria-label="Rechercher une demande de prix" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, objet, fournisseur…" />
-        </label>
-        <SelectFilter label="Statut" icon={Filter} value={status} onChange={v => setStatus(v as RfqStatus | '')} options={statusOptions} allLabel="Tous statuts" />
-        <ViewSwitch view={view} onChange={switchView}
-          openLabel={`En cours · ${openCount}`} historyLabel={`Historique · ${historyCount}`} ariaLabel="Vue des demandes de prix" />
-      </div>
+      <KpiGrid>
+        <KpiCard label="En attente de devis" value={by.sent?.count ?? 0} sub="envoyées aux fournisseurs" />
+        <KpiCard label="Devis à comparer" value={by.quoted?.count ?? 0} sub="au moins un devis reçu" tone={(by.quoted?.count ?? 0) > 0 ? 'orange' : undefined} />
+        <KpiCard label="Date limite dépassée" value={overdue} sub="à relancer ou clôturer" tone={overdue > 0 ? 'red' : undefined} />
+        <KpiCard label="Clôturées" value={historyCount} sub="attribuées, annulées ou sans suite" />
+      </KpiGrid>
       <PurHeaderActions>
-        <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouvelle demande de prix</button>
+        <button type="button" className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} aria-hidden="true" /> Nouvelle demande de prix</button>
       </PurHeaderActions>
-      <StagePipeline title="Où en sont les demandes de prix" summary={`${(by.sent?.count ?? 0) + (by.quoted?.count ?? 0)} en cours · ${(by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0)} au-delà de la date limite`}
+      <StagePipeline title="Où en sont les demandes de prix" summary={`${(by.sent?.count ?? 0) + (by.quoted?.count ?? 0)} en cours · ${overdue} au-delà de la date limite`}
         stages={STAGES} stats={Object.fromEntries(STAGES.map(s => [s.key, { count: by[s.key]?.count ?? 0, sub: '', late: by[s.key]?.overdue ?? 0, alertLabel: 'en retard' }]))}
         isActive={k => status === k} onPick={pickStage} />
-      {isLoading ? <Loading /> : !data?.rows.length ? (
-        <StatusBanner tone="info" icon={FileQuestion} title={view === 'history' ? 'Aucune demande de prix clôturée' : 'Aucune demande de prix en cours'}>
-          {view === 'history'
-            ? 'Les demandes de prix attribuées, annulées ou sans suite apparaîtront ici.'
-            : 'Demandez des prix à plusieurs fournisseurs sur une même liste d\'articles, puis comparez les devis par notation.'}
-        </StatusBanner>
+      <Toolbar>
+        <SearchBar value={searchInput} onChange={setSearchInput} label="Rechercher une demande de prix" placeholder="N°, objet, fournisseur…" />
+        <SelectFilter label="Statut" icon={Filter} value={status} onChange={v => setStatus(v as RfqStatus | '')} options={statusOptions} allLabel="Tous statuts" />
+        <Segmented label="Vue des demandes de prix" value={view} onChange={switchView}
+          options={[{ key: 'open', label: 'En cours', count: openCount }, { key: 'history', label: 'Historique', count: historyCount }]} />
+      </Toolbar>
+      {isLoading ? <LoadingState /> : !data?.rows.length ? (
+        filtered ? <NoResultState text="Aucune demande de prix ne correspond aux filtres." onReset={() => { setSearchInput(''); setStatus(''); }} />
+          : (
+            <EmptyState icon={FileQuestion} title={view === 'history' ? 'Aucune demande de prix clôturée' : 'Aucune demande de prix en cours'}
+              text={view === 'history'
+                ? 'Les demandes de prix attribuées, annulées ou sans suite apparaîtront ici.'
+                : 'Demandez des prix à plusieurs fournisseurs sur une même liste d\'articles, puis comparez les devis par notation.'}
+              action={view === 'open' ? <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setCreating(true)}><Plus size={13} aria-hidden="true" /> Nouvelle demande de prix</button> : undefined} />
+          )
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <DataPanel label="Demandes de prix"
+          footer={<TableFooter page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage}
+            note={`${data.total} demande${data.total > 1 ? 's' : ''} de prix · ${view === 'history' ? 'historique' : 'en cours'}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Objet</th><th>Articles</th><th>Fournisseurs</th><th>Devis</th><th>Date limite</th><th>Statut</th><th>Retenu</th></tr></thead>
+            <thead><tr><th>N°</th><th>Objet</th><th>Fournisseurs</th><th>Devis</th><th>Date limite</th><th>Statut</th><th className="ds-actions">Action</th></tr></thead>
             <tbody>{data.rows.map(r => (
               <tr key={r.id} onClick={() => setOpenId(r.id)} style={{ cursor: 'pointer' }}>
-                <td className="font-mono" style={{ whiteSpace: 'nowrap' }}>{r.number}</td>
-                <td><strong>{r.title}</strong></td>
-                <td style={{ textAlign: 'center' }}>{r.item_count}</td>
-                <td style={{ textAlign: 'center' }}>{r.supplier_count}</td>
-                <td style={{ textAlign: 'center' }}>{r.quotation_count}/{r.supplier_count}</td>
-                <td style={{ color: r.is_overdue ? '#dc3545' : undefined, fontWeight: r.is_overdue ? 600 : 400 }}>{r.response_deadline ? format(new Date(r.response_deadline), 'dd/MM/yyyy') : '—'}</td>
+                <td className="ds-ref" style={{ whiteSpace: 'nowrap' }}>{r.number}</td>
+                <td className="ds-strong">{r.title}<div style={sub}>{r.item_count} article{Number(r.item_count) > 1 ? 's' : ''}</div></td>
+                <td>
+                  {r.supplier_count}
+                  {r.awarded_supplier_name && <div style={sub}>retenu : {r.awarded_supplier_name}{r.purchase_order_number ? <> · <span className="ds-ref">{r.purchase_order_number}</span></> : null}</div>}
+                </td>
+                <td>{r.quotation_count} sur {r.supplier_count}</td>
+                <td style={{ whiteSpace: 'nowrap', ...(r.is_overdue ? { color: 'var(--ds-danger)', fontWeight: 600 } : {}) }}>{day(r.response_deadline)}</td>
                 <td><RfqStatusTag status={r.status} /></td>
-                <td>{r.awarded_supplier_name ? <>{r.awarded_supplier_name} <span className="font-mono" style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{r.purchase_order_number}</span></> : '—'}</td>
+                <td className="ds-actions">
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={e => { e.stopPropagation(); setOpenId(r.id); }}>Ouvrir</button>
+                  <RowMenu label={`Plus d'actions pour ${r.number}`} items={r.purchase_order_id && onOpenOrder
+                    ? [{ label: `Ouvrir le bon de commande ${r.purchase_order_number ?? ''}`.trim(), icon: ClipboardList, onSelect: () => onOpenOrder(r.purchase_order_id!) }]
+                    : []} />
+                </td>
               </tr>
             ))}</tbody>
           </table>
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} demande${data.total > 1 ? 's' : ''} de prix · ${view === 'history' ? 'historique' : 'en cours'}`} />
-        </div>
+        </DataPanel>
       )}
       {creating && <RfqFormModal onClose={() => setCreating(false)} onSaved={id => setOpenId(id)} />}
       {openId && <RfqDrawer id={openId} onClose={() => setOpenId(null)} onOpenOrder={onOpenOrder} />}
     </>
   );
 }
-
-function Loading() { return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>; }
 
 /* ═══════════════════ Création / modification ═══════════════════ */
 type DraftItem = RfqItemInput & { key: string; label: string };
@@ -176,6 +191,7 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
     onError: e => notify.error(apiErrorMessage(e)),
   });
   const can = title.trim().length > 0 && items.length > 0 && items.every(i => i.quantity > 0) && !save.isPending;
+  const [titleTouched, setTitleTouched] = useState(false);
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -183,60 +199,68 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
         <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
           <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{rfq ? `Modifier ${rfq.number}` : 'Nouvelle demande de prix'}</span></div>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-btn-secondary" aria-label="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-            <div><span style={label}>Objet</span><input className="input" style={{ width: '100%' }} value={title} maxLength={200} onChange={e => setTitle(e.target.value)} placeholder="Ex. : Farine et beurre novembre, Four à sole neuf…" autoFocus /></div>
-            <div><span style={label}>Réponse avant le</span><input className="input" type="date" style={{ width: '100%' }} value={deadline} onChange={e => setDeadline(e.target.value)} /></div>
-            <div><span style={label}>Besoin pour le</span><input className="input" type="date" style={{ width: '100%' }} value={neededBy} onChange={e => setNeededBy(e.target.value)} /></div>
-          </div>
+        <div style={{ padding: '16px 24px', display: 'grid', gap: 20 }}>
+          <FormSection title="Demande">
+            <FormField label="Objet" htmlFor="rfq-title" required error={titleTouched && !title.trim() ? 'Indiquez l\'objet de la demande de prix.' : undefined}>
+              <input id="rfq-title" className="ds-input" value={title} maxLength={200} aria-required="true" onChange={e => setTitle(e.target.value)} onBlur={() => setTitleTouched(true)}
+                placeholder="Ex. : Farine et beurre novembre, Four à sole neuf…" autoFocus />
+            </FormField>
+            <div className="ds-form-grid">
+              <FormField label="Réponse avant le" htmlFor="rfq-deadline">
+                <input id="rfq-deadline" className="ds-input" type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
+              </FormField>
+              <FormField label="Besoin pour le" htmlFor="rfq-needed">
+                <input id="rfq-needed" className="ds-input" type="date" value={neededBy} onChange={e => setNeededBy(e.target.value)} />
+              </FormField>
+            </div>
+          </FormSection>
 
-          <div>
-            <span style={label}>Articles demandés</span>
+          <FormSection title={<>Articles demandés<span className="ds-req" aria-hidden="true"> *</span></>}>
             {!locked && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                <SearchSelect options={options} value={pick} onChange={addItem} placeholder="Ajouter un ingrédient ou un consommable" width={360} />
-                <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>ou</span>
-                <input className="input" value={freeLabel} onChange={e => setFreeLabel(e.target.value)} placeholder="Service / matériel (désignation libre)" style={{ width: 260 }} onKeyDown={e => { if (e.key === 'Enter') addFree(); }} />
-                <button type="button" className="odoo-btn-secondary" onClick={addFree} disabled={!freeLabel.trim()}><Plus size={12} /></button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <SearchSelect options={options} value={pick} onChange={addItem} placeholder="Ajouter un ingrédient ou un consommable" width={360} ariaLabel="Ajouter un ingrédient ou un consommable" />
+                <span style={{ ...muted, fontSize: 13 }}>ou</span>
+                <input className="ds-input sm" aria-label="Service ou matériel (désignation libre)" value={freeLabel} onChange={e => setFreeLabel(e.target.value)} placeholder="Service / matériel (désignation libre)" style={{ width: 260 }} onKeyDown={e => { if (e.key === 'Enter') addFree(); }} />
+                <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={addFree} disabled={!freeLabel.trim()}><Plus size={13} aria-hidden="true" /> Ajouter</button>
               </div>
             )}
-            {items.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>Aucun article.</p> : (
+            {items.length === 0 ? <span className="ds-field-hint">Aucun article : ajoutez-en au moins un pour enregistrer la demande.</span> : (
               <table className="odoo-table">
-                <thead><tr><th>Article</th><th style={{ width: 120 }}>Quantité</th><th style={{ width: 100 }}>Unité</th><th style={{ width: 40 }} /></tr></thead>
+                <thead><tr><th>Article</th><th style={{ width: 130 }}>Quantité</th><th style={{ width: 120 }}>Unité</th><th style={{ width: 48 }} /></tr></thead>
                 <tbody>{items.map((it, idx) => (
                   <tr key={it.key}>
-                    <td>{it.label}{it.lineType === 'service' && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>libre</span>}</td>
-                    <td><input className="input" type="number" min="0.001" step="any" style={{ width: '100%' }} value={it.quantity} disabled={locked} onChange={e => setItems(s => s.map((x, i) => i === idx ? { ...x, quantity: Number(e.target.value) } : x))} /></td>
-                    <td><input className="input" style={{ width: '100%' }} value={it.unit ?? ''} disabled={locked} onChange={e => setItems(s => s.map((x, i) => i === idx ? { ...x, unit: e.target.value } : x))} placeholder="kg, unité…" /></td>
-                    <td>{!locked && <button type="button" className="odoo-btn-secondary" onClick={() => setItems(s => s.filter((_, i) => i !== idx))}><Trash2 size={12} /></button>}</td>
+                    <td className="ds-strong">{it.label}{it.lineType === 'service' && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>libre</span>}</td>
+                    <td><input className="ds-input sm" type="number" min="0.001" step="any" aria-label={`Quantité de ${it.label}`} aria-invalid={!(it.quantity > 0) || undefined} value={it.quantity} disabled={locked} onChange={e => setItems(s => s.map((x, i) => i === idx ? { ...x, quantity: Number(e.target.value) } : x))} /></td>
+                    <td><input className="ds-input sm" aria-label={`Unité de ${it.label}`} value={it.unit ?? ''} disabled={locked} onChange={e => setItems(s => s.map((x, i) => i === idx ? { ...x, unit: e.target.value } : x))} placeholder="kg, unité…" /></td>
+                    <td className="ds-actions">{!locked && <button type="button" className="ds-icon-btn" aria-label={`Retirer ${it.label}`} onClick={() => setItems(s => s.filter((_, i) => i !== idx))}><Trash2 size={14} /></button>}</td>
                   </tr>
                 ))}</tbody>
               </table>
             )}
-          </div>
+            {items.some(i => !(i.quantity > 0)) && <span className="ds-field-hint" role="alert" style={{ color: 'var(--ds-danger)', fontWeight: 600 }}>Chaque quantité doit être supérieure à zéro.</span>}
+          </FormSection>
 
-          <div>
-            <span style={label}>Fournisseurs consultés</span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <FormSection title="Fournisseurs consultés">
+            <div className="prj-chips" role="group" aria-label="Fournisseurs consultés">
               {(suppliers as Record<string, any>[]).map(s => {
                 const on = supplierIds.includes(s.id);
                 return (
-                  <button key={s.id} type="button" onClick={() => setSupplierIds(ids => on ? ids.filter(x => x !== s.id) : [...ids, s.id])}
-                    style={{ padding: '5px 12px', borderRadius: 999, fontSize: '0.8125rem', cursor: 'pointer', border: `1px solid ${on ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`,
-                      background: on ? 'var(--odoo-purple)' : 'transparent', color: on ? '#fff' : 'var(--odoo-text)', fontWeight: on ? 600 : 400 }}>
+                  <button key={s.id} type="button" aria-pressed={on} className={`prj-chip${on ? ' active' : ''}`}
+                    onClick={() => setSupplierIds(ids => on ? ids.filter(x => x !== s.id) : [...ids, s.id])}>
                     {s.name}
                   </button>
                 );
               })}
             </div>
-          </div>
-          <div><span style={label}>Précisions pour les fournisseurs</span><textarea className="input" style={{ width: '100%', minHeight: 60 }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Qualité attendue, conditions de livraison, lieu…" /></div>
+            <FormField label="Précisions pour les fournisseurs" htmlFor="rfq-notes">
+              <textarea id="rfq-notes" className="ds-input" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Qualité attendue, conditions de livraison, lieu…" />
+            </FormField>
+          </FormSection>
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
-          <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="odoo-btn-primary" disabled={!can} onClick={() => save.mutate()}>{save.isPending && <Loader2 size={13} className="animate-spin" />} Enregistrer</button>
+        <div style={{ position: 'sticky', bottom: 0, background: 'var(--ds-card)' }}>
+          <FormFooter onCancel={onClose} submitLabel="Enregistrer" busy={save.isPending} disabled={!can} onSubmit={() => save.mutate()} />
         </div>
       </div>
     </ModalBackdrop>
@@ -250,6 +274,8 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
   const { data: r, isLoading } = useQuery({ queryKey: ['rfq', id], queryFn: () => rfqApi.get(id) });
   const [editing, setEditing] = useState(false);
   const [quoting, setQuoting] = useState<RfqSupplier | null>(null);
+  // Devis choisi dans le comparatif avant l'attribution (par défaut : le devis recommandé).
+  const [chosen, setChosen] = useState<string | null>(null);
   const refresh = () => { qc.invalidateQueries({ queryKey: ['rfq', id] }); qc.invalidateQueries({ queryKey: ['rfqs'] }); };
   const send = useMutation({ mutationFn: () => rfqApi.send(id), onSuccess: (data) => { refresh(); const n = data?.emailsQueued ?? 0; notify.success(n > 0 ? `Demande de prix envoyée — ${n} e-mail(s) fournisseur mis en file` : 'Demande de prix envoyée : aucun fournisseur avec e-mail, saisissez les devis au fur et à mesure'); }, onError: e => notify.error(apiErrorMessage(e)) });
   const setStatus = useMutation({ mutationFn: (s: 'cancelled' | 'closed' | 'draft') => rfqApi.setStatus(id, s), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
@@ -260,193 +286,230 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
-  if (isLoading || !r) return <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex justify-end bg-black/30"><div className="odoo-scope" style={{ width: 'min(960px, 100%)', height: '100%', background: 'var(--theme-bg-card)' }}><Loading /></div></ModalBackdrop>;
+  if (isLoading || !r) return <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex justify-end bg-black/30"><div className="odoo-scope" style={{ width: 'min(960px, 100%)', height: '100%', background: 'var(--theme-bg-card)' }}><LoadingState bare /></div></ModalBackdrop>;
   const items = r.items ?? []; const quotes = r.quotations ?? []; const suppliers = r.suppliers ?? [];
   const open = ['sent', 'quoted'].includes(r.status);
+  const cs = currencySymbol();
+  // Colonne mise en avant dans le comparatif : le devis choisi (demande ouverte) ou le devis retenu (demande attribuée).
+  const retainedId = open
+    ? (chosen && quotes.some(q => q.id === chosen) ? chosen : r.recommended_quotation_id ?? null)
+    : (r.awarded_quotation_id ?? quotes.find(q => q.status === 'selected')?.id ?? null);
+  const retained = quotes.find(q => q.id === retainedId);
+  const tint = (q: Quotation): CSSProperties | undefined => (q.id === retainedId ? { background: 'var(--ds-tint)' } : undefined);
+  const criteria = r.criteria ?? [];
+  const totalWeight = criteria.reduce((t, x) => t + Number(x.weight || 0), 0) || 1;
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex justify-end bg-black/30">
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: 'min(960px, 100%)', height: '100%', overflowY: 'auto', background: 'var(--theme-bg-card)', boxShadow: '-6px 0 24px rgba(0,0,0,0.15)' }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 2 }}>
           <div className="odoo-breadcrumb">
-            <FileQuestion size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span className="font-mono">{r.number}</span>
-            <span style={{ marginLeft: 6 }}><RfqStatusTag status={r.status} /></span>
+            <FileQuestion size={14} style={{ color: 'var(--ds-accent)' }} aria-hidden="true" />
+            <span className="ds-ref">{r.number}</span>
           </div>
           <div style={{ flex: 1 }} />
           {r.status === 'draft' && <>
-            <button className="odoo-btn-secondary" onClick={() => setEditing(true)}><FilePenLine size={13} /> Modifier</button>
-            <button className="odoo-btn-primary" onClick={() => send.mutate()} disabled={send.isPending}><Send size={13} /> Envoyer aux fournisseurs</button>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(true)}><FilePenLine size={13} aria-hidden="true" /> Modifier</button>
+            <button type="button" className="odoo-btn-primary" onClick={() => send.mutate()} disabled={send.isPending}><Send size={13} aria-hidden="true" /> Envoyer aux fournisseurs</button>
           </>}
-          {open && <button className="odoo-btn-secondary" onClick={() => setEditing(true)}><FilePenLine size={13} /> Fournisseurs / dates</button>}
-          {open && <button className="odoo-btn-secondary" onClick={async () => { if (await confirm('Clore sans retenir de devis ?')) setStatus.mutate('closed'); }}><Ban size={13} /> Sans suite</button>}
-          {['draft', 'sent', 'quoted'].includes(r.status) && <button className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler cet appel d\'offres ?', { danger: true })) setStatus.mutate('cancelled'); }}><XCircle size={13} /> Annuler</button>}
-          {['cancelled', 'closed'].includes(r.status) && <button className="odoo-btn-secondary" onClick={() => setStatus.mutate('draft')}><RotateCcw size={13} /> Rouvrir</button>}
-          <button type="button" className="odoo-btn-secondary" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
+          {open && <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(true)}><FilePenLine size={13} aria-hidden="true" /> Fournisseurs / dates</button>}
+          {open && <button type="button" className="odoo-btn-secondary" onClick={async () => { if (await confirm('Clore sans retenir de devis ?')) setStatus.mutate('closed'); }}><Ban size={13} aria-hidden="true" /> Sans suite</button>}
+          {['draft', 'sent', 'quoted'].includes(r.status) && <button type="button" className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler cet appel d\'offres ?', { danger: true })) setStatus.mutate('cancelled'); }}><XCircle size={13} aria-hidden="true" /> Annuler</button>}
+          {['cancelled', 'closed'].includes(r.status) && <button type="button" className="odoo-btn-secondary" onClick={() => setStatus.mutate('draft')}><RotateCcw size={13} aria-hidden="true" /> Rouvrir</button>}
+          <button type="button" className="ds-icon-btn" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
         </div>
 
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 16 }}>
+        <div style={{ padding: '16px 24px', display: 'grid', gap: 20 }}>
           <div>
-            <h3 style={{ margin: '0 0 4px', fontSize: '1rem' }}>{r.title}</h3>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-              {r.response_deadline ? `Réponse avant le ${format(new Date(r.response_deadline), 'dd/MM/yyyy')}` : 'Pas de date limite'}{r.needed_by ? ` · besoin pour le ${format(new Date(r.needed_by), 'dd/MM/yyyy')}` : ''}
-              {r.sent_at ? ` · envoyé le ${format(new Date(r.sent_at), 'dd/MM/yyyy')}` : ''} · créé par {r.created_by_name || '—'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-.02em', color: 'var(--ds-ink)' }}>{r.title}</h2>
+              <RfqStatusTag status={r.status} />
             </div>
-            {r.notes && <p style={{ margin: '6px 0 0', fontSize: '0.8125rem', whiteSpace: 'pre-wrap' }}>{r.notes}</p>}
+            <div style={{ ...muted, fontSize: 14, marginTop: 4 }}>
+              {r.response_deadline ? `Réponse avant le ${day(r.response_deadline)}` : 'Pas de date limite'}{r.needed_by ? ` · besoin pour le ${day(r.needed_by)}` : ''}
+              {r.sent_at ? ` · envoyé le ${day(r.sent_at)}` : ''} · créé par {r.created_by_name || '—'}
+            </div>
+            {r.notes && <p style={{ margin: '6px 0 0', fontSize: 14, whiteSpace: 'pre-wrap' }}>{r.notes}</p>}
           </div>
-          {r.is_overdue && <StatusBanner tone="warning" icon={Clock} title="Date limite de réponse dépassée">Relancez les fournisseurs sans réponse, ou comparez avec les devis reçus.</StatusBanner>}
+          {r.is_overdue && <Alert tone="warning" icon={Clock}>Date limite de réponse dépassée : relancez les fournisseurs sans réponse, ou comparez avec les devis reçus.</Alert>}
           {r.status === 'awarded' && (
             <StatusBanner tone="success" icon={Trophy} title={`Devis retenu : ${r.awarded_supplier_name}`}
-              actions={r.purchase_order_id && onOpenOrder ? <button className="odoo-btn-primary" onClick={() => onOpenOrder(r.purchase_order_id!)}>Ouvrir le BC {r.purchase_order_number}</button> : undefined}>
-              Le bon de commande {r.purchase_order_number} a été créé depuis ce devis{r.awarded_at ? ` le ${format(new Date(r.awarded_at), 'dd/MM/yyyy')}` : ''}.
+              actions={r.purchase_order_id && onOpenOrder ? <button type="button" className="odoo-btn-primary" onClick={() => onOpenOrder(r.purchase_order_id!)}>Ouvrir le BC {r.purchase_order_number}</button> : undefined}>
+              Le bon de commande {r.purchase_order_number} a été créé depuis ce devis{r.awarded_at ? ` le ${day(r.awarded_at)}` : ''}.
             </StatusBanner>
           )}
 
-          {/* Fournisseurs consultés */}
-          <div>
-            <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Fournisseurs consultés</div>
-            {suppliers.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucun fournisseur. Modifiez la demande de prix pour en ajouter.</p> : (
-              <table className="odoo-table">
-                <thead><tr><th>Fournisseur</th><th>Contact</th><th>Réponse</th><th /></tr></thead>
-                <tbody>{suppliers.map(s => (
-                  <tr key={s.id}>
-                    <td><strong>{s.supplier_name}</strong></td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{[s.contact_name, s.phone, s.email].filter(Boolean).join(' · ') || '—'}</td>
-                    <td>
-                      {s.status === 'quoted' ? <StatusTag tone="done" label="devis reçu" />
-                        : s.status === 'declined' ? <StatusTag tone="cancelled" label="a décliné" />
-                        : s.status === 'no_response' ? <StatusTag tone="blocked" label="sans réponse" />
-                        : r.status === 'draft' ? <StatusTag tone="todo" label="à consulter" />
-                        : <StatusTag tone="progress" label="en attente" icon={Send} />}
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {open && <>
-                        <button className="odoo-btn-primary" onClick={() => setQuoting(s)}>{s.quotation_id ? 'Modifier le devis' : 'Saisir le devis'}</button>{' '}
-                        {s.status !== 'quoted' && <button className="odoo-btn-secondary" onClick={() => supplierStatus.mutate({ supplierId: s.supplier_id, status: s.status === 'declined' ? 'invited' : 'declined' })}>{s.status === 'declined' ? 'Rétablir' : 'A décliné'}</button>}
-                      </>}
-                    </td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-          </div>
-
-          {/* Comparatif */}
-          <div>
-            <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Tableau comparatif</div>
-            {quotes.length === 0 ? (
-              <table className="odoo-table">
-                <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Quantité</th><th style={{ textAlign: 'right' }}>Dernier prix payé</th></tr></thead>
-                <tbody>{items.map(it => (
-                  <tr key={it.id}><td>{it.label}</td><td style={{ textAlign: 'right' }}>{Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</td><td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{it.last_price ? n4(it.last_price) : '—'}</td></tr>
-                ))}</tbody>
-              </table>
-            ) : (
-              <div className="pur-scope" style={{ display: 'grid', gap: 14 }}>
-                {/* Notation configurable (mig 459) : une colonne par devis, une ligne par critère ; le mieux noté est recommandé. */}
-                <div className="prj-panel pur-compare">
-                  <div className="pur-compare-grid" style={{ gridTemplateColumns: `220px repeat(${quotes.length}, minmax(190px, 1fr))` }}>
-                    <div className="label" style={{ justifyContent: 'flex-end' }}><small>Critère · poids</small></div>
-                    {quotes.map(q => {
-                      const best = q.id === r.recommended_quotation_id;
-                      return (
-                        <div key={q.id} className={`col head${best ? ' best' : ''}`}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <strong style={{ fontSize: '0.9375rem' }}>{q.supplier_name}</strong>
-                            {q.status === 'selected' && <span className="pur-badge won"><Trophy size={10} /> retenu</span>}
-                            {q.status !== 'selected' && best && <span className="pur-badge reco">Recommandé</span>}
-                            {q.id === r.best_total_quotation_id && <span className="pur-badge cheap">Moins cher</span>}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                            <span className="pur-score" style={{ color: best ? 'var(--odoo-purple)' : undefined }}>{q.score ?? '—'}</span>
-                            <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>/ 100</span>
-                          </div>
-                          <div style={{ fontSize: '0.8125rem' }}>
-                            <strong>{money(q.total_ht)} HT</strong>
-                            {q.total_foreign && <span style={{ color: 'var(--theme-text-muted)' }}> · {n2(q.total_foreign)} {String(q.currency_code).trim()}</span>}
-                            {!q.complete && <div style={{ fontSize: '0.75rem', color: 'var(--prj-orange)' }}>{q.covered}/{items.length} lignes chiffrées</div>}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {(r.criteria ?? []).map(c => {
-                      const totalWeight = (r.criteria ?? []).reduce((t, x) => t + Number(x.weight || 0), 0) || 1;
-                      return (
-                        <Fragment key={c.code}>
-                          <div className="label"><span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{c.label}</span><small>{Math.round(Number(c.weight) / totalWeight * 100)} % · {c.type === 'manual' ? 'noté à la main' : 'calculé'}</small></div>
-                          {quotes.map(q => {
-                            const v = q.scores?.[c.code];
-                            const unrated = c.type === 'manual' && q.criteria_scores?.[c.code] == null;
-                            return (
-                              <div key={q.id} className={`col${q.id === r.recommended_quotation_id ? ' best' : ''}`}>
-                                <div className="pur-crit">
-                                  <div className="prj-bar" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, Number(v ?? 0)))}%` }} /></div>
-                                  <span title={unrated ? 'non noté' : undefined}>{v ?? '—'}{unrated ? ' *' : ''}</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </Fragment>
-                      );
-                    })}
-                    <div className="label"><span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Conditions</span><small>délai · validité · paiement</small></div>
-                    {quotes.map(q => (
-                      <div key={q.id} className={`col${q.id === r.recommended_quotation_id ? ' best' : ''}`} style={{ fontSize: '0.8125rem' }}>
-                        <span>{q.delivery_days != null ? `Livré en ${q.delivery_days} j` : 'Délai non précisé'}</span>
-                        <span style={{ color: 'var(--theme-text-muted)' }}>
-                          {[q.valid_until ? `valable jusqu'au ${format(new Date(q.valid_until), 'dd/MM')}` : null, q.payment_terms || null,
-                            Number(q.shipping_cost) > 0 ? `port ${n2(q.shipping_cost)}` : 'franco', Number(q.discount_pct) > 0 ? `remise ${q.discount_pct} %` : null].filter(Boolean).join(' · ')}
-                        </span>
-                      </div>
-                    ))}
-                    {open && <>
-                      <div className="label" style={{ borderBottom: 0 }} />
-                      {quotes.map(q => (
-                        <div key={q.id} className={`col${q.id === r.recommended_quotation_id ? ' best' : ''}`} style={{ borderBottom: 0 }}>
-                          <button className={q.id === r.recommended_quotation_id ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={award.isPending} style={{ alignSelf: 'flex-start' }}
-                            onClick={async () => { if (await confirm(`Retenir le devis de ${q.supplier_name} (note ${q.score ?? '—'}/100${q.id === r.recommended_quotation_id ? ', recommandé' : ''}) et créer le bon de commande (${money(q.total_ht)} HT) ?`)) award.mutate(q.id); }}>
-                            <Award size={12} /> Attribuer
-                          </button>
-                        </div>
-                      ))}
-                    </>}
-                  </div>
-                </div>
-
-                {/* Prix article par article : le moins cher de chaque ligne en vert. */}
-                <div className="prj-panel" style={{ overflowX: 'auto' }}>
-                  <div className="prj-panel-head">Prix par article <small>le moins cher de chaque ligne en vert</small></div>
-                  <table className="odoo-table" style={{ margin: 0 }}>
-                    <thead>
-                      <tr>
-                        <th>Article</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>Dernier prix</th>
-                        {quotes.map(q => <th key={q.id} style={{ textAlign: 'right' }}>{q.supplier_name}</th>)}
+          {/* Fournisseurs consultés : une ligne par fournisseur, avec l'en-tête de son devis. */}
+          <section style={{ display: 'grid', gap: 12 }}>
+            <SectionHeader title="Fournisseurs consultés" note={`${quotes.length} devis reçu${quotes.length > 1 ? 's' : ''} sur ${suppliers.length}`} />
+            {suppliers.length === 0 ? <EmptyState bare icon={Inbox} title="Aucun fournisseur consulté" text="Modifiez la demande de prix pour en ajouter." /> : (
+              <DataPanel label="Fournisseurs consultés">
+                <table className="odoo-table">
+                  <thead><tr>
+                    <th>Fournisseur</th><th>Contact</th><th>Réponse</th><th>Reçu le</th><th>Référence du devis</th><th>Valable jusqu'au</th>
+                    <th>Conditions de paiement</th><th className="ds-num">Total HT ({cs})</th><th className="ds-actions">Action</th>
+                  </tr></thead>
+                  <tbody>{suppliers.map(s => {
+                    const q = quotes.find(x => x.supplier_id === s.supplier_id);
+                    return (
+                      <tr key={s.id}>
+                        <td className="ds-strong">{s.supplier_name}</td>
+                        <td style={muted}>{[s.contact_name, s.phone, s.email].filter(Boolean).join(' · ') || '—'}</td>
+                        <td>
+                          {s.status === 'quoted' ? <StatusTag tone="done" label="Devis reçu" />
+                            : s.status === 'declined' ? <StatusTag tone="cancelled" label="A décliné" />
+                            : s.status === 'no_response' ? <StatusTag tone="blocked" label="Sans réponse" />
+                            : r.status === 'draft' ? <StatusTag tone="todo" label="À consulter" />
+                            : <StatusTag tone="progress" label="En attente" icon={Send} />}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{day(q?.received_at)}</td>
+                        <td>{q?.quotation_ref ? <span className="ds-ref">{q.quotation_ref}</span> : '—'}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{day(q?.valid_until)}</td>
+                        <td>{q?.payment_terms || '—'}</td>
+                        <td className="ds-num">{q ? n2(q.total_ht) : '—'}</td>
+                        <td className="ds-actions">
+                          {open && <>
+                            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setQuoting(s)}>{s.quotation_id ? 'Modifier le devis' : 'Saisir le devis'}</button>
+                            <RowMenu label={`Plus d'actions pour ${s.supplier_name}`} items={s.status !== 'quoted' ? [{
+                              label: s.status === 'declined' ? 'Rétablir' : 'A décliné', icon: s.status === 'declined' ? RotateCcw : Ban, disabled: supplierStatus.isPending,
+                              onSelect: () => supplierStatus.mutate({ supplierId: s.supplier_id, status: s.status === 'declined' ? 'invited' : 'declined' }),
+                            }] : []} />
+                          </>}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {items.map(it => (
-                        <tr key={it.id}>
-                          <td>{it.label}</td>
-                          <td style={{ textAlign: 'right' }}>{Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{it.last_price ? n4(it.last_price) : '—'}</td>
-                          {quotes.map(q => {
-                            const l = q.lines.find(x => x.rfq_item_id === it.id);
-                            const best = r.best_by_item?.[it.id]?.quotationId === q.id;
-                            return (
-                              <td key={q.id} style={{ textAlign: 'right', fontWeight: best ? 700 : 400, color: best ? 'var(--prj-green)' : undefined }}>
-                                {l && l.available && l.unit_price != null ? n4(l.unit_price) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
-                                {l?.note && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{l.note}</div>}
-                              </td>
-                            );
-                          })}
-                        </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </DataPanel>
+            )}
+          </section>
+
+          {/* Tableau comparatif : une ligne par article, deux colonnes (prix unitaire, total) par devis ; notation (mig 459) en pied. */}
+          <section style={{ display: 'grid', gap: 12 }}>
+            <SectionHeader title="Tableau comparatif" note={quotes.length ? 'le meilleur prix de chaque ligne en vert' : 'aucun devis saisi'} />
+            <DataPanel label="Tableau comparatif">
+              <table className="odoo-table">
+                <thead>
+                  <tr>
+                    <th rowSpan={quotes.length ? 2 : 1}>Article</th>
+                    <th rowSpan={quotes.length ? 2 : 1} className="ds-num">Qté demandée</th>
+                    <th rowSpan={quotes.length ? 2 : 1} className="ds-num">Dernier prix payé ({cs})</th>
+                    {quotes.map(q => (
+                      <th key={q.id} colSpan={2} style={{ ...tint(q), textAlign: 'right' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <span className="ds-strong" style={{ fontSize: 14 }}>{q.supplier_name}</span>
+                          {q.status === 'selected' && <StatusTag tone="done" label="Retenu" icon={Trophy} />}
+                          {q.status !== 'selected' && q.id === r.recommended_quotation_id && <StatusTag tone="progress" label="Recommandé" icon={Award} />}
+                          {q.id === r.best_total_quotation_id && <StatusTag tone="done" label="Moins cher" />}
+                        </span>
+                      </th>
+                    ))}
+                  </tr>
+                  {quotes.length > 0 && (
+                    <tr>
+                      {quotes.map(q => (
+                        <Fragment key={q.id}>
+                          <th className="ds-num" style={tint(q)}>Prix unitaire ({cs})</th>
+                          <th className="ds-num" style={tint(q)}>Total ({cs})</th>
+                        </Fragment>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </tr>
+                  )}
+                </thead>
+                <tbody>
+                  {items.map(it => (
+                    <tr key={it.id}>
+                      <td className="ds-strong">{it.label}</td>
+                      <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</td>
+                      <td className="ds-num" style={muted}>{it.last_price ? n4(it.last_price) : '—'}</td>
+                      {quotes.map(q => {
+                        const l = q.lines.find(x => x.rfq_item_id === it.id);
+                        const priced = !!l && l.available && l.unit_price != null;
+                        const best = r.best_by_item?.[it.id]?.quotationId === q.id;
+                        const qty = l?.quantity != null && l.quantity !== '' ? Number(l.quantity) : Number(it.quantity);
+                        return (
+                          <Fragment key={q.id}>
+                            <td className="ds-num" style={{ ...tint(q), ...(best ? { color: 'var(--ds-success)', fontWeight: 700 } : {}) }}>
+                              {priced ? n4(l!.unit_price) : <span style={muted}>—</span>}
+                              {l?.note && <div style={sub}>{l.note}</div>}
+                            </td>
+                            <td className="ds-num" style={tint(q)}>{priced ? n2(Number(l!.unit_price) * qty) : <span style={muted}>—</span>}</td>
+                          </Fragment>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+                {quotes.length > 0 && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={3} className="ds-strong">Total HT ({cs})<div style={sub}>remise et port compris</div></td>
+                      {quotes.map(q => (
+                        <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 700 }}>
+                          {n2(q.total_ht)}
+                          {q.total_foreign && <div style={sub}>{n2(q.total_foreign)} {String(q.currency_code).trim()}</div>}
+                          {!q.complete && <div style={{ ...sub, color: 'var(--ds-warning)', fontWeight: 600 }}>{q.covered} sur {items.length} lignes chiffrées</div>}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td colSpan={3} className="ds-strong">Délai</td>
+                      {quotes.map(q => <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }}>{q.delivery_days != null ? `Livré en ${q.delivery_days} j` : 'Délai non précisé'}</td>)}
+                    </tr>
+                    <tr>
+                      <td colSpan={3} className="ds-strong">Conditions<div style={sub}>validité · paiement · port · remise</div></td>
+                      {quotes.map(q => (
+                        <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }}>
+                          {[q.valid_until ? `valable jusqu'au ${day(q.valid_until)}` : null, q.payment_terms || null,
+                            Number(q.shipping_cost) > 0 ? `port ${n2(q.shipping_cost)}` : 'franco', Number(q.discount_pct) > 0 ? `remise ${q.discount_pct} %` : null].filter(Boolean).join(' · ')}
+                        </td>
+                      ))}
+                    </tr>
+                    {criteria.map(c => (
+                      <tr key={c.code}>
+                        <td colSpan={3} style={{ fontWeight: 400 }}>{c.label}<div style={sub}>critère · {Math.round(Number(c.weight) / totalWeight * 100)} % · {c.type === 'manual' ? 'noté à la main' : 'calculé'}</div></td>
+                        {quotes.map(q => {
+                          const v = q.scores?.[c.code];
+                          const unrated = c.type === 'manual' && q.criteria_scores?.[c.code] == null;
+                          return <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }} title={unrated ? 'non noté' : undefined}>{v ?? '—'}{unrated ? ' *' : ''}</td>;
+                        })}
+                      </tr>
+                    ))}
+                    <tr>
+                      <td colSpan={3} className="ds-strong">Note (sur 100)</td>
+                      {quotes.map(q => <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 700 }}>{q.score ?? '—'}</td>)}
+                    </tr>
+                    <tr>
+                      <td colSpan={3} className="ds-strong">Devis retenu</td>
+                      {quotes.map(q => (
+                        <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }}>
+                          {open ? (
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                              <input type="radio" name={`rfq-award-${r.id}`} checked={retainedId === q.id} onChange={() => setChosen(q.id)} /> Retenir ce devis
+                            </label>
+                          ) : q.id === retainedId ? <StatusTag tone="done" label="Retenu" icon={Trophy} /> : <span style={muted}>—</span>}
+                        </td>
+                      ))}
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </DataPanel>
+            {open && quotes.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ ...muted, fontSize: 14 }}>
+                  {retained ? `Devis retenu : ${retained.supplier_name} · ${money(retained.total_ht)} HT` : 'Choisissez le devis à retenir dans le tableau.'}
+                </span>
+                <button type="button" className="odoo-btn-primary" disabled={!retained || award.isPending} aria-busy={award.isPending || undefined}
+                  onClick={async () => {
+                    const q = retained; if (!q) return;
+                    if (await confirm(`Retenir le devis de ${q.supplier_name} (note ${q.score ?? '—'}/100${q.id === r.recommended_quotation_id ? ', recommandé' : ''}) et créer le bon de commande (${money(q.total_ht)} HT) ?`)) award.mutate(q.id);
+                  }}>
+                  <Award size={14} aria-hidden="true" /> Attribuer et créer le bon de commande
+                </button>
               </div>
             )}
-          </div>
+          </section>
         </div>
 
         {editing && <RfqFormModal rfq={r} onClose={() => setEditing(false)} />}
@@ -537,57 +600,75 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
         <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
           <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Devis de {supplier.supplier_name}</span></div>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-btn-secondary" aria-label="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            <div><span style={label}>Référence du devis</span><input className="input" style={{ width: '100%' }} value={head.quotationRef} onChange={e => set('quotationRef', e.target.value)} /></div>
-            <div><span style={label}>Reçu le</span><input className="input" type="date" style={{ width: '100%' }} value={head.receivedAt} onChange={e => set('receivedAt', e.target.value)} /></div>
-            <div><span style={label}>Valable jusqu'au</span><input className="input" type="date" style={{ width: '100%' }} value={head.validUntil} onChange={e => set('validUntil', e.target.value)} /></div>
-            <div><span style={label}>Délai (jours)</span><input className="input" type="number" min="0" style={{ width: '100%' }} value={head.deliveryDays} onChange={e => set('deliveryDays', e.target.value)} /></div>
-            <div><span style={label}>Conditions de paiement</span><input className="input" style={{ width: '100%' }} value={head.paymentTerms} onChange={e => set('paymentTerms', e.target.value)} placeholder="30 j fin de mois…" /></div>
-            <div><span style={label}>Devise</span><SearchSelect value={currency} onChange={v => { setCurrency(v); setRateInput(''); }}
-              placeholder="Devise" width="100%" size="md" ariaLabel="Devise" clearable={false}
-              options={(currencies.length ? currencies : [{ code: BASE_CURRENCY, label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} /></div>
-            <div><span style={label}>{currency === BASE_CURRENCY ? 'Taux' : `1 ${currency} = … ${currencySymbol()}`}</span>{currency === BASE_CURRENCY
-              ? <div style={{ paddingTop: 6, color: 'var(--theme-text-muted)' }}>—</div>
-              : <input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={rateInput} onChange={e => setRateInput(e.target.value)} />}</div>
-            <div><span style={label}>Frais de port ({cur})</span><input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={head.shippingCost} onChange={e => set('shippingCost', e.target.value)} /></div>
-            <div><span style={label}>Remise globale (%)</span><input className="input" type="number" min="0" max="100" step="0.01" style={{ width: '100%' }} value={head.discountPct} onChange={e => set('discountPct', e.target.value)} /></div>
-            {manualCriteria.map(c => (
-              <div key={c.code}><span style={label}>{c.label} (0-100)</span><input className="input" type="number" min="0" max="100" step="1" style={{ width: '100%' }}
-                value={critScores[c.code] ?? ''} onChange={e => setCritScores(s => ({ ...s, [c.code]: e.target.value }))} placeholder="ex. 80" title={`Note « ${c.label} » — critère de la notation`} /></div>
-            ))}
-            <div><span style={label}>Total HT</span><div style={{ fontSize: '1.125rem', fontWeight: 700, paddingTop: 4 }}>{n2(total)} {cur}</div>
-              {currency !== BASE_CURRENCY && rate > 0 && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>≈ {money(total * rate)}</div>}</div>
-          </div>
-          <table className="odoo-table">
-            <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Qté demandée</th><th style={{ width: 130 }}>Prix unitaire HT ({cur})</th><th style={{ width: 110 }}>Qté proposée</th><th>Remarque</th><th style={{ width: 70 }}>Proposé</th></tr></thead>
-            <tbody>{items.map(it => { const l = lines[it.id]; const upd = (p: Partial<typeof l>) => setLines(s => ({ ...s, [it.id]: { ...s[it.id], ...p } }));
-              const { size, hasContainer, pack } = packOf(it);
-              const entryUnit = hasContainer ? pack : (it.unit_label ?? 'unité');
-              const demandedEntry = hasContainer ? Number(it.quantity) / size : Number(it.quantity);
-              return (
-              <tr key={it.id} style={{ opacity: l.available ? 1 : 0.5 }}>
-                <td>{it.label}
-                  {hasContainer && <div style={{ fontSize: '0.7rem', color: 'var(--theme-accent)' }}>acheté par {pack} de {Number(size).toLocaleString('fr-FR')} {it.unit_label ?? ''}</div>}
-                  {it.last_price && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>dernier prix {n4(Number(it.last_price) * (hasContainer ? size : 1))} {currencySymbol()}{hasContainer ? ` / ${pack}` : ''}</div>}</td>
-                <td style={{ textAlign: 'right' }}>{demandedEntry.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {entryUnit}{hasContainer ? <div style={{ fontSize: '0.65rem', color: 'var(--theme-text-muted)' }}>= {Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</div> : null}</td>
-                <td>
-                  <input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={l.price} disabled={!l.available} onChange={e => upd({ price: e.target.value })} />
-                  <div style={{ fontSize: '0.65rem', color: 'var(--theme-text-muted)' }}>/ {entryUnit}</div>
-                </td>
-                <td><input className="input" type="number" min="0" step="any" style={{ width: '100%' }} value={l.qty} disabled={!l.available} onChange={e => upd({ qty: e.target.value })} placeholder={String(demandedEntry)} /></td>
-                <td><input className="input" style={{ width: '100%' }} value={l.note} onChange={e => upd({ note: e.target.value })} placeholder="Marque, conditionnement…" /></td>
-                <td style={{ textAlign: 'center' }}><input type="checkbox" checked={l.available} onChange={e => upd({ available: e.target.checked })} title="Décocher si le fournisseur ne propose pas cet article" /></td>
-              </tr>
-            ); })}</tbody>
-          </table>
-          <div><span style={label}>Notes</span><textarea className="input" style={{ width: '100%', minHeight: 50 }} value={head.notes} onChange={e => set('notes', e.target.value)} /></div>
+        <div style={{ padding: '16px 24px', display: 'grid', gap: 20 }}>
+          <FormSection title="Devis">
+            <div className="ds-form-grid cols-4">
+              <FormField label="Référence du devis" htmlFor="q-ref"><input id="q-ref" className="ds-input" value={head.quotationRef} onChange={e => set('quotationRef', e.target.value)} /></FormField>
+              <FormField label="Reçu le" htmlFor="q-received"><input id="q-received" className="ds-input" type="date" value={head.receivedAt} onChange={e => set('receivedAt', e.target.value)} /></FormField>
+              <FormField label="Valable jusqu'au" htmlFor="q-valid"><input id="q-valid" className="ds-input" type="date" value={head.validUntil} onChange={e => set('validUntil', e.target.value)} /></FormField>
+              <FormField label="Délai (jours)" htmlFor="q-days"><input id="q-days" className="ds-input" type="number" min="0" value={head.deliveryDays} onChange={e => set('deliveryDays', e.target.value)} /></FormField>
+              <FormField label="Conditions de paiement" htmlFor="q-terms"><input id="q-terms" className="ds-input" value={head.paymentTerms} onChange={e => set('paymentTerms', e.target.value)} placeholder="30 j fin de mois…" /></FormField>
+              <FormField label="Devise">
+                <SearchSelect value={currency} onChange={v => { setCurrency(v); setRateInput(''); }}
+                  placeholder="Devise" width="100%" size="md" ariaLabel="Devise" clearable={false}
+                  options={(currencies.length ? currencies : [{ code: BASE_CURRENCY, label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} />
+              </FormField>
+              {currency === BASE_CURRENCY ? (
+                <div className="ds-field"><span className="ds-field-label">Taux</span><div style={{ ...muted, height: 40, display: 'flex', alignItems: 'center' }}>—</div></div>
+              ) : (
+                <FormField label={`1 ${currency} = … ${currencySymbol()}`} htmlFor="q-rate" required error={rate > 0 ? undefined : 'Saisissez le taux de change.'}>
+                  <input id="q-rate" className="ds-input" type="number" min="0" step="0.0001" aria-required="true" value={rateInput} onChange={e => setRateInput(e.target.value)} />
+                </FormField>
+              )}
+              <FormField label={`Frais de port (${cur})`} htmlFor="q-ship"><input id="q-ship" className="ds-input" type="number" min="0" step="0.01" value={head.shippingCost} onChange={e => set('shippingCost', e.target.value)} /></FormField>
+              <FormField label="Remise globale (%)" htmlFor="q-disc"><input id="q-disc" className="ds-input" type="number" min="0" max="100" step="0.01" value={head.discountPct} onChange={e => set('discountPct', e.target.value)} /></FormField>
+              {manualCriteria.map(c => (
+                <FormField key={c.code} label={`${c.label} (0-100)`} htmlFor={`q-crit-${c.code}`} hint="Critère de la notation">
+                  <input id={`q-crit-${c.code}`} className="ds-input" type="number" min="0" max="100" step="1"
+                    value={critScores[c.code] ?? ''} onChange={e => setCritScores(s => ({ ...s, [c.code]: e.target.value }))} placeholder="ex. 80" />
+                </FormField>
+              ))}
+              <div className="ds-field">
+                <span className="ds-field-label">Total HT</span>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ds-ink)', minHeight: 40, display: 'flex', alignItems: 'center', fontVariantNumeric: 'tabular-nums' }}>{n2(total)} {cur}</div>
+                {currency !== BASE_CURRENCY && rate > 0 && <span className="ds-field-hint">≈ {money(total * rate)}</span>}
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Prix par article">
+            <div style={{ overflowX: 'auto' }}>
+              <table className="odoo-table">
+                <thead><tr><th>Article</th><th className="ds-num">Qté demandée</th><th style={{ width: 140 }}>Prix unitaire HT ({cur})</th><th style={{ width: 120 }}>Qté proposée</th><th>Remarque</th><th style={{ width: 80, textAlign: 'center' }}>Proposé</th></tr></thead>
+                <tbody>{items.map(it => { const l = lines[it.id]; const upd = (p: Partial<typeof l>) => setLines(s => ({ ...s, [it.id]: { ...s[it.id], ...p } }));
+                  const { size, hasContainer, pack } = packOf(it);
+                  const entryUnit = hasContainer ? pack : (it.unit_label ?? 'unité');
+                  const demandedEntry = hasContainer ? Number(it.quantity) / size : Number(it.quantity);
+                  return (
+                  <tr key={it.id} style={{ opacity: l.available ? 1 : 0.5 }}>
+                    <td className="ds-strong">{it.label}
+                      {hasContainer && <div style={{ ...sub, color: 'var(--ds-accent-ink)' }}>acheté par {pack} de {Number(size).toLocaleString('fr-FR')} {it.unit_label ?? ''}</div>}
+                      {it.last_price && <div style={sub}>dernier prix {n4(Number(it.last_price) * (hasContainer ? size : 1))} {currencySymbol()}{hasContainer ? ` / ${pack}` : ''}</div>}</td>
+                    <td className="ds-num">{demandedEntry.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {entryUnit}{hasContainer ? <div style={sub}>= {Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</div> : null}</td>
+                    <td>
+                      <input className="ds-input sm" type="number" min="0" step="0.0001" aria-label={`Prix unitaire HT de ${it.label}`} value={l.price} disabled={!l.available} onChange={e => upd({ price: e.target.value })} />
+                      <div style={sub}>/ {entryUnit}</div>
+                    </td>
+                    <td><input className="ds-input sm" type="number" min="0" step="any" aria-label={`Quantité proposée de ${it.label}`} value={l.qty} disabled={!l.available} onChange={e => upd({ qty: e.target.value })} placeholder={String(demandedEntry)} /></td>
+                    <td><input className="ds-input sm" aria-label={`Remarque sur ${it.label}`} value={l.note} onChange={e => upd({ note: e.target.value })} placeholder="Marque, conditionnement…" /></td>
+                    <td style={{ textAlign: 'center' }}><input type="checkbox" aria-label={`${it.label} proposé par le fournisseur`} checked={l.available} onChange={e => upd({ available: e.target.checked })} title="Décocher si le fournisseur ne propose pas cet article" /></td>
+                  </tr>
+                ); })}</tbody>
+              </table>
+            </div>
+          </FormSection>
+
+          <FormField label="Notes" htmlFor="q-notes"><textarea id="q-notes" className="ds-input" value={head.notes} onChange={e => set('notes', e.target.value)} /></FormField>
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
-          <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="odoo-btn-primary" disabled={save.isPending || !(rate > 0)} title={rate > 0 ? undefined : 'Saisissez le taux de change'} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Enregistrer le devis</button>
+        <div style={{ position: 'sticky', bottom: 0, background: 'var(--ds-card)' }}>
+          <FormFooter onCancel={onClose} submitLabel="Enregistrer le devis" busy={save.isPending} disabled={!(rate > 0)} onSubmit={() => save.mutate()} />
         </div>
       </div>
     </ModalBackdrop>

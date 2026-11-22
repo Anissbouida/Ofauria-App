@@ -49,7 +49,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           <div className="odoo-scope" role="alertdialog" aria-modal="true"
             style={{ width: 'min(440px, 92vw)', borderRadius: 6, border: '1px solid var(--theme-bg-separator)', overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.25)' }}>
             <div className="odoo-section-header">
-              {pending.options.danger && <AlertTriangle size={12} style={{ color: '#721c24' }} />}
+              {pending.options.danger && <AlertTriangle size={12} style={{ color: 'var(--ds-danger)' }} />}
               {pending.options.title || 'Confirmation'}
             </div>
             <div style={{ padding: '1rem', fontSize: '0.875rem', whiteSpace: 'pre-line', color: 'var(--theme-text-strong)' }}>

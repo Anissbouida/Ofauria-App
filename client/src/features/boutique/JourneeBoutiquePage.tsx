@@ -46,6 +46,18 @@ const VIEWS: Array<Omit<ModuleView, 'hidden'> & { tab: Tab; vue?: string; manage
 
 type Step = { key: string; label: string; detail: string; done: boolean; tab: Tab };
 
+/** Description d'une ligne sous le titre de chaque écran (gabarit de page du Design System). */
+const PAGE_LEADS: Record<string, string> = {
+  ouverture: 'Comptage de la vitrine à l\'ouverture et écarts à valider.',
+  'ventes:journee': 'Approvisionnements, ventes et comptages de passation, shift par shift.',
+  'ventes:fiche': 'Quantités à demander à la production pour la journée.',
+  invendus: 'Décision du soir pour chaque produit restant en vitrine.',
+  'rapports:ventes': 'Écarts entre les quantités approvisionnées, vendues et comptées.',
+  'rapports:invendus': 'Invendus du mois : quantités, coût et produits les plus détruits.',
+  'parametres:catalogue': 'Correspondance entre les articles de la caisse et les produits.',
+  'parametres:regles': 'Règles de report, créneaux de la journée et traductions.',
+};
+
 export default function JourneeBoutiquePage() {
   const { user } = useAuth();
   const role = user?.role as string | undefined;
@@ -112,16 +124,20 @@ export default function JourneeBoutiquePage() {
   return (
     <ModuleShell title="Journée boutique" views={views} current={current} onSelect={select} flush
       actions={
-        <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{dayLabel}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--ds-muted)' }}>{dayLabel}</span>
       }>
       {/* Design Ventes : grand titre de l'écran, frise de la journée en carte, marges standard. */}
-      <ModulePage title={current?.label}>
+      <ModulePage title={current?.label} summary={current ? PAGE_LEADS[current.key] : undefined}>
+        {/* Ordre commun : indicateurs, puis étapes de la journée, puis l'écran. */}
+        {isManager && tab !== 'parametres' && (
+          <VentesIndicators onManquants={() => go('rapports', 'ventes')} />
+        )}
       <ol className="ui-timeline klc-frise" aria-label="Avancement de la journée">
         {steps.map((s, i) => (
           <li key={s.key} className={`ui-timeline-step ${s.done ? 'is-done' : ''} ${i === currentIdx ? 'is-current' : ''}`}>
             <button type="button" onClick={() => go(s.tab)} aria-current={i === currentIdx ? 'step' : undefined}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}>
-              <span className="ui-timeline-dot">{s.done ? <Check size={12} /> : i + 1}</span>
+              <span className="ui-timeline-dot">{s.done ? <Check size={12} aria-label="Fait" /> : <span aria-hidden="true">•</span>}</span>
               <span className="ui-timeline-label">{s.label}</span>
               <span className="ui-timeline-detail">{s.detail}</span>
             </button>
@@ -129,9 +145,6 @@ export default function JourneeBoutiquePage() {
         ))}
       </ol>
 
-        {isManager && tab !== 'parametres' && (
-          <VentesIndicators onManquants={() => go('rapports', 'ventes')} />
-        )}
         {tab === 'ouverture' && <OuvertureTab />}
         {tab === 'invendus' && <InvendusTab />}
         {vue?.key === 'ventes:fiche' && <FicheBesoinsView onValidated={() => go('ventes', 'journee')} />}

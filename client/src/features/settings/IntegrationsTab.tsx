@@ -21,7 +21,7 @@ function Secret({ title, value }: { title: string; value: string }) {
     <StatusBanner tone="warning" icon={KeyRound} title={title}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <code style={{ userSelect: 'all', wordBreak: 'break-all' }}>{value}</code>
-        <button className="odoo-btn-secondary" onClick={copy}>{copied ? <Check size={13} /> : <Copy size={13} />} Copier</button>
+        <button type="button" className="odoo-btn-secondary" onClick={copy}>{copied ? <Check size={13} /> : <Copy size={13} />} Copier</button>
         <span style={{ opacity: 0.8 }}>— à copier maintenant, il ne sera plus affiché.</span>
       </div>
     </StatusBanner>
@@ -62,7 +62,7 @@ function ApiKeysSection({ editable }: { editable: boolean }) {
               <input type="checkbox" checked={scopes.includes(s)} onChange={() => toggle(s)} /> {lbl}
             </label>
           ))}
-          <button className="odoo-btn-primary" disabled={!label || create.isPending} onClick={() => create.mutate()}>
+          <button type="button" className="odoo-btn-primary" disabled={!label || create.isPending} onClick={() => create.mutate()}>
             {create.isPending ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Créer
           </button>
         </div>
@@ -71,7 +71,7 @@ function ApiKeysSection({ editable }: { editable: boolean }) {
       {isLoading ? <Loader2 className="spin" /> : (
         <div className="prj-panel prj-scroll">
         <table className="odoo-table">
-          <thead><tr><th>Libellé</th><th>Préfixe</th><th>Portée</th><th>Dernier appel</th><th>État</th><th /></tr></thead>
+          <thead><tr><th>Libellé</th><th>Préfixe</th><th>Portée</th><th>Dernier appel</th><th>État</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {data.map(k => (
               <tr key={k.id} style={k.revoked_at ? { opacity: 0.5 } : undefined}>
@@ -81,7 +81,7 @@ function ApiKeysSection({ editable }: { editable: boolean }) {
                 <td>{k.last_used_at ? new Date(k.last_used_at).toLocaleString('fr-FR') : '—'}</td>
                 <td>{k.revoked_at ? <StatusTag tone="cancelled" label="Révoquée" /> : <StatusTag tone="done" label="Active" />}</td>
                 <td>{editable && !k.revoked_at && (
-                  <button className="odoo-pager-btn" title="Révoquer" onClick={() => revoke.mutate(k.id)}><Trash2 size={13} /></button>
+                  <button type="button" className="odoo-pager-btn" title="Révoquer" onClick={() => revoke.mutate(k.id)} aria-label="Révoquer"><Trash2 size={13} /></button>
                 )}</td>
               </tr>
             ))}
@@ -132,7 +132,7 @@ function WebhooksSection({ editable }: { editable: boolean }) {
               <input type="checkbox" checked={events.includes(s)} onChange={() => toggle(s)} /> {lbl}
             </label>
           ))}
-          <button className="odoo-btn-primary" disabled={!label || !url || create.isPending} onClick={() => create.mutate()}>
+          <button type="button" className="odoo-btn-primary" disabled={!label || !url || create.isPending} onClick={() => create.mutate()}>
             {create.isPending ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Ajouter
           </button>
         </div>
@@ -141,7 +141,7 @@ function WebhooksSection({ editable }: { editable: boolean }) {
       {isLoading ? <Loader2 className="spin" /> : (
         <div className="prj-panel prj-scroll">
         <table className="odoo-table">
-          <thead><tr><th>Libellé</th><th>URL</th><th>Événements</th><th>Actif</th><th /></tr></thead>
+          <thead><tr><th>Libellé</th><th>URL</th><th>Événements</th><th>Actif</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {data.map(w => (
               <tr key={w.id}>
@@ -153,7 +153,7 @@ function WebhooksSection({ editable }: { editable: boolean }) {
                     onChange={() => setActive.mutate({ id: w.id, active: !w.is_active })} />
                 </td>
                 <td>{editable && (
-                  <button className="odoo-pager-btn" title="Supprimer" onClick={() => remove.mutate(w.id)}><Trash2 size={13} /></button>
+                  <button type="button" className="odoo-pager-btn" title="Supprimer" onClick={() => remove.mutate(w.id)} aria-label="Supprimer"><Trash2 size={13} /></button>
                 )}</td>
               </tr>
             ))}

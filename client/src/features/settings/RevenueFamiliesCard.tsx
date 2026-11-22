@@ -6,6 +6,7 @@ import { revenueFamiliesApi, planComptableApi, type RevenueFamily } from '../../
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
+import { LoadingState } from '../../components/ds';
 
 const DEFAULT_ACCOUNT = '7111';
 
@@ -52,9 +53,9 @@ export default function RevenueFamiliesCard() {
       </PageNote>
 
       {isLoading ? (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement…</div>
+        <LoadingState bare />
       ) : families.length === 0 ? (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+        <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
           Aucune famille de catégorie définie. Créez-les dans « Catégories de vente ».
         </div>
       ) : (
@@ -68,7 +69,7 @@ export default function RevenueFamiliesCard() {
             {families.map(f => (
               <tr key={f.family}>
                 <td>{f.family}</td>
-                <td style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>{f.category_count}</td>
+                <td style={{ textAlign: 'center', color: 'var(--ds-muted)' }}>{f.category_count}</td>
                 <td>
                   <SearchSelect
                     value={f.account_code ?? ''}

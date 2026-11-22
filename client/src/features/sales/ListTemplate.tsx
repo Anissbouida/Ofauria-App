@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Search, type LucideIcon } from 'lucide-react';
 import '../projects/projects.css';
 import './sales.css';
+import { KpiCard, EmptyState } from '../../components/ds';
 
 /**
  * Briques du gabarit Liste du module Ventes (maquette 2026-11-13), communes aux Commandes,
@@ -55,13 +56,7 @@ export function FilterChips({ chips, value, onChange, label = 'Filtrer' }: {
 
 /** Tuile d'indicateur (réservée aux chiffres qui ne doublent pas les pastilles). */
 export function ListKpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'red' | 'green' | 'orange' }) {
-  return (
-    <div className="prj-kpi">
-      <div className="prj-kpi-head"><span>{label}</span></div>
-      <div className="prj-kpi-value" style={{ color: tone ? `var(--prj-${tone})` : undefined }}>{value}</div>
-      {sub && <div className="prj-kpi-sub">{sub}</div>}
-    </div>
-  );
+  return <KpiCard label={label} value={value} sub={sub} tone={tone} />;
 }
 
 /** Panneau du tableau : bords arrondis, défilement horizontal, pied (compteur, total, pagination). */
@@ -76,20 +71,13 @@ export function ListPanel({ children, footer }: { children: ReactNode; footer?: 
 
 /** État vide d'une liste, avec un bouton pour effacer les filtres ou créer la première pièce. */
 export function ListEmpty({ icon: Icon, title, text, action }: { icon: LucideIcon; title: string; text?: string; action?: ReactNode }) {
-  return (
-    <section className="prj-panel sal-empty">
-      <Icon size={28} style={{ opacity: 0.4 }} />
-      <strong>{title}</strong>
-      {text && <span>{text}</span>}
-      {action}
-    </section>
-  );
+  return <EmptyState icon={Icon} title={title} text={text} action={action} />;
 }
 
 /** Bouton de l'étape suivante d'une ligne (Envoyer, Facturer, Relancer…). */
 export function NextStep({ icon: Icon, label, onClick, disabled }: { icon: LucideIcon; label: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" className="sal-next" disabled={disabled} onClick={e => { e.stopPropagation(); onClick(); }}>
+    <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={disabled} onClick={e => { e.stopPropagation(); onClick(); }}>
       <Icon size={13} /> {label}
     </button>
   );

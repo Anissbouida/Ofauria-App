@@ -9,6 +9,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { money } from '../../utils/money';
 
+import { LoadingState } from '../../components/ds';
 /**
  * Sous-traitance de l'ordre (M9, mig 584) : sous-traitant et prix de façon, bon d'envoi des
  * composants, puis réception par la déclaration habituelle (« Lancer / déclarer »).
@@ -55,7 +56,7 @@ export default function SubcontractPanel({ planId, planStatus, canEdit }: { plan
     onError: (e) => notify.error(apiErrorMessage(e)),
   });
 
-  if (isLoading) return <Loader2 className="animate-spin" size={16} style={{ margin: '1rem' }} />;
+  if (isLoading) return <LoadingState bare />;
   if (!data) return null;
   const st = STATUS[data.status] ?? STATUS.to_ship;
   const locked = data.status === 'received' || ['completed', 'cancelled'].includes(planStatus);
@@ -112,10 +113,10 @@ export default function SubcontractPanel({ planId, planStatus, canEdit }: { plan
               {s.shipped_by_name && <span style={{ color: 'var(--odoo-text-muted)' }}>par {s.shipped_by_name}</span>}
             </div>
             <table className="odoo-table">
-              <thead><tr><th>Composant</th><th style={{ textAlign: 'right' }}>Quantité envoyée</th></tr></thead>
+              <thead><tr><th>Composant</th><th className="ds-num">Quantité envoyée</th></tr></thead>
               <tbody>
                 {s.lines.length === 0 && <tr><td colSpan={2} style={{ color: 'var(--odoo-text-muted)' }}>Aucun composant calculé</td></tr>}
-                {s.lines.map((l, i) => <tr key={i}><td>{l.label}</td><td style={{ textAlign: 'right' }}>{l.quantity} {l.unit ?? ''}</td></tr>)}
+                {s.lines.map((l, i) => <tr key={i}><td>{l.label}</td><td className="ds-num">{l.quantity} {l.unit ?? ''}</td></tr>)}
               </tbody>
             </table>
           </div>

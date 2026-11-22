@@ -2,10 +2,9 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { CalendarDays, Loader2, Save, Search } from 'lucide-react';
+import { CalendarDays, Loader2, Save } from 'lucide-react';
 import { productionApi } from '../../api/production.api';
-import { ListToolbar, ListPanel } from '../sales/ListTemplate';
-import { StatusBanner } from '../../components/ui/StatusBanner';
+import { Alert, DataPanel, EmptyState, ErrorState, LoadingState, NoResultState, SearchBar, TableFooter, Toolbar } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
@@ -22,7 +21,7 @@ const wk = (d: string) => `Sem. du ${format(new Date(`${d}T00:00:00`), 'dd/MM', 
 export default function MasterScheduleView({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const today = new Date().toLocaleDateString('sv-SE');
-  const { data, isLoading } = useQuery({ queryKey: ['master-schedule', today], queryFn: () => productionApi.masterSchedule(today, 8) });
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['master-schedule', today], queryFn: () => productionApi.masterSchedule(today, 8) });
   const [draft, setDraft] = useState<Record<string, number | null>>({});
   const [query, setQuery] = useState('');
   const cell = (pid: string, w: string) => `${pid}|${w}`;
@@ -42,42 +41,47 @@ export default function MasterScheduleView({ canEdit }: { canEdit: boolean }) {
     return (data?.rows ?? []).filter(r => !q || r.product_name.toLowerCase().includes(q) || (r.category_name ?? '').toLowerCase().includes(q));
   }, [data, query]);
 
-  if (isLoading || !data) return <Loader2 className="animate-spin" size={18} />;
+  if (isError) return <ErrorState title="Le plan par semaine n'a pas pu être chargé" onRetry={() => refetch()} />;
+  if (isLoading || !data) return <LoadingState />;
   const changes = Object.keys(draft).length;
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <StatusBanner tone="info" icon={CalendarDays} title="Plan par semaine">
+      <Alert tone="info" icon={CalendarDays}>
         Saisissez ce que vous prévoyez de produire chaque semaine. En gris, la prévision de vente : laissez la case vide pour la garder.
         Le calcul des besoins phasé lit ce plan à la place de la prévision.
-      </StatusBanner>
-      <ListToolbar search={query} onSearch={setQuery} placeholder="Rechercher un article">
-        <div style={{ flex: 1 }} />
+      </Alert>
+      <Toolbar>
+        <SearchBar value={query} onChange={setQuery} placeholder="Rechercher un article" />
+        <span className="ds-grow" />
         {canEdit && (
           <>
             <button type="button" className="odoo-btn-secondary" disabled={!changes} onClick={() => setDraft({})}>Annuler</button>
-            <button type="button" className="odoo-btn-primary" disabled={!changes || save.isPending} onClick={() => save.mutate()}>
-              {save.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer{changes ? ` (${changes})` : ''}
+            <button type="button" className="odoo-btn-primary" disabled={!changes || save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>
+              {save.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />} Enregistrer{changes ? ` (${changes})` : ''}
             </button>
           </>
         )}
-      </ListToolbar>
-      <ListPanel>
-        <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th>Article</th>{data.weeks.map(w => <th key={w} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{wk(w)}</th>)}</tr></thead>
+      </Toolbar>
+      {rows.length === 0 ? (query.trim()
+        ? <NoResultState text="Aucun article ne correspond à la recherche." onReset={() => setQuery('')} />
+        : <EmptyState icon={CalendarDays} title="Aucun article à planifier" text="Les articles fabriqués apparaîtront ici, semaine par semaine." />) : (
+      <DataPanel label="Plan par semaine" footer={<TableFooter note={`${rows.length} article(s)${changes ? ` · ${changes} modification(s) non enregistrée(s)` : ''}`} />}>
+        <table className="odoo-table">
+          <thead><tr><th>Article</th>{data.weeks.map(w => <th key={w} className="ds-num">{wk(w)}</th>)}</tr></thead>
           <tbody>{rows.map(r => (
             <tr key={r.product_id}>
-              <td><div style={{ fontWeight: 500 }}>{r.product_name}</div>{r.category_name && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{r.category_name}</div>}</td>
+              <td><div className="ds-strong">{r.product_name}</div>{r.category_name && <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{r.category_name}</div>}</td>
               {data.weeks.map(w => {
                 const v = r.weeks[w];
                 const k = cell(r.product_id, w);
                 const value = k in draft ? draft[k] : v.planned;
                 return (
-                  <td key={w} style={{ textAlign: 'right' }}>
-                    <input type="number" min={0} step="any" className="input" disabled={!canEdit}
+                  <td key={w} className="ds-num">
+                    <input type="number" min={0} step="any" className="ds-input sm" disabled={!canEdit}
                       value={value ?? ''} placeholder={v.forecast ? nf(v.forecast) : '0'}
                       aria-label={`${r.product_name}, ${wk(w)}`}
-                      style={{ width: 84, textAlign: 'right', padding: '2px 6px', fontWeight: value != null ? 600 : 400 }}
+                      style={{ width: 84, textAlign: 'right', fontWeight: value != null ? 600 : 400 }}
                       onChange={e => {
                         const raw = e.target.value.trim();
                         const q = raw === '' ? null : Number(raw);
@@ -93,7 +97,8 @@ export default function MasterScheduleView({ canEdit }: { canEdit: boolean }) {
             </tr>
           ))}</tbody>
         </table>
-      </ListPanel>
+      </DataPanel>
+      )}
     </div>
   );
 }

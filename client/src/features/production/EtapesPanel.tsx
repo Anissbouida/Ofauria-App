@@ -582,7 +582,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                                       {rd.conforme === true && <span className="text-[8px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">Conforme</span>}
                                       {rd.conforme === false && <span className="text-[8px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-bold">Hors tolérance</span>}
                                       {isChef && planStatus === 'in_progress' && (
-                                        <button onClick={() => deleteReadingMutation.mutate(rd.id)} className="text-gray-300 hover:text-red-500" title="Supprimer ce relevé">
+                                        <button onClick={() => deleteReadingMutation.mutate(rd.id)} className="text-gray-300 hover:text-red-500" title="Supprimer ce relevé" aria-label="Supprimer ce relevé">
                                           <Trash2 size={11} />
                                         </button>
                                       )}

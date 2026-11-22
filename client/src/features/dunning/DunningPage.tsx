@@ -9,9 +9,11 @@ import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListKpi } from '../sales/ListTemplate';
+import { ListKpi, FilterChips } from '../sales/ListTemplate';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import { Tabs, SectionHeader, DataPanel, TableFooter, EmptyState, LoadingState } from '../../components/ds';
 
 /** Statut d'une lettre de relance en étiquette commune (à envoyer = action attendue). */
 const DUNNING_TONE: Record<DunningStatus, { tone: StatusTone; icon?: LucideIcon }> = {
@@ -35,12 +37,9 @@ async function openPdf(id: string) {
 export default function DunningPage() {
   const [tab, setTab] = useState<'letters' | 'levels'>('letters');
   return (
-    <SalesPageShell icon={BellRing} parent="Ventes" title="Relances" list actions={
-      <div className="prj-views" role="group" aria-label="Rubrique">
-        <button type="button" className={tab === 'letters' ? 'active' : ''} aria-pressed={tab === 'letters'} onClick={() => setTab('letters')}><BellRing size={14} /> Relances</button>
-        <button type="button" className={tab === 'levels' ? 'active' : ''} aria-pressed={tab === 'levels'} onClick={() => setTab('levels')}><Settings2 size={14} /> Niveaux</button>
-      </div>
-    }>
+    <SalesPageShell icon={BellRing} parent="Ventes" title="Relances" list
+      summary="Clients en retard de paiement : relances à préparer, lettres à envoyer et blocages de crédit.">
+      <Tabs label="Rubrique" value={tab} onChange={setTab} tabs={[{ key: 'letters', label: 'Relances' }, { key: 'levels', label: 'Niveaux de relance' }]} />
       {tab === 'letters' ? <Letters /> : <Levels />}
     </SalesPageShell>
   );
@@ -77,7 +76,19 @@ function Letters() {
   const release = useMutation({ mutationFn: (id: string) => dunningApi.release(id), onSuccess: () => { refresh(); notify.success('Client débloqué'); }, onError: e => notify.error(apiErrorMessage(e)) });
   const unpause = useMutation({ mutationFn: (id: string) => dunningApi.pause(id, null), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
 
-  if (isLoading || !ov) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading || !ov) return <LoadingState label="Chargement des relances…" />;
+  const letterMenu = (d: Dunning): RowMenuItem[] => [
+    { label: openId === d.id ? 'Masquer la lettre' : 'Voir la lettre', icon: openId === d.id ? ChevronUp : ChevronDown, onSelect: () => setOpenId(openId === d.id ? null : d.id) },
+    ...(d.status === 'draft' ? [
+      { label: 'Lettre PDF', icon: Printer, onSelect: () => openPdf(d.id) },
+      { label: 'Envoyée par courrier', icon: Mail, onSelect: () => send.mutate({ id: d.id, via: 'print' as const }) },
+      { label: 'Relancé par téléphone', icon: Phone, onSelect: () => send.mutate({ id: d.id, via: 'phone' as const }) },
+    ] : []),
+    ...(d.status === 'draft' || d.status === 'sent' ? [{
+      label: 'Annuler la relance', icon: Ban, danger: true,
+      onSelect: async () => { if (await confirm(`Annuler la relance ${d.number} ?`, { title: 'Annuler la relance', confirmLabel: 'Annuler la relance', cancelLabel: 'Retour', danger: true })) cancel.mutate(d.id); },
+    }] : []),
+  ];
   const toRemind = ov.proposals.reduce((s, p) => s + p.overdue, 0);
   const held = ov.blocked.filter(b => b.credit_hold_at);
   return (
@@ -91,77 +102,72 @@ function Letters() {
       </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>À relancer maintenant</div>
+        <SectionHeader title="À relancer maintenant" note={ov.proposals.length ? `${ov.proposals.length} client${ov.proposals.length > 1 ? 's' : ''} · ${money(toRemind)} échus` : undefined} />
         {ov.proposals.length === 0 ? (
           <StatusBanner tone="success" icon={CheckCircle2} title="Aucun client à relancer">Chaque client en retard a déjà reçu la relance de son niveau. La tâche quotidienne propose la suivante quand un seuil est franchi.</StatusBanner>
-        ) : (<>
-          <div style={{ overflowX: 'auto' }}>
+        ) : (
+          <DataPanel label="Clients à relancer" footer={
+            <TableFooter note={selected.size ? `${selected.size} client${selected.size > 1 ? 's' : ''} sélectionné${selected.size > 1 ? 's' : ''}` : 'Cochez les clients à relancer'}>
+              <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={!selected.size || create.isPending} onClick={() => create.mutate([...selected])}>
+                {create.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Préparer {selected.size || ''} relance{selected.size > 1 ? 's' : ''}
+              </button>
+            </TableFooter>
+          }>
             <table className="odoo-table">
               <thead><tr>
                 <th style={{ width: 32 }}><input type="checkbox" aria-label="Tout sélectionner" checked={selected.size === ov.proposals.length}
                   onChange={e => setSelected(e.target.checked ? new Set(ov.proposals.map(p => p.customerId)) : new Set())} /></th>
-                <th>Client</th><th style={{ textAlign: 'right' }}>Échu</th><th style={{ textAlign: 'right' }}>Plus ancien retard</th><th>Pièces</th><th>Dernière relance</th><th>Relance proposée</th>
+                <th>Client</th><th className="ds-num">Échu ({currencySymbol()})</th><th className="ds-num">Plus ancien retard (j)</th><th>Pièces</th><th>Dernière relance</th><th>Relance proposée</th>
               </tr></thead>
               <tbody>{ov.proposals.map(p => (
-                <tr key={p.customerId}>
+                <tr key={p.customerId} className={selected.has(p.customerId) ? 'ds-selected' : undefined}>
                   <td><input type="checkbox" aria-label={`Sélectionner ${p.customerName}`} checked={selected.has(p.customerId)}
                     onChange={e => { const s = new Set(selected); if (e.target.checked) s.add(p.customerId); else s.delete(p.customerId); setSelected(s); }} /></td>
-                  <td><strong>{p.customerName}</strong>{p.creditHold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}
-                    <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{p.email || <span style={{ color: '#b85d1a' }}>pas d'e-mail</span>}{p.phone ? ` · ${p.phone}` : ''}</div></td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(p.overdue)}</td>
-                  <td style={{ textAlign: 'right', color: p.maxDaysLate > 60 ? '#dc3545' : undefined }}>{p.maxDaysLate} j</td>
+                  <td><span className="ds-strong">{p.customerName}</span>{p.creditHold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{p.email || <span style={{ color: 'var(--ds-warning)' }}>pas d'e-mail</span>}{p.phone ? ` · ${p.phone}` : ''}</div></td>
+                  <td className="ds-num ds-strong">{n2(p.overdue)}</td>
+                  <td className="ds-num" style={{ color: p.maxDaysLate > 60 ? 'var(--ds-danger)' : undefined }}>{p.maxDaysLate}</td>
                   <td style={{ fontSize: '0.8125rem' }}>{p.docs.map(d => d.number).join(', ')}</td>
                   <td>{p.lastLevel ? `Niveau ${p.lastLevel} · ${fr(p.lastDunningAt)}` : '—'}</td>
                   <td><span className="odoo-tag odoo-tag-orange">{p.targetLevel} · {p.targetLabel}</span></td>
                 </tr>
               ))}</tbody>
             </table>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="odoo-btn-primary" disabled={!selected.size || create.isPending} onClick={() => create.mutate([...selected])}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              {create.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Préparer {selected.size || ''} relance(s)
-            </button>
-          </div>
-        </>)}
+          </DataPanel>
+        )}
       </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0, flex: 1 }}>Lettres de relance</div>
-          <select className="odoo-filter-dropdown" value={status} onChange={e => { setStatus(e.target.value as DunningStatus | ''); setPage(1); }}>
-            <option value="">Toutes</option>
-            {(Object.keys(DUNNING_STATUS_LABELS) as DunningStatus[]).map(k => <option key={k} value={k}>{DUNNING_STATUS_LABELS[k]}</option>)}
-          </select>
-        </div>
-        {!list?.data.length ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>Aucune lettre{status ? ` « ${DUNNING_STATUS_LABELS[status]} »` : ''}.</p> : (
-          <div style={{ overflowX: 'auto' }}>
+        <SectionHeader title="Lettres de relance" />
+        <FilterChips label="Filtrer les lettres par statut" value={status} onChange={k => { setStatus(k as DunningStatus | ''); setPage(1); }} chips={[
+          { key: '', label: 'Toutes' },
+          ...(Object.keys(DUNNING_STATUS_LABELS) as DunningStatus[]).map(k => ({ key: k, label: DUNNING_STATUS_LABELS[k] })),
+        ]} />
+        {!list ? <LoadingState label="Chargement des lettres…" /> : !list.data.length ? (
+          <EmptyState icon={Mail} title={`Aucune lettre${status ? ` « ${DUNNING_STATUS_LABELS[status]} »` : ''}`} text="Les lettres préparées depuis « À relancer maintenant » apparaissent ici." />
+        ) : (
+          <DataPanel label="Lettres de relance" footer={<TableFooter page={page} pageSize={PAGE_SIZE} total={list.total} onPage={setPage} note={`lettre${list.total > 1 ? 's' : ''}`} />}>
             <table className="odoo-table">
-              <thead><tr><th>N°</th><th>Client</th><th>Niveau</th><th>Date</th><th style={{ textAlign: 'right' }}>Montant</th><th>Statut</th><th></th></tr></thead>
+              <thead><tr><th>N°</th><th>Client</th><th>Niveau</th><th>Date</th><th className="ds-num">Montant ({currencySymbol()})</th><th>Statut</th><th className="ds-actions">Actions</th></tr></thead>
               <tbody>{list.data.map((d: Dunning) => (
                 <Fragment key={d.id}>
                   <tr>
-                    <td className="font-mono">{d.number}</td>
-                    <td>{d.customer_name}{d.credit_hold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}</td>
+                    <td><span className="ds-ref">{d.number}</span></td>
+                    <td><span className="ds-strong">{d.customer_name}</span>{d.credit_hold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}</td>
                     <td>{d.level} · {d.level_label}</td>
                     <td>{fr(d.dunning_date)}<div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{d.created_by_name ?? 'proposée automatiquement'}</div></td>
-                    <td style={{ textAlign: 'right' }}>{money(d.amount_due)}{Number(d.fee_amount) + Number(d.interest_amount) > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>+ {n2(Number(d.fee_amount) + Number(d.interest_amount))} frais et pénalités</div>}</td>
+                    <td className="ds-num">{n2(d.amount_due)}{Number(d.fee_amount) + Number(d.interest_amount) > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>+ {n2(Number(d.fee_amount) + Number(d.interest_amount))} frais et pénalités</div>}</td>
                     <td><StatusTag tone={DUNNING_TONE[d.status]?.tone ?? 'draft'} icon={DUNNING_TONE[d.status]?.icon} label={DUNNING_STATUS_LABELS[d.status]} />
                       {d.sent_at && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{format(new Date(d.sent_at), 'dd/MM HH:mm')} · {VIA[d.sent_via ?? ''] ?? ''}</div>}</td>
-                    <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                      <button className="odoo-pager-btn" title="Lettre PDF" aria-label="Lettre PDF" onClick={() => openPdf(d.id)}><Printer size={13} /></button>{' '}
-                      {d.status === 'draft' && <>
-                        <button className="odoo-btn-primary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={!d.customer_email || send.isPending}
+                    <td className="ds-actions">
+                      {d.status === 'draft' ? (
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={!d.customer_email || send.isPending}
                           title={d.customer_email ? `Envoyer à ${d.customer_email}` : 'Pas d\'adresse e-mail sur la fiche client'}
-                          onClick={() => send.mutate({ id: d.id, via: 'email' })}><Mail size={12} /> E-mail</button>{' '}
-                        <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} title="Envoyée par courrier (PDF imprimé)" onClick={() => send.mutate({ id: d.id, via: 'print' })}>Courrier</button>{' '}
-                        <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} title="Client relancé par téléphone" aria-label="Relancé par téléphone" onClick={() => send.mutate({ id: d.id, via: 'phone' })}><Phone size={12} /></button>{' '}
-                      </>}
-                      {(d.status === 'draft' || d.status === 'sent') && (
-                        <button className="odoo-pager-btn" title="Annuler la relance" aria-label="Annuler la relance"
-                          onClick={async () => { if (await confirm(`Annuler la relance ${d.number} ?`)) cancel.mutate(d.id); }}><Ban size={13} /></button>
-                      )}{' '}
-                      <button className="odoo-pager-btn" aria-label="Voir la lettre" onClick={() => setOpenId(openId === d.id ? null : d.id)}>{openId === d.id ? <ChevronUp size={13} /> : <ChevronDown size={13} />}</button>
+                          onClick={() => send.mutate({ id: d.id, via: 'email' })}><Mail size={12} /> Envoyer par e-mail</button>
+                      ) : (
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => openPdf(d.id)}><Printer size={13} /> Lettre PDF</button>
+                      )}
+                      <RowMenu items={letterMenu(d)} />
                     </td>
                   </tr>
                   {openId === d.id && (
@@ -173,31 +179,32 @@ function Letters() {
                 </Fragment>
               ))}</tbody>
             </table>
-            <Pager page={page} total={list.total} onPage={setPage} note={`${list.total} lettre(s)`} />
-          </div>
+          </DataPanel>
         )}
       </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Clients bloqués ou en pause</div>
-        {ov.blocked.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>Aucun client bloqué ni en pause.</p> : (
+        <SectionHeader title="Clients bloqués ou en pause" />
+        {ov.blocked.length === 0 ? <EmptyState icon={Unlock} title="Aucun client bloqué ni en pause" /> : (
+          <DataPanel label="Clients bloqués ou en pause" footer={<TableFooter note={`${ov.blocked.length} client${ov.blocked.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>Client</th><th>Situation</th><th>Motif</th><th>Depuis</th><th></th></tr></thead>
+            <thead><tr><th>Client</th><th>Situation</th><th>Motif</th><th>Depuis</th><th className="ds-actions">Actions</th></tr></thead>
             <tbody>{ov.blocked.map(b => (
               <tr key={b.id}>
-                <td><strong>{b.name}</strong></td>
+                <td className="ds-strong">{b.name}</td>
                 <td>{b.credit_hold_at ? <StatusTag tone="blocked" icon={Lock} label="bloqué" /> : null}{' '}
                   {b.dunning_paused_until && <StatusTag tone="cancelled" icon={PauseCircle} label={`relances en pause jusqu'au ${fr(b.dunning_paused_until)}`} />}</td>
                 <td style={{ fontSize: '0.8125rem' }}>{b.credit_hold_reason ?? '—'}</td>
                 <td style={{ fontSize: '0.8125rem' }}>{b.credit_hold_at ? `${format(new Date(b.credit_hold_at), 'dd/MM/yyyy')}${b.held_by_name ? ` · ${b.held_by_name}` : ' · relance'}` : '—'}</td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {b.credit_hold_at && <button className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                    onClick={async () => { if (await confirm(`Débloquer ${b.name} ? Ses achats à crédit redeviennent possibles.`)) release.mutate(b.id); }}><Unlock size={12} /> Débloquer</button>}{' '}
-                  {b.dunning_paused_until && <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => unpause.mutate(b.id)}>Reprendre les relances</button>}
+                <td className="ds-actions">
+                  {b.credit_hold_at && <button type="button" className="odoo-btn-secondary ds-btn-sm"
+                    onClick={async () => { if (await confirm(`Débloquer ${b.name} ? Ses achats à crédit redeviennent possibles.`, { title: 'Débloquer le client', confirmLabel: 'Débloquer' })) release.mutate(b.id); }}><Unlock size={12} /> Débloquer</button>}
+                  {b.dunning_paused_until && <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => unpause.mutate(b.id)}>Reprendre les relances</button>}
                 </td>
               </tr>
             ))}</tbody>
           </table>
+          </DataPanel>
         )}
       </section>
     </>
@@ -217,7 +224,7 @@ function Levels() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['dunning'] }); setEditing(null); notify.success('Niveau enregistré'); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
-  if (isLoading) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading) return <LoadingState label="Chargement des niveaux…" />;
   const nextLevel = Math.min(9, (levels.at(-1)?.level ?? 0) + 1);
   return (
     <>
@@ -226,18 +233,20 @@ function Levels() {
         Champs du texte : {'{client} {montant} {pieces} {jours} {frais} {penalites} {total} {societe} {date}'}.
         Frais et pénalités figurent sur la lettre ; ils ne sont pas comptabilisés automatiquement.
       </StatusBanner>
+      <DataPanel label="Niveaux de relance" footer={<TableFooter note={`${levels.length} niveau${levels.length > 1 ? 'x' : ''}`} />}>
       <table className="odoo-table">
-        <thead><tr><th>Niveau</th><th>Libellé</th><th style={{ textAlign: 'right' }}>Après échéance</th><th style={{ textAlign: 'right' }}>Frais</th><th style={{ textAlign: 'right' }}>Pénalités / an</th><th>E-mail</th><th>Bloque le client</th><th>Actif</th><th></th></tr></thead>
+        <thead><tr><th>Niveau</th><th>Libellé</th><th className="ds-num">Après échéance (j)</th><th className="ds-num">Frais ({currencySymbol()})</th><th className="ds-num">Pénalités (% / an)</th><th>E-mail</th><th>Bloque le client</th><th>Actif</th><th className="ds-actions">Actions</th></tr></thead>
         <tbody>{levels.map(l => (
           <tr key={l.level} style={{ opacity: l.is_active ? 1 : 0.55 }}>
-            <td>{l.level}</td><td><strong>{l.label}</strong><div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{l.subject}</div></td>
-            <td style={{ textAlign: 'right' }}>{l.days_after_due} j</td><td style={{ textAlign: 'right' }}>{money(l.fee_amount)}</td>
-            <td style={{ textAlign: 'right' }}>{Number(l.interest_rate)} %</td>
-            <td>{l.send_email ? 'oui' : 'non'}</td><td>{l.credit_hold ? <span className="odoo-tag odoo-tag-red">oui</span> : 'non'}</td><td>{l.is_active ? 'oui' : 'non'}</td>
-            <td style={{ textAlign: 'right' }}><button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setEditing({ ...l })}>Modifier</button></td>
+            <td>{l.level}</td><td><span className="ds-strong">{l.label}</span><span className="sal-sub">{l.subject}</span></td>
+            <td className="ds-num">{l.days_after_due}</td><td className="ds-num">{n2(l.fee_amount)}</td>
+            <td className="ds-num">{Number(l.interest_rate)}</td>
+            <td>{l.send_email ? 'oui' : 'non'}</td><td>{l.credit_hold ? <StatusTag tone="blocked" icon={Lock} label="oui" /> : 'non'}</td><td>{l.is_active ? 'oui' : 'non'}</td>
+            <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setEditing({ ...l })}>Modifier</button></td>
           </tr>
         ))}</tbody>
       </table>
+      </DataPanel>
       {levels.length < 9 && !editing && (
         <div><button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
           onClick={() => setEditing({ level: nextLevel, label: `Niveau ${nextLevel}`, days_after_due: (levels.at(-1)?.days_after_due ?? 0) + 30, fee_amount: '0', interest_rate: '0',
@@ -262,7 +271,8 @@ function Levels() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
-            <button className="odoo-btn-primary" disabled={save.isPending || editing.label.trim().length < 2 || editing.body.trim().length < 10} onClick={() => save.mutate(editing)}>Enregistrer</button>
+            <button type="button" className="odoo-btn-primary" disabled={save.isPending || editing.label.trim().length < 2 || editing.body.trim().length < 10} onClick={() => save.mutate(editing)}>
+              {save.isPending && <Loader2 size={13} className="animate-spin" />} Enregistrer</button>
           </div>
         </div>
       )}

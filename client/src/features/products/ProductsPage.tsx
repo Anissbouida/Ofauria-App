@@ -1,5 +1,11 @@
 import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import SalesPageShell from '../sales/SalesPageShell';
+import { RowMenu } from '../../components/ui/RowMenu';
+import {
+  BulkBar, DataPanel, EmptyState, ErrorState, KpiCard, KpiGrid, LoadingState, NoResultState, SearchBar, Segmented, TableFooter, Tabs, Toolbar,
+} from '../../components/ds';
 import ItemConversionsPanel from '../../components/ItemConversionsPanel';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -33,55 +39,38 @@ import { recipeSalePricing, recipeYieldLabel } from './recipeUnitCost';
 
 type ViewMode = 'grid' | 'table';
 
+const TAB_LEADS = {
+  pipeline: 'Cycle de vie des produits, de la création à la mise en vente.',
+  'semi-finis': 'Produits de base (semi-finis) fabriqués pour entrer dans d\'autres produits.',
+  catalogue: 'Produits vendus : prix, stock, disponibilité et règles de vente.',
+} as const;
+
 export default function ProductsPage() {
   const [activeTab, setActiveTab] = useState<'catalogue' | 'pipeline' | 'semi-finis'>('pipeline');
-
-  const tabLabel = activeTab === 'pipeline' ? 'Pipeline'
-    : activeTab === 'catalogue' ? 'Catalogue' : 'Produits de base';
+  // Emplacement des boutons de l'onglet (Importer, Nouveau produit) dans la barre du haut.
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
 
   return (
-    <div className="odoo-scope">
-      {/* ══════ CONTROL BAR ══════ */}
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Ventes</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">Produits</span>
-          <span className="spsh-summary" style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{tabLabel}</span>
-        </div>
-      </div>
-
-      {/* Style Apple (2026-11) : grand titre et onglets en sélecteur segmenté. */}
-      <div className="sal-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        <header className="kl-largetitle"><h1>Produits</h1><p>{tabLabel}</p></header>
-        <div className="prj-views" role="tablist" aria-label="Rubriques produits">
-          <button type="button" role="tab" aria-selected={activeTab === 'pipeline'} onClick={() => setActiveTab('pipeline')} className={activeTab === 'pipeline' ? 'active' : ''}>
-            <GitBranch size={13} /> Pipeline
-          </button>
-          <button type="button" role="tab" aria-selected={activeTab === 'semi-finis'} onClick={() => setActiveTab('semi-finis')} className={activeTab === 'semi-finis' ? 'active' : ''}>
-            <Layers size={13} /> Produits de base
-          </button>
-          <button type="button" role="tab" aria-selected={activeTab === 'catalogue'} onClick={() => setActiveTab('catalogue')} className={activeTab === 'catalogue' ? 'active' : ''}>
-            <ShoppingBag size={13} /> Catalogue
-          </button>
-        </div>
-      </div>
+    <SalesPageShell icon={ShoppingBag} parent="Ventes › Paramétrage" title="Produits" summary={TAB_LEADS[activeTab]}
+      actions={<div ref={setHeaderSlot} style={{ display: 'flex', gap: 8, alignItems: 'center' }} />}>
+      <Tabs label="Rubriques produits" value={activeTab} onChange={setActiveTab} tabs={[
+        { key: 'pipeline', label: 'Pipeline' },
+        { key: 'semi-finis', label: 'Produits de base' },
+        { key: 'catalogue', label: 'Catalogue' },
+      ]} />
 
       {activeTab === 'catalogue' ? (
         <>
           {/* Bandeau alerte lots produits expires (DLC ou DLV) — lie au catalogue */}
           <ExpiredProductLotsBanner />
-          <CatalogueTab />
+          <CatalogueTab headerSlot={headerSlot} />
         </>
       ) : activeTab === 'semi-finis' ? (
         <SemiFinisTab />
       ) : (
         <ProductPipelineTab />
       )}
-      </div>
-    </div>
+    </SalesPageShell>
   );
 }
 
@@ -102,7 +91,7 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
   );
 }
 
-function CatalogueTab() {
+function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -121,7 +110,7 @@ function CatalogueTab() {
     else { setSortKey(key); setSortDir(key === 'price' || key === 'stock_quantity' ? 'desc' : 'asc'); }
   };
 
-  const { data: productsData, isLoading } = useQuery({
+  const { data: productsData, isLoading, isError, refetch } = useQuery({
     queryKey: ['products', { search, categoryId: categoryFilter }],
     queryFn: () => productsApi.list({ search, categoryId: categoryFilter, limit: '500' }),
   });
@@ -315,112 +304,62 @@ function CatalogueTab() {
     bulkDeleteMutation.mutate([...selectedIds]);
   };
 
+  const hasFilters = !!(search || categoryFilter || stockFilter !== 'all');
+  const resetFilters = () => { setSearch(''); setCategoryFilter(''); setStockFilter('all'); };
+  const askDelete = async (id: string) => {
+    if (await confirm('Supprimer définitivement ce produit ? Cette action est irréversible.', { title: 'Supprimer le produit', danger: true, confirmLabel: 'Supprimer' })) deleteMutation.mutate(id);
+  };
+
   return (
     <>
-      {/* ══════ Situation du stock (bandeau encadré, cartes cliquables — comme Achats) ══════ */}
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '10px 16px 0' }}>
-          <span style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--odoo-text-muted)' }}>État du stock</span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{totalProducts} produits · cliquez pour filtrer</span>
-        </div>
-        <div className="odoo-stat-grid" style={{ borderBottom: 'none' }}>
-          <button onClick={() => setStockFilter('all')} className={`odoo-stat-card ${stockFilter === 'all' ? 'active' : ''}`}>
-            <div className="odoo-stat-card-label"><ShoppingBag size={11} style={{ display: 'inline', marginRight: 4 }} />Total produits</div>
-            <div className="odoo-stat-card-value">{totalProducts}</div>
-            <div className="odoo-stat-card-sub">au catalogue</div>
-          </button>
-          <button onClick={() => setStockFilter(stockFilter === 'available' ? 'all' : 'available')} className={`odoo-stat-card ${stockFilter === 'available' ? 'active' : ''}`}>
-            <div className="odoo-stat-card-label"><Eye size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Disponibles</div>
-            <div className="odoo-stat-card-value">{availableCount}</div>
-            <div className="odoo-stat-card-sub">en vente</div>
-          </button>
-          <button onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')} className={`odoo-stat-card ${stockFilter === 'low' ? 'active' : ''}`}>
-            <div className="odoo-stat-card-label"><TrendingUp size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />Stock bas</div>
-            <div className="odoo-stat-card-value" style={{ color: lowStockCount > 0 ? '#b85d1a' : undefined }}>{lowStockCount}</div>
-            <div className="odoo-stat-card-sub">à réassortir</div>
-          </button>
-          <button onClick={() => setStockFilter(stockFilter === 'out' ? 'all' : 'out')} className={`odoo-stat-card ${stockFilter === 'out' ? 'active' : ''}`}>
-            <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4, color: '#dc3545' }} />Rupture</div>
-            <div className="odoo-stat-card-value" style={{ color: outOfStockCount > 0 ? '#dc3545' : undefined }}>{outOfStockCount}</div>
-            <div className="odoo-stat-card-sub">à produire</div>
-          </button>
-        </div>
-      </div>
-
-      {/* ══════ Action sub-bar (Nouveau produit + import + pager + view switcher) ══════ */}
-      <div className="odoo-control-bar">
-        <button onClick={() => { setEditingProduct(null); setShowForm(true); }} className="odoo-btn-primary">
-          <Plus size={14} /> Nouveau
+      {/* Boutons de l'onglet, posés dans la barre du haut : secondaire puis action principale. */}
+      {headerSlot && createPortal(<>
+        <button type="button" onClick={() => csvInputRef.current?.click()} className="odoo-btn-secondary"
+          disabled={importMutation.isPending} title="Importer des produits depuis un export CSV Loyverse" aria-label="Importer des produits depuis un export CSV Loyverse">
+          <Upload size={14} aria-hidden="true" /> {importMutation.isPending ? 'Import…' : 'Importer un CSV'}
         </button>
-        <button onClick={() => csvInputRef.current?.click()} className="odoo-btn-secondary"
-          disabled={importMutation.isPending} title="Importer des produits depuis un export CSV Loyverse">
-          <Upload size={14} /> {importMutation.isPending ? 'Import...' : 'Importer CSV'}
+        <button type="button" onClick={() => { setEditingProduct(null); setShowForm(true); }} className="odoo-btn-primary">
+          <Plus size={14} aria-hidden="true" /> Nouveau produit
         </button>
-        <input ref={csvInputRef} type="file" accept=".csv,text/csv" onChange={handleCsvFile} style={{ display: 'none' }} />
-        {selectedIds.size > 0 && (
-          <>
-            <span className="odoo-pager" style={{ marginLeft: 8 }}>
-              <strong>{selectedIds.size}</strong> sélectionné{selectedIds.size > 1 ? 's' : ''}
-            </span>
-            <button onClick={handleBulkDelete} className="odoo-btn-danger" disabled={bulkDeleteMutation.isPending}>
-              <Trash2 size={14} /> {bulkDeleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
-            </button>
-            <button onClick={() => setSelectedIds(new Set())} className="odoo-btn-secondary" title="Annuler la sélection">
-              <X size={14} />
-            </button>
-          </>
-        )}
-        <div style={{ flex: 1 }} />
-        <span className="odoo-pager">
-          <strong>{filteredProducts.length}</strong> / {totalProducts}
-        </span>
-        <div className="odoo-view-switcher">
-          <button onClick={() => setViewMode('table')} className={viewMode === 'table' ? 'active' : ''} title="Vue liste">
-            <List size={14} />
-          </button>
-          <button onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} title="Vue kanban">
-            <LayoutGrid size={14} />
-          </button>
-        </div>
-      </div>
+      </>, headerSlot)}
+      <input ref={csvInputRef} type="file" accept=".csv,text/csv" onChange={handleCsvFile} style={{ display: 'none' }} aria-hidden="true" tabIndex={-1} />
 
-      {/* ══════ SEARCH PANEL ══════ */}
-      <div className="odoo-search-panel">
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher un produit..."
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          className="odoo-search-input" />
-        {search && (
-          <span className="odoo-filter-chip">
-            Recherche: {search}
-            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
-          </span>
-        )}
-        {categoryFilter && (
-          <span className="odoo-filter-chip">
-            {(categories as Array<{ id: number; name: string }>).find(c => String(c.id) === categoryFilter)?.name || 'Catégorie'}
-            <span className="odoo-filter-chip-remove" onClick={() => setCategoryFilter('')}>×</span>
-          </span>
-        )}
-        {stockFilter !== 'all' && (
-          <span className="odoo-filter-chip">
-            {stockFilter === 'available' ? 'Disponibles' : stockFilter === 'low' ? 'Stock bas' : 'Rupture'}
-            <span className="odoo-filter-chip-remove" onClick={() => setStockFilter('all')}>×</span>
-          </span>
-        )}
+      {/* ══════ État du stock : indicateurs cliquables (filtres) ══════ */}
+      <KpiGrid label="État du stock">
+        <KpiCard label="Total des produits" value={totalProducts} sub="Au catalogue"
+          onClick={() => setStockFilter('all')} active={stockFilter === 'all'} />
+        <KpiCard label="Disponibles" value={availableCount} sub="En vente" tone="green"
+          onClick={() => setStockFilter(stockFilter === 'available' ? 'all' : 'available')} active={stockFilter === 'available'} />
+        <KpiCard label="Stock bas" value={lowStockCount} sub="À réassortir" tone={lowStockCount > 0 ? 'orange' : undefined}
+          onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')} active={stockFilter === 'low'} />
+        <KpiCard label="Rupture" value={outOfStockCount} sub="À produire" tone={outOfStockCount > 0 ? 'red' : undefined}
+          onClick={() => setStockFilter(stockFilter === 'out' ? 'all' : 'out')} active={stockFilter === 'out'} />
+      </KpiGrid>
+
+      {/* ══════ Barre d'outils : recherche, catégorie, puis bascule d'affichage ══════ */}
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} placeholder="Rechercher un produit" />
         <SearchSelect
           options={(categories as Array<{ id: number; name: string }>).map(c => ({ id: String(c.id), label: c.name }))}
           value={categoryFilter}
           onChange={setCategoryFilter}
-          placeholder="Catégorie"
+          placeholder="Toutes catégories"
         />
-      </div>
+        <span className="ds-grow" />
+        <Segmented label="Affichage" value={viewMode} onChange={setViewMode}
+          options={[{ key: 'table', label: 'Tableau', icon: List }, { key: 'grid', label: 'Cartes', icon: LayoutGrid }]} />
+      </Toolbar>
 
       {/* Content */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5rem' }}>
-          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        </div>
+        <LoadingState label="Chargement des produits…" />
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
+      ) : filteredProducts.length === 0 ? (
+        hasFilters
+          ? <NoResultState text="Aucun produit ne correspond aux filtres." onReset={resetFilters} />
+          : <EmptyState icon={ShoppingBag} title="Aucun produit" text="Les produits vendus en boutique et sur commande apparaîtront ici."
+              action={<button type="button" className="odoo-btn-primary" onClick={() => { setEditingProduct(null); setShowForm(true); }}><Plus size={14} aria-hidden="true" /> Nouveau produit</button>} />
       ) : viewMode === 'grid' ? (
         /* ═══ Grid View (kanban Odoo) ═══ */
         <div className="odoo-kanban">
@@ -467,16 +406,16 @@ function CatalogueTab() {
                   {/* Quick actions overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                     <button onClick={(e) => { e.stopPropagation(); setEditingProduct(p); setShowForm(true); }}
-                      className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-white transition-colors" title="Modifier">
+                      className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-white transition-colors" title="Modifier" aria-label={`Modifier ${p.name as string}`}>
                       <Pencil size={14} className="text-gray-700" />
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); toggleMutation.mutate(p.id as string); }}
                       className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-amber-50 transition-colors"
-                      title={p.is_available ? 'Désactiver' : 'Activer'}>
+                      title={p.is_available ? 'Désactiver' : 'Activer'} aria-label={`${p.is_available ? 'Désactiver' : 'Activer'} ${p.name as string}`}>
                       {p.is_available ? <EyeOff size={14} className="text-amber-600" /> : <Eye size={14} className="text-green-600" />}
                     </button>
-                    <button onClick={async (e) => { e.stopPropagation(); if (await confirm('Supprimer définitivement ce produit ? Cette action est irréversible.', { title: 'Supprimer le produit', danger: true, confirmLabel: 'Supprimer' })) deleteMutation.mutate(p.id as string); }}
-                      className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-red-50 transition-colors" title="Supprimer">
+                    <button onClick={(e) => { e.stopPropagation(); askDelete(p.id as string); }}
+                      className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-red-50 transition-colors" title="Supprimer" aria-label={`Supprimer ${p.name as string}`}>
                       <Trash2 size={14} className="text-red-500" />
                     </button>
                   </div>
@@ -510,84 +449,73 @@ function CatalogueTab() {
             );
           })}
         </div>
-          {filteredProducts.length === 0 && (
-            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-              <ShoppingBag size={48} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-              <p style={{ fontSize: '0.875rem', fontWeight: 500 }}>Aucun produit trouvé</p>
-              <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Essayez de modifier vos filtres</p>
-            </div>
-          )}
         </div>
       ) : (
-        /* ═══ Table View (Odoo dense) ═══ */
-        <div style={{ overflowX: 'auto' }}>
+        /* ═══ Vue tableau ═══ */
+        <DataPanel label="Catalogue des produits"
+          bulk={
+            <BulkBar count={selectedIds.size} noun="produit" onClear={() => setSelectedIds(new Set())}>
+              <button type="button" onClick={handleBulkDelete} className="ds-btn-danger ds-btn-sm" disabled={bulkDeleteMutation.isPending}>
+                <Trash2 size={13} aria-hidden="true" /> {bulkDeleteMutation.isPending ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </BulkBar>
+          }
+          footer={<TableFooter note={`${filteredProducts.length} sur ${totalProducts} produit(s)`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
                 <th style={{ width: 28, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll}
-                    title="Tout sélectionner" style={{ cursor: 'pointer', accentColor: 'var(--theme-accent)' }} />
+                    aria-label="Tout sélectionner" style={{ cursor: 'pointer' }} />
                 </th>
-                <th style={{ width: 24 }}></th>
                 <SortHeader label="Produit" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Catégorie" sortKey="category_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Responsable" sortKey="responsible" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Prix" sortKey="price" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label={`Prix (${currencySymbol()})`} sortKey="price" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Stock" sortKey="stock_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Statut" sortKey="is_available" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <th>Cycle de vie</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
-              {sortedProducts.length === 0 ? (
-                <tr><td colSpan={10} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-                  Aucun produit trouvé
-                </td></tr>
-              ) : sortedProducts.map((p: Record<string, any>) => {
+              {sortedProducts.map((p: Record<string, any>) => {
                 const stock = parseFloat((p.stock_quantity as string) || '0');
                 const threshold = parseFloat((p.stock_min_threshold as string) || '0');
                 const reserved = parseFloat((p.reserved_quantity as string) || '0');
                 const isLow = threshold > 0 && stock <= threshold && stock > 0;
                 const isOut = stock <= 0;
-                const dotClass = isOut ? 'danger' : isLow ? 'warning' : 'ok';
-                const dotLabel = isOut ? 'Rupture' : isLow ? 'Stock bas' : 'En stock';
 
                 return (
-                  <tr key={p.id as string} onClick={() => { setEditingProduct(p); setShowForm(true); }}>
+                  <tr key={p.id as string} className={selectedIds.has(p.id as string) ? 'ds-selected' : undefined} onClick={() => { setEditingProduct(p); setShowForm(true); }}>
                     <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                       <input type="checkbox" checked={selectedIds.has(p.id as string)}
                         onChange={() => toggleSelect(p.id as string)}
-                        style={{ cursor: 'pointer', accentColor: 'var(--theme-accent)' }} />
+                        aria-label={`Sélectionner ${p.name as string}`}
+                        style={{ cursor: 'pointer' }} />
                     </td>
-                    <td><span className={`odoo-status-dot ${dotClass}`} role="img" title={dotLabel} aria-label={dotLabel} /></td>
                     <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                        {p.image_url ? (
-                          <img src={serverUrl(p.image_url as string)} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
-                        ) : (
-                          <ShoppingBag size={13} style={{ color: 'var(--theme-accent)' }} />
+                      <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        {p.image_url && (
+                          <img src={serverUrl(p.image_url as string)} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover' }} />
                         )}
                         {p.name as string}
                       </span>
                     </td>
+                    <td>{(p.category_name as string) || '—'}</td>
                     <td>
-                      {p.category_name ? (
-                        <span className="odoo-tag odoo-tag-grey">{p.category_name as string}</span>
-                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                      {p.responsible_first_name
+                        ? `${p.responsible_first_name as string} ${(p.responsible_last_name as string)?.[0] ?? ''}.`
+                        : '—'}
                     </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>
-                      {p.responsible_first_name ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <ChefHat size={11} /> {p.responsible_first_name as string} {(p.responsible_last_name as string)?.[0]}.
-                        </span>
-                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                    {/* Unité de vente gardée dans la cellule quand elle n'est pas la pièce (règle métier). */}
+                    <td className="ds-num">
+                      <span className="ds-strong">{parseFloat(p.price as string).toFixed(2)}</span>
+                      {p.sale_unit !== 'unit' && (p.sale_unit === 'weight' || p.sale_unit === 'person') && (
+                        <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 3 }}>{p.sale_unit === 'weight' ? '/kg' : '/pers.'}</span>
+                      )}
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <span style={{ fontWeight: 600 }}>{parseFloat(p.price as string).toFixed(2)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}{p.sale_unit === 'weight' ? '/kg' : p.sale_unit === 'person' ? '/pers' : ''}</span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="ds-num">
                       {isOut ? (
                         <StatusTag tone="blocked" label="Rupture" />
                       ) : isLow ? (
@@ -596,7 +524,7 @@ function CatalogueTab() {
                         <span style={{ fontWeight: 500 }}>{p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(2)} kg` : stock}</span>
                       )}
                       {reserved > 0 && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}
+                        <div style={{ fontSize: 12, color: 'var(--ds-muted)', marginTop: 1 }}
                           title="Réservé par des commandes clients non encore livrées">
                           dont {p.sale_unit === 'weight' ? `${(reserved / 1000).toFixed(2)} kg` : reserved} réservé
                         </div>
@@ -620,54 +548,44 @@ function CatalogueTab() {
                         return (
                           <div style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
                             {saleType === 'jour' && (
-                              <span className="odoo-tag odoo-tag-yellow" title="Vente du jour — invendu = perte ou valorisation">JOUR</span>
+                              <span className="odoo-tag odoo-tag-yellow" title="Vente du jour — invendu = perte ou valorisation">Jour</span>
                             )}
                             {saleType === 'dlv' && (
                               <span className="odoo-tag odoo-tag-green" title={`Multi-jours — ${shelfDays > 0 ? `DLC ${shelfDays} j depuis production` : 'DLC non configurée'}`}>
-                                DLC{shelfDays > 0 ? ` ${shelfDays}j` : ''}
+                                DLC{shelfDays > 0 ? ` ${shelfDays} j` : ''}
                               </span>
                             )}
                             {saleType === 'commande' && (
-                              <span className="odoo-tag odoo-tag-blue" title="Sur commande — pas de stock vitrine">CMD</span>
+                              <span className="odoo-tag odoo-tag-blue" title="Sur commande — pas de stock vitrine">Sur commande</span>
                             )}
                             {saleType !== 'commande' && displayHours > 0 && (
                               <span className="odoo-tag odoo-tag-orange" title={`Exposition max : ${displayHours} h depuis transfert vitrine`}>
-                                +Expo {displayHours}h
+                                Exposition {displayHours} h
                               </span>
                             )}
                             {saleType !== 'commande' && Boolean(p.is_reexposable) && (
-                              <span className="odoo-tag odoo-tag-purple" title={`Remise en vente${p.max_reexpositions ? ` — ${p.max_reexpositions} j` : ''}`}>RV</span>
+                              <span className="odoo-tag odoo-tag-purple" title={`Remise en vente${p.max_reexpositions ? ` — ${p.max_reexpositions} j` : ''}`}>Remise en vente</span>
                             )}
                             {saleType !== 'commande' && Boolean(p.is_recyclable) && (
-                              <span className="odoo-tag odoo-tag-blue" title="Valorisable en production (rework)">VAL</span>
+                              <span className="odoo-tag odoo-tag-blue" title="Valorisable en production (rework)">Valorisable</span>
                             )}
                           </div>
                         );
                       })()}
                     </td>
-                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: 'inline-flex', gap: 2 }}>
-                        <button onClick={() => { setEditingProduct(p); setShowForm(true); }}
-                          className="odoo-pager-btn" title="Modifier">
-                          <Pencil size={13} />
-                        </button>
-                        <button onClick={() => toggleMutation.mutate(p.id as string)}
-                          className="odoo-pager-btn" title={p.is_available ? 'Désactiver' : 'Activer'}>
-                          {p.is_available ? <EyeOff size={13} /> : <Eye size={13} />}
-                        </button>
-                        <button onClick={async () => { if (await confirm('Supprimer définitivement ce produit ? Cette action est irréversible.', { title: 'Supprimer le produit', danger: true, confirmLabel: 'Supprimer' })) deleteMutation.mutate(p.id as string); }}
-                          className="odoo-pager-btn" title="Supprimer"
-                          style={{ color: '#dc3545' }}>
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
+                    <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" onClick={() => { setEditingProduct(p); setShowForm(true); }} className="odoo-btn-secondary ds-btn-sm">Modifier</button>
+                      <RowMenu label={`Plus d'actions sur ${p.name as string}`} items={[
+                        { label: p.is_available ? 'Désactiver' : 'Activer', icon: p.is_available ? EyeOff : Eye, onSelect: () => toggleMutation.mutate(p.id as string) },
+                        { label: 'Supprimer', icon: Trash2, danger: true, onSelect: () => askDelete(p.id as string) },
+                      ]} />
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {showForm && (
@@ -730,7 +648,7 @@ function ProductPreview({ form, imagePreview, categories, chefUsers }: {
   const saleTypeLabel = form.saleType === 'dlv' ? 'Multi-jours' : form.saleType === 'commande' ? 'Sur commande' : 'Vente du jour';
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <div style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--theme-text-muted)' }}>Aperçu</div>
+      <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Aperçu</div>
       <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, background: 'var(--odoo-bg)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
         <div style={{ aspectRatio: '4 / 3', background: 'var(--odoo-bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {imagePreview
@@ -1129,7 +1047,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             </span>
           </div>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
 
         {/* Tabs Odoo */}
@@ -1159,15 +1077,15 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-gray-200 shrink-0 group">
                         <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                          <button type="button" onClick={() => fileInputRef.current?.click()}
+                          <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="Importer une photo"
                             className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
                             <Upload size={14} className="text-gray-700" />
                           </button>
-                          <button type="button" onClick={startCamera}
+                          <button type="button" onClick={startCamera} aria-label="Prendre une photo"
                             className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
                             <Camera size={14} style={{ color: 'var(--theme-accent)' }} />
                           </button>
-                          <button type="button" onClick={removeImage}
+                          <button type="button" onClick={removeImage} aria-label="Retirer la photo"
                             className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
                             <X size={14} className="text-red-500" />
                           </button>
@@ -1194,10 +1112,10 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <div className="fixed inset-0 bg-black z-[60] flex flex-col">
                       <video ref={videoRef} autoPlay playsInline muted className="flex-1 object-cover w-full" />
                       <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-6 pb-8 pt-4 bg-gradient-to-t from-black/70">
-                        <button type="button" onClick={stopCamera} className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white">
+                        <button type="button" onClick={stopCamera} aria-label="Fermer la caméra" className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white">
                           <X size={28} />
                         </button>
-                        <button type="button" onClick={takePhoto} className="w-20 h-20 rounded-full border-4 border-white bg-white/30 backdrop-blur flex items-center justify-center">
+                        <button type="button" onClick={takePhoto} aria-label="Prendre la photo" className="w-20 h-20 rounded-full border-4 border-white bg-white/30 backdrop-blur flex items-center justify-center">
                           <div className="w-14 h-14 rounded-full bg-white" />
                         </button>
                         <div className="w-14" />
@@ -1266,7 +1184,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                           onKeyDown={handleRecipeKeyDown}
                           autoComplete="off" />
                         {(selectedRecipe || recipeSearch) && (
-                          <button type="button" onClick={() => { setForm(f => ({ ...f, recipeId: '' })); setRecipeSearch(''); recipeInputRef.current?.focus(); }}
+                          <button type="button" onClick={() => { setForm(f => ({ ...f, recipeId: '' })); setRecipeSearch(''); recipeInputRef.current?.focus(); }} aria-label="Retirer la recette liée"
                             className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-lg">
                             <X size={14} className="text-gray-400" />
                           </button>
@@ -1296,7 +1214,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                               {filteredAvailable.length > 0 && (
                                 <>
                                   <div className="px-3 py-2 border-b border-gray-100 bg-emerald-50/50">
-                                    <p className="text-[10px] text-emerald-600 uppercase tracking-wide font-bold">{filteredAvailable.length} recette{filteredAvailable.length > 1 ? 's' : ''} disponible{filteredAvailable.length > 1 ? 's' : ''}</p>
+                                    <p className="text-[10px] text-emerald-600 font-bold">{filteredAvailable.length} recette{filteredAvailable.length > 1 ? 's' : ''} disponible{filteredAvailable.length > 1 ? 's' : ''}</p>
                                   </div>
                                   {filteredAvailable.map((r, idx) => {
                                     const isHighlighted = idx === recipeHighlight;
@@ -1335,7 +1253,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                               {filteredLinked.length > 0 && (
                                 <>
                                   <div className="px-3 py-2 border-b border-t border-gray-100 bg-gray-50">
-                                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">{filteredLinked.length} recette{filteredLinked.length > 1 ? 's' : ''} deja liee{filteredLinked.length > 1 ? 's' : ''} a un produit</p>
+                                    <p className="text-[10px] text-gray-400 font-bold">{filteredLinked.length} recette{filteredLinked.length > 1 ? 's' : ''} deja liee{filteredLinked.length > 1 ? 's' : ''} a un produit</p>
                                   </div>
                                   {filteredLinked.map((r, idx) => {
                                     const globalIdx = filteredAvailable.length + idx;
@@ -1610,7 +1528,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', padding: '7px 11px', borderRadius: 6, background: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', justifySelf: 'start' }}>
                       <Package size={13} style={{ color: 'var(--theme-text-muted)' }} />
                       <span style={{ color: 'var(--theme-text-muted)' }}>Stock actuel :</span>
-                      <strong style={{ color: stockN < 0 ? '#dc3545' : 'var(--odoo-text)', fontVariantNumeric: 'tabular-nums' }}>
+                      <strong style={{ color: stockN < 0 ? 'var(--ds-danger)' : 'var(--odoo-text)', fontVariantNumeric: 'tabular-nums' }}>
                         {product.sale_unit === 'weight' ? `${stockN.toFixed(2)} kg` : stockN}
                       </strong>
                     </div>
@@ -1897,14 +1815,14 @@ function PricingTiersPanel({ productId }: { productId: string }) {
         <StatusBanner tone="info" icon={Coins} title="Aucun palier">Le POS utilisera le prix unique du produit.</StatusBanner>
       ) : (
         <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th style={{ textAlign: 'right' }}>À partir de (g)</th><th style={{ textAlign: 'right' }}>Jusqu'à (g)</th><th style={{ textAlign: 'right' }}>Prix au kg ({currencySymbol()})</th><th style={{ width: 36 }}></th></tr></thead>
+          <thead><tr><th className="ds-num">À partir de (g)</th><th className="ds-num">Jusqu'à (g)</th><th className="ds-num">Prix au kg ({currencySymbol()})</th><th style={{ width: 36 }}></th></tr></thead>
           <tbody>
             {rows.map((row, idx) => (
               <tr key={idx}>
                 <td><input type="number" min={0} step={1} style={{ ...fieldInput, textAlign: 'right' }} value={row.min} onChange={e => updateRow(idx, 'min', e.target.value)} placeholder="0" /></td>
                 <td><input type="number" min={0} step={1} style={{ ...fieldInput, textAlign: 'right' }} value={row.max} onChange={e => updateRow(idx, 'max', e.target.value)} placeholder="∞ (vide)" /></td>
                 <td><input type="number" min={0} step="0.01" style={{ ...fieldInput, textAlign: 'right', fontWeight: 600 }} value={row.prix} onChange={e => updateRow(idx, 'prix', e.target.value)} placeholder="80.00" /></td>
-                <td style={{ textAlign: 'center' }}><button type="button" onClick={() => removeRow(idx)} className="odoo-pager-btn" title="Supprimer"><Trash2 size={13} /></button></td>
+                <td style={{ textAlign: 'center' }}><button type="button" onClick={() => removeRow(idx)} className="odoo-pager-btn" title="Supprimer" aria-label="Supprimer"><Trash2 size={13} /></button></td>
               </tr>
             ))}
           </tbody>
@@ -2010,7 +1928,7 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--theme-text-muted)' }}>Destinations de valorisation</div>
+        <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Destinations de valorisation</div>
         <button type="button" onClick={addRow} className="odoo-btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }}><Plus size={12} /> Ajouter</button>
       </div>
 
@@ -2027,7 +1945,7 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
                 <td><SearchSelect ariaLabel="Ingrédient cible" placeholder="— Ingrédient cible —" width="100%" size="md" value={row.ingredientId} onChange={(id) => updateRow(idx, { ingredientId: id })} options={ingredientOptions.map(opt => ({ id: String(opt.id), label: `${opt.name}${opt.unit ? ` (${opt.unit})` : ''}` }))} /></td>
                 <td><input type="text" value={row.label} onChange={(e) => updateRow(idx, { label: e.target.value })} placeholder="Libellé (ex: Vers chapelure)" style={fieldInput} /></td>
                 <td><input type="number" step="0.01" min="0.01" max="2" value={row.yieldRatio} onChange={(e) => updateRow(idx, { yieldRatio: e.target.value })} style={{ ...fieldInput, textAlign: 'right' }} title="Rendement : 1.0 = 100 %, 0.7 = 30 % de perte au séchage" /></td>
-                <td style={{ textAlign: 'center' }}><button type="button" onClick={() => removeRow(idx)} className="odoo-pager-btn" title="Supprimer"><Trash2 size={13} /></button></td>
+                <td style={{ textAlign: 'center' }}><button type="button" onClick={() => removeRow(idx)} className="odoo-pager-btn" title="Supprimer" aria-label="Supprimer"><Trash2 size={13} /></button></td>
               </tr>
             ))}
           </tbody>

@@ -9,6 +9,8 @@ import { reconciliationApi, type ReconLine, type ReconShift, type ReconProduct, 
 import { parseLoyverseFiles, parseLoyverseCatalogFiles, parseLoyverseReceiptFiles, type ParsedReceiptItem } from './loyverseParser';
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { LoadingState } from '../../components/ds';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { currencySymbol } from '../../utils/money';
 import { useAuth } from '../../context/AuthContext';
@@ -73,9 +75,9 @@ function num(v: string | number | null | undefined) {
   return Number.isFinite(n) ? n : 0;
 }
 function ecartColor(e: number) {
-  if (e < -0.0001) return '#b71c1c';  // manque (a expliquer)
-  if (e > 0.0001) return '#b26a00';   // surplus (vendu plus que recu)
-  return '#0e7c3a';
+  if (e < -0.0001) return 'var(--ds-danger)';  // manque (a expliquer)
+  if (e > 0.0001) return 'var(--ds-warning)';   // surplus (vendu plus que recu)
+  return 'var(--ds-success)';
 }
 
 // Palette badge : tinte plus soutenue au-dela du seuil "gros ecart" (defaut 20 DH).
@@ -87,9 +89,9 @@ function ecartTone(v: number): EcartTone {
 }
 function ecartTheme(v: number, strong = false) {
   const tone = ecartTone(v);
-  if (tone === 'neg') return { fg: '#b71c1c', bg: strong ? '#fbd5d5' : '#fdecec', border: '#e53935' };
-  if (tone === 'pos') return { fg: '#8a4b00', bg: strong ? '#ffddb0' : '#fff4e0', border: '#e69138' };
-  return { fg: '#0e7c3a', bg: '#e9f7ef', border: '#66bb6a' };
+  if (tone === 'neg') return { fg: 'var(--ds-danger)', bg: strong ? '#fbd5d5' : 'var(--ds-danger-bg)', border: 'var(--ds-danger)' };
+  if (tone === 'pos') return { fg: 'var(--ds-warning)', bg: strong ? '#ffddb0' : 'var(--ds-warning-bg)', border: '#e69138' };
+  return { fg: 'var(--ds-success)', bg: 'var(--ds-success-bg)', border: '#66bb6a' };
 }
 
 /** Chip d'ecart : icone directionnelle + valeur signee, fond colore. */
@@ -527,7 +529,7 @@ function printBonSection(
   filterSection?: string,
 ) {
   const d = new Date(date + 'T00:00:00');
-  const dateFormatted = format(d, 'dd/MM/yyyy', { locale: fr });
+  const dateFormatted = format(d, 'd MMM yyyy', { locale: fr });
   const jourSemaine = format(d, 'EEEE', { locale: fr });
 
   const bySection: Record<string, { cat: string; products: SuggestProduct[] }[]> = {};
@@ -731,7 +733,7 @@ function printPassationJournee(
   // business_date peut arriver en timestamp ISO complet (2026-08-14T00:00:00.000Z) :
   // on ne garde que la date (10 premiers car.) avant de parser, sinon Date invalide.
   const d = new Date(String(businessDate).slice(0, 10) + 'T00:00:00');
-  const dateFormatted = format(d, 'dd/MM/yyyy', { locale: fr });
+  const dateFormatted = format(d, 'd MMM yyyy', { locale: fr });
   const jourSemaine = format(d, 'EEEE', { locale: fr });
   const fmtQty = (n: number) => String(Math.round(n * 100) / 100);
 
@@ -1242,7 +1244,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
           <input type="date" value={date} onChange={e => { setDate(e.target.value); touchedRef.current.clear(); setRemoved(new Set()); }}
             className="odoo-input" style={{ width: 160 }} />
           {fiche?.savedAt && (
-            <span className="odoo-tag odoo-tag-green" style={{ fontSize: '0.6875rem', alignSelf: 'flex-start' }}
+            <span className="odoo-tag odoo-tag-green" style={{ fontSize: 12, alignSelf: 'flex-start' }}
               title={fiche.savedBy ? `Enregistrée par ${fiche.savedBy}` : undefined}>
               <Check size={11} /> Enregistrée{fiche.savedBy ? ` par ${fiche.savedBy}` : ''} le{' '}
               {format(new Date(fiche.savedAt), 'd MMM à HH:mm', { locale: fr })}
@@ -1252,18 +1254,18 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
         <input className="odoo-input" placeholder="Rechercher un produit…" value={search}
           onChange={e => setSearch(e.target.value)} style={{ width: 200 }} />
         {refLabel && (
-          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
             Basé sur <strong>{refLabel}</strong>
           </span>
         )}
         {(data?.forecastCount ?? 0) > 0 && (
-          <span className="odoo-tag odoo-tag-purple" style={{ fontSize: '0.6875rem' }}
+          <span className="odoo-tag odoo-tag-purple" style={{ fontSize: 12 }}
             title="Articles reliés au catalogue : suggestion issue de la prévision de la demande">
             Prévision : {data!.forecastCount} article(s)
           </span>
         )}
         {data && !data.referenceDate && !data.forecastCount && data.products.length > 0 && (
-          <span className="odoo-tag odoo-tag-orange" style={{ fontSize: '0.6875rem' }}>
+          <span className="odoo-tag odoo-tag-orange" style={{ fontSize: 12 }}>
             Pas de référence J-7/J-14
           </span>
         )}
@@ -1272,7 +1274,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
           <button type="button" onClick={() => changeRisk(-5)}
             style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--theme-bg-separator)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1 }}>−</button>
           <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem', fontWeight: 600, minWidth: 40, textAlign: 'center',
-            color: riskPct > 0 ? '#0e7c3a' : riskPct < 0 ? '#b71c1c' : 'var(--theme-text-primary)' }}>
+            color: riskPct > 0 ? 'var(--ds-success)' : riskPct < 0 ? 'var(--ds-danger)' : 'var(--theme-text-primary)' }}>
             {riskPct > 0 ? '+' : ''}{riskPct}%
           </span>
           <button type="button" onClick={() => changeRisk(5)}
@@ -1359,7 +1361,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
             <strong style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <Package size={13} /> {showCuissonPlan ? '▾' : '▸'} Cuissons boulangerie
             </strong>
-            <span style={{ color: 'var(--theme-text-muted)' }}>
+            <span style={{ color: 'var(--ds-muted)' }}>
               1 chariot = {OVEN_CAPACITY_PLAQUES} plaques par cuisson · baguette 10/plaque · pain 20/plaque
             </span>
             <div style={{ flex: 1 }} />
@@ -1377,8 +1379,8 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                 <span>{c.plaques} pl</span>
                 <span style={{
                   padding: '0 6px', borderRadius: 3, fontWeight: 700,
-                  background: c.chariots.length > 1 ? '#fff4e0' : '#e9f7ef',
-                  color: c.chariots.length > 1 ? '#8a4b00' : '#0e7c3a',
+                  background: c.chariots.length > 1 ? 'var(--ds-warning-bg)' : 'var(--ds-success-bg)',
+                  color: c.chariots.length > 1 ? 'var(--ds-warning)' : 'var(--ds-success)',
                 }}>
                   {c.chariots.length} chariot{c.chariots.length > 1 ? 's' : ''}
                 </span>
@@ -1402,7 +1404,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginBottom: 2 }}>
                           <span>Chariot {i + 1}</span>
                           <span style={{ fontFamily: 'ui-monospace, monospace',
-                            color: ch.plaques === OVEN_CAPACITY_PLAQUES ? '#8a4b00' : '#0e7c3a' }}>
+                            color: ch.plaques === OVEN_CAPACITY_PLAQUES ? 'var(--ds-warning)' : 'var(--ds-success)' }}>
                             {ch.plaques}/{OVEN_CAPACITY_PLAQUES} pl
                           </span>
                         </div>
@@ -1425,11 +1427,9 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
       )}
 
       {isLoading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
-        </div>
+        <LoadingState bare />
       ) : !hasProducts ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
           Aucun produit dans le catalogue. Importez un CSV Loyverse depuis l'onglet <strong>Catalogue</strong>,
           ou utilisez l'onglet <strong>Journée</strong> pour saisir manuellement.
         </div>
@@ -1468,9 +1468,9 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                     onClick={() => copyFromYesterday(cat)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4, textTransform: 'none',
-                      fontSize: '0.6875rem', fontWeight: 600, padding: '2px 7px', borderRadius: 4,
+                      fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
                       border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card, #fff)',
-                      color: 'var(--theme-text-muted)',
+                      color: 'var(--ds-muted)',
                       cursor: copyingJ1 !== null ? 'default' : 'pointer',
                       opacity: copyingJ1 !== null && copyingJ1 !== cat ? 0.5 : 1,
                     }}>
@@ -1491,8 +1491,8 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                         }}>
                         <button type="button" onClick={() => changeCatRisk(cat, -5)}
                           style={{ width: 18, height: 18, border: 'none', borderRadius: 3, background: 'var(--theme-bg-separator)', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', lineHeight: 1, padding: 0 }}>−</button>
-                        <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', fontWeight: 600, minWidth: 34, textAlign: 'center',
-                          color: pct > 0 ? '#0e7c3a' : pct < 0 ? '#b71c1c' : 'var(--theme-text-muted)' }}>
+                        <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, fontWeight: 600, minWidth: 34, textAlign: 'center',
+                          color: pct > 0 ? 'var(--ds-success)' : pct < 0 ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>
                           {pct > 0 ? '+' : ''}{pct}%
                         </span>
                         <button type="button" onClick={() => changeCatRisk(cat, 5)}
@@ -1501,7 +1501,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                     );
                   })()}
                   {catSlots.length > 0 && (
-                    <span style={{ fontSize: '0.6875rem', fontWeight: 400, color: 'var(--theme-text-muted)', textTransform: 'none' }}>
+                    <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--ds-muted)', textTransform: 'none' }}>
                       {catSlots.length} créneau{catSlots.length > 1 ? 'x' : ''}
                     </span>
                   )}
@@ -1514,21 +1514,21 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                     <tr>
                       <th>Produit</th>
                       <th style={{ width: 150 }}>Darija</th>
-                      <th style={{ textAlign: 'right', width: 70 }} title="Demande prévue (violet) ou vendu J-7">Prévu</th>
+                      <th className="ds-num" style={{ width: 70 }} title="Demande prévue (violet) ou vendu J-7">Prévu</th>
                       {catSlots.length > 0 ? (
                         catSlots.map(s => (
                           <th key={s.id} style={{ textAlign: 'right', width: 85 }}>
                             <div>{s.label}</div>
-                            <div style={{ fontSize: '0.5625rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>
+                            <div style={{ fontSize: '0.5625rem', fontWeight: 400, color: 'var(--ds-muted)' }}>
                               {s.default_pct}%{s.target_time ? ` · ${s.target_time.slice(0, 5)}` : ''}
                             </div>
                           </th>
                         ))
                       ) : (
-                        <th style={{ textAlign: 'right', width: 95 }}>Besoin</th>
+                        <th className="ds-num" style={{ width: 95 }}>Besoin</th>
                       )}
-                      <th style={{ textAlign: 'right', width: 70 }}>Total</th>
-                      <th style={{ textAlign: 'right', width: 50 }}></th>
+                      <th className="ds-num" style={{ width: 70 }}>Total</th>
+                      <th className="ds-num" style={{ width: 50 }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1539,12 +1539,12 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                         <tr key={p.product_key}>
                           <td>
                             <span style={{ fontWeight: 500 }}>{p.product_name}</span>
-                            {p.sku && <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', fontFamily: 'monospace' }}>{p.sku}</div>}
+                            {p.sku && <div style={{ fontSize: 12, color: 'var(--ds-muted)', fontFamily: 'monospace' }}>{p.sku}</div>}
                           </td>
-                          <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem', direction: 'rtl', textAlign: 'right' }}>
+                          <td style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem', direction: 'rtl', textAlign: 'right' }}>
                             {darijaOf(p.product_name) || '—'}
                           </td>
-                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: p.method === 'prevision' ? 'var(--theme-accent)' : 'var(--theme-text-muted)' }}
+                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: p.method === 'prevision' ? 'var(--theme-accent)' : 'var(--ds-muted)' }}
                             title={p.method === 'prevision' ? p.explanation : 'Vendu J-7 (article non relié au catalogue ou historique insuffisant)'}>
                             {suggested > 0 ? qf(suggested) : '—'}
                           </td>
@@ -1568,7 +1568,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                               );
                             })
                           ) : (
-                            <td style={{ textAlign: 'right' }}>
+                            <td className="ds-num">
                               <input
                                 type="text" inputMode="decimal"
                                 value={slotQty[`${p.product_key}__total`] ?? ''}
@@ -1582,13 +1582,13 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                               />
                             </td>
                           )}
-                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: total > 0 ? 'var(--theme-accent)' : 'var(--theme-text-muted)' }}>
+                          <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: total > 0 ? 'var(--theme-accent)' : 'var(--ds-muted)' }}>
                             {total > 0 ? qf(total) : '—'}
                           </td>
                           <td style={{ textAlign: 'center' }}>
                             <button title="Retirer de la fiche du jour"
                               onClick={() => removeProduct(p.product_key)}
-                              style={{ color: '#b71c1c', padding: 2 }}>
+                              style={{ color: 'var(--ds-danger)', padding: 2 }} aria-label="Retirer de la fiche du jour">
                               <Trash2 size={13} />
                             </button>
                           </td>
@@ -1600,7 +1600,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                     <tr style={{ background: 'var(--theme-bg-sidebar, #f5f5f5)', fontWeight: 700 }}>
                       <td>Total {cat}</td>
                       <td></td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                      <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>
                         {qf(visible.reduce((s, p) => s + num(p.suggested_qty), 0))}
                       </td>
                       {catSlots.length > 0 ? (
@@ -1610,11 +1610,11 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                           </td>
                         ))
                       ) : (
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                        <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>
                           {qf(visible.reduce((s, p) => s + num(slotQty[`${p.product_key}__total`]), 0))}
                         </td>
                       )}
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-accent)' }}>
+                      <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-accent)' }}>
                         {qf(visible.reduce((s, p) => s + num(slotQty[`${p.product_key}__total`]), 0))}
                       </td>
                       <td></td>
@@ -1686,8 +1686,8 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
           });
         }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
           <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie</label>
-            <select className="input" value={catFilter}
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie</label>
+            <select className="ds-input" value={catFilter}
               onChange={e => { setCatFilter(e.target.value); setF(prev => ({ ...prev, name: '' })); }}>
               <option value="">Toutes les catégories ({products.length})</option>
               {cats.map(c => (
@@ -1698,8 +1698,8 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Produit *</label>
-            <input className="input" autoFocus required value={f.name}
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Produit *</label>
+            <input className="ds-input" autoFocus required value={f.name}
               placeholder="Tape pour chercher…"
               onChange={e => setF({ ...f, name: e.target.value })} />
             {/* Resultats de recherche cliquables (limites a 8) */}
@@ -1717,23 +1717,23 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--theme-bg-sidebar, #f5f5f5)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <span style={{ fontWeight: 500 }}>{p.product_name}</span>
-                    <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{p.category || 'Non classé'}</span>
+                    <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{p.category || 'Non classé'}</span>
                   </button>
                 ))}
                 {matches.length > 8 && (
-                  <div style={{ padding: '4px 10px', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                  <div style={{ padding: '4px 10px', fontSize: 12, color: 'var(--ds-muted)' }}>
                     … {matches.length - 8} autre{matches.length - 8 > 1 ? 's' : ''} — affine la recherche
                   </div>
                 )}
               </div>
             )}
             {known && (
-              <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', marginTop: 3 }}>
+              <div style={{ fontSize: 12, color: 'var(--ds-success)', marginTop: 3 }}>
                 <Check size={11} style={{ display: 'inline', verticalAlign: -1 }} /> Produit du catalogue — {known.category || 'Non classé'}
               </div>
             )}
             {isNew && matches.length === 0 && (
-              <div style={{ fontSize: '0.6875rem', color: '#b26a00', marginTop: 3 }}>
+              <div style={{ fontSize: 12, color: 'var(--ds-warning)', marginTop: 3 }}>
                 Nouveau produit : il sera ajouté au catalogue.
               </div>
             )}
@@ -1741,26 +1741,26 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
           {isNew && matches.length === 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie du produit</label>
-                <input className="input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="fiche-add-categories"
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie du produit</label>
+                <input className="ds-input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="fiche-add-categories"
                   onChange={e => setF({ ...f, category: e.target.value })} />
                 <datalist id="fiche-add-categories">
                   {categories.map(c => <option key={c} value={c} />)}
                 </datalist>
               </div>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix unitaire ({currencySymbol()})</label>
-                <input type="number" step="0.01" min="0" className="input" value={f.price}
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Prix unitaire ({currencySymbol()})</label>
+                <input type="number" step="0.01" min="0" className="ds-input" value={f.price}
                   onChange={e => setF({ ...f, price: e.target.value })} />
               </div>
             </div>
           )}
           <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Quantité *</label>
-            <input type="text" inputMode="decimal" required className="input" value={f.qty}
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Quantité *</label>
+            <input type="text" inputMode="decimal" required className="ds-input" value={f.qty}
               placeholder="0"
               onChange={e => setF({ ...f, qty: e.target.value })} />
-            <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', marginTop: 3 }}>
+            <div style={{ fontSize: 12, color: 'var(--ds-muted)', marginTop: 3 }}>
               Répartie automatiquement sur les créneaux de la catégorie.
             </div>
           </div>
@@ -1791,8 +1791,8 @@ const COL_TINTS = {
   report:  { bg: '#eceff1', input: '#f5f7f8', text: '#455a64', border: '#cfd8dc' },
   appro:   { bg: '#e8f1fb', input: '#f4f9ff', text: '#1565c0', border: '#bbdefb' },
   recu:    { bg: '#f3ebf9', input: '#faf5ff', text: '#6a1b9a', border: '#e1bee7' },
-  vendu:   { bg: '#e6f4ea', input: '#f3fbf5', text: '#2e7d32', border: '#c8e6c9' },
-  invendu: { bg: '#fdf0e2', input: '#fff8ef', text: '#e65100', border: '#ffe0b2' },
+  vendu:   { bg: 'var(--ds-success-bg)', input: 'var(--ds-success-bg)', text: 'var(--ds-success)', border: '#c8e6c9' },
+  invendu: { bg: 'var(--ds-warning-bg)', input: 'var(--ds-warning-bg)', text: 'var(--ds-warning)', border: '#ffe0b2' },
 } as const;
 
 type ColTint = { bg: string; input: string; text: string; border: string };
@@ -1842,7 +1842,7 @@ function ReportVeilleCell({ qty, passation }: { qty: number; passation?: boolean
         fontFamily: 'ui-monospace, monospace', fontWeight: qty > 0 ? 600 : 400,
         border: '1px dashed', borderColor: qty > 0 ? t.border : 'transparent', borderRadius: 3,
         background: qty > 0 ? t.input : 'transparent',
-        color: qty > 0 ? t.text : 'var(--theme-text-muted)',
+        color: qty > 0 ? t.text : 'var(--ds-muted)',
       }}>
       {qty > 0 ? qf(qty) : '—'}
     </div>
@@ -1850,6 +1850,7 @@ function ReportVeilleCell({ qty, passation }: { qty: number; passation?: boolean
 }
 
 export function DayView() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const { user } = useAuth();
   // L'appro est la reference du rapprochement : seul l'admin peut la modifier.
@@ -2045,9 +2046,8 @@ export function DayView() {
       const err = e?.response?.data?.error;
       // Garde-fou : aucune vente importee -> on propose de forcer.
       if (err?.code === 'NO_SALES') {
-        if (window.confirm(`${err.message}\n\nClôturer quand même ?`)) {
-          statusMut.mutate({ action: 'closed', force: true });
-        }
+        confirm(`${err.message}\n\nClôturer quand même ?`, { title: 'Aucune vente importée', confirmLabel: 'Clôturer quand même' })
+          .then(ok => { if (ok) statusMut.mutate({ action: 'closed', force: true }); });
         return;
       }
       notify.error(err?.message || 'Erreur');
@@ -2061,9 +2061,8 @@ export function DayView() {
     onError: (e: any, v) => {
       const err = e?.response?.data?.error;
       if (err?.code === 'NO_SALES') {
-        if (window.confirm(`${err.message}\n\nClôturer quand même ?`)) {
-          shiftStatusMut.mutate({ ...v, force: true });
-        }
+        confirm(`${err.message}\n\nClôturer quand même ?`, { title: 'Aucune vente importée', confirmLabel: 'Clôturer quand même' })
+          .then(ok => { if (ok) shiftStatusMut.mutate({ ...v, force: true }); });
         return;
       }
       notify.error(err?.message || 'Erreur');
@@ -2193,8 +2192,9 @@ export function DayView() {
           onChange={e => { if (e.target.files?.length) handleImportFiles(Array.from(e.target.files)); e.target.value = ''; }} />
         <button className="odoo-btn-secondary" disabled={!day || locked || resetSalesMut.isPending || totals.vendu === 0}
           title="Remet vendu et montant vendu à 0 sur toutes les lignes (appro, reçu et reste conservés) avant un réimport propre"
-          onClick={() => {
-            if (window.confirm('Remettre toutes les ventes du jour à zéro ?\n\nAppro, reçu et reste sont conservés. À utiliser avant un réimport Loyverse propre.')) {
+          onClick={async () => {
+            if (await confirm('Remettre toutes les ventes du jour à zéro ?\n\nAppro, reçu et reste sont conservés. À utiliser avant un réimport Loyverse propre.',
+              { title: 'Remettre les ventes à zéro', confirmLabel: 'Remettre à zéro', danger: true })) {
               resetSalesMut.mutate();
             }
           }}>
@@ -2202,12 +2202,12 @@ export function DayView() {
         </button>
         <button className="odoo-btn-secondary" disabled={!day || locked || prefillResteMut.isPending || lines.length === 0}
           title="Pré-remplit la colonne Reste avec le théorique (Ouverture + Reçu − Vendu). À faire après l'import Loyverse : l'équipe ne valide/corrige que les écarts au comptage physique."
-          onClick={() => {
+          onClick={async () => {
             const hasInvendu = lines.some(l => num(l.invendu_qty) > 0);
             const msg = hasInvendu
               ? 'Des restes sont déjà saisis. Les remplacer par le reste théorique (Ouverture + Reçu − Vendu) ?\n\nLes corrections manuelles saisies seront écrasées.'
               : 'Pré-remplir la colonne Reste avec le théorique (Ouverture + Reçu − Vendu) ?\n\nL\'écart passe à 0 par défaut : vous n\'aurez plus qu\'à valider ou corriger les écarts au comptage physique.';
-            if (window.confirm(msg)) prefillResteMut.mutate();
+            if (await confirm(msg, { title: 'Reste théorique', confirmLabel: 'Pré-remplir', danger: hasInvendu })) prefillResteMut.mutate();
           }}>
           {prefillResteMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Scale size={14} />} Reste théorique
         </button>
@@ -2288,9 +2288,7 @@ export function DayView() {
 
       {/* Grille */}
       {isLoading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
-        </div>
+        <LoadingState bare />
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
@@ -2312,9 +2310,9 @@ export function DayView() {
                           {isPassationOpen ? 'passation · auto' : 'J-1 · auto'}
                         </div>
                       </th>
-                      <th style={{ textAlign: 'right', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>Appro</th>
-                      <th style={{ textAlign: 'right', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>Reçu</th>
-                      <th style={{ textAlign: 'right', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>Vendu</th>
+                      <th className="ds-num" style={{ background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>Appro</th>
+                      <th className="ds-num" style={{ background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>Reçu</th>
+                      <th className="ds-num" style={{ background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>Vendu</th>
                       <th style={{ textAlign: 'right', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}
                           title={isPassationClose
                             ? 'Comptage physique de la passation (~14h) : tout ce qui reste en vitrine à la fin du shift. Devient l\'ouverture du shift suivant.'
@@ -2327,15 +2325,15 @@ export function DayView() {
                     </>
                   );
                 })()}
-                <th style={{ textAlign: 'right' }}>Prix ({currencySymbol()})</th>
-                <th style={{ textAlign: 'right' }}>Écart (u)</th>
-                <th style={{ textAlign: 'right' }}>Écart ({currencySymbol()})</th>
+                <th className="ds-num">Prix ({currencySymbol()})</th>
+                <th className="ds-num">Écart (u)</th>
+                <th className="ds-num">Écart ({currencySymbol()})</th>
                 <th style={{ width: 32 }}></th>
               </tr>
             </thead>
             <tbody>
               {lines.length === 0 ? (
-                <tr><td colSpan={10} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+                <tr><td colSpan={10} style={{ padding: '2rem', textAlign: 'center', color: 'var(--ds-muted)' }}>
                   Aucune ligne. Ajoute un produit ou importe le CSV Loyverse du jour.
                 </td></tr>
               ) : groupedLines.map(({ cat, items }) => {
@@ -2368,7 +2366,7 @@ export function DayView() {
                     </td>
                     <td style={{ ...catCellBase, color: COL_TINTS.report.text }}>{catReport > 0 ? qf(catReport) : '—'}</td>
                     <td style={{ ...catCellBase, color: COL_TINTS.appro.text }}>{qf(catAppro)}</td>
-                    <td style={{ ...catCellBase, color: catRecu > 0 && catRecu !== catAppro ? '#b26a00' : COL_TINTS.recu.text }}>{qf(catRecu)}</td>
+                    <td style={{ ...catCellBase, color: catRecu > 0 && catRecu !== catAppro ? 'var(--ds-warning)' : COL_TINTS.recu.text }}>{qf(catRecu)}</td>
                     <td style={{ ...catCellBase, color: COL_TINTS.vendu.text }}>{qf(catVendu)}</td>
                     <td style={{ ...catCellBase, color: COL_TINTS.invendu.text }}>{qf(catInvendu)}</td>
                     <td style={{ background: catBg }}></td>
@@ -2392,14 +2390,14 @@ export function DayView() {
                       {l.source_vendu === 'loyverse_import' && (
                         <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6 }}>Loyverse</span>
                       )}
-                      {l.sku && <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', fontFamily: 'monospace' }}>{l.sku}</div>}
+                      {l.sku && <div style={{ fontSize: 12, color: 'var(--ds-muted)', fontFamily: 'monospace' }}>{l.sku}</div>}
                     </td>
-                    <td style={{ textAlign: 'right', background: COL_TINTS.report.bg }}>
+                    <td className="ds-num" style={{ background: COL_TINTS.report.bg }}>
                       <ReportVeilleCell qty={num(l.report_veille_qty)}
                         passation={!isTotalView && multiShift && activeShift != null && activeShift.shift_number !== firstSn} />
                     </td>
-                    <td style={{ textAlign: 'right', background: COL_TINTS.appro.bg }}>{numCell(l, 'approQty', 'appro_qty', COL_TINTS.appro, !canEditAppro)}</td>
-                    <td style={{ textAlign: 'right', background: COL_TINTS.recu.bg }}>
+                    <td className="ds-num" style={{ background: COL_TINTS.appro.bg }}>{numCell(l, 'approQty', 'appro_qty', COL_TINTS.appro, !canEditAppro)}</td>
+                    <td className="ds-num" style={{ background: COL_TINTS.recu.bg }}>
                       {numCell(l, 'recuQty', 'recu_qty', COL_TINTS.recu)}
                       {num(l.report_veille_qty) > 0 && (
                         <div style={{ fontSize: '0.5625rem', color: COL_TINTS.report.text, fontWeight: 600 }}
@@ -2408,19 +2406,19 @@ export function DayView() {
                         </div>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right', background: COL_TINTS.vendu.bg }}>{numCell(l, 'venduQty', 'vendu_qty', COL_TINTS.vendu, l.source_vendu === 'loyverse_import')}</td>
-                    <td style={{ textAlign: 'right', background: COL_TINTS.invendu.bg }}>{numCell(l, 'invenduQty', 'invendu_qty', COL_TINTS.invendu)}</td>
-                    <td style={{ textAlign: 'right' }}>{numCell(l, 'unitPrice', 'unit_price')}</td>
-                    <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                    <td className="ds-num" style={{ background: COL_TINTS.vendu.bg }}>{numCell(l, 'venduQty', 'vendu_qty', COL_TINTS.vendu, l.source_vendu === 'loyverse_import')}</td>
+                    <td className="ds-num" style={{ background: COL_TINTS.invendu.bg }}>{numCell(l, 'invenduQty', 'invendu_qty', COL_TINTS.invendu)}</td>
+                    <td className="ds-num">{numCell(l, 'unitPrice', 'unit_price')}</td>
+                    <td className="ds-num" style={{ padding: '4px 8px' }}>
                       <EcartBadge value={eQty} format={qf} minWidth={54} />
                     </td>
-                    <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                    <td className="ds-num" style={{ padding: '4px 8px' }}>
                       <EcartBadge value={eVal} format={nf} strong={isSignificant} minWidth={72} />
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       {!locked && l.id && (
                         <button onClick={() => deleteLineMut.mutate(l.id!)} title="Supprimer la ligne"
-                          style={{ color: '#b71c1c', padding: 2 }}><Trash2 size={13} /></button>
+                          style={{ color: 'var(--ds-danger)', padding: 2 }} aria-label="Supprimer la ligne"><Trash2 size={13} /></button>
                       )}
                     </td>
                   </tr>
@@ -2434,32 +2432,32 @@ export function DayView() {
               <tfoot>
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
                   <td>Total ({lines.length})</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}>{totals.report > 0 ? qf(totals.report) : '—'}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{qf(totals.appro)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: totals.recu !== totals.appro && totals.recu > 0 ? '#b26a00' : COL_TINTS.recu.text }}>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}>{totals.report > 0 ? qf(totals.report) : '—'}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{qf(totals.appro)}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: totals.recu !== totals.appro && totals.recu > 0 ? 'var(--ds-warning)' : COL_TINTS.recu.text }}>
                     {qf(totals.recu)}
                   </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>{qf(totals.vendu)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}>{qf(totals.invendu)}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>{qf(totals.vendu)}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}>{qf(totals.invendu)}</td>
                   <td></td>
-                  <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                  <td className="ds-num" style={{ padding: '4px 8px' }}>
                     <EcartBadge value={totals.ecartQty} format={qf} strong minWidth={62} />
                   </td>
-                  <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                  <td className="ds-num" style={{ padding: '4px 8px' }}>
                     <EcartBadge value={totals.ecartVal} format={v => `${nf(v)} ${currencySymbol()}`} strong minWidth={96} />
                   </td>
                   <td></td>
                 </tr>
-                <tr style={{ fontWeight: 600, color: 'var(--theme-text-muted)', background: 'var(--theme-bg-sidebar, #f5f5f5)' }}>
+                <tr style={{ fontWeight: 600, color: 'var(--ds-muted)', background: 'var(--theme-bg-sidebar, #f5f5f5)' }}>
                   <td>Montants ({currencySymbol()})</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}>{totals.report > 0 ? nf(totals.reportVal) : '—'}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{nf(totals.approVal)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>{nf(totals.recuVal)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>{nf(totals.venduVal)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}>{nf(totals.invenduVal)}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}>{totals.report > 0 ? nf(totals.reportVal) : '—'}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{nf(totals.approVal)}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>{nf(totals.recuVal)}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.vendu.bg, color: COL_TINTS.vendu.text }}>{nf(totals.venduVal)}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.invendu.bg, color: COL_TINTS.invendu.text }}>{nf(totals.invenduVal)}</td>
                   <td></td>
                   <td></td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: ecartColor(totals.ecartVal) }}>{nf(totals.ecartVal)}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: ecartColor(totals.ecartVal) }}>{nf(totals.ecartVal)}</td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -2543,9 +2541,9 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
 
   const box = (label: string, s: { net: number; qty: number }, color: string) => (
     <div style={{ flex: 1, border: '1px solid var(--theme-bg-separator)', borderRadius: 6, padding: '10px 14px' }}>
-      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>{label}</div>
+      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>{label}</div>
       <div style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace', color }}>{nf(s.net)} <span style={{ fontSize: '0.8rem' }}>{currencySymbol()}</span></div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{qf(s.qty)} article{s.qty > 1 ? 's' : ''}</div>
+      <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{qf(s.qty)} article{s.qty > 1 ? 's' : ''}</div>
     </div>
   );
 
@@ -2556,7 +2554,7 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
           Importer les reçus — répartition Matin / Soir
         </div>
         <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 14, background: '#fff' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'flex', gap: 8 }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', display: 'flex', gap: 8 }}>
             <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
               {receipts.length} ligne{receipts.length > 1 ? 's' : ''} de reçu. Fichier téléchargé depuis <strong>{detectedTz}</strong> ;
@@ -2567,10 +2565,10 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
 
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 2 }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Fuseau du magasin</label>
-              <input className="input" value={storeTz} list="recon-tz-list"
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Fuseau du magasin</label>
+              <input className="ds-input" value={storeTz} list="recon-tz-list"
                 onChange={e => setStoreTz(e.target.value.trim())}
-                style={{ borderColor: tzValid ? undefined : '#e53935' }} />
+                style={{ borderColor: tzValid ? undefined : 'var(--ds-danger)' }} />
               <datalist id="recon-tz-list">
                 <option value="Africa/Casablanca" />
                 <option value="Europe/Paris" />
@@ -2578,13 +2576,13 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
                 <option value="America/Montreal" />
                 <option value="UTC" />
               </datalist>
-              {!tzValid && <div style={{ fontSize: '0.6875rem', color: '#b71c1c', marginTop: 3 }}>Fuseau invalide — heures du fichier utilisées telles quelles.</div>}
+              {!tzValid && <div style={{ fontSize: 12, color: 'var(--ds-danger)', marginTop: 3 }}>Fuseau invalide — heures du fichier utilisées telles quelles.</div>}
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Fermeture caisse matin</label>
-              <input type="time" className="input" value={passation}
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Fermeture caisse matin</label>
+              <input type="time" className="ds-input" value={passation}
                 onChange={e => setPassation(e.target.value || '14:00')} />
-              <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', marginTop: 3 }}>
+              <div style={{ fontSize: 12, color: 'var(--ds-muted)', marginTop: 3 }}>
                 Heure du magasin. Tickets jusqu'à cette heure = Matin.
               </div>
             </div>
@@ -2592,9 +2590,9 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
 
           <div style={{ display: 'flex', gap: 12 }}>
             {box('Matin', stats.matin, '#1565c0')}
-            {box('Soir', stats.soir, '#2e7d32')}
+            {box('Soir', stats.soir, 'var(--ds-success)')}
           </div>
-          <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+          <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
             Total : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{nf(total)} {currencySymbol()}</strong>
           </div>
 
@@ -2647,7 +2645,7 @@ function PasteApproModal({ onClose, onSave, isLoading }: {
           Coller l'approvisionnement depuis Excel
         </div>
         <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 10, background: '#fff' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
             Une ligne par produit — colonnes Excel dans l'ordre :{' '}
             <strong>Nom · Quantité · Prix(opt) · SKU(opt) · Catégorie(opt)</strong>. Le vendu et le reste déjà saisis
             sont préservés.
@@ -2655,9 +2653,9 @@ function PasteApproModal({ onClose, onSave, isLoading }: {
           <textarea
             value={text} onChange={e => setText(e.target.value)} rows={9} autoFocus
             placeholder={'Tarte citron\t20\t12\tTARTE-CITRON\tPâtisserie\nPain complet\t35\t3.5'}
-            className="input" style={{ width: '100%', fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}
+            className="ds-input" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}
           />
-          <div style={{ fontSize: '0.8125rem', color: rows.length ? '#0e7c3a' : 'var(--theme-text-muted)' }}>
+          <div style={{ fontSize: '0.8125rem', color: rows.length ? 'var(--ds-success)' : 'var(--ds-muted)' }}>
             {rows.length} ligne{rows.length > 1 ? 's' : ''} détectée{rows.length > 1 ? 's' : ''}.
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
@@ -2728,8 +2726,8 @@ function AddLineModal({ onClose, onSave, isLoading }: {
           });
         }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
           <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie</label>
-            <select className="input" value={catFilter}
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie</label>
+            <select className="ds-input" value={catFilter}
               onChange={e => { setCatFilter(e.target.value); setF(prev => ({ ...prev, productName: '' })); }}>
               <option value="">Toutes les catégories ({products.length})</option>
               {cats.map(c => (
@@ -2740,8 +2738,8 @@ function AddLineModal({ onClose, onSave, isLoading }: {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Produit *</label>
-            <input className="input" autoFocus required value={f.productName}
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Produit *</label>
+            <input className="ds-input" autoFocus required value={f.productName}
               placeholder="Tape pour chercher…"
               onChange={e => setF({ ...f, productName: e.target.value })} />
             {/* Resultats de recherche cliquables (limites a 8) */}
@@ -2759,23 +2757,23 @@ function AddLineModal({ onClose, onSave, isLoading }: {
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--theme-bg-sidebar, #f5f5f5)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <span style={{ fontWeight: 500 }}>{p.product_name}</span>
-                    <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{p.category || 'Non classé'}</span>
+                    <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{p.category || 'Non classé'}</span>
                   </button>
                 ))}
                 {matches.length > 8 && (
-                  <div style={{ padding: '4px 10px', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                  <div style={{ padding: '4px 10px', fontSize: 12, color: 'var(--ds-muted)' }}>
                     … {matches.length - 8} autre{matches.length - 8 > 1 ? 's' : ''} — affine la recherche
                   </div>
                 )}
               </div>
             )}
             {known && (
-              <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', marginTop: 3 }}>
+              <div style={{ fontSize: 12, color: 'var(--ds-success)', marginTop: 3 }}>
                 <Check size={11} style={{ display: 'inline', verticalAlign: -1 }} /> Produit du catalogue — {known.category || 'Non classé'}
               </div>
             )}
             {isNew && matches.length === 0 && (
-              <div style={{ fontSize: '0.6875rem', color: '#b26a00', marginTop: 3 }}>
+              <div style={{ fontSize: 12, color: 'var(--ds-warning)', marginTop: 3 }}>
                 Nouveau produit : il sera ajouté au catalogue.
               </div>
             )}
@@ -2783,12 +2781,12 @@ function AddLineModal({ onClose, onSave, isLoading }: {
           {isNew && matches.length === 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>SKU</label>
-                <input className="input" value={f.sku} onChange={e => setF({ ...f, sku: e.target.value })} />
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>SKU</label>
+                <input className="ds-input" value={f.sku} onChange={e => setF({ ...f, sku: e.target.value })} />
               </div>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie du produit</label>
-                <input className="input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="day-add-categories"
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie du produit</label>
+                <input className="ds-input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="day-add-categories"
                   onChange={e => setF({ ...f, category: e.target.value })} />
                 <datalist id="day-add-categories">
                   {cats.map(c => <option key={c} value={c} />)}
@@ -2798,20 +2796,20 @@ function AddLineModal({ onClose, onSave, isLoading }: {
           )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Approvisionné</label>
-              <input type="text" inputMode="decimal" className="input" value={f.approQty}
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Approvisionné</label>
+              <input type="text" inputMode="decimal" className="ds-input" value={f.approQty}
                 placeholder="0"
                 onChange={e => setF({ ...f, approQty: e.target.value })} />
             </div>
             <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Reçu</label>
-              <input type="text" inputMode="decimal" className="input" value={f.recuQty}
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Reçu</label>
+              <input type="text" inputMode="decimal" className="ds-input" value={f.recuQty}
                 placeholder="0"
                 onChange={e => setF({ ...f, recuQty: e.target.value })} />
             </div>
             <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix ({currencySymbol()})</label>
-              <input type="text" inputMode="decimal" className="input" value={f.unitPrice}
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Prix ({currencySymbol()})</label>
+              <input type="text" inputMode="decimal" className="ds-input" value={f.unitPrice}
                 placeholder="0"
                 onChange={e => setF({ ...f, unitPrice: e.target.value })} />
             </div>
@@ -2866,11 +2864,9 @@ export function CarryOverSettingsView() {
       </StatusBanner>
 
       {isLoading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
-        </div>
+        <LoadingState bare />
       ) : cats.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
           Aucune catégorie au catalogue. Importe d'abord le catalogue Loyverse.
         </div>
       ) : (
@@ -2893,7 +2889,7 @@ export function CarryOverSettingsView() {
                       disabled={toggleMut.isPending}
                       onChange={e => toggleMut.mutate({ category: c.category, enabled: e.target.checked })} />
                   </td>
-                  <td style={{ fontWeight: c.enabled ? 600 : 400, color: c.enabled ? undefined : 'var(--theme-text-muted)' }}>
+                  <td style={{ fontWeight: c.enabled ? 600 : 400, color: c.enabled ? undefined : 'var(--ds-muted)' }}>
                     {c.category}
                   </td>
                 </tr>
@@ -2907,6 +2903,7 @@ export function CarryOverSettingsView() {
 }
 
 export function SlotsSettingsView() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const { data: slots = [], isLoading } = useQuery({
     queryKey: ['recon-slots'],
@@ -2950,12 +2947,10 @@ export function SlotsSettingsView() {
       </div>
 
       {isLoading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
-        </div>
+        <LoadingState bare />
       ) : categories.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
-          Aucun créneau configuré. Exécutez la migration 233 pour charger les valeurs par défaut.
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
+          Aucun créneau configuré. Ajoutez un créneau pour découper la journée.
         </div>
       ) : (
         categories.map(cat => (
@@ -2978,18 +2973,18 @@ export function SlotsSettingsView() {
                   <tr key={s.id}>
                     <td style={{ textAlign: 'center', fontFamily: 'ui-monospace, monospace' }}>{s.slot_number}</td>
                     <td style={{ fontWeight: 500 }}>
-                      <Clock size={12} style={{ marginRight: 4, verticalAlign: -1, color: 'var(--theme-text-muted)' }} />
+                      <Clock size={12} style={{ marginRight: 4, verticalAlign: -1, color: 'var(--ds-muted)' }} />
                       {s.label}
                     </td>
                     <td style={{ fontFamily: 'ui-monospace, monospace' }}>{s.target_time?.slice(0, 5) || '—'}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{s.default_pct}%</td>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{s.default_pct}%</td>
                     <td style={{ textAlign: 'center' }}>
                       <button className="odoo-btn-secondary" style={{ padding: '2px 6px', marginRight: 4 }}
                         onClick={() => setEditing({ ...s })}>
                         Modifier
                       </button>
-                      <button style={{ color: '#b71c1c', padding: 2 }}
-                        onClick={() => { if (confirm(`Supprimer « ${s.label} » ?`)) deleteMut.mutate(s.id); }}>
+                      <button type="button" aria-label={`Supprimer ${s.label}`} title="Supprimer" style={{ color: 'var(--ds-danger)', padding: 2 }}
+                        onClick={async () => { if (await confirm(`Supprimer « ${s.label} » ?`, { title: 'Supprimer le créneau', confirmLabel: 'Supprimer', danger: true })) deleteMut.mutate(s.id); }}>
                         <Trash2 size={13} />
                       </button>
                     </td>
@@ -2999,7 +2994,7 @@ export function SlotsSettingsView() {
                   <td></td>
                   <td>Total</td>
                   <td></td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: byCategory[cat].reduce((s, x) => s + x.default_pct, 0) === 100 ? '#0e7c3a' : '#b71c1c' }}>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', color: byCategory[cat].reduce((s, x) => s + x.default_pct, 0) === 100 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
                     {byCategory[cat].reduce((s, x) => s + x.default_pct, 0)}%
                   </td>
                   <td></td>
@@ -3025,8 +3020,8 @@ export function SlotsSettingsView() {
               });
             }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie *</label>
-                <input className="input" required value={editing.category || ''}
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie *</label>
+                <input className="ds-input" required value={editing.category || ''}
                   list="slot-categories"
                   onChange={e => setEditing(p => ({ ...p!, category: e.target.value }))} />
                 <datalist id="slot-categories">
@@ -3035,30 +3030,30 @@ export function SlotsSettingsView() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Libellé *</label>
-                  <input className="input" required value={editing.label || ''}
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Libellé *</label>
+                  <input className="ds-input" required value={editing.label || ''}
                     onChange={e => setEditing(p => ({ ...p!, label: e.target.value }))} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>N° créneau</label>
-                  <input type="number" min="1" className="input" value={editing.slot_number || 1}
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>N° créneau</label>
+                  <input type="number" min="1" className="ds-input" value={editing.slot_number || 1}
                     onChange={e => setEditing(p => ({ ...p!, slot_number: parseInt(e.target.value) || 1 }))} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Heure cible</label>
-                  <input type="time" className="input" value={editing.target_time?.slice(0, 5) || ''}
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Heure cible</label>
+                  <input type="time" className="ds-input" value={editing.target_time?.slice(0, 5) || ''}
                     onChange={e => setEditing(p => ({ ...p!, target_time: e.target.value || null }))} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>% par défaut</label>
-                  <input type="number" min="0" max="100" className="input" value={editing.default_pct ?? 0}
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>% par défaut</label>
+                  <input type="number" min="0" max="100" className="ds-input" value={editing.default_pct ?? 0}
                     onChange={e => setEditing(p => ({ ...p!, default_pct: parseInt(e.target.value) || 0 }))} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Ordre</label>
-                  <input type="number" min="0" className="input" value={editing.sort_order ?? 0}
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Ordre</label>
+                  <input type="number" min="0" className="ds-input" value={editing.sort_order ?? 0}
                     onChange={e => setEditing(p => ({ ...p!, sort_order: parseInt(e.target.value) || 0 }))} />
                 </div>
               </div>
@@ -3144,7 +3139,7 @@ export function DarijaSettingsView() {
           />
         </td>
         <td style={{ textAlign: 'center' }}>
-          <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }}
+          <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} aria-label={`Enregistrer ${name}`} title="Enregistrer"
             disabled={!dirty || saveMut.isPending}
             onClick={() => saveMut.mutate({ name, darija: drafts[key] ?? '' })}>
             <Check size={12} />
@@ -3166,7 +3161,7 @@ export function DarijaSettingsView() {
         <input className="odoo-input" placeholder="Rechercher un produit…" value={filter}
           onChange={e => setFilter(e.target.value)} style={{ width: 240 }} />
         {missing.length > 0 && (
-          <span className="odoo-tag odoo-tag-orange" style={{ fontSize: '0.6875rem' }}>
+          <span className="odoo-tag odoo-tag-orange" style={{ fontSize: 12 }}>
             {missing.length} sans traduction
           </span>
         )}
@@ -3178,11 +3173,9 @@ export function DarijaSettingsView() {
       </div>
 
       {isLoading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
-        </div>
+        <LoadingState bare />
       ) : missing.length === 0 && !showTranslated ? (
-        <div style={{ padding: 24, textAlign: 'center', color: '#0e7c3a', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4, fontSize: '0.8125rem' }}>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ds-success)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4, fontSize: '0.8125rem' }}>
           <Check size={14} style={{ display: 'inline', verticalAlign: -2 }} /> Tous les produits du catalogue ont une traduction.
         </div>
       ) : (
@@ -3211,6 +3204,7 @@ export function DarijaSettingsView() {
  * corriger un nom, une categorie, un prix, ou de supprimer un produit obsolete.
  */
 export function CatalogView() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const [filter, setFilter] = useState('');
   const [editing, setEditing] = useState<(Partial<ReconProduct> & { darija?: string }) | null>(null);
@@ -3301,17 +3295,17 @@ export function CatalogView() {
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <input className="odoo-input" placeholder="Rechercher (nom, SKU, catégorie)…" value={filter}
           onChange={e => setFilter(e.target.value)} style={{ width: 260 }} />
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
           {visible.length} / {products.length} produit{products.length > 1 ? 's' : ''}
         </span>
         <div style={{ flex: 1 }} />
         <input ref={fileRef} type="file" accept=".csv" multiple style={{ display: 'none' }}
           onChange={e => { if (e.target.files?.length) importMut.mutate(Array.from(e.target.files)); e.target.value = ''; }} />
-        <button className="odoo-btn-secondary" disabled={products.length === 0 || clearMut.isPending}
+        <button type="button" className="ds-btn-danger" disabled={products.length === 0 || clearMut.isPending}
           title="Supprime tous les produits du catalogue avant un réimport propre. L'historique des journées est conservé."
-          style={{ color: '#b71c1c', borderColor: '#e5b4b4' }}
-          onClick={() => {
-            if (window.confirm(`Vider le catalogue ?\n\n${products.length} produit(s) seront supprimés.\nL'historique des journées passées est conservé.\n\nÀ utiliser avant un réimport propre du catalogue Loyverse.`)) {
+          onClick={async () => {
+            if (await confirm(`Vider le catalogue ?\n\n${products.length} produit(s) seront supprimés.\nL'historique des journées passées est conservé.\n\nÀ utiliser avant un réimport propre du catalogue Loyverse.`,
+              { title: 'Vider le catalogue', confirmLabel: 'Vider le catalogue', danger: true })) {
               clearMut.mutate();
             }
           }}>
@@ -3326,11 +3320,9 @@ export function CatalogView() {
       </div>
 
       {isLoading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
-        </div>
+        <LoadingState bare />
       ) : products.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
           Catalogue vide. Importe un CSV Loyverse (Fiche de besoin ou Journée) ou ajoute un produit manuellement.
         </div>
       ) : (
@@ -3353,18 +3345,18 @@ export function CatalogView() {
                 {prods.map(p => (
                   <tr key={p.id}>
                     <td style={{ fontWeight: 500 }}>{p.product_name}</td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{p.sku || '—'}</td>
-                    <td style={{ direction: 'rtl', textAlign: 'right', color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{p.sku || '—'}</td>
+                    <td style={{ direction: 'rtl', textAlign: 'right', color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>
                       {darijaOf(p.product_name) || '—'}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{nf(num(p.unit_price))}</td>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{nf(num(p.unit_price))}</td>
                     <td style={{ textAlign: 'center' }}>
                       <button className="odoo-btn-secondary" style={{ padding: '2px 8px', marginRight: 4 }}
                         onClick={() => setEditing({ ...p, darija: darijaOf(p.product_name) })}>
                         Modifier
                       </button>
-                      <button style={{ color: '#b71c1c', padding: 2 }} title="Supprimer du catalogue"
-                        onClick={() => { if (confirm(`Supprimer « ${p.product_name} » du catalogue ?\n\nL'historique des journées passées est conservé.`)) deleteMut.mutate(p.id); }}>
+                      <button style={{ color: 'var(--ds-danger)', padding: 2 }} title="Supprimer du catalogue"
+                        onClick={async () => { if (await confirm(`Supprimer « ${p.product_name} » du catalogue ?\n\nL'historique des journées passées est conservé.`, { title: 'Supprimer du catalogue', confirmLabel: 'Supprimer', danger: true })) deleteMut.mutate(p.id); }} aria-label="Supprimer du catalogue">
                         <Trash2 size={13} />
                       </button>
                     </td>
@@ -3395,33 +3387,33 @@ export function CatalogView() {
               });
             }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Produit *</label>
-                <input className="input" autoFocus required value={editing.product_name || ''}
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Produit *</label>
+                <input className="ds-input" autoFocus required value={editing.product_name || ''}
                   onChange={e => setEditing(p => ({ ...p!, product_name: e.target.value }))} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>SKU</label>
-                  <input className="input" value={editing.sku || ''}
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>SKU</label>
+                  <input className="ds-input" value={editing.sku || ''}
                     onChange={e => setEditing(p => ({ ...p!, sku: e.target.value }))} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix unitaire ({currencySymbol()})</label>
-                  <input type="number" step="0.01" min="0" className="input" value={editing.unit_price ?? ''}
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Prix unitaire ({currencySymbol()})</label>
+                  <input type="number" step="0.01" min="0" className="ds-input" value={editing.unit_price ?? ''}
                     onChange={e => setEditing(p => ({ ...p!, unit_price: e.target.value }))} />
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Catégorie</label>
-                <input className="input" value={editing.category || ''} list="catalog-categories"
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie</label>
+                <input className="ds-input" value={editing.category || ''} list="catalog-categories"
                   onChange={e => setEditing(p => ({ ...p!, category: e.target.value }))} />
                 <datalist id="catalog-categories">
                   {categories.map(c => <option key={c} value={c} />)}
                 </datalist>
               </div>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Nom en darija</label>
-                <input className="input" dir="rtl" value={editing.darija || ''}
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Nom en darija</label>
+                <input className="ds-input" dir="rtl" value={editing.darija || ''}
                   placeholder="الترجمة بالدارجة"
                   style={{ direction: 'rtl', textAlign: 'right' }}
                   onChange={e => setEditing(p => ({ ...p!, darija: e.target.value }))} />
@@ -3469,16 +3461,16 @@ export function ReportView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} className="odoo-input" style={{ width: 150 }} />
-        <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
-        <input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} className="odoo-input" style={{ width: 150 }} />
-        <button className="odoo-btn-primary" onClick={() => refetch()}>
-          {isFetching ? <Loader2 size={14} className="animate-spin" /> : <ScrollText size={14} />} Générer
-        </button>
+      <div className="prj-toolbar">
+        <input type="date" aria-label="Du" value={from} max={to} onChange={e => setFrom(e.target.value)} className="ds-input sm" style={{ width: 150 }} />
+        <span aria-hidden="true" style={{ color: 'var(--ds-muted)' }}>→</span>
+        <input type="date" aria-label="Au" value={to} min={from} onChange={e => setTo(e.target.value)} className="ds-input sm" style={{ width: 150 }} />
         <div style={{ flex: 1 }} />
-        <button className="odoo-btn-secondary" disabled={rows.length === 0} onClick={handleExport}>
-          <Download size={13} /> Export CSV
+        <button type="button" className="odoo-btn-secondary" disabled={rows.length === 0} onClick={handleExport}>
+          <Download size={13} aria-hidden="true" /> Exporter
+        </button>
+        <button type="button" className="odoo-btn-primary" disabled={isFetching} onClick={() => refetch()}>
+          {isFetching ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <ScrollText size={14} aria-hidden="true" />} Générer
         </button>
       </div>
 
@@ -3497,11 +3489,11 @@ export function ReportView() {
       )}
 
       {isLoading || isFetching ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)' }}>
           <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Calcul…
         </div>
       ) : rows.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
           Choisis une période et clique « Générer ».
         </div>
       ) : (
@@ -3511,12 +3503,12 @@ export function ReportView() {
               <tr>
                 <th>Produit</th>
                 <th className="hidden md:table-cell">Catégorie</th>
-                <th style={{ textAlign: 'right' }}>Appro</th>
-                <th style={{ textAlign: 'right' }}>Vendu</th>
-                <th style={{ textAlign: 'right' }}>Reste</th>
-                <th style={{ textAlign: 'right' }}>Écart (u)</th>
-                <th style={{ textAlign: 'right' }}>Écart ({currencySymbol()})</th>
-                <th style={{ textAlign: 'right' }}>Jours</th>
+                <th className="ds-num">Appro</th>
+                <th className="ds-num">Vendu</th>
+                <th className="ds-num">Reste</th>
+                <th className="ds-num">Écart (u)</th>
+                <th className="ds-num">Écart ({currencySymbol()})</th>
+                <th className="ds-num">Jours</th>
               </tr>
             </thead>
             <tbody>
@@ -3525,13 +3517,13 @@ export function ReportView() {
                 return (
                   <tr key={r.product_key}>
                     <td style={{ fontWeight: 500 }}>{r.product_name}</td>
-                    <td className="hidden md:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{r.category || '—'}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(num(r.appro_qty))}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(num(r.vendu_qty))}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{qf(num(r.invendu_qty))}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: ecartColor(eQty) }}>{eQty > 0 ? '+' : ''}{qf(eQty)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: ecartColor(eVal) }}>{eVal > 0 ? '+' : ''}{nf(eVal)}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{r.days_count}</td>
+                    <td className="hidden md:table-cell" style={{ color: 'var(--ds-muted)' }}>{r.category || '—'}</td>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{qf(num(r.appro_qty))}</td>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{qf(num(r.vendu_qty))}</td>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{qf(num(r.invendu_qty))}</td>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: ecartColor(eQty) }}>{eQty > 0 ? '+' : ''}{qf(eQty)}</td>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: ecartColor(eVal) }}>{eVal > 0 ? '+' : ''}{nf(eVal)}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{r.days_count}</td>
                   </tr>
                 );
               })}

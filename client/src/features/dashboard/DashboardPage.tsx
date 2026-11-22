@@ -1,114 +1,99 @@
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
 import { useQuery } from '@tanstack/react-query';
 import { reportsApi } from '../../api/reports.api';
-import { DollarSign, ShoppingCart, TrendingUp, Package, AlertTriangle, ClipboardList, Trash2 } from 'lucide-react';
+import { LayoutDashboard, PackageCheck, ShoppingCart, Trash2 } from 'lucide-react';
+import {
+  Alert, Breadcrumb, DataPanel, EmptyState, ErrorState, KpiCard, KpiGrid, LoadingState, PageHeader, SectionHeader, TableFooter,
+} from '../../components/ds';
 
-function KPICard({ title, value, icon: Icon, color }: { title: string; value: string; icon: React.ElementType; color: string }) {
-  return (
-    <div className="card flex items-center gap-4">
-      <div className={`p-3 rounded-xl ${color}`}>
-        <Icon size={24} className="text-white" />
-      </div>
-      <div>
-        <p className="text-sm text-gray-500">{title}</p>
-        <p className="text-2xl font-bold">{value}</p>
-      </div>
-    </div>
-  );
-}
+type TopProduct = { id: string; name: string; total_sold: number; total_revenue: string };
+type TopLoss = { id: string; name: string; total_lost: string; total_cost: string; loss_type: string };
 
+/**
+ * Tableau de bord de direction, au gabarit commun (Design System) : fil d'Ariane, titre,
+ * alertes, indicateurs (4 par ligne au plus), puis sections en tableau standard.
+ */
 export default function DashboardPage() {
-  const { data, isLoading } = useQuery({ queryKey: ['dashboard'], queryFn: reportsApi.dashboard });
-
-  if (isLoading) return <div className="text-center py-12 text-gray-500">Chargement du tableau de bord...</div>;
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['dashboard'], queryFn: reportsApi.dashboard });
 
   const d = data || { todaySales: 0, todayRevenue: 0, avgSaleValue: 0, todayItemsSold: 0, topProducts: [], pendingOrders: 0, lowStockCount: 0, todayLossCount: 0, todayLossCost: 0, todayLossQuantity: 0, monthlyLossCost: 0, monthlyLossQuantity: 0, topLossProducts: [] };
+  const topProducts = (d.topProducts || []) as TopProduct[];
+  const topLosses = (d.topLossProducts || []) as TopLoss[];
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-bakery-chocolate">Tableau de bord</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <KPICard title="Chiffre d'affaires du jour" value={`${money(d.todayRevenue)}`} icon={DollarSign} color="bg-green-500" />
-        <KPICard title="Ventes du jour" value={String(d.todaySales)} icon={ShoppingCart} color="bg-blue-500" />
-        <KPICard title="Panier moyen" value={`${money(d.avgSaleValue)}`} icon={TrendingUp} color="bg-primary-500" />
-        <KPICard title="Articles vendus" value={String(d.todayItemsSold)} icon={Package} color="bg-purple-500" />
-        <KPICard title="Commandes en attente" value={String(d.pendingOrders)} icon={ClipboardList} color="bg-amber-500" />
-        <KPICard title="Pertes du jour" value={`${money(d.todayLossCost || 0)}`} icon={Trash2} color="bg-red-500" />
+    <div className="odoo-scope kl-apple">
+      <div className="odoo-control-bar">
+        <Breadcrumb icon={LayoutDashboard} items={[{ label: 'Accueil' }, { label: 'Direction' }, { label: 'Tableau de bord' }]} />
       </div>
+      <div className="kl-page">
+        <PageHeader title="Tableau de bord" description="Ventes, commandes, pertes et stock de la journée." />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="card">
-          <h2 className="text-lg font-semibold mb-4">Produits les plus vendus (7 derniers jours)</h2>
-          {d.topProducts.length === 0 ? (
-            <p className="text-gray-400 text-sm">Aucune vente pour le moment</p>
-          ) : (
-            <div className="space-y-3">
-              {d.topProducts.map((p: { id: string; name: string; total_sold: number; total_revenue: string }, i: number) => (
-                <div key={p.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-primary-600 w-6">{i + 1}</span>
-                    <span className="font-medium">{p.name}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm text-gray-500">{p.total_sold} vendus</span>
-                    <span className="text-sm font-medium text-green-600 ml-3">{money(parseFloat(p.total_revenue))}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {isLoading ? <LoadingState label="Chargement du tableau de bord…" />
+          : isError ? <ErrorState title="Le tableau de bord n'a pas pu être chargé" onRetry={() => refetch()} />
+          : (
+          <>
+            {d.lowStockCount > 0 && (
+              <Alert tone="warning">{d.lowStockCount} ingrédient{d.lowStockCount > 1 ? 's' : ''} en stock bas</Alert>
+            )}
 
-        <div className="card">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Trash2 size={18} className="text-red-500" />
-            Pertes
-          </h2>
-          {/* Résumé du jour et du mois */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="bg-red-50 rounded-xl p-3 text-center">
-              <div className="text-xl font-bold text-red-700">{money(d.todayLossCost || 0)}</div>
-              <div className="text-[11px] text-red-500 font-medium">Aujourd'hui ({d.todayLossCount || 0})</div>
-            </div>
-            <div className="bg-orange-50 rounded-xl p-3 text-center">
-              <div className="text-xl font-bold text-orange-700">{money(d.monthlyLossCost || 0)}</div>
-              <div className="text-[11px] text-orange-500 font-medium">Ce mois</div>
-            </div>
-          </div>
-          {/* Top produits perdus */}
-          {(d.topLossProducts || []).length === 0 ? (
-            <p className="text-green-600 text-sm">Aucune perte cette semaine</p>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Top pertes (7 jours)</p>
-              {(d.topLossProducts as { id: string; name: string; total_lost: string; total_cost: string; loss_type: string }[]).map((p, i) => (
-                <div key={`${p.id}-${p.loss_type}-${i}`} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs font-bold text-red-400 w-4">{i + 1}</span>
-                    <span className="text-sm font-medium truncate">{p.name}</span>
-                  </div>
-                  <div className="text-right shrink-0 ml-2">
-                    <span className="text-xs text-gray-500">{parseFloat(p.total_lost)} unites</span>
-                    <span className="text-xs font-semibold text-red-600 ml-2">{money(parseFloat(p.total_cost))}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+            <KpiGrid label="Indicateurs du jour">
+              <KpiCard label="Chiffre d'affaires du jour" value={money(d.todayRevenue)} sub={`${d.todaySales} vente${d.todaySales > 1 ? 's' : ''}`} />
+              <KpiCard label="Panier moyen" value={money(d.avgSaleValue)} sub={`${d.todayItemsSold} article${d.todayItemsSold > 1 ? 's' : ''} vendu${d.todayItemsSold > 1 ? 's' : ''}`} />
+              <KpiCard label="Commandes en attente" value={String(d.pendingOrders)}
+                sub={d.pendingOrders > 0 ? 'À préparer' : 'Rien en attente'} tone={d.pendingOrders > 0 ? 'orange' : undefined} />
+              <KpiCard label="Pertes du jour" value={money(d.todayLossCost || 0)}
+                sub={`${d.todayLossCount || 0} déclaration${(d.todayLossCount || 0) > 1 ? 's' : ''} · ${money(d.monthlyLossCost || 0)} ce mois`}
+                tone={(d.todayLossCost || 0) > 0 ? 'red' : undefined} />
+            </KpiGrid>
 
-        <div className="card">
-          <h2 className="text-lg font-semibold mb-4">Alertes de stock</h2>
-          {d.lowStockCount === 0 ? (
-            <p className="text-green-600 text-sm">Tous les stocks sont suffisants</p>
-          ) : (
-            <div className="flex items-center gap-3 text-amber-600">
-              <AlertTriangle size={20} />
-              <span className="font-medium">{d.lowStockCount} ingredient(s) en stock bas</span>
-            </div>
-          )}
-        </div>
+            <SectionHeader title="Produits les plus vendus" note="7 derniers jours" />
+            {topProducts.length === 0 ? (
+              <EmptyState icon={ShoppingCart} title="Aucune vente pour le moment" text="Les produits les plus vendus de la semaine s'afficheront ici." />
+            ) : (
+              <DataPanel label="Produits les plus vendus" footer={<TableFooter note={`${topProducts.length} produit${topProducts.length > 1 ? 's' : ''}`} />}>
+                <table className="odoo-table">
+                  <thead><tr><th>Rang</th><th>Produit</th><th className="ds-num">Quantité vendue</th><th className="ds-num">Chiffre d'affaires ({currencySymbol()})</th></tr></thead>
+                  <tbody>
+                    {topProducts.map((p, i) => (
+                      <tr key={p.id}>
+                        <td>{i + 1}</td>
+                        <td className="ds-strong">{p.name}</td>
+                        <td className="ds-num">{p.total_sold}</td>
+                        <td className="ds-num">{money(parseFloat(p.total_revenue))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </DataPanel>
+            )}
+
+            <SectionHeader title="Pertes les plus coûteuses" note="7 derniers jours" />
+            {topLosses.length === 0 ? (
+              <EmptyState icon={Trash2} title="Aucune perte cette semaine" />
+            ) : (
+              <DataPanel label="Pertes les plus coûteuses" footer={<TableFooter note={`${topLosses.length} ligne${topLosses.length > 1 ? 's' : ''}`} />}>
+                <table className="odoo-table">
+                  <thead><tr><th>Rang</th><th>Produit</th><th className="ds-num">Quantité perdue (unités)</th><th className="ds-num">Coût ({currencySymbol()})</th></tr></thead>
+                  <tbody>
+                    {topLosses.map((p, i) => (
+                      <tr key={`${p.id}-${p.loss_type}-${i}`}>
+                        <td>{i + 1}</td>
+                        <td className="ds-strong">{p.name}</td>
+                        <td className="ds-num">{parseFloat(p.total_lost)}</td>
+                        <td className="ds-num">{money(parseFloat(p.total_cost))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </DataPanel>
+            )}
+
+            <SectionHeader title="Alertes de stock" />
+            {d.lowStockCount === 0
+              ? <Alert tone="success" icon={PackageCheck}>Tous les stocks sont suffisants</Alert>
+              : <Alert tone="warning">{d.lowStockCount} ingrédient{d.lowStockCount > 1 ? 's' : ''} sous le seuil : à réapprovisionner</Alert>}
+          </>
+        )}
       </div>
     </div>
   );

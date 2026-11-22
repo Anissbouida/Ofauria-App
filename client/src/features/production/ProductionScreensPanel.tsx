@@ -7,6 +7,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useAuth } from '../../context/AuthContext';
 
+import { DataPanel, LoadingState, SectionHeader } from '../../components/ds';
 /**
  * Production › Paramétrage › Écrans (mig 591).
  * Chaque panneau de l'ordre de fabrication et chaque étape de la fenêtre de lancement, avec la règle
@@ -40,11 +41,12 @@ export default function ProductionScreensPanel() {
         Chaque élément s'affiche selon sa règle (état de l'ordre, type d'ordre, options, réglages). Décochez une case pour
         le masquer, pour toute la société ou pour un type d'ordre. Les éléments marqués d'un cadenas sont indispensables au parcours.
       </StatusBanner>
-      {isLoading ? <Loader2 className="animate-spin" size={18} /> : groups.map(g => (
-        <div key={g.area} style={{ overflowX: 'auto' }}>
+      {isLoading ? <LoadingState /> : groups.map(g => (
+        <section key={g.area} style={{ display: 'grid', gap: 12 }}>
+          <SectionHeader title={g.title} />
+          <DataPanel label={g.title}>
           <table className="odoo-table">
             <thead>
-              <tr><th colSpan={2 + columns.length}>{g.title}</th></tr>
               <tr>
                 <th>Élément</th><th>S'affiche quand</th>
                 {columns.map(c => <th key={c.id ?? 'company'} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{c.label}</th>)}
@@ -56,14 +58,14 @@ export default function ProductionScreensPanel() {
                 return (
                   <tr key={e.key}>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <span style={{ fontWeight: 500 }}>{e.label}</span>
-                      <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{e.place}</span>
+                      <span className="ds-strong">{e.label}</span>
+                      <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)' }}>{e.place}</span>
                     </td>
-                    <td style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{e.rule}</td>
+                    <td style={{ fontSize: 13, color: 'var(--ds-muted)' }}>{e.rule}</td>
                     {columns.map(c => {
                       if (e.locked) {
                         return <td key={c.id ?? 'company'} style={{ textAlign: 'center' }} title={e.locked}>
-                          <Lock size={13} aria-label={`Toujours selon la règle : ${e.locked}`} style={{ color: 'var(--odoo-text-muted)' }} />
+                          <Lock size={13} aria-label={`Toujours selon la règle : ${e.locked}`} style={{ color: 'var(--ds-muted)' }} />
                         </td>;
                       }
                       const inherited = c.id !== null && companyHidden;
@@ -82,7 +84,8 @@ export default function ProductionScreensPanel() {
               })}
             </tbody>
           </table>
-        </div>
+          </DataPanel>
+        </section>
       ))}
     </div>
   );

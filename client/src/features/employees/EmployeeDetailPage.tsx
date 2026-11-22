@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Pencil, Save, X, Loader2, UserRound, Briefcase, Phone, StickyNote, Banknote, Landmark, FileText,
-  LogOut, CalendarClock, Palmtree, ShieldCheck, ShieldOff, AlertTriangle, Trash2, RotateCcw, Users, FileSignature,
+  Pencil, UserRound, Briefcase, Phone, StickyNote, Banknote, Landmark,
+  LogOut, CalendarClock, AlertTriangle, Trash2, RotateCcw, Users, FileSignature,
 } from 'lucide-react';
 import { employeesApi, shiftsApi, payrollConfigApi, leavesApi } from '../../api/employees.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
@@ -14,6 +14,9 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { MODULE_SECTIONS } from '../../components/layout/ModuleShell';
+import { Breadcrumb, KpiGrid, KpiCard, Tabs, SectionHeader, LoadingState, ErrorState, FormFooter } from '../../components/ds';
 import { inputCls } from './ui';
 import '../projects/projects.css';
 import '../sales/sales.css';
@@ -107,13 +110,13 @@ export default function EmployeeDetailPage() {
   const [form, setForm] = useState<Form>(() => toForm(null));
   const [initial, setInitial] = useState<Form>(() => toForm(null));
   const tabParam = searchParams.get('onglet') as Tab | null;
-  const tabs: Array<{ key: Tab; label: string; icon: typeof UserRound }> = isNew
-    ? [{ key: 'infos', label: 'Informations', icon: UserRound }, { key: 'contrat', label: 'Contrat & paie', icon: Briefcase }]
+  const tabs: Array<{ key: Tab; label: string }> = isNew
+    ? [{ key: 'infos', label: 'Informations' }, { key: 'contrat', label: 'Contrat et paie' }]
     : [
-        { key: 'infos', label: 'Informations', icon: UserRound },
-        { key: 'contrat', label: 'Contrat & paie', icon: Briefcase },
-        { key: 'documents', label: 'Documents', icon: FileText },
-        { key: 'depart', label: 'Départ', icon: LogOut },
+        { key: 'infos', label: 'Informations' },
+        { key: 'contrat', label: 'Contrat et paie' },
+        { key: 'documents', label: 'Documents' },
+        { key: 'depart', label: 'Départ' },
       ];
   const tab: Tab = tabParam && tabs.some(t => t.key === tabParam) ? tabParam : 'infos';
   const setTab = (t: Tab) => { searchParams.set('onglet', t); setSearchParams(searchParams, { replace: true }); };
@@ -188,26 +191,26 @@ export default function EmployeeDetailPage() {
 
   const cancel = async () => {
     if (dirty && !(await confirm('Les modifications non enregistrées seront perdues.', { title: 'Abandonner les modifications', confirmLabel: 'Abandonner', danger: true }))) return;
-    if (isNew) { navigate('/employees'); return; }
+    if (isNew) { navigate('/employees?tab=employees'); return; }
     setForm(initial); setEditing(false);
     searchParams.delete('edit'); setSearchParams(searchParams, { replace: true });
   };
 
   const back = async () => {
     if (editing && dirty && !(await confirm('Les modifications non enregistrées seront perdues.', { title: 'Quitter la fiche', confirmLabel: 'Quitter', danger: true }))) return;
-    navigate('/employees');
+    navigate('/employees?tab=employees');
   };
 
   if (!isNew && isLoading) {
-    return <div className="odoo-scope prj prj-detail"><div className="prj-panel sal-empty"><Loader2 className="animate-spin" size={20} /><span>Chargement de la fiche…</span></div></div>;
+    return <div className="odoo-scope prj prj-detail"><LoadingState label="Chargement de la fiche…" /></div>;
   }
   if (!isNew && (isError || !emp)) {
     return (
       <div className="odoo-scope prj prj-detail">
-        <StatusBanner tone="danger" icon={AlertTriangle} title="Employé introuvable"
-          actions={<button type="button" className="odoo-btn-secondary" onClick={() => navigate('/employees')}>Retour à la liste</button>}>
-          Cette fiche n'existe pas ou a été supprimée.
-        </StatusBanner>
+        <ErrorState title="Employé introuvable" text="Cette fiche n'existe pas ou a été supprimée." />
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+          <button type="button" className="odoo-btn-secondary" onClick={() => navigate('/employees?tab=employees')}>Retour à la liste</button>
+        </div>
       </div>
     );
   }
@@ -217,7 +220,7 @@ export default function EmployeeDetailPage() {
   const sen = seniority(String(form.hireDate));
   const isWeekly = form.payFrequency === 'weekly';
   const salary = isWeekly ? money(String(form.weeklySalary)) : money(String(form.monthlySalary));
-  const color = roleColor(String(form.role)) || 'var(--theme-accent)';
+  const color = roleColor(String(form.role)) || 'var(--ds-accent)';
   const initials = `${String(form.firstName).charAt(0)}${String(form.lastName).charAt(0)}`.toUpperCase() || '?';
 
   // Alertes de la fiche (lecture) : dossier incomplet, fin de CDD, pièce expirée.
@@ -233,58 +236,47 @@ export default function EmployeeDetailPage() {
 
   return (
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      {/* ── Barre de contrôle ── */}
+      {/* ── Fil d'Ariane jusqu'à la fiche ; à droite, les actions secondaires puis l'action principale.
+             En modification, Annuler / Enregistrer sont dans le pied de formulaire. ── */}
       <div className="odoo-control-bar" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" onClick={back} className="odoo-pager-btn" title="Retour à la liste" aria-label="Retour à la liste"><ArrowLeft size={14} /></button>
-        <div className="odoo-breadcrumb">
-          <Users size={14} style={{ color: 'var(--theme-accent)' }} />
-          <button type="button" className="sal-link" style={{ marginLeft: 0, fontSize: 'inherit' }} onClick={back}>Personnel</button>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">{name}</span>
-          {editing && !isNew && <span style={{ marginLeft: 8 }}><StatusTag tone="todo" icon={Pencil} label={`Modification${dirty ? ' · non enregistrée' : ''}`} /></span>}
-        </div>
+        <Breadcrumb icon={Users} items={[
+          { label: 'Personnel', onClick: back },
+          { label: MODULE_SECTIONS.find(x => x.key === 'setup')?.label ?? 'Paramétrage' },
+          { label: 'Employés', onClick: back },
+          { label: name },
+        ]} />
+        {editing && !isNew && <StatusTag tone="todo" icon={Pencil} label={`Modification${dirty ? ' · non enregistrée' : ''}`} />}
         <div style={{ flex: 1 }} />
-        {editing ? (
+        {!editing && (
           <>
-            <button type="button" onClick={cancel} className="odoo-btn-secondary" style={btn}><X size={13} /> Annuler</button>
-            <button type="button" onClick={submit} disabled={save.isPending || (!isNew && !dirty)} className="odoo-btn-primary" style={btn}>
-              {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {isNew ? 'Créer la fiche' : 'Enregistrer'}
-            </button>
-          </>
-        ) : (
-          <>
-            {active && (['travail', 'salaire'] as const).map(kind => (
-              <button key={kind} type="button" className="odoo-btn-secondary" style={btn}
-                onClick={async () => {
+            <RowMenu label="Éditions et autres actions" items={[
+              ...(active ? (['travail', 'salaire'] as const).map(kind => ({
+                label: `Attestation de ${kind}`, icon: FileSignature,
+                onSelect: async () => {
                   try { saveBlobResponse(await payrollConfigApi.attestation(id!, kind), `attestation_${kind}.pdf`); }
                   catch (err) { notify.error(apiErrorMessage(err, 'Erreur')); }
-                }}>
-                <FileSignature size={13} /> Attestation de {kind}
-              </button>
-            ))}
-            {isAdmin && (active ? (
-              <button type="button" className="odoo-btn-danger" style={btn} disabled={setActive.isPending}
-                onClick={async () => {
+                },
+              })) : []),
+              ...(isAdmin ? [active ? {
+                label: 'Désactiver', icon: Trash2, danger: true, disabled: setActive.isPending,
+                onSelect: async () => {
                   if (await confirm(`Désactiver ${name} ?\n\nL'employé sera masqué des listes actives. Son historique (paie, présence, paiements) reste préservé et il pourra être réactivé.`,
                     { title: "Désactiver l'employé", confirmLabel: 'Désactiver', danger: true })) setActive.mutate(false);
-                }}>
-                <Trash2 size={13} /> Désactiver
-              </button>
-            ) : (
-              <button type="button" className="odoo-btn-secondary" style={btn} disabled={setActive.isPending}
-                onClick={async () => {
+                },
+              } : {
+                label: 'Réactiver', icon: RotateCcw, disabled: setActive.isPending,
+                onSelect: async () => {
                   if (await confirm(`Réactiver ${name} ? Il réapparaîtra dans les listes actives.`, { title: "Réactiver l'employé", confirmLabel: 'Réactiver' })) setActive.mutate(true);
-                }}>
-                <RotateCcw size={13} /> Réactiver
-              </button>
-            ))}
-            <button type="button" onClick={() => setEditing(true)} className="odoo-btn-primary" style={btn}><Pencil size={13} /> Modifier</button>
+                },
+              }] : []),
+            ]} />
+            <button type="button" onClick={() => setEditing(true)} className="odoo-btn-primary" style={btn}><Pencil size={13} aria-hidden="true" /> Modifier</button>
           </>
         )}
       </div>
 
       {/* Corps de la fiche au design Ventes (comme la fiche commande) : alertes, en-tête, onglets, panneaux. */}
-      <div className="prj prj-detail hr-detail" style={{ paddingBottom: editing ? 88 : 28 }}>
+      <div className="prj prj-detail hr-detail" style={{ paddingBottom: editing ? 96 : 28 }}>
       {/* ── Alertes ── */}
       {!isNew && (
         <div style={{ display: 'grid', gap: 8 }}>
@@ -296,7 +288,7 @@ export default function EmployeeDetailPage() {
           {active && cddLeft !== null && cddLeft <= 30 && (
             <StatusBanner tone={cddLeft < 0 ? 'danger' : 'orange'} icon={CalendarClock}
               title={cddLeft < 0 ? `Contrat échu depuis ${-cddLeft} jour(s)` : `Fin de contrat dans ${cddLeft} jour(s)`}
-              actions={<button type="button" className="odoo-btn-secondary" onClick={() => setTab('contrat')}>Renouveler ou avenant</button>}>
+              actions={<button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setTab('contrat')}>Renouveler ou avenant</button>}>
               Fin prévue le {frDate(String(form.contractEnd))}.
             </StatusBanner>
           )}
@@ -307,7 +299,7 @@ export default function EmployeeDetailPage() {
           )}
           {active && missing.length > 0 && !editing && (
             <StatusBanner tone="warning" icon={AlertTriangle} title="Dossier incomplet"
-              actions={<button type="button" className="odoo-btn-secondary" onClick={() => setEditing(true)}>Compléter</button>}>
+              actions={<button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setEditing(true)}>Compléter</button>}>
               À renseigner : {missing.join(', ')}.
             </StatusBanner>
           )}
@@ -327,47 +319,28 @@ export default function EmployeeDetailPage() {
             </div>
             <div className="prj-hero-meta">
               {form.hireDate && <span>Embauché le {frDate(String(form.hireDate))}</span>}
-              {form.cin && <span style={{ fontFamily: 'ui-monospace, monospace' }}>CIN {String(form.cin)}</span>}
-              {form.phone && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Phone size={12} /> {String(form.phone)}</span>}
+              {form.cin && <span>CIN <span className="ds-ref">{String(form.cin)}</span></span>}
+              {form.phone && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Phone size={12} aria-hidden="true" /> {String(form.phone)}</span>}
             </div>
           </div>
         </div>
-        {!isNew && (
-          <div className="hr-hero-stats">
-            <button type="button" onClick={() => setTab('contrat')}>
-              <span className="l"><CalendarClock size={13} /> Ancienneté</span><b>{sen.label}</b>
-            </button>
-            <button type="button" onClick={() => setTab('contrat')}>
-              <span className="l"><Banknote size={13} /> Salaire / {isWeekly ? 'sem.' : 'mois'}</span><b>{salary || '—'}</b>
-            </button>
-            <button type="button" onClick={() => navigate('/employees?tab=leaves')} title="Solde de congés payés acquis et non pris">
-              <span className="l"><Palmtree size={13} /> Congés dispo.</span>
-              <b style={{ color: leave && leave.available < 0 ? 'var(--prj-red)' : undefined }}>
-                {leave ? `${Number(leave.available).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} j` : '—'}
-              </b>
-            </button>
-            <button type="button" onClick={() => setTab('contrat')}>
-              <span className="l">{form.isDeclared ? <ShieldCheck size={13} /> : <ShieldOff size={13} />} Déclaration</span>
-              <b style={{ color: form.isDeclared ? 'var(--prj-green)' : 'var(--prj-orange)' }}>{form.isDeclared ? 'Déclaré CNSS + IR' : 'Non déclaré'}</b>
-            </button>
-            <button type="button" onClick={() => setTab('documents')}>
-              <span className="l"><FileText size={13} /> Documents</span><b>Ouvrir</b>
-            </button>
-          </div>
-        )}
       </section>
 
+      {/* ── Indicateurs de la fiche (clic = ouvre la rubrique concernée) ── */}
+      {!isNew && (
+        <KpiGrid label="Situation du salarié">
+          <KpiCard label="Ancienneté" value={sen.label} sub={form.hireDate ? `depuis le ${frDate(String(form.hireDate))}` : undefined} onClick={() => setTab('contrat')} />
+          <KpiCard label={`Salaire par ${isWeekly ? 'semaine' : 'mois'}`} value={salary || '—'} onClick={() => setTab('contrat')} />
+          <KpiCard label="Congés disponibles (j)" value={leave ? Number(leave.available).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) : '—'}
+            sub={leave && leave.available < 0 ? 'solde négatif' : 'acquis et non pris'} tone={leave && leave.available < 0 ? 'red' : undefined}
+            onClick={() => navigate('/employees?tab=leaves')} />
+          <KpiCard label="Déclaration" value={form.isDeclared ? 'Déclaré' : 'Non déclaré'} sub={form.isDeclared ? 'CNSS, AMO et IR' : 'ni cotisations ni IR'}
+            tone={form.isDeclared ? undefined : 'orange'} onClick={() => setTab('contrat')} />
+        </KpiGrid>
+      )}
+
       {/* ── Onglets ── */}
-      <div className="prj-tabs hr-tabs" role="tablist" aria-label="Contenu de la fiche">
-        {tabs.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)} className={`prj-tab${tab === t.key ? ' active' : ''}`}>
-              <Icon size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <Tabs label="Contenu de la fiche" value={tab} onChange={setTab} tabs={tabs} />
 
       <div style={{ display: 'grid', gap: 16 }}>
         {tab === 'infos' && (
@@ -391,7 +364,7 @@ export default function EmployeeDetailPage() {
             <Section icon={StickyNote} title="Notes">
               {editing
                 ? <textarea rows={3} value={String(form.notes)} onChange={e => set('notes', e.target.value)} className={inputCls} placeholder="Remarques internes" />
-                : <div style={{ fontSize: '0.8125rem', whiteSpace: 'pre-wrap', color: form.notes ? 'var(--odoo-text)' : 'var(--odoo-text-light)' }}>{String(form.notes) || 'Aucune note'}</div>}
+                : <div style={{ fontSize: 14, whiteSpace: 'pre-wrap', color: form.notes ? 'var(--ds-ink)' : 'var(--ds-muted)' }}>{String(form.notes) || 'Aucune note'}</div>}
             </Section>
           </>
         )}
@@ -468,21 +441,15 @@ export default function EmployeeDetailPage() {
       </div>
       </div>
 
-      {/* En modification, Annuler / Enregistrer restent à l'écran quelle que soit la
-          section affichée (la page défile au niveau du document : pas de sticky possible). */}
+      {/* Pied de formulaire (Design System) : reste à l'écran quelle que soit la section
+          affichée (la page défile au niveau du document : pas de sticky possible). */}
       {editing && (
         <div role="region" aria-label="Enregistrer la fiche" style={{
-          position: 'fixed', left: '50%', bottom: 16, transform: 'translateX(-50%)', zIndex: 20,
-          display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px 8px 16px', borderRadius: 999,
-          background: 'var(--theme-bg-card)', boxShadow: '0 12px 32px rgba(15,23,42,0.18), 0 0 0 .5px rgba(15,23,42,0.08)',
+          position: 'fixed', left: '50%', bottom: 16, transform: 'translateX(-50%)', zIndex: 20, width: 'min(640px, calc(100vw - 32px))',
+          borderRadius: 16, overflow: 'hidden', background: 'var(--ds-card)', boxShadow: '0 12px 32px rgba(15,23,42,0.18), 0 0 0 .5px rgba(15,23,42,0.08)',
         }}>
-          <span style={{ fontSize: '0.8125rem', color: dirty ? 'var(--prj-orange)' : 'var(--odoo-text-muted)' }}>
-            {isNew ? 'Nouvelle fiche' : dirty ? 'Modifications non enregistrées' : 'Aucune modification'}
-          </span>
-          <button type="button" onClick={cancel} className="odoo-btn-secondary" style={btn}><X size={13} /> Annuler</button>
-          <button type="button" onClick={submit} disabled={save.isPending || (!isNew && !dirty)} className="odoo-btn-primary" style={btn}>
-            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {isNew ? 'Créer la fiche' : 'Enregistrer'}
-          </button>
+          <FormFooter dirty={dirty} onCancel={cancel} onSubmit={submit} busy={save.isPending} disabled={!isNew && !dirty}
+            submitLabel={isNew ? 'Créer la fiche' : 'Enregistrer'} />
         </div>
       )}
     </div>
@@ -495,11 +462,11 @@ const btn = { display: 'inline-flex', alignItems: 'center', gap: 4 } as const;
 const twoCols = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 16 } as const;
 const twoColsInner = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', columnGap: 24 } as const;
 
-function Section({ icon: Icon, title, children }: { icon: typeof UserRound; title: string; children: ReactNode }) {
+function Section({ title, children }: { icon?: typeof UserRound; title: string; children: ReactNode }) {
   return (
-    <section className="prj-panel hr-plain">
-      <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15 }}><Icon size={15} style={{ color: 'var(--theme-accent)' }} /> {title}</div>
-      <div style={{ padding: '6px 18px 12px' }}>{children}</div>
+    <section className="prj-panel hr-plain" style={{ padding: '16px 20px' }}>
+      <SectionHeader title={title} />
+      <div style={{ marginTop: 8 }}>{children}</div>
     </section>
   );
 }
@@ -538,24 +505,24 @@ function Row({
           <input type={type} value={String(v)} onChange={e => set(name, e.target.value)} className={inputCls} aria-label={label}
             step={type === 'number' ? 'any' : undefined} min={type === 'number' ? 0 : undefined}
             style={mono ? { fontFamily: 'ui-monospace, monospace' } : undefined} />
-          {suffix && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{suffix}</span>}
+          {suffix && <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>{suffix}</span>}
         </span>
       );
     }
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 38%) 1fr', alignItems: editing ? 'center' : 'baseline', gap: 12, padding: '5px 0', borderBottom: '1px solid var(--kl-hair, var(--odoo-border-light, #f1f3f5))' }}>
-      <label style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--theme-text-muted)' }}>
-        {label}{required && editing && <span style={{ color: 'var(--prj-red)' }}> *</span>}
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 38%) 1fr', alignItems: editing ? 'center' : 'baseline', gap: 12, padding: '6px 0', borderBottom: '1px solid var(--ds-hair)' }}>
+      <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--ds-muted)' }}>
+        {label}{required && editing && <span className="ds-req" aria-hidden="true"> *</span>}
       </label>
       <div>
         {editing ? control : (
-          <span style={{ fontSize: '0.8125rem', color: display ? 'var(--odoo-text)' : 'var(--odoo-text-light)', fontFamily: mono ? 'ui-monospace, monospace' : undefined }}>
+          <span className={mono && display ? 'ds-ref' : undefined} style={{ fontSize: 14, color: display ? 'var(--ds-ink)' : 'var(--ds-muted)' }}>
             {display || '—'}
           </span>
         )}
-        {hint && editing && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>{hint}</div>}
+        {hint && editing && <div className="ds-field-hint" style={{ marginTop: 2 }}>{hint}</div>}
       </div>
     </div>
   );

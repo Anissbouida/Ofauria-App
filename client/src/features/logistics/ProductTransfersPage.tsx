@@ -8,7 +8,8 @@ import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListKpi, ListPanel, ListEmpty, ListToolbar } from '../sales/ListTemplate';
+import { ListKpi, ListPanel, ListToolbar } from '../sales/ListTemplate';
+import { TableFooter, EmptyState, NoResultState } from '../../components/ds';
 
 // Transferts de produits finis entre sites (phase 7.4) : une pièce, deux mouvements.
 export default function ProductTransfersPage() {
@@ -60,12 +61,12 @@ export default function ProductTransfersPage() {
       {form && (
         <section className="prj-panel" style={{ padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <label><span style={lab}>Site source</span>
+            <label><span style={lab}>Site source<span className="ds-req" aria-hidden="true"> *</span></span>
               <select style={field} value={form.fromStoreId} onChange={(e) => setForm({ ...form, fromStoreId: e.target.value })}>
                 <option value="">— Choisir —</option>
                 {stores.map((s: Record<string, any>) => <option key={s.id} value={s.id}>{s.name}{s.kind === 'warehouse' ? ' (dépôt)' : ''}</option>)}
               </select></label>
-            <label><span style={lab}>Site destination</span>
+            <label><span style={lab}>Site destination<span className="ds-req" aria-hidden="true"> *</span></span>
               <select style={field} value={form.toStoreId} onChange={(e) => setForm({ ...form, toStoreId: e.target.value })}>
                 <option value="">— Choisir —</option>
                 {stores.map((s: Record<string, any>) => <option key={s.id} value={s.id}>{s.name}{s.kind === 'warehouse' ? ' (dépôt)' : ''}</option>)}
@@ -79,7 +80,7 @@ export default function ProductTransfersPage() {
                   options={products.map(p => ({ id: String(p.id), label: p.name as string }))} /></label>
               <label style={{ width: 120 }}><span style={lab}>Quantité</span>
                 <input type="number" style={field} value={l.quantity} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, quantity: e.target.value }; setForm({ ...form, lines }); }} /></label>
-              <button className="odoo-btn-secondary" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 size={12} /></button>
+              <button type="button" className="odoo-btn-secondary" aria-label="Retirer la ligne" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 size={12} /></button>
             </div>
           ))}
           <button className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setForm({ ...form, lines: [...form.lines, { productId: '', quantity: '' }] })}><Plus size={12} /> Ligne</button>
@@ -95,20 +96,21 @@ export default function ProductTransfersPage() {
 
       <ListToolbar search={search} onSearch={setSearch} placeholder="N° de transfert, site…" />
       {!shown.length ? (
-        <ListEmpty icon={ArrowLeftRight} title={transfers.length ? 'Aucun transfert trouvé' : 'Aucun transfert'}
-          text={transfers.length ? undefined : '« Nouveau transfert » pour déplacer des produits finis d\'un site à un autre.'} />
+        transfers.length
+          ? <NoResultState onReset={() => setSearch('')} text="Aucun transfert ne correspond à la recherche." />
+          : <EmptyState icon={ArrowLeftRight} title="Aucun transfert" text="« Nouveau transfert » pour déplacer des produits finis d'un site à un autre." />
       ) : (
-        <ListPanel footer={<div className="sal-foot"><span>{shown.length} transfert{shown.length > 1 ? 's' : ''}</span></div>}>
+        <ListPanel footer={<TableFooter note={<>{shown.length} transfert{shown.length > 1 ? 's' : ''}</>} />}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Date</th><th>Source</th><th>Destination</th><th style={{ textAlign: 'right' }}>Articles</th></tr></thead>
+            <thead><tr><th>N°</th><th>Date</th><th>Source</th><th>Destination</th><th className="ds-num">Articles</th></tr></thead>
             <tbody>
               {shown.map((t: ProductTransfer) => (
                 <tr key={t.id} style={{ cursor: 'default' }}>
-                  <td><span className="sal-num">{t.number}</span></td>
+                  <td><span className="ds-ref">{t.number}</span></td>
                   <td style={{ whiteSpace: 'nowrap' }}>{String(t.transfer_date).slice(0, 10).split('-').reverse().join('/')}</td>
                   <td>{t.from_store_name}</td>
                   <td>{t.to_store_name}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{t.item_count}</td>
+                  <td className="ds-num">{t.item_count}</td>
                 </tr>
               ))}
             </tbody>

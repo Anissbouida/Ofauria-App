@@ -93,7 +93,7 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
 
   return (
     <div className="odoo-section" style={{ margin: 0 }}>
-      <div className="odoo-section-header"><PackageOpen size={12} /> Ingrédient, lot et quantité à ouvrir</div>
+      <div className="odoo-section-header"><PackageOpen size={12} aria-hidden="true" /> Ingrédient, lot et quantité à ouvrir</div>
       <div className="transfer-pesage-form">
         {/* 1. Ingrédient */}
         <div className="transfer-pesage-field" style={{ position: 'relative', minWidth: 260 }}>
@@ -101,7 +101,7 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
           {ingredient ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <strong>{ingredient.name as string}</strong>
-              <button type="button" className="odoo-btn-secondary" onClick={() => { setIngredientId(null); setLotId(null); setSearch(''); }} title="Changer d'ingrédient"><X size={12} /></button>
+              <button type="button" className="odoo-btn-secondary" onClick={() => { setIngredientId(null); setLotId(null); setSearch(''); }} title="Changer d'ingrédient" aria-label="Changer d'ingrédient"><X size={12} /></button>
             </div>
           ) : (
             <>
@@ -134,7 +134,7 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
                 <select value={lot?.id as string || ''} onChange={(e) => setLotId(e.target.value)} className="bsi-lot-select" style={{ maxWidth: 'none' }}>
                   {lots.map(l => (
                     <option key={l.id as string} value={l.id as string} disabled={!!l._expired}>
-                      {((l.supplier_lot_number || l.lot_number) as string | null) || 'lot sans n°'} · DLC {l.expiration_date ? format(new Date(l.expiration_date as string), 'dd/MM/yy') : '—'} · économat {fmt(parseFloat(l.economat_quantity as string))}{l._expired ? ' · PÉRIMÉ' : ''}
+                      {((l.supplier_lot_number || l.lot_number) as string | null) || 'lot sans n°'} · DLC {l.expiration_date ? format(new Date(l.expiration_date as string), 'dd/MM/yy') : '—'} · économat {fmt(parseFloat(l.economat_quantity as string))}{l._expired ? ' · périmé' : ''}
                     </option>
                   ))}
                 </select>
@@ -187,7 +187,7 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
               </button>
             </div>
             {containerSize > 0 && !wholeLot && parsedContainers !== null && !qtyOk && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--prj-red)', marginTop: 2 }}>
+              <div role="alert" style={{ fontSize: 12, fontWeight: 600, color: 'var(--ds-danger)', marginTop: 2 }}>
                 Le lot n'a que {fmt(eco)} en économat ({fullContainersInLot} {container!.label.toLowerCase()}{fullContainersInLot > 1 ? 's' : ''} entier{fullContainersInLot > 1 ? 's' : ''}{lotRemainder > 1e-9 ? ` + ${fmt(lotRemainder)}` : ''}).
               </div>
             )}

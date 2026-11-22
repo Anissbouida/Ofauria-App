@@ -1,10 +1,9 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo } from 'react';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, type CashOverride } from '../../components/purchasing/PaymentModeFields';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
-  X, Coins, Plus, CalendarClock, AlertTriangle, Loader2, Pencil,
-  Repeat, Trash2, ChevronDown, ChevronRight, Power, Building2,
+  X, Coins, Plus, CalendarClock, Pencil, Repeat, Trash2, Power, Building2,
 } from 'lucide-react';
 import {
   paymentSchedulesApi, debtsApi, recurringChargesApi,
@@ -16,6 +15,10 @@ import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { money, currencySymbol } from '../../utils/money';
+import { KpiCard, KpiGrid, LoadingState, Toolbar, EmptyState, SectionHeader, DataPanel } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 /**
  * ECHEANCIER — le calendrier des sorties d'argent (migration 258).
@@ -177,96 +180,57 @@ export default function EcheancierView() {
   return (
     <>
       {/* ─── Indicateurs ─── */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">
-            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />En retard
-          </div>
-          <div className="odoo-stat-card-value" style={{ color: stats.retard > 0 ? '#dc3545' : 'var(--theme-text-muted)' }}>
-            {n(stats.retard)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
-          </div>
-          <div className="odoo-stat-card-sub">{stats.nbRetard} échéance{stats.nbRetard > 1 ? 's' : ''} dépassée{stats.nbRetard > 1 ? 's' : ''}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">
-            <CalendarClock size={11} style={{ display: 'inline', marginRight: 4 }} />Reste ce mois
-          </div>
-          <div className="odoo-stat-card-value">{n(stats.ceMois)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-          <div className="odoo-stat-card-sub">Échéances non encore dépassées</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">
-            <Coins size={11} style={{ display: 'inline', marginRight: 4 }} />À venir
-          </div>
-          <div className="odoo-stat-card-value">{n(stats.aVenir)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-          <div className="odoo-stat-card-sub">
-            {stats.nbIndefinis > 0
+      <KpiGrid>
+        <KpiCard label="En retard" value={<>{n(stats.retard)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub={<>{stats.nbRetard} échéance{stats.nbRetard > 1 ? 's' : ''} dépassée{stats.nbRetard > 1 ? 's' : ''}</>} tone={stats.retard > 0 ? 'red' : undefined} />
+        <KpiCard label="Reste ce mois" value={<>{n(stats.ceMois)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub="Échéances non encore dépassées" />
+        <KpiCard label="À venir" value={<>{n(stats.aVenir)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub={<>{stats.nbIndefinis > 0
               ? `${stats.nbIndefinis} montant${stats.nbIndefinis > 1 ? 's' : ''} à renseigner`
-              : 'Mois suivants'}
-          </div>
-        </div>
-      </div>
+              : 'Mois suivants'}</>} />
+      </KpiGrid>
 
       {/* ─── Barre d'actions ─── */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--theme-text-muted)' }}>
+      <AccHeaderActions>
+        <button type="button" onClick={() => setShowDebtForm(true)} className="odoo-btn-primary">
+          <Plus size={13} aria-hidden="true" /> Dette à crédit
+        </button>
+      </AccHeaderActions>
+
+      <Toolbar>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
           <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
           Afficher aussi les échéances réglées
         </label>
-        <div style={{ flex: 1 }} />
-        <button onClick={() => setShowRecurring(v => !v)} className="odoo-btn-secondary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Repeat size={13} /> Charges fixes
+        <span className="ds-grow" />
+        <button type="button" onClick={() => setShowRecurring(v => !v)} className="odoo-btn-secondary ds-btn-sm" aria-pressed={showRecurring}>
+          <Repeat size={13} aria-hidden="true" /> Charges fixes
         </button>
-        <button onClick={() => setShowDebtForm(true)} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={13} /> Dette à crédit
-        </button>
-      </div>
+      </Toolbar>
 
       {showRecurring && <RecurringChargesPanel onClose={() => setShowRecurring(false)} onChanged={refreshAll} />}
 
       {/* ─── Calendrier ─── */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
-        </div>
+        <LoadingState />
       ) : groupes.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <CalendarClock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucune échéance à venir.</p>
-          <p style={{ fontSize: '0.75rem', marginTop: 6 }}>
-            Créez une <strong>dette à crédit</strong> pour du matériel acheté en plusieurs fois,
-            ou une <strong>charge fixe</strong> pour que le loyer et l'électricité apparaissent
-            automatiquement chaque mois.
-          </p>
-        </div>
+        <EmptyState icon={CalendarClock} title="Aucune échéance à venir"
+          text="Créez une dette à crédit pour du matériel acheté en plusieurs fois, ou une charge fixe pour que le loyer et l'électricité apparaissent chaque mois." />
       ) : (
         groupes.map(g => (
-          <div key={g.periode} className="odoo-section">
-            <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ textTransform: 'capitalize' }}>{moisLabel(g.periode)}</span>
-              <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700 }}>
-                {money(g.total)}
-                {g.indefinis > 0 && (
-                  <span style={{ fontWeight: 400, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginLeft: 8 }}>
-                    + {g.indefinis} à chiffrer
-                  </span>
-                )}
-              </span>
-            </div>
-            <table className="odoo-table" style={{ margin: 0 }}>
+          <div key={g.periode} style={{ display: 'grid', gap: 8 }}>
+            <SectionHeader title={<span style={{ textTransform: 'capitalize' }}>{moisLabel(g.periode)}</span>}
+              note={<><strong className="ds-num" style={{ color: 'var(--ds-ink)' }}>{money(g.total)}</strong>{g.indefinis > 0 ? ` · ${g.indefinis} à chiffrer` : ''}</>} />
+            <DataPanel label={`Échéances de ${moisLabel(g.periode)}`}>
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th style={{ width: 90 }}>Échéance</th>
                   <th>Libellé</th>
                   <th>Type</th>
                   <th>Bénéficiaire</th>
-                  <th style={{ textAlign: 'right' }}>Montant dû</th>
-                  <th style={{ textAlign: 'right' }}>Payé</th>
-                  <th style={{ textAlign: 'right' }}>Reste</th>
-                  <th style={{ textAlign: 'center', width: 140 }}></th>
+                  <th className="ds-num">Montant dû ({currencySymbol()})</th>
+                  <th className="ds-num">Payé ({currencySymbol()})</th>
+                  <th className="ds-num">Reste ({currencySymbol()})</th>
+                  <th className="ds-actions" style={{ width: 140 }}><span className="ds-sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -277,15 +241,15 @@ export default function EcheancierView() {
                     <tr key={e.id} style={solde ? { opacity: 0.55 } : undefined}>
                       <td style={{
                         whiteSpace: 'nowrap',
-                        color: e.is_overdue && !solde ? '#dc3545' : 'var(--theme-text-muted)',
+                        color: e.is_overdue && !solde ? 'var(--ds-danger)' : undefined,
                         fontWeight: e.is_overdue && !solde ? 600 : 400,
                       }}>
                         {fmtDate(e.due_date)}
                       </td>
                       <td>
-                        <strong>{e.label}</strong>
+                        <span className="ds-strong">{e.label}</span>
                         {e.installment_total && e.installment_total > 1 && (
-                          <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>
+                          <span style={{ marginLeft: 6, fontSize: 12, color: 'var(--ds-muted)' }}>
                             {e.installment_no}/{e.installment_total}
                           </span>
                         )}
@@ -293,36 +257,31 @@ export default function EcheancierView() {
                           <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{e.category_name}</div>
                         )}
                       </td>
-                      <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                      <td>
                         {SOURCE_LABELS[e.source_kind]}
-                        {e.invoice_number && <div style={{ fontFamily: 'ui-monospace, monospace' }}>{e.invoice_number}</div>}
+                        {e.invoice_number && <div className="ds-ref" style={{ fontWeight: 400, fontSize: 12 }}>{e.invoice_number}</div>}
                       </td>
-                      <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{e.supplier_name || '—'}</td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                      <td>{e.supplier_name || '—'}</td>
+                      <td className="ds-num">
                         {e.amount_pending
                           ? <StatusTag tone="todo" label="À chiffrer" />
                           : n(parseFloat(e.amount_due || '0'))}
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>
+                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>
                         {n(parseFloat(e.amount_paid) || 0)}
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: solde ? '#0e7c3a' : '#b71c1c' }}>
-                        {solde ? 'Réglée' : e.amount_pending ? '—' : `${money(reste)}`}
+                      <td className="ds-num ds-strong">
+                        {solde ? <StatusTag tone="done" label="Réglée" /> : e.amount_pending ? '—' : n(reste)}
                       </td>
-                      <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <td className="ds-actions">
                         {!solde && (
                           <>
-                            <button onClick={() => setEditingAmount(e)} className="odoo-btn-secondary"
-                              title="Modifier le montant ou la date"
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: '0.6875rem', marginRight: 4 }}>
-                              <Pencil size={11} />
-                            </button>
-                            <button onClick={() => setPaying(e)} className="odoo-btn-secondary"
+                            <button type="button" onClick={() => setPaying(e)} className="odoo-btn-secondary ds-btn-sm"
                               disabled={e.amount_pending}
-                              title={e.amount_pending ? 'Renseignez d\'abord le montant' : 'Enregistrer le règlement'}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: '0.6875rem' }}>
-                              <Coins size={11} /> Payer
+                              title={e.amount_pending ? 'Renseignez d\'abord le montant' : 'Enregistrer le règlement'}>
+                              <Coins size={12} aria-hidden="true" /> Payer
                             </button>
+                            <RowMenu items={[{ label: 'Modifier le montant ou la date', icon: Pencil, onSelect: () => setEditingAmount(e) }]} />
                           </>
                         )}
                       </td>
@@ -331,6 +290,7 @@ export default function EcheancierView() {
                 })}
               </tbody>
             </table>
+            </DataPanel>
           </div>
         ))
       )}
@@ -390,7 +350,7 @@ function PayEcheanceModal({ echeance, pending, onClose, onSubmit }: {
                 <div className="odoo-breadcrumb">
                   <Coins size={14} style={{ color: 'var(--theme-accent)' }} />
                   <span className="odoo-breadcrumb-current">Régler une échéance</span>
-                <span className="odoo-breadcrumb-separator">/</span>
+                <span className="odoo-breadcrumb-separator">›</span>
                 <span>{echeance.label} · {fmtDate(echeance.due_date)}</span>
                 </div>
                 <div style={{ flex: 1 }} />
@@ -429,7 +389,7 @@ function PayEcheanceModal({ echeance, pending, onClose, onSubmit }: {
         }} className="p-5 space-y-4">
           <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 flex justify-between">
             <span>Reste à payer sur cette échéance</span>
-            <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#b71c1c' }}>{money(reste)}</strong>
+            <strong style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--ds-danger)' }}>{money(reste)}</strong>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -506,7 +466,7 @@ function EditEcheanceModal({ echeance, pending, onClose, onSubmit }: {
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
             <span className="odoo-breadcrumb-current">Modifier l'échéance</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span>{echeance.label}</span>
           </div>
           <div style={{ flex: 1 }} />
@@ -587,7 +547,7 @@ function DebtFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
                 <div className="odoo-breadcrumb">
                   <Building2 size={14} style={{ color: 'var(--theme-accent)' }} />
                   <span className="odoo-breadcrumb-current">Dette à crédit</span>
-                <span className="odoo-breadcrumb-separator">/</span>
+                <span className="odoo-breadcrumb-separator">›</span>
                 <span>Matériel ou équipement acheté en plusieurs fois</span>
                 </div>
                 <div style={{ flex: 1 }} />
@@ -692,6 +652,7 @@ function DebtFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
  * reapparaissent tant qu'elles ne sont pas reglees.
  */
 function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<RecurringCharge | null>(null);
   const [creating, setCreating] = useState(false);
@@ -721,7 +682,7 @@ function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; on
   });
 
   return (
-    <div className="odoo-section">
+    <div className="odoo-section ds-panel">
       <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span><Repeat size={13} style={{ display: 'inline', marginRight: 6 }} />Charges fixes récurrentes</span>
         <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
@@ -729,8 +690,7 @@ function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; on
             <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
             Inactives
           </label>
-          <button onClick={() => setCreating(true)} className="odoo-btn-primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: '0.6875rem' }}>
+          <button onClick={() => setCreating(true)} className="odoo-btn-primary" style={{ padding: '3px 10px', fontSize: '0.6875rem' }}>
             <Plus size={11} /> Ajouter
           </button>
           <button onClick={onClose} className="odoo-btn-secondary"
@@ -739,67 +699,52 @@ function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; on
       </div>
 
       {isLoading ? (
-        <div style={{ padding: '1.5rem', textAlign: 'center' }}>
-          <Loader2 size={16} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        </div>
+        <LoadingState />
       ) : charges.length === 0 ? (
-        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
-          Aucune charge fixe. Ajoutez le loyer, l'électricité ou l'eau : leurs échéances
-          apparaîtront ensuite toutes seules dans l'échéancier.
-        </div>
+        <EmptyState bare icon={Repeat} title="Aucune charge fixe" text="Ajoutez le loyer, l'électricité ou l'eau : leurs échéances apparaîtront ensuite d'elles-mêmes dans l'échéancier." />
       ) : (
-        <table className="odoo-table" style={{ margin: 0 }}>
+        <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th>Charge</th>
               <th>Catégorie</th>
               <th>Périodicité</th>
-              <th style={{ textAlign: 'right' }}>Montant</th>
+              <th className="ds-num">Montant</th>
               <th>Prochaine échéance</th>
-              <th style={{ textAlign: 'center', width: 120 }}></th>
+              <th className="ds-actions" style={{ width: 90 }}><span className="ds-sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             {charges.map(c => (
               <tr key={c.id} style={c.is_active ? undefined : { opacity: 0.5 }}>
                 <td>
-                  <strong>{c.label}</strong>
+                  <span className="ds-strong">{c.label}</span>
                   {c.supplier_name && (
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{c.supplier_name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{c.supplier_name}</div>
                   )}
                 </td>
-                <td style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{c.category_name || '—'}</td>
-                <td style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                <td>{c.category_name || '—'}</td>
+                <td>
                   {PERIODICITES.find(p => p.value === c.interval_months)?.label || `Tous les ${c.interval_months} mois`}
-                  <div style={{ fontSize: '0.6875rem' }}>le {c.due_day} du mois</div>
+                  <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>le {c.due_day} du mois</div>
                 </td>
-                <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
-                  {c.amount ? `${money(parseFloat(c.amount))}` : <span className="odoo-tag odoo-tag-orange">Variable</span>}
+                <td className="ds-num">
+                  {c.amount ? `${money(parseFloat(c.amount))}` : <StatusTag tone="todo" label="Variable" />}
                 </td>
-                <td style={{ fontSize: '0.8125rem' }}>
+                <td>
                   {fmtDate(c.next_due_date)}
-                  {c.overdue_count > 0 && (
-                    <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>
-                      {c.overdue_count} en retard
-                    </span>
-                  )}
+                  {c.overdue_count > 0 && <span style={{ marginLeft: 6 }}><StatusTag tone="late" label={`${c.overdue_count} en retard`} /></span>}
                 </td>
-                <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                  <button onClick={() => setEditing(c)} className="odoo-btn-secondary" title="Modifier"
-                    style={{ padding: '3px 8px', fontSize: '0.6875rem', marginRight: 4 }}>
-                    <Pencil size={11} />
+                <td className="ds-actions">
+                  <button type="button" onClick={() => setEditing(c)} className="ds-icon-btn" title="Modifier" aria-label={`Modifier la charge fixe ${c.label}`}>
+                    <Pencil size={15} />
                   </button>
-                  <button onClick={() => toggleActive.mutate({ id: c.id, isActive: !c.is_active })}
-                    className="odoo-btn-secondary" title={c.is_active ? 'Désactiver' : 'Réactiver'}
-                    style={{ padding: '3px 8px', fontSize: '0.6875rem', marginRight: 4 }}>
-                    <Power size={11} />
-                  </button>
-                  <button onClick={() => {
-                    if (confirm(`Supprimer la charge fixe « ${c.label} » ?`)) remove.mutate(c.id);
-                  }} className="odoo-btn-secondary" title="Supprimer"
-                    style={{ padding: '3px 8px', fontSize: '0.6875rem', color: '#dc3545' }}>
-                    <Trash2 size={11} />
-                  </button>
+                  <RowMenu items={[
+                    { label: c.is_active ? 'Désactiver' : 'Réactiver', icon: Power, onSelect: () => toggleActive.mutate({ id: c.id, isActive: !c.is_active }) },
+                    { label: 'Supprimer', icon: Trash2, danger: true, onSelect: async () => {
+                      if (await confirm(`Supprimer la charge fixe « ${c.label} » ?`, { title: 'Supprimer la charge fixe', danger: true, confirmLabel: 'Supprimer' })) remove.mutate(c.id);
+                    } },
+                  ]} />
                 </td>
               </tr>
             ))}
@@ -856,7 +801,7 @@ function RecurringChargeForm({ charge, onClose, onSaved }: {
                 <div className="odoo-breadcrumb">
                   <Repeat size={14} style={{ color: 'var(--theme-accent)' }} />
                   <span className="odoo-breadcrumb-current">{charge ? 'Modifier la charge fixe' : 'Nouvelle charge fixe'}</span>
-                <span className="odoo-breadcrumb-separator">/</span>
+                <span className="odoo-breadcrumb-separator">›</span>
                 <span>Loyer, électricité, eau, internet...</span>
                 </div>
                 <div style={{ flex: 1 }} />

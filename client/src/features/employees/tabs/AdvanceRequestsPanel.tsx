@@ -1,12 +1,13 @@
-import { money } from '../../../utils/money';
+import { money, currencySymbol } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, X, HandCoins } from 'lucide-react';
+import { Check, X, HandCoins, Landmark } from 'lucide-react';
 import { advanceRequestsApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { RowMenu } from '../../../components/ui/RowMenu';
 import { PromptDialog } from '../ui';
 
 const fmt = (v: unknown) => (parseFloat(String(v ?? 0)) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -36,37 +37,30 @@ export default function AdvanceRequestsPanel() {
   return (
     <StatusBanner tone="orange" icon={HandCoins} title={`${rows.length} demande(s) d'avance à traiter`}>
       <table className="odoo-table" style={{ marginTop: 6 }}>
-        <thead><tr><th>Salarié</th><th>Demandée le</th><th style={{ textAlign: 'right' }}>Montant</th><th style={{ textAlign: 'right' }}>Retenue / paie</th><th>Motif</th><th style={{ width: 170 }}></th></tr></thead>
+        <thead><tr><th>Salarié</th><th>Demandée le</th><th className="ds-num">Montant ({currencySymbol()})</th><th className="ds-num">Retenue par paie ({currencySymbol()})</th><th>Motif</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
         <tbody>
           {rows.map(r => (
             <tr key={r.id}>
-              <td style={{ fontWeight: 500 }}>{r.first_name} {r.last_name}</td>
+              <td className="ds-strong">{r.first_name} {r.last_name}</td>
               <td>{new Date(r.created_at).toLocaleDateString('fr-FR')}</td>
-              <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(r.amount)}</td>
-              <td style={{ textAlign: 'right' }}>{r.monthly_deduction ? money(r.monthly_deduction) : 'tout'}</td>
+              <td className="ds-num ds-strong">{fmt(r.amount)}</td>
+              <td className="ds-num">{r.monthly_deduction ? fmt(r.monthly_deduction) : 'tout'}</td>
               <td>{r.reason ?? '—'}</td>
-              <td>
-                <div style={{ display: 'inline-flex', gap: 4 }}>
-                  <button className="odoo-btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.6875rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                    disabled={approve.isPending}
-                    onClick={async () => {
-                      if (!(await confirm(`Verser ${money(r.amount)} en espèces à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
-                      approve.mutate({ id: r.id, method: 'cash' });
-                    }}>
-                    <Check size={11} /> Espèces
-                  </button>
-                  <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.6875rem' }} disabled={approve.isPending}
-                    onClick={async () => {
-                      if (!(await confirm(`Verser ${money(r.amount)} par virement à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
-                      approve.mutate({ id: r.id, method: 'bank' });
-                    }}>
-                    Virement
-                  </button>
-                  <button className="odoo-pager-btn" title="Refuser" style={{ color: 'var(--prj-red)' }} disabled={reject.isPending}
-                    onClick={() => setRejecting(r)}>
-                    <X size={13} />
-                  </button>
-                </div>
+              <td className="ds-actions">
+                <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={approve.isPending}
+                  onClick={async () => {
+                    if (!(await confirm(`Verser ${money(r.amount)} en espèces à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
+                    approve.mutate({ id: r.id, method: 'cash' });
+                  }}>
+                  <Check size={13} aria-hidden="true" /> Verser en espèces
+                </button>
+                <RowMenu label={`Plus d'actions pour la demande de ${r.first_name} ${r.last_name}`} items={[
+                  { label: 'Verser par virement', icon: Landmark, disabled: approve.isPending, onSelect: async () => {
+                    if (!(await confirm(`Verser ${money(r.amount)} par virement à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
+                    approve.mutate({ id: r.id, method: 'bank' });
+                  } },
+                  { label: 'Refuser', icon: X, danger: true, disabled: reject.isPending, onSelect: () => setRejecting(r) },
+                ]} />
               </td>
             </tr>
           ))}

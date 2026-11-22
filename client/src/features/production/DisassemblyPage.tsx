@@ -5,7 +5,7 @@ import api from '../../api/client';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { Alert, DataPanel, EmptyState, ErrorState, FormField, LoadingState, SectionHeader, TableFooter } from '../../components/ds';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
@@ -26,7 +26,7 @@ export default function DisassemblyPage() {
   const { data: candidates = [] } = useQuery({
     queryKey: ['disassembly-candidates'], queryFn: () => api.get('/production/disassembly/candidates').then(r => r.data.data as Candidate[]),
   });
-  const { data: history = [], isLoading } = useQuery({
+  const { data: history = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['disassembly'], queryFn: () => api.get('/production/disassembly').then(r => r.data.data as Disassembly[]),
   });
   const [lotId, setLotId] = useState('');
@@ -58,57 +58,73 @@ export default function DisassemblyPage() {
     if (ok) run.mutate();
   };
 
-  return (
-    <SalesPageShell icon={Recycle} parent="Production" title="Désassemblage"
-      summary="Défaire des produits finis (retour client, défaut, reconditionnement) : les pièces sortent du lot en arrière-boutique et les matières de leur nomenclature reviennent en stock, au taux de récupération indiqué.">
+  const tooMany = !!lot && n(qty) > lot.backroom;
+  const badRecovery = recovery.trim() !== '' && !(n(recovery) > 0 && n(recovery) <= 100);
 
-      <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-label="Nouveau désassemblage">
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
-          <label className="block text-xs font-medium text-gray-500">Lot de produit fini
+  return (
+    <SalesPageShell icon={Recycle} parent="Production › Opérations" title="Désassemblage"
+      summary="Défaire des produits finis : les pièces sortent du lot et les matières de leur nomenclature reviennent en stock.">
+
+      {!candidates.length && (
+        <Alert tone="info">Aucun lot désassemblable : il faut des pièces en arrière-boutique et une nomenclature.</Alert>
+      )}
+
+      <section className="ds-panel" style={{ padding: '16px 20px', display: 'grid', gap: 12, overflow: 'visible' }} aria-label="Nouveau désassemblage">
+        <h2 className="ds-subhead">Nouveau désassemblage</h2>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
+          <FormField label="Lot de produit fini" required>
             <SearchSelect value={lotId} onChange={setLotId} width={340} size="md" ariaLabel="Lot de produit fini" placeholder="Choisir un lot"
               options={candidates.map(c => ({ id: c.id, label: c.product_name, sublabel: c.lot_number, detail: `${c.backroom} en stock` }))} />
-          </label>
-          <label className="block text-xs font-medium text-gray-500">Pièces
-            <input className="input" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} style={{ width: 90 }} aria-label="Pièces à désassembler" />
-          </label>
-          <label className="block text-xs font-medium text-gray-500">Récupération (%)
-            <input className="input" inputMode="decimal" value={recovery} onChange={e => setRecovery(e.target.value)} style={{ width: 100 }} aria-label="Taux de récupération" />
-          </label>
-          <label className="block text-xs font-medium text-gray-500" style={{ flex: '1 1 200px' }}>Motif
-            <input className="input" value={notes} maxLength={1000} onChange={e => setNotes(e.target.value)} placeholder="ex : retour client, défaut de finition" aria-label="Motif" />
-          </label>
-          <button type="button" className="odoo-btn-primary" disabled={!valid || run.isPending} onClick={submit}>
-            {run.isPending ? <Loader2 size={14} className="animate-spin" /> : <Undo2 size={14} />} Désassembler
+          </FormField>
+          <div style={{ width: 110 }}>
+            <FormField label="Pièces" htmlFor="dis-qty" required
+              error={tooMany ? `Seulement ${lot!.backroom} pièce(s) en arrière-boutique sur ce lot.` : undefined}>
+              <input id="dis-qty" className="ds-input" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} aria-invalid={tooMany || undefined} />
+            </FormField>
+          </div>
+          <div style={{ width: 130 }}>
+            <FormField label="Récupération (%)" htmlFor="dis-recovery" required
+              error={badRecovery ? 'Entre 1 et 100.' : undefined}>
+              <input id="dis-recovery" className="ds-input" inputMode="decimal" value={recovery} onChange={e => setRecovery(e.target.value)} aria-invalid={badRecovery || undefined} />
+            </FormField>
+          </div>
+          <div style={{ flex: '1 1 200px' }}>
+            <FormField label="Motif" htmlFor="dis-notes">
+              <input id="dis-notes" className="ds-input" value={notes} maxLength={1000} onChange={e => setNotes(e.target.value)} placeholder="Ex. : retour client, défaut de finition" />
+            </FormField>
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" className="odoo-btn-primary" disabled={!valid || run.isPending} aria-busy={run.isPending || undefined} onClick={submit}>
+            {run.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Undo2 size={14} aria-hidden="true" />} Désassembler
           </button>
         </div>
-        {lot && n(qty) > lot.backroom && <p className="text-xs" style={{ color: '#b42318' }}>Seulement {lot.backroom} pièce(s) en arrière-boutique sur ce lot.</p>}
-        {!candidates.length && <p className="text-xs text-gray-500">Aucun lot désassemblable : il faut des pièces en arrière-boutique et une nomenclature.</p>}
       </section>
 
-      <section aria-label="Historique">
-        <div className="kl-sec"><h2>Historique</h2>{history.length > 0 && <small>{history.length}</small>}</div>
-        {isLoading ? <section className="prj-panel sal-empty"><Loader2 className="animate-spin" size={16} /></section> : history.length === 0 ? (
-          <ListEmpty icon={Recycle} title="Aucun désassemblage." />
+      <section aria-label="Historique" style={{ display: 'grid', gap: 12 }}>
+        <SectionHeader title="Historique" />
+        {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : history.length === 0 ? (
+          <EmptyState icon={Recycle} title="Aucun désassemblage" text="Les désassemblages enregistrés apparaîtront ici, avec les matières remises en stock." />
         ) : (
-          <ListPanel>
-            <table className="odoo-table" style={{ margin: 0 }}>
-              <thead><tr><th>Pièce</th><th>Date</th><th>Produit</th><th>Lot</th><th style={{ textAlign: 'right' }}>Pièces</th><th style={{ textAlign: 'right' }}>Récup.</th><th>Matières remises</th><th>Par</th></tr></thead>
+          <DataPanel label="Historique des désassemblages" footer={<TableFooter note={`${history.length} désassemblage${history.length > 1 ? 's' : ''}`} />}>
+            <table className="odoo-table">
+              <thead><tr><th>N° pièce</th><th>Date</th><th>Produit</th><th>Lot</th><th className="ds-num">Pièces</th><th className="ds-num">Récupération (%)</th><th>Matières remises</th><th>Par</th></tr></thead>
               <tbody>
                 {history.map(d => (
                   <tr key={d.id} title={d.notes ?? undefined}>
-                    <td style={{ fontFamily: 'monospace' }}>{d.numero}</td>
-                    <td>{new Date(d.created_at).toLocaleString('fr-FR')}</td>
-                    <td>{d.product_name}</td>
-                    <td style={{ fontFamily: 'monospace' }}>{d.lot_number}</td>
-                    <td style={{ textAlign: 'right' }}>{d.quantity}</td>
-                    <td style={{ textAlign: 'right' }}>{d.recovery_pct} %</td>
-                    <td style={{ fontSize: '0.75rem' }}>{d.lines.map(l => `${l.ingredient} ${l.quantity} ${l.unit ?? ''}`).join(' · ')}</td>
+                    <td><span className="ds-ref">{d.numero}</span></td>
+                    <td>{new Date(d.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                    <td className="ds-strong">{d.product_name}</td>
+                    <td><span className="ds-ref">{d.lot_number}</span></td>
+                    <td className="ds-num">{d.quantity}</td>
+                    <td className="ds-num">{d.recovery_pct}</td>
+                    <td style={{ fontSize: 13 }}>{d.lines.map(l => `${l.ingredient} ${l.quantity} ${l.unit ?? ''}`).join(' · ')}</td>
                     <td>{d.created_by_name ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </ListPanel>
+          </DataPanel>
         )}
       </section>
     </SalesPageShell>

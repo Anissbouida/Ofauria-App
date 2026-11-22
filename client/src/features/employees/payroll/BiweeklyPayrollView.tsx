@@ -6,15 +6,16 @@ import { biweeklyPayrollApi, advancesApi } from '../../../api/employees.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Users, Banknote, Check, ChevronLeft, ChevronRight, AlertTriangle, RotateCcw, HandCoins, Calculator, Clock,
+  Banknote, Check, ChevronLeft, ChevronRight, AlertTriangle, RotateCcw, HandCoins, Calculator, Clock, Landmark,
 } from 'lucide-react';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { StageProgress } from '../../../components/purchasing/ProcessBoard';
-import { FilterChips, ListEmpty } from '../../sales/ListTemplate';
+import { RowMenu } from '../../../components/ui/RowMenu';
+import { FilterChips } from '../../sales/ListTemplate';
+import { KpiGrid, KpiCard, Toolbar, DataPanel, TableFooter, EmptyState, NoResultState, ErrorState } from '../../../components/ds';
 import type { LucideIcon } from 'lucide-react';
-import { EmptyPanel, LoadingPanel } from '../ui';
+import { LoadingPanel, HrHeaderActions } from '../ui';
 
 type PayStage = 'togenerate' | 'topay' | 'paid';
 const PAY_STAGES: Array<{ key: string; label: string; hint: string; icon: LucideIcon }> = [
@@ -24,7 +25,7 @@ const PAY_STAGES: Array<{ key: string; label: string; hint: string; icon: Lucide
 ];
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
-import { apiErrorMessage, openPeriodMessage, OPEN_PERIOD_CONFIRM } from '../shared';
+import { apiErrorMessage, openPeriodMessage, OPEN_PERIOD_CONFIRM, amount as fmt } from '../shared';
 import { ROLE_LABELS } from '@ofauria/shared';
 
 /* ═══════════════════════ BIWEEKLY PAYROLL VIEW (quinzaine) ═══════════════════════ */
@@ -78,7 +79,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
   const { start: periodStartDate, end: periodEndDate } = biweeklyPeriod(periodOffset);
   const periodStartStr = format(periodStartDate, 'yyyy-MM-dd');
 
-  const { data: periodData, isLoading } = useQuery<BiweeklyPayrollData>({
+  const { data: periodData, isLoading, isError, refetch } = useQuery<BiweeklyPayrollData>({
     queryKey: ['biweekly-payroll', periodStartStr],
     queryFn: () => biweeklyPayrollApi.list(periodStartStr) as Promise<BiweeklyPayrollData>,
   });
@@ -189,30 +190,22 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
 
   const isCurrentPeriod = periodOffset === 0;
 
+  const cur = currencySymbol();
+  const n2 = (v: string | number | null | undefined) => fmt(parseFloat(String(v ?? 0)) || 0);
+
   return (
     <>
-      <div className="prj-toolbar" style={{ justifyContent: 'space-between' }}>
-        <div className="hr-tools">
-          <button onClick={() => setPeriodOffset(w => w - 1)} className="odoo-pager-btn" aria-label="Quinzaine précédente"><ChevronLeft size={14} /></button>
-          <span style={{ fontSize: '0.9375rem', fontWeight: 600 }}>
-            Quinzaine du {format(periodStartDate, 'dd MMM', { locale: fr })} au {format(periodEndDate, 'dd MMM yyyy', { locale: fr })}
-          </span>
-          <button onClick={() => setPeriodOffset(w => w + 1)} className="odoo-pager-btn" aria-label="Quinzaine suivante"><ChevronRight size={14} /></button>
-          <button onClick={() => setPeriodOffset(-1)} className="odoo-btn-secondary" style={{ marginLeft: 4 }}>
-            Quinzaine précédente
-          </button>
-        </div>
-        <div className="hr-tools">
-          <button onClick={async () => {
-            if (!(await confirm(`Generer la paie de la quinzaine du ${periodStartStr} ?\n\nLes lignes deja PAYEES ne sont jamais ecrasees. Les autres sont recalculees depuis le pointage.`,
-              { title: 'Générer la paie', confirmLabel: 'Générer' }))) return;
-            generateMutation.mutate(false);
-          }} disabled={generateMutation.isPending || rows.length === 0} className="odoo-btn-primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Banknote size={13} /> {generateMutation.isPending ? 'Génération...' : 'Générer depuis pointage'}
-          </button>
-        </div>
-      </div>
+      {/* Action principale de la page, à droite du fil d'Ariane. */}
+      <HrHeaderActions>
+        <button type="button" onClick={async () => {
+          if (!(await confirm(`Générer la paie de la quinzaine du ${periodStartStr} ?\n\nLes lignes déjà PAYÉES ne sont jamais écrasées. Les autres sont recalculées depuis le pointage.`,
+            { title: 'Générer la paie', confirmLabel: 'Générer' }))) return;
+          generateMutation.mutate(false);
+        }} disabled={generateMutation.isPending || rows.length === 0} className="odoo-btn-primary" aria-busy={generateMutation.isPending || undefined}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Banknote size={13} aria-hidden="true" /> {generateMutation.isPending ? 'Génération…' : 'Générer depuis le pointage'}
+        </button>
+      </HrHeaderActions>
 
       {isCurrentPeriod && (
         <StatusBanner tone="warning" icon={AlertTriangle} title="Quinzaine en cours">
@@ -220,103 +213,95 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
         </StatusBanner>
       )}
 
-      <div className="prj-kpis">
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Employés quinzaine</span><Users size={14} /></div>
-          <div className="prj-kpi-value">{rows.length}</div>
-          <div className="prj-kpi-sub">à payer cette quinzaine</div>
-        </div>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Versé</span><Check size={14} /></div>
-          <div className="prj-kpi-value" style={{ color: totalPaid > 0 ? 'var(--prj-green)' : undefined }}>{totalPaid.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-        </div>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Reste dû</span><Banknote size={14} /></div>
-          <div className="prj-kpi-value" style={{ color: totalDue > 0 ? 'var(--prj-red)' : undefined }}>{totalDue.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-        </div>
-      </div>
+      <KpiGrid>
+        <KpiCard label="Employés payés à la quinzaine" value={rows.length} sub="à payer cette quinzaine" />
+        <KpiCard label={`Versé (${cur})`} value={fmt(totalPaid)} sub={`${paidCount} sur ${rows.length} payés`} tone={rows.length > 0 && paidCount === rows.length ? 'green' : undefined} />
+        <KpiCard label={`Reste dû (${cur})`} value={fmt(totalDue)} sub={totalDue > 0 ? 'à payer' : 'rien à payer'} tone={totalDue > 0 ? 'orange' : undefined} />
+      </KpiGrid>
 
-      {/* Pastilles d'étape : filtre de la liste (les totaux restent sur toute la période) */}
-      <div className="prj-toolbar">
-        <FilterChips label="Étape des paies" value={stageFilter ?? ''} onChange={k => setStageFilter((k || null) as PayStage | null)}
-          chips={[
-            { key: '', label: 'Toutes', count: rows.length },
-            ...PAY_STAGES.map(st => ({ key: st.key, label: st.label, icon: st.icon, count: stageStats[st.key as PayStage].count })),
-          ]} />
-        <span className="hr-spacer" />
-        <small style={{ color: 'var(--theme-text-muted)', fontSize: 13 }}>
-          Paies de la quinzaine · {paidCount}/{rows.length} payés · à payer {stageStats.topay.sub} · payé {stageStats.paid.sub}
-        </small>
-      </div>
+      {/* Pastilles d'étape : filtre de la liste (les totaux restent sur toute la période). */}
+      <FilterChips label="Étape des paies" value={stageFilter ?? ''} onChange={k => setStageFilter((k || null) as PayStage | null)}
+        chips={[
+          { key: '', label: 'Toutes', count: rows.length },
+          ...PAY_STAGES.map(st => ({ key: st.key, label: st.label, icon: st.icon, count: stageStats[st.key as PayStage].count })),
+        ]} />
+
+      {/* Barre d'outils : période. */}
+      <Toolbar>
+        <div className="hr-tools">
+          <button type="button" onClick={() => setPeriodOffset(w => w - 1)} className="ds-icon-btn" aria-label="Quinzaine précédente"><ChevronLeft size={16} /></button>
+          <span className="ds-strong">
+            Quinzaine du {format(periodStartDate, 'd MMM', { locale: fr })} au {format(periodEndDate, 'd MMM yyyy', { locale: fr })}
+          </span>
+          <button type="button" onClick={() => setPeriodOffset(w => w + 1)} className="ds-icon-btn" aria-label="Quinzaine suivante"><ChevronRight size={16} /></button>
+          {periodOffset !== -1 && (
+            <button type="button" onClick={() => setPeriodOffset(-1)} className="ds-btn-ghost ds-btn-sm">Quinzaine précédente</button>
+          )}
+        </div>
+      </Toolbar>
 
       {isLoading ? (
         <LoadingPanel />
+      ) : isError ? (
+        <ErrorState onRetry={() => void refetch()} />
       ) : rows.length === 0 ? (
-        <ListEmpty icon={Banknote} title="Aucun employé payé par quinzaine." text="Passez un employé en « Fréquence de paie : Par quinzaine » dans l'onglet Employés pour le voir ici." />
+        <EmptyState icon={Banknote} title="Aucun employé payé par quinzaine" text="Passez un employé en « Fréquence de paie : Par quinzaine » dans l'écran Employés pour le voir ici." />
       ) : visibleRows.length === 0 ? (
-        <EmptyPanel icon={Banknote}>Aucune paie à cette étape.</EmptyPanel>
+        <NoResultState text="Aucune paie à cette étape." onReset={() => setStageFilter(null)} />
       ) : (
-        <div className="prj-panel hr-plain"><div className="prj-scroll">
-          <table className="odoo-table">
+        <DataPanel label="Paies de la quinzaine" footer={<TableFooter
+          note={`${visibleRows.length} salarié${visibleRows.length > 1 ? 's' : ''} · ${paidCount} sur ${rows.length} payés · à payer ${stageStats.topay.sub} · payé ${stageStats.paid.sub}`} />}>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
-                <th style={{ width: 24 }}></th>
                 <th>Employé</th>
-                <th style={{ textAlign: 'right' }}>Salaire mensuel</th>
-                <th style={{ textAlign: 'center' }}>Jours trav.</th>
-                <th style={{ textAlign: 'center' }}>Absents</th>
-                <th style={{ textAlign: 'right' }}>Base</th>
-                <th style={{ textAlign: 'right' }}>H. Sup</th>
-                <th style={{ textAlign: 'right' }} title="Solde d'avances à récupérer, ou retenue faite sur cette paie">Avance</th>
-                <th style={{ textAlign: 'right' }}>Net</th>
-                <th style={{ textAlign: 'center', width: 110 }}>Paiement</th>
+                <th>Poste</th>
+                <th className="ds-num">Salaire mensuel ({cur})</th>
+                <th className="ds-num">Jours travaillés</th>
+                <th className="ds-num">Absences (j)</th>
+                <th className="ds-num">Base ({cur})</th>
+                <th className="ds-num">Heures sup ({cur})</th>
+                <th className="ds-num" title="Solde d'avances à récupérer, ou retenue faite sur cette paie">Avance ({cur})</th>
+                <th className="ds-num">Net à verser ({cur})</th>
+                <th>Statut</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {visibleRows.map(r => {
                 const generated = !!r.payroll_id;
                 const paid = !!r.paid;
+                const who = `${r.first_name} ${r.last_name}`;
                 return (
-                  <tr key={r.employee_id} className={paid ? '' : generated ? 'row-warning' : ''}>
-                    <td>
-                      <span className={`odoo-status-dot ${paid ? 'ok' : generated ? 'warning' : 'neutral'}`}
-                        role="img" title={paid ? 'Payé' : generated ? 'Généré, à payer' : 'Non généré'} aria-label={paid ? 'Payé' : generated ? 'Généré, à payer' : 'Non généré'} />
-                    </td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                        <Users size={11} style={{ color: 'var(--theme-accent)' }} />
-                        {r.first_name} {r.last_name}
-                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {ROLE_LABELS[r.role as keyof typeof ROLE_LABELS] ?? r.role}</span>
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
-                      {r.monthly_salary ? money(parseFloat(r.monthly_salary)) : <span style={{ color: 'var(--prj-red)' }}>Non défini</span>}
+                  <tr key={r.employee_id}>
+                    <td className="ds-strong">{who}</td>
+                    <td>{ROLE_LABELS[r.role as keyof typeof ROLE_LABELS] ?? r.role}</td>
+                    <td className="ds-num">
+                      {r.monthly_salary ? n2(r.monthly_salary) : <StatusTag tone="blocked" label="Non défini" />}
                     </td>
                     {generated ? (
                       <>
-                        <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                        <td className="ds-num ds-strong">
                           {(Math.round(parseFloat(String(r.worked_days ?? 0)) * 100) / 100).toString()}
                         </td>
-                        <td style={{ textAlign: 'center', color: (r.absent_days ?? 0) > 0 ? 'var(--prj-red)' : 'var(--odoo-text-light)' }}>{r.absent_days}</td>
-                        <td style={{ textAlign: 'right' }}>{parseFloat(r.base_amount || '0').toFixed(2)}</td>
-                        <td style={{ textAlign: 'right', color: parseFloat(r.overtime_amount || '0') > 0 ? 'var(--prj-orange)' : 'var(--odoo-text-light)' }}>
-                          {parseFloat(r.overtime_amount || '0') > 0 ? `+${parseFloat(r.overtime_amount || '0').toFixed(2)}` : '—'}
+                        <td className="ds-num" style={{ color: (r.absent_days ?? 0) > 0 ? 'var(--ds-danger)' : 'var(--ds-muted)', fontWeight: (r.absent_days ?? 0) > 0 ? 600 : undefined }}>{r.absent_days}</td>
+                        <td className="ds-num">{n2(r.base_amount)}</td>
+                        <td className="ds-num">
+                          {parseFloat(r.overtime_amount || '0') > 0 ? `+ ${n2(r.overtime_amount)}` : '—'}
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td className="ds-num">
                           {paid ? (
                             parseFloat(r.advance_deduction || '0') > 0
-                              ? <span style={{ color: 'var(--prj-orange)', fontWeight: 500 }} title="Retenue d'avance sur cette paie">− {parseFloat(r.advance_deduction || '0').toFixed(2)}</span>
-                              : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
+                              ? <span title="Retenue d'avance sur cette paie">− {n2(r.advance_deduction)}</span>
+                              : '—'
                           ) : (outstandingByEmp.get(r.employee_id) || 0) > 0 ? (
                             <span className="odoo-tag odoo-tag-orange" title={`Avance en cours : ${money((outstandingByEmp.get(r.employee_id) || 0))} — retenue proposée au paiement`}>
-                              <HandCoins size={10} style={{ marginRight: 2 }} />
-                              {(outstandingByEmp.get(r.employee_id) || 0).toFixed(2)}
+                              <HandCoins size={10} aria-hidden="true" style={{ marginRight: 2 }} />
+                              {fmt(outstandingByEmp.get(r.employee_id) || 0)}
                             </span>
-                          ) : (
-                            <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
-                          )}
+                          ) : '—'}
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--prj-green)' }}>
+                        <td className="ds-num ds-strong">
                           {(() => {
                             const net = parseFloat(r.net_amount || '0');
                             const ded = paid
@@ -325,63 +310,55 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                             const verse = Math.max(0, Math.round((net - ded) * 100) / 100);
                             const wh = parseFloat(r.withholding_amount || '0');
                             const whNote = wh > 0 && (
-                              <div style={{ fontSize: '0.625rem', fontWeight: 400, color: 'var(--odoo-text-muted)' }}
+                              <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--ds-muted)' }}
                                 title="Acompte d'un salarié déclaré : retenue provisoire CNSS / AMO / IR, régularisée sur le bulletin mensuel">
-                                brut {parseFloat(r.gross_amount || '0').toFixed(2)} − retenue prov. {wh.toFixed(2)}
+                                brut {n2(r.gross_amount)} − retenue provisoire {fmt(wh)}
                               </div>
                             );
-                            if (ded <= 0.005) return <>{money(net)}{whNote}</>;
+                            if (ded <= 0.005) return <>{fmt(net)}{whNote}</>;
                             return (
                               <span title={paid
                                 ? `Net ${net.toFixed(2)} − retenue avance ${ded.toFixed(2)} = versé ${verse.toFixed(2)}`
                                 : `Net dû ${net.toFixed(2)} − retenue proposée ${ded.toFixed(2)} (modifiable au paiement)`}>
-                                {money(verse)}
-                                <div style={{ fontSize: '0.625rem', fontWeight: 400, color: 'var(--odoo-text-muted)' }}>
-                                  net {net.toFixed(2)}
+                                {fmt(verse)}
+                                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--ds-muted)' }}>
+                                  net {fmt(net)}
                                 </div>
                                 {whNote}
                               </span>
                             );
                           })()}
                         </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <StageProgress count={3} current={paid ? 3 : 1} done={paid} />
+                        <td>{paid ? <StatusTag tone="done" label="Payé" /> : <StatusTag tone="todo" label="À payer" />}</td>
+                        <td className="ds-actions">
                           {paid ? (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <StatusTag tone="done" label="Payé" />
-                              <button onClick={async () => {
-                                if (!(await confirm(`Annuler le paiement de ${r.first_name} ${r.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`,
+                            <RowMenu label={`Plus d'actions pour la paie de ${who}`} items={[{
+                              label: 'Annuler le paiement', icon: RotateCcw, danger: true,
+                              onSelect: async () => {
+                                if (!(await confirm(`Annuler le paiement de ${who} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`,
                                   { title: 'Annuler le paiement', confirmLabel: 'Annuler le paiement', danger: true }))) return;
                                 unpayMutation.mutate(r.payroll_id as string);
-                              }} className="odoo-pager-btn" title="Annuler le paiement" style={{ color: 'var(--prj-red)' }}>
-                                <RotateCcw size={12} />
-                              </button>
-                            </div>
+                              },
+                            }]} />
                           ) : (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <button onClick={() => startPay(r, 'cash')} className="odoo-btn-primary"
-                                disabled={payMutation.isPending}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.5rem', fontSize: '0.6875rem' }}>
-                                <Banknote size={11} /> Espèces
+                            <>
+                              <button type="button" onClick={() => startPay(r, 'cash')} className="odoo-btn-secondary ds-btn-sm" disabled={payMutation.isPending}>
+                                <Banknote size={13} aria-hidden="true" /> Payer
                               </button>
-                              <button onClick={() => startPay(r, 'bank')} className="odoo-btn-secondary"
-                                disabled={payMutation.isPending}
-                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.6875rem' }}>
-                                Virement
-                              </button>
-                            </div>
+                              <RowMenu label={`Plus d'actions pour la paie de ${who}`} items={[
+                                { label: 'Payer par virement', icon: Landmark, disabled: payMutation.isPending, onSelect: () => startPay(r, 'bank') },
+                              ]} />
+                            </>
                           )}
                         </td>
                       </>
                     ) : (
                       <>
-                        <td colSpan={6} style={{ textAlign: 'center', color: 'var(--odoo-text-light)', fontStyle: 'italic' }}>
-                          — Cliquez « Générer depuis pointage » pour calculer —
+                        <td colSpan={6} style={{ color: 'var(--ds-muted)' }}>
+                          À calculer : « Générer depuis le pointage »
                         </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <StageProgress count={3} current={0} />
-                          <StatusTag tone="draft" label="Non généré" />
-                        </td>
+                        <td><StatusTag tone="draft" label="Non généré" /></td>
+                        <td className="ds-actions"></td>
                       </>
                     )}
                   </tr>
@@ -391,29 +368,24 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
             {generated.length > 0 && (
               <tfoot>
                 <tr>
-                  <td colSpan={5} style={{ padding: '0.5rem 0.75rem', fontWeight: 700 }}>Total quinzaine</td>
-                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700 }}>
-                    {money(generated.reduce((s, r) => s + parseFloat(r.base_amount || '0'), 0))}
-                  </td>
-                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: 'var(--prj-orange)' }}>
-                    {money(generated.reduce((s, r) => s + parseFloat(r.overtime_amount || '0'), 0))}
-                  </td>
-                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: 'var(--prj-orange)' }} title="Retenues d'avance effectuées sur les paies payées">
+                  <td colSpan={5}>Total de la quinzaine</td>
+                  <td className="ds-num">{fmt(generated.reduce((s, r) => s + parseFloat(r.base_amount || '0'), 0))}</td>
+                  <td className="ds-num">{fmt(generated.reduce((s, r) => s + parseFloat(r.overtime_amount || '0'), 0))}</td>
+                  <td className="ds-num" title="Retenues d'avance effectuées sur les paies payées">
                     {(() => {
                       const t = generated.reduce((s, r) => s + parseFloat(r.advance_deduction || '0'), 0);
-                      return t > 0 ? `− ${money(t)}` : '—';
+                      return t > 0 ? `− ${fmt(t)}` : '—';
                     })()}
                   </td>
-                  <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: 'var(--prj-green)' }}
-                    title="Total à verser (net moins retenues d'avance)">
-                    {money(generated.reduce((s, r) => s + cashOutOf(r), 0))}
+                  <td className="ds-num" title="Total à verser (net moins retenues d'avance)">
+                    {fmt(generated.reduce((s, r) => s + cashOutOf(r), 0))}
                   </td>
-                  <td></td>
+                  <td colSpan={2}></td>
                 </tr>
               </tfoot>
             )}
           </table>
-        </div></div>
+        </DataPanel>
       )}
 
       {/* ─── Dialogue de paiement avec retenue d'avance ─── */}
@@ -431,8 +403,8 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
         />
       )}
 
-      <div className="prj-note" style={{ fontSize: 12, color: 'var(--theme-text-muted)', margin: '0 4px' }}>
-        Le bouton « Générer depuis pointage » recalcule la paie à partir du pointage de la quinzaine (1-15 ou 16-fin de mois). Les lignes déjà payées ne sont jamais écrasées.
+      <div className="prj-note" style={{ fontSize: 12, color: 'var(--ds-muted)', margin: '0 4px' }}>
+        Le bouton « Générer depuis le pointage » recalcule la paie à partir du pointage de la quinzaine (1-15 ou 16-fin de mois). Les lignes déjà payées ne sont jamais écrasées.
         Taux journalier = salaire mensuel / 26. Seuls les jours pointés sont payés : pas de repos payé automatique (un jour « Repos » pointé ne compte pas).
         Une demi-journée compte 0,5 ; un « Double shift » compte 2 jours payés. Heures sup = taux horaire (journalier / 8) × 1,25.
         Marquer payé crée automatiquement une écriture comptable « Salaires » sur la caisse correspondante.

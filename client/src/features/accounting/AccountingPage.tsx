@@ -13,16 +13,7 @@ import type { FinanceDetailKind, FinanceDetailRow } from '../../api/reports.api'
 import { format, getDaysInMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, Pencil, BarChart3, LayoutDashboard,
-  X, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet,
-  TrendingDown, ClipboardList, ShoppingCart, Receipt, Users,
-  Loader2, Coins, Scale, Trash2, Package, FileWarning,
-  ArrowUpRight, ArrowDownRight, Upload, Search, ArrowUp, ArrowDown,
-  Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock, Building2, Landmark,
-  ArrowLeftRight, Ban, Clock, CalendarClock, CheckCircle2, Filter,
-  Target, NotebookPen, Link2, Hourglass, Percent, ArrowRightLeft, FileStack,
-  Banknote,
-  TrendingUp,
+  Plus, Pencil, BarChart3, LayoutDashboard, X, Download, AlertTriangle, ChevronDown, ChevronRight, Wallet, TrendingDown, ClipboardList, Receipt, Loader2, Coins, Scale, Trash2, FileWarning, ArrowUpRight, ArrowDownRight, Upload, Search, ArrowUp, ArrowDown, Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock, Building2, Landmark, ArrowLeftRight, Ban, Clock, CalendarClock, CheckCircle2, Filter, Target, NotebookPen, Link2, Hourglass, Percent, ArrowRightLeft, FileStack, Banknote, TrendingUp,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -62,20 +53,22 @@ import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, pay
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { AccHeaderSlot, AccHeaderActions } from './AccHeaderActions';
+// Barre d'outils commune (prj-toolbar, prj-search, prj-views) : styles de base du gabarit Liste.
+import '../projects/projects.css';
 import {
-  StagePipeline, ViewSwitch, PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel,
-  periodLabel as periodLabelOf, type PeriodKey, type StageDef,
+  StagePipeline, PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel, periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 import { money, currencySymbol } from '../../utils/money';
+import { Alert, DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, NoResultState, PageHeader, SearchBar, SectionHeader, TableFooter, Toolbar, Tabs, Segmented } from '../../components/ds';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { MonthYearField } from './AccToolbarFields';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse' | 'effets' | 'consolidation' | 'paiements_lot' | 'prevision';
 
-const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
-const INVOICE_STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700', partial: 'bg-blue-100 text-blue-700',
-  paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500',
-};
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
@@ -163,11 +156,11 @@ function DayMovements({ payments }: { payments: Record<string, any>[] }) {
     <>
       {groups.filter(g => g.rows.length > 0).map(g => (
         <div key={g.title} style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--theme-bg-separator)' }}>
-          <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>{g.title}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4 }}>{g.title}</div>
           {g.rows.map((p, idx) => (
             <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', padding: '2px 0' }}>
               <span style={{ color: 'var(--theme-text-muted)' }}>{g.label(p)}</span>
-              <span style={{ fontWeight: 600, color: g.sign > 0 ? '#28a745' : '#b02a37' }}>{g.sign > 0 ? '+' : '−'}{money(parseFloat(p.amount as string) || 0)}</span>
+              <span style={{ fontWeight: 600, color: g.sign > 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{g.sign > 0 ? '+' : '−'}{money(parseFloat(p.amount as string) || 0)}</span>
             </div>
           ))}
         </div>
@@ -291,8 +284,8 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard, section: 'dashboard' },
   // ─── Opérations ───
   { key: 'caisse', label: 'Caisse', icon: Wallet, section: 'operations' },
-  { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown, section: 'operations' },
-  { key: 'cheques', label: 'Chèques et Traites', icon: Receipt, section: 'operations' },
+  { key: 'charges', label: 'Charges & dépenses', icon: TrendingDown, section: 'operations' },
+  { key: 'cheques', label: 'Chèques et traites', icon: Receipt, section: 'operations' },
   { key: 'effets', label: "Portefeuille d'effets", icon: Wallet, section: 'operations', adminOnly: true },
   { key: 'dettes', label: 'Créances & dettes', icon: Scale, section: 'operations' },
   { key: 'banque', label: 'Banque', icon: Landmark, section: 'operations', adminOnly: true },
@@ -301,7 +294,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'ecritures', label: 'Journal', icon: Notebook, section: 'operations', adminOnly: true },
   { key: 'lettrage', label: 'Lettrage', icon: Link2, section: 'operations', adminOnly: true },
   { key: 'immobilisations', label: 'Immobilisations', icon: Building2, section: 'operations', adminOnly: true },
-  { key: 'ras', label: 'Retenues source', icon: Scale, section: 'operations', adminOnly: true },
+  { key: 'ras', label: 'Retenues à la source', icon: Scale, section: 'operations', adminOnly: true },
   { key: 'is', label: 'Impôt sur les sociétés', icon: Percent, section: 'operations', adminOnly: true },
   { key: 'fx', label: 'Écarts de change', icon: ArrowRightLeft, section: 'operations', adminOnly: true },
   { key: 'cloture', label: 'Clôture', icon: Lock, section: 'operations', adminOnly: true },
@@ -325,6 +318,42 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'entry_templates', label: 'Modèles d’écritures', icon: NotebookPen, section: 'setup', adminOnly: true },
 ];
 
+/** Description d'une ligne sous le titre de chaque écran (gabarit de page du Design System). */
+const PAGE_LEADS: Record<AccTab, string> = {
+  pilotage: 'Trésorerie, flux de la période, échéances et points à traiter.',
+  caisse: 'Ventes, recettes et sorties de caisse du mois, jour par jour.',
+  charges: 'Sorties d\'argent de la période : achats, salaires et dépenses, par catégorie.',
+  cheques: 'Chèques et traites émis, de l\'émission jusqu\'à l\'encaissement.',
+  effets: 'Effets reçus des clients : remise à l\'encaissement, escompte et dénouement.',
+  dettes: 'Ce que les clients doivent et ce qui est dû aux fournisseurs, facture par facture.',
+  banque: 'Relevés bancaires importés et rapprochement avec le grand livre.',
+  paiements_lot: 'Campagnes de règlement des fournisseurs par virement groupé.',
+  cca: 'Charges réglées d\'avance, constatées mois par mois.',
+  ecritures: 'Écritures comptables par journal, du brouillon à la comptabilisation.',
+  lettrage: 'Rapprochement des factures et des règlements sur les comptes de tiers.',
+  immobilisations: 'Biens immobilisés, plans d\'amortissement et dotations.',
+  ras: 'Retenues à la source prélevées, à déclarer et à reverser à la DGI.',
+  is: 'Résultat fiscal, impôt dû, acomptes et solde de l\'exercice.',
+  fx: 'Réévaluation des créances et dettes en devises à la clôture.',
+  cloture: 'Contrôles, écritures d\'inventaire et clôture des périodes et de l\'exercice.',
+  resume: 'Entrées, sorties et résultat du mois.',
+  losses: 'Pertes déclarées, valorisées au coût de revient.',
+  grand_livre: 'Mouvements de chaque compte sur la période, avec solde progressif.',
+  balance: 'Soldes d\'ouverture, mouvements et soldes de clôture par compte.',
+  aged_balance: 'Créances et dettes ventilées par ancienneté d\'échéance.',
+  cpc: 'Compte de produits et charges de la période.',
+  bilan: 'Actif et passif à la date d\'arrêté.',
+  tva: 'TVA collectée, TVA déductible et TVA due de la période.',
+  liasse: 'États de synthèse de l\'exercice et dépôt de la liasse fiscale.',
+  consolidation: 'États consolidés des points de vente.',
+  budget: 'Budget de l\'exercice comparé au réalisé.',
+  cashflow: 'Encaissements et décaissements par compte de trésorerie.',
+  prevision: 'Trésorerie attendue des prochaines semaines.',
+  costcenters: 'Résultat par section analytique et ventilation des charges.',
+  plan_comptable: 'Comptes du plan comptable (CGNC) et comptes auxiliaires.',
+  entry_templates: 'Modèles d\'écritures réutilisables et écritures récurrentes.',
+};
+
 export default function AccountingPage() {
   const { user } = useAuth();
 
@@ -334,12 +363,16 @@ export default function AccountingPage() {
   const views: ModuleView<AccTab>[] = TAB_META.map(({ adminOnly, ...v }) => ({ ...v, hidden: adminOnly && !isAdmin }));
   const { current, select } = useModuleView(views);
   const tab = current?.key;
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
 
   return (
-    <ModuleShell title="Comptabilité" views={views} current={current} onSelect={select} flush look="apple">
-      {/* Style Apple (2026-11) : grand titre de la rubrique, marges et barres internes comme Ventes/Achats. */}
+    <ModuleShell title="Comptabilité" views={views} current={current} onSelect={select} flush look="apple"
+      actions={<div ref={setHeaderSlot} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }} />}>
+      {/* Gabarit de page (Design System) : fil d'Ariane « Comptabilité › Rubrique › Page » posé par ModuleShell,
+          actions de l'écran en haut à droite (AccHeaderActions), puis titre et description d'une ligne. */}
+      <AccHeaderSlot.Provider value={headerSlot}>
       <div className="acc-page">
-      <header className="kl-largetitle"><h1>{current?.label}</h1></header>
+      <PageHeader title={current?.label} description={tab ? PAGE_LEADS[tab] : undefined} />
       {/* Suivi des echeances fournisseurs (visible sur tous les onglets) */}
       <PaymentAlertsWidget />
       {tab === 'pilotage' && <PilotageTab />}
@@ -375,6 +408,7 @@ export default function AccountingPage() {
       {tab === 'prevision' && <CashForecastTab />}
       {tab === 'costcenters' && <CostCentersTab />}
       </div>
+      </AccHeaderSlot.Provider>
     </ModuleShell>
   );
 }
@@ -612,35 +646,21 @@ function DettesTab() {
       ['TIERS', 'N FACTURE', 'DATE', 'ECHEANCE', 'TOTAL', 'PAYE', `RESTE (${currencySymbol()})`, 'STATUT'], rows);
   };
 
-  const accent = isReceivable ? '#0e7c3a' : '#b71c1c';
+  const accent = isReceivable ? 'var(--ds-success)' : 'var(--ds-danger)';
   const tierLabel = isReceivable ? 'Client' : 'Fournisseur';
 
   return (
     <>
       {/* Sens : créances / dettes / échéancier */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <div className="odoo-view-switcher" role="tablist" aria-label="Sens">
-          {([
-            { key: 'receivables' as const, label: `Ils nous doivent · ${money(sideTotals.receivables)}` },
-            { key: 'payables' as const, label: `Nous leur devons · ${money(sideTotals.payables)}` },
-            { key: 'schedule' as const, label: 'Échéancier' },
-          ]).map(opt => (
-            <button key={opt.key} type="button" role="tab" aria-selected={side === opt.key}
-              onClick={() => { setSide(opt.key); setSituation(''); }}
-              style={{
-                padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
-                background: side === opt.key ? 'var(--odoo-purple-light)' : 'transparent',
-                color: side === opt.key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
-                fontWeight: side === opt.key ? 600 : 400,
-              }}>
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        {side === 'payables' && sideTotals.credits > 0 && (
-          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>dont {money(sideTotals.credits)} de crédits sans facture (voir Échéancier)</span>
-        )}
-      </div>
+      <Tabs label="Créances et dettes" value={side} onChange={k => { setSide(k); setSituation(''); }}
+        tabs={[
+          { key: 'receivables', label: `Ils nous doivent · ${money(sideTotals.receivables)}` },
+          { key: 'payables', label: `Nous leur devons · ${money(sideTotals.payables)}` },
+          { key: 'schedule', label: 'Échéancier' },
+        ]} />
+      {side === 'payables' && sideTotals.credits > 0 && (
+        <Alert tone="info">Dont {money(sideTotals.credits)} de crédits sans facture, suivis dans l'échéancier.</Alert>
+      )}
 
       {/* Vue echeancier : calendrier des sorties (mig 258). Les autres vues
           restent centrees sur les factures ouvertes, agregees par tiers. */}
@@ -665,58 +685,44 @@ function DettesTab() {
       />
 
       {/* Filtres */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 220px', minWidth: 180 }}>
-          <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-          <input type="text" placeholder={`Rechercher un ${tierLabel.toLowerCase()}...`}
-            value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />
-          {searchTerm && (
-            <button onClick={() => setSearchTerm('')} title="Effacer"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)', display: 'inline-flex' }}>
-              <X size={12} />
-            </button>
-          )}
-        </div>
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary">
+          <Download size={13} aria-hidden="true" /> Exporter CSV
+        </button>
+      </AccHeaderActions>
+
+      <div className="prj-toolbar">
+        <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder={`Rechercher un ${tierLabel.toLowerCase()}…`} />
         {situation && (
-          <button type="button" onClick={() => setSituation('')} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer le filtre
+          <button type="button" onClick={() => setSituation('')} className="ds-btn-ghost ds-btn-sm">
+            <X size={12} aria-hidden="true" /> Effacer le filtre
           </button>
         )}
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} className="odoo-btn-secondary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Download size={13} /> Exporter
-        </button>
       </div>
 
       {/* Tableau des tiers */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
-        </div>
+        <LoadingState />
       ) : shownTiers.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Scale size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>
-            {situation || searchTerm
-              ? 'Aucun tiers ne correspond aux filtres'
-              : isReceivable ? 'Aucune créance ouverte — tous les clients sont à jour' : 'Aucune dette ouverte — tous les fournisseurs sont réglés'}
-          </p>
-        </div>
+        situation || searchTerm
+          ? <NoResultState text="Aucun tiers ne correspond aux filtres." onReset={() => { setSituation(''); setSearchTerm(''); }} />
+          : <EmptyState icon={Scale} title={isReceivable ? 'Aucune créance ouverte' : 'Aucune dette ouverte'}
+              text={isReceivable ? 'Tous les clients sont à jour.' : 'Tous les fournisseurs sont réglés.'} />
       ) : (
-        <div className="odoo-section">
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label={isReceivable ? 'Créances par client' : 'Dettes par fournisseur'} footer={
+          <TableFooter page={page} pageSize={PAGE_SIZE} total={shownTiers.length} onPage={setPage}
+            note={`${isReceivable ? 'client' : 'fournisseur'}${shownTiers.length > 1 ? 's' : ''} · total dû ${money(totals.totalDue)} · cliquez une ligne pour voir ses factures`} />
+        }>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
-                <th style={{ width: 20 }}></th>
+                <th style={{ width: 20 }}><span className="ds-sr-only">Détail</span></th>
                 <th>{tierLabel}</th>
-                <th style={{ textAlign: 'center' }}>Factures</th>
+                <th className="ds-num">Factures</th>
                 <th>Plus ancienne échéance</th>
-                <th style={{ textAlign: 'right' }}>En retard</th>
-                <th style={{ textAlign: 'right' }}>Total dû</th>
-                <th style={{ textAlign: 'right' }}>Prochaine action</th>
+                <th className="ds-num">En retard ({currencySymbol()})</th>
+                <th className="ds-num">Total dû ({currencySymbol()})</th>
+                <th className="ds-actions">Prochaine action</th>
               </tr>
             </thead>
             <tbody>
@@ -728,31 +734,29 @@ function DettesTab() {
                 return (
                   <Fragment key={t.key}>
                     <tr onClick={() => toggleTier(t.key)} style={{ cursor: 'pointer' }}>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>
-                        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                      <td style={{ color: 'var(--ds-muted)' }}>
+                        {open ? <ChevronDown size={13} aria-label="Replier" /> : <ChevronRight size={13} aria-label="Déplier" />}
                       </td>
                       <td>
-                        <strong>{t.name}</strong>
-                        {t.phone && <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 6 }}>{t.phone}</span>}
+                        <span className="ds-strong">{t.name}</span>
+                        {t.phone && <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 6 }}>{t.phone}</span>}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
-                          <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: t.situation === 'overdue' ? '#dc3545' : t.situation === 'soon' ? '#d9822b' : '#28a745' }} />
+                          <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: t.situation === 'overdue' ? 'var(--ds-danger)' : t.situation === 'soon' ? 'var(--ds-warning)' : 'var(--ds-success)' }} />
                           {t.situation === 'overdue' ? 'Échue' : t.situation === 'soon' ? 'Échéance ≤ 7 j' : 'À venir'}
                         </div>
                       </td>
-                      <td style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>{t.invoices.length}</td>
-                      <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+                      <td className="ds-num">{t.invoices.length}</td>
+                      <td>
                         {t.oldestDue ? fmtPaymentDate(t.oldestDue, 'fr') : '—'}
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
-                        {t.overdueDue > 0 ? <span style={{ color: '#dc3545', fontWeight: 600 }}>{n(t.overdueDue)}</span> : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                      <td className="ds-num">
+                        {t.overdueDue > 0 ? <span style={{ color: 'var(--ds-danger)', fontWeight: 600 }}>{n(t.overdueDue)}</span> : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: accent }}>
-                        {money(t.totalDue)}
-                      </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                      <td className="ds-num ds-strong">{n(t.totalDue)}</td>
+                      <td className="ds-actions" onClick={e => e.stopPropagation()}>
                         {nextInv && (
                           <button type="button" onClick={() => openPayment(nextInv)}
-                            className={nextInv.is_overdue ? 'odoo-btn-danger' : 'odoo-btn-primary'}
+                            className="odoo-btn-secondary ds-btn-sm"
                             title={`${isReceivable ? 'Encaisser' : 'Payer'} la facture ${nextInv.invoice_number}${t.invoices.length > 1 ? ' (la plus urgente)' : ''}`}>
                             {isReceivable ? 'Encaisser' : 'Payer'}{t.invoices.length > 1 ? ` ${nextInv.invoice_number}` : ''}
                           </button>
@@ -761,39 +765,37 @@ function DettesTab() {
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={7} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '8px 16px' }}>
-                          <table className="odoo-table" style={{ margin: 0, background: 'transparent' }}>
+                        <td colSpan={7} style={{ background: 'var(--ds-bg)', padding: '8px 16px' }}>
+                          <table className="odoo-table ds-dense" style={{ background: 'transparent' }}>
                             <thead>
                               <tr>
                                 <th>N° facture</th>
                                 <th>Date</th>
                                 <th>Échéance</th>
-                                <th style={{ textAlign: 'right' }}>Total</th>
-                                <th style={{ textAlign: 'right' }}>Payé</th>
-                                <th style={{ textAlign: 'right' }}>Reste</th>
-                                <th style={{ textAlign: 'center' }}>Statut</th>
-                                <th style={{ textAlign: 'center', width: 90 }}></th>
+                                <th className="ds-num">Total ({currencySymbol()})</th>
+                                <th className="ds-num">Payé ({currencySymbol()})</th>
+                                <th className="ds-num">Reste ({currencySymbol()})</th>
+                                <th>Statut</th>
+                                <th className="ds-actions" style={{ width: 110 }}><span className="ds-sr-only">Actions</span></th>
                               </tr>
                             </thead>
                             <tbody>
                               {t.invoices.map(inv => (
                                 <tr key={inv.id}>
-                                  <td style={{ fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>{inv.invoice_number}</td>
-                                  <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{fmtPaymentDate(inv.invoice_date, 'fr')}</td>
-                                  <td style={{ whiteSpace: 'nowrap', color: inv.is_overdue ? '#dc3545' : 'var(--theme-text-muted)', fontWeight: inv.is_overdue ? 600 : 400 }}>
+                                  <td className="ds-ref">{inv.invoice_number}</td>
+                                  <td style={{ whiteSpace: 'nowrap' }}>{fmtPaymentDate(inv.invoice_date, 'fr')}</td>
+                                  <td style={{ whiteSpace: 'nowrap', color: inv.is_overdue ? 'var(--ds-danger)' : undefined, fontWeight: inv.is_overdue ? 600 : 400 }}>
                                     {inv.due_date ? fmtPaymentDate(inv.due_date, 'fr') : '—'}
                                   </td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(parseFloat(inv.total_amount) || 0)}</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{n(parseFloat(inv.paid_amount) || 0)}</td>
-                                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: accent }}>{n(parseFloat(inv.remaining_amount) || 0)}</td>
-                                  <td style={{ textAlign: 'center' }}>
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: inv.is_overdue ? '#dc3545' : 'var(--odoo-text)', fontWeight: inv.is_overdue ? 600 : 400 }}>
-                                      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: inv.is_overdue ? '#dc3545' : inv.status === 'partial' ? '#3b82f6' : '#d9822b' }} />
-                                      {inv.is_overdue ? 'Échue' : (INVOICE_STATUS_LABELS[inv.status] || inv.status)}
-                                    </span>
+                                  <td className="ds-num">{n(parseFloat(inv.total_amount) || 0)}</td>
+                                  <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(parseFloat(inv.paid_amount) || 0)}</td>
+                                  <td className="ds-num ds-strong">{n(parseFloat(inv.remaining_amount) || 0)}</td>
+                                  <td>
+                                    <StatusTag tone={inv.is_overdue ? 'late' : inv.status === 'partial' ? 'progress' : 'todo'}
+                                      label={inv.is_overdue ? 'Échue' : (INVOICE_STATUS_LABELS[inv.status] || inv.status)} />
                                   </td>
-                                  <td style={{ textAlign: 'center' }}>
-                                    <button type="button" onClick={() => openPayment(inv)} className="odoo-btn-secondary">
+                                  <td className="ds-actions">
+                                    <button type="button" onClick={() => openPayment(inv)} className="odoo-btn-secondary ds-btn-sm">
                                       {isReceivable ? 'Encaisser' : 'Payer'}
                                     </button>
                                   </td>
@@ -809,23 +811,17 @@ function DettesTab() {
               })}
             </tbody>
             <tfoot>
-              <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
-                <td colSpan={4} style={{ padding: 12, fontWeight: 600 }}>
-                  Total {isReceivable ? 'créances' : 'dettes'} ({totals.tierCount} tiers)
-                </td>
-                <td style={{ textAlign: 'right', fontWeight: 600, color: '#dc3545', fontFamily: 'ui-monospace, monospace' }}>
+              <tr>
+                <td colSpan={4}>Total {isReceivable ? 'créances' : 'dettes'} ({totals.tierCount} tiers)</td>
+                <td className="ds-num" style={{ color: totals.overdueDue > 0 ? 'var(--ds-danger)' : undefined }}>
                   {totals.overdueDue > 0 ? `${n(totals.overdueDue)}` : '—'}
                 </td>
-                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: accent, fontFamily: 'ui-monospace, monospace' }}>
-                  {money(totals.totalDue)}
-                </td>
+                <td className="ds-num">{n(totals.totalDue)}</td>
                 <td></td>
               </tr>
             </tfoot>
           </table>
-          <Pager page={page} total={shownTiers.length} onPage={setPage}
-            note={`${shownTiers.length} ${isReceivable ? 'client' : 'fournisseur'}${shownTiers.length > 1 ? 's' : ''} · cliquez une ligne pour voir ses factures`} />
-        </div>
+        </DataPanel>
       )}
 
       {/* Modal : enregistrer un reglement */}
@@ -841,7 +837,7 @@ function DettesTab() {
                 <div className="odoo-breadcrumb">
                   <Coins size={14} style={{ color: 'var(--theme-accent)' }} />
                   <span className="odoo-breadcrumb-current">{isReceivable ? 'Encaisser un règlement' : 'Payer une facture'}</span>
-                <span className="odoo-breadcrumb-separator">/</span>
+                <span className="odoo-breadcrumb-separator">›</span>
                 <span>{payingInvoice.invoice_number} · {partyName}</span>
                 </div>
                 <div style={{ flex: 1 }} />
@@ -1022,7 +1018,7 @@ function DettesTab() {
                   <button type="button" onClick={() => setPayingInvoice(null)}
                     className="odoo-btn-secondary">Annuler</button>
                   <button type="submit" disabled={createPayment.isPending}
-                    className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    className="odoo-btn-primary">
                     {createPayment.isPending && <Loader2 size={14} className="animate-spin" />}
                     {isReceivable ? 'Encaisser' : 'Payer'}
                   </button>
@@ -1057,7 +1053,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
   columns: Array<{ label: string; align?: 'right'; render: (r: FinanceDetailRow) => ReactNode; sortValue: (r: FinanceDetailRow) => string | number }>;
 }> = {
   engagement: {
-    title: 'Engagement — factures de la période', accent: '#0d4d8c', bg: '#f0f6ff',
+    title: 'Engagement — factures de la période', accent: 'var(--ds-info)', bg: 'var(--ds-info-bg)',
     filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
       { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
@@ -1068,7 +1064,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
     ],
   },
   treasury: {
-    title: 'Trésorerie sortie — paiements effectifs', accent: '#0e7c3a', bg: '#f0f9f4',
+    title: 'Trésorerie sortie — paiements effectifs', accent: 'var(--ds-success)', bg: 'var(--ds-success-bg)',
     filter: { placeholder: 'Toutes les méthodes', value: r => r.method, display: v => PAYMENT_METHOD_LABELS[v] || v },
     columns: [
       { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
@@ -1079,7 +1075,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
     ],
   },
   remainingToPay: {
-    title: 'Reste à payer — factures non soldées', accent: '#856404', bg: '#fff9e6',
+    title: 'Reste à payer — factures non soldées', accent: 'var(--ds-warning)', bg: 'var(--ds-warning-bg)',
     filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
       { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
@@ -1087,11 +1083,11 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
       { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
       { label: 'Total', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.total ?? 0)}</span>, sortValue: r => r.total ?? 0 },
       { label: 'Payé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.paid ?? 0)}</span>, sortValue: r => r.paid ?? 0 },
-      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#856404' }}>{money(r.amount)}</span>, sortValue: r => r.amount },
+      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: 'var(--ds-warning)' }}>{money(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   receivedNotInvoiced: {
-    title: 'Reçu non facturé — BC livrés sans facture', accent: '#b71c1c', bg: '#fff5f5',
+    title: 'Reçu non facturé — BC livrés sans facture', accent: 'var(--ds-danger)', bg: 'var(--ds-danger-bg)',
     columns: [
       { label: 'N° BC', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
       { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
@@ -1100,7 +1096,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
     ],
   },
   unpaidInvoices: {
-    title: 'Factures impayées (toutes périodes)', accent: '#856404', bg: 'var(--theme-bg-page)',
+    title: 'Factures impayées (toutes périodes)', accent: 'var(--ds-warning)', bg: 'var(--theme-bg-page)',
     filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
       { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
@@ -1111,7 +1107,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
     ],
   },
   uncashedChecks: {
-    title: 'Chèques émis non encaissés', accent: '#856404', bg: '#fff9e6',
+    title: 'Chèques émis non encaissés', accent: 'var(--ds-warning)', bg: 'var(--ds-warning-bg)',
     columns: [
       { label: 'Bénéficiaire', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
       { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
@@ -1195,12 +1191,12 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
   };
 
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden', background: 'var(--odoo-bg)' }}>
+    <div className="ds-panel">
       {/* En-tête */}
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           <span>Détail</span>
-          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">{cfg.title}</span>
         </div>
         <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
@@ -1221,7 +1217,7 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
           )}
           {hasControls && (
             <button type="button" onClick={() => { setSearch(''); setFilterValue(''); setSortCol(null); setSortDir('asc'); }}
-              className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              className="odoo-btn-secondary">
               <X size={12} /> Effacer les filtres
             </button>
           )}
@@ -1230,21 +1226,19 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
       {/* Body */}
       <div style={{ overflowX: 'auto' }}>
         {isLoading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <Loader2 size={18} className="animate-spin" style={{ display: 'inline-block', marginRight: 8 }} />
-            Chargement du détail...
-          </div>
+          <LoadingState bare label="Chargement du détail…" />
         ) : rows.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.875rem' }}>
-            {allRows.length === 0 ? 'Aucune ligne à afficher.' : 'Aucune ligne ne correspond à la recherche.'}
-          </div>
+          allRows.length === 0
+            ? <EmptyState bare icon={ClipboardList} title="Aucune ligne à afficher" />
+            : <NoResultState bare text="Aucune ligne ne correspond à la recherche." onReset={() => setSearch('')} />
         ) : (
-          <table className="odoo-table" style={{ margin: 0 }}>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 {cfg.columns.map((c, i) => (
-                  <th key={i} onClick={() => toggleSort(i)}
-                    style={{ textAlign: c.align === 'right' ? 'right' : undefined, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                  <th key={i} onClick={() => toggleSort(i)} className={c.align === 'right' ? 'ds-num' : undefined}
+                    aria-sort={sortCol === i ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                    style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
                     {c.label}
                     {sortCol === i && (sortDir === 'asc'
                       ? <ArrowUp size={11} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />
@@ -1257,7 +1251,7 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
               {pagedRows.map(r => (
                 <tr key={r.id}>
                   {cfg.columns.map((c, i) => (
-                    <td key={i} style={c.align === 'right' ? { textAlign: 'right' } : undefined}>{c.render(r)}</td>
+                    <td key={i} className={c.align === 'right' ? 'ds-num' : undefined}>{c.render(r)}</td>
                   ))}
                 </tr>
               ))}
@@ -1283,9 +1277,6 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
  *
  * Source : reportsApi.financeOverview qui aggrege tout cote backend.
  */
-const PILOT_SECTION_TITLE: React.CSSProperties = {
-  margin: '0 0 8px', fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--odoo-text-muted)',
-};
 
 function PilotageTab() {
   const now = new Date();
@@ -1322,10 +1313,7 @@ function PilotageTab() {
 
   if (isLoading || !data) {
     return (
-      <div style={{ padding: 60, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Loader2 size={20} className="animate-spin" style={{ display: 'inline-block', marginRight: 8 }} />
-        Chargement du pilotage...
-      </div>
+      <LoadingState label="Chargement du pilotage…" />
     );
   }
 
@@ -1340,7 +1328,7 @@ function PilotageTab() {
   return (
     <>
       {/* Période */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+      <div className="prj-toolbar">
         <PeriodFilter label="Période" title="Période d'analyse des flux"
           period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
         <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
@@ -1418,22 +1406,22 @@ function PilotageTab() {
       {/* SECTION 3 : Repartition methodes de paiement */}
       {kpis.treasury.total > 0 && (
         <div>
-          <h3 style={PILOT_SECTION_TITLE}>Répartition des paiements de la période</h3>
-          <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
+          <SectionHeader title="Répartition des paiements de la période" />
+          <div className="ds-panel" style={{ padding: '16px 20px', marginTop: 8 }}>
             {/* Barre proportionnelle */}
             <div style={{ display: 'flex', height: 24, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--theme-bg-page)' }}>
               {cashPct > 0 && (
-                <div style={{ width: `${cashPct}%`, background: '#28a745', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                <div style={{ width: `${cashPct}%`, background: 'var(--ds-success)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
                   {cashPct >= 8 && `${Math.round(cashPct)}%`}
                 </div>
               )}
               {checkPct > 0 && (
-                <div style={{ width: `${checkPct}%`, background: '#fd7e14', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                <div style={{ width: `${checkPct}%`, background: 'var(--ds-warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
                   {checkPct >= 8 && `${Math.round(checkPct)}%`}
                 </div>
               )}
               {transferPct > 0 && (
-                <div style={{ width: `${transferPct}%`, background: '#007bff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                <div style={{ width: `${transferPct}%`, background: 'var(--ds-info)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
                   {transferPct >= 8 && `${Math.round(transferPct)}%`}
                 </div>
               )}
@@ -1442,27 +1430,27 @@ function PilotageTab() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, fontSize: '0.8125rem' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 12, height: 12, background: '#28a745', borderRadius: 2 }} />
-                  <strong>Especes</strong>
+                  <div style={{ width: 12, height: 12, background: 'var(--ds-success)', borderRadius: 2 }} />
+                  <strong>Espèces</strong>
                   <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.cash.count})</span>
                 </div>
-                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{money(kpis.treasury.byMethod.cash.total)}</div>
+                <div className="ds-num ds-strong" style={{ marginLeft: 18, textAlign: 'left' }}>{money(kpis.treasury.byMethod.cash.total)}</div>
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 12, height: 12, background: '#fd7e14', borderRadius: 2 }} />
-                  <strong>Cheque (encaisse)</strong>
+                  <div style={{ width: 12, height: 12, background: 'var(--ds-warning)', borderRadius: 2 }} />
+                  <strong>Chèque (encaissé)</strong>
                   <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.check.count})</span>
                 </div>
-                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{money(kpis.treasury.byMethod.check.total)}</div>
+                <div className="ds-num ds-strong" style={{ marginLeft: 18, textAlign: 'left' }}>{money(kpis.treasury.byMethod.check.total)}</div>
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 12, height: 12, background: '#007bff', borderRadius: 2 }} />
-                  <strong>Virement / Banque</strong>
+                  <div style={{ width: 12, height: 12, background: 'var(--ds-info)', borderRadius: 2 }} />
+                  <strong>Virement et banque</strong>
                   <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.transfer.count + kpis.treasury.byMethod.bank.count})</span>
                 </div>
-                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{money(kpis.treasury.byMethod.transfer.total + kpis.treasury.byMethod.bank.total)}</div>
+                <div className="ds-num ds-strong" style={{ marginLeft: 18, textAlign: 'left' }}>{money(kpis.treasury.byMethod.transfer.total + kpis.treasury.byMethod.bank.total)}</div>
               </div>
             </div>
           </div>
@@ -1471,81 +1459,79 @@ function PilotageTab() {
 
       {/* SECTION 4 : Top fournisseurs crediteurs */}
       <div>
-        <h3 style={PILOT_SECTION_TITLE}>Fournisseurs à qui l'on doit le plus (à date)</h3>
+        <SectionHeader title="Fournisseurs à qui l'on doit le plus" note="à date" />
+        <div style={{ height: 8 }} />
         {topSuppliers.length === 0 ? (
-          <div style={{ padding: 30, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4, fontSize: '0.875rem' }}>
-            Aucun fournisseur avec montant du. Tous les soldes sont a zero.
-          </div>
+          <EmptyState icon={CheckCircle2} title="Aucun montant dû aux fournisseurs" text="Tous les soldes sont à zéro." />
         ) : (
-          <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'hidden' }}>
-            <table className="odoo-table" style={{ margin: 0 }}>
+          <DataPanel label="Fournisseurs à qui l'on doit le plus">
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
-                  <th style={{ width: '4%' }}>#</th>
+                  <th style={{ width: '4%' }}>Rang</th>
                   <th>Fournisseur</th>
-                  <th style={{ textAlign: 'right' }}>Factures impayees</th>
-                  <th style={{ textAlign: 'right' }}>Cheques non encaisses</th>
-                  <th style={{ textAlign: 'right' }}>Total du</th>
+                  <th className="ds-num">Factures impayées ({currencySymbol()})</th>
+                  <th className="ds-num">Chèques non encaissés ({currencySymbol()})</th>
+                  <th className="ds-num">Total dû ({currencySymbol()})</th>
                 </tr>
               </thead>
               <tbody>
                 {topSuppliers.map((s, i) => (
                   <tr key={s.id}>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{i + 1}</td>
-                    <td><strong>{s.name}</strong></td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                    <td style={{ color: 'var(--ds-muted)' }}>{i + 1}</td>
+                    <td className="ds-strong">{s.name}</td>
+                    <td className="ds-num">
                       {s.unpaidTotal > 0 ? (
                         <>
                           {n(s.unpaidTotal)}
-                          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({s.unpaidCount})</span>
+                          <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 4 }}>({s.unpaidCount})</span>
                         </>
                       ) : '—'}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                    <td className="ds-num">
                       {s.uncashedChecksTotal > 0 ? (
                         <>
                           {n(s.uncashedChecksTotal)}
-                          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({s.uncashedChecksCount})</span>
+                          <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 4 }}>({s.uncashedChecksCount})</span>
                         </>
                       ) : '—'}
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                      {n(s.totalDue)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
-                    </td>
+                    <td className="ds-num ds-strong">{n(s.totalDue)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
         )}
       </div>
 
       {/* Liste detaillee : receptions sans facture (si il y en a) */}
       {pipeline.receivedNotInvoiced.list.length > 0 && (
         <div>
-          <h3 style={PILOT_SECTION_TITLE}>Marchandises reçues sans facture (à saisir)</h3>
-          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' }}>
-            <table className="odoo-table" style={{ margin: 0 }}>
+          <SectionHeader title="Marchandises reçues sans facture" note="à saisir" />
+          <div style={{ height: 8 }} />
+          <DataPanel label="Marchandises reçues sans facture">
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th>N° BC</th>
                   <th>Fournisseur</th>
-                  <th>Date livraison</th>
-                  <th style={{ textAlign: 'right' }}>Montant estime</th>
+                  <th>Date de livraison</th>
+                  <th className="ds-num">Montant estimé</th>
                 </tr>
               </thead>
               <tbody>
                 {pipeline.receivedNotInvoiced.list.map(r => (
                   <tr key={r.id}>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.orderNumber}</td>
-                    <td>{r.supplierName}</td>
+                    <td className="ds-ref">{r.orderNumber}</td>
+                    <td className="ds-strong">{r.supplierName}</td>
                     <td>{r.deliveryDate ? format(parseLocalDate(r.deliveryDate), 'dd/MM/yyyy') : '—'}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.total)}</td>
+                    <td className="ds-num">{money(r.total)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
         </div>
       )}
 
@@ -1632,50 +1618,34 @@ function CaisseTab() {
 
   return (
     <>
-      {/* Search panel : period + actions */}
-      <div className="odoo-search-panel">
-        <SearchSelect
-          options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
-          value={String(month)}
-          onChange={id => id && setMonth(parseInt(id, 10))}
-          placeholder="Mois"
-          width={150}
-        />
-        <input type="number" value={year} onChange={e => setYear(+e.target.value)}
-          className="odoo-filter-dropdown" style={{ width: 80 }} />
-        <div style={{ flex: 1 }} />
-        <button onClick={() => setShowImportModal(true)} className="odoo-btn-secondary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Upload size={13} /> Importer Excel
+      <AccHeaderActions>
+        <button type="button" onClick={() => setShowImportModal(true)} className="odoo-btn-secondary">
+          <Upload size={13} aria-hidden="true" /> Importer Excel
         </button>
-        <button onClick={handleExport} className="odoo-btn-secondary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Download size={13} /> Exporter
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary">
+          <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
-      </div>
+      </AccHeaderActions>
 
       {showImportModal && <CaisseImportModal onClose={() => setShowImportModal(false)} />}
 
       {/* Report line */}
       {data && (data.previousBalance.cashNet !== 0 || data.previousBalance.cardCumul !== 0 || isAdmin) && (
-        <div className="odoo-alert warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+        <div className="ds-alert info" role="status" style={{ alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <ArrowUpRight size={14} /> Report mois précédent
+            <ArrowUpRight size={14} aria-hidden="true" /> Report du mois précédent
             {data.reportOverride && (
-              <span className="odoo-tag odoo-tag-orange" title={data.reportOverride.note || 'Report fixé manuellement par un admin'}>
-                ajusté
-              </span>
+              <StatusTag tone="todo" label="Ajusté" title={data.reportOverride.note || 'Report fixé manuellement par un admin'} />
             )}
           </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 16, fontSize: '0.75rem' }}>
-            <span>Cash: <strong>{money(data.previousBalance.cashNet)}</strong></span>
-            <span>Carte: <strong>{money(data.previousBalance.cardCumul)}</strong></span>
-            <span>Total: <strong>{money(data.previousBalance.cashNet + data.previousBalance.cardCumul)}</strong></span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 16, fontSize: 13, fontWeight: 400, color: 'var(--ds-ink)' }}>
+            <span>Espèces : <strong>{money(data.previousBalance.cashNet)}</strong></span>
+            <span>Carte : <strong>{money(data.previousBalance.cardCumul)}</strong></span>
+            <span>Total : <strong>{money(data.previousBalance.cashNet + data.previousBalance.cardCumul)}</strong></span>
             {isAdmin && (
-              <button onClick={() => setShowReportModal(true)} className="odoo-btn-secondary"
-                title="Modifier le report du mois précédent"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
-                <Pencil size={12} /> Modifier
+              <button type="button" onClick={() => setShowReportModal(true)} className="odoo-btn-secondary ds-btn-sm"
+                title="Modifier le report du mois précédent">
+                <Pencil size={12} aria-hidden="true" /> Modifier
               </button>
             )}
           </span>
@@ -1691,63 +1661,29 @@ function CaisseTab() {
         />
       )}
 
-      {/* Stat tiles */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><ShoppingCart size={11} style={{ display: 'inline', marginRight: 4 }} />Ventes du mois</div>
-          <div className="odoo-stat-card-value">{n(monthTotals.totalSales)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-          <div className="odoo-stat-card-sub">{monthTotals.saleCount} vente{monthTotals.saleCount > 1 ? 's' : ''}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Recettes</div>
-          <div className="odoo-stat-card-value">{n(monthTotals.totalRecettes)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-          <div className="odoo-stat-card-sub">
-            Caisse {n(monthTotals.cashCaissiere)} · Carte {n(monthTotals.cardReceipts)}
-            {monthTotals.cardCommission > 0 && ` (commission −${n(monthTotals.cardCommission)})`}
-            {monthTotals.clientReceipts > 0 && ` · Règlements clients ${n(monthTotals.clientReceipts)}`}
-            {monthTotals.otherEntries > 0 && ` · Autres ${n(monthTotals.otherEntries)}`}
-          </div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />Écart caisse</div>
-          <div className="odoo-stat-card-value" style={{ color: monthTotals.ecart === 0 ? 'var(--theme-text-muted)' : monthTotals.ecart > 0 ? '#28a745' : '#dc3545' }}>
-            {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
-          </div>
-          <div className="odoo-stat-card-sub">Caissière vs Système</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Wallet size={11} style={{ display: 'inline', marginRight: 4 }} />Solde actuel</div>
-          <div className="odoo-stat-card-value" style={{ color: monthTotals.solde >= 0 ? '#28a745' : '#dc3545' }}>
-            {n(monthTotals.solde)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
-          </div>
-          <div className="odoo-stat-card-sub">Cash {n(monthTotals.cashNet)} · Carte {n(monthTotals.cardCumul)}</div>
-        </div>
-      </div>
-
       {/* Écart caisse alert */}
       {monthTotals.ecart !== 0 && (
-        <div className={`odoo-alert ${monthTotals.ecart > 0 ? 'warning' : 'danger'}`}>
-          <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6 }} />
-          Écart caisse du mois : <strong>{monthTotals.ecart > 0 ? '+' : ''}{money(monthTotals.ecart)}</strong> (Total encaissé vs Cash réel + Carte)
-        </div>
+        <Alert tone={monthTotals.ecart > 0 ? 'warning' : 'danger'} icon={AlertTriangle}>
+          Écart de caisse du mois : {monthTotals.ecart > 0 ? '+' : ''}{money(monthTotals.ecart)} (total encaissé comparé aux espèces réelles et à la carte)
+        </Alert>
       )}
 
       {/* Reconciliation alerts — significant daily discrepancies */}
       {(data as Record<string, any>)?.reconciliationAlerts && ((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length > 0 && (
-        <div className="odoo-section">
+        <div className="odoo-section ds-panel">
           <div className="odoo-section-header">
-            <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6, color: '#dc3545' }} />
+            <AlertTriangle size={13} aria-hidden="true" style={{ display: 'inline', marginRight: 6, color: 'var(--ds-danger)' }} />
             {((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length} jour(s) avec écart caisse significatif (&gt; 5 {currencySymbol()})
           </div>
-          <table className="odoo-table" style={{ margin: 0 }}>
+          <table className="odoo-table ds-dense">
             <tbody>
               {((data as Record<string, any>).reconciliationAlerts as { date: string; cashCaissiere: number; cashSysteme: number; ecart: number }[]).map(a => (
                 <tr key={a.date}>
                   <td><span className="odoo-status-dot danger" role="img" title="Écart caisse significatif" aria-label="Écart caisse significatif" /></td>
                   <td style={{ textTransform: 'capitalize' }}>{format(parseLocalDate(a.date), 'EEEE dd/MM', { locale: fr })}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>Caissière {n(a.cashCaissiere)}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>Système {n(a.cashSysteme)}</td>
-                  <td style={{ textAlign: 'right' }}><span className="odoo-tag odoo-tag-red">{a.ecart > 0 ? '+' : ''}{money(a.ecart)}</span></td>
+                  <td style={{ color: 'var(--ds-muted)' }}>Caissière {n(a.cashCaissiere)}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>Système {n(a.cashSysteme)}</td>
+                  <td className="ds-num ds-strong" style={{ color: 'var(--ds-danger)' }}>{a.ecart > 0 ? '+' : ''}{money(a.ecart)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1755,122 +1691,129 @@ function CaisseTab() {
         </div>
       )}
 
+      {/* Indicateurs du mois */}
+      <KpiGrid>
+        <KpiCard label="Ventes du mois" value={<>{n(monthTotals.totalSales)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub={<>{monthTotals.saleCount} vente{monthTotals.saleCount > 1 ? 's' : ''}</>} />
+        <KpiCard label="Recettes" value={<>{n(monthTotals.totalRecettes)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub={<>Caisse {n(monthTotals.cashCaissiere)} · Carte {n(monthTotals.cardReceipts)}
+            {monthTotals.cardCommission > 0 && ` (commission −${n(monthTotals.cardCommission)})`}
+            {monthTotals.clientReceipts > 0 && ` · Règlements clients ${n(monthTotals.clientReceipts)}`}
+            {monthTotals.otherEntries > 0 && ` · Autres ${n(monthTotals.otherEntries)}`}</>} />
+        <KpiCard label="Écart caisse" value={<>{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub="Caissière vs Système" tone={monthTotals.ecart === 0 ? undefined : monthTotals.ecart > 0 ? 'green' : 'red'} />
+        <KpiCard label="Solde actuel" value={<>{n(monthTotals.solde)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub={<>Cash {n(monthTotals.cashNet)} · Carte {n(monthTotals.cardCumul)}</>} tone={monthTotals.solde >= 0 ? 'green' : 'red'} />
+      </KpiGrid>
+
+      <Toolbar>
+        <MonthYearField month={month} year={year} onMonth={setMonth} onYear={setYear} />
+      </Toolbar>
+
       {/* Daily sections */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
-        </div>
+        <LoadingState />
       ) : days.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Wallet size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucune activité pour ce mois</p>
-        </div>
+        <EmptyState icon={Wallet} title="Aucune activité sur ce mois" text="Les ventes, recettes et sorties de caisse apparaîtront ici, jour par jour." />
       ) : (
         <>
         {monthTotals.clientReceipts > 0 && (
-          <div className="odoo-section">
+          <div className="odoo-section ds-panel">
             <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Receipt size={13} /> Règlements clients du mois
               <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--theme-text-muted)' }}>
                 · factures encaissées par la direction, hors ventes de caisse
               </span>
-              <span style={{ marginLeft: 'auto', color: '#1e7e4f' }}>+{money(monthTotals.clientReceipts)}</span>
+              <span style={{ marginLeft: 'auto', color: 'var(--ds-success)' }}>+{money(monthTotals.clientReceipts)}</span>
             </div>
-            <table className="odoo-table" style={{ margin: 0 }}>
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th>Date</th><th>Facture</th><th>Client</th><th>Mode</th><th>Référence</th>
-                  <th style={{ textAlign: 'right' }}>Montant</th>
+                  <th className="ds-num">Montant</th>
                 </tr>
               </thead>
               <tbody>
                 {days.flatMap(d => d.payments.filter(isClientReceipt)).map(p => (
                   <tr key={p.id as string} style={{ cursor: 'default' }}>
                     <td style={{ whiteSpace: 'nowrap' }}>{format(parseLocalDate(String(p.payment_date).slice(0, 10)), 'dd/MM/yyyy')}</td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{p.invoice_number as string}</td>
+                    <td className="ds-ref">{p.invoice_number as string}</td>
                     <td>{(p.customer_name as string) || '—'}</td>
-                    <td><span className={`odoo-tag ${p.payment_method === 'cash' ? 'odoo-tag-green' : 'odoo-tag-blue'}`}>{caissePayLabel(p.payment_method)}</span>
+                    <td><StatusTag tone={p.payment_method === 'cash' ? 'done' : 'progress'} label={caissePayLabel(p.payment_method)} />
                       <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginLeft: 6 }}>{p.payment_method === 'cash' ? 'solde cash' : 'solde banque'}</span></td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(p.reference as string) || '—'}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e7e4f' }}>+{money(parseFloat(p.amount as string) || 0)}</td>
+                    <td className="ds-num" style={{ fontWeight: 700, color: 'var(--ds-success)' }}>+{money(parseFloat(p.amount as string) || 0)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        <div className="odoo-section">
-          <div className="odoo-section-header">Journal quotidien</div>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <div className="odoo-section ds-panel">
+          <div className="odoo-section-header">Journal quotidien <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>· montants en {currencySymbol()}</span></div>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
-                <th style={{ width: 20 }}></th>
+                <th style={{ width: 20 }}><span className="ds-sr-only">Détail</span></th>
                 <th>Date</th>
-                <th style={{ textAlign: 'right' }}>Ventes</th>
-                <th style={{ textAlign: 'right' }}>Total encaissé</th>
-                <th style={{ textAlign: 'right' }}>Carte</th>
-                {cardPct > 0 && <th style={{ textAlign: 'right' }} title={`Retenue du prestataire carte (${cardPct} %)`}>Commission</th>}
-                <th style={{ textAlign: 'right' }} title="Encaissements de factures clients (professionnels)">Règlements clients</th>
-                <th style={{ textAlign: 'right' }}>Autres entrées</th>
-                <th style={{ textAlign: 'right' }} title="Fournisseurs, salaires, dépenses">Sorties</th>
-                <th style={{ textAlign: 'right' }}>Écart</th>
-                <th style={{ textAlign: 'right' }}>Solde cumulé</th>
+                <th className="ds-num">Ventes</th>
+                <th className="ds-num">Total encaissé</th>
+                <th className="ds-num">Carte</th>
+                {cardPct > 0 && <th className="ds-num" title={`Retenue du prestataire carte (${cardPct} %)`}>Commission</th>}
+                <th className="ds-num" title="Encaissements de factures clients (professionnels)">Règlements clients</th>
+                <th className="ds-num">Autres entrées</th>
+                <th className="ds-num" title="Fournisseurs, salaires, dépenses">Sorties</th>
+                <th className="ds-num">Écart</th>
+                <th className="ds-num">Solde cumulé</th>
               </tr>
             </thead>
             <tbody>
               {days.map(day => {
                 const expanded = expandedDays.has(day.dayNum);
                 const dateLabel = format(parseLocalDate(day.date), 'EEEE dd MMM', { locale: fr });
-                const ecartTagClass = day.ecart === 0 ? 'odoo-tag-grey'
-                  : day.ecart > 0 ? 'odoo-tag-green' : 'odoo-tag-red';
                 return (
                   <Fragment key={day.dayNum}>
                     <tr onClick={() => toggleDay(day.dayNum)} style={{ cursor: 'pointer' }}>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>
-                        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                      <td style={{ color: 'var(--ds-muted)' }}>
+                        {expanded ? <ChevronDown size={13} aria-label="Replier le jour" /> : <ChevronRight size={13} aria-label="Déplier le jour" />}
                       </td>
-                      <td style={{ textTransform: 'capitalize', fontWeight: 600 }}>{dateLabel}</td>
-                      <td style={{ textAlign: 'right' }}>{day.totalSales > 0 ? n(day.totalSales) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
-                      <td style={{ textAlign: 'right' }}>{day.cashCaissiere > 0 ? n(day.cashCaissiere) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
-                      <td style={{ textAlign: 'right' }}>{day.cardReceipt > 0 ? n(day.cardReceipt) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
-                      {cardPct > 0 && <td style={{ textAlign: 'right', color: '#b02a37' }}>{day.cardCommission > 0 ? `−${n(day.cardCommission)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>}
-                      <td style={{ textAlign: 'right', color: '#1e7e4f', fontWeight: day.clientReceipts > 0 ? 600 : undefined }}>{day.clientReceipts > 0 ? `+${n(day.clientReceipts)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
-                      <td style={{ textAlign: 'right', color: '#1e7e4f' }}>{day.entries - day.clientReceipts > 0 ? `+${n(day.entries - day.clientReceipts)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
-                      <td style={{ textAlign: 'right', color: '#b02a37' }}>{day.exits > 0 ? `−${n(day.exits)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        {day.ecart !== 0 ? <span className={`odoo-tag ${ecartTagClass}`}>{day.ecart > 0 ? '+' : ''}{n(day.ecart)}</span> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                      <td className="ds-strong" style={{ textTransform: 'capitalize' }}>{dateLabel}</td>
+                      <td className="ds-num">{day.totalSales > 0 ? n(day.totalSales) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                      <td className="ds-num">{day.cashCaissiere > 0 ? n(day.cashCaissiere) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                      <td className="ds-num">{day.cardReceipt > 0 ? n(day.cardReceipt) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                      {cardPct > 0 && <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{day.cardCommission > 0 ? `−${n(day.cardCommission)}` : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>}
+                      <td className="ds-num" style={{ color: 'var(--ds-success)', fontWeight: day.clientReceipts > 0 ? 600 : undefined }}>{day.clientReceipts > 0 ? `+${n(day.clientReceipts)}` : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                      <td className="ds-num" style={{ color: 'var(--ds-success)' }}>{day.entries - day.clientReceipts > 0 ? `+${n(day.entries - day.clientReceipts)}` : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                      <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{day.exits > 0 ? `−${n(day.exits)}` : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                      <td className="ds-num">
+                        {day.ecart !== 0 ? <span style={{ fontWeight: 600, color: day.ecart > 0 ? 'var(--ds-warning)' : 'var(--ds-danger)' }}>{day.ecart > 0 ? '+' : ''}{n(day.ecart)}</span> : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: day.solde >= 0 ? '#28a745' : '#dc3545' }}>{n(day.solde)}</td>
+                      <td className="ds-num" style={{ fontWeight: 700, color: day.solde >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{n(day.solde)}</td>
                     </tr>
                     {expanded && (
                       <tr>
                         <td colSpan={cardPct > 0 ? 11 : 10} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                             <div>
-                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Cash réel</div>
+                              <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Cash réel</div>
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cashSysteme)}</div>
                             </div>
                             <div>
-                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Total encaissé</div>
+                              <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Total encaissé</div>
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cashCaissiere)}</div>
                             </div>
                             <div>
-                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Carte</div>
+                              <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Carte</div>
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardReceipt)}</div>
                             </div>
                             {day.cardCommission > 0 && (
                               <div>
-                                <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Carte nette en banque</div>
-                                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardReceipt - day.cardCommission)} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#b02a37' }}>(−{n(day.cardCommission)} commission {cardPct} %)</span></div>
+                                <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Carte nette en banque</div>
+                                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardReceipt - day.cardCommission)} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--ds-danger)' }}>(−{n(day.cardCommission)} commission {cardPct} %)</span></div>
                               </div>
                             )}
                             <div>
-                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Solde cash</div>
+                              <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Solde cash</div>
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cashNetCumul)}</div>
                             </div>
                             <div>
-                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Solde carte</div>
+                              <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Solde carte</div>
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardCumul)}</div>
                             </div>
                           </div>
@@ -1889,64 +1832,64 @@ function CaisseTab() {
 
       {/* Monthly recap */}
       {days.length > 0 && (
-        <div className="odoo-section">
+        <div className="odoo-section ds-panel">
           <div className="odoo-section-header">
             <BarChart3 size={13} style={{ display: 'inline', marginRight: 6 }} />
             Récap {MONTH_NAMES[month - 1]} {year}
           </div>
-          <table className="odoo-table" style={{ margin: 0 }}>
+          <table className="odoo-table ds-dense">
             <tbody>
               <tr>
                 <td style={{ color: 'var(--theme-text-muted)' }}>Total Ventes ({monthTotals.saleCount})</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(monthTotals.totalSales)}</td>
+                <td className="ds-num" style={{ fontWeight: 600 }}>{money(monthTotals.totalSales)}</td>
               </tr>
               <tr>
                 <td style={{ color: 'var(--theme-text-muted)' }}>Total encaissé</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(monthTotals.cashCaissiere)}</td>
+                <td className="ds-num" style={{ fontWeight: 600 }}>{money(monthTotals.cashCaissiere)}</td>
               </tr>
               <tr>
                 <td style={{ color: 'var(--theme-text-muted)' }}>Carte Encaissée</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(monthTotals.cardReceipts)}</td>
+                <td className="ds-num" style={{ fontWeight: 600 }}>{money(monthTotals.cardReceipts)}</td>
               </tr>
               {monthTotals.cardCommission > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Commission carte ({cardPct} %) — non versée en banque</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#b02a37' }}>−{money(monthTotals.cardCommission)}</td>
+                  <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>−{money(monthTotals.cardCommission)}</td>
                 </tr>
               )}
               {monthTotals.clientReceipts > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Règlements clients (factures)</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#1e7e4f' }}>{money(monthTotals.clientReceipts)}</td>
+                  <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-success)' }}>{money(monthTotals.clientReceipts)}</td>
                 </tr>
               )}
               {monthTotals.otherEntries > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Autres entrées</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(monthTotals.otherEntries)}</td>
+                  <td className="ds-num" style={{ fontWeight: 600 }}>{money(monthTotals.otherEntries)}</td>
                 </tr>
               )}
               <tr>
                 <td style={{ fontWeight: 600 }}>Total Recettes</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, color: '#28a745' }}>{money(monthTotals.totalRecettes)}</td>
+                <td className="ds-num" style={{ fontWeight: 700, color: 'var(--ds-success)' }}>{money(monthTotals.totalRecettes)}</td>
               </tr>
               {monthTotals.exits > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Sorties (fournisseurs, salaires, dépenses)</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#b02a37' }}>−{money(monthTotals.exits)}</td>
+                  <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>−{money(monthTotals.exits)}</td>
                 </tr>
               )}
               {monthTotals.ecart !== 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Écart Caisse</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: monthTotals.ecart > 0 ? '#28a745' : '#dc3545' }}>
+                  <td className="ds-num" style={{ fontWeight: 600, color: monthTotals.ecart > 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
                     {monthTotals.ecart > 0 ? '+' : ''}{money(monthTotals.ecart)}
                   </td>
                 </tr>
               )}
               <tr style={{ borderTop: '2px solid var(--theme-bg-separator)' }}>
                 <td style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Solde Final</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1.125rem', color: monthTotals.solde >= 0 ? '#28a745' : '#dc3545' }}>{money(monthTotals.solde)}</td>
+                <td className="ds-num" style={{ fontWeight: 700, fontSize: '1.125rem', color: monthTotals.solde >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{money(monthTotals.solde)}</td>
               </tr>
             </tbody>
           </table>
@@ -2041,15 +1984,13 @@ function ReportOverrideModal({ year, month, current, override, onClose }: {
 
         <div className="flex items-center justify-between p-4 border-t">
           {override ? (
-            <button onClick={() => deleteMut.mutate()} disabled={busy} className="odoo-btn-secondary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#dc3545' }}>
+            <button onClick={() => deleteMut.mutate()} disabled={busy} className="odoo-btn-secondary" style={{ color: 'var(--ds-danger)' }}>
               <Trash2 size={13} /> Supprimer l'ajustement
             </button>
           ) : <span />}
           <div style={{ display: 'inline-flex', gap: 8 }}>
             <button onClick={onClose} disabled={busy} className="odoo-btn-secondary">Annuler</button>
-            <button onClick={() => saveMut.mutate()} disabled={busy} className="odoo-btn-primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={() => saveMut.mutate()} disabled={busy} className="odoo-btn-primary">
               {busy && <Loader2 size={13} className="animate-spin" />} Enregistrer
             </button>
           </div>
@@ -2443,31 +2384,21 @@ function ChargesTab() {
 
   return (
     <>
-      {/* Search panel : period (facon Pilotage) + actions */}
-      <div className="odoo-search-panel">
-        <PeriodFilter label="Période" title="Date de sortie de l'argent (encaissement pour les chèques)"
-          period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
-          <strong style={{ textTransform: 'capitalize', color: 'var(--odoo-text)' }}>{periodLabel}</strong>
-        </span>
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} className="odoo-btn-secondary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Download size={13} /> Exporter
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary">
+          <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
-        <button onClick={() => setShowTransfer(true)} className="odoo-btn-secondary"
-          title="Versement d'espèces en banque, retrait : ni charge, ni fournisseur"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <ArrowLeftRight size={13} /> Mouvement interne
+        <button type="button" onClick={() => setShowTransfer(true)} className="odoo-btn-secondary"
+          title="Versement d'espèces en banque, retrait : ni charge, ni fournisseur">
+          <ArrowLeftRight size={13} aria-hidden="true" /> Mouvement interne
         </button>
-        <button onClick={() => {
+        <button type="button" onClick={() => {
           setExpMode('cash'); setExpSupplierId(''); setExpEmployeeId(''); setExpAmount(0); setExpDate(format(new Date(), 'yyyy-MM-dd')); setExpOverride(null);
           setShowForm(true);
-        }} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={14} /> Nouvelle dépense
+        }} className="odoo-btn-primary">
+          <Plus size={14} aria-hidden="true" /> Nouvelle dépense
         </button>
-      </div>
+      </AccHeaderActions>
 
       {/* Répartition : une carte par grande catégorie (clic = filtre), plus les lignes à catégoriser */}
       <StagePipeline
@@ -2488,22 +2419,10 @@ function ChargesTab() {
       />
 
       {/* Filter bar : recherche + filtres + reset */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 220px', minWidth: 180 }}>
-          <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-          <input type="text"
-            placeholder="Rechercher (description, bénéficiaire, réf, catégorie...)"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="odoo-search-input"
-            style={{ flex: 1, minWidth: 0 }} />
-          {searchTerm && (
-            <button onClick={() => setSearchTerm('')} title="Effacer la recherche"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)', display: 'inline-flex' }}>
-              <X size={12} />
-            </button>
-          )}
-        </div>
+      <div className="prj-toolbar">
+        <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Rechercher (description, bénéficiaire, référence, catégorie…)" />
+        <PeriodFilter label="Période" title="Date de sortie de l'argent (encaissement pour les chèques)"
+          period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
         <SearchSelect
           options={rootCatsWithPayments.map(rc => ({ id: String(rc.id), label: rc.name }))}
           value={filterRoot === 'all' ? '' : filterRoot}
@@ -2521,38 +2440,25 @@ function ChargesTab() {
           options={paymentMethods.map(m => ({ key: m.code, label: m.label }))} />
         {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all' || searchTerm) && (
           <button type="button" onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
-            className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer les filtres
+            className="ds-btn-ghost ds-btn-sm">
+            <X size={12} aria-hidden="true" /> Effacer les filtres
           </button>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>
-          {displayed.length !== outgoing.length ? `${displayed.length} / ${outgoing.length} résultats` : `${displayed.length} résultat${displayed.length > 1 ? 's' : ''}`}
-        </span>
       </div>
 
       {/* Flat table with referentiel columns */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
-        </div>
+        <LoadingState />
       ) : outgoing.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucune sortie pour cette période</p>
-        </div>
+        <EmptyState icon={Receipt} title="Aucune sortie sur cette période" text="Les achats, salaires et dépenses réglés sur la période apparaîtront ici." />
       ) : displayed.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucune sortie ne correspond à ces filtres</p>
-          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
-            style={{ marginTop: 8, color: '#0d6efd', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline' }}>
-            Réinitialiser les filtres
-          </button>
-        </div>
+        <NoResultState text="Aucune sortie ne correspond aux filtres." onReset={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }} />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table">
+        <DataPanel label="Charges et dépenses" footer={
+          <TableFooter page={page} pageSize={PAGE_SIZE} total={displayed.length} onPage={setPage}
+            note={`opération${displayed.length > 1 ? 's' : ''}${displayed.length !== outgoing.length ? ` filtrée${displayed.length > 1 ? 's' : ''} sur ${outgoing.length}` : ''} · total ${money(displayedTotal)} · ${periodLabel}`} />
+        }>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th onClick={() => toggleSort('date')} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>Date<SortIcon col="date" /></th>
@@ -2561,9 +2467,8 @@ function ChargesTab() {
                 <th onClick={() => toggleSort('cat')} style={{ cursor: 'pointer', userSelect: 'none' }}>Catégorie<SortIcon col="cat" /></th>
                 <th onClick={() => toggleSort('type')} style={{ cursor: 'pointer', userSelect: 'none' }}>Type<SortIcon col="type" /></th>
                 <th>Méthode</th>
-                <th onClick={() => toggleSort('amount')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>Montant<SortIcon col="amount" /></th>
-                <th style={{ textAlign: 'right' }}>Prochaine action</th>
-                <th style={{ textAlign: 'right', width: 72 }}></th>
+                <th className="ds-num" onClick={() => toggleSort('amount')} style={{ cursor: 'pointer', userSelect: 'none' }}>Montant ({currencySymbol()})<SortIcon col="amount" /></th>
+                <th className="ds-actions" style={{ width: 150 }}><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -2574,72 +2479,65 @@ function ChargesTab() {
                 const isRootLeaf = rootId && catMap[rootId]?.name === leafName;
                 return (
                   <tr key={p.id as string}>
-                    <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{fmtPaymentDate(p.payment_date, 'fr')}</td>
-                    <td style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmtPaymentDate(p.payment_date, 'fr')}</td>
+                    <td style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {(p.description as string) || '—'}
                     </td>
-                    <td style={{ fontWeight: 500, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td className="ds-strong" style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {p.supplier_name as string || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name}` : '—')}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text)' }}>{rootName}</span>
+                      {rootName}
                     </td>
                     <td>
                       {!isRootLeaf && leafName !== '—' ? (
-                        <span className="odoo-tag odoo-tag-grey">{leafName}</span>
-                      ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                        <span style={{ color: 'var(--ds-body)' }}>{leafName}</span>
+                      ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                     </td>
-                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
+                    <td style={{ color: 'var(--ds-muted)' }}>
                       {p.payment_mode ? paymentModeLabel(p, payModes) : getPaymentLabel(p.payment_method as string)} <PaymentStatusTag p={p} />
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545', whiteSpace: 'nowrap', textDecoration: p.status === 'void' && !p.voids_payment_id ? 'line-through' : undefined }}>
-                      {n(parseFloat(p.amount as string))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
+                    <td className="ds-num ds-strong" style={{ whiteSpace: 'nowrap', textDecoration: p.status === 'void' && !p.voids_payment_id ? 'line-through' : undefined }}>
+                      {n(parseFloat(p.amount as string))}
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {!rootId && p.status !== 'void' && !p.voids_payment_id && (
-                        <button type="button" className="odoo-btn-primary" title="Classer cette sortie dans une catégorie de charge"
-                          onClick={() => {
-                            if (p.type === 'invoice') { setCategorizingInvoice(p); setCategorizingCategoryId((p.category_id as string) || ''); }
-                            else setEditingPayment(p);
-                          }}>
-                          Catégoriser
-                        </button>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {p.type === 'invoice' ? (
-                        <button type="button" className="odoo-pager-btn" aria-label="Catégoriser cette ligne" title="Catégoriser cette ligne"
-                          onClick={() => { setCategorizingInvoice(p); setCategorizingCategoryId((p.category_id as string) || ''); }}>
-                          <Pencil size={13} />
-                        </button>
-                      ) : p.status === 'void' || p.voids_payment_id ? (
-                        <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }} title={(p.void_note as string) || ''}>annulée</span>
-                      ) : p.type !== 'salary' && p.type !== 'advance' ? (
-                        <div style={{ display: 'inline-flex', gap: 2 }}>
-                          <button type="button" onClick={() => setEditingPayment(p)} className="odoo-pager-btn" aria-label="Modifier" title="Modifier la catégorie ou la description"><Pencil size={13} /></button>
-                          <button type="button" onClick={() => setVoidTarget(p)} className="odoo-pager-btn" aria-label="Annuler la dépense" title="Annuler (motif obligatoire)" style={{ color: '#dc3545' }}><Ban size={13} /></button>
-                        </div>
-                      ) : <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }} title="Géré depuis RH → Paie / Avances">RH</span>}
+                    <td className="ds-actions">
+                      {(() => {
+                        const isVoid = p.status === 'void' || !!p.voids_payment_id;
+                        const needsCategory = !rootId && p.status !== 'void' && !p.voids_payment_id;
+                        const categorize = () => {
+                          if (p.type === 'invoice') { setCategorizingInvoice(p); setCategorizingCategoryId((p.category_id as string) || ''); }
+                          else setEditingPayment(p);
+                        };
+                        const editable = p.type !== 'invoice' && !isVoid && p.type !== 'salary' && p.type !== 'advance';
+                        return (
+                          <>
+                            {needsCategory ? (
+                              <button type="button" className="odoo-btn-secondary ds-btn-sm" title="Classer cette sortie dans une catégorie de charge" onClick={categorize}>Catégoriser</button>
+                            ) : p.type === 'invoice' ? (
+                              <button type="button" className="ds-icon-btn" aria-label="Catégoriser cette ligne" title="Catégoriser cette ligne" onClick={categorize}><Pencil size={15} /></button>
+                            ) : editable ? (
+                              <button type="button" className="ds-icon-btn" aria-label="Modifier la dépense" title="Modifier la catégorie ou la description" onClick={() => setEditingPayment(p)}><Pencil size={15} /></button>
+                            ) : null}
+                            {p.type !== 'invoice' && isVoid && <StatusTag tone="cancelled" label="Annulée" title={(p.void_note as string) || undefined} />}
+                            {p.type !== 'invoice' && !isVoid && !editable && <span style={{ fontSize: 12, color: 'var(--ds-muted)' }} title="Géré depuis RH → Paie / Avances">RH</span>}
+                            {editable && <RowMenu items={[{ label: 'Annuler la dépense', icon: Ban, danger: true, onSelect: () => setVoidTarget(p) }]} />}
+                          </>
+                        );
+                      })()}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
-                <td colSpan={6} style={{ padding: 12, fontWeight: 600 }}>
-                  Total <span style={{ textTransform: 'capitalize' }}>{periodLabel}</span> ({displayed.length} opération{displayed.length > 1 ? 's' : ''}{displayed.length !== outgoing.length ? ` filtrée${displayed.length > 1 ? 's' : ''}` : ''})
-                </td>
-                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
-                  {money(displayedTotal)}
-                </td>
-                <td colSpan={2}></td>
+              <tr>
+                <td colSpan={6}>Total {periodLabel} ({displayed.length} opération{displayed.length > 1 ? 's' : ''})</td>
+                <td className="ds-num">{n(displayedTotal)}</td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
-          <Pager page={page} total={displayed.length} onPage={setPage}
-            note={`${displayed.length} opération${displayed.length > 1 ? 's' : ''}${displayed.length !== outgoing.length ? ' (filtrées)' : ''} · ${periodLabel}`} />
-        </div>
+        </DataPanel>
       )}
 
       {/* Add expense modal */}
@@ -2813,7 +2711,7 @@ function ChargesTab() {
                   className="odoo-btn-secondary">Annuler</button>
                 <button type="submit" disabled={createMutation.isPending || isRhManagedCategory}
                   title={isRhManagedCategory ? 'Saisie depuis Ressources Humaines → Paie / Avances' : undefined}
-                  className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  className="odoo-btn-primary">
                   {createMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                   Enregistrer
                 </button>
@@ -2873,7 +2771,7 @@ function ChargesTab() {
                 <button type="button" onClick={() => setEditingPayment(null)}
                   className="odoo-btn-secondary">Annuler</button>
                 <button type="submit" disabled={updateMutation.isPending}
-                  className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  className="odoo-btn-primary">
                   {updateMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                   Enregistrer
                 </button>
@@ -2903,7 +2801,7 @@ function ChargesTab() {
                 <div className="odoo-breadcrumb">
                   <Pencil size={14} style={{ color: 'var(--theme-accent)' }} />
                   <span className="odoo-breadcrumb-current">Catégoriser la ligne</span>
-                <span className="odoo-breadcrumb-separator">/</span>
+                <span className="odoo-breadcrumb-separator">›</span>
                 <span>{(categorizingInvoice.invoice_number as string) || '—'} · {(categorizingInvoice.supplier_name as string) || ''}</span>
                 </div>
                 <div style={{ flex: 1 }} />
@@ -2938,7 +2836,7 @@ function ChargesTab() {
                 <button type="button" onClick={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }}
                   className="odoo-btn-secondary">Annuler</button>
                 <button type="submit" disabled={updateInvoiceCategoryMutation.isPending}
-                  className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  className="odoo-btn-primary">
                   {updateInvoiceCategoryMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                   Enregistrer
                 </button>
@@ -3014,20 +2912,15 @@ const CHECK_STAGES: StageDef[] = [
   { key: 'cashed', label: 'Encaissés', hint: 'voir l\'historique', icon: CheckCircle2 },
 ];
 
-/** Statut d'un chèque : point de couleur + texte (pas de pastille). */
+/** Statut d'un chèque : étiquette commune (couleur + libellé). */
 function CheckStatusDot({ status }: { status: 'pending' | 'overdue' | 'cashed' }) {
-  const meta = status === 'cashed' ? { color: '#28a745', label: 'Encaissé' }
-    : status === 'overdue' ? { color: '#dc3545', label: 'Échu' }
-    : { color: '#d9822b', label: 'À encaisser' };
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: status === 'overdue' ? 600 : 400, color: status === 'overdue' ? '#b71c1c' : 'var(--odoo-text)' }}>
-      <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: meta.color }} />
-      {meta.label}
-    </span>
-  );
+  return status === 'cashed' ? <StatusTag tone="done" label="Encaissé" />
+    : status === 'overdue' ? <StatusTag tone="late" label="Échu" />
+    : <StatusTag tone="todo" label="À encaisser" />;
 }
 
 function ChequesTab() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   // Vue : « À encaisser » (en attente / en retard) ou « Encaissés » (historique).
   const [view, setView] = useState<'open' | 'history'>('open');
@@ -3349,6 +3242,14 @@ function ChequesTab() {
 
   return (
     <>
+      {breakdown.overdueCount > 0 && view === 'open' && dueWindow !== 'overdue' && (
+        <StatusBanner tone="danger" icon={AlertTriangle}
+          title={`${breakdown.overdueCount} chèque${breakdown.overdueCount > 1 ? 's' : ''} échu${breakdown.overdueCount > 1 ? 's' : ''} : ${money(breakdown.overdue)}`}
+          actions={<button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDueWindow('overdue')}>Les afficher</button>}>
+          Ils peuvent être présentés à la banque à tout moment : prévoyez la trésorerie, et marquez-les encaissés dès qu'ils sont débités.
+        </StatusBanner>
+      )}
+
       {/* Pipeline d'encaissement : fenêtres d'échéance des chèques émis, puis encaissés (historique) */}
       <StagePipeline
         title="Où en sont mes chèques et traites"
@@ -3369,35 +3270,9 @@ function ChequesTab() {
         }}
       />
 
-      {breakdown.overdueCount > 0 && view === 'open' && dueWindow !== 'overdue' && (
-        <StatusBanner tone="danger" icon={AlertTriangle}
-          title={`${breakdown.overdueCount} chèque${breakdown.overdueCount > 1 ? 's' : ''} échu${breakdown.overdueCount > 1 ? 's' : ''} : ${money(breakdown.overdue)}`}
-          actions={<button type="button" className="odoo-btn-secondary" onClick={() => setDueWindow('overdue')}>Les afficher</button>}>
-          Ils peuvent être présentés à la banque à tout moment : prévoyez la trésorerie, et marquez-les encaissés dès qu'ils sont débités.
-        </StatusBanner>
-      )}
-
-      {/* Vue + filtres */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <ViewSwitch view={view} onChange={switchView}
-          openLabel={`À encaisser · ${counts.pending}`} historyLabel={`Encaissés · ${counts.cashed}`} />
-        {view === 'open' && dueWindow !== 'all' && (
-          <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            Échéance : {CHECK_STAGES.find(s => s.key === dueWindow)?.label}
-            <button type="button" onClick={() => setDueWindow('all')} aria-label="Retirer le filtre d'échéance" style={{ display: 'inline-flex' }}><X size={11} /></button>
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-          {groups.length} chèque{groups.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{money(groups.reduce((s, g) => s + g.totalAmount, 0))}</strong>
-        </span>
-      </div>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" aria-label="Rechercher un chèque"
-          placeholder="Rechercher (bénéficiaire, N° chèque, facture, BC, notes...)"
-          value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-          className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
+      {/* Barre d'outils : recherche, filtres, puis bascule « à encaisser / encaissés » à droite */}
+      <Toolbar>
+        <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Rechercher (bénéficiaire, n° de chèque, facture, BC, notes…)" label="Rechercher un chèque" />
         <SelectFilter label="Moyen" icon={Receipt} value={methodFilter === 'all' ? '' : methodFilter}
           onChange={v => setMethodFilter((v || 'all') as 'all' | 'check' | 'traite')}
           options={[{ key: 'check', label: 'Chèque' }, { key: 'traite', label: 'Traite' }]} />
@@ -3410,64 +3285,57 @@ function ChequesTab() {
           onChange={id => setSupplierFilter(id || 'all')}
           placeholder="Tous bénéficiaires"
         />
-        {(hasActiveFilters || searchTerm) && (
-          <button type="button" onClick={() => { resetFilters(); setSearchTerm(''); }} className="odoo-btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer les filtres
+        {view === 'open' && dueWindow !== 'all' && (
+          <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={() => setDueWindow('all')} title="Retirer le filtre d'échéance">
+            Échéance : {CHECK_STAGES.find(s => s.key === dueWindow)?.label} <X size={12} aria-hidden="true" />
           </button>
         )}
-      </div>
+        {(hasActiveFilters || searchTerm) && (
+          <button type="button" onClick={() => { resetFilters(); setSearchTerm(''); }} className="ds-btn-ghost ds-btn-sm">
+            <X size={12} aria-hidden="true" /> Effacer les filtres
+          </button>
+        )}
+        <Segmented label="Période" value={view} onChange={switchView}
+          options={[{ key: 'open', label: 'À encaisser', count: counts.pending }, { key: 'history', label: 'Encaissés', count: counts.cashed }]} />
+      </Toolbar>
 
       {/* Tableau */}
       {isLoading ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={20} className="animate-spin" style={{ display: 'inline-block', marginRight: 8 }} /> Chargement...
-        </div>
+        <LoadingState />
       ) : filtered.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
-          {(hasActiveFilters || searchTerm) ? (
-            <>
-              Aucun cheque ne correspond aux filtres actuels.
-              {(hasActiveFilters || searchTerm) && (
-                <div style={{ marginTop: 8 }}>
-                  <button type="button" onClick={() => { resetFilters(); setSearchTerm(''); }}
-                    className="odoo-btn-secondary" style={{ fontSize: '0.75rem' }}>
-                    Reinitialiser les filtres
-                  </button>
-                </div>
-              )}
-            </>
-          ) : statusFilter === 'pending' ? 'Aucun cheque en attente d\'encaissement.' :
-             statusFilter === 'cashed' ? 'Aucun cheque encaisse.' :
-             'Aucun cheque emis.'}
-        </div>
+        (hasActiveFilters || searchTerm)
+          ? <NoResultState text="Aucun chèque ne correspond aux filtres." onReset={() => { resetFilters(); setSearchTerm(''); }} />
+          : <EmptyState icon={Receipt} title={statusFilter === 'pending' ? 'Aucun chèque en attente d\'encaissement' : statusFilter === 'cashed' ? 'Aucun chèque encaissé' : 'Aucun chèque émis'}
+              text="Les chèques et traites émis en règlement apparaissent ici jusqu'à leur débit en banque." />
       ) : (
-        <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'auto' }}>
-          <table className="odoo-table" style={{ margin: 0, minWidth: 1100 }}>
+        <DataPanel label="Chèques et traites" footer={
+          <TableFooter page={page} pageSize={PAGE_SIZE} total={groups.length} onPage={setPage}
+            note={`chèque${groups.length > 1 ? 's' : ''} · ${money(groups.reduce((s, g) => s + g.totalAmount, 0))} · ${view === 'open' ? 'émis, pas encore débités' : `encaissés · ${periodLabel(period, customFrom, customTo)}`}`} />
+        }>
+          <table className="odoo-table ds-dense" style={{ minWidth: 1100 }}>
             <thead>
               <tr>
-                <th style={{ width: 110 }}>N° Cheque</th>
+                <th style={{ width: 110 }}>N° de chèque</th>
                 <th style={{ cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => { if (sortBy === 'supplier') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('supplier'); setSortDir('asc'); } }}>
-                  Beneficiaire {sortBy === 'supplier' && (sortDir === 'asc' ? '▲' : '▼')}
+                  Bénéficiaire {sortBy === 'supplier' && (sortDir === 'asc' ? '▲' : '▼')}
                 </th>
                 <th>Contexte</th>
                 <th style={{ width: 110, cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => { if (sortBy === 'emission') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('emission'); setSortDir('desc'); } }}>
-                  Date emission {sortBy === 'emission' && (sortDir === 'asc' ? '▲' : '▼')}
+                  Date d'émission {sortBy === 'emission' && (sortDir === 'asc' ? '▲' : '▼')}
                 </th>
                 <th style={{ width: 110, cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => { if (sortBy === 'echeance') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('echeance'); setSortDir('asc'); } }}>
-                  Echeance {sortBy === 'echeance' && (sortDir === 'asc' ? '▲' : '▼')}
+                  Échéance {sortBy === 'echeance' && (sortDir === 'asc' ? '▲' : '▼')}
                 </th>
-                <th style={{ width: 110 }}>Encaisse le</th>
-                <th style={{ width: 110, textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
+                <th style={{ width: 110 }}>Encaissé le</th>
+                <th className="ds-num" style={{ width: 130, cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => { if (sortBy === 'amount') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('amount'); setSortDir('desc'); } }}>
                   Montant {sortBy === 'amount' && (sortDir === 'asc' ? '▲' : '▼')}
                 </th>
-                <th style={{ width: 110 }}>Statut</th>
-                <th style={{ textAlign: 'right' }}>Prochaine action</th>
-                <th style={{ width: 60 }}></th>
+                <th style={{ width: 130 }}>Statut</th>
+                <th className="ds-actions" style={{ width: 190 }}><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -3491,17 +3359,17 @@ function ChequesTab() {
                   <tr onClick={multi ? () => toggleExpanded(g.key) : undefined}
                     style={multi ? { cursor: 'pointer' } : undefined}
                     title={multi ? (isExpanded ? 'Cliquer pour replier les factures' : 'Cliquer pour lister les factures') : undefined}>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>
+                    <td className="ds-ref">
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         {multi && (isExpanded ? <ChevronDown size={13} style={{ color: 'var(--theme-accent)' }} /> : <ChevronRight size={13} style={{ color: 'var(--theme-accent)' }} />)}
-                        {c.check_number || <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>}
+                        {c.check_number || <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                       </span>
                     </td>
                     <td>
-                      <div style={{ fontWeight: 500 }}>{beneficiaire(c)}</div>
+                      <div className="ds-strong">{beneficiaire(c)}</div>
                       {c.payment_type && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'capitalize' }}>
-                          {c.payment_type === 'invoice' ? 'Facture' : c.payment_type === 'salary' ? 'Salaire' : c.payment_type === 'expense' ? 'Depense' : c.payment_type}
+                        <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
+                          {c.payment_type === 'invoice' ? 'Facture' : c.payment_type === 'salary' ? 'Salaire' : c.payment_type === 'expense' ? 'Dépense' : c.payment_type}
                         </div>
                       )}
                     </td>
@@ -3534,7 +3402,7 @@ function ChequesTab() {
                     <td>
                       {fmtDate(dueDate)}
                       {isOverdue && (
-                        <div style={{ fontSize: '0.6875rem', color: '#b71c1c', fontWeight: 600 }}>en retard</div>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--ds-danger)', fontWeight: 600 }}>en retard</div>
                       )}
                     </td>
                     <td>
@@ -3550,53 +3418,39 @@ function ChequesTab() {
                       ) : g.anyCashed ? (
                         <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>partiel</span>
                       ) : (
-                        <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>
+                        <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>
+                    <td className="ds-num ds-strong">
                       {money(g.totalAmount)}
                     </td>
                     <td><CheckStatusDot status={isCashed ? 'cashed' : isOverdue ? 'overdue' : 'pending'} /></td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                    <td className="ds-actions" onClick={e => e.stopPropagation()}>
                       {!isCashed && (
-                        <button type="button" onClick={() => setConfirmingGroup(g)} className={isOverdue ? 'odoo-btn-danger' : 'odoo-btn-primary'}
+                        <button type="button" onClick={() => setConfirmingGroup(g)} className="odoo-btn-secondary ds-btn-sm"
                           title="Le chèque a été débité du compte : enregistrer l'encaissement">
                           Marquer encaissé
                         </button>
                       )}
-                    </td>
-                    <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                      <div style={{ display: 'inline-flex', gap: 2 }}>
-                        {isCashed && (
-                          <button onClick={() => {
-                            const msg = multi
-                              ? `Annuler la confirmation d'encaissement ? Les ${g.rows.length} paiements du cheque repasseront en attente et seront retires des charges.`
-                              : 'Annuler la confirmation d\'encaissement ? Le cheque repassera en attente et sera retire des charges.';
-                            if (confirm(msg)) unmarkMutation.mutate(g.rows.map(r => r.id));
-                          }}
-                            disabled={unmarkMutation.isPending}
-                            className="odoo-pager-btn" title="Annuler l'encaissement (cheque revient en attente)" aria-label="Annuler l'encaissement">
-                            <RotateCcw size={13} />
-                          </button>
-                        )}
-                        {/* Annulation motivée (mig 310) : uniquement au niveau paiement.
-                            Pour un cheque multi-factures, deplier la ligne et supprimer
-                            la facture concernee. */}
-                        {!multi && (
-                          <button onClick={() => setVoidCheck({ id: c.id, amount: c.amount,
-                            label: c.invoice_number ? `facture ${c.invoice_number}` : c.purchase_order_number ? `BC ${c.purchase_order_number}` : (c.supplier_name || c.employee_name || 'paiement') })}
-                            disabled={deleteMutation.isPending || !!c.cashed_at}
-                            className="odoo-pager-btn" title={c.cashed_at ? 'Encaissé : annulez d\'abord l\'encaissement' : 'Annuler ce paiement (motif obligatoire)'}
-                            style={{ color: '#b71c1c' }} aria-label="Annuler ce paiement">
-                            <Ban size={13} />
-                          </button>
-                        )}
-                      </div>
+                      {/* Annulation motivée (mig 310) : uniquement au niveau paiement. Pour un chèque
+                          multi-factures, déplier la ligne et annuler la facture concernée. */}
+                      <RowMenu label={`Actions sur le chèque ${c.check_number || ''}`} items={[
+                        ...(isCashed ? [{ label: 'Annuler l\'encaissement', icon: RotateCcw, danger: true, disabled: unmarkMutation.isPending, onSelect: async () => {
+                          const msg = multi
+                            ? `Annuler la confirmation d'encaissement ? Les ${g.rows.length} paiements du chèque repasseront en attente et seront retirés des charges.`
+                            : 'Annuler la confirmation d\'encaissement ? Le chèque repassera en attente et sera retiré des charges.';
+                          if (await confirm(msg, { title: 'Annuler l\'encaissement', danger: true, confirmLabel: 'Annuler l\'encaissement', cancelLabel: 'Retour' })) unmarkMutation.mutate(g.rows.map(r => r.id));
+                        } }] : []),
+                        ...(!multi ? [{ label: c.cashed_at ? 'Annuler ce paiement (annulez d\'abord l\'encaissement)' : 'Annuler ce paiement', icon: Ban, danger: true,
+                          disabled: deleteMutation.isPending || !!c.cashed_at,
+                          onSelect: () => setVoidCheck({ id: c.id, amount: c.amount,
+                            label: c.invoice_number ? `facture ${c.invoice_number}` : c.purchase_order_number ? `BC ${c.purchase_order_number}` : (c.supplier_name || c.employee_name || 'paiement') }) }] : []),
+                      ]} />
                     </td>
                   </tr>
                   {/* Sous-lignes : une par facture reglee par ce cheque */}
                   {isExpanded && g.rows.map(r => (
-                    <tr key={r.id} style={{ background: 'var(--theme-bg-page)' }}>
+                    <tr key={r.id} style={{ background: 'var(--ds-bg)' }}>
                       <td />
                       <td style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>└ Facture</td>
                       <td style={{ fontSize: '0.75rem' }}>
@@ -3617,19 +3471,19 @@ function ChequesTab() {
                       <td style={{ fontSize: '0.75rem' }}>{fmtDate(r.payment_date)}</td>
                       <td style={{ fontSize: '0.75rem' }}>{fmtDate(r.check_date || r.invoice_due_date)}</td>
                       <td style={{ fontSize: '0.75rem' }}>
-                        {r.cashed_at ? fmtDate(r.cashed_at) : <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>}
+                        {r.cashed_at ? fmtDate(r.cashed_at) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>
+                      <td className="ds-num" style={{ fontSize: '0.75rem' }}>
                         {money(parseFloat(r.amount))}
                       </td>
                       <td><CheckStatusDot status={r.status === 'cashed' ? 'cashed' : r.status === 'overdue' ? 'overdue' : 'pending'} /></td>
-                      <td />
-                      <td style={{ textAlign: 'right' }}>
-                        <button onClick={() => setVoidCheck({ id: r.id, amount: r.amount, label: `facture ${r.invoice_number || '—'} (chèque ${c.check_number || ''})` })}
+                      <td className="ds-actions">
+                        <button type="button" onClick={() => setVoidCheck({ id: r.id, amount: r.amount, label: `facture ${r.invoice_number || '—'} (chèque ${c.check_number || ''})` })}
                           disabled={deleteMutation.isPending || !!r.cashed_at}
-                          className="odoo-pager-btn" title="Annuler la part de ce chèque sur cette facture (motif obligatoire)"
-                          style={{ color: '#b71c1c' }}>
-                          <Ban size={11} />
+                          className="ds-icon-btn" title="Annuler la part de ce chèque sur cette facture (motif obligatoire)"
+                          aria-label={`Annuler la part du chèque sur la facture ${r.invoice_number || ''}`}
+                          style={{ color: 'var(--ds-danger)' }}>
+                          <Ban size={14} />
                         </button>
                       </td>
                     </tr>
@@ -3639,9 +3493,7 @@ function ChequesTab() {
               })}
             </tbody>
           </table>
-          <Pager page={page} total={groups.length} onPage={setPage}
-            note={view === 'open' ? 'Chèques et traites émis, pas encore débités' : `Encaissés · ${periodLabel(period, customFrom, customTo)}`} />
-        </div>
+        </DataPanel>
       )}
 
       {/* Modal confirmation encaissement — un cheque multi-factures est encaisse
@@ -3691,15 +3543,15 @@ function ConfirmCashedModal({
         style={{ width: '100%', maxWidth: 480, background: 'var(--theme-bg-card)', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
-            <Check size={14} style={{ color: '#0e7c3a' }} />
+            <Check size={14} style={{ color: 'var(--ds-success)' }} />
             <span>Confirmer encaissement</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>
               {check.check_number || `${parseFloat(check.amount).toFixed(2)} ${currencySymbol()}`}
             </span>
           </div>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ padding: '10px 12px', background: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.8125rem' }}>
@@ -3749,7 +3601,7 @@ function ConfirmCashedModal({
         <div style={{ borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
           <button onClick={() => onConfirm(cashedAt, note.trim() || undefined)} disabled={isPending || !cashedAt}
-            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            className="odoo-btn-primary">
             {isPending && <Loader2 size={12} className="animate-spin" />}
             <Check size={13} /> Confirmer
           </button>
@@ -3834,74 +3686,41 @@ function ResumeTab() {
 
   return (
     <>
-      {/* Search panel : period + actions */}
-      <div className="odoo-search-panel">
-        <SearchSelect
-          options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
-          value={String(month)}
-          onChange={id => id && setMonth(parseInt(id, 10))}
-          placeholder="Mois"
-          width={150}
-        />
-        <input type="number" value={year} onChange={e => setYear(+e.target.value)}
-          className="odoo-filter-dropdown" style={{ width: 80 }} />
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} className="odoo-btn-secondary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Download size={13} /> Exporter
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary">
+          <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
-      </div>
+      </AccHeaderActions>
 
-      {/* Stat tiles */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><ArrowUpRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total entrées</div>
-          <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totals.totalEntrees)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-          <div className="odoo-stat-card-sub">
-            Caisse {n(totals.cashR)} · Carte {n(totals.cardR)}
+      {/* Indicateurs du mois */}
+      <KpiGrid>
+        <KpiCard label="Total entrées" value={<>{n(totals.totalEntrees)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub={<>Caisse {n(totals.cashR)} · Carte {n(totals.cardR)}
             {totals.clientReceipts > 0 && ` · Règlements clients ${n(totals.clientReceipts)}`}
-            {totals.entries - totals.clientReceipts > 0 && ` · Autres ${n(totals.entries - totals.clientReceipts)}`}
-          </div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><ArrowDownRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total sorties</div>
-          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(totals.exits)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-          <div className="odoo-stat-card-sub">Achats + Salaires + Dépenses</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />Résultat net du mois</div>
-          <div className="odoo-stat-card-value" style={{ color: totals.resultat >= 0 ? '#28a745' : '#dc3545' }}>
-            {totals.resultat >= 0 ? '+' : ''}{n(totals.resultat)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
-          </div>
-          <div className="odoo-stat-card-sub">Entrées − Sorties</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Wallet size={11} style={{ display: 'inline', marginRight: 4 }} />Solde cumulé</div>
-          <div className="odoo-stat-card-value" style={{ color: totals.solde >= 0 ? '#28a745' : '#dc3545' }}>
-            {n(totals.solde)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
-          </div>
-          <div className="odoo-stat-card-sub">Cash {n(totals.cashNet)} · Carte {n(totals.cardCumul)}</div>
-        </div>
-      </div>
+            {totals.entries - totals.clientReceipts > 0 && ` · Autres ${n(totals.entries - totals.clientReceipts)}`}</>} />
+        <KpiCard label="Total sorties" value={<>{n(totals.exits)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub="Achats + Salaires + Dépenses" />
+        <KpiCard label="Résultat net du mois" value={<>{totals.resultat >= 0 ? '+' : ''}{n(totals.resultat)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub="Entrées − Sorties" tone={totals.resultat >= 0 ? 'green' : 'red'} />
+        <KpiCard label="Solde cumulé" value={<>{n(totals.solde)} <small style={{ fontSize: 13, color: 'var(--ds-muted)', fontWeight: 400 }}>{currencySymbol()}</small></>} sub={<>Cash {n(totals.cashNet)} · Carte {n(totals.cardCumul)}</>} tone={totals.solde >= 0 ? 'green' : 'red'} />
+      </KpiGrid>
+
+      <Toolbar>
+        <MonthYearField month={month} year={year} onMonth={setMonth} onYear={setYear} />
+      </Toolbar>
 
       {/* Daily grid */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement du résumé...</span>
-        </div>
+        <LoadingState label="Chargement du résumé…" />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table">
+        <DataPanel label="Résumé du mois" footer={<TableFooter note={`${MONTH_NAMES[month - 1]} ${year} · montants en ${currencySymbol()}`} />}>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th>Date</th>
-                <th style={{ textAlign: 'right' }}>Ventes</th>
-                <th style={{ textAlign: 'right' }}>Entrées</th>
-                <th style={{ textAlign: 'right' }}>Sorties</th>
-                <th style={{ textAlign: 'right' }}>Cash cumul</th>
-                <th style={{ textAlign: 'right' }}>Carte cumul</th>
-                <th style={{ textAlign: 'right' }}>Solde</th>
+                <th className="ds-num">Ventes ({currencySymbol()})</th>
+                <th className="ds-num">Entrées ({currencySymbol()})</th>
+                <th className="ds-num">Sorties ({currencySymbol()})</th>
+                <th className="ds-num">Espèces cumulées ({currencySymbol()})</th>
+                <th className="ds-num">Carte cumulée ({currencySymbol()})</th>
+                <th className="ds-num">Solde ({currencySymbol()})</th>
               </tr>
             </thead>
             <tbody>
@@ -3912,33 +3731,33 @@ function ResumeTab() {
                 return (
                   <tr key={d.dayNum} style={{ opacity: hasActivity ? 1 : 0.4 }}>
                     <td style={{ textTransform: 'capitalize' }}>{format(parseLocalDate(d.date), 'dd/MM EEE', { locale: fr })}</td>
-                    <td style={{ textAlign: 'right' }}>{d.totalSales > 0 ? <span style={{ fontWeight: 600 }}>{n(d.totalSales)}</span> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
-                    <td style={{ textAlign: 'right', color: dayEntrees > 0 ? '#28a745' : 'var(--theme-bg-separator)' }}>
+                    <td className="ds-num">{d.totalSales > 0 ? <span className="ds-strong">{n(d.totalSales)}</span> : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                    <td className="ds-num" style={{ color: dayEntrees > 0 ? undefined : 'var(--ds-muted)' }}>
                       {dayEntrees > 0 ? n(dayEntrees) : '—'}
                     </td>
-                    <td style={{ textAlign: 'right', color: d.exits > 0 ? '#dc3545' : 'var(--theme-bg-separator)' }}>
+                    <td className="ds-num" style={{ color: d.exits > 0 ? undefined : 'var(--ds-muted)' }}>
                       {d.exits > 0 ? n(d.exits) : '—'}
                     </td>
-                    <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{n(d.cashNetCumul)}</td>
-                    <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{n(d.cardCumul)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: d.solde >= 0 ? '#28a745' : '#dc3545' }}>{n(d.solde)}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(d.cashNetCumul)}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(d.cardCumul)}</td>
+                    <td className="ds-num ds-strong" style={{ color: d.solde >= 0 ? undefined : 'var(--ds-danger)' }}>{n(d.solde)}</td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
-                <td style={{ padding: 12, fontWeight: 700 }}>TOTAL</td>
-                <td style={{ textAlign: 'right', fontWeight: 700 }}>{n(totals.sales)}</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, color: '#28a745' }}>{n(totals.totalEntrees)}</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545' }}>{n(totals.exits)}</td>
-                <td style={{ textAlign: 'right', fontWeight: 700 }}>{n(totals.cashNet)}</td>
-                <td style={{ textAlign: 'right', fontWeight: 700 }}>{n(totals.cardCumul)}</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: totals.solde >= 0 ? '#28a745' : '#dc3545' }}>{n(totals.solde)}</td>
+              <tr>
+                <td>Total</td>
+                <td className="ds-num">{n(totals.sales)}</td>
+                <td className="ds-num">{n(totals.totalEntrees)}</td>
+                <td className="ds-num">{n(totals.exits)}</td>
+                <td className="ds-num">{n(totals.cashNet)}</td>
+                <td className="ds-num">{n(totals.cardCumul)}</td>
+                <td className="ds-num" style={{ color: totals.solde >= 0 ? undefined : 'var(--ds-danger)' }}>{n(totals.solde)}</td>
               </tr>
             </tfoot>
           </table>
-        </div>
+        </DataPanel>
       )}
     </>
   );
@@ -3976,7 +3795,7 @@ function InternalTransferModal({ accounts, pending, onClose, onSubmit }: {
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb"><ArrowLeftRight size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">Mouvement interne</span></div>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();
@@ -3997,7 +3816,7 @@ function InternalTransferModal({ accounts, pending, onClose, onSubmit }: {
                 placeholder="Compte destination" width="100%" size="md" ariaLabel="Compte destination"
                 options={accounts.map(a => ({ id: String(a.id), label: a.label as string }))} /></div>
           </div>
-          {fromId === toId && <p style={{ margin: 0, fontSize: '0.75rem', color: '#b71c1c' }}>Choisissez deux comptes différents.</p>}
+          {fromId === toId && <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-danger)' }}>Choisissez deux comptes différents.</p>}
           <div className="grid grid-cols-2 gap-3">
             <div><label style={lbl}>Montant *</label>
               <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} className={field} required /></div>

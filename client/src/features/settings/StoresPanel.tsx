@@ -162,7 +162,7 @@ export default function StoresPanel() {
           </button>
         </div>
         {!editing && (
-          <button className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button type="button" className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Plus size={13} /> Nouvel établissement
           </button>
         )}
@@ -298,8 +298,8 @@ export default function StoresPanel() {
           </section>
 
           <div className="odoo-stores-editor-actions">
-            <button className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
-            <button className="odoo-btn-primary" disabled={!d.name.trim() || badHours.length > 0 || save.isPending} onClick={() => save.mutate()}>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
+            <button type="button" className="odoo-btn-primary" disabled={!d.name.trim() || badHours.length > 0 || save.isPending} onClick={() => save.mutate()}>
               {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
             </button>
           </div>
@@ -311,7 +311,7 @@ export default function StoresPanel() {
           <Building size={22} />
           <strong>Ajoutez votre premier établissement</strong>
           <span>Boutique, laboratoire, entrepôt ou siège : chacun a ses horaires, son responsable et sa patente.</span>
-          {!editing && <button className="odoo-btn-primary" onClick={() => open()}><Plus size={13} /> Nouvel établissement</button>}
+          {!editing && <button type="button" className="odoo-btn-primary" onClick={() => open()}><Plus size={13} /> Nouvel établissement</button>}
         </div>
       ) : view === 'cards' ? (
         <div className="odoo-stores-grid">
@@ -366,9 +366,9 @@ export default function StoresPanel() {
                   <div className="odoo-stores-missing"><AlertTriangle size={12} /> À compléter : {missing.join(', ')}</div>
                 )}
                 <footer>
-                  <button className="odoo-btn-secondary" onClick={() => open(s)}><Pencil size={13} /> Modifier</button>
+                  <button type="button" className="odoo-btn-secondary" onClick={() => open(s)}><Pencil size={13} /> Modifier</button>
                   {Number(s.user_count) === 0 && (
-                    <button className="odoo-btn-secondary" aria-label={`Supprimer ${s.name}`} onClick={() => askRemove(s)}><Trash2 size={13} /></button>
+                    <button type="button" className="odoo-btn-secondary" aria-label={`Supprimer ${s.name}`} onClick={() => askRemove(s)}><Trash2 size={13} /></button>
                   )}
                 </footer>
               </article>
@@ -383,7 +383,7 @@ export default function StoresPanel() {
               {stores.map((s: Record<string, any>) => (
                 <tr key={s.id} style={{ opacity: s.is_active === false ? 0.6 : 1 }}>
                   <td>
-                    <strong>{s.name}</strong>{s.code && <span style={{ marginLeft: 6, fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{s.code}</span>}
+                    <strong>{s.name}</strong>{s.code && <span style={{ marginLeft: 6, fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{s.code}</span>}
                     {s.is_headquarters && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Siège</span>}
                   </td>
                   <td>{kindLabel(s.kind)}</td>
@@ -393,9 +393,9 @@ export default function StoresPanel() {
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>{s.user_count}</td>
                   <td><StatusTag tone={s.is_active === false ? 'cancelled' : 'done'} label={s.is_active === false ? 'Désactivé' : 'Actif'} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(s)} aria-label={`Modifier ${s.name}`}><Pencil size={13} /></button>
+                    <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(s)} aria-label={`Modifier ${s.name}`}><Pencil size={13} /></button>
                     {Number(s.user_count) === 0 && (
-                      <button className="odoo-btn-secondary" style={{ padding: '2px 8px', marginLeft: 4 }} aria-label={`Supprimer ${s.name}`} onClick={() => askRemove(s)}>
+                      <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', marginLeft: 4 }} aria-label={`Supprimer ${s.name}`} onClick={() => askRemove(s)}>
                         <Trash2 size={13} />
                       </button>
                     )}

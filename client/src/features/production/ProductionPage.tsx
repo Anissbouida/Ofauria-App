@@ -15,9 +15,9 @@ import { forecastApi, type ForecastCell } from '../../api/forecast.api';
 import { useAuth } from '../../context/AuthContext';
 import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS } from '@ofauria/shared';
 import {
-  Plus, Trash2, Factory, Calendar, ShoppingBag, Package, Search,
-  Clock, CheckCircle2, Play, Flag, Eye, AlertCircle,
-  FileText, User,
+  Plus, Trash2, Factory, ShoppingBag, Search,
+  Clock, CheckCircle2, Play, Flag, AlertCircle,
+  FileText, X,
   ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Layers,
   TrendingUp, Loader2,
 } from 'lucide-react';
@@ -25,7 +25,9 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty, type FilterChip } from '../sales/ListTemplate';
+import { FilterChips, type FilterChip } from '../sales/ListTemplate';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import { DataPanel, TableFooter, Toolbar, SearchBar, LoadingState, EmptyState, NoResultState, ErrorState, FormField } from '../../components/ds';
 
 
 const roleConfig: Record<string, { color: string; bg: string; gradient: string }> = {
@@ -69,6 +71,8 @@ function ProductionPlansView() {
   const [showResumePicker, setShowResumePicker] = useState(false);
   const [sortKey, setSortKey] = useState<string>('plan_date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(1);
+  const { sectorLabel } = usePermissions();
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -81,7 +85,7 @@ function ProductionPlansView() {
   const isAdmin = ['admin', 'manager'].includes(user?.role || '');
 
   const effectiveRole = roleFilter;
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['production', { status: statusFilter, targetRole: effectiveRole }],
     queryFn: () => productionApi.list({
       status: statusFilter,
@@ -182,87 +186,116 @@ function ProductionPlansView() {
   // Pastilles de statut (gabarit Liste Ventes) : remplacent les tuiles et les onglets.
   const chips: FilterChip[] = tabs.map(t => ({ key: t.key, label: t.label, count: t.count, icon: t.icon }));
 
+  // Pagination côté écran : la liste est déjà chargée en entier, on n'affiche que 50 lignes à la fois.
+  const PAGE_SIZE = 50;
+  const pageCount = Math.max(1, Math.ceil(sortedPlans.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pagePlans = sortedPlans.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const hasFilters = !!(searchQuery.trim() || statusFilter || roleFilter);
+  const resetFilters = () => { setSearchQuery(''); setStatusFilter(''); setRoleFilter(''); setPage(1); };
+
   return (
-    <SalesPageShell icon={Factory} parent="Production" title="Plans" list
-      summary={<><b>{filteredPlans.length}</b> / {plans.length} plan(s){stats.in_progress > 0 ? <> · <b>{stats.in_progress}</b> en cours</> : null}</>}
+    <SalesPageShell icon={Factory} parent="Production › Opérations" title={sectorLabel('production_plans', 'Plans de production')} list
+      summary="Ordres de fabrication par atelier, du brouillon jusqu'à la clôture."
       actions={<>
-        <button onClick={() => setShowResumePicker(true)} className="odoo-btn-secondary">
-          <RotateCcw size={13} /> Reprendre
+        <button type="button" onClick={() => setShowResumePicker(true)} className="odoo-btn-secondary">
+          <RotateCcw size={13} aria-hidden="true" /> Reprendre
         </button>
-        <button onClick={() => { setResumePrefill(null); setShowForm(true); }} className="odoo-btn-primary">
-          <Plus size={14} /> Nouveau
+        <button type="button" onClick={() => { setResumePrefill(null); setShowForm(true); }} className="odoo-btn-primary">
+          <Plus size={14} aria-hidden="true" /> Nouveau plan
         </button>
       </>}>
 
+      {/* Étapes du circuit en pastilles avec compteurs, avant la barre d'outils (Design System). */}
+      <FilterChips chips={chips} value={statusFilter} onChange={k => { setStatusFilter(statusFilter === k ? '' : k); setPage(1); }} label="Filtrer par statut" />
+
       {/* Barre d'outils : recherche + filtre atelier */}
-      <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="Rechercher par date, chef, commande...">
+      <Toolbar>
+        <SearchBar value={searchQuery} onChange={v => { setSearchQuery(v); setPage(1); }} placeholder="Rechercher par date, chef, commande…" />
         {(isAdmin || ws.mine.length > 1) && (
           <SearchSelect
             options={ws.workshops.filter(w => isAdmin || ws.mine.includes(w.code)).map(w => ({ id: w.code, label: w.label }))}
             value={roleFilter}
-            onChange={setRoleFilter}
+            onChange={v => { setRoleFilter(v); setPage(1); }}
             placeholder="Atelier"
           />
         )}
-      </ListToolbar>
-
-      {/* Statuts en pastilles avec compteurs */}
-      <FilterChips chips={chips} value={statusFilter} onChange={k => setStatusFilter(statusFilter === k ? '' : k)} label="Filtrer par statut" />
+      </Toolbar>
 
       {/* Plans table */}
       {isLoading ? (
-        <section className="prj-panel sal-empty"><Loader2 className="animate-spin" size={20} /><span>Chargement des plans…</span></section>
+        <LoadingState label="Chargement des plans…" />
+      ) : isError ? (
+        <ErrorState onRetry={() => refetch()} />
       ) : filteredPlans.length === 0 ? (
-        <ListEmpty icon={Factory} title="Aucun plan de production"
-          text={searchQuery ? 'Essayez une autre recherche' : 'Créez votre premier plan de production'} />
+        hasFilters
+          ? <NoResultState onReset={resetFilters} text="Aucun plan ne correspond aux filtres." />
+          : <EmptyState icon={Factory} title="Aucun plan de production" text="Les plans créés pour les ateliers apparaîtront ici."
+              action={<button type="button" className="odoo-btn-primary" onClick={() => { setResumePrefill(null); setShowForm(true); }}><Plus size={14} aria-hidden="true" /> Nouveau plan</button>} />
       ) : (
-        <ListPanel>
+        <DataPanel label="Plans de production"
+          footer={<TableFooter page={currentPage} pageSize={PAGE_SIZE} total={sortedPlans.length} onPage={setPage}
+            note={stats.in_progress > 0 ? `${stats.in_progress} en cours` : undefined} />}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 24 }}></th>
-                <th>N° Plan</th>
+                <th>N° plan</th>
                 <SortHeader label="Date" sortKey="plan_date" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Statut" sortKey="status" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Type" sortKey="type" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                {isAdmin && <SortHeader label="Chef" sortKey="target_role" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
+                {isAdmin && <SortHeader label="Atelier" sortKey="target_role" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
                 <SortHeader label="Produits" sortKey="item_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Créé par" sortKey="created_by_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Commande liée" sortKey="order_number" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
-                {sortedPlans.map((p: Record<string, any>, idx: number) => {
+                {pagePlans.map((p: Record<string, any>) => {
                   const status = p.status as string;
                   const hasOrder = !!p.order_number;
                   const planDate = new Date(p.plan_date as string);
                   const planNumber = (p.of_number as string) || (p.id as string).slice(0, 8).toUpperCase();
                   const prio = Number(p.priority ?? 3);
-
-                  const dotClass = status === 'completed' ? 'ok'
-                    : status === 'in_progress' ? 'warning'
-                    : status === 'ready_to_produce' ? 'ok'
-                    : status === 'awaiting_ingredients' ? 'warning'
-                    : status === 'confirmed' ? 'ok' : 'neutral';
+                  const nb = Number(p.relaunchable_count) || 0;
+                  // Menu de ligne : la relance (tout plan non brouillon — débloque aussi un plan
+                  // confirmé trop tôt en recalculant besoins et bon de sortie) et la suppression.
+                  const menu: RowMenuItem[] = [];
+                  if (status !== 'draft' && (isChef || isAdmin)) {
+                    menu.push({
+                      label: nb > 0 ? `Relancer (${nb} article${nb > 1 ? 's' : ''})` : 'Relancer',
+                      icon: RotateCcw,
+                      disabled: relaunchMutation.isPending,
+                      onSelect: async () => {
+                        const detail = nb > 0
+                          ? `${nb} article(s) annulé(s) ou en attente repassent en production, et les besoins seront recalculés.`
+                          : 'Les besoins en ingrédients et le bon de sortie seront recalculés depuis les recettes actuelles.';
+                        if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
+                          relaunchMutation.mutate(p.id as string);
+                        }
+                      },
+                    });
+                  }
+                  if (status === 'draft') {
+                    menu.push({
+                      label: 'Supprimer', icon: Trash2, danger: true,
+                      onSelect: async () => {
+                        if (await confirmDialog('Ce brouillon sera supprimé définitivement.', { title: 'Supprimer ce plan ?', confirmLabel: 'Supprimer', danger: true })) deleteMutation.mutate(p.id as string);
+                      },
+                    });
+                  }
                   return (
                     <tr key={p.id as string} onClick={() => navigate(`/production/${p.id}`)}>
-                      <td><span className={`odoo-status-dot ${dotClass}`} /></td>
                       <td>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{planNumber}</span>
+                        <span className="ds-ref">{planNumber}</span>
                         {p.is_semi_finished_plan && (
                           <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Semi-fini</span>
                         )}
                         {prio < 3 && (
-                          <span className={`odoo-tag ${prio === 1 ? 'odoo-tag-red' : 'odoo-tag-orange'}`} style={{ marginLeft: 6 }}>{PRIORITY_LABELS[prio]}</span>
+                          <span style={{ marginLeft: 6 }}><StatusTag tone={prio === 1 ? 'blocked' : 'todo'} icon={Flag} label={PRIORITY_LABELS[prio]} /></span>
                         )}
                       </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                          <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
-                          <span style={{ fontWeight: 500 }}>{format(planDate, 'dd MMM yyyy', { locale: fr })}</span>
-                        </span>
-                      </td>
+                      <td className="ds-strong" style={{ whiteSpace: 'nowrap' }}>{format(planDate, 'd MMM yyyy', { locale: fr })}</td>
                       <td>
                         <StatusTag tone={planStatusTag(status).tone} icon={planStatusTag(status).icon}
                           label={PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]} />
@@ -286,79 +319,28 @@ function ProductionPlansView() {
                         )}
                       </td>
                       {isAdmin && (
-                        <td>
-                          {p.target_role ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <User size={11} style={{ color: 'var(--theme-accent)' }} />
-                              <span style={{ fontWeight: 500 }}>{(p.target_role_label as string) || ws.label(p.target_role as string)}</span>
-                            </span>
-                          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-                        </td>
+                        <td>{p.target_role ? ((p.target_role_label as string) || ws.label(p.target_role as string)) : '—'}</td>
                       )}
-                      <td style={{ textAlign: 'right' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-                          <Package size={12} style={{ color: 'var(--theme-text-muted)' }} />
-                          {p.item_count as number}
-                        </span>
-                      </td>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
-                          <User size={11} />
-                          {p.created_by_name as string}
-                        </span>
-                      </td>
+                      <td className="ds-num">{p.item_count as number}</td>
+                      <td>{p.created_by_name as string}</td>
                       <td>
                         {hasOrder ? (
-                          <span className="odoo-tag odoo-tag-blue">
-                            <ShoppingBag size={10} /> {p.order_number as string}
-                            {p.order_customer_name && <span style={{ opacity: 0.7 }}> — {p.order_customer_name as string}</span>}
+                          <span>
+                            <span className="ds-ref">{p.order_number as string}</span>
+                            {p.order_customer_name && <span style={{ color: 'var(--ds-muted)' }}> — {p.order_customer_name as string}</span>}
                           </span>
-                        ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                        ) : '—'}
                       </td>
-                      <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                        <div style={{ display: 'inline-flex', gap: 2 }}>
-                          {status === 'draft' && (
-                            <button onClick={async () => { if (await confirmDialog('Ce brouillon sera supprimé définitivement.', { title: 'Supprimer ce plan ?', confirmLabel: 'Supprimer', danger: true })) deleteMutation.mutate(p.id as string); }}
-                              className="odoo-pager-btn" title="Supprimer" style={{ color: '#dc3545' }}>
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                          {/* Relance disponible sur tout plan non brouillon : débloque aussi
-                              un plan confirmé trop tôt (produit sans recette à l'époque) en
-                              recalculant besoins et bon de sortie. */}
-                          {status !== 'draft' && (isChef || isAdmin) && (() => {
-                            const nb = Number(p.relaunchable_count) || 0;
-                            return (
-                              <button
-                                onClick={async () => {
-                                  const detail = nb > 0
-                                    ? `${nb} article(s) annulé(s) ou en attente repassent en production, et les besoins seront recalculés.`
-                                    : 'Les besoins en ingrédients et le bon de sortie seront recalculés depuis les recettes actuelles.';
-                                  if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
-                                    relaunchMutation.mutate(p.id as string);
-                                  }
-                                }}
-                                disabled={relaunchMutation.isPending}
-                                className="odoo-pager-btn"
-                                title={nb > 0
-                                  ? `Relancer : ${nb} article(s) annulé(s) ou en attente`
-                                  : 'Relancer : recalculer besoins et bon de sortie'}
-                                style={{ color: '#1f6391' }}>
-                                <RotateCcw size={13} />
-                              </button>
-                            );
-                          })()}
-                          <button className="odoo-pager-btn" title="Voir">
-                            <Eye size={13} />
-                          </button>
-                        </div>
+                      <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate(`/production/${p.id}`)}>Ouvrir</button>
+                        <RowMenu items={menu} label={`Plus d'actions sur le plan ${planNumber}`} />
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-        </ListPanel>
+        </DataPanel>
       )}
 
       {showForm && (
@@ -382,18 +364,14 @@ function ProductionPlansView() {
                 <span className="odoo-breadcrumb-current">{format(new Date(Date.now() - 86400000), 'dd MMM yyyy', { locale: fr })}</span>
               </div>
               <div style={{ flex: 1 }} />
-              <button onClick={() => setShowResumePicker(false)} className="odoo-pager-btn" title="Fermer">&times;</button>
+              <button type="button" onClick={() => setShowResumePicker(false)} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
             </div>
             <div className="p-4 max-h-80 overflow-y-auto">
               {(() => {
                 const yesterdayPlans = (yesterdayData?.data || []) as Record<string, any>[];
                 if (yesterdayPlans.length === 0) {
                   return (
-                    <div className="text-center py-8 text-gray-400">
-                      <Clock size={32} className="mx-auto mb-2 opacity-50" />
-                      <p className="font-medium">Aucun plan hier</p>
-                      <p className="text-xs mt-1">Aucun plan de production trouvé pour hier</p>
-                    </div>
+                    <EmptyState bare icon={Clock} title="Aucun plan hier" text="Aucun plan de production n'a été trouvé pour hier." />
                   );
                 }
                 return (
@@ -692,60 +670,68 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
             <Factory size={14} style={{ color: 'var(--theme-accent)' }} />
             <span>{sectorLabel('production', 'Production')}</span>
             <span className="odoo-breadcrumb-separator">›</span>
+            <span>{sectorLabel('production_plans', 'Plans de production')}</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">{sectorLabel('new_plan', 'Nouveau plan')}</span>
           </div>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer">&times;</button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
         </div>
 
-        {/* Settings bar */}
-        <div className="px-5 py-3 border-b bg-gray-50 shrink-0">
-          <div className="flex flex-wrap gap-3 items-end">
+        {/* En-tête du plan : mêmes champs, présentation commune (FormField + ds-input). */}
+        <div className="px-5 py-3 border-b shrink-0" style={{ background: 'var(--ds-bg)' }}>
+          <div className="flex flex-wrap gap-3 items-start">
             {(isAdminUser || ws.mine.length > 1) && (
               <div className="w-48">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Atelier responsable *</label>
-                <select value={selectedRole} onChange={(e) => { setSelectedRole(e.target.value); setSelected({}); setActiveCategory(''); }}
-                  className="input text-base py-2.5">
-                  <option value="">-- Choisir un atelier --</option>
-                  {ws.workshops.filter(w => isAdminUser || ws.mine.includes(w.code)).map(w => (
-                    <option key={w.code} value={w.code}>{w.label}</option>
-                  ))}
-                </select>
+                <FormField label="Atelier responsable" htmlFor="plan-atelier" required={isAdminUser}>
+                  <select id="plan-atelier" value={selectedRole} onChange={(e) => { setSelectedRole(e.target.value); setSelected({}); setActiveCategory(''); }}
+                    className="ds-input">
+                    <option value="">Choisir un atelier</option>
+                    {ws.workshops.filter(w => isAdminUser || ws.mine.includes(w.code)).map(w => (
+                      <option key={w.code} value={w.code}>{w.label}</option>
+                    ))}
+                  </select>
+                </FormField>
               </div>
             )}
             <div className="flex-1 min-w-[140px]">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Date de production</label>
-              <input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)}
-                className="input text-base py-2.5" required />
+              <FormField label="Date de production" htmlFor="plan-date" required>
+                <input id="plan-date" type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)}
+                  className="ds-input" required />
+              </FormField>
             </div>
             <div className="w-40">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
-              <select value={type} onChange={(e) => setType(e.target.value as 'daily' | 'weekly')}
-                className="input text-base py-2.5">
-                <option value="daily">Quotidien</option>
-                <option value="weekly">Hebdomadaire</option>
-              </select>
+              <FormField label="Type" htmlFor="plan-type">
+                <select id="plan-type" value={type} onChange={(e) => setType(e.target.value as 'daily' | 'weekly')}
+                  className="ds-input">
+                  <option value="daily">Quotidien</option>
+                  <option value="weekly">Hebdomadaire</option>
+                </select>
+              </FormField>
             </div>
             {orderTypes.types.length > 1 && (
               <div className="w-48">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Type d'ordre</label>
-                <select value={orderTypeId} onChange={(e) => setOrderTypeId(e.target.value)} className="input text-base py-2.5">
-                  {orderTypes.types.map(t => (
-                    <option key={t.id} value={t.is_default ? '' : t.id}>{t.label}{t.requires_bon_sortie ? '' : ' (sans bon de sortie)'}</option>
-                  ))}
-                </select>
+                <FormField label="Type d'ordre" htmlFor="plan-order-type">
+                  <select id="plan-order-type" value={orderTypeId} onChange={(e) => setOrderTypeId(e.target.value)} className="ds-input">
+                    {orderTypes.types.map(t => (
+                      <option key={t.id} value={t.is_default ? '' : t.id}>{t.label}{t.requires_bon_sortie ? '' : ' (sans bon de sortie)'}</option>
+                    ))}
+                  </select>
+                </FormField>
               </div>
             )}
             <div className="w-36">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Priorité</label>
-              <select value={priority} onChange={(e) => setPriority(Number(e.target.value))} className="input text-base py-2.5">
-                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{PRIORITY_LABELS[n]}</option>)}
-              </select>
+              <FormField label="Priorité" htmlFor="plan-priority">
+                <select id="plan-priority" value={priority} onChange={(e) => setPriority(Number(e.target.value))} className="ds-input">
+                  {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{PRIORITY_LABELS[n]}</option>)}
+                </select>
+              </FormField>
             </div>
             <div className="flex-1 min-w-[140px]">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Notes (optionnel)</label>
-              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
-                className="input text-base py-2.5" placeholder="Ex: commande spéciale..." />
+              <FormField label="Notes" htmlFor="plan-notes">
+                <input id="plan-notes" type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+                  className="ds-input" placeholder="Ex. : commande spéciale" />
+              </FormField>
             </div>
           </div>
         </div>
@@ -843,7 +829,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                         <span className="text-xs text-gray-400">{p.category_name as string}</span>
                         {fromOrders > 0 && (
                           <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">
-                            CMD: {fromOrders}
+                            Commandé : {fromOrders}
                           </span>
                         )}
                         {(forecastByProduct[pid]?.qty || 0) > 0 && (
@@ -879,14 +865,14 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                                     {f.contenant_nom}
                                   </div>
                                 </div>
-                                <button type="button" onClick={() => setFormatQty(pid, f.id, Math.max(0, fq - 1))}
+                                <button type="button" onClick={() => setFormatQty(pid, f.id, Math.max(0, fq - 1))} aria-label={`Retirer 1 ${f.contenant_nom}`}
                                   className="w-7 h-7 flex items-center justify-center text-base font-bold text-amber-600 active:bg-amber-50 rounded">
                                   −
                                 </button>
                                 <input type="number" min={0} step="any" inputMode="decimal" value={fq}
                                   onChange={(e) => setFormatQty(pid, f.id, parseFloat(e.target.value) || 0)}
                                   className="w-10 text-center text-sm font-bold border border-amber-200 rounded h-7 focus:outline-none" />
-                                <button type="button" onClick={() => setFormatQty(pid, f.id, fq + 1)}
+                                <button type="button" onClick={() => setFormatQty(pid, f.id, fq + 1)} aria-label={`Ajouter 1 ${f.contenant_nom}`}
                                   className="w-7 h-7 flex items-center justify-center text-base font-bold text-amber-600 active:bg-amber-50 rounded">
                                   +
                                 </button>
@@ -898,7 +884,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                             <button type="button" onClick={() => {
                               setFormatQtys(prev => { const n = { ...prev }; delete n[pid]; return n; });
                               setSelected(prev => { const n = { ...prev }; delete n[pid]; return n; });
-                            }} className="text-red-400 hover:text-red-600">
+                            }} aria-label={`Retirer ${p.name as string} du plan`} style={{ color: 'var(--ds-danger)' }}>
                               <Trash2 size={11} />
                             </button>
                           </div>
@@ -906,17 +892,17 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                       ) : (
                         // Mode legacy : stepper simple
                         <div className="flex items-center justify-between bg-white rounded-lg border border-amber-300 overflow-hidden">
-                          <button type="button" onClick={() => setQty(pid, qty - 1)}
+                          <button type="button" onClick={() => setQty(pid, qty - 1)} aria-label={`Retirer 1 ${p.name as string}`}
                             className={`w-12 h-11 flex items-center justify-center text-xl font-bold transition-colors ${
                               qty <= fromOrders && fromOrders > 0 ? 'text-gray-300 cursor-not-allowed' : 'text-amber-600 active:bg-amber-50'
                             }`}
                             disabled={qty <= fromOrders && fromOrders > 0}>
-                            {qty === 1 && fromOrders === 0 ? <Trash2 size={16} className="text-red-400" /> : '−'}
+                            {qty === 1 && fromOrders === 0 ? <Trash2 size={16} style={{ color: 'var(--ds-danger)' }} aria-hidden="true" /> : '−'}
                           </button>
                           <input type="number" min={fromOrders || 0} step="any" inputMode="decimal" value={qty}
                             onChange={(e) => setQty(pid, parseFloat(e.target.value) || 0)}
                             className="w-14 text-center text-lg font-bold border-x border-amber-300 h-11 focus:outline-none" />
-                          <button type="button" onClick={() => setQty(pid, qty + 1)}
+                          <button type="button" onClick={() => setQty(pid, qty + 1)} aria-label={`Ajouter 1 ${p.name as string}`}
                             className="w-12 h-11 flex items-center justify-center text-xl font-bold text-amber-600 active:bg-amber-50 transition-colors">
                             +
                           </button>
@@ -927,7 +913,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                 })}
               </div>
               {filteredProducts.length === 0 && (
-                <div className="text-center py-8 text-gray-400">Aucun produit trouvé</div>
+                <NoResultState bare text="Aucun produit ne correspond à la recherche." onReset={() => { setSearch(''); setActiveCategory(''); }} />
               )}
             </div>
           </div>
@@ -948,7 +934,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                       <span className="text-xs text-gray-400">(dont {fromOrder} cmd)</span>
                     )}
                     {fromOrder === 0 && (
-                      <button type="button" onClick={() => setQty(pid, 0)}
+                      <button type="button" onClick={() => setQty(pid, 0)} aria-label={`Retirer ${prod ? prod.name as string : 'ce produit'} du plan`}
                         className="ml-1 text-amber-400 hover:text-red-500">&times;</button>
                     )}
                   </span>
@@ -961,13 +947,13 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
               {totalSelected > 0 ? `${totalSelected} produit(s) sélectionné(s)` : 'Aucun produit sélectionné'}
             </span>
             <div className="flex gap-2">
-              <button type="button" onClick={onClose} className="btn-secondary px-5 py-2.5 text-base">Annuler</button>
+              <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={createMutation.isPending}>Annuler</button>
               <button type="button" onClick={handleSubmit} disabled={createMutation.isPending || totalSelected === 0}
-                className="btn-primary px-6 py-2.5 text-base disabled:opacity-50 flex items-center gap-2">
+                aria-busy={createMutation.isPending || undefined} className="odoo-btn-primary">
                 {createMutation.isPending ? (
-                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Création...</>
+                  <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Création…</>
                 ) : (
-                  <><Factory size={16} /> Créer le plan ({totalSelected})</>
+                  <><Factory size={14} aria-hidden="true" /> Créer le plan ({totalSelected})</>
                 )}
               </button>
             </div>

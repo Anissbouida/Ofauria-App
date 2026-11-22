@@ -8,7 +8,8 @@ import { apiErrorMessage, downloadCsv } from '../shared';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { HrModal, Field, SectionTitle, EmptyPanel, LoadingPanel, inputCls, panel, smallBtn } from '../ui';
+import { HrModal, Field, SectionTitle, EmptyPanel, LoadingPanel, HrHeaderActions, inputCls, panel } from '../ui';
+import { Toolbar, DataPanel, TableFooter, ErrorState } from '../../../components/ds';
 
 const d2 = (v: number) => (Math.round(v * 100) / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
 
@@ -18,7 +19,7 @@ const d2 = (v: number) => (Math.round(v * 100) / 100).toLocaleString('fr-FR', { 
  * 31/12. Détail par année et ajustements (admin) par employé.
  */
 export default function LeaveBalancesView({ switcher }: { switcher?: ReactNode } = {}) {
-  const { data: rows = [], isLoading } = useQuery<Record<string, any>[]>({
+  const { data: rows = [], isLoading, isError, refetch } = useQuery<Record<string, any>[]>({
     queryKey: ['leave-balances'],
     queryFn: () => leavesApi.balances(),
   });
@@ -31,44 +32,49 @@ export default function LeaveBalancesView({ switcher }: { switcher?: ReactNode }
 
   return (
     <>
-      <div className="prj-toolbar">
-        {switcher}
-        <span className="hr-spacer" />
-        <button className="odoo-btn-secondary" onClick={exportCsv} disabled={!rows.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Download size={12} /> CSV
+      {/* Export : action secondaire, en haut à droite de la page. */}
+      <HrHeaderActions>
+        <button type="button" className="odoo-btn-secondary" onClick={exportCsv} disabled={!rows.length} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Download size={13} aria-hidden="true" /> Exporter
         </button>
-      </div>
+      </HrHeaderActions>
       <StatusBanner tone="neutral" icon={Info} title="Acquisition des congés payés">
         1,5 jour ouvrable par mois de service, +1,5 jour par 5 ans d'ancienneté (plafond 30 j/an). Un reliquat se cumule sur deux années consécutives.
       </StatusBanner>
+      <Toolbar>
+        <span className="hr-tools-label">Soldes de congés payés {year}, en jours</span>
+        {switcher}
+      </Toolbar>
       {isLoading ? (
         <LoadingPanel />
+      ) : isError ? (
+        <ErrorState onRetry={() => void refetch()} />
       ) : rows.length === 0 ? (
         <EmptyPanel icon={CalendarCheck}>Aucun solde de congés à afficher</EmptyPanel>
       ) : (
-        <div className="prj-panel sal-panel"><div className="prj-scroll">
+        <DataPanel label="Soldes de congés" footer={<TableFooter note={`${rows.length} employé${rows.length > 1 ? 's' : ''} · cliquer sur une ligne pour le détail par année`} />}>
           <table className="odoo-table">
             <thead><tr>
               <th>Employé</th>
-              <th style={{ textAlign: 'right' }}>Acquis {year}</th><th style={{ textAlign: 'right' }}>Reporté</th>
-              <th style={{ textAlign: 'right' }}>Pris {year}</th><th style={{ textAlign: 'right' }}>En attente</th>
-              <th style={{ textAlign: 'right' }}>Disponible</th><th style={{ textAlign: 'right' }}>Expire au 31/12</th>
+              <th className="ds-num">Acquis {year} (j)</th><th className="ds-num">Reporté (j)</th>
+              <th className="ds-num">Pris {year} (j)</th><th className="ds-num">En attente (j)</th>
+              <th className="ds-num">Disponible (j)</th><th className="ds-num">Expire au 31/12 (j)</th>
             </tr></thead>
             <tbody>
               {rows.map(r => (
                 <tr key={r.employeeId} onClick={() => setDetail(r)} style={{ cursor: 'pointer' }}>
-                  <td style={{ fontWeight: 500 }}>{r.name}{!r.hireDate && <span style={{ marginLeft: 6 }}><StatusTag tone="todo" label="Sans date d'embauche" /></span>}</td>
-                  <td style={{ textAlign: 'right' }}>{d2(r.acquiredThisYear)}{r.seniorityBonus > 0 && <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }} title="Majoration d'ancienneté annuelle"> (+{d2(r.seniorityBonus)})</span>}</td>
-                  <td style={{ textAlign: 'right' }}>{d2(r.carriedOver)}</td>
-                  <td style={{ textAlign: 'right' }}>{d2(r.takenThisYear)}</td>
-                  <td style={{ textAlign: 'right', color: r.pending > 0 ? 'var(--prj-orange)' : undefined }}>{d2(r.pending)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: r.available < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }}>{d2(r.available)}</td>
-                  <td style={{ textAlign: 'right', color: r.expiringThisYear > 0 ? 'var(--prj-orange)' : 'var(--odoo-text-light)' }}>{r.expiringThisYear > 0 ? d2(r.expiringThisYear) : '—'}</td>
+                  <td className="ds-strong">{r.name}{!r.hireDate && <span style={{ marginLeft: 6 }}><StatusTag tone="todo" label="Sans date d'embauche" /></span>}</td>
+                  <td className="ds-num">{d2(r.acquiredThisYear)}{r.seniorityBonus > 0 && <span style={{ color: 'var(--ds-muted)', fontSize: 12 }} title="Majoration d'ancienneté annuelle"> (+{d2(r.seniorityBonus)})</span>}</td>
+                  <td className="ds-num">{d2(r.carriedOver)}</td>
+                  <td className="ds-num">{d2(r.takenThisYear)}</td>
+                  <td className="ds-num" style={{ color: r.pending > 0 ? 'var(--ds-warning)' : undefined }}>{d2(r.pending)}</td>
+                  <td className="ds-num ds-strong" style={{ color: r.available < 0 ? 'var(--ds-danger)' : undefined }}>{d2(r.available)}</td>
+                  <td className="ds-num" style={{ color: r.expiringThisYear > 0 ? 'var(--ds-warning)' : 'var(--ds-muted)' }}>{r.expiringThisYear > 0 ? d2(r.expiringThisYear) : '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div></div>
+        </DataPanel>
       )}
       {detail && <BalanceDetail employee={detail} onClose={() => setDetail(null)} />}
     </>
@@ -109,51 +115,51 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
     <HrModal icon={CalendarCheck} crumb="Solde de congés" title={employee.name} width={760} onClose={onClose}
       tag={<StatusTag tone={balance && balance.available < 0 ? 'blocked' : 'done'} label={`Disponible ${balance ? d2(balance.available) : '…'} j`} />}
       footer={<button type="button" onClick={onClose} className="odoo-btn-secondary">Fermer</button>}>
-        <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>
+        <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>
           Embauché le {employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('fr-FR') : '—'} · disponible {balance ? d2(balance.available) : '…'} j
         </p>
         <SectionTitle icon={History}>Détail par année</SectionTitle>
         <table className="odoo-table">
           <thead><tr>
-            <th>Année</th><th style={{ textAlign: 'center' }}>Mois</th><th style={{ textAlign: 'right' }}>Droit annuel</th>
-            <th style={{ textAlign: 'right' }}>Acquis</th><th style={{ textAlign: 'right' }}>Ajust.</th><th style={{ textAlign: 'right' }}>Pris</th>
-            <th style={{ textAlign: 'right' }}>Expiré</th><th style={{ textAlign: 'right' }}>Solde fin</th>
+            <th>Année</th><th className="ds-num">Mois</th><th className="ds-num">Droit annuel (j)</th>
+            <th className="ds-num">Acquis (j)</th><th className="ds-num">Ajustements (j)</th><th className="ds-num">Pris (j)</th>
+            <th className="ds-num">Expiré (j)</th><th className="ds-num">Solde de fin (j)</th>
           </tr></thead>
           <tbody>
             {[...(balance?.years ?? [])].reverse().map((y: Record<string, any>) => (
               <tr key={y.year}>
-                <td>{y.year}</td><td style={{ textAlign: 'center' }}>{y.months}</td><td style={{ textAlign: 'right' }}>{d2(y.annualEntitlement)}</td>
-                <td style={{ textAlign: 'right' }}>{d2(y.acquired)}</td><td style={{ textAlign: 'right' }}>{y.adjustments ? d2(y.adjustments) : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{d2(y.taken)}</td>
-                <td style={{ textAlign: 'right', color: y.expired > 0 ? 'var(--prj-orange)' : undefined }}>{y.expired > 0 ? d2(y.expired) : '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{d2(y.balance)}</td>
+                <td className="ds-strong">{y.year}</td><td className="ds-num">{y.months}</td><td className="ds-num">{d2(y.annualEntitlement)}</td>
+                <td className="ds-num">{d2(y.acquired)}</td><td className="ds-num">{y.adjustments ? d2(y.adjustments) : '—'}</td>
+                <td className="ds-num">{d2(y.taken)}</td>
+                <td className="ds-num" style={{ color: y.expired > 0 ? 'var(--ds-warning)' : undefined }}>{y.expired > 0 ? d2(y.expired) : '—'}</td>
+                <td className="ds-num ds-strong">{d2(y.balance)}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
         <SectionTitle icon={SlidersHorizontal} actions={isAdmin && !adj ? (
-          <button className="odoo-btn-secondary" style={smallBtn}
-            onClick={() => setAdj({ year: String(new Date().getFullYear()), days: '', reason: '' })}><Plus size={11} /> Ajouter</button>
+          <button type="button" className="odoo-btn-secondary ds-btn-sm"
+            onClick={() => setAdj({ year: String(new Date().getFullYear()), days: '', reason: '' })}><Plus size={13} aria-hidden="true" /> Ajouter</button>
         ) : undefined}>Ajustements</SectionTitle>
         {adj && (
           <div style={{ ...panel, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <Field label="Année"><input className={inputCls} type="number" style={{ width: 90 }} value={adj.year} onChange={e => setAdj({ ...adj, year: e.target.value })} /></Field>
-            <Field label="Jours (±)"><input className={inputCls} type="number" step="0.5" style={{ width: 90 }} value={adj.days} onChange={e => setAdj({ ...adj, days: e.target.value })} /></Field>
-            <Field label="Motif" style={{ flex: 1, minWidth: 200 }}><input className={inputCls} value={adj.reason} placeholder="Reprise du solde au 01/01, régularisation…" onChange={e => setAdj({ ...adj, reason: e.target.value })} /></Field>
-            <button className="odoo-btn-secondary" onClick={() => setAdj(null)}>Annuler</button>
-            <button className="odoo-btn-primary" disabled={create.isPending || !parseFloat(adj.days) || adj.reason.length < 3} onClick={() => create.mutate()}>OK</button>
+            <Field label="Année" required><input className={inputCls} type="number" style={{ width: 90 }} value={adj.year} onChange={e => setAdj({ ...adj, year: e.target.value })} /></Field>
+            <Field label="Jours (±)" required><input className={inputCls} type="number" step="0.5" style={{ width: 90 }} value={adj.days} onChange={e => setAdj({ ...adj, days: e.target.value })} /></Field>
+            <Field label="Motif" required style={{ flex: 1, minWidth: 200 }}><input className={inputCls} value={adj.reason} placeholder="Reprise du solde au 01/01, régularisation…" onChange={e => setAdj({ ...adj, reason: e.target.value })} /></Field>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setAdj(null)}>Annuler</button>
+            <button type="button" className="odoo-btn-primary" disabled={create.isPending || !parseFloat(adj.days) || adj.reason.length < 3} onClick={() => create.mutate()}>Enregistrer</button>
           </div>
         )}
-        {adjustments.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>Aucun ajustement.</p> : (
+        {adjustments.length === 0 ? <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>Aucun ajustement.</p> : (
           <table className="odoo-table">
-            <thead><tr><th>Année</th><th style={{ textAlign: 'right' }}>Jours</th><th>Motif</th><th>Par</th>{isAdmin && <th style={{ width: 32 }}></th>}</tr></thead>
+            <thead><tr><th>Année</th><th className="ds-num">Jours</th><th>Motif</th><th>Par</th>{isAdmin && <th className="ds-actions"><span className="sr-only">Actions</span></th>}</tr></thead>
             <tbody>
               {adjustments.map(a => (
                 <tr key={a.id}>
-                  <td>{a.year}</td><td style={{ textAlign: 'right' }}>{parseFloat(a.days) > 0 ? '+' : ''}{d2(parseFloat(a.days))}</td>
-                  <td>{a.reason}</td><td style={{ color: 'var(--odoo-text-muted)' }}>{a.created_by_first_name ?? '—'}</td>
-                  {isAdmin && <td><button className="odoo-pager-btn" style={{ color: 'var(--prj-red)' }} onClick={async () => { if (!(await confirm('Supprimer cet ajustement ?', { title: 'Supprimer l\'ajustement', confirmLabel: 'Supprimer', danger: true }))) return; remove.mutate(a.id); }}><Trash2 size={12} /></button></td>}
+                  <td>{a.year}</td><td className="ds-num">{parseFloat(a.days) > 0 ? '+' : ''}{d2(parseFloat(a.days))}</td>
+                  <td>{a.reason}</td><td>{a.created_by_first_name ?? '—'}</td>
+                  {isAdmin && <td className="ds-actions"><button type="button" className="ds-icon-btn" aria-label="Supprimer l'ajustement" title="Supprimer" onClick={async () => { if (!(await confirm('Supprimer cet ajustement ?', { title: 'Supprimer l\'ajustement', confirmLabel: 'Supprimer', danger: true }))) return; remove.mutate(a.id); }}><Trash2 size={14} /></button></td>}
                 </tr>
               ))}
             </tbody>

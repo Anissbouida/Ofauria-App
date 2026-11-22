@@ -196,7 +196,7 @@ export default function CaisseImportModal({ onClose }: { onClose: () => void }) 
                   Aperçu (50 premières opérations)
                 </summary>
                 <div className="overflow-x-auto">
-                  <table className="odoo-table">
+                  <table className="odoo-table ds-dense">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="p-1.5 text-left">Date</th>

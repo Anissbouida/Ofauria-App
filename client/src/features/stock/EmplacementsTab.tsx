@@ -7,8 +7,11 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
-import { ListPanel, ListEmpty } from '../sales/ListTemplate';
+import '../sales/ListTemplate';
 import './stock.css';
+import { DataPanel, EmptyState, FormField, LoadingState, TableFooter } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { HeaderActions } from './StockUi';
 
 const TYPE_LABELS: Record<string, string> = {
   sec: 'Sec', positif: 'Froid positif', negatif: 'Froid négatif',
@@ -67,25 +70,23 @@ export default function EmplacementsTab() {
 
   return (
     <div className="stk-stack">
-      <div className="prj-toolbar">
-        <span className="stk-summary" style={{ marginLeft: 0 }}>{locations.length} emplacement{locations.length > 1 ? 's' : ''} déclaré{locations.length > 1 ? 's' : ''}</span>
-        <span className="stk-grow" />
-        <button onClick={openNew} className="odoo-btn-primary"><Plus size={14} /> Nouvel emplacement</button>
-      </div>
+      <HeaderActions>
+        <button type="button" onClick={openNew} className="odoo-btn-primary"><Plus size={14} aria-hidden="true" /> Nouvel emplacement</button>
+      </HeaderActions>
 
       {isLoading ? (
-        <ListEmpty icon={Loader2} title="Chargement…" />
+        <LoadingState label="Chargement des emplacements…" />
       ) : locations.length === 0 ? (
-        <ListEmpty icon={MapPin} title="Aucun emplacement." text="Déclarez vos chambres, zones et bacs."
-          action={<button onClick={openNew} className="odoo-btn-primary"><Plus size={13} /> Nouvel emplacement</button>} />
+        <EmptyState icon={MapPin} title="Aucun emplacement" text="Déclarez vos chambres, zones et bacs pour y ranger les lots."
+          action={<button type="button" onClick={openNew} className="odoo-btn-primary"><Plus size={13} aria-hidden="true" /> Nouvel emplacement</button>} />
       ) : (
-        <ListPanel>
+        <DataPanel label="Emplacements" footer={<TableFooter note={`${locations.length} emplacement${locations.length > 1 ? 's' : ''} déclaré${locations.length > 1 ? 's' : ''}`} />}>
         <table className="odoo-table">
           <thead>
             <tr>
               <th>Code</th><th>Nom</th><th>Type</th><th>Sonde / enceinte</th>
-              <th>Plage T°</th><th>Capacité</th><th>Emplacement parent</th>
-              <th style={{ textAlign: 'right' }}>Lots</th><th />
+              <th>Plage de température (°C)</th><th className="ds-num">Capacité</th><th>Emplacement parent</th>
+              <th className="ds-num">Lots</th><th className="ds-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -94,28 +95,28 @@ export default function EmplacementsTab() {
               const inherited = l.temp_min == null && l.equipement_id != null;
               return (
                 <tr key={l.id}>
-                  <td><span className="sal-num">{l.code}</span></td>
-                  <td>{l.name}</td>
+                  <td><span className="ds-ref">{l.code}</span></td>
+                  <td className="ds-strong">{l.name}</td>
                   <td><span className={TYPE_BADGE[l.type] || 'odoo-tag'}>{TYPE_LABELS[l.type] || l.type}</span></td>
                   <td className="text-gray-600">{l.equipement_nom ? <span className="inline-flex items-center gap-1"><Snowflake size={11} className="text-sky-500" />{l.equipement_nom}</span> : '—'}</td>
                   <td className="tabular-nums">
                     {tMin != null || tMax != null ? (
-                      <span className="inline-flex items-center gap-1"><Thermometer size={11} className="text-orange-500" />{tMin ?? '?'} / {tMax ?? '?'} °C{inherited && <span className="text-[10px] text-gray-400">hérité</span>}</span>
+                      <span className="inline-flex items-center gap-1"><Thermometer size={11} className="text-orange-500" />{tMin ?? '?'} / {tMax ?? '?'}{inherited && <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>hérité</span>}</span>
                     ) : '—'}
                   </td>
-                  <td className="tabular-nums">{l.capacite_valeur != null ? `${parseFloat(String(l.capacite_valeur))} ${l.capacite_unite ?? ''}` : '—'}</td>
+                  <td className="ds-num">{l.capacite_valeur != null ? `${parseFloat(String(l.capacite_valeur))} ${l.capacite_unite ?? ''}` : '—'}</td>
                   <td className="text-gray-500">{l.parent_code ? `${l.parent_code} — ${l.parent_name}` : '—'}</td>
-                  <td style={{ textAlign: 'right' }} className="tabular-nums">{l.lot_count > 0 ? <span className="inline-flex items-center gap-1"><Package size={11} className="text-gray-400" />{l.lot_count}</span> : '—'}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button onClick={() => openEdit(l)} className="odoo-btn-secondary" style={{ padding: '2px 8px' }}><Pencil size={12} /></button>
-                    <button onClick={() => askDeactivate(l)} className="odoo-btn-secondary" style={{ padding: '2px 8px', marginLeft: 4 }} title="Désactiver"><Trash2 size={12} /></button>
+                  <td className="tabular-nums ds-num">{l.lot_count > 0 ? <span className="inline-flex items-center gap-1"><Package size={11} className="text-gray-400" />{l.lot_count}</span> : '—'}</td>
+                  <td className="ds-actions">
+                    <button type="button" onClick={() => openEdit(l)} className="odoo-btn-secondary ds-btn-sm"><Pencil size={12} aria-hidden="true" /> Modifier</button>
+                    <RowMenu items={[{ label: 'Désactiver', icon: Trash2, danger: true, onSelect: () => askDeactivate(l) }]} />
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        </ListPanel>
+        </DataPanel>
       )}
 
       {showForm && (
@@ -148,50 +149,52 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
   } : { ...emptyForm });
   const set = (patch: Partial<StockLocationInput>) => setF(s => ({ ...s, ...patch }));
   const submit = () => {
-    if (!f.code.trim() || !f.name.trim()) { notify.error('Code et nom requis.'); return; }
+    if (!f.code.trim() || !f.name.trim()) { setTried(true); notify.error('Code et nom requis.'); return; }
     onSave({ ...f, code: f.code.trim(), name: f.name.trim() });
   };
-  const inp = 'w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm';
+  // Erreurs affichées sous les champs après une première tentative d'enregistrement.
+  const [tried, setTried] = useState(false);
+  const inp = 'ds-input';
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onCancel}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2"><MapPin size={16} className="text-blue-600" /> {initial ? 'Modifier' : 'Nouvel'} emplacement</h3>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+          <h3 className="font-bold text-gray-900 flex items-center gap-2"><MapPin size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} /> {initial ? 'Modifier l\'emplacement' : 'Nouvel emplacement'}</h3>
+          <button type="button" onClick={onCancel} className="ds-icon-btn" aria-label="Fermer"><X size={18} /></button>
         </div>
         <div className="px-5 py-4 grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">Code</span>
-            <input value={f.code} onChange={e => set({ code: e.target.value })} className={inp} placeholder="CF-02" /></label>
-          <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">Nom</span>
-            <input value={f.name} onChange={e => set({ name: e.target.value })} className={inp} placeholder="Chambre négative" /></label>
-          <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">Type</span>
-            <select value={f.type} onChange={e => set({ type: e.target.value })} className={inp}>
+          <FormField label="Code" htmlFor="loc-code" required error={tried && !f.code.trim() ? 'Saisissez le code de l\'emplacement.' : undefined}>
+            <input id="loc-code" value={f.code} onChange={e => set({ code: e.target.value })} className={inp} placeholder="CF-02" aria-invalid={tried && !f.code.trim() || undefined} /></FormField>
+          <FormField label="Nom" htmlFor="loc-name" required error={tried && !f.name.trim() ? 'Saisissez le nom de l\'emplacement.' : undefined}>
+            <input id="loc-name" value={f.name} onChange={e => set({ name: e.target.value })} className={inp} placeholder="Chambre négative" aria-invalid={tried && !f.name.trim() || undefined} /></FormField>
+          <FormField label="Type" htmlFor="loc-type">
+            <select id="loc-type" value={f.type} onChange={e => set({ type: e.target.value })} className={inp}>
               {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select></label>
-          <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">Enceinte (sonde HACCP)</span>
+            </select></FormField>
+          <FormField label="Enceinte (sonde HACCP)">
             <SearchSelect value={f.equipementId != null ? String(f.equipementId) : ''} onChange={id => set({ equipementId: id || null })}
               placeholder="— aucune —" width="100%" size="md" ariaLabel="Enceinte (sonde HACCP)"
-              options={equipements.map(eq => ({ id: String(eq.id), label: eq.nom as string }))} /></label>
-          <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">Emplacement parent</span>
+              options={equipements.map(eq => ({ id: String(eq.id), label: eq.nom as string }))} /></FormField>
+          <FormField label="Emplacement parent">
             <SearchSelect value={f.parentId != null ? String(f.parentId) : ''} onChange={id => set({ parentId: id || null })}
               placeholder="— aucun —" width="100%" size="md" ariaLabel="Emplacement parent"
-              options={locations.filter(l => l.id !== initial?.id).map(l => ({ id: String(l.id), label: `${l.code} — ${l.name}` }))} /></label>
+              options={locations.filter(l => l.id !== initial?.id).map(l => ({ id: String(l.id), label: `${l.code} — ${l.name}` }))} /></FormField>
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">T° min</span>
-              <input value={f.tempMin ?? ''} onChange={e => set({ tempMin: e.target.value === '' ? null : parseFloat(e.target.value) })} inputMode="decimal" className={inp} placeholder="hérité" /></label>
-            <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">T° max</span>
-              <input value={f.tempMax ?? ''} onChange={e => set({ tempMax: e.target.value === '' ? null : parseFloat(e.target.value) })} inputMode="decimal" className={inp} placeholder="hérité" /></label>
+            <FormField label="Température min (°C)" htmlFor="loc-tmin">
+              <input id="loc-tmin" value={f.tempMin ?? ''} onChange={e => set({ tempMin: e.target.value === '' ? null : parseFloat(e.target.value) })} inputMode="decimal" className={inp} placeholder="hérité" /></FormField>
+            <FormField label="Température max (°C)" htmlFor="loc-tmax">
+              <input id="loc-tmax" value={f.tempMax ?? ''} onChange={e => set({ tempMax: e.target.value === '' ? null : parseFloat(e.target.value) })} inputMode="decimal" className={inp} placeholder="hérité" /></FormField>
           </div>
-          <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">Capacité</span>
-            <input value={f.capaciteValeur ?? ''} onChange={e => set({ capaciteValeur: e.target.value === '' ? null : parseFloat(e.target.value) })} inputMode="decimal" className={inp} placeholder="valeur" /></label>
-          <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">Unité capacité</span>
-            <select value={f.capaciteUnite ?? ''} onChange={e => set({ capaciteUnite: e.target.value || null })} className={inp}>
+          <FormField label="Capacité" htmlFor="loc-cap">
+            <input id="loc-cap" value={f.capaciteValeur ?? ''} onChange={e => set({ capaciteValeur: e.target.value === '' ? null : parseFloat(e.target.value) })} inputMode="decimal" className={inp} placeholder="valeur" /></FormField>
+          <FormField label="Unité de capacité" htmlFor="loc-capu">
+            <select id="loc-capu" value={f.capaciteUnite ?? ''} onChange={e => set({ capaciteUnite: e.target.value || null })} className={inp}>
               <option value="">—</option><option value="bac">bac</option><option value="plaque">plaque</option><option value="kg">kg</option>
-            </select></label>
+            </select></FormField>
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100">
-          <button onClick={onCancel} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={submit} disabled={saving} className="odoo-btn-primary">{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
+          <button type="button" onClick={onCancel} className="odoo-btn-secondary" disabled={saving}>Annuler</button>
+          <button type="button" onClick={submit} disabled={saving} aria-busy={saving || undefined} className="odoo-btn-primary">{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
         </div>
       </div>
     </div>

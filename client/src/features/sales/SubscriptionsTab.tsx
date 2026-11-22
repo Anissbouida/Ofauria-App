@@ -12,11 +12,16 @@ import { apiErrorMessage } from '../../api/errors';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { createPortal } from 'react-dom';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import { currencySymbol } from '../../utils/money';
+import { KpiGrid, KpiCard, DataPanel, TableFooter, EmptyState, LoadingState } from '../../components/ds';
 
 const day = (d: string | null) => d ? format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr }) : '—';
 const FREQ: Record<SubFrequency, string> = { monthly: 'Mensuel', quarterly: 'Trimestriel', yearly: 'Annuel' };
 
-export default function SubscriptionsTab() {
+/** `actionsSlot` : emplacement de la barre du haut où poser les actions de la page. */
+export default function SubscriptionsTab({ actionsSlot }: { actionsSlot?: HTMLElement | null } = {}) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { data: rows = [], isLoading } = useQuery({ queryKey: ['subscriptions'], queryFn: subscriptionsApi.list });
@@ -41,39 +46,47 @@ export default function SubscriptionsTab() {
     }
   };
 
+  const headActions = (
+    <>
+      <button type="button" className="odoo-btn-secondary" disabled={generate.isPending} onClick={onGenerate}>
+        {generate.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Générer les factures dues
+      </button>
+      <button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouvel abonnement</button>
+    </>
+  );
+  const menu = (r: Subscription): RowMenuItem[] => [
+    ...(r.status === 'active' ? [{ label: 'Mettre en pause', icon: Pause, onSelect: () => status.mutate({ id: r.id, s: 'paused' as const }) }] : []),
+    ...(r.status === 'paused' ? [{ label: 'Reprendre', icon: RotateCcw, onSelect: () => status.mutate({ id: r.id, s: 'active' as const }) }] : []),
+  ];
+
   return (
-    <div className="prj" style={{ padding: '16px 20px' }}>
-      <div className="prj-toolbar">
-        <p className="prj-note" style={{ flex: 1, minWidth: 260 }}>Chaque abonnement génère une facture client à échéance régulière ; « Générer les factures dues » rattrape les échéances passées.</p>
-        <button type="button" className="odoo-btn-secondary" disabled={generate.isPending} onClick={onGenerate}>
-          {generate.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Générer les factures dues
-        </button>
-        <button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouvel abonnement</button>
-      </div>
+    <div className="prj">
+      {actionsSlot
+        ? createPortal(headActions, actionsSlot)
+        : <div className="prj-toolbar"><span style={{ flex: 1 }} />{headActions}</div>}
 
-      <section className="prj-kpis" aria-label="Indicateurs">
-        <div className="prj-kpi"><div className="prj-kpi-head"><span>Abonnements actifs</span></div><div className="prj-kpi-value">{active.length}</div></div>
-        <div className="prj-kpi"><div className="prj-kpi-head"><span>Total déjà facturé</span></div><div className="prj-kpi-value">{money(rows.reduce((s, r) => s + Number(r.invoiced_total || 0), 0))}</div></div>
-      </section>
+      <KpiGrid>
+        <KpiCard label="Abonnements actifs" value={String(active.length)} sub={`${rows.length} au total`} />
+        <KpiCard label="Total déjà facturé" value={money(rows.reduce((s, r) => s + Number(r.invoiced_total || 0), 0))} sub="factures générées par les abonnements" />
+      </KpiGrid>
 
-      <div style={{ overflowX: 'auto' }}>
+      {isLoading ? <LoadingState label="Chargement des abonnements…" /> : rows.length === 0 ? (
+        <EmptyState icon={Repeat} title="Aucun abonnement" text="Un abonnement génère une facture client à échéance régulière." />
+      ) : (
+      <DataPanel label="Abonnements" footer={<TableFooter note={`${rows.length} abonnement${rows.length > 1 ? 's' : ''} · ${active.length} actif${active.length > 1 ? 's' : ''}`} />}>
         <table className="odoo-table">
           <thead>
             <tr>
-              <th>Client</th><th>Libellé</th><th>Montant</th><th>Fréquence</th>
-              <th>Prochaine facture</th><th>État</th><th />
+              <th>Client</th><th>Libellé</th><th className="ds-num">Montant ({currencySymbol()})</th><th>Fréquence</th>
+              <th>Prochaine facture</th><th>État</th><th className="ds-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun abonnement.</td></tr>
-            )}
             {rows.map(r => (
               <tr key={r.id}>
-                <td style={{ fontWeight: 500 }}>{r.customer_name}</td>
+                <td className="ds-strong">{r.customer_name}</td>
                 <td>{r.label}</td>
-                <td style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{money(Number(r.amount))}{Number(r.tva_rate) > 0 && <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.78rem' }}> +{Number(r.tva_rate)}% TVA</span>}</td>
+                <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{Number(r.amount).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{Number(r.tva_rate) > 0 && <span style={{ color: 'var(--ds-muted)', fontSize: '0.78rem' }}> + {Number(r.tva_rate)} % TVA</span>}</td>
                 <td>{FREQ[r.frequency]}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{r.status === 'active' ? day(r.next_invoice_date) : '—'}</td>
                 <td>
@@ -81,16 +94,16 @@ export default function SubscriptionsTab() {
                     : r.status === 'paused' ? <StatusTag tone="cancelled" icon={Pause} label="En pause" />
                     : <StatusTag tone="cancelled" icon={Archive} label="Terminé" />}
                 </td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <button type="button" className="odoo-btn-secondary" style={btnSm} onClick={() => setDetailId(r.id)} title="Factures générées"><Eye size={12} /></button>
-                  {r.status === 'active' && <button type="button" className="odoo-btn-secondary" style={btnSm} onClick={() => status.mutate({ id: r.id, s: 'paused' })} title="Mettre en pause"><Pause size={12} /></button>}
-                  {r.status === 'paused' && <button type="button" className="odoo-btn-secondary" style={btnSm} onClick={() => status.mutate({ id: r.id, s: 'active' })} title="Reprendre"><RotateCcw size={12} /></button>}
+                <td className="ds-actions">
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDetailId(r.id)}><Eye size={13} /> Factures</button>
+                  <RowMenu items={menu(r)} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
+      )}
 
       {showForm && <SubForm onClose={() => setShowForm(false)} onSaved={() => { qc.invalidateQueries({ queryKey: ['subscriptions'] }); setShowForm(false); }} />}
       {detailId && <SubDetail id={detailId} onClose={() => setDetailId(null)} />}
@@ -128,7 +141,7 @@ function SubForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(520px, 96vw)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Repeat size={16} /> Nouvel abonnement</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Client">
@@ -169,7 +182,7 @@ function SubDetail({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(560px, 96vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Repeat size={16} /> {data?.label ?? 'Abonnement'}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ overflowY: 'auto', padding: '8px 16px 16px' }}>
           {isLoading ? <div style={{ textAlign: 'center', padding: 32 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /></div> : (
@@ -203,7 +216,6 @@ function SubDetail({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
-const btnSm: React.CSSProperties = { padding: '0.2rem 0.5rem', fontSize: '0.75rem', marginLeft: 6 };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1 }}><span style={{ color: 'var(--theme-text-muted)' }}>{label}</span>{children}</label>;

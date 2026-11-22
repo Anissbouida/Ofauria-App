@@ -4,6 +4,7 @@ import { Save, BarChart3, Settings as SettingsIcon } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { sachetConfigApi, type SachetConfig } from '../../api/sachet-config.api';
 import { SettingsSection, SettingItem, OdooToggle, PageNote } from './SettingsPrimitives';
+import { LoadingState } from '../../components/ds';
 
 const REASON_LABELS: Record<string, string> = {
   client_demande: 'Client a demandé',
@@ -97,7 +98,7 @@ function ConfigPanel() {
   });
 
   if (isLoading || !config || !draft) {
-    return <p className="text-sm text-gray-500">Chargement...</p>;
+    return <LoadingState bare />;
   }
 
   const hasChanges = !isUnchanged(draft, config);
@@ -285,7 +286,7 @@ function StatsPanel() {
       </div>
 
       {isLoading || !report ? (
-        <p className="text-sm text-gray-500">Chargement...</p>
+        <LoadingState bare />
       ) : (
         <>
           <SettingsSection title="Vue d'ensemble" columns={1}>
@@ -308,11 +309,11 @@ function StatsPanel() {
                   <tr>
                     <th>Vendeuse</th>
                     <th>Magasin</th>
-                    <th style={{ textAlign: 'right' }}>Ventes</th>
-                    <th style={{ textAlign: 'right' }}>Remis</th>
-                    <th style={{ textAlign: 'right' }}>Suggérés</th>
-                    <th style={{ textAlign: 'right' }}>Sur-distrib.</th>
-                    <th style={{ textAlign: 'right' }}>Ratio</th>
+                    <th className="ds-num">Ventes</th>
+                    <th className="ds-num">Remis</th>
+                    <th className="ds-num">Suggérés</th>
+                    <th className="ds-num">Sur-distrib.</th>
+                    <th className="ds-num">Ratio</th>
                     <th>Motif principal</th>
                   </tr>
                 </thead>
@@ -374,7 +375,7 @@ function StatsPanel() {
 }
 
 function KPI({ label, value, tone }: { label: string; value: number; tone?: 'ok' | 'warning' }) {
-  const color = tone === 'warning' ? 'var(--prj-orange)' : tone === 'ok' ? 'var(--prj-green)' : undefined;
+  const color = tone === 'warning' ? 'var(--ds-warning)' : tone === 'ok' ? 'var(--ds-success)' : undefined;
   return (
     <div className="prj-kpi">
       <div className="prj-kpi-head"><span>{label}</span></div>

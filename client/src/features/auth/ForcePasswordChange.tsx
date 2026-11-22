@@ -45,46 +45,46 @@ export default function ForcePasswordChange() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+    <div className="kl-ds min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
       <form onSubmit={submit} className="rounded-2xl shadow-xl w-full max-w-md p-8 space-y-4" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--theme-accent)' }}>
-            <KeyRound size={20} /> Changez votre mot de passe
+            <KeyRound size={20} aria-hidden="true" /> Changez votre mot de passe
           </h1>
-          <p className="mt-2 text-sm" style={{ color: 'var(--theme-text-muted)' }}>
+          <p className="mt-2 text-sm" style={{ color: 'var(--ds-muted)' }}>
             {user?.firstName ? `${user.firstName}, votre` : 'Votre'} mot de passe actuel ne respecte plus les règles de sécurité.
             Choisissez-en un nouveau pour continuer.
           </p>
         </div>
 
         <div>
-          <label htmlFor="fpc-current" className="block text-sm font-medium text-gray-700 mb-1">Mot de passe actuel</label>
+          <label htmlFor="fpc-current" className="block text-sm font-medium mb-1" style={{ color: 'var(--ds-ink)' }}>Mot de passe actuel</label>
           <input id="fpc-current" type="password" className="input" autoComplete="current-password" value={current} onChange={e => setCurrent(e.target.value)} required />
         </div>
         <div>
-          <label htmlFor="fpc-next" className="block text-sm font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
+          <label htmlFor="fpc-next" className="block text-sm font-medium mb-1" style={{ color: 'var(--ds-ink)' }}>Nouveau mot de passe</label>
           <input id="fpc-next" type="password" className="input" autoComplete="new-password" value={next} onChange={e => setNext(e.target.value)} required />
           <ul className="mt-2 text-xs space-y-0.5">
             {RULES.map(([label, test]) => {
               const ok = test(next);
-              return <li key={label} style={{ color: ok ? 'var(--color-success, #15803d)' : 'var(--theme-text-muted)' }}>{ok ? '✓' : '○'} {label}</li>;
+              return <li key={label} style={{ color: ok ? 'var(--ds-success)' : 'var(--ds-muted)' }}>{ok ? '✓' : '○'} {label}</li>;
             })}
           </ul>
         </div>
         <div>
-          <label htmlFor="fpc-confirm" className="block text-sm font-medium text-gray-700 mb-1">Confirmez le nouveau mot de passe</label>
+          <label htmlFor="fpc-confirm" className="block text-sm font-medium mb-1" style={{ color: 'var(--ds-ink)' }}>Confirmez le nouveau mot de passe</label>
           <input id="fpc-confirm" type="password" className="input" autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} required />
-          {confirm && confirm !== next && <p className="mt-1 text-xs text-red-600">Les deux saisies sont différentes.</p>}
-          {next && next === current && <p className="mt-1 text-xs text-red-600">Le nouveau mot de passe doit être différent de l'actuel.</p>}
+          {confirm && confirm !== next && <p role="alert" className="mt-1 text-xs font-semibold" style={{ color: 'var(--ds-danger)' }}>Les deux saisies sont différentes.</p>}
+          {next && next === current && <p role="alert" className="mt-1 text-xs font-semibold" style={{ color: 'var(--ds-danger)' }}>Le nouveau mot de passe doit être différent de l'actuel.</p>}
         </div>
 
-        {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+        {error && <p className="text-sm font-semibold" style={{ color: 'var(--ds-danger)' }} role="alert">{error}</p>}
 
-        <button type="submit" disabled={!canSave} className="btn-primary w-full py-3">
+        <button type="submit" disabled={!canSave} aria-busy={saving || undefined} className="btn-primary w-full py-3">
           {saving ? 'Enregistrement…' : 'Changer le mot de passe'}
         </button>
-        <button type="button" onClick={logout} className="w-full text-sm text-gray-500 hover:text-gray-700 flex items-center justify-center gap-2">
-          <LogOut size={14} /> Se déconnecter
+        <button type="button" onClick={logout} className="w-full text-sm flex items-center justify-center gap-2" style={{ color: 'var(--ds-body)' }}>
+          <LogOut size={14} aria-hidden="true" /> Se déconnecter
         </button>
       </form>
     </div>

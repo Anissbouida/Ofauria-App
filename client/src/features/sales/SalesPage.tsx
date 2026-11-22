@@ -18,15 +18,15 @@ import { getApiErrorMessage } from '../../utils/api-error';
 import {
   Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag,
   User, CreditCard, FileText, Download, Eye, RotateCcw, ArrowLeftRight, Package,
-  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, Banknote, TrendingUp, Hash, Clock, ClipboardList,
-  Upload, ArrowUpDown, ArrowUp, ArrowDown, Briefcase,
-} from 'lucide-react';
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Banknote, Clock, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import DateRangePicker from '../../components/DateRangePicker';
 import ReceiptModal from '../pos/ReceiptModal';
 import EmittedInvoicesTab from './EmittedInvoicesTab';
 import SubscriptionsTab from './SubscriptionsTab';
 import RoutesTab from './RoutesTab';
 import { ListKpi } from './ListTemplate';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { KpiGrid, KpiCard, Toolbar, SearchBar, Segmented, DataPanel, LoadingState, EmptyState } from '../../components/ds';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ReceivablesTab from './ReceivablesTab';
 import OfflineAbandonedSection from './OfflineAbandonedSection';
@@ -130,7 +130,20 @@ export const SALES_MAIN_TABS: { key: typeof MAIN_TAB_KEYS[number]; label: string
   { key: 'routes', label: 'Tournées' },
 ];
 
+/** Description d'une ligne sous le titre de chaque écran (gabarit de page du Design System). */
+const TAB_LEADS: Record<string, string> = {
+  sales: 'Tickets de caisse de la période, par ticket, par jour, par article ou par vendeur.',
+  unpaid: 'Ce que les clients doivent : tickets sur compte et factures ouvertes, par ancienneté.',
+  returns: 'Retours et échanges enregistrés en caisse sur la période.',
+  sessions: 'Ouvertures et fermetures de caisse, avec les écarts constatés.',
+  invoices: 'Factures émises aux clients, de l\'émission jusqu\'à l\'encaissement.',
+  subscriptions: 'Chaque abonnement génère une facture client à échéance régulière.',
+  routes: 'Bons de livraison regroupés en tournées datées, arrêt par arrêt.',
+};
+
 export default function SalesPage() {
+  // Emplacement des actions de la page dans la barre du haut (les onglets y posent leur bouton principal).
+  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   const queryClient = useQueryClient();
   // Écran porté par l'URL (?tab=) et choisi dans la barre latérale du module Ventes (SalesLayout).
   const [params] = useSearchParams();
@@ -548,7 +561,7 @@ export default function SalesPage() {
         <div className="odoo-breadcrumb">
           <Receipt size={14} style={{ color: 'var(--theme-accent)' }} />
           <span>Ventes</span>
-          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">{currentMainTab?.label}</span>
         </div>
         <div style={{ flex: 1 }} />
@@ -562,7 +575,7 @@ export default function SalesPage() {
             setDateFrom(format(addDays(from, -span), 'yyyy-MM-dd'));
             setDateTo(format(addDays(to, -span), 'yyyy-MM-dd'));
           }}
-          className="odoo-pager-btn" title="Période précédente">
+          className="odoo-pager-btn" title="Période précédente" aria-label="Période précédente">
           <ChevronLeft size={14} />
         </button>
         <DateRangePicker dateFrom={dateFrom} dateTo={dateTo} onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
@@ -579,7 +592,7 @@ export default function SalesPage() {
             setDateTo(format(newTo, 'yyyy-MM-dd'));
           }}
           disabled={dateTo >= format(new Date(), 'yyyy-MM-dd')}
-          className="odoo-pager-btn" title="Période suivante">
+          className="odoo-pager-btn" title="Période suivante" aria-label="Période suivante">
           <ChevronRight size={14} />
         </button>
         <button onClick={handleExport} className="odoo-btn-secondary"
@@ -589,12 +602,13 @@ export default function SalesPage() {
         </>)}
         {mainTab === 'sales' && (<>
         <input ref={fileInputRef} type="file" accept=".csv" multiple onChange={handleImportCSV} className="hidden" />
-        <button onClick={() => fileInputRef.current?.click()} disabled={importing}
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={importing}
           className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Upload size={13} /> {importing ? 'Import...' : 'Importer CSV'}
+          <Upload size={13} /> {importing ? 'Import en cours…' : 'Importer des tickets (CSV)'}
         </button>
         </>)}
+        <div ref={setActionsSlot} style={{ display: 'flex', gap: 8, alignItems: 'center' }} />
       </div>
 
       {/* Import results modal */}
@@ -641,79 +655,30 @@ export default function SalesPage() {
 
       <div className="sal-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Style Apple (2026-11) : grand titre de l'onglet, comme les autres rubriques du module. */}
-      <header className="kl-largetitle"><h1>{currentMainTab?.label}</h1></header>
-
-      {/* View sub-tabs (only for sales) */}
-      {mainTab === 'sales' && (
-        <div className="odoo-search-panel">
-          <div style={{ display: 'inline-flex', gap: 4 }}>
-            {viewTabs.map(t => {
-              const Icon = t.icon;
-              return (
-                <button key={t.key} onClick={() => { setView(t.key); setSortKey(t.key === 'receipt' ? 'created_at' : 'total_revenue'); setSortDir('desc'); }}
-                  className="odoo-filter-dropdown"
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                    backgroundColor: view === t.key ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-                    color: view === t.key ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-                    fontWeight: view === t.key ? 600 : 400,
-                  }}>
-                  <Icon size={11} />
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-          {view === 'receipt' && (
-            <>
-              <div style={{ flex: 1 }} />
-              <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher n°, client, caissier..."
-                className="odoo-search-input"
-                style={{ minWidth: 220 }}
-              />
-            </>
-          )}
-        </div>
-      )}
+      <header className="kl-largetitle"><h1>{currentMainTab?.label}</h1><p>{TAB_LEADS[mainTab]}</p></header>
 
       {/* ═══════════ SALES TAB ═══════════ */}
       {mainTab === 'sales' && (
         <>
-          {/* KPI stat tiles */}
-          <div className="odoo-stat-grid">
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />CA net</div>
-              <div className="odoo-stat-card-value">{formatCurrency(totalRevenue)}</div>
-              <div className="odoo-stat-card-sub">{totalRefunds > 0 ? `Brut ${formatCurrency(grossRevenue)}` : ' '}</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><Hash size={11} style={{ display: 'inline', marginRight: 4 }} />Nombre de ventes</div>
-              <div className="odoo-stat-card-value">{totalCount}</div>
-              <div className="odoo-stat-card-sub">tickets</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><TrendingUp size={11} style={{ display: 'inline', marginRight: 4 }} />Panier moyen</div>
-              <div className="odoo-stat-card-value">{formatCurrency(totalCount > 0 ? totalRevenue / totalCount : 0)}</div>
-              <div className="odoo-stat-card-sub">par ticket</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><RotateCcw size={11} style={{ display: 'inline', marginRight: 4 }} />Retours</div>
-              <div className="odoo-stat-card-value" style={{ color: totalRefunds > 0 ? '#dc3545' : undefined }}>
-                {totalRefunds > 0 ? `-${formatCurrency(totalRefunds)}` : '0'}
-              </div>
-              <div className="odoo-stat-card-sub">{returnsCount > 0 ? `${returnsCount} retour${returnsCount > 1 ? 's' : ''}` : 'aucun'}</div>
-            </div>
-          </div>
+          <KpiGrid>
+            <KpiCard label="CA net" value={formatCurrency(totalRevenue)} sub={totalRefunds > 0 ? `brut ${formatCurrency(grossRevenue)}` : 'sur la période'} />
+            <KpiCard label="Nombre de ventes" value={String(totalCount)} sub="tickets" />
+            <KpiCard label="Panier moyen" value={formatCurrency(totalCount > 0 ? totalRevenue / totalCount : 0)} sub="par ticket" />
+            <KpiCard label="Retours" value={totalRefunds > 0 ? `-${formatCurrency(totalRefunds)}` : '0'}
+              sub={returnsCount > 0 ? `${returnsCount} retour${returnsCount > 1 ? 's' : ''}` : 'aucun'} tone={totalRefunds > 0 ? 'red' : undefined} />
+          </KpiGrid>
+
+          <Toolbar>
+            {view === 'receipt' && <SearchBar value={searchQuery} onChange={setSearchQuery} label="Rechercher un ticket" placeholder="N° de ticket, client ou caissier…" />}
+            <Segmented label="Regroupement" value={view}
+              onChange={k => { setView(k); setSortKey(k === 'receipt' ? 'created_at' : 'total_revenue'); setSortDir('desc'); }}
+              options={viewTabs.map(t => ({ key: t.key, label: t.label, icon: t.icon }))} />
+          </Toolbar>
 
           {/* ── Receipt view ── */}
           {view === 'receipt' && (
             isLoading ? <LoadingState /> : (
-              <div style={{ overflowX: 'auto' }}>
+              <DataPanel>
                 <table className="odoo-table">
                   <thead>
                     <tr>
@@ -724,7 +689,7 @@ export default function SalesPage() {
                       <SortHeader label="Paiement" sortKey="payment_method" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                       <SortHeader label="Total" sortKey="total" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="Heure" sortKey="created_at" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                      <th style={{ textAlign: 'right', width: 140 }}>Actions</th>
+                      <th className="ds-actions">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -743,7 +708,7 @@ export default function SalesPage() {
                         <td><span className={`odoo-status-dot ${dotClass}`} role="img" title={isUnpaid ? 'Impayé' : 'Payé'} aria-label={isUnpaid ? 'Impayé' : 'Payé'} /></td>
                         <td>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{s.sale_number as string}</span>
+                            <span className="ds-ref">{s.sale_number as string}</span>
                             {(s.sale_type === 'advance') && <span className="odoo-tag odoo-tag-orange">Avance</span>}
                             {(s.sale_type === 'delivery') && <span className="odoo-tag odoo-tag-blue">Solde liv.</span>}
                             {isUnpaid && <StatusTag tone="todo" label="Impayé" />}
@@ -765,53 +730,44 @@ export default function SalesPage() {
                             </span>
                           )}
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td className="ds-num">
                           <span style={{ fontWeight: 700 }}>{formatCurrency(parseFloat(s.total as string))}</span>
                         </td>
                         <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
                           {format(new Date(s.created_at as string), 'HH:mm', { locale: fr })}
                         </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', gap: 4 }}>
-                            {isUnpaid && (
-                              <button onClick={() => { setPayPaymentMethod('cash'); setPayDate(format(new Date(), 'yyyy-MM-dd')); setPaySaleTarget(s); }}
-                                title="Encaisser le paiement"
-                                className="odoo-btn-primary"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: '0.6875rem' }}>
-                                <Banknote size={11} /> Encaisser
-                              </button>
-                            )}
-                            {!isUnpaid && (s.sale_type === 'standard' || !s.sale_type) && (
-                              <button onClick={() => { setInvoiceCustomerId((s.customer_id as string) || ''); setInvoiceTarget(s); }}
-                                className="odoo-pager-btn" title="Établir la facture">
-                                <FileText size={13} />
-                              </button>
-                            )}
-                            {!isUnpaid && isDirection && (s.sale_type === 'standard' || !s.sale_type) && (
-                              <button onClick={() => { setCancelReason(''); setCancelTarget(s); }}
-                                className="odoo-pager-btn" title="Annuler le ticket" style={{ color: 'var(--odoo-danger, #c0392b)' }}>
-                                <XCircle size={13} />
-                              </button>
-                            )}
-                            <button onClick={() => openReceipt(s.id as string)}
-                              className="odoo-pager-btn" title="Voir le reçu">
-                              <Eye size={13} />
+                        <td className="ds-actions">
+                          {isUnpaid ? (
+                            <button type="button" className="odoo-btn-secondary ds-btn-sm"
+                              onClick={() => { setPayPaymentMethod('cash'); setPayDate(format(new Date(), 'yyyy-MM-dd')); setPaySaleTarget(s); }}>
+                              <Banknote size={13} /> Encaisser
                             </button>
-                          </div>
+                          ) : (
+                            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => openReceipt(s.id as string)}>
+                              <Eye size={13} /> Reçu
+                            </button>
+                          )}
+                          <RowMenu items={[
+                            ...(isUnpaid ? [{ label: 'Voir le reçu', icon: Eye, onSelect: () => openReceipt(s.id as string) }] : []),
+                            ...(!isUnpaid && (s.sale_type === 'standard' || !s.sale_type)
+                              ? [{ label: 'Établir la facture', icon: FileText, onSelect: () => { setInvoiceCustomerId((s.customer_id as string) || ''); setInvoiceTarget(s); } }] : []),
+                            ...(!isUnpaid && isDirection && (s.sale_type === 'standard' || !s.sale_type)
+                              ? [{ label: 'Annuler le ticket', icon: XCircle, danger: true, onSelect: () => { setCancelReason(''); setCancelTarget(s); } }] : []),
+                          ]} />
                         </td>
                       </tr>
                       );
                     })}
                   </tbody>
                 </table>
-              </div>
+              </DataPanel>
             )
           )}
 
           {/* ── Category view ── */}
           {view === 'category' && (
             summaryLoading ? <LoadingState /> : (
-              <div style={{ overflowX: 'auto' }}>
+              <DataPanel>
                 <table className="odoo-table">
                   <thead>
                     <tr>
@@ -819,12 +775,12 @@ export default function SalesPage() {
                       <SortHeader label="Articles vendus" sortKey="total_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="Nb ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                      <th style={{ textAlign: 'right' }}>Part</th>
+                      <th className="ds-num">Part</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedSummary.length === 0 ? (
-                      <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune donnée pour cette période</td></tr>
+                      <tr><td colSpan={5}><EmptyState bare icon={Receipt} title="Aucune donnée pour cette période" /></td></tr>
                     ) : sortedSummary.map((row: Record<string, any>) => {
                       const rev = parseFloat(row.total_revenue as string);
                       const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
@@ -836,10 +792,10 @@ export default function SalesPage() {
                               {row.label as string}
                             </span>
                           </td>
-                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.total_quantity as string}</td>
+                          <td className="ds-num ds-strong">{row.total_quantity as string}</td>
                           <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{row.sale_count as string}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{formatCurrency(rev)}</td>
-                          <td style={{ textAlign: 'right' }}>
+                          <td className="ds-num ds-strong">{formatCurrency(rev)}</td>
+                          <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ width: 60, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
                                 <span style={{ display: 'block', height: '100%', background: 'var(--theme-accent)', width: `${pct}%` }} />
@@ -859,14 +815,14 @@ export default function SalesPage() {
                   </div>
                 )}
 
-              </div>
+              </DataPanel>
             )
           )}
 
           {/* ── Product view ── */}
           {view === 'product' && (
             summaryLoading ? <LoadingState /> : (
-              <div style={{ overflowX: 'auto' }}>
+              <DataPanel>
                 <table className="odoo-table">
                   <thead>
                     <tr>
@@ -876,12 +832,12 @@ export default function SalesPage() {
                       <SortHeader label="Qté vendue" sortKey="total_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="Nb ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                      <th style={{ textAlign: 'right' }}>Part</th>
+                      <th className="ds-num">Part</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedSummary.length === 0 ? (
-                      <tr><td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune donnée pour cette période</td></tr>
+                      <tr><td colSpan={7}><EmptyState bare icon={Receipt} title="Aucune donnée pour cette période" /></td></tr>
                     ) : sortedSummary.map((row: Record<string, any>, idx: number) => {
                       const rev = parseFloat(row.total_revenue as string);
                       const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
@@ -891,16 +847,16 @@ export default function SalesPage() {
                           <td style={{ color: 'var(--theme-text-muted)' }}>
                             {idx < 3 ? <span className={`odoo-tag ${rankTag}`}>{idx + 1}</span> : <span style={{ fontSize: '0.6875rem' }}>{idx + 1}</span>}
                           </td>
-                          <td style={{ fontWeight: 500 }}>{row.label as string}</td>
+                          <td className="ds-strong">{row.label as string}</td>
                           <td>
                             {row.category_name ? (
                               <span className="odoo-tag odoo-tag-grey">{row.category_name as string}</span>
                             ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                           </td>
-                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.total_quantity as string}</td>
+                          <td className="ds-num ds-strong">{row.total_quantity as string}</td>
                           <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{row.sale_count as string}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{formatCurrency(rev)}</td>
-                          <td style={{ textAlign: 'right' }}>
+                          <td className="ds-num ds-strong">{formatCurrency(rev)}</td>
+                          <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ width: 60, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
                                 <span style={{ display: 'block', height: '100%', background: 'var(--theme-accent)', width: `${pct}%` }} />
@@ -920,14 +876,14 @@ export default function SalesPage() {
                   </div>
                 )}
 
-              </div>
+              </DataPanel>
             )
           )}
 
           {/* ── Cashier view ── */}
           {view === 'cashier' && (
             summaryLoading ? <LoadingState /> : (
-              <div style={{ overflowX: 'auto' }}>
+              <DataPanel>
                 <table className="odoo-table">
                   <thead>
                     <tr>
@@ -935,12 +891,12 @@ export default function SalesPage() {
                       <th>Rôle</th>
                       <SortHeader label="Ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                      <th style={{ textAlign: 'right' }}>Part</th>
+                      <th className="ds-num">Part</th>
                     </tr>
                   </thead>
                   <tbody>
                     {summary.length === 0 ? (
-                      <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune donnée pour cette période</td></tr>
+                      <tr><td colSpan={5}><EmptyState bare icon={Receipt} title="Aucune donnée pour cette période" /></td></tr>
                     ) : sortedSummary.map((row: Record<string, any>) => {
                       const rev = parseFloat(row.total_revenue as string);
                       const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
@@ -955,9 +911,9 @@ export default function SalesPage() {
                           <td>
                             <span className="odoo-tag odoo-tag-grey">{ROLE_LABELS[row.role as string] || String(row.role)}</span>
                           </td>
-                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.sale_count as string}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{formatCurrency(rev)}</td>
-                          <td style={{ textAlign: 'right' }}>
+                          <td className="ds-num ds-strong">{row.sale_count as string}</td>
+                          <td className="ds-num ds-strong">{formatCurrency(rev)}</td>
+                          <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ width: 60, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
                                 <span style={{ display: 'block', height: '100%', background: 'var(--theme-accent)', width: `${pct}%` }} />
@@ -970,14 +926,14 @@ export default function SalesPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </DataPanel>
             )
           )}
 
           {/* ── Payment view ── */}
           {view === 'payment' && (
             summaryLoading ? <LoadingState /> : (
-              <div style={{ overflowX: 'auto' }}>
+              <DataPanel>
                 <table className="odoo-table">
                   <thead>
                     <tr>
@@ -985,12 +941,12 @@ export default function SalesPage() {
                       <th>Méthode</th>
                       <SortHeader label="Ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                      <th style={{ textAlign: 'right' }}>Part</th>
+                      <th className="ds-num">Part</th>
                     </tr>
                   </thead>
                   <tbody>
                     {summary.length === 0 ? (
-                      <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune donnée pour cette période</td></tr>
+                      <tr><td colSpan={5}><EmptyState bare icon={Receipt} title="Aucune donnée pour cette période" /></td></tr>
                     ) : sortedSummary.map((row: Record<string, any>) => {
                       const rev = parseFloat(row.total_revenue as string);
                       const pct = totalRevenue > 0 ? (rev / totalRevenue * 100) : 0;
@@ -998,16 +954,16 @@ export default function SalesPage() {
                       const isCash = row.label === 'cash';
                       return (
                         <tr key={row.label as string}>
-                          <td>{isCash ? <Banknote size={13} style={{ color: '#28a745' }} /> : <CreditCard size={13} style={{ color: 'var(--theme-accent)' }} />}</td>
+                          <td>{isCash ? <Banknote size={13} style={{ color: 'var(--ds-success)' }} /> : <CreditCard size={13} style={{ color: 'var(--theme-accent)' }} />}</td>
                           <td>
                             <span className={`odoo-tag ${isCash ? 'odoo-tag-green' : 'odoo-tag-blue'}`}>{label as string}</span>
                           </td>
-                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.sale_count as string}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{formatCurrency(rev)}</td>
-                          <td style={{ textAlign: 'right' }}>
+                          <td className="ds-num ds-strong">{row.sale_count as string}</td>
+                          <td className="ds-num ds-strong">{formatCurrency(rev)}</td>
+                          <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ width: 80, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-                                <span style={{ display: 'block', height: '100%', background: isCash ? '#28a745' : 'var(--theme-accent)', width: `${pct}%` }} />
+                                <span style={{ display: 'block', height: '100%', background: isCash ? 'var(--ds-success)' : 'var(--theme-accent)', width: `${pct}%` }} />
                               </span>
                               <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', minWidth: 36, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
                             </span>
@@ -1017,7 +973,7 @@ export default function SalesPage() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </DataPanel>
             )
           )}
         </>
@@ -1038,32 +994,16 @@ export default function SalesPage() {
                 .filter((r: Record<string, any>) => r.type === 'return')
                 .reduce((sum: number, r: Record<string, any>) => sum + parseFloat(r.refund_amount as string), 0);
               return (
-                <div className="odoo-stat-grid">
-                  <div className="odoo-stat-card">
-                    <div className="odoo-stat-card-label"><ArrowLeftRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total opérations</div>
-                    <div className="odoo-stat-card-value">{returns.length}</div>
-                    <div className="odoo-stat-card-sub">retours + échanges</div>
-                  </div>
-                  <div className="odoo-stat-card">
-                    <div className="odoo-stat-card-label"><RotateCcw size={11} style={{ display: 'inline', marginRight: 4 }} />Retours</div>
-                    <div className="odoo-stat-card-value" style={{ color: totalReturns > 0 ? '#dc3545' : undefined }}>{totalReturns}</div>
-                    <div className="odoo-stat-card-sub">remboursés</div>
-                  </div>
-                  <div className="odoo-stat-card">
-                    <div className="odoo-stat-card-label"><ArrowLeftRight size={11} style={{ display: 'inline', marginRight: 4 }} />Échanges</div>
-                    <div className="odoo-stat-card-value">{totalExchanges}</div>
-                    <div className="odoo-stat-card-sub">croisés</div>
-                  </div>
-                  <div className="odoo-stat-card">
-                    <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Total remboursé</div>
-                    <div className="odoo-stat-card-value" style={{ color: totalRefund > 0 ? '#dc3545' : undefined }}>{formatCurrency(totalRefund)}</div>
-                    <div className="odoo-stat-card-sub">période</div>
-                  </div>
-                </div>
+                <KpiGrid>
+                  <KpiCard label="Total opérations" value={String(returns.length)} sub="retours et échanges" />
+                  <KpiCard label="Retours" value={String(totalReturns)} sub="remboursés" tone={totalReturns > 0 ? 'red' : undefined} />
+                  <KpiCard label="Échanges" value={String(totalExchanges)} sub="croisés" />
+                  <KpiCard label="Total remboursé" value={formatCurrency(totalRefund)} sub="sur la période" tone={totalRefund > 0 ? 'red' : undefined} />
+                </KpiGrid>
               );
             })()}
 
-            <div style={{ overflowX: 'auto' }}>
+            <DataPanel>
               <table className="odoo-table">
                 <thead>
                   <tr>
@@ -1072,7 +1012,7 @@ export default function SalesPage() {
                     <th>Vente orig.</th>
                     <th>Type</th>
                     <th>Articles</th>
-                    <th style={{ textAlign: 'right' }}>Montant</th>
+                    <th className="ds-num">Montant</th>
                     <th>Caissier</th>
                     <th>Date</th>
                     <th>Motif</th>
@@ -1080,14 +1020,14 @@ export default function SalesPage() {
                 </thead>
                 <tbody>
                   {returns.length === 0 ? (
-                    <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucun retour ou échange pour cette période</td></tr>
+                    <tr><td colSpan={9}><EmptyState bare icon={Receipt} title="Aucun retour ou échange pour cette période" /></td></tr>
                   ) : returns.map((r: Record<string, any>) => {
                     const items = (r.items || []) as Record<string, any>[];
                     const isReturn = r.type === 'return';
                     return (
                       <tr key={r.id as string}>
-                        <td>{isReturn ? <RotateCcw size={13} style={{ color: '#dc3545' }} /> : <ArrowLeftRight size={13} style={{ color: 'var(--theme-accent)' }} />}</td>
-                        <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.return_number as string}</td>
+                        <td>{isReturn ? <RotateCcw size={13} style={{ color: 'var(--ds-danger)' }} /> : <ArrowLeftRight size={13} style={{ color: 'var(--theme-accent)' }} />}</td>
+                        <td><span className="ds-ref">{r.return_number as string}</span></td>
                         <td style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{r.original_sale_number as string}</td>
                         <td><span className={`odoo-tag ${isReturn ? 'odoo-tag-red' : 'odoo-tag-blue'}`}>{isReturn ? 'Retour' : 'Échange'}</span></td>
                         <td style={{ color: 'var(--theme-text-muted)' }}>
@@ -1097,7 +1037,7 @@ export default function SalesPage() {
                             </div>
                           ))}
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545' }}>{formatCurrency(parseFloat(r.refund_amount as string))}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--ds-danger)' }}>{formatCurrency(parseFloat(r.refund_amount as string))}</td>
                         <td style={{ color: 'var(--theme-text-muted)' }}>{r.user_first_name as string} {r.user_last_name as string}</td>
                         <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{format(new Date(r.created_at as string), 'dd/MM HH:mm', { locale: fr })}</td>
                         <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(r.reason as string) || '—'}</td>
@@ -1106,7 +1046,7 @@ export default function SalesPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </DataPanel>
           </>
         )
       )}
@@ -1257,9 +1197,9 @@ export default function SalesPage() {
       {/* Ventes aux professionnels : déplacées dans Commandes › Livraisons pros (BL → facture). */}
 
       {/* ═══════════ INVOICES TAB ═══════════ */}
-      {mainTab === 'invoices' && <EmittedInvoicesTab />}
-      {mainTab === 'subscriptions' && <SubscriptionsTab />}
-      {mainTab === 'routes' && <RoutesTab />}
+      {mainTab === 'invoices' && <EmittedInvoicesTab actionsSlot={actionsSlot} />}
+      {mainTab === 'subscriptions' && <SubscriptionsTab actionsSlot={actionsSlot} />}
+      {mainTab === 'routes' && <RoutesTab actionsSlot={actionsSlot} />}
 
       </div>{/* close padded content */}
 
@@ -1407,16 +1347,6 @@ export default function SalesPage() {
   );
 }
 
-// ═══ Loading State ═══
-function LoadingState() {
-  return (
-    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-      <div style={{ width: 24, height: 24, border: '2px solid var(--theme-bg-separator)', borderTopColor: 'var(--theme-accent)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
-      <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
-    </div>
-  );
-}
-
 // ═══ État comptable d'une fermeture de caisse ═══
 // Les tickets sont comptabilisés un à un (caisse/banque, CA, TVA) et l'écart de
 // fermeture passe en 6588/7588 : la session est la source des recettes.
@@ -1554,10 +1484,10 @@ function InventoryBilan({ session }: { session: Record<string, any> }) {
           <thead>
             <tr>
               <th>Produit</th>
-              <th style={{ textAlign: 'right' }}>Approv.</th>
-              <th style={{ textAlign: 'right' }}>Vendu</th>
-              <th style={{ textAlign: 'right' }}>Restant</th>
-              <th style={{ textAlign: 'right' }}>Écart</th>
+              <th className="ds-num">Approv.</th>
+              <th className="ds-num">Vendu</th>
+              <th className="ds-num">Restant</th>
+              <th className="ds-num">Écart</th>
             </tr>
           </thead>
           <tbody>
@@ -1570,10 +1500,10 @@ function InventoryBilan({ session }: { session: Record<string, any> }) {
               return (
                 <tr key={idx} className={rowClass}>
                   <td>{it.product_name as string}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{rep}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{sold}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{rem}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: disc > 0 ? '#dc3545' : disc < 0 ? 'var(--theme-accent)' : '#28a745' }}>
+                  <td className="ds-num ds-strong">{rep}</td>
+                  <td className="ds-num ds-strong">{sold}</td>
+                  <td className="ds-num ds-strong">{rem}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: disc > 0 ? 'var(--ds-danger)' : disc < 0 ? 'var(--theme-accent)' : 'var(--ds-success)' }}>
                     {disc === 0 ? '✓' : disc > 0 ? `−${disc}` : `+${Math.abs(disc)}`}
                   </td>
                 </tr>

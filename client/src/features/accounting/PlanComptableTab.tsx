@@ -2,12 +2,15 @@ import { useState, useMemo } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, X, Download, Loader2, ListTree, Users, Percent, Lock, Plus, Pencil,
+  Download, Lock, Plus, Pencil,
 } from 'lucide-react';
 import AccountModal from './AccountModal';
 import { planComptableApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import type { Account } from '@ofauria/shared';
+import { EmptyState, KpiCard, KpiGrid, DataPanel, LoadingState, NoResultState, SearchBar } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 // Libelle clair par classe CGNC pour l'arbre.
 const CLASS_LABELS: Record<number, string> = {
@@ -135,59 +138,37 @@ export default function PlanComptableTab() {
   // Garde non-admin — apres tous les hooks (regle des hooks React)
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>
-          Le plan comptable est reserve a l'administrateur ou au gerant. Contactez l'admin pour autoriser votre acces.
-        </p>
-      </div>
+      <EmptyState icon={Lock} title="Le plan comptable est reserve a l'administrateur ou au gerant. Contactez l'admin pour autoriser votre acces." />
     );
   }
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-        <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement du plan comptable...</span>
-      </div>
+      <LoadingState label="Chargement du plan comptable…" />
     );
   }
 
   return (
     <>
-      {/* En-tete + stats */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><ListTree size={11} style={{ display: 'inline', marginRight: 4 }} />Comptes actifs</div>
-          <div className="odoo-stat-card-value">{stats.total}</div>
-          <div className="odoo-stat-card-sub">Plan CGNC Maroc</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Comptes collectifs</div>
-          <div className="odoo-stat-card-value">{stats.collective}</div>
-          <div className="odoo-stat-card-sub">Avec auxiliaires tiers</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Percent size={11} style={{ display: 'inline', marginRight: 4 }} />Comptes TVA</div>
-          <div className="odoo-stat-card-value">{stats.tva}</div>
-          <div className="odoo-stat-card-sub">20%, 14%, 10%, 7%</div>
-        </div>
-      </div>
+      {/* Indicateurs */}
+      <KpiGrid>
+        <KpiCard label="Comptes actifs" value={stats.total} sub="Plan CGNC Maroc" />
+        <KpiCard label="Comptes collectifs" value={stats.collective} sub="Avec auxiliaires tiers" />
+        <KpiCard label="Comptes TVA" value={stats.tva} sub="20%, 14%, 10%, 7%" />
+      </KpiGrid>
 
       {/* Filtres */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 220px', minWidth: 180 }}>
-          <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-          <input type="text" placeholder="Rechercher par code ou libelle..."
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />
-          {search && (
-            <button onClick={() => setSearch('')} title="Effacer"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)', display: 'inline-flex' }}>
-              <X size={12} />
-            </button>
-          )}
-        </div>
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary">
+          <Download size={13} aria-hidden="true" /> Exporter CSV
+        </button>
+        <button type="button" onClick={() => setEditing('new')} className="odoo-btn-primary">
+          <Plus size={13} aria-hidden="true" /> Nouveau compte
+        </button>
+      </AccHeaderActions>
+
+      <div className="prj-toolbar">
+        <SearchBar value={search} onChange={setSearch} placeholder="Rechercher par code ou libellé…" />
         <SearchSelect
           options={[1, 2, 3, 4, 5, 6, 7].map(c => ({
             id: String(c),
@@ -199,48 +180,21 @@ export default function PlanComptableTab() {
           placeholder="Toutes les classes"
           width={220}
         />
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
           <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Afficher les inactifs
         </label>
-        <div style={{ flex: 1 }} />
-        <button onClick={() => setEditing('new')} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={13} /> Nouveau compte
-        </button>
-        <button onClick={handleExport} className="odoo-btn-secondary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Download size={13} /> Exporter CSV
-        </button>
       </div>
 
       {/* Arbre des comptes */}
       {tree.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <ListTree size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucun compte ne correspond aux filtres</p>
-        </div>
+        <NoResultState text="Aucun compte ne correspond aux filtres." onReset={() => { setSearch(''); setClassFilter('all'); }} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {tree.map(({ cls, rubriques }) => (
-            <div key={cls} className="odoo-section" style={{ padding: 0 }}>
-              <div style={{
-                padding: '10px 14px',
-                background: 'var(--theme-bg-secondary)',
-                borderBottom: '1px solid var(--theme-bg-separator)',
-                fontSize: '0.8125rem',
-                fontWeight: 600,
-                color: 'var(--theme-text)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}>
-                <span style={{
-                  display: 'inline-block', width: 24, height: 24,
-                  background: 'var(--theme-bg-card)',
-                  borderRadius: 4, textAlign: 'center', lineHeight: '24px',
-                  fontFamily: 'ui-monospace, monospace',
-                }}>{cls}</span>
-                Classe {cls} — {CLASS_LABELS[cls]}
-                <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>
+            <DataPanel key={cls} label={`Classe ${cls}`}>
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--ds-sep)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h2 className="ds-subhead">Classe {cls} — {CLASS_LABELS[cls]}</h2>
+                <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--ds-muted)' }}>
                   {rubriques.reduce((s, r) => s + r.items.length, 0)} comptes
                 </span>
               </div>
@@ -250,70 +204,54 @@ export default function PlanComptableTab() {
                 const isOpen = expanded.has(key) || !!search;
                 return (
                   <div key={key}>
-                    <button onClick={() => toggleRubrique(key)} style={{
-                      width: '100%', padding: '8px 14px', textAlign: 'left',
+                    <button type="button" onClick={() => toggleRubrique(key)} aria-expanded={isOpen} style={{
+                      width: '100%', padding: '8px 20px', textAlign: 'left',
                       background: 'transparent', border: 'none',
-                      borderBottom: '1px solid var(--theme-bg-separator)',
-                      cursor: 'pointer', fontSize: '0.75rem',
-                      color: 'var(--theme-text-muted)',
+                      borderBottom: '1px solid var(--ds-hair)',
+                      cursor: 'pointer', fontSize: 13,
+                      color: 'var(--ds-muted)',
                       display: 'flex', alignItems: 'center', gap: 6,
                     }}>
-                      <span style={{ fontFamily: 'ui-monospace, monospace', minWidth: 32 }}>{rub}</span>
+                      <span className="ds-ref" style={{ minWidth: 32 }}>{rub}</span>
                       <span>Rubrique {rub}</span>
                       <span style={{ marginLeft: 'auto' }}>{items.length} compte{items.length > 1 ? 's' : ''}</span>
                     </button>
                     {isOpen && (
-                      <table className="odoo-table" style={{ margin: 0 }}>
+                      <table className="odoo-table ds-dense">
                         <thead>
                           <tr>
                             <th style={{ width: 90 }}>Code</th>
-                            <th>Libelle</th>
-                            <th style={{ width: 90 }}>Nature</th>
-                            <th style={{ width: 60 }}>Sens</th>
-                            <th style={{ width: 160 }}>Tags</th>
-                            <th style={{ width: 40 }} />
+                            <th>Libellé</th>
+                            <th style={{ width: 110 }}>Nature</th>
+                            <th style={{ width: 70 }}>Sens</th>
+                            <th style={{ width: 240 }}>Attributs</th>
+                            <th className="ds-actions" style={{ width: 50 }}><span className="ds-sr-only">Actions</span></th>
                           </tr>
                         </thead>
                         <tbody>
                           {items.map(acc => (
                             <tr key={acc.id} style={{ opacity: acc.is_active ? 1 : 0.5 }}>
-                              <td style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text)' }}>
-                                <strong>{acc.code}</strong>
-                              </td>
-                              <td>{acc.label}</td>
-                              <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                              <td className="ds-ref">{acc.code}</td>
+                              <td className="ds-strong">{acc.label}</td>
+                              <td style={{ color: 'var(--ds-muted)' }}>
                                 {TYPE_LABELS[acc.account_type] || acc.account_type}
                               </td>
-                              <td style={{ textAlign: 'center', fontWeight: 600, color: acc.normal_side === 'D' ? '#1565c0' : '#c62828' }}>
-                                {acc.normal_side}
+                              <td title={acc.normal_side === 'D' ? 'Compte de sens débiteur' : 'Compte de sens créditeur'}>
+                                {acc.normal_side === 'D' ? 'Débit' : 'Crédit'}
                               </td>
                               <td>
-                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                                   {acc.is_collective && acc.auxiliary_kind && (
-                                    <span style={{
-                                      fontSize: '0.625rem', padding: '2px 6px',
-                                      background: '#EEEDFE', color: '#3C3489',
-                                      borderRadius: 4, fontWeight: 500,
-                                    }}>
-                                      Tiers {acc.auxiliary_kind === 'supplier' ? 'fournisseur' : 'client'}
-                                    </span>
-                                  )}
-                                  {!acc.is_active && (
-                                    <span style={{ fontSize: '0.625rem', padding: '2px 6px', background: '#EEE', color: '#555', borderRadius: 4, fontWeight: 500 }}>Inactif</span>
+                                    <span className="ds-field-hint">Tiers {acc.auxiliary_kind === 'supplier' ? 'fournisseur' : 'client'}</span>
                                   )}
                                   {acc.tva_rate && (
-                                    <span style={{
-                                      fontSize: '0.625rem', padding: '2px 6px',
-                                      background: '#FAEEDA', color: '#633806',
-                                      borderRadius: 4, fontWeight: 500,
-                                    }}>
-                                      TVA {acc.tva_rate}% {acc.tva_direction === 'collected' ? 'collectee' : 'recup.'}
-                                    </span>
+                                    <span className="ds-field-hint">TVA {acc.tva_rate} % {acc.tva_direction === 'collected' ? 'collectée' : 'récupérable'}</span>
                                   )}
+                                  {!acc.is_active && <StatusTag tone="draft" label="Inactif" />}
                                 </div>
                               </td>
-                              <td style={{ textAlign: 'right' }}>
-                                <button onClick={() => setEditing(acc)} className="odoo-btn-secondary" title="Modifier le compte" style={{ padding: '3px 6px' }}><Pencil size={11} /></button>
+                              <td className="ds-actions">
+                                <button type="button" onClick={() => setEditing(acc)} className="ds-icon-btn" title="Modifier le compte" aria-label={`Modifier le compte ${acc.code}`}><Pencil size={11} /></button>
                               </td>
                             </tr>
                           ))}
@@ -323,7 +261,7 @@ export default function PlanComptableTab() {
                   </div>
                 );
               })}
-            </div>
+            </DataPanel>
           ))}
         </div>
       )}

@@ -14,6 +14,11 @@ import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { money, currencySymbol } from '../../utils/money';
+import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, Tabs, Toolbar, TableFooter } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 
 function n(v: string | number): string {
   const num = typeof v === 'string' ? parseFloat(v) : v;
@@ -38,10 +43,13 @@ function exportCSV(filename: string, headers: string[], rows: string[][]) {
 
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 const STATUS_LABELS: Record<string, { label: string; bg: string; color: string }> = {
-  active: { label: 'En cours', bg: '#E1F5EE', color: '#085041' },
-  fully_depreciated: { label: 'Amortie', bg: '#F1EFE8', color: '#444441' },
-  disposed: { label: 'Sortie', bg: '#FCEBEB', color: '#791F1F' },
+  active: { label: 'En cours', bg: 'var(--ds-success-bg)', color: 'var(--ds-success)' },
+  fully_depreciated: { label: 'Amortie', bg: 'var(--ds-hair)', color: 'var(--ds-muted)' },
+  disposed: { label: 'Sortie', bg: 'var(--ds-danger-bg)', color: 'var(--ds-danger)' },
 };
+
+/** Ton de l'étiquette de statut : en cours (bleu), amortie (vert, terminé), sortie (gris). */
+const ASSET_TONE: Record<string, StatusTone> = { active: 'progress', fully_depreciated: 'done', disposed: 'cancelled' };
 
 export default function ImmobilisationsTab() {
   const { user } = useAuth();
@@ -53,6 +61,7 @@ export default function ImmobilisationsTab() {
   const [deprMonth, setDeprMonth] = useState(now.getMonth() + 1);
   const [deprYear, setDeprYear] = useState(now.getFullYear());
   const [view, setView] = useState<'registre' | 'tableau'>('registre');
+  const confirm = useConfirm();
   const [disposing, setDisposing] = useState<FixedAsset | null>(null);
   const [cancelling, setCancelling] = useState<FixedAsset | null>(null);
   const refresh = () => {
@@ -103,10 +112,7 @@ export default function ImmobilisationsTab() {
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>Les immobilisations sont réservées à l'administrateur ou au gérant.</p>
-      </div>
+      <EmptyState icon={Lock} title="Les immobilisations sont réservées à l'administrateur ou au gérant" />
     );
   }
 
@@ -122,82 +128,60 @@ export default function ImmobilisationsTab() {
 
   return (
     <>
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Valeur brute</div>
-          <div className="odoo-stat-card-value">{n(totals.brut)}</div>
-          <div className="odoo-stat-card-sub">{(assets as FixedAsset[]).filter(x => x.status !== 'disposed').length} immobilisation(s) à l'actif</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Amortissements cumulés</div>
-          <div className="odoo-stat-card-value" style={{ color: '#c62828' }}>{n(totals.amort)}</div>
-          <div className="odoo-stat-card-sub">comptes 28xx</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Valeur nette comptable</div>
-          <div className="odoo-stat-card-value" style={{ color: '#1565c0' }}>{n(totals.vnc)}</div>
-          <div className="odoo-stat-card-sub">VNC</div>
-        </div>
-      </div>
+      <KpiGrid>
+        <KpiCard label="Valeur brute" value={n(totals.brut)} sub={<>{(assets as FixedAsset[]).filter(x => x.status !== 'disposed').length} immobilisation(s) à l'actif</>} />
+        <KpiCard label="Amortissements cumulés" value={n(totals.amort)} sub="comptes 28xx" />
+        <KpiCard label="Valeur nette comptable" value={n(totals.vnc)} sub="VNC" />
+      </KpiGrid>
 
-      <div style={{ display: 'inline-flex', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
-        {(['registre', 'tableau'] as const).map(v => (
-          <button key={v} type="button" onClick={() => setView(v)} className={view === v ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ borderRadius: 0, border: 'none', fontSize: '0.75rem' }}>
-            {v === 'registre' ? 'Registre' : 'Tableau de l\'exercice'}
-          </button>
-        ))}
-      </div>
+      <Tabs label="Immobilisations" value={view} onChange={setView}
+        tabs={[{ key: 'registre', label: 'Registre' }, { key: 'tableau', label: 'Tableau de l\'exercice' }]} />
 
       {view === 'tableau' ? <AssetsTableView /> : <>
       {/* Barre d'actions */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={13} /> Nouvelle immobilisation
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={assets.length === 0}>
+          <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
-        <div style={{ flex: 1 }} />
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <CalendarClock size={13} style={{ color: 'var(--theme-text-muted)' }} />
-          <select value={deprMonth} onChange={e => setDeprMonth(parseInt(e.target.value, 10))} className="odoo-search-input" style={{ minWidth: 110 }}>
+        <button type="button" onClick={() => setShowForm(true)} className="odoo-btn-primary">
+          <Plus size={13} aria-hidden="true" /> Nouvelle immobilisation
+        </button>
+      </AccHeaderActions>
+
+      <Toolbar>
+        <span role="group" aria-label="Dotation aux amortissements" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ds-muted)' }}>
+          <CalendarClock size={14} aria-hidden="true" /> Dotation du mois
+          <select value={deprMonth} onChange={e => setDeprMonth(parseInt(e.target.value, 10))} className="ds-input sm" style={{ minWidth: 110, width: 'auto' }} aria-label="Mois de la dotation">
             {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
-          <select value={deprYear} onChange={e => setDeprYear(parseInt(e.target.value, 10))} className="odoo-search-input" style={{ minWidth: 80 }}>
+          <select value={deprYear} onChange={e => setDeprYear(parseInt(e.target.value, 10))} className="ds-input sm" style={{ minWidth: 80, width: 'auto' }} aria-label="Année de la dotation">
             {[now.getFullYear(), now.getFullYear() - 1].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <button onClick={() => runDepr.mutate()} disabled={runDepr.isPending} className="odoo-btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {runDepr.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Lancer la dotation
-          </button>
-        </div>
-        <button onClick={handleExport} className="odoo-btn-secondary" disabled={assets.length === 0}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: assets.length === 0 ? 0.5 : 1 }}>
-          <Download size={13} /> Exporter
+        </span>
+        <button type="button" onClick={() => runDepr.mutate()} disabled={runDepr.isPending} aria-busy={runDepr.isPending || undefined} className="odoo-btn-secondary ds-btn-sm">
+          {runDepr.isPending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Play size={13} aria-hidden="true" />} Lancer la dotation
         </button>
-      </div>
+      </Toolbar>
 
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        </div>
+        <LoadingState />
       ) : assets.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Building2 size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucune immobilisation. Ajoutez votre matériel (four, frigo, caisse...).</p>
-        </div>
+        <EmptyState icon={Building2} title="Aucune immobilisation" text="Ajoutez votre matériel : four, frigo, caisse…"
+          action={<button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={13} aria-hidden="true" /> Nouvelle immobilisation</button>} />
       ) : (
-        <div className="odoo-section" style={{ padding: 0 }}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Registre des immobilisations" footer={<TableFooter note={`${assets.length} immobilisation${assets.length > 1 ? 's' : ''} · valeur nette ${n(totals.vnc)} ${currencySymbol()}`} />}>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th>Libellé</th>
-                <th style={{ width: 70 }}>Compte</th>
-                <th style={{ width: 90 }}>Acquisition</th>
-                <th style={{ width: 100, textAlign: 'right' }}>Coût</th>
-                <th style={{ width: 100, textAlign: 'right' }}>Amorti</th>
-                <th style={{ width: 100, textAlign: 'right' }}>VNC</th>
-                <th style={{ width: 110 }}>Durée / Méthode</th>
-                <th style={{ width: 90 }}>Statut</th>
-                <th style={{ width: 80 }}></th>
+                <th style={{ width: 80 }}>Compte</th>
+                <th style={{ width: 100 }}>Acquisition</th>
+                <th className="ds-num" style={{ width: 120 }}>Coût ({currencySymbol()})</th>
+                <th className="ds-num" style={{ width: 120 }}>Amorti ({currencySymbol()})</th>
+                <th className="ds-num" style={{ width: 120 }}>VNC ({currencySymbol()})</th>
+                <th style={{ width: 140 }}>Durée et méthode</th>
+                <th style={{ width: 120 }}>Statut</th>
+                <th className="ds-actions" style={{ width: 90 }}><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -208,44 +192,41 @@ export default function ImmobilisationsTab() {
                 // Sortie : la VNC est celle du jour de sortie, plus à l'actif.
                 const vnc = out ? parseFloat(a.disposal_vnc ?? '0') || 0 : cost - amort;
                 const gain = parseFloat(a.disposal_gain ?? '0') || 0;
-                const st = STATUS_LABELS[a.status] || STATUS_LABELS.active;
                 return (
                   <tr key={a.id}>
-                    <td style={{ fontWeight: 500 }}>{a.label}
-                      {a.supplier_name && <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.75rem' }}> · {a.supplier_name}</span>}
+                    <td className="ds-strong">{a.label}
+                      {a.supplier_name && <span style={{ color: 'var(--ds-muted)', fontWeight: 400, fontSize: 12 }}> · {a.supplier_name}</span>}
                       {out && a.disposal_date && (
                         <div style={{ fontSize: '0.6875rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>
                           {a.disposal_kind === 'sale' ? `Cédée le ${fmtDate(a.disposal_date)} · ${n(a.disposal_price ?? 0)} HT${a.disposal_buyer ? ` · ${a.disposal_buyer}` : ''}` : `Mise au rebut le ${fmtDate(a.disposal_date)}`}
-                          {' · '}<span style={{ color: gain >= 0 ? '#2e7d32' : '#c62828' }}>{gain >= 0 ? 'plus-value' : 'moins-value'} {n(Math.abs(gain))}</span>
+                          {' · '}<span style={{ color: gain >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{gain >= 0 ? 'plus-value' : 'moins-value'} {n(Math.abs(gain))}</span>
                         </div>
                       )}
                     </td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{a.asset_account_code}</td>
-                    <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(a.acquisition_date)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(cost)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: '#c62828' }}>{n(out ? parseFloat(a.disposal_cumulated ?? '0') || amort : amort)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#1565c0' }}>{n(vnc)}</td>
-                    <td style={{ fontSize: '0.75rem' }}>{a.duration_years} ans · {a.method === 'linear' ? 'linéaire' : 'dégressif'}</td>
-                    <td>
-                      <span style={{ fontSize: '0.625rem', padding: '2px 7px', borderRadius: 999, background: st.bg, color: st.color, fontWeight: 500 }}>{st.label}</span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: 4 }}>
-                        <button onClick={() => setScheduleId(a.id)} className="odoo-btn-secondary" title="Plan d'amortissement" style={{ padding: '4px 6px' }}><Eye size={12} /></button>
-                        {out ? (
-                          <button onClick={() => setCancelling(a)} className="odoo-btn-secondary" title="Annuler la sortie" style={{ padding: '4px 6px' }}><Undo2 size={12} /></button>
-                        ) : (<>
-                          <button onClick={() => setDisposing(a)} className="odoo-btn-secondary" title="Céder ou mettre au rebut" style={{ padding: '4px 6px' }}><LogOut size={12} /></button>
-                          <button onClick={() => { if (window.confirm(`Supprimer "${a.label}" et ses écritures de dotation ?`)) removeAsset.mutate(a.id); }} className="odoo-btn-secondary" title="Supprimer (saisie erronée)" style={{ padding: '4px 6px', color: '#c62828' }}><Trash2 size={12} /></button>
-                        </>)}
-                      </div>
+                    <td className="ds-ref">{a.asset_account_code}</td>
+                    <td>{fmtDate(a.acquisition_date)}</td>
+                    <td className="ds-num">{n(cost)}</td>
+                    <td className="ds-num">{n(out ? parseFloat(a.disposal_cumulated ?? '0') || amort : amort)}</td>
+                    <td className="ds-num ds-strong">{n(vnc)}</td>
+                    <td>{a.duration_years} ans · {a.method === 'linear' ? 'linéaire' : 'dégressif'}</td>
+                    <td><StatusTag tone={ASSET_TONE[a.status] ?? 'progress'} label={(STATUS_LABELS[a.status] || STATUS_LABELS.active).label} /></td>
+                    <td className="ds-actions">
+                      <button type="button" onClick={() => setScheduleId(a.id)} className="ds-icon-btn" title="Plan d'amortissement" aria-label={`Plan d'amortissement de ${a.label}`}><Eye size={15} /></button>
+                      <RowMenu items={out
+                        ? [{ label: 'Annuler la sortie', icon: Undo2, onSelect: () => setCancelling(a) }]
+                        : [
+                          { label: 'Céder ou mettre au rebut', icon: LogOut, onSelect: () => setDisposing(a) },
+                          { label: 'Supprimer (saisie erronée)', icon: Trash2, danger: true, onSelect: async () => {
+                            if (await confirm(`Supprimer « ${a.label} » et ses écritures de dotation ?`, { title: 'Supprimer l\'immobilisation', danger: true, confirmLabel: 'Supprimer' })) removeAsset.mutate(a.id);
+                          } },
+                        ]} />
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       </>}
@@ -358,7 +339,7 @@ function AssetForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
         </div>
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={() => save.mutate()} disabled={!valid || save.isPending} className="odoo-btn-primary" style={{ opacity: (!valid || save.isPending) ? 0.5 : 1 }}>
+          <button onClick={() => save.mutate()} disabled={!valid || save.isPending} className="odoo-btn-primary">
             {save.isPending ? 'Création...' : 'Créer'}
           </button>
         </div>
@@ -382,15 +363,15 @@ function ScheduleModal({ id, onClose }: { id: string; onClose: () => void }) {
           <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         {isLoading || !data ? (
-          <div style={{ padding: '2rem', textAlign: 'center' }}><Loader2 size={20} className="animate-spin" /></div>
+          <LoadingState />
         ) : (
-          <table className="odoo-table" style={{ margin: 0 }}>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th style={{ width: 90 }}>Période</th>
-                <th style={{ textAlign: 'right' }}>Dotation</th>
-                <th style={{ textAlign: 'right' }}>Cumul</th>
-                <th style={{ textAlign: 'right' }}>VNC</th>
+                <th className="ds-num">Dotation</th>
+                <th className="ds-num">Cumul</th>
+                <th className="ds-num">VNC</th>
                 <th style={{ width: 90, textAlign: 'center' }}>Comptabilisé</th>
               </tr>
             </thead>
@@ -398,10 +379,10 @@ function ScheduleModal({ id, onClose }: { id: string; onClose: () => void }) {
               {data.schedule.map((l, i) => (
                 <tr key={i} style={l.posted ? { background: 'var(--theme-bg-secondary)' } : undefined}>
                   <td style={{ fontSize: '0.75rem' }}>{String(l.month).padStart(2, '0')}/{l.year}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(l.amount)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{n(l.cumulated)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: '#1565c0' }}>{n(l.vnc)}</td>
-                  <td style={{ textAlign: 'center' }}>{l.posted ? <span style={{ color: '#0e7c3a' }}>✓</span> : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}</td>
+                  <td className="ds-num">{n(l.amount)}</td>
+                  <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{n(l.cumulated)}</td>
+                  <td className="ds-num" style={{ color: 'var(--ds-info)' }}>{n(l.vnc)}</td>
+                  <td style={{ textAlign: 'center' }}>{l.posted ? <span style={{ color: 'var(--ds-success)' }}>✓</span> : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}</td>
                 </tr>
               ))}
             </tbody>

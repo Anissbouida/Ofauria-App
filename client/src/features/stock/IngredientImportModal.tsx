@@ -104,7 +104,7 @@ export default function IngredientImportModal({ onClose }: { onClose: () => void
           <div className="odoo-breadcrumb">
             <FileSpreadsheet size={14} style={{ color: 'var(--theme-accent)' }} />
             <span>Ingrédients</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">Importer depuis Excel</span>
           </div>
           <div style={{ flex: 1 }} />

@@ -34,7 +34,7 @@ function StepIndicator({ current }: { current: number }) {
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.25rem 0.625rem', borderRadius: 999, fontSize: '0.75rem',
               fontWeight: active ? 600 : 500,
               background: active ? 'var(--odoo-purple)' : done ? '#d4edda' : 'var(--odoo-border)',
-              color: active ? '#fff' : done ? '#155724' : 'var(--odoo-text-muted)',
+              color: active ? '#fff' : done ? 'var(--ds-success)' : 'var(--odoo-text-muted)',
             }}>
               <span style={{ width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700, background: 'rgba(255,255,255,0.35)' }}>
                 {done ? '✓' : step.num}
@@ -42,7 +42,7 @@ function StepIndicator({ current }: { current: number }) {
               <span className="hidden sm:inline">{step.label}</span>
             </div>
             {i < STEPS.length - 1 && (
-              <div style={{ width: 28, height: 2, margin: '0 4px', background: done ? '#28a745' : 'var(--odoo-border)' }} />
+              <div style={{ width: 28, height: 2, margin: '0 4px', background: done ? 'var(--ds-success)' : 'var(--odoo-border)' }} />
             )}
           </div>
         );
@@ -404,7 +404,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       <div className="odoo-scope w-full h-full flex flex-col sm:max-h-full"
         style={{ maxWidth: 1100, border: '1px solid var(--odoo-border)', borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)' }}>
         {/* Header */}
-        <div className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.875rem 1.25rem', background: 'var(--theme-accent)', color: '#fff' }}>
+        <div className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.875rem 1.25rem', background: 'var(--ds-card)', color: 'var(--ds-ink)', borderBottom: '1px solid var(--ds-hair)' }}>
           <ClipboardList size={18} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 style={{ fontWeight: 700, fontSize: '0.9375rem', margin: 0 }}>
@@ -414,7 +414,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               <div style={{ fontSize: '0.75rem', opacity: 0.85, fontFamily: 'ui-monospace, monospace' }}>{order.order_number as string}</div>
             )}
           </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
         </div>
 
         {/* Step indicator */}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Factory, Pause, Play, Loader2, Clock, Lock, User, Wrench } from 'lucide-react';
+import { Factory, Pause, Play, Clock, Lock, User, Wrench } from 'lucide-react';
 import { productionEtapesApi } from '../../api/production-etapes.api';
 import { routingsApi } from '../../api/routings.api';
 import { employeesApi } from '../../api/employees.api';
@@ -9,7 +9,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListEmpty } from '../sales/ListTemplate';
+import { EmptyState, ErrorState, LoadingState } from '../../components/ds';
 
 // Étape en cours renvoyée par /atelier/live (mig 399).
 interface LiveEtape {
@@ -33,8 +33,6 @@ interface LiveEtape {
 
 const NON_ASSIGNE = '__none__';
 
-const inp: React.CSSProperties = { padding: '0.3rem 0.4rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit', fontSize: '0.78rem', width: '100%' };
-
 // Minutes de travail effectif écoulées (temps depuis le démarrage − pauses).
 function elapsedMinutes(e: LiveEtape, nowMs: number): number {
   if (!e.started_at) return 0;
@@ -49,7 +47,7 @@ export default function AtelierPage() {
   // Horloge locale : rafraîchit les durées affichées sans retaper le serveur.
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
 
-  const { data: etapes = [], isLoading } = useQuery<LiveEtape[]>({
+  const { data: etapes = [], isLoading, isError, refetch } = useQuery<LiveEtape[]>({
     queryKey: ['atelier-live'],
     queryFn: () => productionEtapesApi.atelierLive(),
     refetchInterval: 15000,
@@ -85,17 +83,15 @@ export default function AtelierPage() {
   }, [etapes]);
 
   return (
-    <SalesPageShell icon={Factory} parent="Production" title="Atelier"
-      summary={<>{!isLoading && <><b>{etapes.length}</b> étape(s) en cours · </>}Qui fait quoi, sur quel poste, en ce moment. Les étapes démarrées des plans en cours apparaissent ici,
-        regroupées par poste. Affectez un poste et un opérateur, mettez en pause ou reprenez. La durée affichée
-        exclut les pauses. Actualisation automatique.</>}>
+    <SalesPageShell icon={Factory} parent="Production › Opérations" title="Atelier"
+      summary={<>{!isLoading && !isError && <><b>{etapes.length}</b> étape(s) en cours · </>}Qui fait quoi, sur quel poste, en ce moment. Durées hors pauses, actualisation automatique.</>}>
 
-      {isLoading && (
-        <section className="prj-panel sal-empty"><Loader2 size={18} className="animate-spin" /><span>Chargement…</span></section>
-      )}
+      {isLoading && <LoadingState />}
 
-      {!isLoading && etapes.length === 0 && (
-        <ListEmpty icon={Factory} title="Aucune étape en cours." text="Démarrez une étape depuis un plan de production en cours." />
+      {isError && <ErrorState title="L'atelier n'a pas pu être chargé" onRetry={() => refetch()} />}
+
+      {!isLoading && !isError && etapes.length === 0 && (
+        <EmptyState icon={Factory} title="Aucune étape en cours" text="Démarrez une étape depuis un plan de production en cours." />
       )}
 
       {!isLoading && groups.length > 0 && (
@@ -121,8 +117,8 @@ export default function AtelierPage() {
                       </div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>#{e.ordre} · {e.nom}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, fontSize: '0.76rem' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontVariantNumeric: 'tabular-nums', color: over ? '#c62828' : paused ? '#b45309' : '#2e7d32', fontWeight: 600 }}>
-                          <Clock size={11} /> {mins} min{e.duree_estimee_min != null ? ` / ${e.duree_estimee_min}` : ''}{paused ? ' (en pause)' : ''}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontVariantNumeric: 'tabular-nums', color: over ? 'var(--ds-danger)' : paused ? 'var(--ds-warning)' : 'var(--ds-success)', fontWeight: 600 }}>
+                          <Clock size={11} aria-hidden="true" /> {mins} min{e.duree_estimee_min != null ? ` / ${e.duree_estimee_min}` : ''}{paused ? ' (en pause)' : ''}
                         </span>
                         {(e.assigned_employee_name || e.started_by_name) && (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
@@ -133,14 +129,14 @@ export default function AtelierPage() {
                       <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                         <SearchSelect value={e.work_center_id != null ? String(e.work_center_id) : ''} ariaLabel="Poste" width={150}
                           onChange={id => assign.mutate({ id: e.etape_id, patch: { workCenterId: id || null } })}
-                          placeholder="— Poste —" options={activeCenters.map(c => ({ id: String(c.id), label: c.name as string }))} />
+                          placeholder="Poste" options={activeCenters.map(c => ({ id: String(c.id), label: c.name as string }))} />
                         <SearchSelect value={e.assigned_employee_id != null ? String(e.assigned_employee_id) : ''} ariaLabel="Opérateur" width={150}
                           onChange={id => assign.mutate({ id: e.etape_id, patch: { assignedEmployeeId: id || null } })}
-                          placeholder="— Opérateur —" options={empOptions.map(o => ({ id: String(o.id), label: o.label as string }))} />
+                          placeholder="Opérateur" options={empOptions.map(o => ({ id: String(o.id), label: o.label as string }))} />
                         {paused ? (
-                          <button className="odoo-btn-primary" style={{ padding: '0.3rem 0.5rem', whiteSpace: 'nowrap' }} disabled={resume.isPending} onClick={() => resume.mutate(e.etape_id)} title="Reprendre"><Play size={12} /></button>
+                          <button type="button" className="odoo-btn-primary" style={{ minWidth: 40, minHeight: 40, justifyContent: 'center' }} disabled={resume.isPending} onClick={() => resume.mutate(e.etape_id)} aria-label={`Reprendre l'étape ${e.nom}`} title="Reprendre"><Play size={16} aria-hidden="true" /></button>
                         ) : (
-                          <button className="odoo-btn-secondary" style={{ padding: '0.3rem 0.5rem', whiteSpace: 'nowrap' }} disabled={pause.isPending} onClick={() => pause.mutate(e.etape_id)} title="Mettre en pause"><Pause size={12} /></button>
+                          <button type="button" className="odoo-btn-secondary" style={{ minWidth: 40, minHeight: 40, justifyContent: 'center' }} disabled={pause.isPending} onClick={() => pause.mutate(e.etape_id)} aria-label={`Mettre en pause l'étape ${e.nom}`} title="Mettre en pause"><Pause size={16} aria-hidden="true" /></button>
                         )}
                       </div>
                     </div>

@@ -155,11 +155,11 @@ export default function AccountModal({ account, accounts, onClose, onSaved }: {
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {account && (
             <>
-              <button type="button" className="odoo-btn-secondary" disabled={toggle.isPending} onClick={() => toggle.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button type="button" className="odoo-btn-secondary" disabled={toggle.isPending} onClick={() => toggle.mutate()}>
                 <Power size={13} /> {account.is_active ? 'Désactiver' : 'Réactiver'}
               </button>
               {neverUsed && (
-                <button type="button" className="odoo-btn-secondary" disabled={remove.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#c62828' }}
+                <button type="button" className="odoo-btn-secondary" disabled={remove.isPending} style={{ color: 'var(--ds-danger)' }}
                   onClick={async () => { if (await confirm(`Supprimer le compte ${account.code} ? Il n'a jamais été utilisé.`, { danger: true, confirmLabel: 'Supprimer' })) remove.mutate(); }}>
                   <Trash2 size={13} /> Supprimer
                 </button>
@@ -168,8 +168,7 @@ export default function AccountModal({ account, accounts, onClose, onSaved }: {
           )}
           <span style={{ flex: 1 }} />
           <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button type="button" onClick={() => save.mutate()} disabled={!validCode || label.trim().length < 2 || save.isPending} className="odoo-btn-primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: !validCode || label.trim().length < 2 ? 0.5 : 1 }}>
+          <button type="button" onClick={() => save.mutate()} disabled={!validCode || label.trim().length < 2 || save.isPending} className="odoo-btn-primary">
             {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Enregistrer
           </button>
         </div>

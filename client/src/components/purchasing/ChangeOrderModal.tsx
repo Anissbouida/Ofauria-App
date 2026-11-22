@@ -7,6 +7,7 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import { purchaseOrdersApi, newIdempotencyKey } from '../../api/purchase-orders.api';
 import { notify } from '../ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { FormField } from '../ds';
 
 /**
  * Demande de changement (avenant) d'un BC engagé (mig 307).
@@ -78,7 +79,7 @@ export default function ChangeOrderModal({ po, onClose }: {
   });
 
   const set = (id: string, k: keyof Draft, v: string) => setDrafts(d => ({ ...d, [id]: { ...d[id], [k]: v } }));
-  const inputCls = 'w-full px-2 py-1 border border-gray-200 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400';
+  const inputCls = 'ds-input sm ds-num';
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -88,26 +89,26 @@ export default function ChangeOrderModal({ po, onClose }: {
           <div className="odoo-breadcrumb">
             <FilePenLine size={14} style={{ color: 'var(--theme-accent)' }} />
             <span>Demande de changement</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">{po.order_number} · révision {versions.length ? Math.max(...versions.map((v: { version_no: number }) => v.version_no)) + 1 : 1}</span>
           </div>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div className="flex-1 overflow-y-auto" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <StatusBanner tone="info" icon={FilePenLine} title="Le BC est engagé : chaque modification devient une révision motivée">
             Une quantité ne descend pas sous ce qui est déjà reçu ou clôturé. Le prix d'un BC facturé ne change plus ici.
           </StatusBanner>
-          <table className="odoo-table">
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th>Article</th>
-                <th style={{ textAlign: 'right' }}>Contenants</th>
-                <th style={{ textAlign: 'right' }}>= base</th>
-                <th style={{ textAlign: 'right' }}>Reçu + clôturé</th>
-                <th style={{ textAlign: 'right' }}>Prix / unité</th>
-                <th style={{ textAlign: 'right' }}>Remise %</th>
-                <th style={{ textAlign: 'right' }}>TVA %</th>
+                <th className="ds-num">Contenants</th>
+                <th className="ds-num">= base</th>
+                <th className="ds-num">Reçu + clôturé</th>
+                <th className="ds-num">Prix / unité</th>
+                <th className="ds-num">Remise (%)</th>
+                <th className="ds-num">TVA (%)</th>
               </tr>
             </thead>
             <tbody>
@@ -120,49 +121,48 @@ export default function ChangeOrderModal({ po, onClose }: {
                 const below = base != null && base < floor - 0.0001;
                 return (
                   <tr key={l.id}>
-                    <td>{l.ingredient_name}{per !== 1 && <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> · {l.line_container_label ?? 'contenant'} de {per} {unit}</span>}</td>
-                    <td style={{ width: 100 }}><input className={inputCls} type="number" step="any" min="0" value={d.qtyContainer} onChange={e => set(l.id, 'qtyContainer', e.target.value)} style={below ? { borderColor: '#dc3545' } : undefined} /></td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: below ? '#dc3545' : 'var(--theme-text-muted)' }}>{base != null ? `${fmt(base)} ${unit}` : '—'}</td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>{fmt(floor)} {unit}</td>
-                    <td style={{ width: 110 }}><input className={inputCls} type="number" step="any" min="0" value={d.unitPrice} onChange={e => set(l.id, 'unitPrice', e.target.value)} /></td>
-                    <td style={{ width: 80 }}><input className={inputCls} type="number" step="any" min="0" max="100" value={d.discountPct} onChange={e => set(l.id, 'discountPct', e.target.value)} /></td>
-                    <td style={{ width: 80 }}><input className={inputCls} type="number" step="any" min="0" max="100" value={d.tvaRate} onChange={e => set(l.id, 'tvaRate', e.target.value)} /></td>
+                    <td className="ds-strong">{l.ingredient_name}{per !== 1 && <span style={{ color: 'var(--ds-muted)', fontSize: 12, fontWeight: 400 }}> · {l.line_container_label ?? 'contenant'} de {per} {unit}</span>}</td>
+                    <td style={{ width: 100 }}><input className={inputCls} type="number" step="any" min="0" value={d.qtyContainer} onChange={e => set(l.id, 'qtyContainer', e.target.value)}
+                      aria-label={`Contenants, ${l.ingredient_name}`} aria-invalid={below || undefined} title={below ? 'Sous la quantité déjà reçue ou clôturée' : undefined} /></td>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap', color: below ? 'var(--ds-danger)' : 'var(--ds-muted)', fontWeight: below ? 600 : undefined }}>{base != null ? `${fmt(base)} ${unit}` : '—'}</td>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap', color: 'var(--ds-muted)' }}>{fmt(floor)} {unit}</td>
+                    <td style={{ width: 110 }}><input className={inputCls} type="number" step="any" min="0" value={d.unitPrice} onChange={e => set(l.id, 'unitPrice', e.target.value)} aria-label={`Prix par unité, ${l.ingredient_name}`} /></td>
+                    <td style={{ width: 80 }}><input className={inputCls} type="number" step="any" min="0" max="100" value={d.discountPct} onChange={e => set(l.id, 'discountPct', e.target.value)} aria-label={`Remise en pourcentage, ${l.ingredient_name}`} /></td>
+                    <td style={{ width: 80 }}><input className={inputCls} type="number" step="any" min="0" max="100" value={d.tvaRate} onChange={e => set(l.id, 'tvaRate', e.target.value)} aria-label={`TVA en pourcentage, ${l.ingredient_name}`} /></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="co-expected" style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Livraison prévue</label>
-              <input id="co-expected" type="date" value={expected} onChange={e => setExpected(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm" />
-            </div>
-            <div>
-              <label htmlFor="co-reason" style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Motif *</label>
-              <select id="co-reason" value={reasonCodeId} onChange={e => setReasonCodeId(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm">
+          <div className="ds-form-grid">
+            <FormField label="Livraison prévue" htmlFor="co-expected">
+              <input id="co-expected" type="date" value={expected} onChange={e => setExpected(e.target.value)} className="ds-input" />
+            </FormField>
+            <FormField label="Motif" htmlFor="co-reason" required>
+              <select id="co-reason" value={reasonCodeId} onChange={e => setReasonCodeId(e.target.value)} className="ds-input">
                 <option value="">— Choisir un motif —</option>
                 {reasons.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
-          <div>
-            <label htmlFor="co-note" style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Précision{requiresNote ? ' *' : ''}</label>
-            <textarea id="co-note" rows={2} value={note} onChange={e => setNote(e.target.value)} maxLength={1000} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm" />
-          </div>
+          <FormField label="Précision" htmlFor="co-note" required={requiresNote}
+            hint={requiresNote ? 'Obligatoire pour ce motif (3 caractères au moins).' : undefined}>
+            <textarea id="co-note" rows={2} value={note} onChange={e => setNote(e.target.value)} maxLength={1000} className="ds-input" style={{ minHeight: 64 }} />
+          </FormField>
           {versions.length > 0 && (
             <div>
-              <div style={{ fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Révisions</div>
-              <table className="odoo-table">
+              <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Révisions</h3>
+              <table className="odoo-table ds-dense">
                 <tbody>
                   {versions.map((v: { version_no: number; created_at: string; created_by_name: string | null; reason_label: string | null; reason_note: string | null; reconstituted: boolean; diff: Array<{ path: string; old: unknown; new: unknown }> | null }) => (
                     <tr key={v.version_no}>
-                      <td style={{ width: 60 }}><b>v{v.version_no}</b></td>
-                      <td style={{ width: 140, color: 'var(--theme-text-muted)' }}>{new Date(v.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                      <td style={{ width: 60 }}><span className="ds-ref">v{v.version_no}</span></td>
+                      <td style={{ width: 160, color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>{new Date(v.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                       <td style={{ width: 160 }}>{v.created_by_name ?? '—'}</td>
                       <td>
                         {v.version_no === 0 ? (v.reconstituted ? 'Version d\'engagement (reconstituée)' : 'Version envoyée')
                           : <>{v.reason_label}{v.reason_note ? ` · ${v.reason_note}` : ''}
-                              {v.diff?.length ? <ul style={{ margin: '2px 0 0', paddingLeft: 16, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                              {v.diff?.length ? <ul style={{ margin: '2px 0 0', paddingLeft: 16, fontSize: 12, color: 'var(--ds-muted)' }}>
                                 {v.diff.map((d, i) => <li key={i}>{d.path} : {String(d.old ?? '∅')} → {String(d.new ?? '∅')}</li>)}
                               </ul> : null}</>}
                       </td>
@@ -173,10 +173,10 @@ export default function ChangeOrderModal({ po, onClose }: {
             </div>
           )}
         </div>
-        <div style={{ borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button type="button" onClick={onClose} className="odoo-btn-secondary">Retour</button>
-          <button type="button" disabled={!valid || mutation.isPending} onClick={() => mutation.mutate()} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            {mutation.isPending && <Loader2 size={12} className="animate-spin" />}
+        <div className="ds-form-foot" style={{ justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={mutation.isPending}>Annuler</button>
+          <button type="button" disabled={!valid || mutation.isPending} aria-busy={mutation.isPending || undefined} onClick={() => mutation.mutate()} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {mutation.isPending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
             Enregistrer la révision
           </button>
         </div>

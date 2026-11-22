@@ -12,6 +12,7 @@ import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEdito
 import { useCustomFieldsForm } from '../../api/custom-fields.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { currencySymbol } from '../../utils/money';
+import { FormField, FormSection } from '../../components/ds';
 
 /*
  * Formulaire unique de creation / modification d'un ingredient.
@@ -158,7 +159,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
         display: 'flex', flexDirection: 'column', borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
       }}>
         {/* En-tete */}
-        <div style={{ padding: '0.875rem 1.125rem', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f9fafb', flexShrink: 0 }}>
+        <div style={{ padding: '0.875rem 1.125rem', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--ds-bg)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {mode === 'create' ? <Package size={16} style={{ color: 'var(--theme-accent)' }} /> : <Edit3 size={16} style={{ color: 'var(--theme-accent)' }} />}
             <div>
@@ -173,16 +174,16 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
               {mode === 'edit' && <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ing.name as string}</p>}
             </div>
           </div>
-          <button type="button" onClick={onClose} title="Fermer (Échap)" style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
+          <button type="button" onClick={onClose} title="Fermer (Échap)" aria-label="Fermer" className="ds-icon-btn"><X size={16} /></button>
         </div>
 
-        <form onSubmit={submit} noValidate style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, backgroundColor: '#fff' }}>
+        <form onSubmit={submit} noValidate style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, backgroundColor: 'var(--ds-card)' }}>
           <div style={{ padding: '1rem 1.125rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
             {/* ── Identification ── */}
             <Section icon={<Package size={13} />} title="Identification">
               <Field label={title ? "Nom de l'article" : "Nom de l'ingrédient"} required error={err('name')}>
-                <input className="input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Ex : Farine T55" autoFocus />
+                <input className="ds-input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Ex : Farine T55" autoFocus />
               </Field>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: '0.75rem' }}>
                 <Field label="Unité de stock">
@@ -195,7 +196,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                           style={{
                             flex: 1, padding: '0.4rem 0', fontSize: '0.8125rem', fontWeight: active ? 600 : 500,
                             borderLeft: i ? '1px solid var(--theme-bg-separator)' : 'none',
-                            backgroundColor: active ? 'var(--theme-accent)' : '#fff',
+                            backgroundColor: active ? 'var(--theme-accent)' : 'var(--ds-card)',
                             color: active ? '#fff' : 'var(--theme-text-body)',
                           }}>
                           {opt.label}
@@ -205,7 +206,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                   </div>
                   {/* Unités ajoutées au référentiel (mètre, m²…, mig 515). */}
                   {extraUnits.length > 0 && (
-                    <select className="input" style={{ marginTop: 6 }} aria-label="Autre unité de stock"
+                    <select className="ds-input" style={{ marginTop: 6 }} aria-label="Autre unité de stock"
                       value={UNITS.some(u => u.value === form.unit) ? '' : form.unit}
                       onChange={e => e.target.value && set('unit', e.target.value)}>
                       <option value="">Autre unité…</option>
@@ -215,7 +216,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                 </Field>
                 <Field label="Coût unitaire">
                   <Suffixed suffix={`${currencySymbol()} / ${u}`}>
-                    <input type="number" step="0.01" min="0" className="input" value={form.unitCost}
+                    <input type="number" step="0.01" min="0" className="ds-input" value={form.unitCost}
                       onChange={e => set('unitCost', e.target.value)} placeholder="0,00" />
                   </Suffixed>
                 </Field>
@@ -223,14 +224,14 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
               {(form.unit === 'l' || form.unit === 'ml') && (
                 <Field label="Masse volumique (kg/L)"
                   hint="Permet les recettes saisies au poids pour un ingrédient stocké en volume. Ex : 1,03 lait · 0,92 huile · 1 eau.">
-                  <input type="number" step="0.001" min="0" className="input" value={form.densiteKgL}
+                  <input type="number" step="0.001" min="0" className="ds-input" value={form.densiteKgL}
                     onChange={e => set('densiteKgL', e.target.value)} placeholder="ex 1.03" style={{ maxWidth: 180 }} />
                 </Field>
               )}
               {form.unit === 'unit' && (
                 <Field label="Poids d'une pièce (kg)"
                   hint="Permet de répartir les frais d'approche au poids pour un article compté à la pièce. Ex : 0,25 pour une pièce de 250 g.">
-                  <input type="number" step="0.0001" min="0" className="input" value={form.poidsPieceKg}
+                  <input type="number" step="0.0001" min="0" className="ds-input" value={form.poidsPieceKg}
                     onChange={e => set('poidsPieceKg', e.target.value)} placeholder="ex 0.25" style={{ maxWidth: 180 }} />
                 </Field>
               )}
@@ -254,7 +255,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                     onChange={id => set('categoryId', id)} placeholder="Rechercher : farine, beurre…" width="100%" />
                 </Field>
                 <Field label="Fournisseur habituel">
-                  <input className="input" list="ingredient-form-suppliers" value={form.supplier}
+                  <input className="ds-input" list="ingredient-form-suppliers" value={form.supplier}
                     onChange={e => set('supplier', e.target.value)} placeholder="Choisir ou saisir" />
                   <datalist id="ingredient-form-suppliers">
                     {suppliers.filter(s => s.is_active !== false).map(s => <option key={s.id as string} value={s.name as string} />)}
@@ -264,7 +265,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
               {mode === 'edit' && (
                 <Field label="Seuil minimum d'alerte">
                   <Suffixed suffix={u}>
-                    <input type="number" step="0.1" min="0" className="input" value={form.threshold}
+                    <input type="number" step="0.1" min="0" className="ds-input" value={form.threshold}
                       onChange={e => set('threshold', e.target.value)} style={{ maxWidth: 180 }} />
                   </Suffixed>
                 </Field>
@@ -286,11 +287,11 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                 ))}
               </div>
               {containerType && (
-                <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 6, padding: '0.75rem', backgroundColor: '#fafafa', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--ds-bg)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <Field label={`Contenance d'un ${String(containerType.label).toLowerCase()}`} required error={err('containerSize')}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <Suffixed suffix={u} width={150}>
-                        <input type="number" step="0.001" min="0" className="input" value={form.containerSize}
+                        <input type="number" step="0.001" min="0" className="ds-input" value={form.containerSize}
                           onChange={e => set('containerSize', e.target.value)} placeholder="ex 25" />
                       </Suffixed>
                       {(SIZE_PRESETS[form.unit] || []).map(p => (
@@ -330,13 +331,13 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
           </div>
 
           {/* Pied fixe : toujours visible, meme si le contenu defile */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1.125rem', borderTop: '1px solid var(--theme-bg-separator)', backgroundColor: '#f9fafb', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1.125rem', borderTop: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--ds-bg)', flexShrink: 0 }}>
             {submitted && hasErrors && (
-              <span style={{ marginRight: 'auto', fontSize: '0.75rem', color: '#dc3545' }}>Complétez les champs signalés.</span>
+              <span role="alert" style={{ marginRight: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--ds-danger)' }}>Complétez les champs signalés.</span>
             )}
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
-              <Save size={13} /> {isLoading ? 'Enregistrement…' : mode === 'create' ? (title ? 'Créer et ajouter' : "Créer l'ingrédient") : 'Sauvegarder'}
+            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={isLoading}>Annuler</button>
+            <button type="submit" disabled={isLoading} aria-busy={isLoading || undefined} className="odoo-btn-primary">
+              <Save size={13} aria-hidden="true" /> {isLoading ? 'Enregistrement…' : mode === 'create' ? (title ? 'Créer et ajouter' : "Créer l'ingrédient") : 'Enregistrer'}
             </button>
           </div>
         </form>
@@ -345,30 +346,21 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
   );
 }
 
+/** Section du formulaire : délègue à `FormSection` du Design System (icône et complément dans le titre). */
 function Section({ icon, title, aside, children }: { icon: React.ReactNode; title: string; aside?: string; children: React.ReactNode }) {
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingBottom: 4, borderBottom: '1px solid var(--theme-bg-separator)' }}>
-        <span style={{ color: 'var(--theme-accent)', display: 'flex' }}>{icon}</span>
-        <h3 style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--theme-text-strong)' }}>{title}</h3>
-        {aside && <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{aside}</span>}
-      </div>
+    <FormSection title={<span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ color: 'var(--ds-accent)', display: 'flex' }} aria-hidden="true">{icon}</span>{title}
+      {aside && <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 400, color: 'var(--ds-muted)' }}>{aside}</span>}
+    </span>}>
       {children}
-    </section>
+    </FormSection>
   );
 }
 
+/** Champ du formulaire : délègue à `FormField` (astérisque, aide ou erreur sous le champ). */
 function Field({ label, required, error, hint, children }: { label: string; required?: boolean; error?: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
-        {label}{required && <span style={{ color: '#dc3545' }}> *</span>}
-      </label>
-      {children}
-      {error ? <p style={{ fontSize: '0.6875rem', color: '#dc3545', marginTop: 3 }}>{error}</p>
-        : hint ? <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 3 }}>{hint}</p> : null}
-    </div>
-  );
+  return <FormField label={label} required={required} error={error} hint={hint}>{children}</FormField>;
 }
 
 /** Champ avec suffixe d'unite colle a droite (« DH / kg », « kg »). */
@@ -390,7 +382,7 @@ function Chip({ active, small, onClick, children }: { active: boolean; small?: b
         padding: small ? '0.2rem 0.55rem' : '0.35rem 0.8rem', borderRadius: 999,
         fontSize: small ? '0.75rem' : '0.8125rem', fontWeight: active ? 600 : 500,
         border: `1px solid ${active ? 'var(--theme-accent)' : 'var(--theme-bg-separator)'}`,
-        backgroundColor: active ? 'var(--theme-accent-light, #fdf2f2)' : '#fff',
+        backgroundColor: active ? 'var(--theme-accent-light, var(--ds-tint))' : 'var(--ds-card)',
         color: active ? 'var(--theme-accent)' : 'var(--theme-text-body)',
         cursor: 'pointer', whiteSpace: 'nowrap',
       }}>

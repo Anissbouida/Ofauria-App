@@ -9,6 +9,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar, ListEmpty } from '../sales/ListTemplate';
 import { StageChips, Panel, PagerFoot, PageLoading } from './KlUi';
+import { NoResultState } from '../../components/ds';
 import { money } from '../../utils/money';
 
 /**
@@ -25,7 +26,7 @@ const KINDS: Array<StageDef & { key: Kind }> = [
   { key: 'pesee', label: 'Pesées hors tolérance', hint: 'écart de pesée motivé', icon: Scale },
   { key: 'refus', label: 'Refus du chef', hint: 'préparation à reprendre', icon: Undo2 },
 ];
-const KIND_DOT: Record<Kind, string> = { qc: 'var(--prj-red)', rendement: 'var(--prj-orange)', pesee: '#c99a06', refus: '#3b82f6' };
+const KIND_DOT: Record<Kind, string> = { qc: 'var(--ds-danger)', rendement: 'var(--ds-warning)', pesee: '#c99a06', refus: 'var(--ds-accent)' };
 const ACTION: Record<Kind, string> = {
   qc: 'Voir le contrôle', rendement: 'Analyser le plan', pesee: 'Voir le plan', refus: 'Voir le bon',
 };
@@ -58,6 +59,15 @@ export default function ProductionControl({ range, periodText }: { range: Record
 
   return (
     <>
+      {(counts.qc ?? 0) > 0 && kind !== 'qc' && (
+        <StatusBanner tone="danger" icon={ClipboardCheck}
+          title={`${counts.qc} contrôle${counts.qc > 1 ? 's' : ''} qualité non conforme${counts.qc > 1 ? 's' : ''} ou non renseigné${counts.qc > 1 ? 's' : ''}`}
+          actions={<button type="button" className="odoo-btn-secondary" onClick={() => setKind('qc')}>Les afficher</button>}>
+          Une étape à contrôle qualité a été terminée avec un point refusé, ou sans résultat : vérifiez le lot avant sa mise en vente.
+        </StatusBanner>
+      )}
+
+
       <StageChips
         title="Anomalies de production"
         summary={totalIssues ? `${totalIssues} anomalie${totalIssues > 1 ? 's' : ''} · ${periodText}` : `Aucune anomalie · ${periodText}`}
@@ -67,26 +77,20 @@ export default function ProductionControl({ range, periodText }: { range: Record
         onPick={k => setKind(kind === k ? '' : (k as Kind))}
       />
 
-      {(counts.qc ?? 0) > 0 && kind !== 'qc' && (
-        <StatusBanner tone="danger" icon={ClipboardCheck}
-          title={`${counts.qc} contrôle${counts.qc > 1 ? 's' : ''} qualité non conforme${counts.qc > 1 ? 's' : ''} ou non renseigné${counts.qc > 1 ? 's' : ''}`}
-          actions={<button type="button" className="odoo-btn-secondary" onClick={() => setKind('qc')}>Les afficher</button>}>
-          Une étape à contrôle qualité a été terminée avec un point refusé, ou sans résultat : vérifiez le lot avant sa mise en vente.
-        </StatusBanner>
-      )}
 
       <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher un produit, un ingrédient, un bon, un motif...">
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
         {(kind || search) && (
-          <button type="button" onClick={() => { setKind(''); setSearchInput(''); setSearch(''); }} className="odoo-btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer les filtres
+          <button type="button" onClick={() => { setKind(''); setSearchInput(''); setSearch(''); }} className="ds-btn-ghost ds-btn-sm">
+            <X size={12} aria-hidden="true" /> Effacer les filtres
           </button>
         )}
       </ListToolbar>
 
       {isLoading ? <PageLoading /> : rows.length === 0 ? (
-        <ListEmpty icon={CheckCircle2} title={kind || search ? 'Aucune anomalie pour ces filtres.' : 'Aucune anomalie de production sur la période.'} />
+        kind || search
+          ? <NoResultState text="Aucune anomalie ne correspond aux filtres." onReset={() => { setKind(''); setSearchInput(''); setSearch(''); }} />
+          : <ListEmpty icon={CheckCircle2} title="Aucune anomalie de production sur la période" text="Rendements, contrôles qualité, pesées et bons refusés : tout est conforme." />
       ) : (
         <Panel style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}
           footer={<PagerFoot page={page} total={data?.total ?? 0} onPage={setPage} note={`Anomalies de production · ${periodText}`} />}>
@@ -98,37 +102,37 @@ export default function ProductionControl({ range, periodText }: { range: Record
                 <th>Concerne</th>
                 <th>Détail</th>
                 <th>Par</th>
-                <th style={{ textAlign: 'right' }}>Prochaine action</th>
+                <th className="ds-actions">Prochaine action</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(r => (
                 <tr key={`${r.kind}-${r.id}`}>
-                  <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>
-                    {r.occurred_at ? format(new Date(r.occurred_at), 'dd/MM/yyyy HH:mm', { locale: fr }) : '—'}
+                  <td style={{ color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
+                    {r.occurred_at ? format(new Date(r.occurred_at), 'd MMM yyyy HH:mm', { locale: fr }) : '—'}
                   </td>
                   <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 600 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
                       <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: KIND_DOT[r.kind] }} />
                       {KINDS.find(k => k.key === r.kind)?.label}
                     </span>
                   </td>
                   <td>
-                    <span style={{ fontWeight: 500 }}>{r.label}</span>
-                    {r.plan_date && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Plan du {format(new Date(r.plan_date), 'dd MMM yyyy', { locale: fr })}</div>}
+                    <span className="ds-strong">{r.label}</span>
+                    {r.plan_date && <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Plan du {format(new Date(r.plan_date), 'd MMM yyyy', { locale: fr })}</div>}
                   </td>
-                  <td style={{ fontSize: '0.8125rem', color: r.kind === 'qc' ? 'var(--prj-red)' : 'var(--odoo-text)', maxWidth: 380 }}>
+                  <td style={{ color: r.kind === 'qc' ? 'var(--ds-danger)' : undefined, maxWidth: 380 }}>
                     {r.detail ?? '—'}
-                    {r.value && Number(r.value) !== 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>écart de coût estimé {money(Number(r.value))}</div>}
+                    {r.value && Number(r.value) !== 0 && <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>écart de coût estimé {money(Number(r.value))}</div>}
                   </td>
-                  <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{r.by_name ?? '—'}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td style={{ color: 'var(--ds-muted)' }}>{r.by_name ?? '—'}</td>
+                  <td className="ds-actions">
                     {r.plan_id ? (
                       <button type="button" onClick={() => navigate(`/production/${r.plan_id}`)}
-                        className={r.kind === 'qc' ? 'odoo-btn-danger' : 'odoo-btn-secondary'}>
+                        className="odoo-btn-secondary ds-btn-sm">
                         {ACTION[r.kind]}
                       </button>
-                    ) : <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>plan introuvable</span>}
+                    ) : <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>plan introuvable</span>}
                   </td>
                 </tr>
               ))}

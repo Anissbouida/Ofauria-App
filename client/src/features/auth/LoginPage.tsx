@@ -153,10 +153,10 @@ export default function LoginPage() {
       } finally { setLoading(false); }
     };
     return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+      <div className="kl-ds min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
         <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
           <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--theme-accent)' }}>{t('auth.mfaTitle')}</h1>
-          <p className="text-sm mb-4" style={{ color: 'var(--theme-text-muted)' }}>{t('auth.mfaHelp')}</p>
+          <p className="text-sm mb-4" style={{ color: 'var(--ds-muted)' }}>{t('auth.mfaHelp')}</p>
           <form onSubmit={submitCode} className="space-y-4">
             <input className="input" autoFocus autoComplete="one-time-code" inputMode="text" maxLength={12} placeholder="123456"
               aria-label={t('auth.mfaCodeLabel')} dir="ltr" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} />
@@ -171,33 +171,33 @@ export default function LoginPage() {
   // ═══════ EMAIL MODE ═══════
   if (mode === 'email') {
     return (
-      <div className="relative min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+      <div className="kl-ds relative min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
         <LanguageSelect className="absolute top-4 end-4" />
         <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold" style={{ color: 'var(--theme-accent)' }}>{settings.companyName}</h1>
-            <p className="mt-1" style={{ color: 'var(--theme-text-muted)' }}>{settings.subtitle}</p>
+            <p className="mt-1" style={{ color: 'var(--ds-muted)' }}>{settings.subtitle}</p>
           </div>
 
           <form onSubmit={handleEmailSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.email')}</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              <label htmlFor="login-email" className="block text-sm font-medium mb-1" style={{ color: 'var(--ds-ink)' }}>{t('auth.email')}</label>
+              <input id="login-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)}
                 className="input" dir="ltr" placeholder={t('auth.emailPlaceholder')} required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('auth.password')}</label>
+              <label htmlFor="login-password" className="block text-sm font-medium mb-1" style={{ color: 'var(--ds-ink)' }}>{t('auth.password')}</label>
               <div className="relative">
-                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                <input id="login-password" autoComplete="current-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
                   className="input pe-10" dir="ltr" placeholder="••••••••" required />
                 <button type="button" onClick={() => setShowPassword(v => !v)}
                   aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
-                  className="absolute inset-y-0 end-0 flex items-center pe-3 text-gray-400 hover:text-gray-600">
+                  className="absolute inset-y-0 end-0 flex items-center pe-3" style={{ color: 'var(--ds-muted)' }}>
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3">
+            <button type="submit" disabled={loading} aria-busy={loading || undefined} className="btn-primary w-full py-3">
               {loading ? t('auth.signingIn') : t('auth.signIn')}
             </button>
           </form>
@@ -227,16 +227,16 @@ export default function LoginPage() {
 
   // ═══════ PIN MODE ═══════
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+    <div className="kl-ds relative min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
       <LanguageSelect className="absolute top-4 end-4" />
       <div className="text-center mb-10">
         <h1 className="text-5xl font-bold" style={{ color: 'var(--theme-accent)' }}>{settings.companyName}</h1>
-        <p className="mt-1" style={{ color: 'var(--theme-text-muted)' }}>{settings.subtitle}</p>
+        <p className="mt-1" style={{ color: 'var(--ds-muted)' }}>{settings.subtitle}</p>
       </div>
 
       {expired && (
         <div role="alert" className="mb-6 max-w-xl text-center text-sm rounded-md px-4 py-3"
-          style={{ background: '#fef3c7', border: '1px solid #fcd34d', color: '#92400e' }}>
+          style={{ background: 'var(--ds-warning-bg)', border: '1px solid var(--ds-warning)', color: 'var(--ds-warning)' }}>
           <strong>Votre session a expiré.</strong>{' '}
           {expired === 'write'
             ? 'Votre dernière modification n\'a pas été enregistrée : reconnectez-vous, puis refaites-la.'
@@ -248,13 +248,13 @@ export default function LoginPage() {
         // ── Étape 1 : choisir son nom ──
         <div className="flex flex-col items-center w-full max-w-2xl">
           <div className="flex items-center gap-2 mb-6">
-            <Lock size={20} className="text-gray-400" />
-            <span className="text-gray-500">{t('auth.whoIsLoggingIn')}</span>
+            <Lock size={20} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
+            <span style={{ color: 'var(--ds-body)' }}>{t('auth.whoIsLoggingIn')}</span>
           </div>
           {pinUsers === null ? (
-            <div className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>{t('common.loading')}</div>
+            <div role="status" className="text-sm" style={{ color: 'var(--ds-muted)' }}>{t('common.loading')}</div>
           ) : pinUsers.length === 0 ? (
-            <div className="text-sm text-center" style={{ color: 'var(--theme-text-muted)' }}>
+            <div className="text-sm text-center" style={{ color: 'var(--ds-muted)' }}>
               {t('auth.noPinAccounts')}
             </div>
           ) : (
@@ -275,7 +275,7 @@ export default function LoginPage() {
             </div>
           )}
           <a href="/login?mode=email"
-            className="mt-8 text-sm text-gray-400 hover:text-gray-600 flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer no-underline">
+            className="mt-8 text-sm flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer no-underline">
             <Mail size={14} /> {t('auth.adminLogin')}
           </a>
         </div>
@@ -287,8 +287,8 @@ export default function LoginPage() {
           <ArrowLeft size={14} className="rtl:-scale-x-100" /> {t('auth.changePerson')}
         </button>
         <div className="flex items-center gap-2 mb-4">
-          <Lock size={20} className="text-gray-400" />
-          <span className="text-gray-500">
+          <Lock size={20} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
+          <span style={{ color: 'var(--ds-body)' }}>
             <strong className="text-gray-800"><bdi>{selected.firstName}{selected.lastInitial ? ` ${selected.lastInitial}.` : ''}</bdi></strong> — {t('auth.enterPin')}
           </span>
         </div>
@@ -297,13 +297,13 @@ export default function LoginPage() {
           {pin.length === 0
             ? <span className="text-sm text-gray-300">• • • •</span>
             : Array.from({ length: pin.length }, (_, i) => (
-              <div key={i} className={`w-4 h-4 rounded-full ${error ? 'bg-red-500' : ''}`}
-                style={!error ? { backgroundColor: 'var(--theme-accent)' } : undefined} />
+              <div key={i} className="w-4 h-4 rounded-full"
+                style={{ backgroundColor: error ? 'var(--ds-danger)' : 'var(--theme-accent)' }} />
             ))}
         </div>
 
-        {error && <div className="text-red-500 text-sm font-medium mb-4">{error}</div>}
-        {loading && <div className="text-sm font-medium mb-4" style={{ color: 'var(--theme-accent)' }}>{t('auth.verifying')}</div>}
+        {error && <div role="alert" className="text-sm font-semibold mb-4" style={{ color: 'var(--ds-danger)' }}>{error}</div>}
+        {loading && <div role="status" className="text-sm font-medium mb-4" style={{ color: 'var(--theme-accent)' }}>{t('auth.verifying')}</div>}
 
         <div className="rounded-2xl shadow-lg p-5 w-full max-w-xs" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
           <div className="grid grid-cols-3 gap-3">
@@ -321,9 +321,9 @@ export default function LoginPage() {
               className="h-16 rounded-xl bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-2xl font-semibold text-gray-800 transition-all active:scale-95 disabled:opacity-50">
               0
             </button>
-            <button type="button" onClick={handleBackspace} disabled={loading}
+            <button type="button" onClick={handleBackspace} disabled={loading} aria-label="Effacer le dernier chiffre"
               className="h-16 rounded-xl bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-500 transition-all active:scale-95">
-              <Delete size={22} />
+              <Delete size={22} aria-hidden="true" />
             </button>
           </div>
           <button type="button" onClick={() => handlePinSubmit(pin)} disabled={loading || pin.length < PIN_MIN}

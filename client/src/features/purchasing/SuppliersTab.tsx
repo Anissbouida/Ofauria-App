@@ -2,8 +2,8 @@ import PersonalDataExportButton from '../../components/PersonalDataExportButton'
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus, Pencil, Truck, X, Loader2, Search, CheckCircle2, RotateCcw, Trash2,
-  AlertTriangle, History, Building2, FileBadge2, Phone, ClipboardList, Banknote, Archive,
+  Plus, Truck, X, CheckCircle2, RotateCcw, Trash2,
+  AlertTriangle, History, FileBadge2, ClipboardList, Banknote, Archive,
   Filter, MapPin, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -20,11 +20,16 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useAuth } from '../../context/AuthContext';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import {
-  StagePipeline, ViewSwitch, PeriodFilter, SelectFilter, Pager,
+  KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState,
+  Tabs, Alert, FormSection, FormField, FormFooter,
+} from '../../components/ds';
+import {
+  StagePipeline, ViewSwitch, PeriodFilter, SelectFilter,
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
-import { ListKpi } from '../sales/ListTemplate';
 import { PurHeaderActions } from './PurHeaderActions';
 import { money, currencySymbol } from '../../utils/money';
 
@@ -91,10 +96,6 @@ function formFromSupplier(s: Supplier): FormState {
   };
 }
 
-const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
-const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400';
-const sectionTitle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', margin: '6px 0 2px' };
-
 /**
  * Situation de la relation fournisseur (dérivée côté serveur, cf. supplierRepository._stagedCte).
  * Chaque fournisseur actif est dans UNE étape, la plus urgente ; les inactifs sont dans l'Historique.
@@ -107,10 +108,9 @@ const SUP_STAGES: StageDef[] = [
   { key: 'inactive', label: 'Inactifs', hint: 'voir l\'historique', icon: Archive },
 ];
 const SUP_OPEN_STAGES = ['incomplete', 'ordering', 'due', 'ok'];
-// Pastille de situation : un point de couleur + libellé (pas de pilule, pour ne pas
-// répéter l'alerte déjà portée par la colonne ICE).
-const STAGE_DOT: Record<string, string> = {
-  incomplete: '#d9822b', ordering: '#3b82f6', due: '#c99a06', ok: '#28a745', inactive: '#adb5bd',
+// Ton du statut de situation : une couleur = un sens (à traiter, en cours, terminé, inactif).
+const STAGE_TONE: Record<string, StatusTone> = {
+  incomplete: 'todo', ordering: 'progress', due: 'todo', ok: 'done', inactive: 'cancelled',
 };
 // Critères transverses : un fournisseur « Commande en cours » peut aussi avoir un reste dû, etc.
 const SUP_FLAGS: Record<'open' | 'history', Array<{ key: string; label: string }>> = {
@@ -245,24 +245,23 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
     }
   };
 
-  /** Prochaine action selon la situation (bouton principal de la ligne). */
-  const nextAction = (s: Supplier & Record<string, any>): { label: string; run: () => void; cls: string } | null => {
-    switch (s.stage as string) {
-      case 'incomplete':
-        return { label: 'Compléter la fiche', run: () => openEdit(s), cls: 'odoo-btn-primary' };
-      case 'ordering':
-        return onOpenOrders
-          ? { label: 'Voir ses BC', run: () => onOpenOrders(s.id), cls: Number(s.late_po_count) > 0 ? 'odoo-btn-danger' : 'odoo-btn-primary' }
-          : null;
-      case 'due':
-        return onOpenInvoices
-          ? { label: 'Voir ses factures', run: () => onOpenInvoices(s.id), cls: Number(s.overdue_invoice_count) > 0 ? 'odoo-btn-danger' : 'odoo-btn-primary' }
-          : null;
-      case 'inactive':
-        return { label: 'Réactiver', run: () => askReactivate(s), cls: 'odoo-btn-secondary' };
-      default:
-        return null;
+  /** Actions secondaires d'une ligne (menu « ⋯ ») ; l'action visible ouvre la fiche. */
+  const rowMenu = (s: Supplier & Record<string, any>): RowMenuItem[] => {
+    const items: RowMenuItem[] = [];
+    if (onOpenOrders) items.push({ label: 'Voir ses bons de commande', icon: ClipboardList, onSelect: () => onOpenOrders(s.id) });
+    if (onOpenInvoices) items.push({ label: 'Voir ses factures', icon: Banknote, onSelect: () => onOpenInvoices(s.id) });
+    if (!s.is_active) items.push({ label: 'Réactiver', icon: RotateCcw, onSelect: () => askReactivate(s) });
+    else if (isAdmin) {
+      items.push({
+        label: 'Désactiver', icon: Trash2, danger: true,
+        onSelect: async () => {
+          if (await confirm(`Désactiver le fournisseur « ${s.name} » ? Il n'apparaîtra plus dans les sélections ; l'historique (BC, factures, paiements) est conservé.`, { title: 'Désactiver un fournisseur', confirmLabel: 'Désactiver', danger: true })) {
+            deactivateMutation.mutate(s.id);
+          }
+        },
+      });
     }
+    return items;
   };
 
   /**
@@ -285,11 +284,11 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
   };
   const sortableTh = (field: string, label: string, align?: 'right') => (
     <th onClick={() => toggleSort(field)} aria-sort={sortBy === field ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-      style={{ cursor: 'pointer', userSelect: 'none', textAlign: align }}>
+      className={align ? 'ds-num' : undefined} style={{ cursor: 'pointer', userSelect: 'none' }}>
       {label}{' '}
       {sortBy !== field
-        ? <ArrowUpDown size={10} style={{ opacity: 0.3, verticalAlign: 'middle' }} />
-        : sortDir === 'asc' ? <ArrowUp size={10} style={{ verticalAlign: 'middle' }} /> : <ArrowDown size={10} style={{ verticalAlign: 'middle' }} />}
+        ? <ArrowUpDown size={10} aria-hidden="true" style={{ opacity: 0.3, verticalAlign: 'middle' }} />
+        : sortDir === 'asc' ? <ArrowUp size={10} aria-hidden="true" style={{ verticalAlign: 'middle' }} /> : <ArrowDown size={10} aria-hidden="true" style={{ verticalAlign: 'middle' }} />}
     </th>
   );
   const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd MMM yyyy', { locale: fr }) : null);
@@ -306,40 +305,20 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
         </StatusBanner>
       )}
 
-      <section className="prj-kpis" aria-label="Indicateurs">
-        <ListKpi label="Restant dû" value={`${money(openDue)}`} sub={`${stageStats.due?.count ?? 0} fournisseur(s) à régler`} tone={openDue > 0 ? 'orange' : undefined} />
-        <ListKpi label="Commandes ouvertes" value={`${money(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.openPo ?? 0), 0))}`} sub={`${stageStats.ordering?.count ?? 0} fournisseur(s) avec BC en cours`} />
-        <ListKpi label="Achats 12 mois" value={`${money(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.p12 ?? 0), 0))}`} sub={`${openCount} fournisseur(s) actif(s)`} />
-        <ListKpi label="Fiches sans ICE" value={String(incompleteCount)} sub="facture non probante" tone={incompleteCount ? 'red' : undefined} />
-      </section>
+      <KpiGrid>
+        <KpiCard label="Restant dû" value={money(openDue)} sub={`${stageStats.due?.count ?? 0} fournisseur(s) à régler`} tone={openDue > 0 ? 'orange' : undefined} />
+        <KpiCard label="Commandes ouvertes" value={money(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.openPo ?? 0), 0))} sub={`${stageStats.ordering?.count ?? 0} fournisseur(s) avec BC en cours`} />
+        <KpiCard label="Achats 12 mois" value={money(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.p12 ?? 0), 0))} sub={`${openCount} fournisseur(s) actif(s)`} />
+        <KpiCard label="Fiches sans ICE" value={String(incompleteCount)} sub="facture non probante" tone={incompleteCount ? 'red' : undefined} />
+      </KpiGrid>
 
-      <div className="prj-toolbar">
-        <label className="prj-search">
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="search" placeholder="Nom, raison sociale, contact, ville, ICE, IF…" aria-label="Rechercher un fournisseur"
-            value={searchInput} onChange={e => setSearchInput(e.target.value)} />
-          {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-        </label>
-        <SelectFilter label="Critère" icon={Filter} value={flag} onChange={setFlag} options={SUP_FLAGS[view]} />
-        <SelectFilter label="Ville" icon={MapPin} value={city} onChange={setCity} options={cityOptions} allLabel="Toutes" />
-        <PeriodFilter label="Commandé" title="Fournisseurs ayant au moins un BC commandé sur la période"
-          period={period} onPeriod={setPeriod}
-          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-        {hasFilters && (
-          <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer
-          </button>
-        )}
-        <ViewSwitch view={view} onChange={switchView}
-          openLabel={`Actifs · ${openCount}`} historyLabel={`Inactifs · ${inactiveCount}`} />
-      </div>
       <PurHeaderActions>
-        <button onClick={openNew} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouveau fournisseur
+        <button type="button" onClick={openNew} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} aria-hidden="true" /> Nouveau fournisseur
         </button>
       </PurHeaderActions>
 
-      {/* Situation de la relation : une pastille numérotée par étape, clic = filtre */}
+      {/* Situation de la relation : une pastille par étape, clic = filtre */}
       <StagePipeline
         title="Où en sont mes fournisseurs"
         summary={`${openCount} actif${openCount > 1 ? 's' : ''} · ${money(openDue)} restant dus`}
@@ -356,144 +335,114 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
         onPick={pickStage}
       />
 
-      {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-          <p style={{ fontSize: '0.8125rem' }}>Chargement des fournisseurs...</p>
-        </div>
-      ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Truck size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
-            {view === 'open' ? (stage ? 'Aucun fournisseur dans cette situation' : 'Aucun fournisseur actif') : 'Aucun fournisseur inactif'}
-          </p>
-          {hasFilters && (
-            <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>
-              Aucun résultat pour ces filtres —{' '}
-              <button type="button" onClick={resetFilters} style={{ textDecoration: 'underline', color: 'inherit' }}>les effacer</button>
-            </p>
-          )}
-        </div>
+      <Toolbar>
+        <SearchBar value={searchInput} onChange={setSearchInput} label="Rechercher un fournisseur"
+          placeholder="Nom, raison sociale, contact, ville, ICE, IF…" busy={isFetching && !isLoading} />
+        <SelectFilter label="Critère" icon={Filter} value={flag} onChange={setFlag} options={SUP_FLAGS[view]} />
+        <SelectFilter label="Ville" icon={MapPin} value={city} onChange={setCity} options={cityOptions} allLabel="Toutes" />
+        <PeriodFilter label="Commandé" title="Fournisseurs ayant au moins un BC commandé sur la période"
+          period={period} onPeriod={setPeriod}
+          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+        {hasFilters && (
+          <button type="button" onClick={resetFilters} className="ds-btn-ghost ds-btn-sm"><X size={13} aria-hidden="true" /> Effacer</button>
+        )}
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`Actifs · ${openCount}`} historyLabel={`Inactifs · ${inactiveCount}`} ariaLabel="Fournisseurs actifs ou inactifs" />
+      </Toolbar>
+
+      {isLoading ? <LoadingState label="Chargement des fournisseurs…" /> : rows.length === 0 ? (
+        hasFilters
+          ? <NoResultState onReset={resetFilters} text="Aucun fournisseur ne correspond aux filtres." />
+          : <EmptyState icon={Truck}
+              title={view === 'open' ? (stage ? 'Aucun fournisseur dans cette situation' : 'Aucun fournisseur actif') : 'Aucun fournisseur inactif'}
+              text={view === 'open' && !stage ? 'Créez la première fiche pour passer des commandes et enregistrer des factures.' : undefined}
+              action={view === 'open' && !stage ? <button type="button" className="odoo-btn-primary ds-btn-sm" onClick={openNew}><Plus size={13} aria-hidden="true" /> Nouveau fournisseur</button> : undefined} />
       ) : (
-        <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
-          <table className="odoo-table">
-            <thead>
-              <tr>
-                {sortableTh('name', 'Fournisseur')}
-                <th>Contact</th>
-                {sortableTh('city', 'Ville')}
-                <th>ICE / TVA</th>
-                <th style={{ minWidth: 190 }}>Situation</th>
-                <th title="Dernière note figée (Achats › Évaluation des fournisseurs)">Note</th>
-                {sortableTh('last_order_date', 'Dernière commande')}
-                {sortableTh('purchased_12m', 'Achats 12 mois', 'right')}
-                {sortableTh('amount_due', 'Reste dû', 'right')}
-                {cfColumns.map(d => <th key={d.id}>{d.label}</th>)}
-                <th style={{ textAlign: 'right' }}>Prochaine action</th>
-                <th style={{ textAlign: 'right', width: 70 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(s => {
-                const ice = s.identifiers.find(i => i.typeCode === 'MA_ICE')?.value ?? s.ice;
-                const due = parseFloat(s.amount_due) || 0;
-                const p12 = parseFloat(s.purchased_12m) || 0;
-                const overdue = Number(s.overdue_invoice_count) || 0;
-                const latePo = Number(s.late_po_count) || 0;
-                const action = nextAction(s);
-                return (
-                  <tr key={s.id} onClick={() => openEdit(s)} style={{ cursor: 'pointer' }}>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                        <Truck size={11} style={{ color: 'var(--theme-accent)' }} />
+        <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+          <DataPanel label="Fournisseurs"
+            footer={<TableFooter page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage}
+              note={view === 'open'
+                ? `fournisseurs actifs${period !== 'all' ? ` ayant commandé (${periodLabel(period, customFrom, customTo)})` : ''}`
+                : 'fournisseurs désactivés, historique conservé'} />}>
+            <table className="odoo-table">
+              <thead>
+                <tr>
+                  {sortableTh('name', 'Fournisseur')}
+                  <th>Contact</th>
+                  {sortableTh('city', 'Ville')}
+                  <th>ICE / TVA</th>
+                  <th>Situation</th>
+                  <th title="Dernière note figée (Achats › Évaluation des fournisseurs)">Note</th>
+                  {sortableTh('last_order_date', 'Dernière commande')}
+                  {sortableTh('purchased_12m', `Achats 12 mois (${currencySymbol()})`, 'right')}
+                  {sortableTh('amount_due', `Reste dû (${currencySymbol()})`, 'right')}
+                  {cfColumns.map(d => <th key={d.id}>{d.label}</th>)}
+                  <th className="ds-actions"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(s => {
+                  const ice = s.identifiers.find(i => i.typeCode === 'MA_ICE')?.value ?? s.ice;
+                  const due = parseFloat(s.amount_due) || 0;
+                  const p12 = parseFloat(s.purchased_12m) || 0;
+                  const overdue = Number(s.overdue_invoice_count) || 0;
+                  const latePo = Number(s.late_po_count) || 0;
+                  const sc = scoreOf(s.id);
+                  const sub: React.CSSProperties = { fontSize: 12, color: 'var(--ds-muted)', fontWeight: 400 };
+                  return (
+                    <tr key={s.id} onClick={() => openEdit(s)} style={{ cursor: 'pointer' }}>
+                      <td className="ds-strong">
                         {s.name}
-                        {s.parent_supplier_name && <span className="odoo-tag odoo-tag-grey" title="Enseigne de">{s.parent_supplier_name}</span>}
-                      </span>
-                      {s.legal_name && s.legal_name !== s.name && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 17 }}>{s.legal_name}</div>
-                      )}
-                    </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>
-                      <div>{s.contact_name || (s.phone ? '' : '—')}</div>
-                      {s.phone && <div style={{ fontSize: '0.6875rem' }}>{s.phone}</div>}
-                    </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>{s.city || '—'}</td>
-                    <td style={{ fontSize: '0.6875rem' }}>
-                      {ice ? (
-                        <div style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--odoo-text)' }}>{ice}</div>
-                      ) : s.missing_id ? (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#b85d1a', fontWeight: 600, fontSize: '0.75rem' }}
-                          title="Assujetti sans ICE : ses factures ne sont pas des pièces probantes">
-                          <AlertTriangle size={11} /> ICE à saisir
-                        </div>
-                      ) : (
-                        <div style={{ color: 'var(--theme-text-muted)' }}>—</div>
-                      )}
-                      <div style={{ color: 'var(--theme-text-muted)' }}>{s.vat_regime === 'assujetti' ? 'Assujetti' : s.vat_regime === 'exonere' ? 'Exonéré' : 'Non assujetti'}</div>
-                    </td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', fontWeight: 500, color: 'var(--odoo-text)' }}>
-                        <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, flexShrink: 0, background: STAGE_DOT[s.stage as string] ?? '#adb5bd' }} />
-                        {SUP_STAGES.find(x => x.key === s.stage)?.label}
-                      </span>
-                      {stageDetail(s) && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 2, marginLeft: 14 }}>{stageDetail(s)}</div>
-                      )}
-                      {(latePo > 0 || overdue > 0) && (
-                        <div style={{ fontSize: '0.6875rem', color: '#dc3545', marginTop: 2, marginLeft: 14 }}>
-                          {[latePo > 0 && `${latePo} livraison${latePo > 1 ? 's' : ''} en retard`, overdue > 0 && `${overdue} facture${overdue > 1 ? 's' : ''} échue${overdue > 1 ? 's' : ''}`].filter(Boolean).join(' · ')}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      {(() => { const sc = scoreOf(s.id); return sc
-                        ? <span className={`odoo-tag ${STANDING_TAG[sc.standing]}`} title={`Note ${sc.score ?? '—'} figée au ${fmtDate(sc.period_to) ?? ''}`}>{sc.standing === 'new' ? 'récent' : `${sc.standing} · ${Number(sc.score).toFixed(0)}`}</span>
-                        : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>; })()}
-                    </td>
-                    <td style={{ color: 'var(--theme-text-muted)' }}>
-                      {fmtDate(s.last_order_date as string) ?? <span style={{ fontStyle: 'italic' }}>jamais</span>}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {p12 > 0 ? <><span style={{ fontWeight: 600 }}>{n(p12)}</span> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{currencySymbol()}</span></>
-                        : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {due > 0.005 ? <><span style={{ fontWeight: 700, color: overdue > 0 ? '#dc3545' : undefined }}>{n(due)}</span> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{currencySymbol()}</span></>
-                        : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
-                    </td>
-                    {cfColumns.map(d => <td key={d.id} style={{ color: 'var(--theme-text-muted)' }}>{formatCfValue(d, s.custom_fields?.[d.code]) || '—'}</td>)}
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                      {action && <button type="button" onClick={action.run} className={action.cls}>{action.label}</button>}
-                    </td>
-                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: 'inline-flex', gap: 2 }}>
-                        <button onClick={() => openEdit(s)} className="odoo-pager-btn" title="Modifier" aria-label="Modifier"><Pencil size={13} /></button>
-                        {s.is_active ? (isAdmin && (
-                          <button className="odoo-pager-btn" title="Désactiver" aria-label="Désactiver" style={{ color: '#dc3545' }}
-                            onClick={async () => {
-                              if (await confirm(`Désactiver le fournisseur « ${s.name} » ? Il n'apparaîtra plus dans les sélections ; l'historique (BC, factures, paiements) est conservé.`, { title: 'Désactiver un fournisseur', confirmLabel: 'Désactiver', danger: true })) {
-                                deactivateMutation.mutate(s.id);
-                              }
-                            }}>
-                            <Trash2 size={13} />
-                          </button>
-                        )) : (
-                          <button className="odoo-pager-btn" title="Réactiver" aria-label="Réactiver" style={{ color: '#28a745' }}
-                            onClick={() => askReactivate(s)}>
-                            <RotateCcw size={13} />
-                          </button>
+                        {s.parent_supplier_name && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }} title="Enseigne de">{s.parent_supplier_name}</span>}
+                        {s.legal_name && s.legal_name !== s.name && <div style={sub}>{s.legal_name}</div>}
+                      </td>
+                      <td>
+                        <div>{s.contact_name || (s.phone ? '' : '—')}</div>
+                        {s.phone && <div style={{ ...sub, whiteSpace: 'nowrap' }}>{s.phone}</div>}
+                      </td>
+                      <td>{s.city || '—'}</td>
+                      <td>
+                        {ice ? <div className="ds-ref" style={{ fontWeight: 400 }}>{ice}</div>
+                          : s.missing_id ? (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--ds-warning)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}
+                              title="Assujetti sans ICE : ses factures ne sont pas des pièces probantes">
+                              <AlertTriangle size={12} aria-hidden="true" /> ICE à saisir
+                            </div>
+                          ) : <div>—</div>}
+                        <div style={sub}>{s.vat_regime === 'assujetti' ? 'Assujetti' : s.vat_regime === 'exonere' ? 'Exonéré' : 'Non assujetti'}</div>
+                      </td>
+                      <td>
+                        <StatusTag tone={STAGE_TONE[s.stage as string] ?? 'draft'} label={SUP_STAGES.find(x => x.key === s.stage)?.label ?? '—'} />
+                        {stageDetail(s) && <div style={{ ...sub, marginTop: 2, whiteSpace: 'nowrap' }}>{stageDetail(s)}</div>}
+                        {(latePo > 0 || overdue > 0) && (
+                          <div style={{ fontSize: 12, color: 'var(--ds-danger)', marginTop: 2, whiteSpace: 'nowrap' }}>
+                            {[latePo > 0 && `${latePo} livraison${latePo > 1 ? 's' : ''} en retard`, overdue > 0 && `${overdue} facture${overdue > 1 ? 's' : ''} échue${overdue > 1 ? 's' : ''}`].filter(Boolean).join(' · ')}
+                          </div>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <Pager page={page} total={total} onPage={setPage}
-            note={view === 'open'
-              ? `Fournisseurs actifs${period !== 'all' ? ` ayant commandé (${periodLabel(period, customFrom, customTo)})` : ''} — les inactifs sont dans l'onglet Inactifs.`
-              : 'Fournisseurs désactivés : l\'historique (BC, factures, paiements) reste consultable.'} />
+                      </td>
+                      <td>
+                        {sc
+                          ? <span className={`odoo-tag ${STANDING_TAG[sc.standing]}`} title={`Note ${sc.score ?? '—'} figée au ${fmtDate(sc.period_to) ?? ''}`}>{sc.standing === 'new' ? 'récent' : `${sc.standing} · ${Number(sc.score).toFixed(0)}`}</span>
+                          : '—'}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(s.last_order_date as string) ?? <span style={{ color: 'var(--ds-muted)' }}>jamais</span>}</td>
+                      <td className="ds-num">{p12 > 0 ? n(p12) : '—'}</td>
+                      <td className="ds-num">
+                        {due > 0.005 ? <span className="ds-strong" style={{ color: overdue > 0 ? 'var(--ds-danger)' : undefined }}>{n(due)}</span> : '—'}
+                      </td>
+                      {cfColumns.map(d => <td key={d.id}>{formatCfValue(d, s.custom_fields?.[d.code]) || '—'}</td>)}
+                      <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                        <button type="button" onClick={() => openEdit(s)} className="odoo-btn-secondary ds-btn-sm">
+                          {s.stage === 'incomplete' ? 'Compléter' : 'Ouvrir'}
+                        </button>
+                        <RowMenu label={`Plus d'actions pour ${s.name}`} items={rowMenu(s)} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </DataPanel>
         </div>
       )}
 
@@ -618,47 +567,50 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
     return { ok, msg: digits ? `${v.replace(/\D/g, '').length}/${digits[1]} chiffres` : 'Format inattendu' };
   };
 
-  const errorText = (k: string) => fieldErrors[k] ? <div style={{ color: '#dc3545', fontSize: '0.75rem', marginTop: 2 }}>{fieldErrors[k]}</div> : null;
+  // Modifications non enregistrées (pied de formulaire).
+  const [initialForm] = useState(() => JSON.stringify(form));
+  const dirty = JSON.stringify(form) !== initialForm;
 
   const renderIdentifier = (t: IdentifierType, required: boolean) => {
     const st = idStatus(t);
+    const id = `supplier-id-${t.code}`;
     return (
-      <div key={t.code}>
-        <label style={fieldLabel}>{t.label}{required ? ' *' : ''}</label>
+      <FormField key={t.code} label={t.label} htmlFor={id} required={required}
+        error={fieldErrors[t.code] ?? (st && !st.ok ? `${t.label} : ${st.msg}` : undefined)}
+        hint={st?.ok ? 'Format valide' : t.description}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <input value={form.identifiers[t.code]?.value ?? ''} onChange={e => setIdent(t.code, { value: e.target.value })}
-            className={inputCls} inputMode={t.pattern?.startsWith('^[0-9]') ? 'numeric' : undefined}
-            style={{ fontFamily: 'ui-monospace, monospace', ...(st ? { borderColor: st.ok ? '#28a745' : '#d97706' } : {}) }} />
+          <input id={id} value={form.identifiers[t.code]?.value ?? ''} onChange={e => setIdent(t.code, { value: e.target.value })}
+            className="ds-input" inputMode={t.pattern?.startsWith('^[0-9]') ? 'numeric' : undefined}
+            aria-invalid={(!!fieldErrors[t.code] || (!!st && !st.ok)) || undefined}
+            style={{ fontFamily: 'ui-monospace, monospace' }} />
           {t.code.endsWith('_RC') && (
             <input value={form.identifiers[t.code]?.qualifier ?? ''} onChange={e => setIdent(t.code, { qualifier: e.target.value })}
-              className={inputCls} placeholder="Ville du tribunal" style={{ maxWidth: 150 }} />
+              className="ds-input" placeholder="Ville du tribunal" aria-label="Ville du tribunal" style={{ maxWidth: 150 }} />
           )}
         </div>
-        <div style={{ fontSize: '0.6875rem', marginTop: 3, color: st ? (st.ok ? '#28a745' : '#b45309') : 'var(--theme-text-muted)' }}>
-          {st ? (st.ok ? '✓ ' : '') + st.msg : t.description}
-        </div>
-      </div>
+      </FormField>
     );
   };
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 720, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        style={{ width: '100%', maxWidth: 760, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 16, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0, background: 'var(--ds-card)' }}>
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
-            <Truck size={14} style={{ color: 'var(--theme-accent)' }} />
+            <Truck size={14} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} />
             <span className="odoo-breadcrumb-current">{supplier ? supplier.name : 'Nouveau fournisseur'}</span>
           </div>
           <div style={{ flex: 1 }} />
-          {supplier && (
-            <div style={{ display: 'inline-flex', gap: 2, marginRight: 8 }}>
-              <button type="button" onClick={() => setTab('fiche')} className={tab === 'fiche' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px' }}>Fiche</button>
-              <button type="button" onClick={() => setTab('historique')} className={tab === 'historique' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center' }}><History size={12} /> Historique</button>
-            </div>
-          )}
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer (Échap)"><X size={14} /></button>
+          {supplier?.id && tab === 'fiche' && <PersonalDataExportButton kind="supplier" id={supplier.id as string} label="Exporter les données" />}
+          <button type="button" onClick={onClose} className="ds-icon-btn" title="Fermer (Échap)" aria-label="Fermer"><X size={16} /></button>
         </div>
+        {supplier && (
+          <div style={{ padding: '0 24px' }}>
+            <Tabs label="Fiche du fournisseur" value={tab} onChange={setTab}
+              tabs={[{ key: 'fiche', label: 'Fiche' }, { key: 'historique', label: 'Historique' }]} />
+          </div>
+        )}
 
         {tab === 'historique' && supplier ? (
           <SupplierHistory rows={history as HistoryRow[]} loading={historyLoading} />
@@ -668,155 +620,161 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
             const missing = cf.missing();
             if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
             saveMutation.mutate();
-          }} className="flex-1 overflow-y-auto" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
+          }} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 24, flex: 1, overflowY: 'auto', minHeight: 0 }}>
               {duplicates.length > 0 && (
                 <StatusBanner tone="danger" icon={AlertTriangle} title="Doublon probable">
                   {duplicates.map(d => <div key={d.id + d.reason}>« {d.name} » porte déjà {d.reason === 'name' ? 'ce nom' : `cet identifiant ${d.reason}`}.</div>)}
                 </StatusBanner>
               )}
 
-              {/* 1. Type : pilote les identifiants exigés (remplace le « Régime TVA »). */}
-              <div>
-                <div style={sectionTitle}><Building2 size={12} /> Type de fournisseur</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2" style={{ marginTop: 6 }}>
-                  {SUPPLIER_KINDS.map(k => {
-                    const active = form.vatRegime === k.regime;
-                    return (
-                      <button key={k.regime} type="button" onClick={() => set('vatRegime', k.regime)} aria-pressed={active}
-                        style={{ textAlign: 'left', padding: '0.6rem 0.75rem', borderRadius: 6, cursor: 'pointer',
-                          border: `1px solid ${active ? 'var(--theme-accent)' : 'var(--theme-bg-separator)'}`,
-                          backgroundColor: active ? 'var(--theme-accent-light, #eef4ff)' : '#fff' }}>
-                        <span style={{ display: 'block', fontWeight: 600, fontSize: '0.8125rem', color: active ? 'var(--theme-accent)' : 'var(--theme-text-strong)' }}>{k.label}</span>
-                        <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>{k.hint}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 2. L'essentiel : ce qu'on saisit au quotidien. */}
-              <div>
-                <div style={sectionTitle}><Phone size={12} /> L'essentiel</div>
-                <div className="grid grid-cols-2 gap-3" style={{ marginTop: 6 }}>
-                  <div className="col-span-2"><label style={fieldLabel}>Nom du fournisseur *</label>
-                    <input value={form.name} onChange={e => set('name', e.target.value)} className={inputCls} required minLength={2} maxLength={200} autoFocus
-                      placeholder="Tel qu'on l'appelle au quotidien, ex : Ovotec, Marjane, Souk Ahmed" />
-                    {errorText('name')}
-                  </div>
-                  <div><label style={fieldLabel}>Téléphone</label>
-                    <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} className={inputCls} maxLength={20} placeholder="06 12 34 56 78" /></div>
-                  <div><label style={fieldLabel}>Personne à contacter</label>
-                    <input value={form.contactName} onChange={e => set('contactName', e.target.value)} className={inputCls} maxLength={100} placeholder="Commercial, livreur…" /></div>
-                  <div><label style={fieldLabel}>Ville</label>
-                    <input value={form.city} onChange={e => set('city', e.target.value)} className={inputCls} maxLength={100} /></div>
-                  <div><label style={fieldLabel}>Email</label>
-                    <input type="email" value={form.email} onChange={e => set('email', e.target.value)} className={inputCls} maxLength={255} placeholder="Pour l'envoi des BC" />
-                    {errorText('email')}</div>
-                  {/* G4-01 : RIB pour les paiements par virement en lot. */}
-                  <div><label style={fieldLabel}>RIB (24 chiffres)</label>
-                    <input value={form.rib} onChange={e => set('rib', e.target.value)} className={inputCls} maxLength={40} inputMode="numeric"
-                      style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="Pour les virements groupés" />
-                    {errorText('rib')}</div>
-                  <div><label style={fieldLabel}>Banque</label>
-                    <input value={form.bankName} onChange={e => set('bankName', e.target.value)} className={inputCls} maxLength={100} /></div>
-                  <div><label style={fieldLabel}>Devise des achats</label>
-                    <SearchSelect value={form.currencyCode} onChange={v => set('currencyCode', v)}
-                      placeholder="Devise" width="100%" size="md" ariaLabel="Devise des achats" clearable={false}
-                      options={(currencies.length ? currencies : [{ code: BASE_CURRENCY, label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} />
-                    {form.currencyCode !== BASE_CURRENCY && <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Proposée sur ses BC et devis ; le stock reste valorisé en {currencySymbol()}.</span>}
+              {/* 1. Identité : le type pilote les identifiants exigés (remplace le « Régime TVA »). */}
+              <FormSection title="Identité">
+                <div className="ds-field">
+                  <span className="ds-field-label" id="supplier-kind-label">Type de fournisseur</span>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2" role="group" aria-labelledby="supplier-kind-label">
+                    {SUPPLIER_KINDS.map(k => {
+                      const active = form.vatRegime === k.regime;
+                      return (
+                        <button key={k.regime} type="button" onClick={() => set('vatRegime', k.regime)} aria-pressed={active}
+                          style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                            border: `1px solid ${active ? 'var(--ds-accent)' : 'var(--ds-line)'}`,
+                            background: active ? 'var(--ds-tint)' : 'var(--ds-card)' }}>
+                          <span style={{ display: 'block', fontWeight: 600, fontSize: 14, color: active ? 'var(--ds-accent-ink)' : 'var(--ds-ink)' }}>{k.label}</span>
+                          <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)', marginTop: 2 }}>{k.hint}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
+                <FormField label="Nom du fournisseur" htmlFor="supplier-name" required error={fieldErrors.name}>
+                  <input id="supplier-name" value={form.name} onChange={e => set('name', e.target.value)} className="ds-input" required minLength={2} maxLength={200} autoFocus
+                    aria-invalid={!!fieldErrors.name || undefined}
+                    placeholder="Tel qu'on l'appelle au quotidien, ex : Ovotec, Marjane, Souk Ahmed" />
+                </FormField>
+                {/* Identité légale et groupe : rarement utile, replié. */}
+                <Disclosure label="Identité légale et groupe" hint="raison sociale, forme juridique, enseigne d'un groupe"
+                  defaultOpen={!!(form.legalName || form.legalForm || isGroupBrand)}>
+                  <div className="ds-form-grid">
+                    <FormField label="Raison sociale" htmlFor="supplier-legal-name">
+                      <input id="supplier-legal-name" value={form.legalName} onChange={e => set('legalName', e.target.value)} className="ds-input" maxLength={200} placeholder="Si différente du nom" />
+                    </FormField>
+                    <FormField label="Forme juridique">
+                      <SearchSelect options={LEGAL_FORM_OPTIONS} value={form.legalForm} onChange={id => set('legalForm', id)}
+                        placeholder="Rechercher : SARL, SA, coopérative…" width="100%" size="md" ariaLabel="Forme juridique" />
+                    </FormField>
+                    <label style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={brandMode} style={{ marginTop: 3 }}
+                        onChange={e => { setBrandMode(e.target.checked); if (!e.target.checked) set('parentSupplierId', ''); }} />
+                      <span>C'est une enseigne d'un groupe
+                        <span className="ds-field-hint" style={{ display: 'block' }}>Ex : Supeco appartient à Label'Vie — les identifiants fiscaux sont ceux du groupe.</span>
+                      </span>
+                    </label>
+                    {brandMode && (
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <FormField label="Groupe (entité juridique)" required
+                          error={fieldErrors.parentSupplierId} hint={!form.parentSupplierId ? 'Choisissez le groupe pour enregistrer.' : undefined}>
+                          <SearchSelect options={parentOptions} value={form.parentSupplierId} onChange={id => set('parentSupplierId', id)}
+                            placeholder="Rechercher le groupe…" width="100%" size="md" ariaLabel="Groupe (entité juridique)" />
+                        </FormField>
+                      </div>
+                    )}
+                  </div>
+                </Disclosure>
+              </FormSection>
 
-              {/* 3. Identifiants fiscaux : ICE / IF en tête, contrôlés à la frappe. */}
+              {/* 2. Contact : ce qu'on saisit au quotidien. */}
+              <FormSection title="Contact">
+                <div className="ds-form-grid">
+                  <FormField label="Téléphone" htmlFor="supplier-phone">
+                    <input id="supplier-phone" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} className="ds-input" maxLength={20} placeholder="06 12 34 56 78" />
+                  </FormField>
+                  <FormField label="Personne à contacter" htmlFor="supplier-contact">
+                    <input id="supplier-contact" value={form.contactName} onChange={e => set('contactName', e.target.value)} className="ds-input" maxLength={100} placeholder="Commercial, livreur…" />
+                  </FormField>
+                  <FormField label="Email" htmlFor="supplier-email" error={fieldErrors.email} hint="Pour l'envoi des bons de commande">
+                    <input id="supplier-email" type="email" value={form.email} onChange={e => set('email', e.target.value)} className="ds-input" maxLength={255}
+                      aria-invalid={!!fieldErrors.email || undefined} />
+                  </FormField>
+                  <FormField label="Ville" htmlFor="supplier-city">
+                    <input id="supplier-city" value={form.city} onChange={e => set('city', e.target.value)} className="ds-input" maxLength={100} />
+                  </FormField>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <FormField label="Adresse" htmlFor="supplier-address">
+                      <input id="supplier-address" value={form.address} onChange={e => set('address', e.target.value)} className="ds-input" />
+                    </FormField>
+                  </div>
+                </div>
+              </FormSection>
+
+              {/* 3. Fiscalité : ICE / IF en tête, contrôlés à la frappe. */}
               {identifierTypes.length > 0 && (
-                <div>
-                  <div style={sectionTitle}><FileBadge2 size={12} /> Identifiants fiscaux
-                    {!needsFiscalIds && <span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0 }}>— facultatifs</span>}
-                  </div>
+                <FormSection title={needsFiscalIds ? 'Fiscalité' : 'Fiscalité (identifiants facultatifs)'}>
                   {brandMode ? (
-                    <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 6 }}>
-                      Enseigne d'un groupe : l'ICE et l'IF sont ceux de l'entité juridique choisie plus bas.
+                    <p className="ds-field-hint" style={{ margin: 0 }}>
+                      Enseigne d'un groupe : l'ICE et l'IF sont ceux de l'entité juridique choisie dans Identité.
                     </p>
                   ) : (
                     <>
-                      <div className="grid grid-cols-2 gap-3" style={{ marginTop: 6 }}>
+                      <div className="ds-form-grid">
                         {mainIdTypes.map(t => renderIdentifier(t, needsFiscalIds && form.vatRegime === 'assujetti'))}
                       </div>
                       {missingIce && form.name.trim().length >= 2 && (
-                        <p style={{ fontSize: '0.75rem', color: '#b45309', marginTop: 6, display: 'flex', gap: 4, alignItems: 'flex-start' }}>
-                          <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                        <Alert tone="warning" icon={AlertTriangle}>
                           Sans ICE, les factures de ce fournisseur ne permettent pas de déduire la TVA. Vous pouvez enregistrer et compléter plus tard.
-                        </p>
+                        </Alert>
                       )}
                       {otherIdTypes.length > 0 && (
                         <Disclosure label={`Autres identifiants (${otherIdTypes.map(t => t.label).join(', ')})`} defaultOpen={hasOtherIds}>
-                          <div className="grid grid-cols-2 gap-3">{otherIdTypes.map(t => renderIdentifier(t, false))}</div>
+                          <div className="ds-form-grid">{otherIdTypes.map(t => renderIdentifier(t, false))}</div>
                         </Disclosure>
                       )}
                     </>
                   )}
-                  {errorText('identifiers')}
-                </div>
+                  {fieldErrors.identifiers && <Alert tone="danger" icon={AlertTriangle}>{fieldErrors.identifiers}</Alert>}
+                </FormSection>
               )}
 
-              {/* 4. Identité légale et groupe : rarement utile, replié. */}
-              <Disclosure label="Identité légale et groupe" hint="raison sociale, forme juridique, enseigne d'un groupe"
-                defaultOpen={!!(form.legalName || form.legalForm || isGroupBrand)}>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label style={fieldLabel}>Raison sociale</label>
-                    <input value={form.legalName} onChange={e => set('legalName', e.target.value)} className={inputCls} maxLength={200} placeholder="Si différente du nom" /></div>
-                  <div><label style={fieldLabel}>Forme juridique</label>
-                    <SearchSelect options={LEGAL_FORM_OPTIONS} value={form.legalForm} onChange={id => set('legalForm', id)}
-                      placeholder="Rechercher : SARL, SA, coopérative…" width="100%" size="md" /></div>
-                  <label className="col-span-2" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.8125rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={brandMode} style={{ marginTop: 3 }}
-                      onChange={e => { setBrandMode(e.target.checked); if (!e.target.checked) set('parentSupplierId', ''); }} />
-                    <span>C'est une enseigne d'un groupe
-                      <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Ex : Supeco appartient à Label'Vie — les identifiants fiscaux sont ceux du groupe.</span>
-                    </span>
-                  </label>
-                  {brandMode && (
-                    <div className="col-span-2"><label style={fieldLabel}>Groupe (entité juridique) *</label>
-                      <SearchSelect options={parentOptions} value={form.parentSupplierId} onChange={id => set('parentSupplierId', id)}
-                        placeholder="Rechercher le groupe…" width="100%" size="md" />
-                      {errorText('parentSupplierId')}
-                    </div>
-                  )}
+              {/* 4. Conditions d'achat : devise, coordonnées bancaires (virements groupés, G4-01), notes. */}
+              <FormSection title="Conditions d'achat">
+                <div className="ds-form-grid">
+                  <FormField label="Devise des achats"
+                    hint={form.currencyCode !== BASE_CURRENCY ? `Proposée sur ses BC et devis ; le stock reste valorisé en ${currencySymbol()}.` : undefined}>
+                    <SearchSelect value={form.currencyCode} onChange={v => set('currencyCode', v)}
+                      placeholder="Devise" width="100%" size="md" ariaLabel="Devise des achats" clearable={false}
+                      options={(currencies.length ? currencies : [{ code: BASE_CURRENCY, label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} />
+                  </FormField>
+                  <FormField label="Banque" htmlFor="supplier-bank">
+                    <input id="supplier-bank" value={form.bankName} onChange={e => set('bankName', e.target.value)} className="ds-input" maxLength={100} />
+                  </FormField>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <FormField label="RIB (24 chiffres)" htmlFor="supplier-rib" error={fieldErrors.rib} hint="Pour les virements groupés">
+                      <input id="supplier-rib" value={form.rib} onChange={e => set('rib', e.target.value)} className="ds-input" maxLength={40} inputMode="numeric"
+                        aria-invalid={!!fieldErrors.rib || undefined} style={{ fontFamily: 'ui-monospace, monospace' }} />
+                    </FormField>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <FormField label="Notes" htmlFor="supplier-notes">
+                      <textarea id="supplier-notes" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} className="ds-input"
+                        placeholder="Jours de livraison, conditions, minimum de commande…" />
+                    </FormField>
+                  </div>
                 </div>
-              </Disclosure>
+              </FormSection>
 
-              {/* 5. Adresse et notes : replié. */}
-              <Disclosure label="Adresse et notes" defaultOpen={!!(form.address || form.notes)}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div><label style={fieldLabel}>Adresse</label><input value={form.address} onChange={e => set('address', e.target.value)} className={inputCls} /></div>
-                  <div><label style={fieldLabel}>Notes</label><textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} className={inputCls}
-                    placeholder="Jours de livraison, conditions, minimum de commande…" /></div>
-                </div>
-              </Disclosure>
-
-              {/* 6. Champs personnalisés (mig 369) : affichés seulement s'il en existe. */}
+              {/* 5. Champs personnalisés (mig 369) : affichés seulement s'il en existe. */}
               <CustomFieldsEditor entity="supplier" values={cf.values} onChange={cf.setValues} />
 
               {supplier?.auxiliary_code && (
-                <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', margin: 0 }}>
+                <p className="ds-field-hint" style={{ margin: 0 }}>
                   Compte auxiliaire : <span style={{ fontFamily: 'ui-monospace, monospace' }}>{supplier.auxiliary_code}</span>
                   {' · '}dernière modification {format(new Date(supplier.updated_at), 'd MMM yyyy HH:mm', { locale: fr })}
                 </p>
               )}
             </div>
-            <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ marginRight: 'auto', fontSize: '0.75rem', color: missingIce ? '#b45309' : 'var(--theme-text-muted)' }}>
-                {missingIce ? 'ICE à compléter' : brandMode && !form.parentSupplierId ? 'Choisissez le groupe' : ''}
-              </span>
-              {supplier?.id && <PersonalDataExportButton kind="supplier" id={supplier.id as string} label="Exporter les données" />}
-              <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-              <button type="submit" disabled={saveMutation.isPending || (brandMode && !form.parentSupplierId)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                {saveMutation.isPending && <Loader2 size={12} className="animate-spin" />}
-                {supplier ? 'Enregistrer' : 'Créer le fournisseur'}
-              </button>
-            </div>
+            <FormFooter dirty={dirty} onCancel={onClose} busy={saveMutation.isPending}
+              disabled={brandMode && !form.parentSupplierId}
+              submitLabel={supplier ? 'Enregistrer' : 'Créer le fournisseur'} />
           </form>
         )}
       </div>
@@ -835,12 +793,11 @@ const SUPPLIER_KINDS: Array<{ regime: Supplier['vat_regime']; label: string; hin
 function Disclosure({ label, hint, defaultOpen, children }: { label: string; hint?: string; defaultOpen?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = useState(!!defaultOpen);
   return (
-    <div style={{ borderTop: '1px solid var(--theme-bg-separator)', paddingTop: 8, marginTop: 4 }}>
-      <button type="button" onClick={() => setOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-text-strong)', width: '100%', textAlign: 'left' }}>
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+    <div>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="ds-btn-ghost ds-btn-sm">
+        {open ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         {label}
-        {hint && !open && <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>— {hint}</span>}
+        {hint && !open && <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>— {hint}</span>}
       </button>
       {open && <div style={{ marginTop: 10 }}>{children}</div>}
     </div>
@@ -869,15 +826,13 @@ function fmtVal(v: unknown): string {
 }
 
 function SupplierHistory({ rows, loading }: { rows: HistoryRow[]; loading: boolean }) {
-  if (loading) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}><Loader2 className="animate-spin" size={18} /></div>;
-  }
+  if (loading) return <LoadingState bare />;
   if (rows.length === 0) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>Aucune modification journalisée depuis l'activation de la piste d'audit.</div>;
+    return <EmptyState bare icon={History} title="Aucune modification journalisée" text="Les changements de la fiche et de ses identifiants s'affichent ici depuis l'activation de la piste d'audit." />;
   }
   return (
-    <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
-      <table className="odoo-table">
+    <div className="flex-1 overflow-y-auto" style={{ padding: '16px 24px' }}>
+      <table className="odoo-table ds-dense">
         <thead><tr><th>Quand</th><th>Qui</th><th>Objet</th><th>Changement</th></tr></thead>
         <tbody>
           {rows.map(r => {
@@ -885,14 +840,14 @@ function SupplierHistory({ rows, loading }: { rows: HistoryRow[]; loading: boole
               : `Identifiant ${(r.new_row?.type_code ?? r.old_row?.type_code ?? '') as string}`.trim();
             return (
               <tr key={r.id}>
-                <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>{format(new Date(r.changed_at), 'd MMM yyyy HH:mm', { locale: fr })}</td>
-                <td>{r.changed_by_name || <span style={{ color: 'var(--theme-text-muted)' }}>système</span>}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(r.changed_at), 'd MMM yyyy HH:mm', { locale: fr })}</td>
+                <td>{r.changed_by_name || <span style={{ color: 'var(--ds-muted)' }}>système</span>}</td>
                 <td>{objet}</td>
                 <td>
-                  {r.operation === 'INSERT' && <span className="odoo-tag odoo-tag-green">création</span>}
-                  {r.operation === 'DELETE' && <span className="odoo-tag odoo-tag-grey">suppression</span>}
+                  {r.operation === 'INSERT' && <StatusTag tone="done" label="Création" />}
+                  {r.operation === 'DELETE' && <StatusTag tone="cancelled" label="Suppression" />}
                   {r.operation === 'UPDATE' && r.diff && (
-                    <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.8125rem' }}>
+                    <ul style={{ margin: 0, paddingLeft: 16 }}>
                       {Object.entries(r.diff).map(([k, d]) => (
                         <li key={k}><b>{FIELD_LABELS[k] ?? k}</b> : {fmtVal(d.old)} → {fmtVal(d.new)}</li>
                       ))}

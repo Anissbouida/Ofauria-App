@@ -1,13 +1,15 @@
-import { money } from '../../../utils/money';
+import { currencySymbol } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, ListPlus } from 'lucide-react';
+import { Plus, Trash2, ListPlus, CircleStop } from 'lucide-react';
 import { payrollConfigApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
 import SearchSelect from '../../../components/ui/SearchSelect';
-import { apiErrorMessage, isoDate } from '../shared';
+import { apiErrorMessage, isoDate, amount } from '../shared';
+import { StatusTag } from '../../../components/ui/StatusTag';
+import { RowMenu } from '../../../components/ui/RowMenu';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
-import { SectionTitle, inputCls, smallBtn } from '../ui';
+import { SectionTitle, inputCls } from '../ui';
 
 /**
  * Éléments fixes de paie d'un employé (indemnité de transport, prime de
@@ -54,35 +56,32 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
   return (
     <section className="prj-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px' }}>
       <SectionTitle icon={ListPlus} actions={!draft && (
-        <button type="button" className="odoo-btn-secondary" style={smallBtn}
+        <button type="button" className="odoo-btn-secondary ds-btn-sm"
           onClick={() => setDraft({ rubriqueId: '', amount: '', startDate: today, endDate: '' })}>
-          <Plus size={11} /> Ajouter
+          <Plus size={13} aria-hidden="true" /> Ajouter
         </button>
       )}>Éléments fixes de paie</SectionTitle>
-      {isLoading ? <p style={muted}>Chargement...</p> : items.length === 0 && !draft ? (
+      {isLoading ? <p style={muted}>Chargement…</p> : items.length === 0 && !draft ? (
         <p style={muted}>Aucun élément fixe (transport, prime mensuelle, prêt…).</p>
       ) : (
         <table className="odoo-table">
-          <thead><tr><th>Rubrique</th><th style={{ textAlign: 'right' }}>Montant</th><th>Période</th><th style={{ width: 60 }}></th></tr></thead>
+          <thead><tr><th>Rubrique</th><th className="ds-num">Montant ({currencySymbol()})</th><th>Période</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {items.map(i => {
               const ended = i.end_date && isoDate(i.end_date) < today;
               return (
-                <tr key={i.id} style={{ opacity: ended ? 0.5 : 1 }}>
-                  <td>{i.kind === 'retenue' ? '− ' : '+ '}{i.rubrique_label}</td>
-                  <td style={{ textAlign: 'right' }}>{money(parseFloat(i.amount))}</td>
-                  <td style={{ fontSize: '0.75rem' }}>{fr(i.start_date)} → {i.end_date ? fr(i.end_date) : 'en cours'}</td>
-                  <td>
-                    <div style={{ display: 'inline-flex', gap: 2 }}>
-                      {!i.end_date && (
-                        <button className="odoo-pager-btn" title="Arrêter à aujourd'hui" disabled={stop.isPending}
-                          onClick={async () => { if (!(await confirm('Arrêter cet élément fixe à aujourd\'hui ?', { title: 'Arrêter l\'élément fixe', confirmLabel: 'Arrêter' }))) return; stop.mutate(i.id); }}>■</button>
-                      )}
-                      <button className="odoo-pager-btn" title="Supprimer" style={{ color: 'var(--prj-red)' }} disabled={remove.isPending}
-                        onClick={async () => { if (!(await confirm('Supprimer cet élément fixe ? Les bulletins déjà calculés ne changent pas tant qu\'ils ne sont pas régénérés.', { title: 'Supprimer l\'élément fixe', confirmLabel: 'Supprimer', danger: true }))) return; remove.mutate(i.id); }}>
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
+                <tr key={i.id}>
+                  <td className="ds-strong">{i.kind === 'retenue' ? '− ' : '+ '}{i.rubrique_label}</td>
+                  <td className="ds-num">{amount(parseFloat(i.amount))}</td>
+                  <td>{fr(i.start_date)} → {i.end_date ? fr(i.end_date) : 'en cours'}</td>
+                  <td><StatusTag tone={ended ? 'cancelled' : 'done'} label={ended ? 'Terminé' : 'En cours'} /></td>
+                  <td className="ds-actions">
+                    <RowMenu label={`Plus d'actions pour ${i.rubrique_label}`} items={[
+                      ...(!i.end_date ? [{ label: 'Arrêter à aujourd\'hui', icon: CircleStop, disabled: stop.isPending,
+                        onSelect: async () => { if (!(await confirm('Arrêter cet élément fixe à aujourd\'hui ?', { title: 'Arrêter l\'élément fixe', confirmLabel: 'Arrêter' }))) return; stop.mutate(i.id); } }] : []),
+                      { label: 'Supprimer', icon: Trash2, danger: true, disabled: remove.isPending,
+                        onSelect: async () => { if (!(await confirm('Supprimer cet élément fixe ? Les bulletins déjà calculés ne changent pas tant qu\'ils ne sont pas régénérés.', { title: 'Supprimer l\'élément fixe', confirmLabel: 'Supprimer', danger: true }))) return; remove.mutate(i.id); } },
+                    ]} />
                   </td>
                 </tr>
               );
@@ -94,19 +93,18 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
                     placeholder="Rubrique…" width="100%" size="md" ariaLabel="Rubrique"
                     options={rubriques.map(r => ({ id: String(r.id), label: `${r.kind === 'retenue' ? '− ' : '+ '}${r.label}` }))} />
                 </td>
-                <td><input className={inputCls} type="number" min="0" step="0.01" value={draft.amount} style={{ width: 90 }} onChange={e => setDraft({ ...draft, amount: e.target.value })} /></td>
+                <td><input className={`${inputCls} sm`} aria-label="Montant" type="number" min="0" step="0.01" value={draft.amount} style={{ width: 110 }} onChange={e => setDraft({ ...draft, amount: e.target.value })} /></td>
                 <td>
                   <div style={{ display: 'flex', gap: 4 }}>
-                    <input className={inputCls} type="date" value={draft.startDate} onChange={e => setDraft({ ...draft, startDate: e.target.value })} />
-                    <input className={inputCls} type="date" value={draft.endDate} title="Fin (optionnelle)" onChange={e => setDraft({ ...draft, endDate: e.target.value })} />
+                    <input className={`${inputCls} sm`} aria-label="Début" type="date" value={draft.startDate} onChange={e => setDraft({ ...draft, startDate: e.target.value })} />
+                    <input className={`${inputCls} sm`} aria-label="Fin (optionnelle)" type="date" value={draft.endDate} title="Fin (optionnelle)" onChange={e => setDraft({ ...draft, endDate: e.target.value })} />
                   </div>
                 </td>
-                <td>
-                  <div style={{ display: 'inline-flex', gap: 2 }}>
-                    <button type="button" className="odoo-btn-primary" style={smallBtn}
-                      disabled={!draft.rubriqueId || !(parseFloat(draft.amount) > 0) || create.isPending} onClick={() => create.mutate()}>OK</button>
-                    <button type="button" className="odoo-btn-secondary" style={smallBtn} onClick={() => setDraft(null)}>✕</button>
-                  </div>
+                <td></td>
+                <td className="ds-actions">
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDraft(null)}>Annuler</button>
+                  <button type="button" className="odoo-btn-primary ds-btn-sm"
+                    disabled={!draft.rubriqueId || !(parseFloat(draft.amount) > 0) || create.isPending} onClick={() => create.mutate()}>Ajouter</button>
                 </td>
               </tr>
             )}
@@ -117,4 +115,4 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
   );
 }
 
-const muted = { fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 } as const;
+const muted = { fontSize: 14, color: 'var(--ds-muted)', margin: 0 } as const;

@@ -1,12 +1,15 @@
 import { useState, useMemo } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Download, Lock, BookOpen, Calendar, Search, X, ChevronRight, ChevronDown } from 'lucide-react';
+import { Download, Lock, BookOpen, ChevronRight, ChevronDown } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
 import type { LedgerAccountBlock, LedgerMovement } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
+import { EmptyState, KpiCard, KpiGrid, LoadingState, SearchBar, DataPanel, NoResultState, Toolbar } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
+import { DateRangeField } from './AccToolbarFields';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -72,10 +75,7 @@ export default function GrandLivreTab() {
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>Le grand livre est réservé à l'administrateur ou au gérant.</p>
-      </div>
+      <EmptyState icon={Lock} title="Le grand livre est réservé à l'administrateur ou au gérant." />
     );
   }
 
@@ -104,14 +104,25 @@ export default function GrandLivreTab() {
 
   return (
     <>
-      {/* Filtres : periode + classe + recherche */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="odoo-search-input" style={{ width: 140 }} />
-          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="odoo-search-input" style={{ width: 140 }} />
-        </div>
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={accounts.length === 0}>
+          <Download size={13} aria-hidden="true" /> Exporter CSV
+        </button>
+        <EditionButtons kind="grand-livre" params={{ startDate, endDate, class: classFilter === 'all' ? undefined : classFilter }} />
+      </AccHeaderActions>
+
+      {data && (
+        <KpiGrid>
+          <KpiCard label="Comptes mouvementés" value={accounts.length} sub="sur la période" />
+          <KpiCard label="Total débit" value={n(data.total_debit)} sub={currencySymbol()} />
+          <KpiCard label="Total crédit" value={n(data.total_credit)} sub={currencySymbol()} />
+        </KpiGrid>
+      )}
+
+      {/* Barre d'outils : recherche, puis période et classe ; dépliage à droite. */}
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} placeholder="Filtrer un compte…" />
+        <DateRangeField from={startDate} to={endDate} onFrom={setStartDate} onTo={setEndDate} />
         <SearchSelect
           options={[1, 2, 3, 4, 5, 6, 7].map(c => ({ id: String(c), label: `Classe ${c} — ${CLASS_LABELS[c]}` }))}
           value={classFilter === 'all' ? '' : String(classFilter)}
@@ -119,105 +130,73 @@ export default function GrandLivreTab() {
           placeholder="Toutes les classes"
           width={200}
         />
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 180px', minWidth: 160 }}>
-          <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-          <input type="text" placeholder="Filtrer un compte..." value={search} onChange={e => setSearch(e.target.value)} className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />
-          {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)' }}><X size={12} /></button>}
-        </div>
-        <button onClick={() => setAllOpen(v => !v)} className="odoo-btn-secondary" style={{ fontSize: '0.75rem' }}>
+        <span className="ds-grow" />
+        <button type="button" onClick={() => setAllOpen(v => !v)} className="ds-btn-ghost ds-btn-sm" aria-pressed={allOpen}>
           {allOpen ? 'Tout replier' : 'Tout déplier'}
         </button>
-        <button onClick={handleExport} className="odoo-btn-secondary" disabled={accounts.length === 0}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: accounts.length === 0 ? 0.5 : 1 }}>
-          <Download size={13} /> Exporter CSV
-        </button>
-        <EditionButtons kind="grand-livre" params={{ startDate, endDate, class: classFilter === 'all' ? undefined : classFilter }} />
-      </div>
-
-      {data && (
-        <div className="odoo-stat-grid">
-          <div className="odoo-stat-card">
-            <div className="odoo-stat-card-label">Comptes mouvementés</div>
-            <div className="odoo-stat-card-value">{accounts.length}</div>
-            <div className="odoo-stat-card-sub">sur la période</div>
-          </div>
-          <div className="odoo-stat-card">
-            <div className="odoo-stat-card-label">Total débit</div>
-            <div className="odoo-stat-card-value" style={{ color: '#1565c0' }}>{n(data.total_debit)}</div>
-            <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-          </div>
-          <div className="odoo-stat-card">
-            <div className="odoo-stat-card-label">Total crédit</div>
-            <div className="odoo-stat-card-value" style={{ color: '#c62828' }}>{n(data.total_credit)}</div>
-            <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-          </div>
-        </div>
-      )}
+      </Toolbar>
 
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        </div>
+        <LoadingState />
       ) : accounts.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <BookOpen size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucun mouvement sur la période</p>
-        </div>
+        (data?.accounts ?? []).length === 0
+          ? <EmptyState icon={BookOpen} title="Aucun mouvement sur la période" text="Élargissez la période ou changez de classe." />
+          : <NoResultState text="Aucun compte ne correspond à la recherche." onReset={() => setSearch('')} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {accounts.map((a: LedgerAccountBlock) => {
             const open = isOpen(a.code);
             return (
-              <div key={a.code} className="odoo-section" style={{ padding: 0 }}>
-                {/* En-tete du compte */}
-                <button onClick={() => toggle(a.code)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                  background: 'var(--theme-bg-card)', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 15,
-                  borderBottom: open ? '1px solid var(--theme-bg-separator)' : 'none',
+              <DataPanel key={a.code} label={`Compte ${a.code}`}>
+                {/* En-tête du compte */}
+                <button type="button" onClick={() => toggle(a.code)} aria-expanded={open} style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px',
+                  background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 14,
+                  borderBottom: open ? '1px solid var(--ds-sep)' : 'none',
                 }}>
-                  {open ? <ChevronDown size={14} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronRight size={14} style={{ color: 'var(--theme-text-muted)' }} />}
-                  <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, minWidth: 70 }}>{a.code}</span>
-                  <span style={{ fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</span>
-                  <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{a.movements.length} mvt</span>
-                  <span style={{ fontSize: 13, minWidth: 190, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                    <span style={{ color: 'var(--theme-text-muted)' }}>D {n(a.total_debit) || '0,00'} · C {n(a.total_credit) || '0,00'}</span>
+                  {open ? <ChevronDown size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /> : <ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
+                  <span className="ds-ref" style={{ minWidth: 70 }}>{a.code}</span>
+                  <span className="ds-strong" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</span>
+                  <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>{a.movements.length} mouvement{a.movements.length > 1 ? 's' : ''}</span>
+                  <span className="ds-num" style={{ fontSize: 13, minWidth: 190, color: 'var(--ds-muted)' }}>
+                    D {n(a.total_debit) || '0,00'} · C {n(a.total_credit) || '0,00'}
                   </span>
-                  <span style={{ fontWeight: 600, minWidth: 120, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: a.closing >= 0 ? 'var(--theme-text-strong)' : 'var(--prj-red, #DC2626)' }}>
+                  <span className="ds-num ds-strong" style={{ minWidth: 120, color: a.closing >= 0 ? undefined : 'var(--ds-danger)' }}>
                     {sign(a.closing)}
                   </span>
                 </button>
 
                 {open && (
-                  <table className="odoo-table" style={{ margin: 0 }}>
+                  <table className="odoo-table ds-dense">
                     <thead>
                       <tr>
                         <th style={{ width: 80 }}>Date</th>
-                        <th style={{ width: 130 }}>N écriture</th>
-                        <th style={{ width: 44 }}>Jr</th>
+                        <th style={{ width: 130 }}>N° d'écriture</th>
+                        <th style={{ width: 60 }}>Journal</th>
                         <th>Libellé</th>
-                        <th style={{ width: 100, textAlign: 'right' }}>Débit</th>
-                        <th style={{ width: 100, textAlign: 'right' }}>Crédit</th>
-                        <th style={{ width: 110, textAlign: 'right' }}>Solde</th>
+                        <th className="ds-num" style={{ width: 100 }}>Débit ({currencySymbol()})</th>
+                        <th className="ds-num" style={{ width: 100 }}>Crédit ({currencySymbol()})</th>
+                        <th className="ds-num" style={{ width: 110 }}>Solde ({currencySymbol()})</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td colSpan={6} style={{ fontStyle: 'italic', color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>Solde d'ouverture</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{sign(a.opening)}</td>
+                        <td colSpan={6} style={{ color: 'var(--ds-muted)' }}>Solde d'ouverture</td>
+                        <td className="ds-num ds-strong">{sign(a.opening)}</td>
                       </tr>
                       <RunningRows opening={a.opening} movements={a.movements} />
                     </tbody>
                     <tfoot>
-                      <tr style={{ fontWeight: 600 }}>
-                        <td colSpan={4} style={{ textAlign: 'right' }}>Totaux / Solde de clôture :</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(a.total_debit)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(a.total_credit)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: a.closing >= 0 ? 'var(--theme-text-strong)' : 'var(--prj-red, #DC2626)' }}>{sign(a.closing)}</td>
+                      <tr>
+                        <td className="ds-num" colSpan={4}>Totaux et solde de clôture</td>
+                        <td className="ds-num">{n(a.total_debit)}</td>
+                        <td className="ds-num">{n(a.total_credit)}</td>
+                        <td className="ds-num" style={{ color: a.closing >= 0 ? undefined : 'var(--ds-danger)' }}>{sign(a.closing)}</td>
                       </tr>
                     </tfoot>
                   </table>
                 )}
-              </div>
+              </DataPanel>
             );
           })}
         </div>
@@ -234,16 +213,16 @@ function RunningRows({ opening, movements }: { opening: number; movements: Ledge
         running += (parseFloat(m.debit) || 0) - (parseFloat(m.credit) || 0);
         return (
           <tr key={i}>
-            <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(m.entry_date)}</td>
-            <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: '#185fa5' }}>{m.entry_number}</td>
-            <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem' }}>{m.journal_code}</td>
-            <td style={{ fontSize: '0.8125rem' }}>
-              {m.auxiliary_label ? <span style={{ color: 'var(--theme-text-muted)' }}>{m.auxiliary_label} · </span> : ''}
+            <td>{fmtDate(m.entry_date)}</td>
+            <td className="ds-ref">{m.entry_number}</td>
+            <td>{m.journal_code}</td>
+            <td className="ds-strong">
+              {m.auxiliary_label ? <span style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>{m.auxiliary_label} · </span> : ''}
               {m.entry_description || m.line_label || '—'}
             </td>
-            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(m.debit)}</td>
-            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(m.credit)}</td>
-            <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{sign(running)}</td>
+            <td className="ds-num">{n(m.debit)}</td>
+            <td className="ds-num">{n(m.credit)}</td>
+            <td className="ds-num ds-strong">{sign(running)}</td>
           </tr>
         );
       })}

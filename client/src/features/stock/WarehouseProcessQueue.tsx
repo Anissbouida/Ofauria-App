@@ -8,7 +8,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { BonSortiePanel } from '../production/BonSortiePanel';
 import { bonStatusTag } from '../production/status';
 import { StatusTag } from '../../components/ui/StatusTag';
-import { ListToolbar, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { ListToolbar } from '../sales/ListTemplate';
 import './stock.css';
 import {
   Truck, Loader2, Scale, CheckCircle, Inbox, Handshake, ChevronLeft, ChevronRight,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { DataPanel, EmptyState, LoadingState, NoResultState, TableFooter } from '../../components/ds';
 
 /**
  * File active du Pesage, presentee comme un processus :
@@ -137,22 +138,23 @@ export function WarehouseQueueList({
       <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher par N° de bon, demandeur ou préparateur…" />
 
       {rows.length === 0 ? (
-        <ListEmpty icon={Inbox} title={bons.length === 0 ? 'Aucune demande en cours — la file est vide.' : 'Aucune demande à cette étape.'}
-          action={step !== 'all' ? <button type="button" className="odoo-btn-secondary" onClick={() => onStep('all')}>Toutes les étapes</button> : undefined} />
+        bons.length === 0
+          ? <EmptyState icon={Inbox} title="Aucune demande en cours" text="Les bons de sortie générés par la production apparaîtront ici." />
+          : <NoResultState text="Aucune demande ne correspond à cette étape ou à cette recherche." onReset={() => { setSearch(''); onStep('all'); }} />
       ) : (
-        <ListPanel>
+        <DataPanel label="Bons de sortie en cours" footer={<TableFooter note={`${rows.length} bon${rows.length > 1 ? 's' : ''} de sortie${rows.length !== bons.length ? ` sur ${bons.length}` : ''}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 24 }}></th>
+                <th style={{ width: 24 }}><span className="sr-only">État</span></th>
                 <th>N° bon</th>
                 <th>Plan de production</th>
                 <th>Demandé par</th>
-                <th style={{ textAlign: 'right' }}>Lignes</th>
+                <th className="ds-num">Lignes</th>
                 <th>Étape</th>
                 <th>Responsable</th>
                 <th>En attente depuis</th>
-                <th style={{ textAlign: 'right' }}>Prochaine action</th>
+                <th className="ds-actions">Prochaine action</th>
               </tr>
             </thead>
             <tbody>
@@ -169,34 +171,34 @@ export function WarehouseQueueList({
                         bon.chef_reject_reason ? 'danger'
                         : status === 'pret' ? 'ok'
                         : status === 'genere' ? 'neutral'
-                        : 'warning'}`} />
+                        : 'warning'}`} aria-hidden="true" />
                     </td>
-                    <td><span className="sal-num">{bon.numero as string}</span></td>
+                    <td><span className="ds-ref">{bon.numero as string}</span></td>
                     <td>
-                      <strong>Plan du {fmtDate(bon.plan_date, 'dd MMM yyyy') ?? '—'}</strong>
+                      <span className="ds-strong">Plan du {fmtDate(bon.plan_date, 'dd MMM yyyy') ?? '—'}</span>
                       {bon.chef_reject_reason && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--prj-red)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--ds-danger)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                           <AlertTriangle size={10} /> Refusé par le chef : {bon.chef_reject_reason as string}
                         </div>
                       )}
                     </td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.generated_by_name as string) || '—'}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{bon.total_lines as number}</td>
+                    <td className="ds-num" style={{ fontWeight: 600 }}>{bon.total_lines as number}</td>
                     <td>
                       <StageProgress count={PIPE_STAGES.length} current={['recue', 'preparation', 'pret'].indexOf(STEP_OF_STATUS[status] ?? 'recue')} late={!!bon.chef_reject_reason} />
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{tag.label}</span>
+                      <StatusTag tone={tag.tone} icon={tag.icon} label={tag.label} />
                     </td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(responsible as string) || '—'}</td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{waitingSince(bon) ?? '—'}</td>
-                    <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                    <td className="ds-actions" onClick={e => e.stopPropagation()}>
                       {status === 'genere' ? (
-                        <button type="button" className="odoo-btn-primary" disabled={isTaking}
+                        <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={isTaking}
                           onClick={() => takeChargeMutation.mutate(bonId)}>
                           {isTaking ? <Loader2 size={12} className="animate-spin" /> : <Truck size={12} />}
                           Prendre en charge
                         </button>
                       ) : (
-                        <button type="button" className="odoo-btn-secondary" onClick={() => onOpen(bonId)}>
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => onOpen(bonId)}>
                           {status === 'pret' ? 'Consulter' : 'Traiter'} <ChevronRight size={12} />
                         </button>
                       )}
@@ -206,7 +208,7 @@ export function WarehouseQueueList({
               })}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
     </>
   );
@@ -263,10 +265,10 @@ export function WarehouseBonWorkspace({
 
   if (!bon) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-        {isLoadingDetail ? <Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-          : <span style={{ color: 'var(--theme-text-muted)' }}>Demande introuvable.</span>}
-      </div>
+      isLoadingDetail
+        ? <LoadingState label="Chargement du bon de sortie…" />
+        : <EmptyState icon={Inbox} title="Bon de sortie introuvable" text="Il a peut-être été annulé ou remis entre-temps."
+            action={<button type="button" className="odoo-btn-secondary" onClick={onBack}>Retour à la file</button>} />
     );
   }
 
@@ -321,17 +323,17 @@ export function WarehouseBonWorkspace({
       {/* En-tete de la demande + navigation dans la file */}
       <div className="wh-ws-header">
         <button type="button" className="odoo-btn-secondary" onClick={onBack}>
-          <ArrowLeft size={13} /> File active
+          <ArrowLeft size={13} aria-hidden="true" /> File active
         </button>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span className="stk-section-title">
+            <h2 className="ds-subhead" style={{ fontSize: 'var(--ds-t-section)', fontWeight: 700 }}>
               Plan du {fmtDate(bon.plan_date, 'EEEE dd MMMM yyyy') ?? '—'}
-            </span>
+            </h2>
             <StatusTag tone={tag.tone} icon={tag.icon} label={tag.label} />
           </div>
           <div className="odoo-form-subtitle" style={{ marginTop: 2 }}>
-            <span style={{ fontFamily: 'ui-monospace, monospace' }}>{bon.numero as string}</span>
+            <span className="ds-ref">{bon.numero as string}</span>
             {bon.generated_by_name && <> · demandé par <strong>{bon.generated_by_name as string}</strong></>}
             {lines.length > 0 && <> · {lines.length} ligne{lines.length > 1 ? 's' : ''}</>}
           </div>
@@ -341,11 +343,11 @@ export function WarehouseBonWorkspace({
           <div className="odoo-pager" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>Demande <strong>{idx + 1}</strong> / {queue.length}</span>
             <button type="button" className="odoo-pager-btn" disabled={!prev}
-              onClick={() => prev && onOpen(prev.id as string)} title="Demande précédente">
+              onClick={() => prev && onOpen(prev.id as string)} title="Demande précédente" aria-label="Demande précédente">
               <ChevronLeft size={14} />
             </button>
             <button type="button" className="odoo-pager-btn" disabled={!next}
-              onClick={() => next && onOpen(next.id as string)} title="Demande suivante">
+              onClick={() => next && onOpen(next.id as string)} title="Demande suivante" aria-label="Demande suivante">
               <ChevronRight size={14} />
             </button>
           </div>
@@ -376,7 +378,7 @@ export function WarehouseBonWorkspace({
           // L'acceptation de la reception reste une action du chef, depuis son plan —
           // sinon celui qui prepare valide sa propre preparation.
           ? <BonSortiePanel planId={planId} isChef={false} isMagasinier variant="inline" />
-          : <Loader2 size={20} className="animate-spin" />}
+          : <LoadingState label="Chargement des lignes…" />}
       </div>
 
       {rank >= 3 && next && (

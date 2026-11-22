@@ -10,6 +10,7 @@ import {
   integrityApi, type IntegrityVerifyResult, type LedgerAuditEvent, type LedgerAuditRow,
 } from '../../api/ledger.api';
 import { currencySymbol } from '../../utils/money';
+import { LoadingState } from '../../components/ds';
 
 const EVENT_LABEL: Record<LedgerAuditEvent, string> = {
   post: 'Validation',
@@ -93,7 +94,7 @@ export default function IntegrityPanel() {
   });
 
   if (isLoading || !s) {
-    return <div style={{ padding: 12 }}><Loader2 size={16} className="animate-spin" /></div>;
+    return <LoadingState />;
   }
 
   const guardsOff = s.guards.filter(g => !g.enabled);
@@ -115,18 +116,15 @@ export default function IntegrityPanel() {
       <StatusBanner tone={tone} icon={tone === 'success' ? ShieldCheck : ShieldAlert} title={title}
         actions={(
           <div style={{ display: 'inline-flex', gap: 6 }}>
-            <button className="odoo-btn-primary" disabled={verify.isPending} onClick={() => verify.mutate()}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button className="odoo-btn-primary" disabled={verify.isPending} onClick={() => verify.mutate()}>
               {verify.isPending ? <Loader2 size={12} className="animate-spin" /> : <ScanSearch size={12} />} Vérifier
             </button>
             {s.unsealed > 0 && (
-              <button className="odoo-btn-secondary" disabled={seal.isPending} onClick={() => seal.mutate()}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <button className="odoo-btn-secondary" disabled={seal.isPending} onClick={() => seal.mutate()}>
                 {seal.isPending ? <Loader2 size={12} className="animate-spin" /> : <Stamp size={12} />} Sceller
               </button>
             )}
-            <button className="odoo-btn-secondary" onClick={() => setShowLog(v => !v)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button className="odoo-btn-secondary" onClick={() => setShowLog(v => !v)}>
               <History size={12} /> {showLog ? 'Masquer le journal' : 'Journal des actions'}
             </button>
           </div>
@@ -134,8 +132,7 @@ export default function IntegrityPanel() {
         <span>
           {s.sealed} écriture(s) chaînée(s) par empreinte SHA-256 · tête n° {s.headSeq}{' '}
           {s.headHash && (
-            <button type="button" className="odoo-btn-secondary" onClick={() => copy(s.headHash!)} title={`${s.headHash} — cliquer pour copier`}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', padding: '1px 6px' }}>
+            <button type="button" className="odoo-btn-secondary" onClick={() => copy(s.headHash!)} title={`${s.headHash} — cliquer pour copier`} style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', padding: '1px 6px' }}>
               <Fingerprint size={11} /> {short(s.headHash)} <Copy size={10} />
             </button>
           )}
@@ -151,13 +148,13 @@ export default function IntegrityPanel() {
       </StatusBanner>
 
       {guardsOff.length > 0 && (
-        <table className="odoo-table" style={{ margin: '8px 0 0' }}>
+        <table className="odoo-table ds-dense">
           <thead><tr><th>Protection</th><th style={{ width: 260 }}>Trigger</th><th style={{ width: 110 }}>État</th></tr></thead>
           <tbody>
             {guardsOff.map(g => (
               <tr key={`${g.table}.${g.trigger}`}>
                 <td>{g.role}</td>
-                <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{g.table}.{g.trigger}</td>
+                <td className="ds-ref">{g.table}.{g.trigger}</td>
                 <td><StatusTag tone="blocked" label={g.missing ? 'Supprimé' : 'Désactivé'} /></td>
               </tr>
             ))}
@@ -170,14 +167,14 @@ export default function IntegrityPanel() {
       )}
 
       {result && result.anomalies.length > 0 && (
-        <table className="odoo-table" style={{ margin: '8px 0 0' }}>
-          <thead><tr><th style={{ width: 90, textAlign: 'right' }}>Rang</th><th style={{ width: 160 }}>Écriture</th><th>Anomalie</th></tr></thead>
+        <table className="odoo-table ds-dense">
+          <thead><tr><th className="ds-num" style={{ width: 90 }}>Rang</th><th style={{ width: 160 }}>Écriture</th><th>Anomalie</th></tr></thead>
           <tbody>
             {result.anomalies.map((a, i) => (
               <tr key={`${a.seq}-${i}`}>
-                <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{a.seq}</td>
-                <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{a.entry_no ?? '—'}</td>
-                <td style={{ color: '#721c24' }}>{a.problem}</td>
+                <td className="ds-num">{a.seq}</td>
+                <td className="ds-ref">{a.entry_no ?? '—'}</td>
+                <td style={{ color: 'var(--ds-danger)' }}>{a.problem}</td>
               </tr>
             ))}
           </tbody>
@@ -201,8 +198,8 @@ function AuditLog() {
   const rows = q.data?.pages.flat() ?? [];
 
   return (
-    <div className="odoo-section" style={{ marginTop: 8, padding: 0 }}>
-      <div className="odoo-search-panel" style={{ gap: 6 }}>
+    <div className="odoo-section ds-panel" style={{ marginTop: 8, padding: 0 }}>
+      <div className="prj-toolbar">
         <SearchSelect
           options={(Object.keys(EVENT_LABEL) as LedgerAuditEvent[]).map(k => ({ id: k, label: EVENT_LABEL[k] }))}
           value={event}
@@ -214,9 +211,9 @@ function AuditLog() {
         <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Journal en ajout seul : aucune ligne ne peut être modifiée ni supprimée.</span>
       </div>
       {q.isLoading ? (
-        <div style={{ padding: 12 }}><Loader2 size={16} className="animate-spin" /></div>
+        <LoadingState />
       ) : (
-        <table className="odoo-table" style={{ margin: 0 }}>
+        <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th style={{ width: 150 }}>Date</th>
@@ -234,7 +231,7 @@ function AuditLog() {
               <tr key={r.id}>
                 <td style={{ fontSize: '0.75rem' }}>{new Date(r.at).toLocaleString('fr-FR')}</td>
                 <td><span className={`odoo-tag ${EVENT_TAG[r.event] ?? 'odoo-tag-grey'}`}>{EVENT_LABEL[r.event] ?? r.event}</span></td>
-                <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{r.entry_number ?? '—'}</td>
+                <td className="ds-ref">{r.entry_number ?? '—'}</td>
                 <td style={{ fontSize: '0.75rem' }}>{detailOf(r)}</td>
                 <td style={{ fontSize: '0.75rem' }} title={r.client_ip ?? undefined}>
                   {[r.first_name, r.last_name].filter(Boolean).join(' ') || <span style={{ color: 'var(--theme-text-muted)' }}>Système</span>}

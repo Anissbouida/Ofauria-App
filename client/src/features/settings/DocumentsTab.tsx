@@ -70,7 +70,7 @@ function TemplateCard({ tpl }: { tpl: DocumentTemplate }) {
   };
 
   const area: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%', resize: 'vertical' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
   const isInvoice = tpl.doc_type === 'invoice';
 
   return (
@@ -78,11 +78,11 @@ function TemplateCard({ tpl }: { tpl: DocumentTemplate }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>{tpl.label}</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
             {tpl.updated_by_name ? `Modifié le ${new Date(tpl.updated_at).toLocaleDateString('fr-FR')} par ${tpl.updated_by_name}` : 'Réglages d\'origine'}
           </div>
         </div>
-        <button className="odoo-btn-secondary" onClick={preview} disabled={previewing || dirty} title={dirty ? 'Enregistrez avant l\'aperçu' : undefined}
+        <button type="button" className="odoo-btn-secondary" onClick={preview} disabled={previewing || dirty} title={dirty ? 'Enregistrez avant l\'aperçu' : undefined}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Eye size={13} /> {previewing ? 'Génération…' : 'Aperçu PDF'}
         </button>

@@ -24,7 +24,7 @@ function Items({ indicator }: { indicator: DataQualityIndicator }) {
     queryKey: ['data-quality', indicator.key], queryFn: () => settingsApi.dataQualityItems(indicator.key),
   });
   if (isLoading || !data) return <div style={{ padding: 12 }}><Loader2 className="animate-spin" size={16} /></div>;
-  if (!data.length) return <div style={{ padding: 12, color: 'var(--theme-text-muted)' }}>Rien à corriger.</div>;
+  if (!data.length) return <div style={{ padding: 12, color: 'var(--ds-muted)' }}>Rien à corriger.</div>;
   return (
     <div style={{ maxHeight: 360, overflowY: 'auto', borderTop: '1px solid var(--odoo-border)' }}>
       <table className="odoo-table" style={{ width: '100%' }}>
@@ -35,8 +35,8 @@ function Items({ indicator }: { indicator: DataQualityIndicator }) {
           {data.map((it, n) => (
             <tr key={`${it.id}-${n}`}>
               <td>{it.label}</td>
-              <td style={{ color: 'var(--theme-text-muted)' }}>{it.detail}</td>
-              <td style={{ textAlign: 'right' }}>
+              <td style={{ color: 'var(--ds-muted)' }}>{it.detail}</td>
+              <td className="ds-num">
                 <Link className="odoo-btn-secondary" to={it.kind === 'recipe' ? `/recipes/${it.id}/nomenclature` : `/stock/${it.id}`}>Ouvrir la fiche</Link>
               </td>
             </tr>
@@ -44,7 +44,7 @@ function Items({ indicator }: { indicator: DataQualityIndicator }) {
         </tbody>
       </table>
       {data.length >= 200 && (
-        <div style={{ padding: '8px 12px', fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>Les 200 premières lignes sont affichées.</div>
+        <div style={{ padding: '8px 12px', fontSize: '0.78rem', color: 'var(--ds-muted)' }}>Les 200 premières lignes sont affichées.</div>
       )}
     </div>
   );
@@ -70,8 +70,8 @@ export default function DataQualityTab() {
           <thead>
             <tr>
               <th style={{ textAlign: 'left' }}>Contrôle</th>
-              <th style={{ textAlign: 'right' }}>À corriger</th>
-              <th style={{ textAlign: 'right' }}>Sur</th>
+              <th className="ds-num">À corriger</th>
+              <th className="ds-num">Sur</th>
               <th style={{ textAlign: 'left', minWidth: 130 }}>Complétude</th>
               <th style={{ textAlign: 'left' }}>État</th>
               <th />
@@ -85,21 +85,21 @@ export default function DataQualityTab() {
                 <tr key={i.key}>
                   <td style={{ minWidth: 260, maxWidth: 420 }}>
                     <div style={{ fontWeight: 500 }}>{i.label}</div>
-                    <div style={{ fontSize: '0.76rem', color: 'var(--theme-text-muted)' }}>{i.help}</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--ds-muted)' }}>{i.help}</div>
                   </td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{i.toFix.toLocaleString('fr-FR')}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{i.total.toLocaleString('fr-FR')}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{i.toFix.toLocaleString('fr-FR')}</td>
+                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--ds-muted)' }}>{i.total.toLocaleString('fr-FR')}</td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Complétude : ${pct} %`}
                         style={{ flex: 1, height: 6, borderRadius: 999, background: 'var(--odoo-border)', overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? 'var(--prj-green)' : pct >= 70 ? 'var(--prj-orange)' : 'var(--prj-red)' }} />
+                        <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? 'var(--ds-success)' : pct >= 70 ? 'var(--ds-warning)' : 'var(--ds-danger)' }} />
                       </div>
                       <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem', minWidth: 38, textAlign: 'right' }}>{pct} %</span>
                     </div>
                   </td>
                   <td><StatusTag tone={i.toFix === 0 ? 'done' : pct >= 70 ? 'todo' : 'late'} label={i.toFix === 0 ? 'Complet' : pct >= 70 ? 'À compléter' : 'Prioritaire'} /></td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
                     {i.toFix > 0 && (
                       <button type="button" className="odoo-btn-secondary" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : i.key)}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>

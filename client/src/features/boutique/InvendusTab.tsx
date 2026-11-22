@@ -11,13 +11,11 @@ import { unsoldDecisionApi } from '../../api/unsold-decision.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import {
-  PeriodFilter, SelectFilter, PAGE_SIZE, periodParams, periodLabel,
-  type PeriodKey, type StageDef,
-} from '../../components/purchasing/ProcessBoard';
+import { PeriodFilter, SelectFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar } from '../sales/ListTemplate';
 import { StageChips, Segmented, Panel, PagerFoot } from '../controle/KlUi';
-import { Dot, EmptyRow, Loading, inputStyle, muted, n0, n2, sectionTitle, tableCard, toNum } from './shared';
+import { Dot, EmptyRow, Loading, inputStyle, muted, n0, n2, toNum } from './shared';
+import { DataPanel, KpiCard, KpiGrid, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Invendus de fin de journée (ex-écran /unsold) : compter le reste, accepter ou
@@ -208,22 +206,22 @@ function DecisionPanel() {
           />
 
           <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un produit ou une catégorie...">
-            <button type="button" onClick={() => refetch()} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              {isFetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Actualiser
+            <button type="button" onClick={() => refetch()} className="odoo-btn-secondary ds-btn-sm" disabled={isFetching}>
+              {isFetching ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={12} aria-hidden="true" />} Actualiser
             </button>
           </ListToolbar>
 
-          <div className={tableCard}>
-            <table className="odoo-table" style={{ margin: 0 }}>
+          <DataPanel>
+            <table className="odoo-table">
               <thead>
                 <tr>
                   <th>Produit</th>
-                  <th style={{ textAlign: 'right' }}>Disponible</th>
-                  <th style={{ textAlign: 'right' }}>Vendu</th>
+                  <th className="ds-num">Disponible</th>
+                  <th className="ds-num">Vendu</th>
                   <th style={{ textAlign: 'center' }}>Reste compté</th>
                   <th>Proposition</th>
                   <th>Décision</th>
-                  <th style={{ textAlign: 'right' }}>Coût</th>
+                  <th className="ds-num">Coût</th>
                 </tr>
               </thead>
               <tbody>
@@ -247,7 +245,7 @@ function DecisionPanel() {
                   };
                   return (
                     <Fragment key={pid}>
-                      <tr style={over ? { background: 'color-mix(in srgb, var(--prj-orange) 8%, transparent)' } : undefined}>
+                      <tr style={over ? { background: 'color-mix(in srgb, var(--ds-warning) 8%, transparent)' } : undefined}>
                         <td>
                           <button type="button" onClick={() => setExpanded(open ? null : pid)} aria-expanded={open}
                             style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 6, textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}>
@@ -258,8 +256,8 @@ function DecisionPanel() {
                             </span>
                           </button>
                         </td>
-                        <td style={{ textAlign: 'right' }}>{stock + sold}</td>
-                        <td style={{ textAlign: 'right' }}>{sold}</td>
+                        <td className="ds-num">{stock + sold}</td>
+                        <td className="ds-num">{sold}</td>
                         <td style={{ textAlign: 'center' }}>
                           <input type="number" min={0} max={stock} value={remaining} aria-label={`Reste compté ${p.product_name}`}
                             onChange={e => setCounts(prev => ({ ...prev, [pid]: Math.max(0, parseInt(e.target.value) || 0) }))}
@@ -281,18 +279,18 @@ function DecisionPanel() {
                                       padding: '2px 8px', fontSize: '0.75rem', borderRadius: 3, cursor: blocked ? 'not-allowed' : 'pointer',
                                       border: `1px solid ${active ? 'transparent' : 'var(--odoo-border)'}`,
                                       background: active ? undefined : 'var(--odoo-bg)',
-                                      color: active ? undefined : blocked ? 'var(--odoo-text-light)' : 'var(--odoo-text-muted)',
+                                      color: active ? undefined : blocked ? 'var(--odoo-text-light)' : 'var(--ds-muted)',
                                       fontWeight: active ? 600 : 400, opacity: blocked ? 0.5 : 1,
                                     }}>
                                     {destLabel(d)}
                                   </button>
                                 );
                               })}
-                              {over && <Edit3 size={12} style={{ color: 'var(--prj-orange)' }} aria-label="Proposition modifiée" />}
+                              {over && <Edit3 size={12} style={{ color: 'var(--ds-warning)' }} aria-label="Proposition modifiée" />}
                             </span>
                           ) : <span style={muted}>Tout vendu</span>}
                         </td>
-                        <td style={{ textAlign: 'right', color: dest === 'waste' && remaining > 0 ? 'var(--prj-red)' : 'var(--odoo-text)' }}>
+                        <td className="ds-num" style={{ color: dest === 'waste' && remaining > 0 ? 'var(--ds-danger)' : 'var(--odoo-text)' }}>
                           {remaining > 0 ? n2(unitCost * remaining) : '—'}
                         </td>
                       </tr>
@@ -304,7 +302,7 @@ function DecisionPanel() {
                               <input type="text" value={reasons[pid] || ''} autoFocus={open}
                                 onChange={e => setReasons(prev => ({ ...prev, [pid]: e.target.value }))}
                                 placeholder="Ex. aspect encore correct, commande client demain..."
-                                style={{ ...inputStyle, flex: 1, borderColor: reasons[pid]?.trim() ? 'var(--odoo-border)' : 'var(--prj-orange)' }} />
+                                style={{ ...inputStyle, flex: 1, borderColor: reasons[pid]?.trim() ? 'var(--odoo-border)' : 'var(--ds-warning)' }} />
                             </label>
                           </td>
                         </tr>
@@ -333,12 +331,12 @@ function DecisionPanel() {
                 })}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
               {summary.all.n} produit{summary.all.n > 1 ? 's' : ''} à traiter
-              {missingReason && <> · <span style={{ color: 'var(--prj-orange)', fontWeight: 600 }}>motif manquant</span></>}
+              {missingReason && <> · <span style={{ color: 'var(--ds-warning)', fontWeight: 600 }}>motif manquant</span></>}
             </span>
             <button type="button" onClick={submit} disabled={save.isPending || summary.all.qty === 0 || !sessionId}
               className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -355,7 +353,7 @@ function Detail({ label, value, danger }: { label: string; value: string; danger
   return (
     <div>
       <div style={muted}>{label}</div>
-      <div style={{ fontWeight: 600, color: danger ? 'var(--prj-red)' : 'var(--odoo-text)' }}>{value}</div>
+      <div style={{ fontWeight: 600, color: danger ? 'var(--ds-danger)' : 'var(--odoo-text)' }}>{value}</div>
     </div>
   );
 }
@@ -385,20 +383,20 @@ function HistoryPanel() {
           options={DESTS.map(d => ({ key: d, label: destLabel(d) }))} />
       </div>
       <Panel footer={<PagerFoot page={page} total={total} onPage={setPage} note="Coût = reste × coût de revient unitaire" />}>
-        <table className="odoo-table" style={{ margin: 0 }}>
+        <table className="odoo-table">
           <thead>
             <tr>
               <th>Date</th>
               <th>Produit</th>
-              <th style={{ textAlign: 'right' }}>Reste</th>
+              <th className="ds-num">Reste</th>
               <th>Proposition</th>
               <th>Décision</th>
-              <th style={{ textAlign: 'right' }}>Coût</th>
+              <th className="ds-num">Coût</th>
               <th>Par</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <EmptyRow colSpan={7}><Loader2 size={16} className="animate-spin" /></EmptyRow>}
+            {isLoading && <tr><td colSpan={7}><LoadingState bare /></td></tr>}
             {!isLoading && rows.length === 0 && <EmptyRow colSpan={7}>Aucune décision sur {periodLabel(period, from, to)}.</EmptyRow>}
             {rows.map(r => (
               <tr key={r.id}>
@@ -407,15 +405,15 @@ function HistoryPanel() {
                   <span style={{ fontWeight: 600 }}>{r.product_name}</span>
                   <div style={muted}>{r.category_name || ''}</div>
                 </td>
-                <td style={{ textAlign: 'right' }}>{r.remaining_qty}</td>
+                <td className="ds-num">{r.remaining_qty}</td>
                 <td><DestTag dest={r.suggested_destination} label={destLabel(r.suggested_destination)} /></td>
                 <td>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <DestTag dest={r.final_destination} label={destLabel(r.final_destination)} />
-                    {r.is_override && <span title={r.override_reason || 'Proposition modifiée'}><Edit3 size={12} style={{ color: 'var(--prj-orange)' }} /></span>}
+                    {r.is_override && <span title={r.override_reason || 'Proposition modifiée'}><Edit3 size={12} style={{ color: 'var(--ds-warning)' }} /></span>}
                   </span>
                 </td>
-                <td style={{ textAlign: 'right' }}>{n2(toNum(r.total_cost))}</td>
+                <td className="ds-num">{n2(toNum(r.total_cost))}</td>
                 <td style={muted}>{r.decided_by_first_name || '—'}</td>
               </tr>
             ))}
@@ -463,7 +461,7 @@ export function InvendusDashboard() {
   return (
     <>
       <div className="prj-toolbar">
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
           Mois
           <select value={month} onChange={e => setMonth(Number(e.target.value))} className="odoo-filter-dropdown">
             {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
@@ -478,20 +476,13 @@ export function InvendusDashboard() {
         <StatusBanner tone="neutral" icon={Info} title="Aucune donnée">Aucune décision d'invendus ce mois-ci.</StatusBanner>
       ) : (
         <>
-          <div className="prj-kpis">
-            <div className="prj-kpi">
-              <div className="prj-kpi-head"><span>Invendus du mois</span></div>
-              <div className="prj-kpi-value">{n0(grand)}</div>
-              <div className="prj-kpi-sub">unités décidées</div>
-            </div>
+          <KpiGrid label="Invendus du mois">
+            <KpiCard label="Invendus du mois" value={n0(grand)} sub="unités décidées" />
             {DESTS.map(d => (
-              <div key={d} className="prj-kpi">
-                <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Dot color={DEST[d].dot} /> {destLabel(d)}</span></div>
-                <div className="prj-kpi-value">{pct(d)} %</div>
-                <div className="prj-kpi-sub">{n0(totals[d].qty)} unités{d === 'waste' ? ` · ${money(totals[d].cost)} perdus` : ''}</div>
-              </div>
+              <KpiCard key={d} label={destLabel(d)} value={`${pct(d)} %`} tone={d === 'waste' && totals[d].qty > 0 ? 'red' : undefined}
+                sub={`${n0(totals[d].qty)} unités${d === 'waste' ? ` · ${money(totals[d].cost)} perdus` : ''}`} />
             ))}
-          </div>
+          </KpiGrid>
 
           {toNum(overrides.total_count) > 0 && (
             <StatusBanner tone="info" icon={Edit3} title={`${toNum(overrides.override_count)} proposition(s) modifiée(s) par l'équipe`}>
@@ -501,83 +492,83 @@ export function InvendusDashboard() {
 
           {(stats.recurringWaste || []).length > 0 && (
             <>
-              <h3 style={sectionTitle}>Surproduction : destructions répétées</h3>
-              <div className={tableCard}>
-                <table className="odoo-table" style={{ margin: 0 }}>
-                  <thead><tr><th>Produit</th><th style={{ textAlign: 'right' }}>Jours détruits</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Perte ({currencySymbol()})</th></tr></thead>
+              <SectionHeader title="Surproduction : destructions répétées" />
+              <DataPanel>
+                <table className="odoo-table">
+                  <thead><tr><th>Produit</th><th className="ds-num">Jours détruits</th><th className="ds-num">Unités</th><th className="ds-num">Perte ({currencySymbol()})</th></tr></thead>
                   <tbody>
                     {stats.recurringWaste.map((p: Product) => (
                       <tr key={p.product_id}>
-                        <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Dot color="var(--prj-red)" /><strong>{p.product_name}</strong></span></td>
-                        <td style={{ textAlign: 'right' }}>{p.waste_days}</td>
-                        <td style={{ textAlign: 'right' }}>{n0(toNum(p.total_qty))}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--prj-red)', fontWeight: 600 }}>{n2(toNum(p.total_cost))}</td>
+                        <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Dot color="var(--ds-danger)" /><strong>{p.product_name}</strong></span></td>
+                        <td className="ds-num">{p.waste_days}</td>
+                        <td className="ds-num">{n0(toNum(p.total_qty))}</td>
+                        <td className="ds-num" style={{ color: 'var(--ds-danger)', fontWeight: 600 }}>{n2(toNum(p.total_cost))}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </DataPanel>
             </>
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
             <div>
-              <h3 style={sectionTitle}>Par catégorie (unités)</h3>
-              <div className={tableCard} style={{ marginTop: 6 }}>
-                <table className="odoo-table" style={{ margin: 0 }}>
-                  <thead><tr><th>Catégorie</th>{DESTS.map(d => <th key={d} style={{ textAlign: 'right' }}>{destLabel(d)}</th>)}</tr></thead>
+              <SectionHeader title="Par catégorie (unités)" />
+              <DataPanel>
+                <table className="odoo-table">
+                  <thead><tr><th>Catégorie</th>{DESTS.map(d => <th key={d} className="ds-num">{destLabel(d)}</th>)}</tr></thead>
                   <tbody>
                     {byCategory.length === 0 && <EmptyRow colSpan={5}>Aucune donnée.</EmptyRow>}
                     {byCategory.map(([cat, v]) => (
                       <tr key={cat}>
                         <td>{cat}</td>
-                        {DESTS.map(d => <td key={d} style={{ textAlign: 'right', color: v[d] ? 'var(--odoo-text)' : 'var(--theme-text-muted)' }}>{v[d] ? n0(v[d]) : '—'}</td>)}
+                        {DESTS.map(d => <td key={d} style={{ textAlign: 'right', color: v[d] ? 'var(--odoo-text)' : 'var(--ds-muted)' }}>{v[d] ? n0(v[d]) : '—'}</td>)}
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </DataPanel>
             </div>
             <div>
-              <h3 style={sectionTitle}><TrendingDown size={15} /> Produits les plus détruits (coût)</h3>
-              <div className={tableCard} style={{ marginTop: 6 }}>
-                <table className="odoo-table" style={{ margin: 0 }}>
-                  <thead><tr><th>Produit</th><th style={{ textAlign: 'right' }}>Fois</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Perte ({currencySymbol()})</th></tr></thead>
+              <SectionHeader title={<><TrendingDown size={15} /> Produits les plus détruits (coût)</>} />
+              <DataPanel>
+                <table className="odoo-table">
+                  <thead><tr><th>Produit</th><th className="ds-num">Fois</th><th className="ds-num">Unités</th><th className="ds-num">Perte ({currencySymbol()})</th></tr></thead>
                   <tbody>
                     {(stats.topWasteProducts || []).length === 0 && <EmptyRow colSpan={4}>Aucune destruction.</EmptyRow>}
                     {(stats.topWasteProducts || []).map((p: Product) => (
                       <tr key={p.product_id}>
                         <td><strong>{p.product_name}</strong><div style={muted}>{p.category_name || ''}</div></td>
-                        <td style={{ textAlign: 'right' }}>{p.waste_count}</td>
-                        <td style={{ textAlign: 'right' }}>{n0(toNum(p.total_qty))}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{n2(toNum(p.total_cost))}</td>
+                        <td className="ds-num">{p.waste_count}</td>
+                        <td className="ds-num">{n0(toNum(p.total_qty))}</td>
+                        <td className="ds-num" style={{ fontWeight: 600 }}>{n2(toNum(p.total_cost))}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </DataPanel>
             </div>
           </div>
 
           {(stats.daily || []).length > 0 && (
             <>
-              <h3 style={sectionTitle}>Jour par jour</h3>
-              <div className={tableCard} style={{ maxHeight: 320, overflowY: 'auto' }}>
-                <table className="odoo-table" style={{ margin: 0 }}>
-                  <thead><tr><th>Date</th><th>Destination</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Coût ({currencySymbol()})</th><th style={{ textAlign: 'right' }}>Décisions</th></tr></thead>
+              <SectionHeader title="Jour par jour" />
+              <div style={{ maxHeight: 320, overflowY: 'auto' }}><DataPanel>
+                <table className="odoo-table">
+                  <thead><tr><th>Date</th><th>Destination</th><th className="ds-num">Unités</th><th className="ds-num">Coût ({currencySymbol()})</th><th className="ds-num">Décisions</th></tr></thead>
                   <tbody>
                     {stats.daily.map((d: Product, i: number) => (
                       <tr key={i}>
                         <td>{format(new Date(d.date), 'EEE dd/MM', { locale: fr })}</td>
                         <td><DestTag dest={d.final_destination} label={destLabel(d.final_destination)} /></td>
-                        <td style={{ textAlign: 'right' }}>{n0(toNum(d.total_qty))}</td>
-                        <td style={{ textAlign: 'right' }}>{n2(toNum(d.total_cost))}</td>
-                        <td style={{ textAlign: 'right' }}>{toNum(d.count)}</td>
+                        <td className="ds-num">{n0(toNum(d.total_qty))}</td>
+                        <td className="ds-num">{n2(toNum(d.total_cost))}</td>
+                        <td className="ds-num">{toNum(d.count)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </DataPanel></div>
             </>
           )}
         </>

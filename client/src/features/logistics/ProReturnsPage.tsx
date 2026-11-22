@@ -9,7 +9,8 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListKpi, ListPanel, ListEmpty, ListToolbar, FilterChips } from '../sales/ListTemplate';
+import { ListKpi, ListPanel, ListToolbar, FilterChips } from '../sales/ListTemplate';
+import { TableFooter, EmptyState, NoResultState } from '../../components/ds';
 
 // Retours clients professionnels (phase 7.5) : décision remise en stock / rebut par ligne.
 export default function ProReturnsPage() {
@@ -63,7 +64,7 @@ export default function ProReturnsPage() {
 
       {form && (
         <section className="prj-panel" style={{ padding: 14, display: 'grid', gap: 10 }}>
-          <label><span style={lab}>Client</span>
+          <label><span style={lab}>Client<span className="ds-req" aria-hidden="true"> *</span></span>
             <SearchSelect value={form.customerId} onChange={(v) => setForm({ ...form, customerId: v })}
               placeholder="— Choisir —" width="100%" size="md" ariaLabel="Client"
               options={customers.map(c => ({ id: String(c.id), label: `${c.first_name} ${c.last_name}${c.company_name ? ` (${c.company_name})` : ''}` }))} /></label>
@@ -82,7 +83,7 @@ export default function ProReturnsPage() {
                   <option value="restock">Remise en stock</option>
                   <option value="scrap">Rebut</option>
                 </select></label>
-              <button className="odoo-btn-secondary" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 size={12} /></button>
+              <button type="button" className="odoo-btn-secondary" aria-label="Retirer la ligne" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 size={12} /></button>
             </div>
           ))}
           <button className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setForm({ ...form, lines: [...form.lines, { productId: '', quantity: '', unitPrice: '', decision: 'restock' }] })}><Plus size={12} /> Ligne</button>
@@ -96,26 +97,27 @@ export default function ProReturnsPage() {
         </section>
       )}
 
-      <ListToolbar search={search} onSearch={setSearch} placeholder="N° de retour, client…" />
       <FilterChips label="Filtrer les retours" value={view} onChange={k => setView(k as '' | 'credited' | 'open')} chips={[
         { key: '', label: 'Tous', count: returns.length },
         { key: 'open', label: 'Sans avoir', count: kpis.open },
         { key: 'credited', label: 'Avoir émis', count: kpis.credited },
       ]} />
+      <ListToolbar search={search} onSearch={setSearch} placeholder="N° de retour, client…" />
       {!shown.length ? (
-        <ListEmpty icon={Undo2} title={returns.length ? 'Aucun retour pour ce filtre' : 'Aucun retour client'}
-          text={returns.length ? undefined : '« Nouveau retour » pour enregistrer une marchandise reprise à un client pro.'} />
+        returns.length
+          ? <NoResultState onReset={() => { setView(''); setSearch(''); }} text="Aucun retour ne correspond aux filtres." />
+          : <EmptyState icon={Undo2} title="Aucun retour client" text="« Nouveau retour » pour enregistrer une marchandise reprise à un client pro." />
       ) : (
-        <ListPanel footer={<div className="sal-foot"><span>{shown.length} retour{shown.length > 1 ? 's' : ''}</span></div>}>
+        <ListPanel footer={<TableFooter note={<>{shown.length} retour{shown.length > 1 ? 's' : ''}</>} />}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Date</th><th>Client</th><th style={{ textAlign: 'right' }}>Lignes</th><th>Avoir</th></tr></thead>
+            <thead><tr><th>N°</th><th>Date</th><th>Client</th><th className="ds-num">Lignes</th><th>Avoir</th></tr></thead>
             <tbody>
               {shown.map((r: ProReturn) => (
                 <tr key={r.id} style={{ cursor: 'default' }}>
-                  <td><span className="sal-num">{r.number}</span></td>
+                  <td><span className="ds-ref">{r.number}</span></td>
                   <td style={{ whiteSpace: 'nowrap' }}>{String(r.return_date).slice(0, 10).split('-').reverse().join('/')}</td>
-                  <td style={{ fontWeight: 500 }}>{r.customer_name}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.item_count}</td>
+                  <td className="ds-strong">{r.customer_name}</td>
+                  <td className="ds-num">{r.item_count}</td>
                   <td>{r.credit_note_id ? <StatusTag tone="done" label="Émis" /> : <StatusTag tone="todo" label="À émettre" />}</td>
                 </tr>
               ))}

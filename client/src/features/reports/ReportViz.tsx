@@ -89,7 +89,7 @@ export function ReportViz({ columns, rows, viz, measureKey }: { columns: ReportC
   // Table (défaut)
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table className="odoo-table">
+      <table className="odoo-table ds-dense">
         <thead><tr>{columns.map(c => <th key={c.key} style={{ textAlign: c.kind === 'measure' ? 'right' : 'left', whiteSpace: 'nowrap' }}>{c.label}</th>)}</tr></thead>
         <tbody>
           {rows.slice(0, 200).map((r, i) => (

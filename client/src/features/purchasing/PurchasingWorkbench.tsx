@@ -119,23 +119,23 @@ export default function PurchasingWorkbench({ onOpenTab, onOpenInvoice }: {
   return (
     <div className="prj">
       <PurHeaderActions>
-        <button type="button" className="odoo-btn-primary" onClick={() => onOpenTab('purchase_requests')}>Demande d’achat</button>
+        <button type="button" className="odoo-btn-primary" onClick={() => onOpenTab('purchase_requests')}>Nouvelle demande d’achat</button>
       </PurHeaderActions>
       <header className="kl-largetitle">
-        <h1>Aujourd’hui</h1>
+        <h1>Poste de travail</h1>
         <p>{format(new Date(), 'EEEE d MMMM', { locale: fr })} · {items.length
           ? <><b>{items.length} action{items.length > 1 ? 's' : ''}</b> vous attend{items.length > 1 ? 'ent' : ''} dans le circuit d’achat{user?.firstName ? `, ${user.firstName}` : ''}.</>
           : 'rien ne vous attend dans le circuit d’achat.'}</p>
       </header>
 
       <section aria-label="Circuit d’achat">
-        <div className="kl-sec"><h2>Le circuit</h2><small>cliquez une étape pour ouvrir ses pièces</small></div>
+        <div className="kl-sec"><h2>Circuit d’achat</h2><small>Cliquez une étape pour ouvrir ses pièces</small></div>
         <div className="kl-widget">
           <ol className="pur-circuit">
             {stages.map(s => (
               <li key={s.n}>
                 <button type="button" className={`pur-stage ${s.tone ?? ''}`} onClick={s.go}>
-                  <span className="pur-stage-head"><span className="pur-stage-num">{s.n}</span>{s.label}</span>
+                  <span className="pur-stage-head">{s.label}</span>
                   <span className="pur-stage-count">{s.count ?? '—'}</span>
                   <span className="pur-stage-sub">{s.sub}</span>
                 </button>

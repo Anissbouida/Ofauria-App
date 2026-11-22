@@ -153,10 +153,10 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                   <span className="text-xs text-gray-400">min</span>
                 </span>
                 <span className="inline-flex items-center gap-1">
-                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="odoo-pager-btn" title="Monter"><ArrowUp size={13} /></button>
-                  <button type="button" onClick={() => move(i, 1)} disabled={i === drafts.length - 1} className="odoo-pager-btn" title="Descendre"><ArrowDown size={13} /></button>
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="odoo-pager-btn" title="Monter" aria-label="Monter"><ArrowUp size={13} /></button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === drafts.length - 1} className="odoo-pager-btn" title="Descendre" aria-label="Descendre"><ArrowDown size={13} /></button>
                   <button type="button" onClick={() => setDrafts((ds) => ds && ds.filter((x) => x.k !== d.k))}
-                    className="odoo-pager-btn" title="Supprimer l'étape"><Trash2 size={13} /></button>
+                    className="odoo-pager-btn" title="Supprimer l'étape" aria-label="Supprimer l'étape"><Trash2 size={13} /></button>
                 </span>
               </div>
               <div className="flex items-center gap-3 mt-2 flex-wrap" style={{ marginLeft: 30 }}>

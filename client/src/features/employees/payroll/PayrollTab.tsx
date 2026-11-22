@@ -5,15 +5,16 @@ import PayrollSettingsView from './PayrollSettingsView';
 import DeclarationsView from './DeclarationsView';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Tabs } from '../../../components/ds';
 
 type PayView = 'monthly' | 'biweekly' | 'weekly' | 'declarations' | 'settings';
 
-const VIEWS: Array<[PayView, string]> = [
-  ['monthly', 'Paie mensuelle'],
-  ['biweekly', 'Paie par quinzaine'],
-  ['weekly', 'Paie hebdomadaire'],
-  ['declarations', 'Déclarations'],
-  ['settings', 'Paramètres de paie'],
+const VIEWS: Array<{ key: PayView; label: string }> = [
+  { key: 'monthly', label: 'Paie mensuelle' },
+  { key: 'biweekly', label: 'Paie par quinzaine' },
+  { key: 'weekly', label: 'Paie hebdomadaire' },
+  { key: 'declarations', label: 'Déclarations' },
+  { key: 'settings', label: 'Paramètres de paie' },
 ];
 
 /* ═══════════════════════ PAYROLL TAB ═══════════════════════ */
@@ -22,15 +23,8 @@ export default function PayrollTab({ queryClient }: { queryClient: ReturnType<ty
 
   return (
     <>
-      {/* Cinq vues : onglets fins (odoo-tabs), au-delà du contrôle segmenté (2 à 4 vues). */}
-      <div className="odoo-tabs" role="tablist" aria-label="Vue de paie" style={{ padding: 0 }}>
-        {VIEWS.map(([key, label]) => (
-          <button key={key} type="button" role="tab" aria-selected={payView === key} onClick={() => setPayView(key)}
-            className={`odoo-tab${payView === key ? ' active' : ''}`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Cinq vues : onglets du Design System (au-delà de la bascule segmentée, 2 à 4 vues). */}
+      <Tabs label="Vue de paie" value={payView} onChange={setPayView} tabs={VIEWS} />
       {payView === 'monthly' ? <MonthlyPayrollView queryClient={queryClient} />
         : payView === 'biweekly' ? <BiweeklyPayrollView queryClient={queryClient} />
         : payView === 'settings' ? <PayrollSettingsView />

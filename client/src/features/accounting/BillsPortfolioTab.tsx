@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Info, Landmark, Percent, Ban, CheckCircle2, Undo2, type LucideIcon } from 'lucide-react';
+import { Info, Landmark, Percent, Ban, CheckCircle2, Undo2, type LucideIcon } from 'lucide-react';
 import { billsApi, type BillEffect, type BillStatus, type BillRemittance } from '../../api/ledger.api';
 import { paymentsApi } from '../../api/accounting.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -8,6 +8,9 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { LoadingState, DataPanel, KpiGrid, KpiCard, EmptyState, TableFooter, BulkBar, SectionHeader } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { currencySymbol } from '../../utils/money';
 
 /**
  * Portefeuille d'effets clients (lot Bonus 15, mig 435) : chèques et traites
@@ -79,12 +82,12 @@ export default function BillsPortfolioTab() {
   });
 
   const t = data?.totals;
-  const cards: { label: string; value: number; hint: string; tone?: string }[] = t ? [
+  const cards: { label: string; value: number; hint: string; tone?: 'red' }[] = t ? [
     { label: 'En portefeuille', value: t.portfolio, hint: 'à remettre en banque' },
     { label: 'Remis à l\'encaissement', value: t.remitted, hint: 'en attente du crédit bancaire' },
     { label: 'Escomptés non échus', value: t.discounted, hint: 'risque si impayé (5520)' },
-    { label: 'Échus non dénoués', value: t.overdue, hint: 'échéance dépassée', tone: t.overdue > 0 ? '#c62828' : undefined },
-    { label: 'Impayés', value: t.unpaid, hint: 'factures redevenues dues', tone: t.unpaid > 0 ? '#c62828' : undefined },
+    { label: 'Échus non dénoués', value: t.overdue, hint: 'échéance dépassée', tone: t.overdue > 0 ? 'red' : undefined },
+    { label: 'Impayés', value: t.unpaid, hint: 'factures redevenues dues', tone: t.unpaid > 0 ? 'red' : undefined },
   ] : [];
 
   return (
@@ -92,18 +95,12 @@ export default function BillsPortfolioTab() {
       <StatusBanner tone="info" icon={Info} title="Chèques et traites reçus des clients">
         Sélectionnez des effets en portefeuille pour établir un bordereau de remise : à l'encaissement (chèques et traites), ou à l'escompte (traites : la banque avance le nominal moins ses agios et commissions). À l'échéance, l'effet est crédité ou déclaré impayé ; un impayé annule le règlement et la facture redevient due.
       </StatusBanner>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
-        {cards.map(c => (
-          <div key={c.label} className="odoo-section" style={{ padding: '10px 12px' }}>
-            <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)' }}>{c.label}</div>
-            <div style={{ ...mono, fontSize: '1.125rem', fontWeight: 700, color: c.tone }}>{n(c.value)}</div>
-            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{c.hint}</div>
-          </div>
-        ))}
-      </div>
+      <KpiGrid>
+        {cards.map(c => <KpiCard key={c.label} label={c.label} value={n(c.value)} sub={c.hint} tone={c.tone} />)}
+      </KpiGrid>
 
-      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
-        <select value={status} onChange={e => { setStatus(e.target.value as typeof status); setSelected(new Set()); }} className="odoo-search-input" aria-label="Statut">
+      <div className="prj-toolbar">
+        <select value={status} onChange={e => { setStatus(e.target.value as typeof status); setSelected(new Set()); }} className="ds-input sm" style={{ width: 'auto' }} aria-label="Statut">
           <option value="open">À dénouer (portefeuille, remis, escomptés)</option>
           <option value="portfolio">En portefeuille</option>
           <option value="remitted">Remis à l'encaissement</option>
@@ -112,45 +109,42 @@ export default function BillsPortfolioTab() {
           <option value="unpaid">Impayés</option>
           <option value="all">Tous</option>
         </select>
-        {chosen.length > 0 && (
-          <>
-            <span style={{ fontSize: '0.8125rem' }}>{chosen.length} effet{chosen.length > 1 ? 's' : ''} · <strong style={mono}>{n(chosenTotal)}</strong></span>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              <button type="button" className="odoo-btn-primary" onClick={() => setRemit('collection')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Landmark size={13} /> Remise à l'encaissement
-              </button>
-              <button type="button" className="odoo-btn-secondary" disabled={!onlyTraites} onClick={() => setRemit('discount')}
-                title={onlyTraites ? 'Escompte des traites sélectionnées' : 'Seules les traites s\'escomptent'} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Percent size={13} /> Remise à l'escompte
-              </button>
-            </div>
-          </>
-        )}
       </div>
 
-      {isLoading ? <Loader2 size={18} className="animate-spin" /> : effects.length === 0 ? (
-        <StatusBanner tone="neutral" icon={CheckCircle2} title="Aucun effet dans cette vue">Les chèques et traites reçus en règlement de factures clients apparaissent ici.</StatusBanner>
+      {isLoading ? <LoadingState /> : effects.length === 0 ? (
+        <EmptyState icon={CheckCircle2} title="Aucun effet dans cette vue" text="Les chèques et traites reçus en règlement de factures clients apparaissent ici." />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table" style={{ width: '100%' }}>
+        <DataPanel label="Effets" footer={<TableFooter note={`${effects.length} effet${effects.length > 1 ? 's' : ''} · montants en ${currencySymbol()}`} />}
+          bulk={
+            <BulkBar count={chosen.length} noun="effet" detail={<span className="ds-num">{n(chosenTotal)} {currencySymbol()}</span>} onClear={() => setSelected(new Set())}>
+              <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={!onlyTraites} onClick={() => setRemit('discount')}
+                title={onlyTraites ? 'Escompte des traites sélectionnées' : 'Seules les traites s\'escomptent'}>
+                <Percent size={13} aria-hidden="true" /> Remise à l'escompte
+              </button>
+              <button type="button" className="odoo-btn-primary ds-btn-sm" onClick={() => setRemit('collection')}>
+                <Landmark size={13} aria-hidden="true" /> Remise à l'encaissement
+              </button>
+            </BulkBar>
+          }>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
-                <th style={{ width: 28 }} />
+                <th style={{ width: 28 }}><span className="ds-sr-only">Sélection</span></th>
                 <th>Échéance</th><th>Effet</th><th>Client · facture</th><th>Reçu le</th>
-                <th style={{ textAlign: 'right' }}>Montant</th><th>Statut</th><th />
+                <th className="ds-num">Montant ({currencySymbol()})</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {effects.map(e => {
                 const open = e.status === 'portfolio' || e.status === 'remitted' || e.status === 'discounted';
                 return (
-                  <tr key={e.id}>
+                  <tr key={e.id} className={selected.has(e.id) ? 'ds-selected' : undefined}>
                     <td>{e.status === 'portfolio' && <input type="checkbox" checked={selected.has(e.id)} onChange={() => toggle(e.id)} aria-label={`Sélectionner ${e.check_number ?? e.reference ?? ''}`} />}</td>
-                    <td style={{ ...mono, color: e.overdue ? '#c62828' : undefined, fontWeight: e.overdue ? 700 : undefined }}>{fmtDate(e.due_date)}</td>
-                    <td>{e.payment_method === 'traite' ? 'Traite' : 'Chèque'} <span style={mono}>{e.check_number ?? e.reference ?? ''}</span></td>
-                    <td>{e.customer_name ?? '—'}{e.invoice_number && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', ...mono }}>{e.invoice_number}</div>}</td>
-                    <td style={mono}>{fmtDate(e.received_on)}</td>
-                    <td style={{ ...mono, textAlign: 'right' }}>{n(e.amount)}</td>
+                    <td style={{ color: e.overdue ? 'var(--ds-danger)' : undefined, fontWeight: e.overdue ? 600 : undefined }}>{fmtDate(e.due_date)}</td>
+                    <td>{e.payment_method === 'traite' ? 'Traite' : 'Chèque'} <span className="ds-ref">{e.check_number ?? e.reference ?? ''}</span></td>
+                    <td><span className="ds-strong">{e.customer_name ?? '—'}</span>{e.invoice_number && <div className="ds-ref" style={{ fontSize: 12, fontWeight: 400, color: 'var(--ds-muted)' }}>{e.invoice_number}</div>}</td>
+                    <td>{fmtDate(e.received_on)}</td>
+                    <td className="ds-num">{n(e.amount)}</td>
                     <td>
                       <StatusTag tone={STATUS[e.status].tone} icon={STATUS[e.status].icon} label={STATUS[e.status].label} />
                       <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
@@ -159,58 +153,57 @@ export default function BillsPortfolioTab() {
                         {e.status === 'unpaid' && ` le ${fmtDate(e.unpaid_at)}${e.unpaid_fees ? ` · frais ${n(e.unpaid_fees)}` : ''}`}
                       </div>
                     </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {open && <button type="button" className="odoo-btn-secondary" onClick={() => setCashFor(e)}>{e.status === 'discounted' ? 'Payé à l\'échéance' : 'Crédité'}</button>}{' '}
-                      {open && <button type="button" className="odoo-btn-danger" onClick={() => setUnpaidFor(e)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ban size={12} /> Impayé</button>}
+                    <td className="ds-actions">
+                      {open && <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setCashFor(e)}>{e.status === 'discounted' ? 'Payé à l\'échéance' : 'Crédité'}</button>}
+                      {open && <RowMenu items={[{ label: 'Déclarer impayé', icon: Ban, danger: true, onSelect: () => setUnpaidFor(e) }]} />}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
-      <h3 style={{ margin: '8px 0 0', fontSize: '0.875rem', fontWeight: 600 }}>Bordereaux de remise</h3>
+      <SectionHeader title="Bordereaux de remise" note={remittances.length ? `${remittances.length} bordereau${remittances.length > 1 ? 'x' : ''}` : undefined} />
       {remittances.length === 0 ? (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucun bordereau pour l'instant.</div>
+        <EmptyState icon={Landmark} title="Aucun bordereau" text="Sélectionnez des effets en portefeuille pour établir la première remise." />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table" style={{ width: '100%' }}>
+        <DataPanel label="Bordereaux de remise">
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
-                <th>Bordereau</th><th>Type</th><th>Date</th><th>Banque</th><th style={{ textAlign: 'right' }}>Effets</th>
-                <th style={{ textAlign: 'right' }}>Nominal</th><th style={{ textAlign: 'right' }}>Frais</th><th style={{ textAlign: 'right' }}>Net</th><th>Écriture</th><th />
+                <th>Bordereau</th><th>Type</th><th>Date</th><th>Banque</th><th className="ds-num">Effets</th>
+                <th className="ds-num">Nominal ({currencySymbol()})</th><th className="ds-num">Frais ({currencySymbol()})</th><th className="ds-num">Net ({currencySymbol()})</th><th>Écriture</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {remittances.map(r => (
                 <tr key={r.id} style={{ opacity: r.status === 'cancelled' ? 0.55 : 1 }}>
-                  <td style={mono}>{r.remittance_number}{r.status === 'cancelled' && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="Annulé" /></span>}</td>
+                  <td className="ds-ref">{r.remittance_number}{r.status === 'cancelled' && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="Annulé" /></span>}</td>
                   <td>{r.kind === 'discount' ? 'Escompte' : 'Encaissement'}</td>
-                  <td style={mono}>{fmtDate(r.remittance_date)}</td>
+                  <td>{fmtDate(r.remittance_date)}</td>
                   <td>{r.bank_label} <span style={{ ...mono, color: 'var(--theme-text-muted)' }}>{r.bank_code}</span></td>
-                  <td style={{ ...mono, textAlign: 'right' }}>{r.effects}{r.pending > 0 && r.status === 'posted' && <span style={{ color: 'var(--theme-text-muted)' }}> ({r.pending} à dénouer)</span>}</td>
-                  <td style={{ ...mono, textAlign: 'right' }}>{n(r.gross_amount)}</td>
-                  <td style={{ ...mono, textAlign: 'right' }}>{r.kind === 'discount' ? n(r.interest + r.commission + r.commission_vat) : '—'}</td>
-                  <td style={{ ...mono, textAlign: 'right' }}>{n(r.net_amount)}</td>
-                  <td style={mono}>{r.entry_number ?? '—'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
+                  <td className="ds-num">{r.effects}{r.pending > 0 && r.status === 'posted' && <span style={{ color: 'var(--theme-text-muted)' }}> ({r.pending} à dénouer)</span>}</td>
+                  <td className="ds-num">{n(r.gross_amount)}</td>
+                  <td className="ds-num">{r.kind === 'discount' ? n(r.interest + r.commission + r.commission_vat) : '—'}</td>
+                  <td className="ds-num">{n(r.net_amount)}</td>
+                  <td className="ds-ref">{r.entry_number ?? '—'}</td>
+                  <td className="ds-actions">
                     {r.status === 'posted' && r.pending > 0 && (
-                      <button type="button" className="odoo-btn-secondary" onClick={() => setSettleFor(r)}>{r.kind === 'discount' ? 'Échéance de tous' : 'Créditer tous'}</button>
-                    )}{' '}
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setSettleFor(r)}>{r.kind === 'discount' ? 'Échéance de tous' : 'Créditer tous'}</button>
+                    )}
                     {r.status === 'posted' && r.pending === r.effects && (
-                      <button type="button" className="odoo-btn-secondary" aria-label={`Annuler ${r.remittance_number}`} disabled={cancel.isPending}
-                        onClick={async () => { if (await confirm(`Annuler le bordereau ${r.remittance_number} ? Les effets reviennent en portefeuille${r.entry_number ? ` et l'écriture ${r.entry_number} est extournée` : ''}.`, { danger: true, confirmLabel: 'Annuler le bordereau', cancelLabel: 'Garder' })) cancel.mutate(r.id); }}>
-                        <Undo2 size={12} />
-                      </button>
+                      <RowMenu items={[{ label: 'Annuler le bordereau', icon: Undo2, danger: true, disabled: cancel.isPending, onSelect: async () => {
+                        if (await confirm(`Annuler le bordereau ${r.remittance_number} ? Les effets reviennent en portefeuille${r.entry_number ? ` et l'écriture ${r.entry_number} est extournée` : ''}.`, { danger: true, confirmLabel: 'Annuler le bordereau', cancelLabel: 'Garder' })) cancel.mutate(r.id);
+                      } }]} />
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {remit && <RemittanceModal kind={remit} effects={chosen} onClose={() => setRemit(null)} onDone={() => { setRemit(null); refresh(); }} />}
@@ -259,11 +252,11 @@ function RemittanceModal({ kind, effects, onClose, onDone }: { kind: 'collection
     }>
       <div>{effects.length} effet{effects.length > 1 ? 's' : ''} · nominal <strong style={mono}>{n(gross)}</strong></div>
       <Field label="Banque">
-        <select value={bankId} onChange={e => setBank(e.target.value)} className="odoo-search-input">
+        <select value={bankId} onChange={e => setBank(e.target.value)} className="ds-input sm" style={{ width: 'auto' }}>
           {banks.map(b => <option key={b.id} value={b.id}>{b.label} ({b.account_code})</option>)}
         </select>
       </Field>
-      <Field label="Date de remise"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="odoo-search-input" /></Field>
+      <Field label="Date de remise"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></Field>
       {kind === 'discount' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
@@ -301,7 +294,7 @@ function UnpaidModal({ effect, onClose, onDone }: { effect: BillEffect; onClose:
       <StatusBanner tone="warning" icon={Ban} title="Le règlement sera annulé">
         La créance du client est rouverte (3421) et la facture redevient due.{effect.status === 'discounted' && ' La banque reprend le nominal escompté (5520 / banque).'}
       </StatusBanner>
-      <Field label="Date de l'impayé"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="odoo-search-input" /></Field>
+      <Field label="Date de l'impayé"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></Field>
       {remitted && <Field label="Frais d'impayé prélevés par la banque"><input inputMode="decimal" value={fees} onChange={e => setFees(e.target.value)} className="odoo-search-input" /></Field>}
       <Field label="Précision"><input value={note} onChange={e => setNote(e.target.value)} className="odoo-search-input" maxLength={500} /></Field>
     </Modal>
@@ -319,7 +312,7 @@ function DateModal({ title, hint, initial, run, onClose, onDone }: { title: stri
       </>
     }>
       <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{hint}</div>
-      <Field label="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="odoo-search-input" /></Field>
+      <Field label="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></Field>
     </Modal>
   );
 }

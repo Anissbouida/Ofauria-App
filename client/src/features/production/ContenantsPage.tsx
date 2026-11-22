@@ -1,7 +1,10 @@
 import { useProductionPolicies } from './usePolicies';
 import { useState, useMemo } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
-import { ListToolbar, FilterChips, ListPanel } from '../sales/ListTemplate';
+import { FilterChips } from '../sales/ListTemplate';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { BulkBar, DataPanel, EmptyState, LoadingState, NoResultState, SearchBar, Segmented, TableFooter, Toolbar } from '../../components/ds';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { contenantsApi, type BulkResult } from '../../api/contenants.api';
 import { recipesApi } from '../../api/recipes.api';
@@ -103,6 +106,7 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
   onCreatingChange?: (v: boolean) => void;
 } = {}) {
   const queryClient = useQueryClient();
+  const confirmDialog = useConfirm();
   const [showInactive, setShowInactive] = useState(false);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState(0);
@@ -248,17 +252,19 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
     onError: (err) => bulkError(err, 'Erreur lors de la suppression en masse'),
   });
 
-  const handleBulkDeactivate = () => {
+  const handleBulkDeactivate = async () => {
     const n = selectedIds.size;
     if (n === 0) return;
-    if (!confirm(`Désactiver ${n} format${n > 1 ? 's' : ''} ?\n\nIls disparaissent des listes mais restent en base : les recettes et plans qui les référencent ne sont pas touchés.`)) return;
+    if (!await confirmDialog('Ils disparaissent des listes mais restent en base : les recettes et plans qui les référencent ne sont pas touchés.',
+      { title: `Désactiver ${n} format${n > 1 ? 's' : ''} ?`, confirmLabel: 'Désactiver' })) return;
     bulkDeactivateMutation.mutate([...selectedIds]);
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     const n = selectedIds.size;
     if (n === 0) return;
-    if (!confirm(`Supprimer ${n} format${n > 1 ? 's' : ''} ?\n\nCeux que rien n'utilise sont supprimés définitivement (irréversible).\nCeux encore référencés par une recette, un plan ou un profil produit sont désactivés à la place : ils sortent des listes, leur historique reste intact.`)) return;
+    if (!await confirmDialog("Ceux que rien n'utilise sont supprimés définitivement (irréversible).\nCeux encore référencés par une recette, un plan ou un profil produit sont désactivés à la place : ils sortent des listes, leur historique reste intact.",
+      { title: `Supprimer ${n} format${n > 1 ? 's' : ''} ?`, confirmLabel: 'Supprimer', danger: true })) return;
     bulkDeleteMutation.mutate([...selectedIds]);
   };
 
@@ -268,26 +274,8 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
 
   return (
     <>
-      {/* ══════ BARRE D'OUTILS — même gabarit que les deux autres onglets ══════ */}
-      <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un format...">
-        <SearchSelect
-          options={Object.entries(TYPE_LABELS).map(([k, v]) => ({ id: k, label: `${TYPE_ICONS[Number(k)]} ${v}` }))}
-          value={typeFilter ? String(typeFilter) : ''}
-          onChange={id => setTypeFilter(id ? Number(id) : 0)}
-          placeholder="Tous les types"
-        />
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--theme-text-muted)', cursor: 'pointer' }}>
-          <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
-          Afficher inactifs
-        </label>
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 13, color: 'var(--theme-text-muted)' }}>
-          <strong style={{ color: 'var(--theme-text-strong)' }}>{sortedFiltered.length}</strong> / {activeCount}
-        </span>
-      </ListToolbar>
-
       {/* ══════ FILTRES PAR TYPE ══════ */}
-      {/* Ce sont des filtres, pas des indicateurs : pastilles avec compteurs (gabarit Liste). */}
+      {/* Ce sont des filtres, pas des indicateurs : pastilles avec compteurs, avant la barre d'outils. */}
       <FilterChips
         label="Filtrer par type"
         value={typeFilter ? String(typeFilter) : ''}
@@ -297,6 +285,20 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
           label: `${TYPE_ICONS[type]} ${TYPE_LABELS[type]}`,
           count: contenants.filter(c => c.type_production === type && c.is_active).length,
         }))} />
+
+      {/* ══════ BARRE D'OUTILS — même gabarit que les deux autres onglets ══════ */}
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} placeholder="Rechercher un format" />
+        <SearchSelect
+          options={Object.entries(TYPE_LABELS).map(([k, v]) => ({ id: k, label: `${TYPE_ICONS[Number(k)]} ${v}` }))}
+          value={typeFilter ? String(typeFilter) : ''}
+          onChange={id => setTypeFilter(id ? Number(id) : 0)}
+          placeholder="Tous les types"
+        />
+        <span className="ds-grow" />
+        <Segmented label="Formats affichés" value={showInactive ? 'all' : 'active'} onChange={k => setShowInactive(k === 'all')}
+          options={[{ key: 'active', label: 'Actifs' }, { key: 'all', label: 'Avec les inactifs' }]} />
+      </Toolbar>
 
       {/* ══════ CREATE / EDIT ══════ */}
       {(creating || editing) && (
@@ -310,66 +312,42 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
         />
       )}
 
-      {/* ══════ BARRE D'ACTIONS SUR SÉLECTION ══════ */}
-      {/* « Désactiver » ne fait jamais que désactiver. « Supprimer » supprime ce que
-          rien ne référence et DÉSACTIVE le reste : les FK vers production_contenants
-          sont en RESTRICT, un format déjà utilisé ne peut pas partir sans casser
-          l'historique. Le repli évite un échec sur lequel on ne peut rien faire. */}
-      {selectedIds.size > 0 && (
-        <div className="prj-panel" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 14 }}>
-            <strong>{selectedIds.size}</strong> format{selectedIds.size > 1 ? 's' : ''} sélectionné{selectedIds.size > 1 ? 's' : ''}
-          </span>
-          <button onClick={handleBulkDeactivate} className="odoo-btn-secondary" disabled={bulkPending}>
-            <Ban size={14} /> {bulkDeactivateMutation.isPending ? 'Désactivation...' : 'Désactiver'}
-          </button>
-          <button onClick={handleBulkDelete} className="odoo-btn-danger" disabled={bulkPending}
-            title="Supprime les formats que rien n'utilise ; désactive automatiquement les autres">
-            <Trash2 size={14} /> {bulkDeleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
-          </button>
-          <button onClick={() => setSelectedIds(new Set())} className="odoo-btn-secondary"
-            disabled={bulkPending} title="Annuler la sélection">
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
       {/* ══════ TABLE ══════ */}
       {isLoading ? (
-        <section className="prj-panel sal-empty">
-          <div style={{ width: 24, height: 24, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        </section>
+        <LoadingState />
       ) : sortedFiltered.length === 0 ? (
-        <section className="prj-panel sal-empty">
-          <Package size={28} style={{ opacity: 0.4 }} />
-          <strong>{contenants.length === 0 ? 'Aucun format de production' : 'Aucun résultat'}</strong>
-          <span style={{ maxWidth: 420 }}>
-            {contenants.length === 0
-              ? 'Un format est le cadre, le moule ou la plaque dans lequel une recette est lancée : il fixe la quantité théorique et le rendement.'
-              : 'Aucun format ne correspond aux filtres actifs.'}
-          </span>
-          <div style={{ marginTop: 4 }}>
-            {contenants.length === 0 ? (
-              <button onClick={() => { setCreating(true); setEditing(null); }} className="odoo-btn-primary">
-                <Plus size={14} /> Créer un format
-              </button>
-            ) : (
-              <button onClick={() => { setSearch(''); setTypeFilter(0); }} className="odoo-btn-secondary">
-                Réinitialiser les filtres
-              </button>
-            )}
-          </div>
-        </section>
+        contenants.length === 0 ? (
+          <EmptyState icon={Package} title="Aucun format de production"
+            text="Un format est le cadre, le moule ou la plaque dans lequel une recette est lancée : il fixe la quantité théorique et le rendement."
+            action={<button type="button" onClick={() => { setCreating(true); setEditing(null); }} className="odoo-btn-primary"><Plus size={14} aria-hidden="true" /> Créer un format</button>} />
+        ) : (
+          <NoResultState text="Aucun format ne correspond aux filtres." onReset={() => { setSearch(''); setTypeFilter(0); }} />
+        )
       ) : (
-        <ListPanel>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Formats de production"
+          /* « Désactiver » ne fait jamais que désactiver. « Supprimer » supprime ce que
+             rien ne référence et DÉSACTIVE le reste : les FK vers production_contenants
+             sont en RESTRICT, un format déjà utilisé ne peut pas partir sans casser
+             l'historique. Le repli évite un échec sur lequel on ne peut rien faire. */
+          bulk={
+            <BulkBar count={selectedIds.size} noun="format" onClear={() => setSelectedIds(new Set())}>
+              <button type="button" onClick={handleBulkDeactivate} className="odoo-btn-secondary ds-btn-sm" disabled={bulkPending}>
+                <Ban size={13} aria-hidden="true" /> {bulkDeactivateMutation.isPending ? 'Désactivation…' : 'Désactiver'}
+              </button>
+              <button type="button" onClick={handleBulkDelete} className="ds-btn-danger ds-btn-sm" disabled={bulkPending}
+                title="Supprime les formats que rien n'utilise ; désactive automatiquement les autres" aria-label="Supprime les formats que rien n'utilise ; désactive automatiquement les autres">
+                <Trash2 size={13} aria-hidden="true" /> {bulkDeleteMutation.isPending ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </BulkBar>
+          }
+          footer={<TableFooter note={`${sortedFiltered.length} format(s) affiché(s) · ${activeCount} actif(s)`} />}>
+          <table className="odoo-table">
             <thead>
               <tr>
                 <th style={{ width: 28, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll}
-                    title="Tout sélectionner" style={{ cursor: 'pointer', accentColor: 'var(--theme-accent)' }} />
+                    aria-label="Tout sélectionner" style={{ cursor: 'pointer' }} />
                 </th>
-                <th style={{ width: 24 }}></th>
                 <SortHeader label="Format" sortKey="nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Type" sortKey="type_production" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Unité" sortKey="unite_lancement" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
@@ -377,10 +355,10 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
                 <SortHeader label="Théorique" sortKey="quantite_theorique" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Pertes" sortKey="pertes_fixes" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Net cible" sortKey="quantite_nette_cible" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Seuil %" sortKey="seuil_rendement_defaut" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label="Seuil (%)" sortKey="seuil_rendement_defaut" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Recettes" sortKey="recettes" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Statut" sortKey="is_active" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -392,14 +370,14 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
                   onSelect={() => toggleSelect(c.id)}
                   onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
                   onEdit={() => { setEditing(c); setCreating(false); }}
-                  onDeactivate={() => {
-                    if (confirm(`Désactiver « ${c.nom} » ?\n\nLes produits liés devront être réassignés.`))
+                  onDeactivate={async () => {
+                    if (await confirmDialog('Les produits liés devront être réassignés.', { title: `Désactiver « ${c.nom} » ?`, confirmLabel: 'Désactiver', danger: true }))
                       deleteMutation.mutate(c.id);
                   }} />
               ))}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
     </>
   );
@@ -424,78 +402,52 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelec
     : `${linkedRecipes.length} recette(s) liée(s)`;
   const num = (v: string) => (
     <>
-      <span style={{ fontWeight: 600 }}>{v}</span>
-      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{unite}</span>
+      {v}
+      <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 3 }}>{unite}</span>
     </>
   );
 
   return (
     <>
-      <tr onClick={onToggle} style={!c.is_active ? { opacity: 0.55 } : undefined}>
+      <tr onClick={onToggle} className={selected ? 'ds-selected' : undefined} style={!c.is_active ? { opacity: 0.55 } : undefined}>
         <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" checked={selected} onChange={onSelect}
             aria-label={`Sélectionner ${c.nom}`}
-            style={{ cursor: 'pointer', accentColor: 'var(--theme-accent)' }} />
-        </td>
-        {/* Pastille = santé de la donnée, comme dans la liste des fiches (elle ne
-            redouble pas la colonne Statut) : un format actif que personne n'utilise
-            est un format à raccrocher ou à désactiver. */}
-        <td>
-          <span className={`odoo-status-dot ${!c.is_active ? 'neutral' : linkedRecipes.length === 0 ? 'warning' : 'ok'}`}
-            role="img"
-            title={dotLabel} aria-label={dotLabel} />
+            style={{ cursor: 'pointer' }} />
         </td>
         <td>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-            {expanded ? <ChevronUp size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-            <span>{TYPE_ICONS[c.type_production]}</span>
+          <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {expanded ? <ChevronUp size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /> : <ChevronDown size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
+            <span aria-hidden="true">{TYPE_ICONS[c.type_production]}</span>
             {c.nom}
           </span>
         </td>
-        <td>
-          <span className="odoo-tag odoo-tag-grey">{TYPE_LABELS[c.type_production]}</span>
+        <td>{TYPE_LABELS[c.type_production]}</td>
+        <td>{c.unite_lancement}</td>
+        <td>{mode === 'poids' ? 'Poids' : 'Pièces'}</td>
+        <td className="ds-num">{num(c.quantite_theorique)}</td>
+        <td className="ds-num" style={{ color: parseFloat(c.pertes_fixes) > 0 ? 'var(--ds-danger)' : undefined }}>
+          {parseFloat(c.pertes_fixes) > 0 ? num(`-${c.pertes_fixes}`) : '—'}
         </td>
-        <td style={{ color: 'var(--theme-text-muted)' }}>{c.unite_lancement}</td>
-        <td>
-          <span className={`odoo-tag ${mode === 'poids' ? 'odoo-tag-blue' : 'odoo-tag-purple'}`}>
-            {mode === 'poids' ? 'POIDS' : 'PIÈCES'}
-          </span>
-        </td>
-        <td style={{ textAlign: 'right' }}>{num(c.quantite_theorique)}</td>
-        <td style={{ textAlign: 'right', color: parseFloat(c.pertes_fixes) > 0 ? '#dc3545' : undefined }}>
-          {parseFloat(c.pertes_fixes) > 0 ? num(`-${c.pertes_fixes}`) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-        </td>
-        <td style={{ textAlign: 'right', color: '#28a745' }}>{num(c.quantite_nette_cible)}</td>
-        <td style={{ textAlign: 'right' }}>
-          <span style={{ fontWeight: 500 }}>{parseFloat(c.seuil_rendement_defaut)}</span>
-          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>%</span>
-        </td>
-        <td style={{ textAlign: 'right' }}>
-          {linkedRecipes.length > 0
-            ? <span className="odoo-tag odoo-tag-purple">{linkedRecipes.length}</span>
-            : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+        <td className="ds-num">{num(c.quantite_nette_cible)}</td>
+        <td className="ds-num">{parseFloat(c.seuil_rendement_defaut)}</td>
+        {/* Un format actif que personne n'utilise est à raccrocher ou à désactiver : libellé, pas une pastille seule. */}
+        <td className="ds-num">
+          {linkedRecipes.length > 0 ? linkedRecipes.length
+            : c.is_active ? <StatusTag tone="todo" label="Aucune" title={dotLabel} /> : '—'}
         </td>
         <td>
           <StatusTag tone={c.is_active ? 'done' : 'cancelled'} label={c.is_active ? 'Actif' : 'Inactif'} />
         </td>
-        <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-          <div style={{ display: 'inline-flex', gap: 2 }}>
-            <button onClick={onEdit} className="odoo-pager-btn" title="Modifier le format">
-              <Pencil size={13} />
-            </button>
-            {c.is_active && (
-              <button onClick={onDeactivate} className="odoo-pager-btn" title="Désactiver le format"
-                style={{ color: '#dc3545' }}>
-                <Trash2 size={13} />
-              </button>
-            )}
-          </div>
+        <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
+          <button type="button" onClick={onEdit} className="odoo-btn-secondary ds-btn-sm">Modifier</button>
+          <RowMenu label={`Plus d'actions sur ${c.nom}`} items={c.is_active ? [{ label: 'Désactiver le format', icon: Ban, danger: true, onSelect: onDeactivate }] : []} />
         </td>
       </tr>
       {/* Expanded detail */}
       {expanded && (
         <tr style={{ cursor: 'default' }}>
-          <td colSpan={13} style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-page)' }}>
+          <td colSpan={12} style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--ds-bg)' }}>
             <div className="grid grid-cols-2 gap-6">
               {/* Linked recipes */}
               <div>
@@ -582,7 +534,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
     mutationFn: (data: Record<string, any>) =>
       isEdit ? contenantsApi.update(contenant!.id, data) : contenantsApi.create(data),
     onSuccess: () => {
-      notify.success(isEdit ? 'Format mis a jour' : 'Format cree');
+      notify.success(isEdit ? 'Format mis à jour' : 'Format créé');
       onSaved();
     },
     onError: () => notify.error('Erreur lors de l\'enregistrement'),
@@ -591,7 +543,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nom.trim() || !quantiteTheorique) {
-      notify.error('Nom et quantite theorique sont obligatoires');
+      notify.error('Le nom et la quantité théorique sont obligatoires');
       return;
     }
     saveMutation.mutate({
@@ -623,7 +575,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
           <span className="inline-flex items-center gap-2">
             <Layers size={13} /> {isEdit ? `Modifier le format : ${contenant!.nom}` : 'Nouveau format de production'}
           </span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer">
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer" title="Fermer">
             <X size={14} />
           </button>
         </div>
@@ -688,7 +640,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
             <div>
               <label className={LABEL}>{modeLabels.netCible}</label>
               <div className="h-8 px-2 flex items-center justify-end rounded border text-sm font-semibold tabular-nums"
-                style={{ backgroundColor: '#d4edda', borderColor: '#b7dfc1', color: '#155724' }}
+                style={{ backgroundColor: 'var(--ds-success-bg)', borderColor: 'transparent', color: 'var(--ds-success)' }}
                 title="Calculé : quantité théorique − pertes fixes">
                 {netCible.toFixed(2)}
                 <span className="text-[11px] font-normal ml-1 opacity-70">{modeLabels.uniteRendement}</span>
@@ -699,7 +651,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
               <WeightQtyInput size="sm" value={poids} onChange={v => setPoids(p => ({ ...p, ...v }))} />
             </div>
             <div>
-              <label className={LABEL}>Seuil rendement %</label>
+              <label className={LABEL}>Seuil de rendement (%)</label>
               <input type="number" step="0.1" min="0" max="100"
                 value={seuilRendement} onChange={e => setSeuilRendement(e.target.value)}
                 className={`${FIELD} text-right tabular-nums`} />
@@ -750,7 +702,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
               <div>
                 <label className={LABEL}>Type de découpe</label>
                 <select value={typeDecoupe} onChange={e => setTypeDecoupe(e.target.value)} className={FIELD}>
-                  <option value="">— Non spécifié —</option>
+                  <option value="">Non spécifié</option>
                   <option value="sans_decoupe">Sans découpe</option>
                   <option value="damier">Damier (grille régulière)</option>
                   <option value="bande">Bande (tranches)</option>
@@ -759,7 +711,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
                 </select>
               </div>
               <div>
-                <label className={LABEL}>Nb pièces après découpe</label>
+                <label className={LABEL}>Nombre de pièces après découpe</label>
                 <input type="number" step="1" min="1"
                   value={nbPiecesDecoupe} onChange={e => setNbPiecesDecoupe(e.target.value)}
                   placeholder="20" className={`${FIELD} text-right tabular-nums`} />
@@ -796,8 +748,8 @@ function ContenantForm({ contenant, onClose, onSaved }: {
         <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-end gap-2"
           style={{ backgroundColor: 'var(--theme-bg-page)' }}>
           <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button type="submit" disabled={saveMutation.isPending} className="odoo-btn-primary">
-            <Check size={14} /> {saveMutation.isPending ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer')}
+          <button type="submit" disabled={saveMutation.isPending} aria-busy={saveMutation.isPending || undefined} className="odoo-btn-primary">
+            <Check size={14} aria-hidden="true" /> {saveMutation.isPending ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer')}
           </button>
         </div>
       </form>

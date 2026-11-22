@@ -4,6 +4,7 @@ import { Save, History } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { productionMarkupApi, type MarkupConfig } from '../../api/production-markup.api';
 import { SettingsSection, SettingItem, PageNote } from './SettingsPrimitives';
+import { LoadingState } from '../../components/ds';
 
 type Draft = {
   globalPercent: string;
@@ -59,7 +60,7 @@ export default function ProductionMarkupTab() {
   });
 
   if (isLoading || !config || !draft) {
-    return <p className="text-sm text-gray-500">Chargement...</p>;
+    return <LoadingState bare />;
   }
 
   const hasChanges = !isUnchanged(draft, config);

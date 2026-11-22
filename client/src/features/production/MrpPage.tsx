@@ -3,16 +3,15 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { money } from '../../utils/money';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Loader2, ChevronLeft, ChevronRight, Factory, Layers, Package, ShoppingCart } from 'lucide-react';
+import { ClipboardList, Loader2, ChevronLeft, ChevronRight, Factory, ShoppingCart } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { productionApi, type MrpRow } from '../../api/production.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListPanel } from '../sales/ListTemplate';
+import { DataPanel, EmptyState, ErrorState, LoadingState, SectionHeader, Segmented, TableFooter, Toolbar } from '../../components/ds';
 import MrpPhasedView from './MrpPhasedView';
 import MasterScheduleView from './MasterScheduleView';
 import { useAuth } from '../../context/AuthContext';
@@ -21,7 +20,8 @@ const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:
 const tomorrow = () => addDays(new Date().toISOString().slice(0, 10), 1);
 const nf = (v: number) => (Number(v) || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
 const dayLabel = (d: string) => format(new Date(`${d}T00:00:00`), 'EEE dd/MM', { locale: fr });
-const inp: React.CSSProperties = { padding: '0.4rem 0.55rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit' };
+const dateInp: React.CSSProperties = { width: 170 };
+const note: React.CSSProperties = { fontSize: 13, color: 'var(--ds-muted)', margin: 0 };
 
 /**
  * Production › Plan directeur (MRP). Besoins nets pilotés par la demande.
@@ -36,14 +36,11 @@ export default function MrpPage() {
   const [date, setDate] = useState(tomorrow());
 
   return (
-    <SalesPageShell icon={ClipboardList} parent="Production" title="Plan directeur"
-      summary={<>Combien produire de chaque article, net de ce qui est déjà en stock et déjà planifié. <b>À produire = (prévision + commandes fermes) − stock disponible − déjà planifié.</b></>}
+    <SalesPageShell icon={ClipboardList} parent="Production › Opérations" title="Plan directeur"
+      summary="Combien produire de chaque article : prévision et commandes fermes, moins le stock disponible et le déjà planifié."
       actions={
-        <div className="prj-views" role="group" aria-label="Vue">
-          {([['day', 'Jour'], ['week', 'Semaine'], ['phased', 'Besoins phasés'], ['mps', 'Plan par semaine']] as const).map(([k, label]) => (
-            <button key={k} type="button" className={mode === k ? 'active' : ''} aria-pressed={mode === k} onClick={() => setMode(k)}>{label}</button>
-          ))}
-        </div>
+        <Segmented label="Vue" value={mode} onChange={setMode}
+          options={[{ key: 'day', label: 'Jour' }, { key: 'week', label: 'Semaine' }, { key: 'phased', label: 'Besoins phasés' }, { key: 'mps', label: 'Plan par semaine' }]} />
       }>
 
       {mode === 'day' ? <DayView date={date} setDate={setDate} /> : mode === 'week' ? <WeekView from={date} setFrom={setDate} />
@@ -59,7 +56,7 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
   const qc = useQueryClient();
   const confirm = useConfirm();
   const navigate = useNavigate();
-  const { data, isLoading, isError, error } = useQuery({ queryKey: ['mrp', date], queryFn: () => productionApi.mrp(date) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['mrp', date], queryFn: () => productionApi.mrp(date) });
   const { data: sf } = useQuery({ queryKey: ['mrp-sf', date], queryFn: () => productionApi.mrpSemiFinished(date) });
   const { data: matReq } = useQuery({ queryKey: ['mrp-mat', date], queryFn: () => productionApi.mrpMaterialRequirements(date) });
   const genPR = useMutation({
@@ -97,78 +94,75 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" className="odoo-btn-secondary" aria-label="Jour précédent" onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={14} /></button>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} />
-        <button type="button" className="odoo-btn-secondary" aria-label="Jour suivant" onClick={() => setDate(addDays(date, 1))}><ChevronRight size={14} /></button>
+      <Toolbar>
+        <button type="button" className="ds-icon-btn" aria-label="Jour précédent" onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={16} aria-hidden="true" /></button>
+        <input type="date" className="ds-input" aria-label="Jour à planifier" value={date} onChange={e => setDate(e.target.value)} style={dateInp} />
+        <button type="button" className="ds-icon-btn" aria-label="Jour suivant" onClick={() => setDate(addDays(date, 1))}><ChevronRight size={16} aria-hidden="true" /></button>
         {date !== tomorrow() && <button type="button" className="odoo-btn-secondary" onClick={() => setDate(tomorrow())}>Demain</button>}
-        {!isLoading && !isError && <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>{toProduce} article(s) à produire</span>}
-        <button type="button" className="odoo-btn-primary" disabled={toProduce === 0 || generate.isPending}
+        <span className="ds-grow" />
+        <button type="button" className="odoo-btn-primary" disabled={toProduce === 0 || generate.isPending} aria-busy={generate.isPending || undefined}
           onClick={async () => { if (await confirm(`Créer les plans de production du ${date} pour les ${toProduce} article(s) à produire ? Un plan par atelier, chaque article sur son format par défaut.`, { title: 'Générer les plans' })) generate.mutate(); }}>
-          {generate.isPending ? <Loader2 size={14} className="animate-spin" /> : <Factory size={14} />} Générer les plans
+          {generate.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Factory size={14} aria-hidden="true" />} Générer les plans
         </button>
-      </div>
+      </Toolbar>
 
-      {isError && <StatusBanner tone="danger" icon={ClipboardList} title="Erreur">{apiErrorMessage(error)}</StatusBanner>}
-
-      <ListPanel>
-        <table className="odoo-table" style={{ margin: 0 }}>
+      {isLoading ? <LoadingState /> : isError ? <ErrorState text={apiErrorMessage(error)} onRetry={() => refetch()} />
+        : rows.length === 0 ? <EmptyState icon={ClipboardList} title="Rien à planifier" text="Aucune demande ni plan pour cette date." /> : (
+      <DataPanel label="Besoins nets du jour" footer={<TableFooter note={`${rows.length} article(s) · ${toProduce} à produire`} />}>
+        <table className="odoo-table">
           <thead><tr>
-            <th>Article</th><th style={{ textAlign: 'right' }}>Prévision</th><th style={{ textAlign: 'right' }}>Commandes</th>
-            <th style={{ textAlign: 'right' }}>Demande</th><th style={{ textAlign: 'right' }}>En stock</th>
-            <th style={{ textAlign: 'right' }}>Déjà planifié</th><th style={{ textAlign: 'right' }}>À produire</th>
+            <th>Article</th><th className="ds-num">Prévision</th><th className="ds-num">Commandes</th>
+            <th className="ds-num">Demande</th><th className="ds-num">En stock</th>
+            <th className="ds-num">Déjà planifié</th><th className="ds-num">À produire</th>
           </tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucune demande ni plan pour cette date.</td></tr>}
-            {!isLoading && groups.map(g => (
+            {groups.map(g => (
               <Fragment key={g.category}>
-                <tr style={{ background: 'var(--theme-bg-subtle, #f6f6f6)' }}>
-                  <td colSpan={7} style={{ fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--theme-text-muted)' }}>{g.category}</td>
+                <tr className="ds-group">
+                  <td colSpan={7}>{g.category}<small>{g.rows.length} article(s)</small></td>
                 </tr>
                 {g.rows.map(r => (
                   <tr key={r.product_id}>
-                    <td style={{ fontWeight: 500 }}>{r.product_name}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{nf(r.forecast_qty)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.order_qty > 0 ? nf(r.order_qty) : '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{nf(r.demand)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{r.on_hand > 0 ? nf(r.on_hand) : '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{r.planned_qty > 0 ? nf(r.planned_qty) : '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: r.net_to_produce > 0 ? 'var(--theme-accent, #1a73e8)' : 'var(--theme-text-muted)' }}>{nf(r.net_to_produce)}</td>
+                    <td className="ds-strong">{r.product_name}</td>
+                    <td className="ds-num">{nf(r.forecast_qty)}</td>
+                    <td className="ds-num">{r.order_qty > 0 ? nf(r.order_qty) : '—'}</td>
+                    <td className="ds-num ds-strong">{nf(r.demand)}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{r.on_hand > 0 ? nf(r.on_hand) : '—'}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{r.planned_qty > 0 ? nf(r.planned_qty) : '—'}</td>
+                    <td className="ds-num" style={{ fontWeight: 700, color: r.net_to_produce > 0 ? 'var(--ds-accent-ink)' : 'var(--ds-muted)' }}>{nf(r.net_to_produce)}</td>
                   </tr>
                 ))}
               </Fragment>
             ))}
           </tbody>
-          {rows.length > 0 && (
-            <tfoot><tr style={{ fontWeight: 700, borderTop: '2px solid var(--odoo-border)' }}>
-              <td>Total</td><td /><td /><td style={{ textAlign: 'right' }}>{nf(data!.totals.demand)}</td>
-              <td style={{ textAlign: 'right' }}>{nf(data!.totals.on_hand)}</td><td style={{ textAlign: 'right' }}>{nf(data!.totals.planned_qty)}</td>
-              <td style={{ textAlign: 'right' }}>{nf(data!.totals.net_to_produce)}</td>
-            </tr></tfoot>
-          )}
+          <tfoot><tr>
+            <td>Total</td><td /><td /><td className="ds-num">{nf(data!.totals.demand)}</td>
+            <td className="ds-num">{nf(data!.totals.on_hand)}</td><td className="ds-num">{nf(data!.totals.planned_qty)}</td>
+            <td className="ds-num">{nf(data!.totals.net_to_produce)}</td>
+          </tr></tfoot>
         </table>
-      </ListPanel>
+      </DataPanel>
+      )}
 
       {sfRows.length > 0 && (
-        <div>
-          <div className="kl-sec"><h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Layers size={18} /> Bases / semi-finis à produire</h2></div>
-          <ListPanel>
-            <table className="odoo-table" style={{ margin: 0 }}>
-              <thead><tr><th>Base</th><th style={{ textAlign: 'right' }}>Besoin</th><th style={{ textAlign: 'right' }}>En stock</th><th style={{ textAlign: 'right' }}>À produire</th></tr></thead>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <SectionHeader title="Bases et semi-finis à produire" />
+          <DataPanel label="Bases et semi-finis à produire" footer={<TableFooter note={`${sfRows.length} base(s)`} />}>
+            <table className="odoo-table">
+              <thead><tr><th>Base</th><th className="ds-num">Besoin</th><th className="ds-num">En stock</th><th className="ds-num">À produire</th></tr></thead>
               <tbody>
                 {sfRows.map(r => (
                   <tr key={r.recipe_id}>
-                    <td style={{ fontWeight: 500 }}>{r.name}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{nf(r.needed)} {r.unit}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{r.from_stock > 0 ? `${nf(r.from_stock)} ${r.unit}` : '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: r.to_produce > 0 ? 'var(--theme-accent, #1a73e8)' : 'var(--theme-text-muted)' }}>{r.to_produce > 0 ? `${nf(r.to_produce)} ${r.unit}` : '—'}</td>
+                    <td className="ds-strong">{r.name}</td>
+                    <td className="ds-num">{nf(r.needed)} {r.unit}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{r.from_stock > 0 ? `${nf(r.from_stock)} ${r.unit}` : '—'}</td>
+                    <td className="ds-num" style={{ fontWeight: 700, color: r.to_produce > 0 ? 'var(--ds-accent-ink)' : 'var(--ds-muted)' }}>{r.to_produce > 0 ? `${nf(r.to_produce)} ${r.unit}` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </ListPanel>
-          <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Besoins en bases pour produire le net ci-dessus, défalqués du stock de semi-finis non périmé. Analyse — les plans de bases sont créés à la confirmation du plan fini.</p>
+          </DataPanel>
+          <p style={note}>Besoins en bases pour produire le net ci-dessus, défalqués du stock de semi-finis non périmé. Analyse — les plans de bases sont créés à la confirmation du plan fini.</p>
         </div>
       )}
 
@@ -176,35 +170,31 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
         const short = matReq.rows.filter(r => r.shortage > 0);
         const covered = matReq.totals.ingredients - matReq.totals.to_order;
         return (
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '0 4px 10px' }}>
-              <div className="kl-sec" style={{ margin: 0 }}><h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Package size={18} /> Besoins matière (achats)</h2></div>
-              <span style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>
-                {matReq.totals.to_order} à commander · ~{money(matReq.totals.estimated_cost)}
-              </span>
-              <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} disabled={genPR.isPending}
+          <div style={{ display: 'grid', gap: 12 }}>
+            <SectionHeader title="Besoins en matières à acheter" note={`${matReq.totals.to_order} à commander · environ ${money(matReq.totals.estimated_cost)}`}>
+              <button type="button" className="odoo-btn-secondary" disabled={genPR.isPending} aria-busy={genPR.isPending || undefined}
                 onClick={async () => { if (await confirm(`Créer ${matReq.totals.to_order} demande(s) d'achat pour les matières manquantes du ${date} ?`, { title: "Demandes d'achat" })) genPR.mutate(); }}>
-                {genPR.isPending ? <Loader2 size={14} className="animate-spin" /> : <ShoppingCart size={14} />} Générer les demandes d'achat
+                {genPR.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <ShoppingCart size={14} aria-hidden="true" />} Générer les demandes d'achat
               </button>
-            </div>
-            <ListPanel>
-              <table className="odoo-table" style={{ margin: 0 }}>
-                <thead><tr><th>Ingrédient</th><th style={{ textAlign: 'right' }}>Besoin</th><th style={{ textAlign: 'right' }}>En stock</th><th style={{ textAlign: 'right' }}>Seuil</th><th style={{ textAlign: 'right' }}>À commander</th><th style={{ textAlign: 'right' }}>Coût est.</th></tr></thead>
+            </SectionHeader>
+            <DataPanel label="Besoins en matières à acheter" footer={<TableFooter note={`${short.length} ingrédient(s) manquant(s)`} />}>
+              <table className="odoo-table">
+                <thead><tr><th>Ingrédient</th><th className="ds-num">Besoin</th><th className="ds-num">En stock</th><th className="ds-num">Seuil</th><th className="ds-num">À commander</th><th className="ds-num">Coût estimé</th></tr></thead>
                 <tbody>
                   {short.map(r => (
                     <tr key={r.ingredient_id}>
-                      <td style={{ fontWeight: 500 }}>{r.ingredient_name}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{nf(r.needed)} {r.unit}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{nf(r.on_hand)} {r.unit}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{r.seuil > 0 ? `${nf(r.seuil)} ${r.unit}` : '—'}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: '#c62828' }}>{nf(r.shortage)} {r.unit}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(r.estimated_cost)}</td>
+                      <td className="ds-strong">{r.ingredient_name}</td>
+                      <td className="ds-num">{nf(r.needed)} {r.unit}</td>
+                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{nf(r.on_hand)} {r.unit}</td>
+                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{r.seuil > 0 ? `${nf(r.seuil)} ${r.unit}` : '—'}</td>
+                      <td className="ds-num" style={{ fontWeight: 700, color: 'var(--ds-danger)' }}>{nf(r.shortage)} {r.unit}</td>
+                      <td className="ds-num">{money(r.estimated_cost)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </ListPanel>
-            <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+            </DataPanel>
+            <p style={note}>
               Matières nécessaires pour produire le net ci-dessus (explosion des recettes sur tous les niveaux), défalquées du stock.
               Manquant = besoin + seuil de sécurité − stock. {covered > 0 ? `${covered} ingrédient(s) couvert(s) par le stock.` : ''} La quantité commandée est arrondie au contenant.
             </p>
@@ -212,7 +202,7 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
         );
       })()}
 
-      <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p style={note}>
         Demande = prévision de vente (majorée) + commandes fermes dues ce jour. Stock = {showcase ? 'arrière-boutique + vitrine' : 'stock disponible'} (planché à 0). Déjà planifié = plans ouverts du jour, hors lignes produites.
       </p>
     </>
@@ -222,7 +212,7 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
 /* ─── Vue Semaine : besoins nets par jour sur un horizon ───────────────── */
 function WeekView({ from, setFrom }: { from: string; setFrom: (d: string) => void }) {
   const to = addDays(from, 6);
-  const { data, isLoading, isError, error } = useQuery({ queryKey: ['mrp-horizon', from, to], queryFn: () => productionApi.mrpHorizon(from, to) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['mrp-horizon', from, to], queryFn: () => productionApi.mrpHorizon(from, to) });
   const dates = data?.dates ?? [];
   const rows = data?.rows ?? [];
   const groups: { category: string; rows: typeof rows }[] = [];
@@ -234,51 +224,48 @@ function WeekView({ from, setFrom }: { from: string; setFrom: (d: string) => voi
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" className="odoo-btn-secondary" aria-label="Semaine précédente" onClick={() => setFrom(addDays(from, -7))}><ChevronLeft size={14} /></button>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={inp} />
-        <button type="button" className="odoo-btn-secondary" aria-label="Semaine suivante" onClick={() => setFrom(addDays(from, 7))}><ChevronRight size={14} /></button>
-        <span style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>Du {dayLabel(from)} au {dayLabel(to)}</span>
-      </div>
+      <Toolbar>
+        <button type="button" className="ds-icon-btn" aria-label="Semaine précédente" onClick={() => setFrom(addDays(from, -7))}><ChevronLeft size={16} aria-hidden="true" /></button>
+        <input type="date" className="ds-input" aria-label="Premier jour de la semaine" value={from} onChange={e => setFrom(e.target.value)} style={dateInp} />
+        <button type="button" className="ds-icon-btn" aria-label="Semaine suivante" onClick={() => setFrom(addDays(from, 7))}><ChevronRight size={16} aria-hidden="true" /></button>
+        <span style={note}>Du {dayLabel(from)} au {dayLabel(to)}</span>
+      </Toolbar>
 
-      {isError && <StatusBanner tone="danger" icon={ClipboardList} title="Erreur">{apiErrorMessage(error)}</StatusBanner>}
-
-      <ListPanel>
-        <table className="odoo-table" style={{ margin: 0 }}>
+      {isLoading ? <LoadingState /> : isError ? <ErrorState text={apiErrorMessage(error)} onRetry={() => refetch()} />
+        : rows.length === 0 ? <EmptyState icon={ClipboardList} title="Rien à planifier" text="Aucune demande ni plan sur la semaine." /> : (
+      <DataPanel label="Besoins nets de la semaine" footer={<TableFooter note={`${rows.length} article(s)`} />}>
+        <table className="odoo-table">
           <thead><tr>
             <th>Article</th>
-            {dates.map(d => <th key={d} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{dayLabel(d)}</th>)}
+            {dates.map(d => <th key={d} className="ds-num">{dayLabel(d)}</th>)}
           </tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={dates.length + 1} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucune demande ni plan sur la semaine.</td></tr>}
-            {!isLoading && groups.map(g => (
+            {groups.map(g => (
               <Fragment key={g.category}>
-                <tr style={{ background: 'var(--theme-bg-subtle, #f6f6f6)' }}>
-                  <td colSpan={dates.length + 1} style={{ fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--theme-text-muted)' }}>{g.category}</td>
+                <tr className="ds-group">
+                  <td colSpan={dates.length + 1}>{g.category}<small>{g.rows.length} article(s)</small></td>
                 </tr>
                 {g.rows.map(r => (
                   <tr key={r.product_id}>
-                    <td style={{ fontWeight: 500 }}>{r.product_name}</td>
+                    <td className="ds-strong">{r.product_name}</td>
                     {dates.map(d => {
                       const net = r.days[d]?.net ?? 0;
-                      return <td key={d} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: net > 0 ? 700 : 400, color: net > 0 ? 'var(--theme-accent, #1a73e8)' : 'var(--theme-text-muted)' }}>{net > 0 ? nf(net) : '·'}</td>;
+                      return <td key={d} className="ds-num" style={{ fontWeight: net > 0 ? 700 : 400, color: net > 0 ? 'var(--ds-accent-ink)' : 'var(--ds-muted)' }}>{net > 0 ? nf(net) : '—'}</td>;
                     })}
                   </tr>
                 ))}
               </Fragment>
             ))}
           </tbody>
-          {rows.length > 0 && (
-            <tfoot><tr style={{ fontWeight: 700, borderTop: '2px solid var(--odoo-border)' }}>
-              <td>Total à produire</td>
-              {dates.map(d => <td key={d} style={{ textAlign: 'right' }}>{nf(data!.totals_by_date[d] ?? 0)}</td>)}
-            </tr></tfoot>
-          )}
+          <tfoot><tr>
+            <td>Total à produire</td>
+            {dates.map(d => <td key={d} className="ds-num">{nf(data!.totals_by_date[d] ?? 0)}</td>)}
+          </tr></tfoot>
         </table>
-      </ListPanel>
+      </DataPanel>
+      )}
 
-      <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p style={note}>
         Net à produire par jour = demande du jour − déjà planifié. Le stock fini actuel est reporté de jour en jour (il couvre les premiers jours) ; la production n'est jamais reportée.
       </p>
     </>

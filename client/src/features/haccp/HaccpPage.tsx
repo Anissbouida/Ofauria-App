@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Thermometer, SprayCan, AlertTriangle, CheckCircle2, Plus, Clock, Info } from 'lucide-react';
+import { Thermometer, SprayCan, AlertTriangle, CheckCircle2, Plus, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   haccpApi, FREQUENCY_LABELS, ACTION_SOURCE_LABELS,
   type TodayEquipment, type TodayTask, type CorrectiveAction,
 } from '../../api/haccp.api';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import SalesPageShell from '../sales/SalesPageShell';
-import { Panel, SectionTitle, PageLoading } from '../controle/KlUi';
+import { Alert, DataPanel, EmptyState, ErrorState, LoadingState, SectionHeader, TableFooter } from '../../components/ds';
+// Cartes de saisie (klc-card) : styles partagés avec Contrôle & Qualité.
+import '../controle/kl-ui.css';
 
 /**
  * Relevés HACCP (mig 315) — écran de saisie des chefs : la feuille du jour.
@@ -27,21 +28,23 @@ const day = (iso: string | null) => (iso ? format(new Date(iso), 'd MMM', { loca
 /** Date du jour en tête de page (« Mercredi 18 novembre »). */
 const todayLabel = () => { const s = format(new Date(), 'EEEE d MMMM', { locale: fr }); return s.charAt(0).toUpperCase() + s.slice(1); };
 
+const SHELL = { icon: Thermometer, parent: 'Production › Opérations', title: 'Relevés HACCP' } as const;
+
 export default function HaccpPage() {
-  const { data, isLoading, error } = useQuery({ queryKey: ['haccp-today'], queryFn: haccpApi.today, refetchInterval: 120_000, retry: false });
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ['haccp-today'], queryFn: haccpApi.today, refetchInterval: 120_000, retry: false });
+  const summary = `Feuille du jour — ${todayLabel()} : températures, nettoyage et actions correctives.`;
 
   // Coquille Production en bar={false} : la page pose sa barre puis son grand titre (design Ventes).
   if (error) {
     return (
-      <SalesPageShell icon={Thermometer} parent="Production" title="Relevés HACCP" summary={todayLabel()}>
-        <StatusBanner tone="danger" icon={AlertTriangle} title="Relevés HACCP indisponibles">
-          {String((error as any)?.response?.data?.error?.message ?? error)} — écran réservé aux chefs et au gérant.
-        </StatusBanner>
+      <SalesPageShell {...SHELL} summary={summary}>
+        <ErrorState title="Relevés HACCP indisponibles" onRetry={() => refetch()}
+          text={`${String((error as any)?.response?.data?.error?.message ?? error)} — écran réservé aux chefs et au gérant.`} />
       </SalesPageShell>
     );
   }
   if (isLoading || !data) {
-    return <SalesPageShell icon={Thermometer} parent="Production" title="Relevés HACCP" summary={todayLabel()}><PageLoading /></SalesPageShell>;
+    return <SalesPageShell {...SHELL} summary={summary}><LoadingState /></SalesPageShell>;
   }
   const toRead = data.equipment.filter(e => e.readings_today < e.readings_per_day).length;
   const tasksDue = data.tasks.filter(k => k.due).length;
@@ -49,22 +52,22 @@ export default function HaccpPage() {
   const allGood = toRead === 0 && tasksDue === 0 && actionsOpen === 0;
 
   return (
-    <SalesPageShell icon={Thermometer} parent="Production" title="Relevés HACCP" summary={todayLabel()}>
+    <SalesPageShell {...SHELL} summary={summary}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1100 }}>
         {allGood ? (
-          <StatusBanner tone="success" icon={CheckCircle2} title="Feuille du jour à jour">
-            Tous les relevés et nettoyages prévus sont faits, aucune action corrective en attente.
-          </StatusBanner>
+          <Alert tone="success" icon={CheckCircle2}>
+            Feuille du jour à jour : tous les relevés et nettoyages prévus sont faits, aucune action corrective en attente.
+          </Alert>
         ) : (
-          <StatusBanner tone="orange" icon={Clock} title="Reste à faire aujourd'hui">
-            {[toRead && `${toRead} enceinte(s) à relever`, tasksDue && `${tasksDue} nettoyage(s)`, actionsOpen && `${actionsOpen} action(s) corrective(s) à traiter`]
+          <Alert tone="warning" icon={Clock}>
+            Reste à faire aujourd'hui : {[toRead && `${toRead} enceinte(s) à relever`, tasksDue && `${tasksDue} nettoyage(s)`, actionsOpen && `${actionsOpen} action(s) corrective(s) à traiter`]
               .filter(Boolean).join(' · ')}
-          </StatusBanner>
+          </Alert>
         )}
 
         <Section icon={Thermometer} title="Températures">
           {data.equipment.length === 0 ? (
-            <StatusBanner tone="info" icon={Info} title="Aucune enceinte surveillée">Le gérant les configure dans Contrôle & Qualité › HACCP.</StatusBanner>
+            <EmptyState icon={Thermometer} title="Aucune enceinte surveillée" text="Le gérant les configure dans Contrôle & Qualité › HACCP." />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
               {data.equipment.map(e => <ReadingCard key={e.id} e={e} />)}
@@ -78,7 +81,7 @@ export default function HaccpPage() {
 
         <Section icon={AlertTriangle} title="Actions correctives" extra={<NewActionButton />}>
           {data.actions.length === 0
-            ? <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune action en cours.</p>
+            ? <EmptyState icon={CheckCircle2} title="Aucune action en cours" text="Un relevé hors plage ou un nettoyage non conforme crée une action corrective ici." />
             : <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{data.actions.map(a => <ActionCard key={a.id} a={a} />)}</div>}
         </Section>
       </div>
@@ -86,19 +89,18 @@ export default function HaccpPage() {
   );
 }
 
-function Section({ icon, title, extra, children }: { icon: typeof Thermometer; title: string; extra?: React.ReactNode; children: React.ReactNode }) {
+function Section({ icon: Icon, title, extra, children }: { icon: typeof Thermometer; title: string; extra?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="klc-stack">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <SectionTitle icon={icon}>{title}</SectionTitle>
-        {extra && <div style={{ marginLeft: 'auto', position: 'relative' }}>{extra}</div>}
-      </div>
+    <section style={{ display: 'grid', gap: 12 }}>
+      <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon size={18} aria-hidden="true" />{title}</span>}>
+        {extra && <div style={{ position: 'relative' }}>{extra}</div>}
+      </SectionHeader>
       {children}
     </section>
   );
 }
 
-const textareaStyle: React.CSSProperties = { width: '100%', minHeight: 60, padding: 8, border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', fontFamily: 'inherit' };
+const textareaStyle: React.CSSProperties = { minHeight: 60 };
 
 /* ─── Températures ─────────────────────────────────────────────────── */
 
@@ -126,24 +128,24 @@ function ReadingCard({ e }: { e: TodayEquipment }) {
     <div className={`klc-card${e.last_in_range === false ? ' alert' : ''}`}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         <strong style={{ fontSize: '0.875rem' }}>{e.nom}</strong>
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{t(e.temp_min)} à {t(e.temp_max)}</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{t(e.temp_min)} à {t(e.temp_max)}</span>
         <span style={{ marginLeft: 'auto' }}><StatusTag tone={done ? 'done' : 'todo'} icon={Thermometer} label={`${e.readings_today}/${e.readings_per_day}`} title="Relevés du jour" /></span>
       </div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-        {e.last_value == null ? 'Aucun relevé aujourd\'hui' : <>Dernier : <strong style={{ color: e.last_in_range ? 'var(--odoo-text)' : 'var(--prj-red)' }}>{t(e.last_value)}</strong> à {time(e.last_at)}</>}
+      <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
+        {e.last_value == null ? 'Aucun relevé aujourd\'hui' : <>Dernier : <strong style={{ color: e.last_in_range ? 'var(--ds-ink)' : 'var(--ds-danger)' }}>{t(e.last_value)}</strong> à {time(e.last_at)}</>}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <input type="text" inputMode="decimal" value={value} onChange={ev => setValue(ev.target.value)} placeholder="°C"
-          aria-label={`Température ${e.nom}`} className="odoo-search-input" style={{ flex: 1, fontSize: '1rem', padding: '8px 10px' }}
+          aria-label={`Température ${e.nom} en °C`} className="ds-input" style={{ flex: 1, fontSize: 16, height: 44 }}
           onKeyDown={ev => { if (ev.key === 'Enter' && valid && !outOfRange) save.mutate(); }} />
-        <button type="button" className="odoo-btn-primary" disabled={!valid || save.isPending} onClick={() => save.mutate()}>Enregistrer</button>
+        <button type="button" className="odoo-btn-primary" style={{ minHeight: 44 }} disabled={!valid || save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>Enregistrer</button>
       </div>
       {outOfRange && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ color: 'var(--prj-red)', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <AlertTriangle size={12} /> Hors plage : le gérant sera prévenu
+          <span style={{ color: 'var(--ds-danger)', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <AlertTriangle size={12} aria-hidden="true" /> Hors plage : le gérant sera prévenu
           </span>
-          <textarea value={action} onChange={ev => setAction(ev.target.value)} style={textareaStyle}
+          <textarea value={action} onChange={ev => setAction(ev.target.value)} className="ds-input" style={textareaStyle} aria-label="Action réalisée"
             placeholder="Action réalisée (porte refermée, produits déplacés, technicien appelé…). Laissez vide si rien n'est encore fait." />
         </div>
       )}
@@ -168,39 +170,40 @@ function CleaningTable({ tasks }: { tasks: TodayTask[] }) {
     onError: (err) => notify.error(err),
   });
   const sorted = [...tasks].sort((a, b) => Number(b.due) - Number(a.due));
-  if (tasks.length === 0) return <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune tâche au plan de nettoyage.</p>;
+  if (tasks.length === 0) return <EmptyState icon={SprayCan} title="Aucune tâche au plan de nettoyage" text="Le gérant le configure dans Contrôle & Qualité › HACCP." />;
+  const dueCount = tasks.filter(k => k.due).length;
 
   return (
-    <Panel>
+    <DataPanel label="Plan de nettoyage" footer={<TableFooter note={`${tasks.length} tâche(s) · ${dueCount} à faire aujourd'hui`} />}>
       <table className="odoo-table">
-        <thead><tr><th>Tâche</th><th>Fréquence</th><th>Dernier passage</th><th style={{ textAlign: 'right' }}></th></tr></thead>
+        <thead><tr><th>Tâche</th><th>Fréquence</th><th>Dernier passage</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
         <tbody>
           {sorted.map(k => [
             <tr key={k.id} className={k.due ? 'row-warning' : undefined}>
               <td>
-                <div style={{ fontWeight: 600 }}>{k.label}</div>
-                <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{k.zone}{k.method ? ` · ${k.method}` : ''}</div>
+                <div className="ds-strong">{k.label}</div>
+                <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{k.zone}{k.method ? ` · ${k.method}` : ''}</div>
               </td>
               <td>{FREQUENCY_LABELS[k.frequency]}</td>
-              <td style={{ fontSize: '0.75rem' }}>
-                {k.last_done_at ? <>{day(k.last_done_at)} {time(k.last_done_at)}{k.last_done_by ? ` · ${k.last_done_by}` : ''}{k.last_conforme === false && <span style={{ color: 'var(--prj-red)', fontWeight: 600 }}> · non conforme</span>}</> : <span style={{ color: 'var(--theme-text-muted)' }}>jamais</span>}
+              <td style={{ fontSize: 13 }}>
+                {k.last_done_at ? <>{day(k.last_done_at)} {time(k.last_done_at)}{k.last_done_by ? ` · ${k.last_done_by}` : ''}{k.last_conforme === false && <span style={{ color: 'var(--ds-danger)', fontWeight: 600 }}> · non conforme</span>}</> : <span style={{ color: 'var(--ds-muted)' }}>jamais</span>}
               </td>
-              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+              <td className="ds-actions">
                 {k.due ? (
                   <>
-                    <button type="button" className="odoo-btn-primary" disabled={log.isPending} onClick={() => log.mutate({ taskId: k.id, conforme: true })}>Fait</button>{' '}
-                    <button type="button" className="odoo-btn-secondary" onClick={() => setFailing(failing === k.id ? null : k.id)}>Non conforme</button>
+                    <button type="button" className="odoo-btn-secondary" style={{ minHeight: 40 }} onClick={() => setFailing(failing === k.id ? null : k.id)}>Non conforme</button>
+                    <button type="button" className="odoo-btn-primary" style={{ minHeight: 40 }} disabled={log.isPending} onClick={() => log.mutate({ taskId: k.id, conforme: true })}>Fait</button>
                   </>
-                ) : <StatusTag tone="done" label="à jour" />}
+                ) : <StatusTag tone="done" label="À jour" />}
               </td>
             </tr>,
             failing === k.id && (
               <tr key={`${k.id}-nc`}>
-                <td colSpan={4} style={{ background: 'color-mix(in srgb, var(--prj-red) 7%, transparent)' }}>
+                <td colSpan={4} style={{ background: 'var(--ds-danger-bg)' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end' }}>
-                    <textarea value={note} onChange={ev => setNote(ev.target.value)} style={textareaStyle} placeholder="Ce qui n'est pas conforme (obligatoire)" />
-                    <textarea value={action} onChange={ev => setAction(ev.target.value)} style={textareaStyle} placeholder="Action réalisée (facultatif)" />
-                    <button type="button" className="odoo-btn-danger" disabled={!note.trim() || log.isPending} onClick={() => log.mutate({ taskId: k.id, conforme: false })}>Enregistrer</button>
+                    <textarea value={note} onChange={ev => setNote(ev.target.value)} className="ds-input" style={textareaStyle} aria-label="Ce qui n'est pas conforme" aria-required="true" placeholder="Ce qui n'est pas conforme (obligatoire)" />
+                    <textarea value={action} onChange={ev => setAction(ev.target.value)} className="ds-input" style={textareaStyle} placeholder="Action réalisée (facultatif)" />
+                    <button type="button" className="ds-btn-danger" disabled={!note.trim() || log.isPending} onClick={() => log.mutate({ taskId: k.id, conforme: false })}>Enregistrer la non-conformité</button>
                   </div>
                 </td>
               </tr>
@@ -208,7 +211,7 @@ function CleaningTable({ tasks }: { tasks: TodayTask[] }) {
           ])}
         </tbody>
       </table>
-    </Panel>
+    </DataPanel>
   );
 }
 
@@ -226,11 +229,11 @@ function ActionCard({ a }: { a: CorrectiveAction }) {
     <div className={`klc-card${a.status === 'open' ? ' alert' : ''}`} style={{ gap: 6 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className="odoo-tag odoo-tag-grey">{ACTION_SOURCE_LABELS[a.source_kind]}</span>
-        <strong style={{ fontSize: '0.8125rem' }}>{a.problem}</strong>
-        <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{day(a.created_at)} {time(a.created_at)}{a.created_by_name ? ` · ${a.created_by_name}` : ''}</span>
+        <strong className="ds-strong" style={{ fontSize: 14 }}>{a.problem}</strong>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ds-muted)' }}>{day(a.created_at)} {time(a.created_at)}{a.created_by_name ? ` · ${a.created_by_name}` : ''}</span>
       </div>
       {a.validation_note && a.status === 'open' && (
-        <div style={{ fontSize: '0.75rem', color: 'var(--prj-orange)' }}>Renvoyée par le gérant : {a.validation_note}</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--ds-warning)' }}>Renvoyée par le gérant : {a.validation_note}</div>
       )}
       {a.status === 'done' ? (
         <div style={{ fontSize: '0.75rem' }}>
@@ -238,7 +241,7 @@ function ActionCard({ a }: { a: CorrectiveAction }) {
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <textarea value={text} onChange={ev => setText(ev.target.value)} style={textareaStyle} placeholder="Qu'avez-vous fait pour corriger ?" />
+          <textarea value={text} onChange={ev => setText(ev.target.value)} className="ds-input" style={textareaStyle} aria-label="Action corrective réalisée" placeholder="Qu'avez-vous fait pour corriger ?" />
           <button type="button" className="odoo-btn-primary" disabled={text.trim().length < 3 || complete.isPending} onClick={() => complete.mutate()}>Action réalisée</button>
         </div>
       )}
@@ -257,15 +260,15 @@ function NewActionButton() {
     onError: (err) => notify.error(err),
   });
   if (!open) {
-    return <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setOpen(true)}><Plus size={13} /> Signaler un problème</button>;
+    return <button type="button" className="odoo-btn-secondary" onClick={() => setOpen(true)}><Plus size={13} aria-hidden="true" /> Signaler un problème</button>;
   }
   return (
-    <div style={{ position: 'absolute', right: 0, top: 0, zIndex: 10, width: 'min(420px, 90vw)', background: 'var(--theme-bg-card, #fff)', borderRadius: 14, padding: 12, boxShadow: '0 12px 32px rgba(15,23,42,0.16), 0 0 0 .5px rgba(15,23,42,.08)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.875rem', fontWeight: 400, letterSpacing: 0 }}>
-      <textarea autoFocus value={problem} onChange={ev => setProblem(ev.target.value)} style={textareaStyle} placeholder="Problème constaté (nuisible, produit suspect, panne…)" />
-      <textarea value={action} onChange={ev => setAction(ev.target.value)} style={textareaStyle} placeholder="Action réalisée (facultatif)" />
+    <div style={{ position: 'absolute', right: 0, top: 0, zIndex: 10, width: 'min(420px, 90vw)', background: 'var(--ds-card)', borderRadius: 16, padding: 12, boxShadow: '0 12px 32px rgba(15,23,42,0.16), 0 0 0 .5px rgba(15,23,42,.08)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.875rem', fontWeight: 400, letterSpacing: 0 }}>
+      <textarea autoFocus value={problem} onChange={ev => setProblem(ev.target.value)} className="ds-input" style={textareaStyle} aria-label="Problème constaté" aria-required="true" placeholder="Problème constaté (nuisible, produit suspect, panne…)" />
+      <textarea value={action} onChange={ev => setAction(ev.target.value)} className="ds-input" style={textareaStyle} aria-label="Action réalisée" placeholder="Action réalisée (facultatif)" />
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
         <button type="button" className="odoo-btn-secondary" onClick={() => setOpen(false)}>Annuler</button>
-        <button type="button" className="odoo-btn-primary" disabled={problem.trim().length < 3 || create.isPending} onClick={() => create.mutate()}>Signaler</button>
+        <button type="button" className="odoo-btn-primary" disabled={problem.trim().length < 3 || create.isPending} aria-busy={create.isPending || undefined} onClick={() => create.mutate()}>Signaler</button>
       </div>
     </div>
   );

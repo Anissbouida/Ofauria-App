@@ -8,6 +8,11 @@ import '../projects/projects.css';
 import '../purchasing/purchasing.css';
 import '../sales/sales.css';
 import { ListKpi } from '../sales/ListTemplate';
+import {
+  Alert, Breadcrumb, BulkBar, DataPanel, EmptyState, FormField, FormFooter, LoadingState, NoResultState,
+  SearchBar, SectionHeader, TableFooter,
+} from '../../components/ds';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { PurHeaderActions } from '../purchasing/PurHeaderActions';
 import { suppliersApi, invoicesApi } from '../../api/accounting.api';
@@ -35,7 +40,7 @@ import DocumentActionsTimeline from '../../components/purchasing/DocumentActions
 import ChangeOrderModal from '../../components/purchasing/ChangeOrderModal';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import {
-  StagePipeline, StageProgress, ViewSwitch, PeriodFilter, SelectFilter, Pager,
+  StagePipeline, ViewSwitch, PeriodFilter, SelectFilter,
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey,
 } from '../../components/purchasing/ProcessBoard';
 import { apiErrorMessage } from '../../api/errors';
@@ -161,8 +166,8 @@ const VIEW_STATUSES: Record<'open' | 'history', Array<{ key: string; label: stri
 
 // Styles partagés pour les formulaires en style Odoo (cf. .odoo-scope dans index.css)
 const odooLabelStyle: CSSProperties = {
-  display: 'block', fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase',
-  letterSpacing: '0.03em', color: 'var(--odoo-text-muted)', marginBottom: 4,
+  display: 'block', fontSize: '0.75rem', fontWeight: 600,
+  color: 'var(--odoo-text-muted)', marginBottom: 4,
 };
 const odooFieldStyle: CSSProperties = {
   width: '100%', padding: '0.375rem 0.5rem', border: '1px solid var(--odoo-border)',
@@ -488,14 +493,21 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
         }
         return {
           label: 'Générer la facture', primary: false,
-          run: () => { if (confirm(`Générer la facture pour le BC ${po.order_number} ?`)) generateInvoiceMutation.mutate(id); },
+          run: async () => { if (await confirmDialog(`Générer la facture pour le BC ${po.order_number} ?`, { title: 'Générer la facture', confirmLabel: 'Générer la facture' })) generateInvoiceMutation.mutate(id); },
         };
       default:
         return null;
     }
   };
 
-  const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd MMM yyyy', { locale: fr }) : null);
+  const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'd MMM yyyy', { locale: fr }) : null);
+
+  /** Suppression d'un brouillon : action destructrice, toujours confirmée. */
+  const askDelete = async (po: Record<string, any>) => {
+    const ok = await confirmDialog(`Supprimer définitivement le bon de commande ${po.order_number} ?`,
+      { title: 'Supprimer le bon de commande', confirmLabel: 'Supprimer', danger: true });
+    if (ok) deleteMutation.mutate(po.id as string);
+  };
 
   /** Sous-titre d'étape d'une ligne (ce qui s'est passé / ce qui manque). */
   const stageDetail = (po: Record<string, any>): string => {
@@ -512,7 +524,28 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
     }
   };
 
-  const colCount = 8;
+  const colCount = 7;
+
+  /** Étiquette d'étape d'un BC : bloqué et retard priment sur l'étape (même règle dans toutes les vues). */
+  const stageTag = (po: Record<string, any>) => {
+    const def = PO_STAGES.find(x => x.key === po.stage);
+    const label = def?.label ?? (po.status === 'non_livre' ? 'Non livré' : 'Annulé');
+    return (
+      <StatusTag tone={po.on_hold ? 'blocked' : po.is_late ? 'late' : PO_TONE[po.stage as string] ?? 'cancelled'} icon={def?.icon}
+        title={po.on_hold ? 'Bloqué : ni réception ni facture' : undefined}
+        label={`${label}${po.on_hold ? ' · bloqué' : po.is_late ? ' · en retard' : ''}`} />
+    );
+  };
+
+  /** Actions groupées sur les BC cochés (fusion des factures liées). */
+  const bulkBar = (
+    <BulkBar count={selectedPoIds.size} noun="commande" onClear={() => setSelectedRows(new Map())}>
+      <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setShowMergeModal(true)} disabled={!mergeReady}
+        title={mergeReady ? 'Fusionner les factures liées' : mergeWarning}>
+        <Combine size={13} aria-hidden="true" /> Fusionner les factures
+      </button>
+    </BulkBar>
+  );
 
   return (
     <>
@@ -548,37 +581,13 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
           tone={lateList.length ? 'red' : undefined} />
       </section>}
 
-      {/* Barre d'outils unique : recherche, filtres, bascule En cours / Historique, création */}
-      <div className="prj-toolbar">
-        <label className="prj-search">
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="search" placeholder="N° de BC ou fournisseur…" aria-label="Rechercher un bon de commande"
-            value={searchInput} onChange={e => setSearchInput(e.target.value)} />
-          {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-        </label>
-        <SelectFilter label="Statut" icon={Filter} value={statusFilter} onChange={setStatusFilter} options={VIEW_STATUSES[view]} />
-        <PeriodFilter label="Commandé" title="Filtre sur la date de commande"
-          period={period} onPeriod={setPeriod}
-          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-        <div style={{ minWidth: 200 }}>
-          <SearchSelect options={supplierOptions} value={supplierFilter} onChange={setSupplierFilter} placeholder="Tous les fournisseurs" />
-        </div>
-        {hasFilters && (
-          <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer
-          </button>
-        )}
-        <LayoutSwitch value={layout} onChange={setLayout} />
-        <ViewSwitch view={view} onChange={switchView}
-          openLabel={`En cours · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
-      </div>
       <PurHeaderActions>
-        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouveau BC
+        <button type="button" onClick={() => setShowCreate(true)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} aria-hidden="true" /> Nouveau bon de commande
         </button>
       </PurHeaderActions>
 
-      {/* Circuit du BC : une pastille numérotée par étape, clic = filtre */}
+      {/* Circuit du BC : une pastille par étape, clic = filtre */}
       <StagePipeline
         title="Où en sont mes commandes"
         summary={`${openStats.count} BC en cours · ${money(openStats.amount)} engagés`}
@@ -591,48 +600,47 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
         onPick={pickStage}
       />
 
-      {selectedPoIds.size > 0 && (
-        <div className="sal-bulk" role="region" aria-label="Actions sur la sélection">
-          <strong>{selectedPoIds.size} BC sélectionné{selectedPoIds.size > 1 ? 's' : ''}</strong>
-          <button type="button" onClick={() => setShowMergeModal(true)} disabled={!mergeReady}
-            title={mergeReady ? 'Fusionner les factures liées' : mergeWarning}>
-            <Combine size={13} style={{ display: 'inline', marginRight: 4 }} /> Fusionner les factures
+      {/* Barre d'outils : recherche, filtres, puis les bascules à droite */}
+      <div className="prj-toolbar">
+        <SearchBar value={searchInput} onChange={setSearchInput} placeholder="N° de commande ou fournisseur…"
+          label="Rechercher un bon de commande" busy={isFetching && !isLoading} />
+        <SelectFilter label="Statut" icon={Filter} value={statusFilter} onChange={setStatusFilter} options={VIEW_STATUSES[view]} />
+        <PeriodFilter label="Commandé" title="Filtre sur la date de commande"
+          period={period} onPeriod={setPeriod}
+          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+        <div style={{ minWidth: 200 }}>
+          <SearchSelect options={supplierOptions} value={supplierFilter} onChange={setSupplierFilter} placeholder="Tous les fournisseurs" />
+        </div>
+        {hasFilters && (
+          <button type="button" onClick={resetFilters} className="ds-btn-ghost ds-btn-sm">
+            <X size={12} aria-hidden="true" /> Effacer
           </button>
-          <button type="button" onClick={() => setSelectedRows(new Map())} aria-label="Tout désélectionner"><X size={13} /></button>
-        </div>
-      )}
-      {mergeWarning && (
-        <div className="odoo-alert" style={{ fontSize: '0.75rem' }}>
-          <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4 }} />
-          {mergeWarning}
-        </div>
-      )}
+        )}
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`En cours · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
+        <LayoutSwitch value={layout} onChange={setLayout} />
+      </div>
+
+      {mergeWarning && <Alert tone="warning" icon={AlertTriangle}>{mergeWarning}</Alert>}
+      {/* Hors vue Tableau, la sélection (gardée d'une vue à l'autre) reste actionnable au-dessus de la liste. */}
+      {layout !== 'list' && bulkBar}
 
       {/* Liste */}
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-          <p style={{ fontSize: '0.8125rem' }}>Chargement des bons de commande...</p>
-        </div>
+        <LoadingState label="Chargement des bons de commande…" />
       ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Truck size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
-            {view === 'open' ? (stage ? 'Aucun bon de commande à cette étape' : 'Aucun bon de commande en cours') : 'Aucun bon de commande sur cette période'}
-          </p>
-          {hasFilters && (
-            <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>
-              Aucun résultat pour ces filtres —{' '}
-              <button type="button" onClick={resetFilters} style={{ textDecoration: 'underline', color: 'inherit' }}>les effacer</button>
-            </p>
-          )}
-          {view === 'open' && !stage && !hasFilters && (
-            <button onClick={() => setShowCreate(true)} className="odoo-btn-primary"
-              style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Plus size={13} /> Créer un BC
-            </button>
-          )}
-        </div>
+        hasFilters ? (
+          <NoResultState onReset={resetFilters} text="Aucun bon de commande ne correspond aux filtres." />
+        ) : (
+          <EmptyState icon={Truck}
+            title={view === 'open' ? (stage ? 'Aucun bon de commande à cette étape' : 'Aucun bon de commande en cours') : 'Aucun bon de commande sur cette période'}
+            text={view === 'open' && !stage ? 'Les commandes passées aux fournisseurs apparaissent ici, du brouillon jusqu\'à la facture.' : undefined}
+            action={view === 'open' && !stage ? (
+              <button type="button" onClick={() => setShowCreate(true)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Plus size={13} aria-hidden="true" /> Nouveau bon de commande
+              </button>
+            ) : undefined} />
+        )
       ) : layout === 'split' ? (
         <>
           <SplitView items={rows} getId={po => po.id as string} activeId={activeId} onPick={setActiveId} label="Bons de commande"
@@ -642,10 +650,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
                 title: String(po.supplier_name ?? '—'),
                 when: view === 'open' && po.expected_delivery_date ? pdate(po.expected_delivery_date, 'd MMM') : pdate(po.order_date, 'd MMM'),
                 l2: <><span className="sal-num">{po.order_number as string}</span> · <b>{pmoney(po.total_amount)}</b></>,
-                l3: <><StatusTag
-                  tone={po.on_hold ? 'blocked' : po.is_late ? 'late' : PO_TONE[st] ?? 'cancelled'}
-                  icon={PO_STAGES.find(x => x.key === st)?.icon}
-                  label={`${PO_STAGES.find(x => x.key === st)?.label ?? (po.status === 'non_livre' ? 'Non livré' : 'Annulé')}${po.on_hold ? ' · bloqué' : po.is_late ? ' · en retard' : ''}`} /> {stageDetail(po)}</>,
+                l3: <>{stageTag(po)} {stageDetail(po)}</>,
                 dot: po.is_late || po.on_hold ? 'late' : '',
               };
             }}
@@ -654,12 +659,12 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
               return (
                 <POPane poId={po.id as string} onFull={() => setShowDetail(po.id as string)}
                   actions={<>
-                    {action && <button type="button" className={action.danger ? 'odoo-btn-danger' : 'odoo-btn-primary'} onClick={action.run}>{action.label}</button>}
-                    <button type="button" className="odoo-btn-secondary" onClick={() => handleDownloadPoPdf(po)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={13} /> PDF</button>
+                    {action && <button type="button" className="odoo-btn-primary" onClick={action.run}>{action.label}</button>}
+                    <button type="button" className="odoo-btn-secondary" onClick={() => handleDownloadPoPdf(po)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={13} aria-hidden="true" /> PDF</button>
                   </>} />
               );
             }} />
-          <Pager page={page} total={total} onPage={setPage} note={`${total} BC`} />
+          <TableFooter page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} note="bons de commande" />
         </>
       ) : layout === 'kanban' ? (
         <>
@@ -682,18 +687,21 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
           <p className="prj-note">{total > rows.length ? `${rows.length} BC affichés sur ${total} — affinez les filtres pour voir les autres.` : `${total} BC`}</p>
         </>
       ) : (
-        <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
-          <table className="odoo-table">
+        <DataPanel label="Bons de commande" bulk={bulkBar}
+          footer={<TableFooter page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage}
+            note={view === 'open'
+              ? 'Seuls les bons de commande non clôturés sont chargés ici — les autres sont dans l\'Historique.'
+              : `Clôturés et annulés · ${periodText}`} />}>
+          <table className="odoo-table" style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
             <thead>
               <tr>
-                <th style={{ width: 28 }} title="Cocher pour fusionner les factures liees"></th>
-                <th>N° BC</th>
+                <th style={{ width: 28 }} title="Cocher pour fusionner les factures liées"><span className="sr-only">Sélection</span></th>
+                <th>N° de commande</th>
                 <th>Fournisseur</th>
-                <th style={{ minWidth: 200 }}>Étape</th>
-                <th>{view === 'open' ? 'Livraison' : 'Commande'}</th>
-                <th style={{ textAlign: 'right' }}>Montant</th>
-                <th style={{ textAlign: 'right' }}>{view === 'open' ? 'Prochaine action' : ''}</th>
-                <th style={{ textAlign: 'right', width: 110 }}>Actions</th>
+                <th>Étape</th>
+                <th>{view === 'open' ? 'Livraison prévue' : 'Commandé le'}</th>
+                <th className="ds-num">Montant HT ({currencySymbol()})</th>
+                <th className="ds-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -705,22 +713,32 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
                 const totalAmount = parseFloat(po.total_amount as string) || 0;
                 const deliveredAmount = parseFloat(po.delivered_amount as string) || 0;
                 const deliveryPct = totalAmount > 0 ? Math.min(100, (deliveredAmount / totalAmount) * 100) : 0;
-                const stageIdx = PO_STAGES.findIndex(s => s.key === poStage);
                 const action = view === 'open' ? nextAction(po) : null;
                 // Historique : un intertitre par mois (les lignes arrivent triées par date décroissante).
                 const month = format(new Date(po.order_date as string), 'MMMM yyyy', { locale: fr });
                 const prevMonth = i > 0 ? format(new Date(rows[i - 1].order_date as string), 'MMMM yyyy', { locale: fr }) : null;
                 const due = po.expected_delivery_date as string | null;
+                // Une action visible ; le reste dans le menu de ligne.
+                const menu: RowMenuItem[] = [
+                  ...(action ? [{ label: 'Ouvrir la fiche', icon: Eye, onSelect: () => setShowDetail(id) }] : []),
+                  ...(status !== 'en_attente' ? [{ label: 'Télécharger le PDF', icon: Download, onSelect: () => { void handleDownloadPoPdf(po); } }] : []),
+                  // Édition complète tant que le BC est en brouillon et non gelé (mig 306).
+                  ...(status === 'en_attente' && !po.frozen ? [{ label: 'Modifier', icon: Pencil, onSelect: () => setEditPoId(id) }] : []),
+                  // Extourne de réception (ADMIN) : reverse stock + facture + compta.
+                  ...(isAdmin && ['livre_complet', 'livre_partiel', 'en_attente_facturation'].includes(status)
+                    ? [{ label: 'Extourner la réception', icon: PackageX, disabled: cancelReceptionMutation.isPending,
+                        onSelect: () => setReverseFor({ id, orderNumber: po.order_number as string }) }] : []),
+                  // Suppression : brouillon jamais engagé seulement ; un BC engagé s'annule (mig 307).
+                  ...(status === 'en_attente' && !po.locked_at ? [{ label: 'Supprimer', icon: Trash2, danger: true, onSelect: () => { void askDelete(po); } }] : []),
+                ];
                 return (
                   <Fragment key={id}>
                     {view === 'history' && month !== prevMonth && (
-                      <tr>
-                        <td colSpan={colCount} style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize', color: 'var(--odoo-text)' }}>
-                          {month}
-                        </td>
+                      <tr className="ds-group">
+                        <td colSpan={colCount}>{month.charAt(0).toUpperCase() + month.slice(1)}</td>
                       </tr>
                     )}
-                    <tr onClick={() => setExpandedRow(isExpanded ? null : id)} style={{ cursor: 'pointer' }}>
+                    <tr onClick={() => setExpandedRow(isExpanded ? null : id)} style={{ cursor: 'pointer' }} className={selectedPoIds.has(id) ? 'ds-selected' : undefined}>
                       <td onClick={e => e.stopPropagation()}>
                         {(() => {
                           const eligible = poIsEligible(po);
@@ -731,139 +749,80 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
                               disabled={!eligible}
                               aria-label={`Sélectionner ${po.order_number}`}
                               title={eligible
-                                ? (po.has_invoice ? 'Selectionner pour fusion' : 'Selectionner — la facture sera generee a la fusion')
-                                : 'Aucun article livre — fusion impossible'}
+                                ? (po.has_invoice ? 'Sélectionner pour la fusion' : 'Sélectionner — la facture sera générée à la fusion')
+                                : 'Aucun article livré — fusion impossible'}
                               style={{ cursor: eligible ? 'pointer' : 'not-allowed' }} />
                           );
                         })()}
                       </td>
                       <td>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          {isExpanded ? <ChevronUp size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-                          <span className="sal-num">{po.order_number as string}</span>
+                          {isExpanded
+                            ? <ChevronUp size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
+                            : <ChevronDown size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
+                          <span className="ds-ref">{po.order_number as string}</span>
                           {po.currency_code && String(po.currency_code).trim() !== BASE_CURRENCY && <span className="odoo-tag odoo-tag-blue" title={`Négocié en ${String(po.currency_code).trim()} · taux ${po.exchange_rate}`}>{String(po.currency_code).trim()}</span>}
+                          {po.frozen && <span title="Bon de commande gelé" style={{ display: 'inline-flex', color: 'var(--ds-muted)' }}><Lock size={12} aria-label="Bon de commande gelé" /></span>}
                         </span>
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 17 }}>
-                          créé le {fmtDate(po.order_date as string)}
-                        </div>
+                        {view === 'open' && (
+                          <div style={{ fontSize: 12, color: 'var(--ds-muted)', marginLeft: 17 }}>
+                            créé le {fmtDate(po.order_date as string)}
+                          </div>
+                        )}
                       </td>
                       <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <Truck size={11} style={{ color: 'var(--theme-accent)' }} />
-                          {po.supplier_name as string}
-                        </span>
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 15 }}>
+                        <span className="ds-strong">{po.supplier_name as string}</span>
+                        <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
                           {po.item_count as number} article{Number(po.item_count) > 1 ? 's' : ''}
                         </div>
                       </td>
                       <td>
-                        {stageIdx >= 0 && poStage !== 'cancelled' ? (
-                          <StageProgress count={PO_STAGES.length} current={stageIdx} done={poStage === 'closed'} late={!!po.is_late} />
-                        ) : null}
-                        <span style={{ fontSize: '0.75rem' }}>
-                          {poStage === 'cancelled'
-                            ? <StatusTag tone="cancelled" label={STATUS_LABELS[status] ?? status} />
-                            : <strong style={{ fontWeight: 600 }}>{PO_STAGES[stageIdx]?.label}</strong>}
-                          <span style={{ color: 'var(--odoo-text-muted)' }}> · {stageDetail(po)}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          {stageTag(po)}
+                          {po.approval_pending === true && <StatusTag tone="todo" label="À approuver" title="En attente d'approbation : partira au fournisseur dès l'accord" />}
                         </span>
-                        {po.on_hold && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="bloqué" title="Bloqué : ni réception ni facture" /></span>}
-                        {po.approval_pending === true && <span style={{ marginLeft: 6 }}><StatusTag tone="todo" label="à approuver" title="En attente d'approbation : partira au fournisseur dès l'accord" /></span>}
+                        <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{stageDetail(po)}</div>
                       </td>
                       <td>
                         {view === 'open' ? (
                           due ? (
                             <>
-                              <div style={{
-                                fontSize: '0.8125rem',
-                                color: po.is_late ? '#dc3545' : 'var(--odoo-text)',
-                                fontWeight: po.is_late ? 600 : 400,
-                              }}>
-                                Prévue le {fmtDate(due)}
-                              </div>
+                              <span style={po.is_late ? { color: 'var(--ds-danger)', fontWeight: 600 } : undefined}>{fmtDate(due)}</span>
                               {po.is_late && (
-                                <div style={{ fontSize: '0.6875rem', color: '#dc3545' }}>
+                                <div style={{ fontSize: 12, color: 'var(--ds-danger)' }}>
                                   {differenceInCalendarDays(new Date(), new Date(due))} j de retard
                                 </div>
                               )}
                             </>
-                          ) : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>
-                        ) : (
-                          <span style={{ color: 'var(--odoo-text-muted)' }}>{fmtDate(po.order_date as string)}</span>
-                        )}
+                          ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>
+                        ) : fmtDate(po.order_date as string)}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <span style={{ fontWeight: 700 }}>{n(totalAmount)}</span>
-                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}</span>
+                      <td className="ds-num">
+                        <span className="ds-strong">{n(totalAmount)}</span>
                         {poStage === 'partial' && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', marginTop: 2 }}>
-                            <span style={{ width: 50, height: 3, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-                              <span style={{ display: 'block', height: '100%', background: '#b85d1a', width: `${deliveryPct}%` }} />
+                            <span style={{ width: 50, height: 3, background: 'var(--ds-hair)', borderRadius: 2, overflow: 'hidden' }}>
+                              <span style={{ display: 'block', height: '100%', background: 'var(--ds-warning)', width: `${deliveryPct}%` }} />
                             </span>
-                            <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{deliveryPct.toFixed(0)}% reçu</span>
+                            <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{deliveryPct.toFixed(0)} % reçu</span>
                           </div>
                         )}
                       </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                        {action && (
-                          <button type="button" onClick={action.run}
-                            className={action.primary ? (action.danger ? 'odoo-btn-danger' : 'odoo-btn-primary') : 'odoo-btn-secondary'}
+                      <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                        {action ? (
+                          <button type="button" onClick={action.run} className="odoo-btn-secondary ds-btn-sm"
                             disabled={sendMutation.isPending || generateInvoiceMutation.isPending}>
                             {action.label}
                           </button>
+                        ) : (
+                          <button type="button" onClick={() => setShowDetail(id)} className="odoo-btn-secondary ds-btn-sm">Ouvrir</button>
                         )}
-                      </td>
-                      <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                        <div style={{ display: 'inline-flex', gap: 2 }}>
-                          {status !== 'en_attente' && (
-                            <button onClick={() => handleDownloadPoPdf(po)} title="Télécharger PDF" aria-label="Télécharger PDF" className="odoo-pager-btn">
-                              <Download size={13} />
-                            </button>
-                          )}
-                          <button onClick={() => setShowDetail(id)} title="Voir détails" aria-label="Voir détails" className="odoo-pager-btn">
-                            <Eye size={13} />
-                          </button>
-                          {/* Extourne de réception (ADMIN) : reverse stock + facture + compta. */}
-                          {isAdmin && ['livre_complet', 'livre_partiel', 'en_attente_facturation'].includes(status) && (
-                            <button
-                              onClick={() => setReverseFor({ id, orderNumber: po.order_number as string })}
-                              title="Extourner la réception (admin)"
-                              aria-label="Extourner la réception"
-                              className="odoo-pager-btn"
-                              disabled={cancelReceptionMutation.isPending}
-                              style={{ color: '#b85d1a' }}
-                            >
-                              <PackageX size={13} />
-                            </button>
-                          )}
-                          {/* Édition complète tant que le BC est en brouillon et non gelé (mig 306). */}
-                          {status === 'en_attente' && !po.frozen && (
-                            <button onClick={() => setEditPoId(id)} title="Modifier le BC (qté, prix, lignes)" aria-label="Modifier le BC" className="odoo-pager-btn">
-                              <Pencil size={13} />
-                            </button>
-                          )}
-                          {po.frozen && (
-                            <span className="odoo-pager-btn" title="BC gelé" style={{ opacity: 0.45, cursor: 'default' }}>
-                              <Lock size={13} />
-                            </span>
-                          )}
-                          {/* Suppression : brouillon jamais engagé seulement ; un BC engagé s'annule (mig 307). */}
-                          {status === 'en_attente' && !po.locked_at && (
-                            <button
-                              onClick={() => { if (confirm(`Supprimer definitivement le BC ${po.order_number} ?`)) deleteMutation.mutate(id); }}
-                              title="Supprimer le BC"
-                              aria-label="Supprimer le BC"
-                              className="odoo-pager-btn"
-                              style={{ color: '#dc3545' }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                        </div>
+                        <RowMenu items={menu} label={`Plus d'actions sur ${po.order_number}`} />
                       </td>
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={colCount} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
+                        <td colSpan={colCount} style={{ background: 'var(--ds-bg)', padding: '12px 16px' }}>
                           <ExpandedPORow poId={id} status={status} isAdmin={isAdmin}
                             onSend={() => sendMutation.mutate(id)}
                             onDelivery={() => setShowDelivery(id)}
@@ -871,7 +830,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
                             onCancel={() => setPoReason({ kind: 'cancel', poId: id, orderNumber: po.order_number as string })}
                             onHold={() => setPoReason({ kind: 'hold', poId: id, orderNumber: po.order_number as string })}
                             onStateAction={(kind) => poStateMutation.mutate({ kind, poId: id })}
-                            onDelete={() => { if (confirm('Supprimer ce bon de commande ?')) deleteMutation.mutate(id); }}
+                            onDelete={() => askDelete(po)}
                           />
                         </td>
                       </tr>
@@ -881,11 +840,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
               })}
             </tbody>
           </table>
-          <Pager page={page} total={total} onPage={setPage}
-            note={view === 'open'
-              ? 'Seuls les BC non clôturés sont chargés ici — les autres sont dans l\'Historique.'
-              : `Clôturés et annulés · ${periodText}`} />
-        </div>
+        </DataPanel>
       )}
 
       {showCreate && <CreatePOModal onClose={() => setShowCreate(false)} />}
@@ -894,7 +849,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
           onSend={() => sendMutation.mutate(showDetail)}
           onDelivery={() => setShowDelivery(showDetail)}
           onCompletePrices={() => setEditPoId(showDetail)}
-          onGenerateInvoice={() => { if (confirm('Générer la facture de ce BC ?')) generateInvoiceMutation.mutate(showDetail); }}
+          onGenerateInvoice={async () => { if (await confirmDialog('Générer la facture de ce BC ?', { title: 'Générer la facture', confirmLabel: 'Générer la facture' })) generateInvoiceMutation.mutate(showDetail); }}
         />
       )}
       {showDelivery && <DeliveryModal poId={showDelivery} onClose={() => setShowDelivery(null)} />}
@@ -979,7 +934,7 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
     onError: (e) => notify.error(apiErrorMessage(e, 'Réouverture impossible')),
   });
 
-  if (isLoading) return <div className="py-4 text-center text-gray-400 text-sm">Chargement des articles...</div>;
+  if (isLoading) return <LoadingState bare label="Chargement des articles…" />;
   if (!po) return null;
 
   const items = (po.items || []) as POItem[];
@@ -993,36 +948,36 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
   };
 
   return (
-    <div className="space-y-3">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {po.on_hold && (
         <StatusBanner tone="danger" icon={PauseCircle} title="BC bloqué : réception et facturation suspendues"
-          actions={<button className="odoo-btn-secondary" onClick={() => onStateAction('release')}>Lever le blocage</button>}>
+          actions={<button type="button" className="odoo-btn-secondary" onClick={() => onStateAction('release')}>Lever le blocage</button>}>
           {po.hold_note ? `Précision : ${po.hold_note}` : 'Le motif figure dans l\'historique ci-dessous.'}
         </StatusBanner>
       )}
       {po.frozen && (
         <StatusBanner tone="info" icon={Snowflake} title="BC gelé : en-tête et lignes figés"
-          actions={isAdmin ? <button className="odoo-btn-secondary" onClick={() => onStateAction('unfreeze')}>Dégeler</button> : undefined}>
+          actions={isAdmin ? <button type="button" className="odoo-btn-secondary" onClick={() => onStateAction('unfreeze')}>Dégeler</button> : undefined}>
           La réception et la facturation restent possibles.
         </StatusBanner>
       )}
       {/* Items table */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <table className="odoo-table">
-          <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+      <DataPanel label="Articles du bon de commande">
+        <table className="odoo-table ds-dense">
+          <thead>
             <tr>
-              <th className="text-left px-3 py-2">Article</th>
-              <th className="text-left px-3 py-2">Catégorie</th>
-              <th className="text-right px-3 py-2">Commandé</th>
-              <th className="text-right px-3 py-2">Reçu</th>
-              <th className="text-right px-3 py-2" title="Reliquat clôturé : quantité qui ne sera plus livrée">Clôturé</th>
-              <th className="text-right px-3 py-2">Reste</th>
-              <th className="text-right px-3 py-2">Prix unit.</th>
-              <th className="text-right px-3 py-2">Total</th>
-              <th className="text-right px-3 py-2 w-24">Progression</th>
+              <th>Article</th>
+              <th>Catégorie</th>
+              <th className="ds-num">Commandé</th>
+              <th className="ds-num">Reçu</th>
+              <th className="ds-num" title="Reliquat clôturé : quantité qui ne sera plus livrée">Clôturé</th>
+              <th className="ds-num">Reste</th>
+              <th className="ds-num">Prix unitaire ({currencySymbol()})</th>
+              <th className="ds-num">Total HT ({currencySymbol()})</th>
+              <th className="ds-num" style={{ width: 110 }}>Progression</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody>
             {items.map(item => {
               const ordered = parseFloat(item.quantity_ordered);
               const delivered = parseFloat(item.qty_received_base ?? item.quantity_delivered);
@@ -1031,16 +986,16 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
               const pct = ordered > 0 ? Math.min(100, ((delivered + cancelled) / ordered) * 100) : 0;
               const price = item.unit_price != null ? parseFloat(item.unit_price) : null;
               return (
-                <tr key={item.id} className="hover:bg-gray-50/50">
-                  <td className="px-3 py-2 font-medium text-gray-700">
-                    {item.ingredient_name} <span className="text-gray-400 text-xs">({item.ingredient_unit})</span>
+                <tr key={item.id}>
+                  <td>
+                    <span className="ds-strong">{item.ingredient_name}</span> <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}>({item.ingredient_unit})</span>
                     <LineKindTag kind={item.kind} />
                   </td>
-                  <td className="px-3 py-2 text-xs">
+                  <td style={{ fontSize: 12 }}>
                     {isFreeLine(item.kind) ? (
-                      <span style={{ color: 'var(--odoo-text-muted)' }}>{resolveCat(item.item_category_id)?.path || '—'}</span>
+                      <span style={{ color: 'var(--ds-muted)' }}>{resolveCat(item.item_category_id)?.path || '—'}</span>
                     ) : item.kind === 'product' ? (
-                      <span style={{ color: 'var(--odoo-text-muted)' }}>{resolveCat(item.item_category_id)?.path || 'Achats de marchandises'}</span>
+                      <span style={{ color: 'var(--ds-muted)' }}>{resolveCat(item.item_category_id)?.path || 'Achats de marchandises'}</span>
                     ) : (
                     <CategoryQuickEdit
                       kind={(item.kind as 'ingredient' | 'consumable') || (item.packaging_id ? 'consumable' : 'ingredient')}
@@ -1050,117 +1005,113 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
                     />
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">{qtyLabel(ordered, item)}</td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <span className={delivered > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}>{qtyLabel(delivered, item)}</span>
+                  <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{qtyLabel(ordered, item)}</td>
+                  <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
+                    <span style={delivered > 0 ? { color: 'var(--ds-success)', fontWeight: 600 } : { color: 'var(--ds-muted)' }}>{qtyLabel(delivered, item)}</span>
                     {delivered > 0 && ['livre_partiel', 'livre_complet', 'en_attente_facturation'].includes(status) && !po.has_invoice && (
-                      <button className="odoo-pager-btn" title="Corriger la quantité reçue"
-                        onClick={() => setCorrectFor({ lineId: item.id, label: item.ingredient_name, unit: item.base_unit || item.ingredient_unit })}><Pencil size={11} /></button>
+                      <button type="button" className="ds-icon-btn" title="Corriger la quantité reçue" aria-label={`Corriger la quantité reçue de ${item.ingredient_name}`}
+                        onClick={() => setCorrectFor({ lineId: item.id, label: item.ingredient_name, unit: item.base_unit || item.ingredient_unit })}><Pencil size={13} /></button>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap text-gray-500">
+                  <td className="ds-num" style={{ whiteSpace: 'nowrap', color: 'var(--ds-muted)' }}>
                     {cancelled > 0 ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         {qtyLabel(cancelled, item)}
                         {!['annule', 'non_livre'].includes(status) && (
-                          <button className="odoo-pager-btn" title="Rouvrir le reliquat" disabled={reopenMutation.isPending}
-                            onClick={() => reopenMutation.mutate(item.id)}><Undo2 size={12} /></button>
+                          <button type="button" className="ds-icon-btn" title="Rouvrir le reliquat" aria-label={`Rouvrir le reliquat de ${item.ingredient_name}`} disabled={reopenMutation.isPending}
+                            onClick={() => reopenMutation.mutate(item.id)}><Undo2 size={13} /></button>
                         )}
                       </span>
                     ) : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                  <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
                     {remaining > 0.0001 ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <span className="text-amber-600">{qtyLabel(remaining, item)}</span>
+                        <span style={{ color: 'var(--ds-warning)', fontWeight: 600 }}>{qtyLabel(remaining, item)}</span>
                         {canCloseRemainder && (
-                          <button className="odoo-pager-btn" title="Clôturer le reliquat de cette ligne"
-                            onClick={() => setLineReason({ lineId: item.id, label: item.ingredient_name })}><Scissors size={12} /></button>
+                          <button type="button" className="ds-icon-btn" title="Clôturer le reliquat de cette ligne" aria-label={`Clôturer le reliquat de ${item.ingredient_name}`}
+                            onClick={() => setLineReason({ lineId: item.id, label: item.ingredient_name })}><Scissors size={13} /></button>
                         )}
                       </span>
-                    ) : <span className="text-gray-400">—</span>}
+                    ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-600">{price != null ? `${money(price)}` : <span className="text-amber-500 text-xs">À définir</span>}</td>
-                  <td className="px-3 py-2 text-right font-medium">{price != null ? `${money(ordered * price)}` : <span className="text-gray-400">—</span>}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-2 justify-end">
-                      <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : pct > 0 ? 'bg-orange-400' : 'bg-gray-300'}`}
-                          style={{ width: `${pct}%` }} />
-                      </div>
-                      <span className="text-xs text-gray-500 w-8 text-right">{pct.toFixed(0)}%</span>
-                    </div>
+                  <td className="ds-num">{price != null ? n(price) : <span style={{ color: 'var(--ds-warning)', fontWeight: 600, fontSize: 12 }}>à définir</span>}</td>
+                  <td className="ds-num ds-strong">{price != null ? n(ordered * price) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                  <td className="ds-num">
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 64, height: 6, background: 'var(--ds-hair)', borderRadius: 999, overflow: 'hidden' }}>
+                        <span style={{ display: 'block', height: '100%', borderRadius: 999, width: `${pct}%`, background: pct >= 100 ? 'var(--ds-success)' : pct > 0 ? 'var(--ds-warning)' : 'var(--ds-line)' }} />
+                      </span>
+                      <span style={{ fontSize: 12, color: 'var(--ds-muted)', minWidth: 36 }}>{pct.toFixed(0)} %</span>
+                    </span>
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
 
       {/* Notes */}
       {po.notes && (
-        <p className="text-sm text-gray-500 italic flex items-center gap-1.5">
-          <FileText size={14} className="text-gray-400" /> {po.notes}
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <FileText size={14} aria-hidden="true" /> {po.notes}
         </p>
       )}
 
-      {/* Action buttons */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* Actions du BC : l'action d'avancement en premier, les actions destructrices à la fin. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {status === 'en_attente' && (
-          <button onClick={onSend}
-            className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 flex items-center gap-1.5 transition-colors">
-            <Send size={14} /> Envoyer au fournisseur
+          <button type="button" onClick={onSend} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Send size={14} aria-hidden="true" /> Envoyer au fournisseur
           </button>
         )}
         {(status === 'envoye' || status === 'livre_partiel') && (
-          <>
-            <button onClick={onDelivery}
-              className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100 flex items-center gap-1.5 transition-colors">
-              <PackageCheck size={14} /> Confirmer réception
-            </button>
-            <button onClick={onNotDelivered}
-              className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 flex items-center gap-1.5 transition-colors">
-              <PackageX size={14} /> Non livré
-            </button>
-          </>
+          <button type="button" onClick={onDelivery} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <PackageCheck size={14} aria-hidden="true" /> Confirmer la réception
+          </button>
         )}
         {canChange && (
-          <button onClick={() => setShowChange(true)} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <FilePenLine size={14} /> Demande de changement
+          <button type="button" onClick={() => setShowChange(true)} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <FilePenLine size={14} aria-hidden="true" /> Demande de changement
           </button>
         )}
         {canCloseRemainder && items.some(i => parseFloat(i.qty_remaining_base ?? '0') > 0.0001) && (
-          <button onClick={() => setLineReason({ lineId: null, label: 'toutes les lignes' })} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Scissors size={14} /> Clôturer le reliquat
-          </button>
-        )}
-        {['en_attente', 'envoye'].includes(status) && (
-          <button onClick={onCancel}
-            className="px-3 py-1.5 bg-gray-50 text-gray-500 rounded-lg text-sm font-medium hover:bg-gray-100 flex items-center gap-1.5 transition-colors">
-            <Ban size={14} /> Annuler le BC
+          <button type="button" onClick={() => setLineReason({ lineId: null, label: 'toutes les lignes' })} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Scissors size={14} aria-hidden="true" /> Clôturer le reliquat
           </button>
         )}
         {!po.on_hold && !['annule', 'non_livre'].includes(status) && (
-          <button onClick={onHold} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <PauseCircle size={14} /> Bloquer
+          <button type="button" onClick={onHold} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <PauseCircle size={14} aria-hidden="true" /> Bloquer
           </button>
         )}
         {po.on_hold && (
-          <button onClick={() => onStateAction('release')} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <PlayCircle size={14} /> Lever le blocage
+          <button type="button" onClick={() => onStateAction('release')} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <PlayCircle size={14} aria-hidden="true" /> Lever le blocage
           </button>
         )}
         {isAdmin && !po.frozen && !['annule', 'non_livre'].includes(status) && (
-          <button onClick={() => onStateAction('freeze')} className="odoo-btn-secondary" title="Figer en-tête et lignes (admin)" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Snowflake size={14} /> Geler
+          <button type="button" onClick={() => onStateAction('freeze')} className="odoo-btn-secondary" title="Figer en-tête et lignes (admin)" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Snowflake size={14} aria-hidden="true" /> Geler
+          </button>
+        )}
+        <span className="ds-grow" />
+        {/* Actions destructrices : toutes confirmées (motif codé, ou confirmation pour la suppression). */}
+        {(status === 'envoye' || status === 'livre_partiel') && (
+          <button type="button" onClick={onNotDelivered} className="ds-btn-danger">
+            <PackageX size={14} aria-hidden="true" /> Non livré
+          </button>
+        )}
+        {['en_attente', 'envoye'].includes(status) && (
+          <button type="button" onClick={onCancel} className="ds-btn-danger">
+            <Ban size={14} aria-hidden="true" /> Annuler le BC
           </button>
         )}
         {/* Suppression : brouillon jamais engagé seulement (mig 307). */}
         {status === 'en_attente' && !po.locked_at && (
-          <button onClick={onDelete}
-            className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 flex items-center gap-1.5 transition-colors">
-            <Trash2 size={14} /> Supprimer
+          <button type="button" onClick={onDelete} className="ds-btn-danger">
+            <Trash2 size={14} aria-hidden="true" /> Supprimer
           </button>
         )}
       </div>
@@ -1274,7 +1225,7 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
             <span className={`odoo-tag ${tagClass(categoryId)}`} style={{ fontSize: '0.6875rem' }}>{cat.typeName}</span>
           </span>
         ) : (
-          <span style={{ fontSize: '0.75rem', color: '#b85d1a', fontWeight: 600 }}>Sans catégorie</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--ds-warning)', fontWeight: 600 }}>Sans catégorie</span>
         )}
         <button onClick={(e) => { e.stopPropagation(); setSelectedId(categoryId || ''); setEditing(true); }}
           title="Corriger la catégorie de l'article"
@@ -1725,7 +1676,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                               {isUsual(p) && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Habituel</span>}
                             </span>
                             {/* Chemin de categorie : repere une erreur de classement avant l'achat */}
-                            <span style={{ display: 'block', fontSize: '0.6875rem', color: catPath || p._kind === 'product' ? 'var(--odoo-text-muted)' : '#b85d1a' }}>
+                            <span style={{ display: 'block', fontSize: '0.6875rem', color: catPath || p._kind === 'product' ? 'var(--odoo-text-muted)' : 'var(--ds-warning)' }}>
                               {p._kind === 'product' ? 'Produit de revente · Achats de marchandises' : (catPath || 'Sans catégorie')}{cont ? ` · ${containerLabel(cont, p.unit as string)}` : ''}
                             </span>
                           </span>
@@ -1902,7 +1853,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 style={{ backgroundColor: 'var(--theme-accent-light, rgba(0,0,0,0.04))', borderTop: '1px solid var(--odoo-border)', padding: '0.625rem 0.875rem' }}>
                 <span style={{ fontSize: '0.8125rem', color: 'var(--theme-accent)', fontWeight: 600 }}>
                   {items.length} article{items.length > 1 ? 's' : ''}
-                  {hasMissingPrices && <span style={{ marginLeft: 8, color: '#b85d1a', fontSize: '0.6875rem' }}>(prix à définir par le fournisseur)</span>}
+                  {hasMissingPrices && <span style={{ marginLeft: 8, color: 'var(--ds-warning)', fontSize: '0.6875rem' }}>(prix à définir par le fournisseur)</span>}
                 </span>
                 <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{totalAmount > 0 ? `Total: ${n(totalAmount)} ${curLabel}${currency !== BASE_CURRENCY && rate > 0 ? ` ≈ ${money(totalAmount * rate)}` : ''}` : 'Prix à définir'}</span>
               </div>
@@ -1981,7 +1932,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
     return (
       <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="odoo-scope" style={{ ...panel, maxWidth: 360, padding: '2rem', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
-          {isLoading ? <Loader2 className="animate-spin" size={24} style={{ color: 'var(--odoo-text-muted)' }} /> : <p style={{ fontSize: '0.8125rem' }}>Bon de commande introuvable.</p>}
+          {isLoading ? <LoadingState bare label="Chargement du bon de commande…" /> : <EmptyState bare icon={FileText} title="Bon de commande introuvable" />}
         </div>
       </ModalBackdrop>
     );
@@ -2009,7 +1960,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
     : status === 'livre_partiel' ? 2
     : status === 'en_attente_facturation' || (status === 'livre_complet' && invoices.length === 0) ? 3
     : status === 'livre_complet' ? 5 : -1;
-  const d = (v?: string | null) => (v ? format(new Date(v), 'dd MMM yyyy', { locale: fr }) : null);
+  const d = (v?: string | null) => (v ? format(new Date(v), 'd MMM yyyy', { locale: fr }) : null);
   const isLate = [0, 1, 2].includes(stage) && po.expected_delivery_date && new Date(po.expected_delivery_date) < new Date(new Date().toDateString());
 
   const steps = [
@@ -2074,8 +2025,10 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
   const standing = standings.find(x => x.supplier_id === po.supplier_id);
   const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('');
 
-  // Style Apple (2026-11) : fond gris de feuille, cartes blanches sans bordure, titres en casse normale.
-  const sectionTitle: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--theme-text-strong)' };
+  // Étiquette d'étape de la fiche (mêmes tons que la liste).
+  const stageKey = cancelled ? null : ['draft', 'sent', 'partial', 'invoice', 'closed', 'closed'][stage] ?? null;
+  const stageDef = PO_STAGES.find(x => x.key === stageKey);
+  // Fond gris de feuille, cartes blanches sans bordure, titres en casse normale.
   const card: CSSProperties = { borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--theme-bg-card)', boxShadow: '0 1px 2px rgba(15,23,42,.04)' };
 
   return (
@@ -2083,25 +2036,24 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
       <div className="odoo-scope pur-scope" role="dialog" aria-label={`Bon de commande ${po.order_number}`} style={panel} onClick={(e) => e.stopPropagation()}>
         {/* En-tête */}
         <div className="odoo-control-bar" style={{ flexWrap: 'wrap', rowGap: 6 }}>
-          <div className="odoo-breadcrumb">
-            <FileText size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Bon de commande</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{po.order_number}</span>
-          </div>
-          {po.frozen && <span className="odoo-tag odoo-tag-grey" title="En-tête et lignes figés"><Lock size={10} /> gelé</span>}
+          <Breadcrumb icon={FileText} items={[{ label: 'Bons de commande' }, { label: po.order_number }]} />
           <div style={{ flex: 1 }} />
           <button type="button" onClick={downloadPdf} disabled={downloading || stage === 0} className="odoo-btn-secondary"
             title={stage === 0 ? 'PDF disponible une fois le BC envoyé' : 'Ouvrir le PDF'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
+            {downloading ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Download size={12} aria-hidden="true" />} PDF
           </button>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
 
         <div className="kl-po-body" style={{ overflowY: 'auto', flex: 1, minHeight: 0, background: 'var(--theme-bg-page)' }}>
           {/* Identité */}
           <div style={{ padding: '16px 20px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: 14 }}>
-            <span style={{ fontWeight: 700, fontSize: 21, letterSpacing: '-.02em', color: 'var(--theme-text-strong)' }}>{po.supplier_name}</span>
+            <span style={{ fontWeight: 700, fontSize: 21, letterSpacing: '-.02em', color: 'var(--ds-ink)' }}>{po.supplier_name}</span>
+            <StatusTag
+              tone={cancelled ? 'cancelled' : po.on_hold ? 'blocked' : isLate ? 'late' : PO_TONE[stageKey ?? ''] ?? 'cancelled'}
+              icon={stageDef?.icon}
+              label={`${stageDef?.label ?? (status === 'non_livre' ? 'Non livré' : 'Annulé')}${cancelled ? '' : po.on_hold ? ' · bloqué' : isLate ? ' · en retard' : ''}`} />
+            {po.frozen && <StatusTag tone="draft" icon={Lock} label="Gelé" title="En-tête et lignes figés" />}
             <span style={{ color: 'var(--odoo-text-muted)' }}>
               {items.length} article{items.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{money(totalOrdered)}</strong>
               {poCur !== BASE_CURRENCY && <> · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalForeign)} {poCur}</strong> <span className="odoo-tag odoo-tag-blue">1 {poCur} = {num(po.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })} {currencySymbol()}</span></>}
@@ -2129,7 +2081,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                   <li key={s.label} className={`ui-timeline-step ${done ? 'is-done' : current ? 'is-current' : ''}`} aria-current={current ? 'step' : undefined}>
                     <span className="ui-timeline-dot">{done ? <CheckCircle2 size={14} /> : i + 1}</span>
                     <span className="ui-timeline-label">{s.label}</span>
-                    <span className="ui-timeline-detail" style={current && isLate ? { color: '#dc3545', fontWeight: 600 } : undefined}>{s.detail}</span>
+                    <span className="ui-timeline-detail" style={current && isLate ? { color: 'var(--ds-danger)', fontWeight: 600 } : undefined}>{s.detail}</span>
                   </li>
                 );
               })}
@@ -2158,23 +2110,25 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
             </StatusBanner>
 
             {po.notes && (
-              <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', display: 'flex', gap: 6 }}>
-                <FileText size={14} style={{ flexShrink: 0, marginTop: 2 }} /> {po.notes}
+              <div style={{ fontSize: 14, color: 'var(--ds-muted)', display: 'flex', gap: 6 }}>
+                <FileText size={14} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} /> {po.notes}
               </div>
             )}
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' }}>
               {/* Articles */}
-              <div style={{ flex: '999 1 520px', minWidth: 0, borderRadius: 14, overflowX: 'auto', background: 'var(--theme-bg-card)', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
+              <div style={{ flex: '999 1 520px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <SectionHeader title="Articles" note={`${items.length} ligne${items.length > 1 ? 's' : ''}`} />
+                <DataPanel label="Articles du bon de commande">
                 <table className="odoo-table" style={{ margin: 0 }}>
                   <thead>
                     <tr>
                       <th>Article</th>
-                      <th style={{ textAlign: 'right' }}>Commandé</th>
-                      <th style={{ textAlign: 'right' }}>Reçu</th>
-                      <th style={{ textAlign: 'right' }}>Reste</th>
-                      <th style={{ textAlign: 'right' }}>Prix unit.</th>
-                      <th style={{ textAlign: 'right' }}>Montant</th>
+                      <th className="ds-num">Commandé</th>
+                      <th className="ds-num">Reçu</th>
+                      <th className="ds-num">Reste</th>
+                      <th className="ds-num">Prix unitaire ({currencySymbol()})</th>
+                      <th className="ds-num">Montant HT ({currencySymbol()})</th>
                       <th>Contrôle</th>
                     </tr>
                   </thead>
@@ -2185,37 +2139,39 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                       const remaining = it.qty_remaining_base != null ? num(it.qty_remaining_base) : Math.max(0, ordered - received);
                       const cancelledQty = num(it.qty_cancelled_base);
                       const unit = it.base_unit || it.ingredient_unit;
-                      const dot = remaining <= 0 ? '#28a745' : received > 0 ? '#e6892b' : 'var(--odoo-border-strong, #adb5bd)';
+                      const dot = remaining <= 0 ? 'var(--ds-success)' : received > 0 ? 'var(--ds-warning)' : 'var(--ds-line)';
                       return (
                         <tr key={it.id}>
                           <td>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                               <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: dot, flexShrink: 0 }} />
-                              <span style={{ fontWeight: 500 }}>{it.ingredient_name}</span>
+                              <span className="ds-strong">{it.ingredient_name}</span>
                             </span>
-                            {cancelledQty > 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 16 }}>{trimQty(cancelledQty)} {unit} soldé{cancelledQty > 1 ? 's' : ''} sans livraison</div>}
+                            {cancelledQty > 0 && <div style={{ fontSize: 12, color: 'var(--ds-muted)', marginLeft: 16 }}>{trimQty(cancelledQty)} {unit} soldé{cancelledQty > 1 ? 's' : ''} sans livraison</div>}
                           </td>
-                          <td style={{ textAlign: 'right' }}>{trimQty(ordered)} <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>{unit}</span></td>
-                          <td style={{ textAlign: 'right', color: received > 0 ? 'var(--odoo-text)' : 'var(--odoo-text-muted)' }}>{trimQty(received)}</td>
-                          <td style={{ textAlign: 'right', color: remaining > 0 ? '#b85d1a' : 'var(--odoo-text-muted)', fontWeight: remaining > 0 ? 600 : 400 }}>{remaining > 0 ? trimQty(remaining) : '—'}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
-                            {it.unit_price != null ? n(num(it.unit_price)) : <span style={{ color: '#b85d1a', fontWeight: 600, fontSize: '0.75rem' }}>à définir</span>}
-                            {poCur !== BASE_CURRENCY && it.foreign_unit_price != null && <div style={{ fontSize: '0.6875rem' }}>{n(num(it.foreign_unit_price))} {poCur}</div>}
+                          {/* L'unité varie d'une ligne à l'autre : elle reste dans la cellule « Commandé ». */}
+                          <td className="ds-num">{trimQty(ordered)} <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{unit}</span></td>
+                          <td className="ds-num" style={received > 0 ? undefined : { color: 'var(--ds-muted)' }}>{trimQty(received)}</td>
+                          <td className="ds-num" style={remaining > 0 ? { color: 'var(--ds-warning)', fontWeight: 600 } : { color: 'var(--ds-muted)' }}>{remaining > 0 ? trimQty(remaining) : '—'}</td>
+                          <td className="ds-num">
+                            {it.unit_price != null ? n(num(it.unit_price)) : <span style={{ color: 'var(--ds-warning)', fontWeight: 600, fontSize: 12 }}>à définir</span>}
+                            {poCur !== BASE_CURRENCY && it.foreign_unit_price != null && <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{n(num(it.foreign_unit_price))} {poCur}</div>}
                           </td>
-                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{it.unit_price != null ? n(ordered * num(it.unit_price)) : '—'}</td>
+                          <td className="ds-num ds-strong">{it.unit_price != null ? n(ordered * num(it.unit_price)) : '—'}</td>
                           <td>{(() => { const c = lineCheck(it); return <span className={`pur-check ${c.cls}`}>{c.label}</span>; })()}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ fontWeight: 700, borderTop: '2px solid var(--odoo-border)' }}>
+                    <tr style={{ fontWeight: 700 }}>
                       <td colSpan={5}>Total</td>
-                      <td style={{ textAlign: 'right' }}>{n(totalOrdered)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></td>
+                      <td className="ds-num">{n(totalOrdered)}</td>
                       <td />
                     </tr>
                   </tfoot>
                 </table>
+                </DataPanel>
               </div>
 
               {/* Colonne de droite */}
@@ -2224,8 +2180,8 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                   <div className="pur-supplier">
                     <span className="pur-supplier-logo">{initialsOf(String(po.supplier_name ?? '?'))}</span>
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <strong style={{ display: 'block', fontSize: '0.9375rem' }}>{po.supplier_name}</strong>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{[po.supplier_contact, po.supplier_phone].filter(Boolean).join(' · ') || 'contact non renseigné'}</span>
+                      <strong className="ds-strong" style={{ display: 'block', fontSize: 15 }}>{po.supplier_name}</strong>
+                      <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{[po.supplier_contact, po.supplier_phone].filter(Boolean).join(' · ') || 'contact non renseigné'}</span>
                     </span>
                     {standing && standing.standing !== 'new' && (
                       <span className={`kl-pill ${standing.standing === 'A' ? 'g' : standing.standing === 'B' ? 'b' : standing.standing === 'C' ? 'o' : 'r'}`} title={`Évaluation au ${standing.period_to}`}>{standing.standing}{standing.score != null ? ` · ${Math.round(Number(standing.score))}/100` : ''}</span>
@@ -2234,32 +2190,32 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                 </section>
 
                 <section style={card} aria-label="Dates">
-                  <h3 style={sectionTitle}>Dates</h3>
+                  <h3 className="ds-subhead">Dates</h3>
                   {[
                     { label: 'Commandé le', value: d(po.order_date) },
                     { label: 'Livraison prévue', value: d(po.expected_delivery_date), late: isLate },
                     { label: 'Livré le', value: d(po.delivery_date) },
                   ].map(x => (
-                    <span key={x.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
-                      <span style={{ color: 'var(--odoo-text-muted)' }}>{x.label}</span>
-                      <span style={{ color: x.late ? '#dc3545' : 'var(--odoo-text)', fontWeight: x.late ? 600 : 400 }}>{x.value ?? '—'}</span>
+                    <span key={x.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                      <span style={{ color: 'var(--ds-muted)' }}>{x.label}</span>
+                      <span style={x.late ? { color: 'var(--ds-danger)', fontWeight: 600 } : { color: 'var(--ds-ink)' }}>{x.value ?? '—'}</span>
                     </span>
                   ))}
                 </section>
 
                 <section style={card} aria-label="Factures liées">
-                  <h3 style={sectionTitle}>Factures</h3>
+                  <h3 className="ds-subhead">Factures</h3>
                   {invoices.length === 0 ? (
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Aucune facture rattachée.</span>
+                    <span style={{ fontSize: 14, color: 'var(--ds-muted)' }}>Aucune facture rattachée.</span>
                   ) : invoices.map(inv => (
-                    <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.8125rem' }}>
+                    <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 14 }}>
                       <span>
-                        <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{inv.supplier_invoice_number || inv.invoice_number}</span>
-                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}> · {d(inv.invoice_date)}</span>
+                        <span className="ds-ref">{inv.supplier_invoice_number || inv.invoice_number}</span>
+                        <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}> · {d(inv.invoice_date)}</span>
                       </span>
-                      <span style={{ color: num(inv.paid_amount) >= num(inv.total_amount) - 0.005 ? '#28a745' : '#b85d1a', fontSize: '0.75rem', fontWeight: 600 }}>
-                        {num(inv.paid_amount) >= num(inv.total_amount) - 0.005 ? 'réglée' : `reste ${n(num(inv.total_amount) - num(inv.paid_amount))}`}
-                      </span>
+                      {num(inv.paid_amount) >= num(inv.total_amount) - 0.005
+                        ? <StatusTag tone="done" label="Réglée" />
+                        : <StatusTag tone="todo" label={`Reste ${n(num(inv.total_amount) - num(inv.paid_amount))}`} />}
                     </div>
                   ))}
                 </section>
@@ -2267,7 +2223,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
             </div>
 
             <section aria-label="Historique" style={card}>
-              <h3 style={sectionTitle}>Historique</h3>
+              <h3 className="ds-subhead">Historique</h3>
               <DocumentActionsTimeline queryKey={['po-actions', poId]} fetcher={() => purchaseOrdersApi.actions(poId)} />
             </section>
           </div>
@@ -2286,6 +2242,7 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
   // Une clé par réception ouverte : une validation rejouée ne réceptionne pas deux fois (mig 307).
   const [deliveryIdemKey] = useState(newIdempotencyKey);
   const queryClient = useQueryClient();
+  const confirmDialog = useConfirm();
   const { data: po, isLoading } = useQuery({
     queryKey: ['purchase-orders', poId],
     queryFn: () => purchaseOrdersApi.getById(poId),
@@ -2347,9 +2304,8 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
 
   if (isLoading) return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="odoo-scope text-center" style={{ ...odooModalPanelStyle, padding: '2rem' }} onClick={(e) => e.stopPropagation()}>
-        <Loader2 className="animate-spin mx-auto mb-3" size={28} style={{ color: 'var(--odoo-text-muted)' }} />
-        <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Chargement...</p>
+      <div className="odoo-scope" style={{ ...odooModalPanelStyle, padding: '1rem 2rem' }} onClick={(e) => e.stopPropagation()}>
+        <LoadingState bare label="Chargement du bon de commande…" />
       </div>
     </ModalBackdrop>
   );
@@ -2368,7 +2324,7 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
   });
   const willCompletePO = naturallyComplete || forceComplete;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const deliveredItems = Object.entries(deliveries)
       .filter(([, qty]) => qty > 0)
       .map(([itemId, quantityDelivered]) => {
@@ -2394,12 +2350,13 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
     // fortement le N° de facture fournisseur — sinon le systeme retombera
     // sur un numero auto-genere (legacy, non recommande).
     if (willCompletePO && !supplierInvoiceNumber.trim()) {
-      const proceed = confirm(
+      const proceed = await confirmDialog(
         'Aucun N° de facture fournisseur saisi.\n\n' +
         'Cette réception va clôturer le BC et créer automatiquement la facture. ' +
         'Sans N° de facture fournisseur, le système générera un numéro interne ' +
         '(non recommandé — il vaut mieux saisir celui imprimé sur la facture papier).\n\n' +
-        'Continuer sans le numéro ?'
+        'Continuer sans le numéro ?',
+        { title: 'N° de facture fournisseur manquant', confirmLabel: 'Continuer sans le numéro' },
       );
       if (!proceed) return;
     }
@@ -2433,19 +2390,12 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50">
-      <div className="odoo-scope w-full h-full flex flex-col" style={{ backgroundColor: 'var(--odoo-bg)' }}>
-        {/* Header */}
-        <div className="shrink-0" style={odooModalHeaderStyle}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <PackageCheck size={18} style={{ color: '#fff' }} />
-              <div>
-                <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Confirmer la réception</h2>
-                <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>{po.order_number} — {po.supplier_name}</p>
-              </div>
-            </div>
-            <button onClick={onClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
-          </div>
+      <div className="odoo-scope w-full h-full flex flex-col" role="dialog" aria-label={`Réception du bon de commande ${po.order_number}`} style={{ backgroundColor: 'var(--ds-bg)' }}>
+        {/* En-tête : même barre que la fiche du BC (pas d'en-tête coloré) */}
+        <div className="odoo-control-bar shrink-0">
+          <Breadcrumb icon={PackageCheck} items={[{ label: 'Confirmer la réception' }, { label: `${po.order_number} — ${po.supplier_name}` }]} />
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
         </div>
 
         <div style={{ padding: '1.25rem' }} className="space-y-4 flex-1 overflow-y-auto">
@@ -2454,15 +2404,15 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
               perimetre. */}
           {!naturallyComplete && (
             <label className="flex items-start gap-3 cursor-pointer"
-              style={{ borderRadius: 4, padding: '0.75rem', border: `1px solid ${forceComplete ? '#f0b27a' : 'var(--odoo-border)'}`, backgroundColor: forceComplete ? '#fff3e6' : 'var(--odoo-bg-alt)' }}>
+              style={{ borderRadius: 8, padding: '0.75rem', border: `1px solid ${forceComplete ? 'var(--ds-warning)' : 'var(--ds-hair)'}`, backgroundColor: forceComplete ? 'var(--ds-warning-bg)' : 'var(--ds-card)' }}>
               <input type="checkbox" checked={forceComplete}
                 onChange={e => setForceComplete(e.target.checked)}
-                style={{ marginTop: 2, accentColor: '#e6892b' }} />
+                style={{ marginTop: 2, accentColor: 'var(--ds-warning)' }} />
               <div className="flex-1">
-                <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: forceComplete ? '#b85d1a' : 'var(--odoo-text)' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: forceComplete ? 'var(--ds-warning)' : 'var(--ds-ink)' }}>
                   Clôturer le BC : le fournisseur ne livrera pas le reste
                 </div>
-                <div style={{ fontSize: '0.6875rem', marginTop: 2, color: forceComplete ? '#b85d1a' : 'var(--odoo-text-muted)' }}>
+                <div style={{ fontSize: 12, marginTop: 2, color: forceComplete ? 'var(--ds-warning)' : 'var(--ds-muted)' }}>
                   Les lignes non livrées sont supprimées du BC, les lignes partielles sont alignées sur la quantité reçue. La facture est créée sur ce périmètre.
                 </div>
               </div>
@@ -2470,71 +2420,68 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
           )}
 
           {/* Facture fournisseur — N° et date imprimes sur le document papier */}
-          <div style={{ borderRadius: 4, padding: '1rem', border: `1px solid ${willCompletePO ? '#ffeeba' : 'var(--odoo-border)'}`, backgroundColor: willCompletePO ? '#fff8e8' : 'var(--odoo-bg-alt)' }}>
+          <div style={{ borderRadius: 8, padding: '1rem', border: `1px solid ${willCompletePO ? 'var(--ds-warning)' : 'var(--ds-hair)'}`, backgroundColor: willCompletePO ? 'var(--ds-warning-bg)' : 'var(--ds-card)' }}>
             <div className="flex items-start gap-2" style={{ marginBottom: 12 }}>
-              <FileText size={16} style={{ marginTop: 2, color: willCompletePO ? '#b8860b' : 'var(--odoo-text-muted)' }} />
+              <FileText size={16} aria-hidden="true" style={{ marginTop: 2, color: willCompletePO ? 'var(--ds-warning)' : 'var(--ds-muted)' }} />
               <div className="flex-1">
-                <h3 style={{ fontSize: '0.8125rem', fontWeight: 600, color: willCompletePO ? '#856404' : 'var(--odoo-text)' }}>
-                  Facture fournisseur
-                </h3>
-                <p style={{ fontSize: '0.6875rem', marginTop: 2, color: willCompletePO ? '#856404' : 'var(--odoo-text-muted)' }}>
+                <h3 className="ds-subhead">Facture fournisseur</h3>
+                <p style={{ fontSize: 12, margin: '2px 0 0', color: willCompletePO ? 'var(--ds-warning)' : 'var(--ds-muted)' }}>
                   {willCompletePO
                     ? 'Cette réception va clôturer le BC. Saisis le N° imprimé sur la facture papier du fournisseur (il sera utilisé tel quel, pas auto-généré).'
                     : 'Optionnel pour une livraison partielle. Tu pourras le saisir lors de la livraison finale.'}
                 </p>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label style={odooLabelStyle}>
-                  N° facture fournisseur {willCompletePO && <span style={{ color: '#b8860b' }}>*</span>}
-                </label>
-                <input type="text" value={supplierInvoiceNumber}
+            <div className="ds-form-grid">
+              <FormField label="N° de facture fournisseur" htmlFor="po-rcpt-inv-number" required={willCompletePO}>
+                <input id="po-rcpt-inv-number" type="text" className="ds-input" value={supplierInvoiceNumber}
                   onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
-                  placeholder="Ex: FAC-2026-12345" style={odooFieldStyle} />
-              </div>
-              <div>
-                <label style={odooLabelStyle}>Date de la facture</label>
-                <input type="date" value={supplierInvoiceDate}
-                  onChange={(e) => setSupplierInvoiceDate(e.target.value)} style={odooFieldStyle} />
-              </div>
+                  placeholder="Ex: FAC-2026-12345" />
+              </FormField>
+              <FormField label="Date de la facture" htmlFor="po-rcpt-inv-date">
+                <input id="po-rcpt-inv-date" type="date" className="ds-input" value={supplierInvoiceDate}
+                  onChange={(e) => setSupplierInvoiceDate(e.target.value)} />
+              </FormField>
             </div>
             {/* Frais annexes à la réception : intégrés au coût des articles reçus (frais d'approche, mig 361). */}
             {fees.length === 0 ? (
-              <button type="button" onClick={addFee}
-                style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--theme-accent)', fontWeight: 600 }}>
-                <Plus size={12} /> Frais annexes <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)' }}>(transport, douane, manutention… répartis sur les articles reçus)</span>
+              <button type="button" onClick={addFee} className="ds-btn-ghost ds-btn-sm" style={{ marginTop: 10, color: 'var(--ds-accent-ink)' }}>
+                <Plus size={12} aria-hidden="true" /> Frais annexes <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>(transport, douane, manutention… répartis sur les articles reçus)</span>
               </button>
             ) : (
-              <div style={{ marginTop: 10, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--odoo-bg-alt)' }}>
+              <div style={{ marginTop: 12, border: '1px solid var(--ds-hair)', borderRadius: 8, padding: '0.75rem', backgroundColor: 'var(--ds-card)' }}>
                 <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
-                  <strong style={{ fontSize: '0.8125rem' }}>Frais annexes de cette réception</strong>
-                  <span style={{ fontSize: '0.8125rem' }}>Total <strong>{feesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currencySymbol()}</strong></span>
+                  <h4 className="ds-subhead">Frais annexes de cette réception</h4>
+                  <span style={{ fontSize: 14 }}>Total <strong>{feesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currencySymbol()}</strong></span>
                 </div>
-                {fees.map(f => (
+                {fees.map((f, fi) => (
                   <div key={f.key} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end" style={{ marginBottom: 8 }}>
                     <div className="md:col-span-5">
-                      <label style={odooLabelStyle}>Désignation *</label>
-                      <input type="text" value={f.label} style={odooFieldStyle} placeholder="Ex : Transport, droits de douane"
-                        onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, label: e.target.value } : x))} />
+                      <FormField label="Désignation" htmlFor={`po-rcpt-fee-label-${f.key}`} required>
+                        <input id={`po-rcpt-fee-label-${f.key}`} type="text" className="ds-input" value={f.label} placeholder="Ex : Transport, droits de douane"
+                          onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, label: e.target.value } : x))} />
+                      </FormField>
                     </div>
                     <div className="md:col-span-4">
-                      <label style={odooLabelStyle}>Catégorie de charge</label>
-                      <SearchSelect options={feeCategoryOptions} value={f.categoryId} width="100%"
-                        onChange={id => setFees(fs => fs.map(x => x.key === f.key ? { ...x, categoryId: id } : x))} placeholder="Transport, livraison…" />
+                      <FormField label="Catégorie de charge">
+                        <SearchSelect options={feeCategoryOptions} value={f.categoryId} width="100%"
+                          onChange={id => setFees(fs => fs.map(x => x.key === f.key ? { ...x, categoryId: id } : x))} placeholder="Transport, livraison…" />
+                      </FormField>
                     </div>
                     <div className="md:col-span-2">
-                      <label style={odooLabelStyle}>Montant HT ({currencySymbol()})</label>
-                      <input type="number" min={0} step="0.01" value={f.amount} style={odooNumFieldStyle}
-                        onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, amount: e.target.value } : x))} />
+                      <FormField label={`Montant HT (${currencySymbol()})`} htmlFor={`po-rcpt-fee-amount-${f.key}`}>
+                        <input id={`po-rcpt-fee-amount-${f.key}`} type="number" min={0} step="0.01" className="ds-input ds-num" value={f.amount}
+                          onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, amount: e.target.value } : x))} />
+                      </FormField>
                     </div>
-                    <div className="md:col-span-1">
-                      <button type="button" onClick={() => setFees(fs => fs.filter(x => x.key !== f.key))} className="odoo-btn-secondary w-full" style={{ justifyContent: 'center' }} title="Retirer"><X size={14} /></button>
+                    <div className="md:col-span-1" style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: 4 }}>
+                      <button type="button" onClick={() => setFees(fs => fs.filter(x => x.key !== f.key))} className="ds-icon-btn"
+                        title="Retirer ce frais" aria-label={`Retirer le frais ${f.label.trim() || fi + 1}`}><X size={16} /></button>
                     </div>
                   </div>
                 ))}
-                <button type="button" onClick={addFee} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--theme-accent)', fontWeight: 600 }}><Plus size={12} /> Autre frais</button>
-                <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 8 }}>
+                <button type="button" onClick={addFee} className="ds-btn-ghost ds-btn-sm" style={{ color: 'var(--ds-accent-ink)' }}><Plus size={12} aria-hidden="true" /> Autre frais</button>
+                <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: '8px 0 0' }}>
                   Répartis au prorata de la valeur sur les articles reçus et ajoutés à leur coût (lot et coût standard) dès la réception : c'est le coût rendu.
                   La facture du transporteur se saisit à part dans Factures reçues ; elle reste une charge en comptabilité. Détail dans Achats › Frais d'approche.
                 </p>
@@ -2542,33 +2489,29 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
             )}
           </div>
 
-          {/* Fill all button */}
-          <div className="flex justify-between items-center">
-            <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-              Saisissez les quantités reçues pour chaque article
-              <span style={{ marginLeft: 6, fontSize: '0.6875rem' }}>· pour les articles au poids, <Scale size={11} style={{ display: 'inline', verticalAlign: '-1px' }} /> ajoute une pesée de contrôle.</span>
-            </p>
-            <button onClick={fillAll} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <CheckCircle2 size={14} /> Tout reçu
+          {/* Articles à réceptionner */}
+          <SectionHeader title="Articles reçus"
+            note={<>Saisissez les quantités reçues pour chaque article · pour les articles au poids, <Scale size={11} aria-hidden="true" style={{ display: 'inline', verticalAlign: '-1px' }} /> ajoute une pesée de contrôle.</>}>
+            <button type="button" onClick={fillAll} className="odoo-btn-secondary ds-btn-sm">
+              <CheckCircle2 size={14} aria-hidden="true" /> Tout reçu
             </button>
-          </div>
+          </SectionHeader>
 
-          {/* Items */}
-          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
+          <DataPanel label="Articles à réceptionner">
             <table className="odoo-table" style={{ minWidth: 1180 }}>
               <thead>
                 <tr>
                   <th>Article</th>
-                  <th style={{ textAlign: 'right' }}>Commandé</th>
-                  <th style={{ textAlign: 'right' }}>Déjà reçu</th>
-                  <th style={{ textAlign: 'right' }}>Restant</th>
-                  <th style={{ textAlign: 'center', width: 170 }}>Contenants</th>
-                  <th style={{ textAlign: 'right', width: 110 }}>Qté reçue</th>
-                  <th style={{ textAlign: 'right', width: 96 }}>Prix U.</th>
-                  <th style={{ textAlign: 'right', width: 96 }}>Total</th>
-                  <th style={{ textAlign: 'center', width: 96 }}>Ref. lot</th>
-                  <th style={{ textAlign: 'center', width: 128 }}>DLC</th>
-                  <th style={{ textAlign: 'center', width: 128 }}>Date prod.</th>
+                  <th className="ds-num">Commandé</th>
+                  <th className="ds-num">Déjà reçu</th>
+                  <th className="ds-num">Restant</th>
+                  <th style={{ width: 190 }}>Contenants</th>
+                  <th className="ds-num" style={{ width: 130 }}>Quantité reçue</th>
+                  <th className="ds-num" style={{ width: 120 }}>Prix unitaire ({currencySymbol()})</th>
+                  <th className="ds-num" style={{ width: 110 }}>Total HT ({currencySymbol()})</th>
+                  <th style={{ width: 110 }}>Réf. lot</th>
+                  <th style={{ width: 140 }}>DLC</th>
+                  <th style={{ width: 140 }}>Date de production</th>
                 </tr>
               </thead>
               <tbody>
@@ -2579,38 +2522,39 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                   const isComplete = remaining <= 0;
                   return (
                     <Fragment key={item.id}>
-                    <tr style={isComplete ? { backgroundColor: '#f0fbf3' } : undefined}>
+                    <tr style={isComplete ? { backgroundColor: 'var(--ds-success-bg)' } : undefined}>
                       <td>
-                        <span style={{ fontWeight: 500, color: isComplete ? '#28a745' : 'var(--odoo-text)' }}>
+                        <span className="ds-strong" style={isComplete ? { color: 'var(--ds-success)' } : undefined}>
                           {item.ingredient_name}
                         </span>
-                        {!isFreeLine(item.kind) && <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.ingredient_unit})</span>}
+                        {!isFreeLine(item.kind) && <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 4 }}>({item.ingredient_unit})</span>}
                         {!isComplete && !isFreeLine(item.kind) && isWeighable(item.ingredient_unit) && (() => {
                           const w = weights[item.id]; const hasW = !!(w?.gross || w?.tare);
                           return (
                             <button type="button" onClick={() => setWeighFor(item.id)}
                               title="Pesée de contrôle (brut / tare / net)"
-                              className={hasW ? 'odoo-btn-primary' : 'odoo-pager-btn'}
-                              style={{ marginLeft: 6, padding: '1px 5px', verticalAlign: 'middle' }}>
-                              <Scale size={12} />
+                              aria-label={`Pesée de contrôle de ${item.ingredient_name}${hasW ? ' (saisie)' : ''}`}
+                              className="ds-icon-btn"
+                              style={{ marginLeft: 4, ...(hasW ? { color: 'var(--ds-accent-ink)', background: 'var(--ds-tint)' } : {}) }}>
+                              <Scale size={14} />
                             </button>
                           );
                         })()}
                         <LineKindTag kind={item.kind} />
                         {isFreeLine(item.kind) && (
-                          <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+                          <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)' }}>
                             {item.kind === 'asset' ? 'Réception = mise en service · fiche d\'immobilisation créée' : 'Réception = service rendu · pas de stock'}
                           </span>
                         )}
                       </td>
-                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{ordered}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <span style={{ color: alreadyDelivered > 0 ? '#28a745' : 'var(--odoo-text-muted)', fontWeight: alreadyDelivered > 0 ? 500 : 400 }}>{alreadyDelivered}</span>
+                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{ordered}</td>
+                      <td className="ds-num">
+                        <span style={alreadyDelivered > 0 ? { color: 'var(--ds-success)', fontWeight: 600 } : { color: 'var(--ds-muted)' }}>{alreadyDelivered}</span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="ds-num">
                         {isComplete
-                          ? <span style={{ color: '#28a745', fontWeight: 500 }} className="flex items-center justify-end gap-1"><CheckCircle2 size={14} /> Complet</span>
-                          : <span style={{ fontWeight: 600 }}>{remaining}</span>}
+                          ? <StatusTag tone="done" label="Complet" />
+                          : <span className="ds-strong">{remaining}</span>}
                       </td>
                       {(() => {
                         const size = item.container_size != null ? parseFloat(item.container_size) : 0;
@@ -2625,12 +2569,13 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                         return (
                           <>
                             {/* Contenants : nombre saisi + rappel de la contenance unitaire. */}
-                            <td style={{ textAlign: 'center' }}>
+                            <td>
                               {isComplete ? (
-                                <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>
+                                <span style={{ color: 'var(--ds-muted)' }}>—</span>
                               ) : hasContainer ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                                  <input type="number" min={0} step={1}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <input type="number" min={0} step={1} className="ds-input sm ds-num"
+                                    aria-label={`Nombre de contenants reçus — ${item.ingredient_name}`}
                                     value={containerCounts[item.id] ?? ''}
                                     onChange={(e) => {
                                       const raw = e.target.value;
@@ -2638,77 +2583,81 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                                       const c = parseInt(raw, 10);
                                       setDeliveries({ ...deliveries, [item.id]: Number.isFinite(c) && c > 0 ? c * size : 0 });
                                     }}
-                                    style={{ ...odooNumFieldStyle, width: 56, backgroundColor: '#fff8e8', textAlign: 'center' }}
+                                    style={{ width: 64 }}
                                     placeholder="0" />
-                                  <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>
+                                  <span style={{ fontSize: 12, color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
                                     {typeLabel} × {size} {unit}
                                   </span>
                                 </div>
                               ) : (
-                                <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>
+                                <span style={{ color: 'var(--ds-muted)' }}>—</span>
                               )}
                             </td>
                             {/* Qté reçue : total en unité de base (auto depuis les contenants, ajustable). */}
-                            <td>
+                            <td className="ds-num">
                               {!isComplete ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-                                  <input type="number" min={0} max={remaining} step="0.01"
+                                  <input type="number" min={0} max={remaining} step="0.01" className="ds-input sm ds-num"
+                                    aria-label={`Quantité reçue — ${item.ingredient_name}`}
                                     value={deliveries[item.id] ?? ''}
                                     onChange={(e) => setDeliveries({ ...deliveries, [item.id]: parseFloat(e.target.value) || 0 })}
-                                    style={{ ...odooNumFieldStyle, width: 80, backgroundColor: '#fff8e8' }}
+                                    style={{ width: 88 }}
                                     placeholder="0"
                                     title={hasContainer ? `Total en ${unit} (calculé depuis les contenants, ajustable si contenant entamé)` : undefined} />
-                                  <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', minWidth: 16 }}>{unit}</span>
+                                  <span style={{ fontSize: 12, color: 'var(--ds-muted)', minWidth: 16 }}>{unit}</span>
                                 </div>
-                              ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'right' }}>—</span>}
+                              ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                             </td>
                           </>
                         );
                       })()}
-                      <td>
+                      <td className="ds-num">
                         {!isComplete ? (
-                          <input type="number" min={0} step="0.01"
+                          <input type="number" min={0} step="0.01" className="ds-input sm ds-num"
+                            aria-label={`Prix unitaire — ${item.ingredient_name}`}
                             value={prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : '')}
                             onChange={(e) => setPrices({ ...prices, [item.id]: parseFloat(e.target.value) || 0 })}
-                            style={odooNumFieldStyle} placeholder="Prix" />
-                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'right' }}>—</span>}
+                            placeholder="Prix" />
+                        ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="ds-num">
                         {(() => {
                           const qty = deliveries[item.id] || 0;
                           const price = prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : 0);
                           const lineTotal = qty * price;
                           return lineTotal > 0
-                            ? <span style={{ fontWeight: 600 }}>{n(lineTotal)}</span>
-                            : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>;
+                            ? <span className="ds-strong">{n(lineTotal)}</span>
+                            : <span style={{ color: 'var(--ds-muted)' }}>—</span>;
                         })()}
                       </td>
                       <td>
                         {!isComplete && !isFreeLine(item.kind) ? (
-                          <input type="text"
+                          <input type="text" className="ds-input sm"
+                            aria-label={`Référence du lot fournisseur — ${item.ingredient_name}`}
                             value={lotInfo[item.id]?.supplierLotNumber ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], supplierLotNumber: e.target.value } })}
-                            style={{ ...odooFieldStyle, fontSize: '0.75rem', ...((item.requires_lot || item.requires_qc) && !lotInfo[item.id]?.supplierLotNumber ? { borderColor: '#d97706' } : {}) }}
+                            style={(item.requires_lot || item.requires_qc) && !lotInfo[item.id]?.supplierLotNumber ? { borderColor: 'var(--ds-warning)' } : undefined}
                             placeholder={(item.requires_lot || item.requires_qc) ? 'Lot *' : 'Lot'} title={item.requires_qc ? 'Lot fournisseur OBLIGATOIRE (article sous contrôle qualité)' : item.requires_lot ? 'Lot fournisseur exigé pour cet article' : undefined} />
-                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
+                        ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
                       <td>
                         {!isComplete && !isFreeLine(item.kind) ? (
-                          <input type="date"
+                          <input type="date" className="ds-input sm"
+                            aria-label={`DLC — ${item.ingredient_name}`}
                             value={lotInfo[item.id]?.expirationDate ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], expirationDate: e.target.value } })}
                             min={new Date().toISOString().slice(0, 10)}
                             title={item.requires_dlc ? 'DLC exigée pour cet article' : undefined}
-                            style={{ ...odooFieldStyle, fontSize: '0.75rem', ...(item.requires_dlc && !lotInfo[item.id]?.expirationDate ? { borderColor: '#d97706' } : {}) }} />
-                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
+                            style={item.requires_dlc && !lotInfo[item.id]?.expirationDate ? { borderColor: 'var(--ds-warning)' } : undefined} />
+                        ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
                       <td>
                         {!isComplete && !isFreeLine(item.kind) ? (
-                          <input type="date"
+                          <input type="date" className="ds-input sm"
+                            aria-label={`Date de production — ${item.ingredient_name}`}
                             value={lotInfo[item.id]?.manufacturedDate ?? ''}
-                            onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], manufacturedDate: e.target.value } })}
-                            style={{ ...odooFieldStyle, fontSize: '0.75rem' }} />
-                        ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
+                            onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], manufacturedDate: e.target.value } })} />
+                        ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
                     </tr>
                     </Fragment>
@@ -2716,17 +2665,17 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                 })}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
 
           {/* Summary of what's being received */}
           {totalDelivering > 0 && (
             <div className="flex items-center justify-between"
-              style={{ backgroundColor: 'var(--theme-accent-light, rgba(0,0,0,0.04))', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '0.625rem 0.875rem' }}>
-              <span style={{ fontSize: '0.8125rem', color: 'var(--theme-accent)', fontWeight: 600 }} className="flex items-center gap-1.5">
-                <ArrowRight size={14} />
+              style={{ backgroundColor: 'var(--ds-tint)', borderRadius: 8, padding: '0.625rem 0.875rem' }}>
+              <span style={{ fontSize: 14, color: 'var(--ds-accent-ink)', fontWeight: 600 }} className="flex items-center gap-1.5">
+                <ArrowRight size={14} aria-hidden="true" />
                 Valeur de cette réception
               </span>
-              <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{money(totalDelivering)}</span>
+              <span style={{ fontWeight: 700, color: 'var(--ds-accent-ink)' }}>{money(totalDelivering)}</span>
             </div>
           )}
         </div>
@@ -2747,22 +2696,26 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
           const u = item.ingredient_unit;
           return (
             <ModalBackdrop onClose={() => setWeighFor(null)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-              <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: 'var(--odoo-bg)', borderRadius: 8, boxShadow: '0 12px 40px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+              <div className="odoo-scope" onClick={e => e.stopPropagation()} role="dialog" aria-label={`Pesée de contrôle de ${item.ingredient_name}`} style={{ width: '100%', maxWidth: 420, background: 'var(--odoo-bg)', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
                 <div className="odoo-control-bar">
-                  <div className="odoo-breadcrumb"><Scale size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">Pesée · {item.ingredient_name}</span></div>
+                  <Breadcrumb icon={Scale} items={[{ label: 'Pesée de contrôle' }, { label: item.ingredient_name }]} />
                   <div style={{ flex: 1 }} />
-                  <button type="button" className="odoo-pager-btn" onClick={() => setWeighFor(null)} aria-label="Fermer"><X size={14} /></button>
+                  <button type="button" className="ds-icon-btn" onClick={() => setWeighFor(null)} aria-label="Fermer"><X size={16} /></button>
                 </div>
                 <div style={{ padding: 16, display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <label style={odooLabelStyle}>Brut ({u})<input type="number" min={0} step="0.001" value={w.gross ?? ''} onChange={e => setW({ gross: e.target.value })} style={odooNumFieldStyle} autoFocus /></label>
-                    <label style={odooLabelStyle}>Tare ({u})<input type="number" min={0} step="0.001" value={w.tare ?? ''} onChange={e => setW({ tare: e.target.value })} style={odooNumFieldStyle} /></label>
+                  <div className="ds-form-grid">
+                    <FormField label={`Brut (${u})`} htmlFor="po-rcpt-weigh-gross">
+                      <input id="po-rcpt-weigh-gross" type="number" min={0} step="0.001" className="ds-input ds-num" value={w.gross ?? ''} onChange={e => setW({ gross: e.target.value })} autoFocus />
+                    </FormField>
+                    <FormField label={`Tare (${u})`} htmlFor="po-rcpt-weigh-tare">
+                      <input id="po-rcpt-weigh-tare" type="number" min={0} step="0.001" className="ds-input ds-num" value={w.tare ?? ''} onChange={e => setW({ tare: e.target.value })} />
+                    </FormField>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.8125rem', flexWrap: 'wrap', gap: 6 }}>
-                    <span>Net <strong>{net != null ? net.toLocaleString('fr-FR', { maximumFractionDigits: 3 }) : '—'}</strong> {u} <span style={{ color: 'var(--odoo-text-muted)' }}>· reçu {qty.toLocaleString('fr-FR')} {u}</span></span>
-                    {ecart != null && <span style={{ color: bad ? '#dc3545' : '#28a745', fontWeight: 600 }}>Écart {ecart > 0 ? '+' : ''}{ecart.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {u}</span>}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 14, flexWrap: 'wrap', gap: 6 }}>
+                    <span>Net <strong>{net != null ? net.toLocaleString('fr-FR', { maximumFractionDigits: 3 }) : '—'}</strong> {u} <span style={{ color: 'var(--ds-muted)' }}>· reçu {qty.toLocaleString('fr-FR')} {u}</span></span>
+                    {ecart != null && <span style={{ color: bad ? 'var(--ds-danger)' : 'var(--ds-success)', fontWeight: 600 }}>Écart {ecart > 0 ? '+' : ''}{ecart.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {u}</span>}
                   </div>
-                  {bad && <div style={{ fontSize: '0.75rem', color: '#dc3545' }}>Écart significatif (&gt; 2 %) — à vérifier avec le fournisseur.</div>}
+                  {bad && <Alert tone="danger" icon={AlertTriangle}>Écart significatif (&gt; 2 %) — à vérifier avec le fournisseur.</Alert>}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     <button type="button" className="odoo-btn-secondary" onClick={() => { setWeights(s => { const n = { ...s }; delete n[id]; return n; }); setWeighFor(null); }}>Effacer</button>
                     <button type="button" className="odoo-btn-primary" onClick={() => setWeighFor(null)}>OK</button>
@@ -2773,15 +2726,10 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
           );
         })()}
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2 shrink-0"
-          style={{ borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem', backgroundColor: 'var(--odoo-bg)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={handleSubmit} disabled={confirmMutation.isPending}
-            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {confirmMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={16} />}
-            {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer la réception'}
-          </button>
+        {/* Pied : Annuler puis l'action principale, désactivés pendant l'envoi */}
+        <div className="shrink-0" style={{ backgroundColor: 'var(--odoo-bg)' }}>
+          <FormFooter onCancel={onClose} onSubmit={() => { void handleSubmit(); }} busy={confirmMutation.isPending}
+            submitLabel={confirmMutation.isPending ? 'Confirmation…' : 'Confirmer la réception'} />
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, CalendarClock, CheckCircle2, FileText, ChevronRight, ChevronDown } from 'lucide-react';
 import { invoicesApi } from '../api/accounting.api';
+import { Alert, EmptyState, LoadingState } from './ds';
 
 const PAYMENT_MODE_LABELS: Record<string, string> = {
   cash: 'Espèces', check: 'Chèque', transfer: 'Virement', traite: 'Traite',
@@ -97,17 +98,13 @@ export default function PaymentAlertsWidget({
   if (isLoading) {
     if (hideWhenEmpty) return null;
     return (
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 text-xs text-gray-400">
-        Chargement des échéances…
-      </div>
+      <LoadingState label="Chargement des échéances…" />
     );
   }
   if (isError) {
     if (hideWhenEmpty) return null;
     return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-2xl px-4 py-3 text-xs text-yellow-700">
-        Suivi des échéances indisponible (le serveur n'est peut-être pas à jour ; relance-le après la migration 137).
-      </div>
+      <Alert tone="warning">Le suivi des échéances est indisponible pour le moment. Réessayez dans un instant.</Alert>
     );
   }
 
@@ -122,34 +119,19 @@ export default function PaymentAlertsWidget({
   if (count === 0) {
     if (hideWhenEmpty) return null;
     return (
-      <div className="bg-white rounded-2xl border border-emerald-100 shadow-sm px-4 py-3 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-sm">
-          <CheckCircle2 size={16} className="text-white" />
-        </div>
-        <div>
-          <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-            Échéances fournisseurs (≤ {days} jours)
-          </p>
-          <p className="text-[11px] text-emerald-600">
-            Aucune facture à honorer ni chèque à encaisser dans la fenêtre.
-          </p>
-        </div>
-      </div>
+      <EmptyState icon={CheckCircle2} title={`Échéances fournisseurs (${days} jours)`}
+        text="Aucune facture à honorer ni chèque à encaisser dans la fenêtre." />
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden">
-      <div className="px-4 py-3 bg-gradient-to-r from-red-50 to-orange-50 border-b border-red-100 flex items-center justify-between">
+    <section className="ds-panel" aria-label="Échéances fournisseurs">
+      <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid var(--ds-sep)' }}>
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-sm">
-            <CalendarClock size={16} className="text-white" />
-          </div>
+          <CalendarClock size={18} aria-hidden="true" style={{ color: overdueCount > 0 ? 'var(--ds-danger)' : 'var(--ds-warning)', flex: 'none' }} />
           <div>
-            <p className="text-xs font-bold text-red-800 uppercase tracking-wider">
-              Échéances fournisseurs (≤ {days} jours)
-            </p>
-            <p className="text-[11px] text-red-600">
+            <h3 className="ds-subhead">Échéances fournisseurs ({days} jours)</h3>
+            <p style={{ margin: 0, fontSize: 12, color: overdueCount > 0 ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>
               {invoiceCount > 0 && `${invoiceCount} facture${invoiceCount > 1 ? 's' : ''} à honorer`}
               {invoiceCount > 0 && scheduleCount > 0 && ' · '}
               {scheduleCount > 0 && `${scheduleCount} échéance${scheduleCount > 1 ? 's' : ''} (crédits/charges fixes)`}
@@ -160,8 +142,7 @@ export default function PaymentAlertsWidget({
             </p>
           </div>
         </div>
-        <button onClick={() => navigate('/purchasing')}
-          className="text-[11px] font-semibold text-red-700 hover:text-red-900 underline">
+        <button type="button" onClick={() => navigate('/purchasing')} className="odoo-btn-secondary ds-btn-sm">
           Voir tout
         </button>
       </div>
@@ -180,26 +161,26 @@ export default function PaymentAlertsWidget({
                   className="px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50 cursor-pointer"
                   title={isExpanded ? 'Replier les factures' : 'Lister les factures'}>
                   {isExpanded
-                    ? <ChevronDown size={14} className="text-red-500 shrink-0" />
-                    : <ChevronRight size={14} className="text-red-500 shrink-0" />}
+                    ? <ChevronDown size={14} aria-hidden="true" className="shrink-0" style={{ color: 'var(--ds-muted)' }} />
+                    : <ChevronRight size={14} aria-hidden="true" className="shrink-0" style={{ color: 'var(--ds-muted)' }} />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-mono font-semibold text-gray-800">{title}</span>
-                      <span className="text-xs text-gray-500 truncate">
+                      <span className="ds-ref">{title}</span>
+                      <span className="text-xs truncate" style={{ color: 'var(--ds-muted)' }}>
                         — {(a.supplier_name as string) || 'Fournisseur ?'} ({it.rows.length} factures)
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                    <div className="flex items-center gap-2 text-xs mt-0.5" style={{ color: 'var(--ds-muted)' }}>
                       <span>Encaissement : {a.due_date ? new Date(a.due_date as string).toLocaleDateString('fr-FR') : '—'}</span>
                       <span>·</span>
-                      <span className={isOverdue ? 'text-red-600 font-semibold' : 'text-orange-600'}>
+                      <span style={{ color: isOverdue ? 'var(--ds-danger)' : 'var(--ds-warning)', fontWeight: 600 }}>
                         {isOverdue ? `encaissable depuis ${Math.abs(days)}j` : days === 0 ? "Aujourd'hui" : `dans ${days}j`}
                       </span>
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-red-700">{it.total.toFixed(2)} <span className="text-[10px] font-normal text-gray-400">{currencySymbol()}</span></p>
-                    <p className="text-[10px] text-gray-400">À encaisser</p>
+                    <p className="text-sm font-bold" style={{ color: 'var(--ds-ink)', fontVariantNumeric: 'tabular-nums' }}>{it.total.toFixed(2)} <span className="text-xs font-normal" style={{ color: 'var(--ds-muted)' }}>{currencySymbol()}</span></p>
+                    <p className="text-xs" style={{ color: 'var(--ds-muted)' }}>À encaisser</p>
                   </div>
                 </div>
                 {isExpanded && it.rows.map(r => (
@@ -207,12 +188,12 @@ export default function PaymentAlertsWidget({
                     onClick={() => navigate('/accounting?tab=cheques')}
                     className="pl-11 pr-4 py-2 flex items-center gap-3 bg-gray-50/60 hover:bg-gray-100 cursor-pointer">
                     <div className="flex-1 min-w-0">
-                      <span className="text-xs text-gray-600">
-                        Facture <span className="font-mono font-semibold text-gray-800">{(r.invoice_number as string) || '—'}</span>
+                      <span className="text-xs" style={{ color: 'var(--ds-muted)' }}>
+                        Facture <span className="ds-ref">{(r.invoice_number as string) || '—'}</span>
                       </span>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs font-semibold text-red-700">{parseFloat((r.remaining_amount as string) || '0').toFixed(2)} <span className="text-[10px] font-normal text-gray-400">{currencySymbol()}</span></p>
+                      <p className="text-xs font-semibold" style={{ color: 'var(--ds-ink)', fontVariantNumeric: 'tabular-nums' }}>{parseFloat((r.remaining_amount as string) || '0').toFixed(2)} <span className="text-xs font-normal" style={{ color: 'var(--ds-muted)' }}>{currencySymbol()}</span></p>
                     </div>
                   </div>
                 ))}
@@ -238,21 +219,21 @@ export default function PaymentAlertsWidget({
               onClick={() => navigate(isCheck ? '/accounting?tab=cheques' : isSchedule ? '/accounting?tab=dettes' : '/purchasing')}
               className="px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50 cursor-pointer">
               {isCheck
-                ? <FileText size={14} className={isOverdue ? 'text-red-600' : 'text-amber-500'} />
-                : <AlertTriangle size={14} className={isOverdue ? 'text-red-600' : 'text-orange-500'} />}
+                ? <FileText size={14} aria-hidden="true" style={{ color: isOverdue ? 'var(--ds-danger)' : 'var(--ds-warning)' }} />
+                : <AlertTriangle size={14} aria-hidden="true" style={{ color: isOverdue ? 'var(--ds-danger)' : 'var(--ds-warning)' }} />}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-mono font-semibold text-gray-800">{title}</span>
-                  <span className="text-xs text-gray-500 truncate">
+                  <span className="ds-ref">{title}</span>
+                  <span className="text-xs truncate" style={{ color: 'var(--ds-muted)' }}>
                     — {(a.supplier_name as string) || (isSchedule ? SCHEDULE_HINT : 'Fournisseur ?')}
                     {isCheck && a.invoice_number ? ` (fact. ${a.invoice_number as string})` : ''}
                     {isSchedule && a.invoice_number ? ` (fact. ${a.invoice_number as string})` : ''}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                <div className="flex items-center gap-2 text-xs mt-0.5" style={{ color: 'var(--ds-muted)' }}>
                   <span>{isCheck ? 'Encaissement' : 'Échéance'} : {a.due_date ? new Date(a.due_date as string).toLocaleDateString('fr-FR') : '—'}</span>
                   <span>·</span>
-                  <span className={isOverdue ? 'text-red-600 font-semibold' : 'text-orange-600'}>
+                  <span style={{ color: isOverdue ? 'var(--ds-danger)' : 'var(--ds-warning)', fontWeight: 600 }}>
                     {isOverdue
                       ? (isCheck ? `encaissable depuis ${Math.abs(days)}j` : `${Math.abs(days)}j de retard`)
                       : days === 0 ? "Aujourd'hui" : `dans ${days}j`}
@@ -266,18 +247,18 @@ export default function PaymentAlertsWidget({
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <p className="text-sm font-bold text-red-700">{remaining.toFixed(2)} <span className="text-[10px] font-normal text-gray-400">{currencySymbol()}</span></p>
-                <p className="text-[10px] text-gray-400">{STATUS_LABELS[a.status as string] || (a.status as string)}</p>
+                <p className="text-sm font-bold" style={{ color: 'var(--ds-ink)', fontVariantNumeric: 'tabular-nums' }}>{remaining.toFixed(2)} <span className="text-xs font-normal" style={{ color: 'var(--ds-muted)' }}>{currencySymbol()}</span></p>
+                <p className="text-xs" style={{ color: 'var(--ds-muted)' }}>{STATUS_LABELS[a.status as string] || (a.status as string)}</p>
               </div>
             </div>
           );
         })}
         {compact && items.length > 8 && (
-          <div className="px-4 py-2 text-center text-[11px] text-gray-400">
+          <div className="px-4 py-2 text-center text-xs" style={{ color: 'var(--ds-muted)' }}>
             … {items.length - 8} échéance{items.length - 8 > 1 ? 's' : ''} supplémentaire{items.length - 8 > 1 ? 's' : ''}
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

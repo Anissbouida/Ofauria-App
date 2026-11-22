@@ -2,8 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, X, Download, Loader2, Notebook, Lock, FileText, Calendar, ChevronLeft, ChevronRight, ChevronDown, Eye, Wand2,
-  CheckCircle2, AlertTriangle, Filter, Plus, PenLine, Trash2, RotateCcw,
+  X, Download, Loader2, Notebook, Lock, FileText, Eye, Wand2, CheckCircle2, AlertTriangle, Filter, Plus, PenLine, Trash2, RotateCcw,
 } from 'lucide-react';
 import { journalEntriesApi, journalsApi, reconciliationApi, ledgerBackfillApi, manualEntriesApi, type JournalEntryDetailEx } from '../../api/ledger.api';
 import ManualEntryEditor from './ManualEntryEditor';
@@ -13,10 +12,13 @@ import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
-import type { JournalEntryStatus, JournalEntrySummary, JournalEntryDetail } from '@ofauria/shared';
+import { PeriodFilter, SelectFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
+import type { JournalEntryStatus, JournalEntrySummary } from '@ofauria/shared';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
+import { EmptyState, KpiCard, KpiGrid, LoadingState, DataPanel, TableFooter, NoResultState, SearchBar, Toolbar } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -49,29 +51,12 @@ const STATUS_LABELS: Record<JournalEntryStatus, string> = {
   reversed: 'Extournee',
 };
 
-const STATUS_COLORS: Record<JournalEntryStatus, { bg: string; color: string }> = {
-  draft:    { bg: '#FAEEDA', color: '#633806' },
-  posted:   { bg: '#E1F5EE', color: '#085041' },
-  reversed: { bg: '#F1EFE8', color: '#444441' },
-};
 
-const JOURNAL_COLORS: Record<string, { bg: string; color: string }> = {
-  AC: { bg: '#FAECE7', color: '#712B13' },
-  VE: { bg: '#E1F5EE', color: '#085041' },
-  BQ: { bg: '#E6F1FB', color: '#0C447C' },
-  CA: { bg: '#EEEDFE', color: '#3C3489' },
-  OD: { bg: '#F1EFE8', color: '#444441' },
-};
 
-/** Statut d'une écriture : point de couleur + texte (même convention que les autres listes). */
-const STATUS_DOT: Record<JournalEntryStatus, string> = { draft: '#d9822b', posted: '#28a745', reversed: '#adb5bd' };
+/** Statut d'une écriture : étiquette commune (couleur + libellé), comme dans les autres listes. */
+const STATUS_TONE: Record<JournalEntryStatus, StatusTone> = { draft: 'draft', posted: 'done', reversed: 'cancelled' };
 function StatusDot({ status }: { status: JournalEntryStatus }) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem' }}>
-      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: STATUS_DOT[status] }} />
-      {STATUS_LABELS[status]}
-    </span>
-  );
+  return <StatusTag tone={STATUS_TONE[status]} label={STATUS_LABELS[status]} />;
 }
 
 export default function EcrituresTab() {
@@ -86,6 +71,7 @@ export default function EcrituresTab() {
   const startDate = range.dateFrom ?? '';
   const endDate = range.dateTo ?? '';
   const [page, setPage] = useState(1);
+  const confirm = useConfirm();
   useEffect(() => { setPage(1); }, [period, customFrom, customTo]);
   const [viewing, setViewing] = useState<string | null>(null);
   // Saisie libre (mig 418) : null = fermé ; draft = brouillon à reprendre.
@@ -168,12 +154,7 @@ export default function EcrituresTab() {
   // Garde non-admin — apres tous les hooks (regle des hooks React)
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>
-          Le journal des ecritures est reserve a l'administrateur ou au gerant.
-        </p>
-      </div>
+      <EmptyState icon={Lock} title="Le journal des écritures est réservé à l'administrateur ou au gérant." />
     );
   }
 
@@ -194,8 +175,7 @@ export default function EcrituresTab() {
               )}
               {reconciliation.summary.missing_entries > 0 && (
                 <button type="button" className="odoo-btn-primary" disabled={backfill.isPending}
-                  onClick={() => { if (window.confirm('Générer les écritures manquantes depuis l\'historique ? Opération idempotente.')) backfill.mutate(); }}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  onClick={async () => { if (await confirm('Générer les écritures manquantes depuis l\'historique ? L\'opération peut être relancée sans risque de doublon.', { title: 'Générer les écritures', confirmLabel: 'Générer' })) backfill.mutate(); }}>
                   {backfill.isPending ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} Générer les écritures
                 </button>
               )}
@@ -214,33 +194,33 @@ export default function EcrituresTab() {
       {/* Detail des factures divergentes / sans ecriture */}
       {reconciliation && !reconciliationOk && showDivergent && reconciliation.divergent.length > 0 && (
         <div style={{ marginBottom: 12, border: '1px solid #F09595', borderRadius: 6, overflow: 'hidden' }}>
-          <table className="odoo-table">
+          <table className="odoo-table ds-dense">
             <thead>
-              <tr style={{ background: '#FCEBEB', color: '#791F1F', textAlign: 'left' }}>
+              <tr style={{ background: 'var(--ds-danger-bg)', color: 'var(--ds-danger)', textAlign: 'left' }}>
                 <th style={{ padding: '6px 10px' }}>Facture</th>
                 <th style={{ padding: '6px 10px' }}>Type</th>
                 <th style={{ padding: '6px 10px' }}>Date</th>
-                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Total</th>
-                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Reste legacy</th>
-                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Reste ledger</th>
-                <th style={{ padding: '6px 10px', textAlign: 'right' }}>Delta</th>
+                <th className="ds-num" style={{ padding: '6px 10px' }}>Total</th>
+                <th className="ds-num" style={{ padding: '6px 10px' }}>Reste legacy</th>
+                <th className="ds-num" style={{ padding: '6px 10px' }}>Reste ledger</th>
+                <th className="ds-num" style={{ padding: '6px 10px' }}>Delta</th>
                 <th style={{ padding: '6px 10px' }}>Statut</th>
               </tr>
             </thead>
             <tbody>
               {reconciliation.divergent.map(d => (
-                <tr key={d.invoice_id} style={{ borderTop: '1px solid #F3D6D6' }}>
+                <tr key={d.invoice_id} style={{ borderTop: '1px solid var(--ds-danger-bg)' }}>
                   <td style={{ padding: '6px 10px', fontWeight: 600 }}>{d.invoice_number}</td>
                   <td style={{ padding: '6px 10px' }}>{d.invoice_type === 'emitted' ? 'Émise' : 'Reçue'}</td>
                   <td style={{ padding: '6px 10px' }}>{fmtDate(d.invoice_date)}</td>
-                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(d.total_amount)}</td>
-                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(d.legacy_remaining)}</td>
-                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(d.ledger_remaining)}</td>
-                  <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#791F1F' }}>{n(d.delta)}</td>
+                  <td className="ds-num" style={{ padding: '6px 10px' }}>{n(d.total_amount)}</td>
+                  <td className="ds-num" style={{ padding: '6px 10px' }}>{n(d.legacy_remaining)}</td>
+                  <td className="ds-num" style={{ padding: '6px 10px' }}>{n(d.ledger_remaining)}</td>
+                  <td className="ds-num" style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--ds-danger)' }}>{n(d.delta)}</td>
                   <td style={{ padding: '6px 10px' }}>
                     {!d.has_ledger_entries
-                      ? <span style={{ color: '#633806', background: '#FAEEDA', padding: '1px 6px', borderRadius: 4 }}>Sans écriture</span>
-                      : <span style={{ color: '#791F1F', background: '#FCEBEB', padding: '1px 6px', borderRadius: 4 }}>Divergente</span>}
+                      ? <span style={{ color: 'var(--ds-warning)', background: 'var(--ds-warning-bg)', padding: '1px 6px', borderRadius: 4 }}>Sans écriture</span>
+                      : <span style={{ color: 'var(--ds-danger)', background: 'var(--ds-danger-bg)', padding: '1px 6px', borderRadius: 4 }}>Divergente</span>}
                   </td>
                 </tr>
               ))}
@@ -250,19 +230,25 @@ export default function EcrituresTab() {
       )}
 
       {/* Filtres */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 220px', minWidth: 180 }}>
-          <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-          <input type="text" placeholder="Rechercher par n ou libelle..."
-            value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />
-          {search && (
-            <button onClick={() => { setSearch(''); setPage(1); }} title="Effacer"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)', display: 'inline-flex' }}>
-              <X size={12} />
-            </button>
-          )}
-        </div>
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={rows.length === 0}>
+          <Download size={13} aria-hidden="true" /> Exporter CSV
+        </button>
+        <EditionButtons kind="journal" params={{ startDate: startDate || undefined, endDate: endDate || undefined, journal: journals.find(j => j.id === journalId)?.code }} />
+        <button type="button" onClick={() => setEditor({ draft: null })} className="odoo-btn-primary">
+          <Plus size={13} aria-hidden="true" /> Nouvelle écriture
+        </button>
+      </AccHeaderActions>
+
+      {/* Indicateurs de la page courante */}
+      <KpiGrid>
+        <KpiCard label="Écritures" value={total.toLocaleString('fr-FR')} sub="filtres appliqués" />
+        <KpiCard label="Débit (page)" value={n(totals.debit)} sub={currencySymbol()} />
+        <KpiCard label="Crédit (page)" value={n(totals.credit)} sub={currencySymbol()} />
+      </KpiGrid>
+
+      <Toolbar>
+        <SearchBar value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Rechercher par numéro ou libellé…" />
         <SearchSelect
           options={journals.map(j => ({ id: j.id, label: `${j.code} - ${j.label}` }))}
           value={journalId === 'all' ? '' : journalId}
@@ -275,104 +261,66 @@ export default function EcrituresTab() {
           options={[{ key: 'draft', label: 'Brouillon' }, { key: 'posted', label: 'Comptabilisée' }, { key: 'reversed', label: 'Extournée' }]} />
         <PeriodFilter label="Date" title="Date de l'écriture"
           period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} className="odoo-btn-secondary" disabled={rows.length === 0}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: rows.length === 0 ? 0.5 : 1 }}>
-          <Download size={13} /> Exporter CSV
-        </button>
-        <EditionButtons kind="journal" params={{ startDate: startDate || undefined, endDate: endDate || undefined, journal: journals.find(j => j.id === journalId)?.code }} />
-        <button onClick={() => setEditor({ draft: null })} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Plus size={13} /> Nouvelle écriture
-        </button>
-      </div>
-
-      {/* Stats du page courant */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Total ecritures</div>
-          <div className="odoo-stat-card-value">{total.toLocaleString('fr-FR')}</div>
-          <div className="odoo-stat-card-sub">filtre applique</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Debit (page)</div>
-          <div className="odoo-stat-card-value" style={{ color: '#1565c0' }}>{n(totals.debit)}</div>
-          <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Credit (page)</div>
-          <div className="odoo-stat-card-value" style={{ color: '#c62828' }}>{n(totals.credit)}</div>
-          <div className="odoo-stat-card-sub">{currencySymbol()}</div>
-        </div>
-      </div>
+      </Toolbar>
 
       {/* Liste */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
-        </div>
+        <LoadingState />
       ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Notebook size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.875rem', marginBottom: 4 }}>Aucune écriture comptable</p>
-          <p style={{ fontSize: '0.75rem', opacity: 0.8, maxWidth: 520, margin: '0 auto 1rem' }}>
-            Les nouvelles opérations (factures, paiements, ventes) génèrent leur écriture automatiquement.
-            Pour comptabiliser l'<strong>historique déjà saisi</strong>, lancez la génération ci-dessous —
-            l'opération est idempotente (relançable sans risque de doublon).
-          </p>
-          <button onClick={() => { if (window.confirm('Générer les écritures comptables pour tout l\'historique (factures, paiements, ventes) ? Opération idempotente.')) backfill.mutate(); }}
-            disabled={backfill.isPending} className="odoo-btn-primary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {backfill.isPending ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-            {backfill.isPending ? 'Génération en cours...' : 'Générer les écritures depuis l\'historique'}
-          </button>
-        </div>
+        (search || journalId !== 'all' || status !== 'all') ? (
+          <NoResultState text="Aucune écriture ne correspond aux filtres." onReset={() => { setSearch(''); setJournalId('all'); setStatus('all'); setPage(1); }} />
+        ) : (
+          <EmptyState icon={Notebook} title="Aucune écriture comptable"
+            text="Les nouvelles opérations (factures, paiements, ventes) génèrent leur écriture automatiquement. Pour comptabiliser l'historique déjà saisi, lancez la génération : elle peut être relancée sans risque de doublon."
+            action={
+              <button type="button" disabled={backfill.isPending} aria-busy={backfill.isPending || undefined} className="odoo-btn-primary"
+                onClick={async () => { if (await confirm('Générer les écritures comptables pour tout l\'historique (factures, paiements, ventes) ? L\'opération peut être relancée sans risque de doublon.', { title: 'Générer les écritures', confirmLabel: 'Générer' })) backfill.mutate(); }}>
+                {backfill.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Wand2 size={14} aria-hidden="true" />}
+                {backfill.isPending ? 'Génération en cours…' : 'Générer les écritures depuis l\'historique'}
+              </button>
+            } />
+        )
       ) : (
-        <div className="odoo-section" style={{ padding: 0 }}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Journal des écritures" footer={
+          <TableFooter page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage}
+            note={`débit ${n(totals.debit) || '0,00'} · crédit ${n(totals.credit) || '0,00'} ${currencySymbol()} sur la page · ${periodLabel(period, customFrom, customTo)}`} />
+        }>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
-                <th style={{ width: 80 }}>Date</th>
-                <th style={{ width: 130 }}>N ecriture</th>
-                <th style={{ width: 50 }}>Jr</th>
-                <th>Libelle</th>
-                <th style={{ width: 100, textAlign: 'right' }}>Debit</th>
-                <th style={{ width: 100, textAlign: 'right' }}>Credit</th>
-                <th style={{ width: 110 }}>Statut</th>
-                <th style={{ width: 50 }}></th>
+                <th style={{ width: 90 }}>Date</th>
+                <th style={{ width: 140 }}>N° d'écriture</th>
+                <th style={{ width: 70 }}>Journal</th>
+                <th>Libellé</th>
+                <th className="ds-num" style={{ width: 120 }}>Débit ({currencySymbol()})</th>
+                <th className="ds-num" style={{ width: 120 }}>Crédit ({currencySymbol()})</th>
+                <th style={{ width: 140 }}>Statut</th>
+                <th className="ds-actions" style={{ width: 60 }}><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((e: JournalEntrySummary) => {
-                const jc = JOURNAL_COLORS[e.journal_code] || JOURNAL_COLORS.OD;
                 return (
                   <tr key={e.id}>
-                    <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(e.entry_date)}</td>
+                    <td>{fmtDate(e.entry_date)}</td>
                     <td>
-                      <button type="button" onClick={() => setViewing(e.id)} title="Ouvrir l'écriture"
-                        style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', fontWeight: 600, color: 'var(--odoo-purple)', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 }}>
+                      <button type="button" onClick={() => setViewing(e.id)} title="Ouvrir l'écriture" className="ds-ref"
+                        style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--ds-accent-ink)' }}>
                         {e.entry_number}
                       </button>
                     </td>
-                    <td>
-                      <span style={{
-                        fontSize: '0.625rem', padding: '2px 6px',
-                        background: jc.bg, color: jc.color,
-                        borderRadius: 4, fontWeight: 500, fontFamily: 'ui-monospace, monospace',
-                      }}>{e.journal_code}</span>
-                    </td>
-                    <td style={{ fontSize: '0.8125rem' }}>{e.description || <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+                    <td>{e.journal_code}</td>
+                    <td className="ds-strong">{e.description || <span style={{ color: 'var(--ds-muted)' }}>—</span>}</td>
+                    <td className="ds-num">
                       {n(e.total_debit)}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="ds-num">
                       {n(e.total_credit)}
                     </td>
                     <td><StatusDot status={e.status} /></td>
-                    <td>
-                      <button type="button" onClick={() => setViewing(e.id)} className="odoo-pager-btn" title="Voir l'écriture" aria-label="Voir l'écriture">
-                        <Eye size={13} />
+                    <td className="ds-actions">
+                      <button type="button" onClick={() => setViewing(e.id)} className="ds-icon-btn" title="Voir l'écriture" aria-label={`Voir l'écriture ${e.entry_number}`}>
+                        <Eye size={15} />
                       </button>
                     </td>
                   </tr>
@@ -380,10 +328,7 @@ export default function EcrituresTab() {
               })}
             </tbody>
           </table>
-
-          <Pager page={page} total={total} onPage={setPage}
-            note={`${total.toLocaleString('fr-FR')} écriture${total > 1 ? 's' : ''} · ${periodLabel(period, customFrom, customTo)}`} />
-        </div>
+        </DataPanel>
       )}
 
       {/* Viewer modal en lecture seule */}
@@ -444,7 +389,7 @@ function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () =
           <div className="odoo-breadcrumb">
             <FileText size={14} style={{ color: 'var(--theme-accent)' }} />
             <span>Écriture</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{entry ? entry.entry_number : 'Chargement...'}</span>
           </div>
           {entry && <StatusDot status={entry.status} />}
@@ -453,9 +398,7 @@ function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () =
         </div>
 
         {isLoading || !entry ? (
-          <div style={{ padding: '2rem', textAlign: 'center' }}>
-            <Loader2 size={20} className="animate-spin" />
-          </div>
+          <LoadingState />
         ) : (
           <>
             {/* Meta */}
@@ -481,19 +424,19 @@ function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () =
             </div>
 
             {/* Lignes */}
-            <table className="odoo-table" style={{ margin: 0, borderTop: '1px solid var(--theme-bg-separator)' }}>
+            <table className="odoo-table ds-dense" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
               <thead>
                 <tr>
                   <th style={{ width: 90 }}>Compte</th>
                   <th>Libelle / Tiers</th>
-                  <th style={{ width: 110, textAlign: 'right' }}>Debit</th>
-                  <th style={{ width: 110, textAlign: 'right' }}>Credit</th>
+                  <th className="ds-num" style={{ width: 110 }}>Debit</th>
+                  <th className="ds-num" style={{ width: 110 }}>Credit</th>
                 </tr>
               </thead>
               <tbody>
                 {entry.lines.map(l => (
                   <tr key={l.id}>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{l.account_code}</td>
+                    <td className="ds-ref">{l.account_code}</td>
                     <td>
                       <div>{l.account_label}</div>
                       {l.auxiliary_label && (
@@ -502,33 +445,33 @@ function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () =
                         </div>
                       )}
                       {l.label && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
                           {l.label}
                         </div>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', color: '#1565c0' }}>
+                    <td className="ds-num" style={{ color: 'var(--ds-info)' }}>
                       {n(l.debit)}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', color: '#c62828' }}>
+                    <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>
                       {n(l.credit)}
                     </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ background: 'var(--theme-bg-secondary)', fontWeight: 600 }}>
-                  <td colSpan={2} style={{ textAlign: 'right' }}>Totaux :</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+                <tr>
+                  <td className="ds-num" colSpan={2}>Totaux :</td>
+                  <td className="ds-num">
                     {n(totalD)}
                   </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+                  <td className="ds-num">
                     {n(totalC)}
                   </td>
                 </tr>
                 {Math.abs(totalD - totalC) > 0.01 && (
-                  <tr style={{ background: '#FCEBEB' }}>
-                    <td colSpan={4} style={{ padding: '8px 14px', fontSize: '0.75rem', color: '#A32D2D' }}>
+                  <tr style={{ background: 'var(--ds-danger-bg)' }}>
+                    <td colSpan={4} style={{ padding: '8px 14px', fontSize: '0.75rem', color: 'var(--ds-danger)' }}>
                       ⚠ Ecriture desequilibree : delta = {n(Math.abs(totalD - totalC))} {currencySymbol()}
                     </td>
                   </tr>
@@ -543,43 +486,38 @@ function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () =
                     style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
                     <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Date de l'extourne
                       <input type="date" value={reversing.date} onChange={e => setReversing({ ...reversing, date: e.target.value })}
-                        className="odoo-search-input" style={{ width: 150, display: 'block' }} />
+                        className="ds-input sm" style={{ width: 150, display: 'block' }} />
                     </label>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', flex: 1, minWidth: 240 }}>Motif *
-                      <input value={reversing.reason} onChange={e => setReversing({ ...reversing, reason: e.target.value })} autoFocus
-                        className="odoo-search-input" style={{ width: '100%', display: 'block' }} placeholder="Ex. Erreur d'imputation" maxLength={500} />
+                    <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', flex: 1, minWidth: 240 }}>Motif <span className="ds-req" aria-hidden="true">*</span>
+                      <input value={reversing.reason} onChange={e => setReversing({ ...reversing, reason: e.target.value })} autoFocus required
+                        className="ds-input sm" style={{ width: '100%', display: 'block' }} placeholder="Ex. Erreur d'imputation" maxLength={500} />
                     </label>
                     <button type="button" className="odoo-btn-secondary" onClick={() => setReversing(null)} disabled={busy}>Retour</button>
-                    <button type="submit" className="odoo-btn-danger" disabled={busy || reversing.reason.trim().length < 3}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      {reverseM.isPending ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Extourner
+                    <button type="submit" className="ds-btn-danger solid" disabled={busy || reversing.reason.trim().length < 3} aria-busy={reverseM.isPending || undefined}>
+                      {reverseM.isPending ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={12} aria-hidden="true" />} Extourner
                     </button>
                   </form>
                 ) : (
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                     {isDraft && (
                       <>
-                        <button type="button" className="odoo-btn-danger" disabled={busy}
-                          onClick={async () => { if (await confirm('Supprimer ce brouillon ? Il n\'a pas encore de numéro : aucun trou ne restera dans la numérotation.')) deleteM.mutate(); }}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <Trash2 size={12} /> Supprimer
+                        <button type="button" className="ds-btn-danger" disabled={busy}
+                          onClick={async () => { if (await confirm('Supprimer ce brouillon ? Il n\'a pas encore de numéro : aucun trou ne restera dans la numérotation.', { title: 'Supprimer le brouillon', danger: true, confirmLabel: 'Supprimer' })) deleteM.mutate(); }}>
+                          <Trash2 size={12} aria-hidden="true" /> Supprimer
                         </button>
-                        <button type="button" className="odoo-btn-secondary" disabled={busy} onClick={() => onEdit(entry)}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <button type="button" className="odoo-btn-secondary" disabled={busy} onClick={() => onEdit(entry)}>
                           <PenLine size={12} /> Modifier
                         </button>
                         <button type="button" className="odoo-btn-primary" disabled={busy || Math.abs(totalD - totalC) > 0.005}
-                          onClick={async () => { if (await confirm('Comptabiliser ce brouillon ? Il recevra son numéro de journal et ne pourra plus être modifié (correction par extourne).')) postM.mutate(); }}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          onClick={async () => { if (await confirm('Comptabiliser ce brouillon ? Il recevra son numéro de journal et ne pourra plus être modifié (correction par extourne).', { title: 'Comptabiliser l\'écriture', confirmLabel: 'Comptabiliser' })) postM.mutate(); }}>
                           {postM.isPending ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Comptabiliser
                         </button>
                       </>
                     )}
                     {canReverse && (
-                      <button type="button" className="odoo-btn-secondary" disabled={busy}
-                        onClick={() => setReversing({ date: new Date().toISOString().slice(0, 10), reason: '' })}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <RotateCcw size={12} /> Extourner
+                      <button type="button" className="ds-btn-danger" disabled={busy}
+                        onClick={() => setReversing({ date: new Date().toISOString().slice(0, 10), reason: '' })}>
+                        <RotateCcw size={12} aria-hidden="true" /> Extourner
                       </button>
                     )}
                   </div>

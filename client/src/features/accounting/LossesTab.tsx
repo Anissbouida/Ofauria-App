@@ -8,13 +8,16 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, X, Search, Loader2, AlertTriangle, Flame, Package, Clock,
-  Trash2, TrendingDown, Factory, ShoppingBag, Recycle, BarChart3, Download, Camera, CalendarRange,
+  Plus, X, Search, Loader2, Flame, Package, Clock, Trash2, TrendingDown, Factory, ShoppingBag, Recycle, Download, Camera, CalendarRange,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
-import { StagePipeline, Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { StagePipeline, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 import { money, currencySymbol } from '../../utils/money';
+import { AccHeaderActions } from './AccHeaderActions';
+import { DataPanel, TableFooter, Toolbar, SearchBar, LoadingState, EmptyState, NoResultState } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -31,7 +34,7 @@ const DEFAULT_LOSS_STYLE = { color: 'text-gray-700', bg: 'bg-gray-100', gradient
 
 // Couleur du point de type (même palette que les anciennes pastilles).
 const TYPE_DOT: Record<string, string> = {
-  'odoo-tag-red': '#dc3545', 'odoo-tag-orange': '#d9822b', 'odoo-tag-yellow': '#c99a06', 'odoo-tag-blue': '#3b82f6', 'odoo-tag-grey': '#adb5bd',
+  'odoo-tag-red': 'var(--ds-danger)', 'odoo-tag-orange': 'var(--ds-warning)', 'odoo-tag-yellow': 'var(--ds-warning)', 'odoo-tag-blue': 'var(--ds-info)', 'odoo-tag-grey': 'var(--ds-muted)',
 };
 
 /** Référentiels des pertes (types, motifs) : partagés par l'onglet Pertes et le module Contrôle. */
@@ -65,6 +68,7 @@ export function useLossReferentials() {
 
 export default function LossesTab() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -155,28 +159,14 @@ export default function LossesTab() {
   return (
     <>
       {/* Search panel : period + actions */}
-      <div className="odoo-search-panel">
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-          <CalendarRange size={13} /> Mois
-          <select value={month} onChange={e => setMonth(parseInt(e.target.value, 10))} className="odoo-filter-dropdown">
-            {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="number" value={year} onChange={e => setYear(+e.target.value)} aria-label="Année"
-            className="odoo-filter-dropdown" style={{ width: 80 }} />
-        </label>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0, marginLeft: 8 }} />
-        <input type="text" value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une perte"
-          placeholder="Rechercher un produit, une note, un déclarant..." className="odoo-search-input" style={{ flex: '1 1 200px', minWidth: 0 }} />
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} className="odoo-btn-secondary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <AccHeaderActions>
+        <button onClick={handleExport} className="odoo-btn-secondary">
           <Download size={13} /> Exporter
         </button>
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
           <Plus size={14} /> Déclarer une perte
         </button>
-      </div>
+      </AccHeaderActions>
 
       {/* Répartition par type : une carte par type (clic = filtre) */}
       <StagePipeline
@@ -194,30 +184,40 @@ export default function LossesTab() {
         onPick={k => setTypeFilter(k === typeFilter && k !== 'all' ? 'all' : k)}
       />
 
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} placeholder="Rechercher un produit, une note, un déclarant…" label="Rechercher une perte" />
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ds-muted)' }}>
+          <CalendarRange size={14} aria-hidden="true" /> Mois
+          <select value={month} onChange={e => setMonth(parseInt(e.target.value, 10))} className="ds-input sm" style={{ width: 'auto' }} aria-label="Mois">
+            {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select>
+          <input type="number" value={year} onChange={e => setYear(+e.target.value)} aria-label="Année"
+            className="ds-input sm" style={{ width: 90 }} />
+        </label>
+      </Toolbar>
+
       {/* Losses table */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-          <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
-        </div>
+        <LoadingState />
       ) : lossList.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <TrendingDown size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>{search || typeFilter !== 'all' ? 'Aucune perte pour ces filtres' : 'Aucune perte déclarée pour cette période'}</p>
-        </div>
+        search || typeFilter !== 'all'
+          ? <NoResultState text="Aucune perte ne correspond aux filtres." onReset={() => { setSearch(''); setTypeFilter('all'); }} />
+          : <EmptyState icon={TrendingDown} title="Aucune perte déclarée sur la période" text="Les pertes déclarées (casse, périmé, invendu) apparaissent ici, valorisées au coût de revient." />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table">
+        <DataPanel label="Pertes déclarées" footer={
+          <TableFooter page={page} pageSize={PAGE_SIZE} total={lossList.length} onPage={setPage} note={`${MONTH_NAMES[month - 1]} ${year}`} />
+        }>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Produit</th>
                 <th>Type</th>
                 <th>Motif</th>
-                <th style={{ textAlign: 'right' }}>Qté</th>
-                <th style={{ textAlign: 'right' }}>Coût</th>
+                <th className="ds-num">Quantité</th>
+                <th className="ds-num">Coût ({currencySymbol()})</th>
                 <th>Déclaré par</th>
-                <th style={{ textAlign: 'right', width: 80 }}></th>
+                <th className="ds-actions" style={{ width: 90 }}><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -231,44 +231,39 @@ export default function LossesTab() {
                 const cfg = LOSS_TYPE_CONFIG[lossType] || LOSS_TYPE_CONFIG.casse;
                 return (
                   <tr key={l.id as string}>
-                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
+                    <td>
                       {format(new Date(l.created_at as string), 'dd/MM/yyyy HH:mm')}
                     </td>
-                    <td style={{ fontWeight: 500 }}>{l.product_name as string}</td>
+                    <td className="ds-strong">{l.product_name as string}</td>
                     <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem' }}>
-                        <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: TYPE_DOT[tagClass] ?? '#adb5bd' }} />
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: TYPE_DOT[tagClass] ?? 'var(--ds-muted)' }} />
                         {cfg.label}
                       </span>
                     </td>
-                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
+                    <td style={{ color: 'var(--ds-muted)' }}>
                       {REASON_LABELS[l.reason as string] || String(l.reason)}
-                      {l.reason_note ? <span style={{ marginLeft: 4, color: 'var(--theme-bg-separator)' }}>— {String(l.reason_note)}</span> : null}
+                      {l.reason_note ? <span style={{ marginLeft: 4 }}>— {String(l.reason_note)}</span> : null}
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{parseFloat(l.quantity as string)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545' }}>
-                      {n(parseFloat(l.total_cost as string) || 0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
-                    </td>
-                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
+                    <td className="ds-num">{parseFloat(l.quantity as string)}</td>
+                    <td className="ds-num ds-strong">{n(parseFloat(l.total_cost as string) || 0)}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>
                       {l.declared_by_first_name ? `${l.declared_by_first_name} ${l.declared_by_last_name}` : '—'}
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: 2 }}>
-                        {l.photo_url && (
-                          <button onClick={() => setViewPhoto({
-                            url: serverUrl(l.photo_url as string),
-                            productName: l.product_name as string,
-                            date: format(new Date(l.created_at as string), 'dd/MM/yyyy HH:mm'),
-                          })}
-                            className="odoo-pager-btn" title="Voir la photo" aria-label="Voir la photo">
-                            <Camera size={13} />
-                          </button>
-                        )}
-                        <button type="button" onClick={() => { if (confirm(`Supprimer la perte « ${l.product_name} » (${money(parseFloat(l.total_cost as string) || 0)}) ?`)) deleteMutation.mutate(l.id as string); }}
-                          className="odoo-pager-btn" style={{ color: '#dc3545' }} title="Supprimer" aria-label="Supprimer la perte">
-                          <Trash2 size={13} />
+                    <td className="ds-actions">
+                      {l.photo_url && (
+                        <button type="button" onClick={() => setViewPhoto({
+                          url: serverUrl(l.photo_url as string),
+                          productName: l.product_name as string,
+                          date: format(new Date(l.created_at as string), 'dd/MM/yyyy HH:mm'),
+                        })}
+                          className="ds-icon-btn" title="Voir la photo" aria-label={`Voir la photo de la perte ${l.product_name}`}>
+                          <Camera size={15} />
                         </button>
-                      </div>
+                      )}
+                      <RowMenu items={[{ label: 'Supprimer la perte', icon: Trash2, danger: true, onSelect: async () => {
+                        if (await confirm(`Supprimer la perte « ${l.product_name} » (${money(parseFloat(l.total_cost as string) || 0)}) ?`, { title: 'Supprimer la perte', danger: true, confirmLabel: 'Supprimer' })) deleteMutation.mutate(l.id as string);
+                      } }]} />
                     </td>
                   </tr>
                 );
@@ -276,24 +271,16 @@ export default function LossesTab() {
             </tbody>
             {lossList.length > 0 && (
               <tfoot>
-                <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
-                  <td colSpan={4} style={{ padding: 12, fontWeight: 600 }}>
-                    Total ({lossList.length} perte{lossList.length > 1 ? 's' : ''})
-                  </td>
-                  <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                    {lossList.reduce((s, l) => s + parseFloat(l.quantity as string), 0)}
-                  </td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
-                    {money(lossList.reduce((s, l) => s + (parseFloat(l.total_cost as string) || 0), 0))}
-                  </td>
+                <tr>
+                  <td colSpan={4}>Total ({lossList.length} perte{lossList.length > 1 ? 's' : ''})</td>
+                  <td className="ds-num">{lossList.reduce((s, l) => s + parseFloat(l.quantity as string), 0)}</td>
+                  <td className="ds-num">{n(lossList.reduce((s, l) => s + (parseFloat(l.total_cost as string) || 0), 0))}</td>
                   <td colSpan={2}></td>
                 </tr>
               </tfoot>
             )}
           </table>
-          <Pager page={page} total={lossList.length} onPage={setPage}
-            note={`${lossList.length} perte${lossList.length > 1 ? 's' : ''} · ${MONTH_NAMES[month - 1]} ${year}`} />
-        </div>
+        </DataPanel>
       )}
 
       {/* Photo viewer overlay */}
@@ -305,7 +292,7 @@ export default function LossesTab() {
                 <h3 className="font-bold text-gray-900">{viewPhoto.productName}</h3>
                 <p className="text-xs text-gray-500">Photo prise le {viewPhoto.date}</p>
               </div>
-              <button onClick={() => setViewPhoto(null)} className="p-2 hover:bg-gray-200 rounded-lg text-gray-400">
+              <button onClick={() => setViewPhoto(null)} className="p-2 hover:bg-gray-200 rounded-lg text-gray-400" aria-label="Fermer">
                 <X size={20} />
               </button>
             </div>
@@ -411,7 +398,7 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
           <div className="odoo-breadcrumb">
             <TrendingDown size={14} style={{ color: 'var(--theme-accent)' }} />
             <span className="odoo-breadcrumb-current">Déclarer une perte</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span>production, casse ou périmé</span>
           </div>
           <div style={{ flex: 1 }} />
@@ -459,7 +446,7 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
                 autoComplete="off" />
               {(selectedProduct || productSearch) && (
                 <button type="button" onClick={() => { setProductId(''); setProductSearch(''); searchRef.current?.focus(); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-lg">
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-lg" aria-label="Effacer">
                   <X size={14} className="text-gray-400" />
                 </button>
               )}
@@ -539,7 +526,7 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
               Annuler
             </button>
             <button type="submit" disabled={createMutation.isPending}
-              className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              className="odoo-btn-primary">
               {createMutation.isPending && <Loader2 size={14} className="animate-spin" />}
               Declarer la perte
             </button>

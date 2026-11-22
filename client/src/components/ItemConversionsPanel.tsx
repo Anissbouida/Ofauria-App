@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import api from '../api/client';
 import { notify } from './ui/InlineNotification';
 import { apiErrorMessage } from '../api/errors';
+import { LoadingState } from './ds';
 
 /**
  * Unités et conversions d'un article (M3-02) : « 1 carton = 12 pièces », « 1 pièce = 0,35 kg ».
@@ -35,36 +36,36 @@ export default function ItemConversionsPanel({ kind, itemId, canEdit = true }: {
   });
   const remove = useMutation({ mutationFn: (id: string) => api.delete(`${base}/${id}`), onSuccess: refresh, onError: (e) => notify.error(apiErrorMessage(e)) });
 
-  if (isLoading) return <Loader2 className="animate-spin" size={16} />;
+  if (isLoading) return <LoadingState bare label="Chargement des conversions…" />;
   const factorOk = Number(draft.factor.replace(',', '.')) > 0;
   return (
-    <div style={{ display: 'grid', gap: 8 }} aria-label="Unités et conversions">
-      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Unités et conversions</div>
-      {data.length === 0 && <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Aucune conversion.</div>}
+    <section style={{ display: 'grid', gap: 8 }} aria-label="Unités et conversions">
+      <h3 className="ds-subhead">Unités et conversions</h3>
+      {data.length === 0 && <div style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Aucune conversion saisie pour cet article.</div>}
       {data.map(c => (
         <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem' }}>
           <span>1 {c.from_container ?? c.from_unit_label ?? c.from_unit} = <strong>{c.factor.toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</strong> {c.to_unit_label}</span>
           <span className="odoo-tag odoo-tag-grey">{ORIGIN[c.origin]}</span>
           {canEdit && c.origin === 'saisie' && (
-            <button type="button" className="odoo-btn-secondary" onClick={() => remove.mutate(c.id)} aria-label="Retirer la conversion" style={{ padding: '2px 6px' }}><Trash2 size={12} /></button>
+            <button type="button" className="ds-icon-btn" disabled={remove.isPending} onClick={() => remove.mutate(c.id)} aria-label="Retirer la conversion" title="Retirer la conversion"><Trash2 size={14} aria-hidden="true" /></button>
           )}
         </div>
       ))}
       {canEdit && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: '0.875rem' }}>
           1
-          <select className="input" value={draft.fromUnit} onChange={e => setDraft(d => ({ ...d, fromUnit: e.target.value }))} aria-label="Unité source" style={{ width: 'auto' }}>
+          <select className="ds-input sm" value={draft.fromUnit} onChange={e => setDraft(d => ({ ...d, fromUnit: e.target.value }))} aria-label="Unité source" style={{ width: 'auto' }}>
             <option value="">unité…</option>{units.map(u => <option key={u.code} value={u.code}>{u.label}</option>)}
           </select>
           =
-          <input className="input" value={draft.factor} onChange={e => setDraft(d => ({ ...d, factor: e.target.value }))} placeholder="12" aria-label="Facteur" style={{ width: 90 }} />
-          <select className="input" value={draft.toUnit} onChange={e => setDraft(d => ({ ...d, toUnit: e.target.value }))} aria-label="Unité cible" style={{ width: 'auto' }}>
+          <input className="ds-input sm" inputMode="decimal" value={draft.factor} onChange={e => setDraft(d => ({ ...d, factor: e.target.value }))} placeholder="12" aria-label="Facteur" style={{ width: 90 }} />
+          <select className="ds-input sm" value={draft.toUnit} onChange={e => setDraft(d => ({ ...d, toUnit: e.target.value }))} aria-label="Unité cible" style={{ width: 'auto' }}>
             <option value="">unité…</option>{units.map(u => <option key={u.code} value={u.code}>{u.label}</option>)}
           </select>
-          <button type="button" className="odoo-btn-secondary" disabled={!draft.fromUnit || !draft.toUnit || draft.fromUnit === draft.toUnit || !factorOk || add.isPending}
-            onClick={() => add.mutate()}><Plus size={12} /> Ajouter</button>
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={!draft.fromUnit || !draft.toUnit || draft.fromUnit === draft.toUnit || !factorOk || add.isPending}
+            onClick={() => add.mutate()}><Plus size={12} aria-hidden="true" /> Ajouter</button>
         </div>
       )}
-    </div>
+    </section>
   );
 }

@@ -23,7 +23,6 @@ export default function EditionButtons({ kind, params, disabled }: { kind: Editi
   };
   const btn = (format: 'pdf' | 'xlsx', label: string, Icon: typeof FileText) => (
     <button type="button" className="odoo-btn-secondary" disabled={disabled || !!busy} onClick={() => run(format)}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: disabled ? 0.5 : 1 }}
       title={format === 'pdf' ? 'Édition imprimable (en-tête légal, pages numérotées)' : 'Classeur Excel'}>
       {busy === format ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />} {label}
     </button>

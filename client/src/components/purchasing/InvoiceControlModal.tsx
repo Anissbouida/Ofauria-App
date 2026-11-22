@@ -9,6 +9,8 @@ import { notify } from '../ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { invoicesApi } from '../../api/accounting.api';
 import ReasonCodeDialog from './ReasonCodeDialog';
+import { LoadingState } from '../ds';
+import { StatusTag } from '../ui/StatusTag';
 
 /**
  * Contrôle d'une facture fournisseur (mig 309) : blocages posés par le rapprochement,
@@ -39,7 +41,7 @@ function holdDetail(h: Hold): string {
     case 'QTY_REC': return `${d.item} : facturé ${fmt(d.invoiced)} pour ${fmt(d.received)} reçu (tolérance ${d.tolerance_pct} %)`;
     case 'PRICE': return `${d.item} : ${fmt(d.invoiced_price, 4)} facturé contre ${fmt(d.po_price, 4)} commandé (tolérance ${d.tolerance_pct} %)`;
     case 'AMOUNT_MISMATCH': return d.declared_ttc != null ? `Déclaré ${fmt(d.declared_ttc, 2)} TTC, calculé ${fmt(d.computed_ttc, 2)}` : `Lignes ${fmt(d.lines_ht, 2)} HT, en-tête ${fmt(d.header_ht, 2)}`;
-    case 'DUPLICATE_SUSPECT': return `Ressemble à la facture ${d.candidate_number} du ${d.candidate_date ? format(new Date(d.candidate_date), 'dd/MM/yyyy') : '?'}`;
+    case 'DUPLICATE_SUSPECT': return `Ressemble à la facture ${d.candidate_number} du ${d.candidate_date ? format(new Date(d.candidate_date), 'd MMM yyyy', { locale: fr }) : '?'}`;
     case 'TAX_VARIANCE': return d.lines_without_rate > 0 ? `${d.lines_without_rate} ligne(s) sans taux de TVA` : `TVA lignes ${fmt(d.lines_vat, 2)}, en-tête ${fmt(d.header_vat, 2)}`;
     case 'LEGAL_MENTIONS': return (d.issues ?? []).map((i: { label: string }) => i.label).join(' · ');
     case 'MANUAL': return d.note ?? '';
@@ -84,18 +86,18 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
           <div className="odoo-breadcrumb">
             <ShieldCheck size={14} style={{ color: 'var(--theme-accent)' }} />
             <span>Contrôle de facture</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">{data ? (data.supplier_invoice_number ?? data.invoice_number) : '…'}</span>
           </div>
           <div style={{ flex: 1 }} />
-          <button className="odoo-btn-secondary" style={{ display: 'inline-flex', gap: 4, alignItems: 'center', marginRight: 8 }}
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" style={{ marginRight: 8 }}
             disabled={isFetching} onClick={() => { setRevalidate(true); refetch(); }} title="Relancer le contrôle">
-            {isFetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Recontrôler
+            {isFetching ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={13} aria-hidden="true" />} Recontrôler
           </button>
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
         {isLoading || !data ? (
-          <div style={{ padding: '2rem', textAlign: 'center' }}><Loader2 className="animate-spin" size={18} /></div>
+          <LoadingState bare label="Contrôle en cours…" />
         ) : (
           <div className="flex-1 overflow-y-auto" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
             {data.validation_status === 'cancelled' ? (
@@ -113,19 +115,19 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
             )}
 
             <div>
-              <div style={{ fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Blocages ouverts</div>
-              {open.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>Aucun.</p> : (
-                <table className="odoo-table">
+              <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Blocages ouverts</h3>
+              {open.length === 0 ? <p style={{ fontSize: 14, color: 'var(--ds-muted)', margin: 0 }}>Aucun.</p> : (
+                <table className="odoo-table ds-dense">
                   <tbody>
                     {open.map(h => (
                       <tr key={h.id}>
-                        <td style={{ width: 210 }}><span className={`odoo-tag ${h.blocks_payment ? 'odoo-tag-red' : 'odoo-tag-orange'}`}>{h.label}</span></td>
-                        <td>{holdDetail(h)}{h.details?.legacy ? <span style={{ color: 'var(--theme-text-muted)' }}> · reprise</span> : null}</td>
-                        <td style={{ width: 140, color: 'var(--theme-text-muted)' }}>{format(new Date(h.held_at), 'd MMM HH:mm', { locale: fr })}</td>
-                        <td style={{ width: 110, textAlign: 'right' }}>
+                        <td style={{ width: 210 }}><StatusTag tone={h.blocks_payment ? 'blocked' : 'todo'} label={h.label} title={h.blocks_payment ? 'Bloque le paiement' : 'À régulariser, sans bloquer le paiement'} /></td>
+                        <td>{holdDetail(h)}{h.details?.legacy ? <span style={{ color: 'var(--ds-muted)' }}> · reprise</span> : null}</td>
+                        <td style={{ width: 140, color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>{format(new Date(h.held_at), 'd MMM HH:mm', { locale: fr })}</td>
+                        <td className="ds-actions" style={{ width: 150 }}>
                           {h.hold_code !== 'LEGAL_MENTIONS' && h.hold_code !== 'TAX_VARIANCE' ? (
-                            <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setReleaseFor(h)}>Lever</button>
-                          ) : <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>se lève à la correction</span>}
+                            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setReleaseFor(h)}>Lever</button>
+                          ) : <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>se lève à la correction</span>}
                         </td>
                       </tr>
                     ))}
@@ -136,21 +138,21 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
 
             {data.match.some(m => m.purchase_order_item_id) && (
               <div>
-                <div style={{ fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Rapprochement par ligne</div>
-                <table className="odoo-table">
-                  <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Commandé</th><th style={{ textAlign: 'right' }}>Reçu</th><th style={{ textAlign: 'right' }}>Facturé (toutes factures)</th><th style={{ textAlign: 'right' }}>Prix commandé</th><th style={{ textAlign: 'right' }}>Prix facturé</th></tr></thead>
+                <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Rapprochement par ligne</h3>
+                <table className="odoo-table ds-dense">
+                  <thead><tr><th>Article</th><th className="ds-num">Commandé</th><th className="ds-num">Reçu</th><th className="ds-num">Facturé (toutes factures)</th><th className="ds-num">Prix commandé</th><th className="ds-num">Prix facturé</th></tr></thead>
                   <tbody>
                     {data.match.map(m => {
                       const overQty = m.quantity_received != null && Number(m.quantity_invoiced_total) > Number(m.quantity_received) + 0.0001;
                       const priceGap = m.price_variance != null && Math.abs(Number(m.price_variance)) > 0.005;
                       return (
                         <tr key={m.invoice_item_id}>
-                          <td>{m.item_name}{!m.purchase_order_item_id && <span style={{ color: 'var(--theme-text-muted)' }}> · hors commande</span>}</td>
-                          <td style={{ textAlign: 'right' }}>{fmt(m.quantity_ordered)}</td>
-                          <td style={{ textAlign: 'right' }}>{fmt(m.quantity_received)}</td>
-                          <td style={{ textAlign: 'right', color: overQty ? '#dc3545' : undefined, fontWeight: overQty ? 600 : undefined }}>{fmt(m.quantity_invoiced_total)}</td>
-                          <td style={{ textAlign: 'right' }}>{fmt(m.po_unit_price, 4)}</td>
-                          <td style={{ textAlign: 'right', color: priceGap ? '#b45309' : undefined, fontWeight: priceGap ? 600 : undefined }}>{fmt(m.invoiced_unit_price, 4)}</td>
+                          <td className="ds-strong">{m.item_name}{!m.purchase_order_item_id && <span style={{ color: 'var(--ds-muted)', fontWeight: 400 }}> · hors commande</span>}</td>
+                          <td className="ds-num">{fmt(m.quantity_ordered)}</td>
+                          <td className="ds-num">{fmt(m.quantity_received)}</td>
+                          <td className="ds-num" style={overQty ? { color: 'var(--ds-danger)', fontWeight: 600 } : undefined}>{fmt(m.quantity_invoiced_total)}</td>
+                          <td className="ds-num">{fmt(m.po_unit_price, 4)}</td>
+                          <td className="ds-num" style={priceGap ? { color: 'var(--ds-warning)', fontWeight: 600 } : undefined}>{fmt(m.invoiced_unit_price, 4)}</td>
                         </tr>
                       );
                     })}
@@ -162,21 +164,23 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
             {data.validation_status === 'validated' && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input id="manual-hold-note" value={manualNote} onChange={(e) => setManualNote(e.target.value)} maxLength={1000}
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm" placeholder="Bloquer le paiement manuellement : raison (litige, qualité…)" />
-                <button className="odoo-btn-secondary" disabled={manualNote.trim().length < 3 || holdMutation.isPending}
+                  aria-label="Raison du blocage manuel du paiement"
+                  className="ds-input" style={{ flex: 1 }} placeholder="Bloquer le paiement manuellement : raison (litige, qualité…)" />
+                <button type="button" className="odoo-btn-secondary" disabled={manualNote.trim().length < 3 || holdMutation.isPending}
+                  aria-busy={holdMutation.isPending || undefined}
                   style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }} onClick={() => holdMutation.mutate()}>
-                  <PauseCircle size={13} /> Bloquer
+                  {holdMutation.isPending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <PauseCircle size={13} aria-hidden="true" />} Bloquer
                 </button>
               </div>
             )}
 
             {closed.length > 0 && (
               <div>
-                <div style={{ fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Blocages levés</div>
-                <table className="odoo-table">
+                <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Blocages levés</h3>
+                <table className="odoo-table ds-dense">
                   <tbody>
                     {closed.map(h => (
-                      <tr key={h.id} style={{ color: 'var(--theme-text-muted)' }}>
+                      <tr key={h.id} style={{ color: 'var(--ds-muted)' }}>
                         <td style={{ width: 210 }}>{h.label}</td>
                         <td>{h.release_mode === 'auto' ? 'Levé automatiquement : la cause a disparu' : `${h.release_reason ?? ''}${h.release_note ? ` · ${h.release_note}` : ''}`}</td>
                         <td style={{ width: 200 }}>{h.released_by_name ?? 'système'} · {h.released_at ? format(new Date(h.released_at), 'd MMM HH:mm', { locale: fr }) : ''}</td>

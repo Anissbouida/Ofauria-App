@@ -1,7 +1,9 @@
 import { currencySymbol } from '../../utils/money';
 import { useState } from 'react';
+import { DataPanel, SectionHeader } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ShieldAlert, ShieldCheck, Eye, Trash2, Scale, GitBranch, UserCog } from 'lucide-react';
+import { Plus, ShieldAlert, ShieldCheck, Eye, Trash2, UserCog } from 'lucide-react';
 import {
   APP_MODULES, MODULE_LABELS, CAPABILITY_LABELS, CAPABILITIES,
   APPROVAL_DOCUMENT_TYPES, APPROVAL_DOCUMENT_LABELS, type AppModule, type Capability, type ApprovalDocumentType,
@@ -30,8 +32,7 @@ function errorMessage(err: unknown, fallback: string) {
 const MODULE_OPTIONS: string[] = [...new Set([...Object.values(APP_MODULES) as string[], 'stock', 'controle'])]
   .filter(m => m !== 'users').sort();
 const moduleLabel = (m: string) => MODULE_LABELS[m as AppModule] ?? (m === 'stock' ? 'Stock' : m === 'controle' ? 'Contrôle & Qualité' : m);
-const field: React.CSSProperties = { fontSize: '0.8125rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
-const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' };
+const lab: React.CSSProperties = { display: 'grid', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)' };
 
 export default function GovernancePanel() {
   return (
@@ -78,9 +79,7 @@ function SodSection() {
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <h2 style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.02em', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Scale size={16} style={{ color: 'var(--theme-accent)' }} /> Séparation des tâches
-      </h2>
+      <SectionHeader title="Séparation des tâches" />
       <StatusBanner
         tone={m === 'enforce' ? 'success' : m === 'log' ? 'info' : 'warning'}
         icon={m === 'enforce' ? ShieldCheck : m === 'log' ? Eye : ShieldAlert}
@@ -88,9 +87,9 @@ function SodSection() {
           : m === 'log' ? 'Observation : les cumuls interdits sont journalisés, pas bloqués'
           : 'Contrôle de séparation des tâches désactivé'}
         actions={
-          <div className="prj-views">
+          <div className="prj-views" role="group" aria-label="Mode de contrôle">
             {(['log', 'enforce', 'off'] as const).map(k => (
-              <button key={k} className={m === k ? 'active' : ''} disabled={setMode.isPending} onClick={() => m !== k && changeMode(k)}>
+              <button key={k} type="button" aria-pressed={m === k} className={m === k ? 'active' : ''} disabled={setMode.isPending} onClick={() => m !== k && changeMode(k)}>
                 {k === 'log' ? 'Observer' : k === 'enforce' ? 'Bloquer' : 'Désactiver'}
               </button>
             ))}
@@ -100,14 +99,15 @@ function SodSection() {
       </StatusBanner>
 
       {violations.length > 0 && (
-        <div className="prj-panel hr-plain prj-scroll">
-          <div className="prj-panel-head">Utilisateurs en conflit ({violations.length})</div>
+        <>
+        <h3 className="ds-subhead">Utilisateurs en conflit ({violations.length})</h3>
+        <DataPanel label="Utilisateurs en conflit">
           <table className="odoo-table">
             <thead><tr><th>Utilisateur</th><th>Rôle principal</th><th>Conflits</th></tr></thead>
             <tbody>
               {violations.map(v => (
                 <tr key={v.userId}>
-                  <td style={{ fontWeight: 600 }}>{v.name}</td>
+                  <td className="ds-strong">{v.name}</td>
                   <td>{v.roleCode}</td>
                   <td>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -120,43 +120,44 @@ function SodSection() {
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
+        </>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>Règles ({rules.length})</span>
-        <button className="odoo-btn-secondary" onClick={() => setCreating(!creating)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouvelle règle
+      <div className="ds-section-head">
+        <h3 className="ds-subhead">Règles ({rules.length})</h3>
+        <span className="ds-grow" />
+        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setCreating(!creating)}>
+          <Plus size={13} aria-hidden="true" /> Nouvelle règle
         </button>
       </div>
       {creating && <SodRuleForm onDone={() => setCreating(false)} />}
-      <div className="prj-panel hr-plain"><div className="prj-scroll">
+      <DataPanel>
         <table className="odoo-table">
-          <thead><tr><th>Règle</th><th>Capacité A</th><th>Capacité B</th><th>Sévérité</th><th>Statut</th><th style={{ width: 1 }}></th></tr></thead>
+          <thead><tr><th>Règle</th><th>Capacité A</th><th>Capacité B</th><th>Sévérité</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {rules.map(r => (
-              <tr key={r.code} style={{ opacity: r.is_active ? 1 : 0.6 }}>
-                <td style={{ fontWeight: 600 }}>{r.label}</td>
+              <tr key={r.code}>
+                <td className="ds-strong">{r.label}</td>
                 <td>{moduleLabel(r.a_module)} · {CAPABILITY_LABELS[r.a_right as Capability] ?? r.a_right}</td>
                 <td>{moduleLabel(r.b_module)} · {CAPABILITY_LABELS[r.b_right as Capability] ?? r.b_right}</td>
                 <td><StatusTag tone={r.severity === 'critical' ? 'blocked' : 'todo'} label={r.severity === 'critical' ? 'Critique' : 'Avertissement'} /></td>
-                <td>
-                  <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => toggleActive.mutate(r)}>
-                    {r.is_active ? 'Active' : 'Inactive'}
+                <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Active' : 'Inactive'} /></td>
+                <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => toggleActive.mutate(r)}>
+                    {r.is_active ? 'Désactiver' : 'Activer'}
                   </button>
-                </td>
-                <td onClick={e => e.stopPropagation()}>
-                  <button className="odoo-btn-danger" style={{ padding: '2px 8px' }}
-                    onClick={async () => { if (await confirm(`Supprimer la règle « ${r.label} » ?`, { danger: true, confirmLabel: 'Supprimer' })) remove.mutate(r.code); }}>
-                    <Trash2 size={13} />
-                  </button>
+                  <RowMenu label={`Plus d'actions pour la règle ${r.label}`} items={[{
+                    label: 'Supprimer', icon: Trash2, danger: true,
+                    onSelect: async () => { if (await confirm(`Supprimer la règle « ${r.label} » ?`, { title: 'Supprimer la règle', danger: true, confirmLabel: 'Supprimer' })) remove.mutate(r.code); },
+                  }]} />
                 </td>
               </tr>
             ))}
-            {!rules.length && <tr><td colSpan={6} style={{ color: 'var(--odoo-text-muted)' }}>Aucune règle de séparation des tâches.</td></tr>}
+            {!rules.length && <tr><td colSpan={6} style={{ color: 'var(--ds-muted)' }}>Aucune règle de séparation des tâches.</td></tr>}
           </tbody>
         </table>
-      </div></div>
+      </DataPanel>
     </div>
   );
 }
@@ -172,18 +173,18 @@ function SodRuleForm({ onDone }: { onDone: () => void }) {
     onError: (e) => notify.error(errorMessage(e, 'Création refusée')),
   });
   const moduleSel = (k: 'aModule' | 'bModule') => (
-    <select style={field} value={f[k]} onChange={e => set(k, e.target.value)}>
+    <select className="ds-input" value={f[k]} onChange={e => set(k, e.target.value)}>
       {MODULE_OPTIONS.map(m => <option key={m} value={m}>{moduleLabel(m)}</option>)}
     </select>
   );
   const rightSel = (k: 'aRight' | 'bRight') => (
-    <select style={field} value={f[k]} onChange={e => set(k, e.target.value)}>
+    <select className="ds-input" value={f[k]} onChange={e => set(k, e.target.value)}>
       {CAPABILITIES.map(c => <option key={c} value={c}>{CAPABILITY_LABELS[c]}</option>)}
     </select>
   );
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 14, display: 'grid', gap: 10, background: 'var(--odoo-bg-alt)' }}>
-      <label style={lab}>Libellé<input style={field} value={f.label} onChange={e => set('label', e.target.value)} placeholder="Créer des achats et les approuver" maxLength={120} /></label>
+    <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 6, padding: 14, display: 'grid', gap: 10, background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
+      <label style={lab}>Libellé<input className="ds-input" value={f.label} onChange={e => set('label', e.target.value)} placeholder="Créer des achats et les approuver" maxLength={120} /></label>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <label style={lab}>Capacité A — module{moduleSel('aModule')}</label>
         <label style={lab}>Capacité A — droit{rightSel('aRight')}</label>
@@ -191,13 +192,13 @@ function SodRuleForm({ onDone }: { onDone: () => void }) {
         <label style={lab}>Capacité B — droit{rightSel('bRight')}</label>
       </div>
       <label style={{ ...lab, width: 200 }}>Sévérité
-        <select style={field} value={f.severity} onChange={e => set('severity', e.target.value)}>
+        <select className="ds-input" value={f.severity} onChange={e => set('severity', e.target.value)}>
           <option value="critical">Critique</option><option value="warning">Avertissement</option>
         </select>
       </label>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button className="odoo-btn-secondary" onClick={onDone}>Annuler</button>
-        <button className="odoo-btn-primary" disabled={f.label.trim().length < 2 || create.isPending} onClick={() => create.mutate()}>Créer la règle</button>
+        <button type="button" className="odoo-btn-secondary" onClick={onDone}>Annuler</button>
+        <button type="button" className="odoo-btn-primary" disabled={f.label.trim().length < 2 || create.isPending} onClick={() => create.mutate()}>Créer la règle</button>
       </div>
     </div>
   );
@@ -226,50 +227,48 @@ function ApprovalLimitsSection() {
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <h2 style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.02em', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <ShieldCheck size={16} style={{ color: 'var(--theme-accent)' }} /> Plafonds d'approbation
-      </h2>
+      <SectionHeader title="Plafonds d'approbation" />
       <StatusBanner tone="info" icon={ShieldCheck} title="Plafond d'approbation par rôle et type de document">
         Un utilisateur ne peut approuver un document que dans la limite du plus élevé de ses rôles. Tant qu'aucun plafond n'est défini pour un type de document, aucune limite ne s'applique (bon de commande : contrôlé à l'envoi).
       </StatusBanner>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', borderRadius: 16, padding: '14px 16px', background: 'var(--kl-card, var(--theme-bg-card))', boxShadow: 'var(--kl-shadow)' }}>
         <label style={{ ...lab, width: 200 }}>Rôle
-          <select style={field} value={f.roleCode} onChange={e => setF(s => ({ ...s, roleCode: e.target.value }))}>
+          <select className="ds-input" value={f.roleCode} onChange={e => setF(s => ({ ...s, roleCode: e.target.value }))}>
             <option value="">— choisir —</option>
             {assignable.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
           </select>
         </label>
         <label style={{ ...lab, width: 180 }}>Type de document
-          <select style={field} value={f.documentType} onChange={e => setF(s => ({ ...s, documentType: e.target.value as ApprovalDocumentType }))}>
+          <select className="ds-input" value={f.documentType} onChange={e => setF(s => ({ ...s, documentType: e.target.value as ApprovalDocumentType }))}>
             {APPROVAL_DOCUMENT_TYPES.map(d => <option key={d} value={d}>{APPROVAL_DOCUMENT_LABELS[d]}</option>)}
           </select>
         </label>
         <label style={{ ...lab, width: 160 }}>Plafond ({currencySymbol()})
-          <input style={field} type="number" min={0} step="0.01" value={f.maxAmount} onChange={e => setF(s => ({ ...s, maxAmount: e.target.value }))} placeholder="50000" />
+          <input className="ds-input" type="number" min={0} step="0.01" value={f.maxAmount} onChange={e => setF(s => ({ ...s, maxAmount: e.target.value }))} placeholder="50000" />
         </label>
-        <button className="odoo-btn-primary" disabled={!f.roleCode || f.maxAmount === '' || save.isPending} onClick={() => save.mutate()}>Enregistrer</button>
+        <button type="button" className="odoo-btn-primary" disabled={!f.roleCode || f.maxAmount === '' || save.isPending} onClick={() => save.mutate()}>Enregistrer</button>
       </div>
-      <div className="prj-panel hr-plain"><div className="prj-scroll">
+      <DataPanel>
         <table className="odoo-table">
-          <thead><tr><th>Rôle</th><th>Type de document</th><th style={{ textAlign: 'right' }}>Plafond</th><th style={{ width: 1 }}></th></tr></thead>
+          <thead><tr><th>Rôle</th><th>Type de document</th><th className="ds-num">Plafond ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {limits.map((l: ApprovalLimitRow) => (
               <tr key={l.id}>
-                <td style={{ fontWeight: 600 }}>{roleLabel(l.role_code)}</td>
+                <td className="ds-strong">{roleLabel(l.role_code)}</td>
                 <td>{APPROVAL_DOCUMENT_LABELS[l.document_type as ApprovalDocumentType] ?? l.document_type}</td>
-                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(l.max_amount).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {l.currency}</td>
+                <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(l.max_amount).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} {l.currency}</td>
                 <td>
-                  <button className="odoo-btn-danger" style={{ padding: '2px 8px' }}
+                  <button type="button" className="ds-icon-btn" aria-label="Supprimer" title="Supprimer"
                     onClick={async () => { if (await confirm('Retirer ce plafond ?', { danger: true, confirmLabel: 'Retirer' })) remove.mutate(l.id); }}>
-                    <Trash2 size={13} />
+                    <Trash2 size={14} />
                   </button>
                 </td>
               </tr>
             ))}
-            {!limits.length && <tr><td colSpan={4} style={{ color: 'var(--odoo-text-muted)' }}>Aucun plafond défini (aucune limite d'approbation active).</td></tr>}
+            {!limits.length && <tr><td colSpan={4} style={{ color: 'var(--ds-muted)' }}>Aucun plafond défini (aucune limite d'approbation active).</td></tr>}
           </tbody>
         </table>
-      </div></div>
+      </DataPanel>
     </div>
   );
 }
@@ -300,9 +299,7 @@ function DelegationsSection() {
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <h2 style={{ fontSize: 19, fontWeight: 700, letterSpacing: '-.02em', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <GitBranch size={16} style={{ color: 'var(--theme-accent)' }} /> Délégations temporaires
-      </h2>
+      <SectionHeader title="Délégations temporaires" />
       <StatusBanner tone="info" icon={UserCog} title="Déléguer un rôle à un autre utilisateur sur une période">
         Le délégataire cumule le rôle délégué dans ses droits effectifs tant que la délégation est active (remplacement pendant un congé). L'effet complet est pris en compte à sa prochaine connexion.
       </StatusBanner>
@@ -318,41 +315,41 @@ function DelegationsSection() {
             options={activeUsers.filter(u => u.id !== f.fromUserId).map(u => ({ id: u.id as string, label: userName(u) }))} />
         </label>
         <label style={{ ...lab, width: 170 }}>Rôle délégué
-          <select style={field} value={f.roleCode} onChange={e => set('roleCode', e.target.value)}>
+          <select className="ds-input" value={f.roleCode} onChange={e => set('roleCode', e.target.value)}>
             <option value="">— choisir —</option>
             {roles.filter(r => r.code !== 'admin' && r.is_active).map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
           </select>
         </label>
         <label style={{ ...lab, width: 160 }}>Jusqu'au
-          <input style={field} type="date" value={f.endsAt} onChange={e => set('endsAt', e.target.value)} />
+          <input className="ds-input" type="date" value={f.endsAt} onChange={e => set('endsAt', e.target.value)} />
         </label>
         <label style={{ ...lab, flex: '1 1 160px' }}>Motif
-          <input style={field} value={f.reason} onChange={e => set('reason', e.target.value)} placeholder="Congé de…" maxLength={200} />
+          <input className="ds-input" value={f.reason} onChange={e => set('reason', e.target.value)} placeholder="Congé de…" maxLength={200} />
         </label>
-        <button className="odoo-btn-primary" disabled={!f.fromUserId || !f.toUserId || !f.roleCode || !f.endsAt || create.isPending} onClick={() => create.mutate()}>Déléguer</button>
+        <button type="button" className="odoo-btn-primary" disabled={!f.fromUserId || !f.toUserId || !f.roleCode || !f.endsAt || create.isPending} onClick={() => create.mutate()}>Déléguer</button>
       </div>
-      <div className="prj-panel hr-plain"><div className="prj-scroll">
+      <DataPanel>
         <table className="odoo-table">
-          <thead><tr><th>De → vers</th><th>Rôle</th><th>Période</th><th>Statut</th><th style={{ width: 1 }}></th></tr></thead>
+          <thead><tr><th>De → vers</th><th>Rôle</th><th>Période</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {(delegations as DelegationRow[]).map(d => (
-              <tr key={d.id} style={{ opacity: d.active ? 1 : 0.6 }}>
+              <tr key={d.id}>
                 <td><strong>{d.from_name}</strong> → {d.to_name}</td>
                 <td>{d.role_label}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{fmt(d.starts_at)} → {fmt(d.ends_at)}</td>
                 <td><StatusTag tone={d.active ? 'done' : 'cancelled'} label={d.active ? 'Active' : 'Inactive'} /></td>
                 <td>
-                  <button className="odoo-btn-danger" style={{ padding: '2px 8px' }}
+                  <button type="button" className="ds-icon-btn" aria-label="Supprimer" title="Supprimer"
                     onClick={async () => { if (await confirm('Retirer cette délégation ?', { danger: true, confirmLabel: 'Retirer' })) remove.mutate(d.id); }}>
-                    <Trash2 size={13} />
+                    <Trash2 size={14} />
                   </button>
                 </td>
               </tr>
             ))}
-            {!delegations.length && <tr><td colSpan={5} style={{ color: 'var(--odoo-text-muted)' }}>Aucune délégation.</td></tr>}
+            {!delegations.length && <tr><td colSpan={5} style={{ color: 'var(--ds-muted)' }}>Aucune délégation.</td></tr>}
           </tbody>
         </table>
-      </div></div>
+      </DataPanel>
     </div>
   );
 }

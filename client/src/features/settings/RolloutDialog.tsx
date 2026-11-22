@@ -43,7 +43,7 @@ export default function RolloutDialog({ module, pilot, disabledStores, busy, onC
         style={{ background: 'var(--odoo-bg)', borderRadius: 6, border: '1px solid var(--odoo-border)', width: '100%', maxWidth: 620, margin: '0 16px', display: 'grid', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <div style={{ fontWeight: 600 }}>Diffusion — {MODULE_LABELS[module]}</div>
-          <button type="button" onClick={onClose} aria-label="Fermer" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--odoo-text-muted)' }}><X size={16} /></button>
+          <button type="button" onClick={onClose} aria-label="Fermer" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ds-muted)' }}><X size={16} /></button>
         </div>
 
         <div style={{ padding: 16, display: 'grid', gap: 16 }}>
@@ -73,7 +73,7 @@ export default function RolloutDialog({ module, pilot, disabledStores, busy, onC
                     ))}
                 </div>
               </div>
-              {pilotEmpty && <p className="odoo-setting-help" style={{ color: 'var(--prj-red)' }}>Choisissez au moins un rôle ou un utilisateur.</p>}
+              {pilotEmpty && <p className="odoo-setting-help" style={{ color: 'var(--ds-danger)' }}>Choisissez au moins un rôle ou un utilisateur.</p>}
             </>
           )}
 

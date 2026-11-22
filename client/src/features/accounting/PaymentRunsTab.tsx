@@ -11,6 +11,8 @@ import { apiErrorMessage } from '../../api/errors';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { money as fmtMoney } from '../../utils/money';
 import TransferFormatDialog from './TransferFormatDialog';
+import { LoadingState, DataPanel, EmptyState, TableFooter } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
 
 /**
  * Paiements fournisseurs en lot (G4-01).
@@ -48,39 +50,39 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
   const [formatOpen, setFormatOpen] = useState(false);
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <StatusBanner tone="info" icon={Banknote} title="Paiements fournisseurs en lot"
-        actions={<span style={{ display: 'inline-flex', gap: 8 }}>
-          <button type="button" className="odoo-btn-secondary" disabled={!banks.length} onClick={() => setFormatOpen(true)} title="Format du fichier attendu par le portail de la banque"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Settings2 size={14} /> Format banque</button>
-          <button type="button" className="odoo-btn-primary" onClick={onNew} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={14} /> Nouvelle campagne</button>
-        </span>}>
+      <AccHeaderActions>
+        <button type="button" className="odoo-btn-secondary" disabled={!banks.length} onClick={() => setFormatOpen(true)} title="Format du fichier attendu par le portail de la banque"><Settings2 size={14} aria-hidden="true" /> Format banque</button>
+        <button type="button" className="odoo-btn-primary" onClick={onNew}><Plus size={14} aria-hidden="true" /> Nouvelle campagne</button>
+      </AccHeaderActions>
+      <StatusBanner tone="info" icon={Banknote} title="Paiements fournisseurs en lot">
         Regroupez les factures fournisseurs échues dans une campagne de virement : approbation, fichier pour la banque, puis exécution en un geste
         (règlements, écritures et lettrage créés pour chaque facture).
       </StatusBanner>
-      {isLoading ? <Loader2 size={16} className="animate-spin" /> : runs.length === 0 ? (
-        <div style={{ padding: 16, color: 'var(--theme-text-muted)' }}>Aucune campagne pour l'instant.</div>
+      {isLoading ? <LoadingState /> : runs.length === 0 ? (
+        <EmptyState icon={Banknote} title="Aucune campagne de paiement" text="Regroupez les factures échues dans une première campagne de virement."
+          action={<button type="button" className="odoo-btn-primary" onClick={onNew}><Plus size={14} aria-hidden="true" /> Nouvelle campagne</button>} />
       ) : (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, overflowX: 'auto', background: 'var(--odoo-bg)' }}>
-          <table className="odoo-table" style={{ width: '100%' }}>
+        <DataPanel label="Campagnes de paiement" footer={<TableFooter note={`${runs.length} campagne${runs.length > 1 ? 's' : ''}`} />}>
+          <table className="odoo-table ds-dense">
             <thead><tr>
-              <th style={{ textAlign: 'left' }}>Campagne</th><th style={{ textAlign: 'left' }}>Date de paiement</th><th style={{ textAlign: 'left' }}>Compte</th>
-              <th style={{ textAlign: 'right' }}>Factures</th><th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'left' }}>État</th><th style={{ textAlign: 'left' }}>Préparée par</th>
+              <th>Campagne</th><th>Date de paiement</th><th>Compte</th>
+              <th className="ds-num">Factures</th><th className="ds-num">Total</th><th>Statut</th><th>Préparée par</th>
             </tr></thead>
             <tbody>
               {runs.map(r => (
                 <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(r.id)}>
-                  <td style={{ fontWeight: 500 }}>{r.run_number}</td>
+                  <td className="ds-ref">{r.run_number}</td>
                   <td>{dmy(r.payment_date)}</td>
                   <td>{r.treasury_label}</td>
-                  <td style={{ textAlign: 'right' }}>{r.lines}{r.rejected ? ` (${r.rejected} rejetée${r.rejected > 1 ? 's' : ''})` : ''}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(r.total_amount)}</td>
+                  <td className="ds-num">{r.lines}{r.rejected ? ` (${r.rejected} rejetée${r.rejected > 1 ? 's' : ''})` : ''}</td>
+                  <td className="ds-num">{money(r.total_amount)}</td>
                   <td><StatusTag tone={STATUS[r.status].tone} label={STATUS[r.status].label} /></td>
                   <td>{r.created_by_name ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
       {formatOpen && banks.length > 0 && (
         <TransferFormatDialog banks={banks} initialId={banks.find(b => b.is_default)?.id ?? banks[0].id} onClose={() => setFormatOpen(false)} />
@@ -136,36 +138,36 @@ function PrepareRun({ onBack, onCreated }: { onBack: () => void; onCreated: (id:
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button type="button" className="odoo-pager-btn" onClick={onBack} title="Retour aux campagnes"><ArrowLeft size={16} /></button>
-        <span style={{ fontWeight: 600, fontSize: '1.05rem' }}>Nouvelle campagne de paiement</span>
+        <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={onBack}><ArrowLeft size={14} aria-hidden="true" /> Campagnes</button>
+        <h2 className="ds-subhead" style={{ fontSize: 17 }}>Nouvelle campagne de paiement</h2>
       </div>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', fontSize: '0.85rem' }}>
+      <div className="prj-toolbar" style={{ alignItems: 'flex-end', gap: 16, fontSize: 13 }}>
         <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Factures échues au plus tard le</span>
-          <input type="date" className="odoo-input" value={dueBefore} onChange={e => { setDueBefore(e.target.value); setPicked({}); }} /></label>
+          <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={dueBefore} onChange={e => { setDueBefore(e.target.value); setPicked({}); }} /></label>
         <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Date du virement</span>
-          <input type="date" className="odoo-input" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} /></label>
+          <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={paymentDate} onChange={e => setPaymentDate(e.target.value)} /></label>
         <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Compte débité</span>
-          <select className="odoo-input" value={bankId} onChange={e => setTreasuryId(e.target.value)} aria-label="Compte débité">
+          <select className="ds-input sm" style={{ width: 'auto' }} value={bankId} onChange={e => setTreasuryId(e.target.value)} aria-label="Compte débité">
             {banks.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
           </select></label>
       </div>
 
-      {isLoading ? <Loader2 size={16} className="animate-spin" /> : bySupplier.length === 0 ? (
-        <div style={{ padding: 16, color: 'var(--theme-text-muted)' }}>Aucune facture payable à cette date (validée, non soldée, sans blocage, en dirhams).</div>
+      {isLoading ? <LoadingState /> : bySupplier.length === 0 ? (
+        <EmptyState icon={Banknote} title="Aucune facture payable à cette date" text="Seules les factures validées, non soldées, sans blocage et en dirhams entrent dans une campagne." />
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
           {bySupplier.map(([supplierId, g]) => {
             const supplierTotal = g.rows.filter(c => picked[c.invoice_id] !== undefined).reduce((t, c) => t + (Number(picked[c.invoice_id].replace(',', '.')) || 0), 0);
             return (
-              <section key={supplierId} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', overflowX: 'auto' }}>
+              <section key={supplierId} className="ds-panel" style={{ overflowX: 'auto' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--odoo-border)', flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 600 }}>{g.name}</span>
                   {!g.ribValid && <StatusTag tone="late" label="RIB manquant ou invalide" icon={AlertTriangle} title="À compléter sur la fiche fournisseur avant la soumission" />}
                   <span style={{ marginLeft: 'auto', fontSize: '0.82rem', color: 'var(--theme-text-muted)' }}>Sélection : <strong style={{ color: 'var(--odoo-text)' }}>{money(supplierTotal)}</strong></span>
                 </div>
-                <table className="odoo-table" style={{ width: '100%' }}>
-                  <thead><tr><th style={{ width: 36 }} /><th style={{ textAlign: 'left' }}>Facture</th><th style={{ textAlign: 'left' }}>Échéance</th>
-                    <th style={{ textAlign: 'right' }}>Reste à payer</th><th style={{ textAlign: 'right' }}>À régler</th></tr></thead>
+                <table className="odoo-table ds-dense">
+                  <thead><tr><th style={{ width: 36 }} /><th>Facture</th><th>Échéance</th>
+                    <th className="ds-num">Reste à payer</th><th className="ds-num">À régler</th></tr></thead>
                   <tbody>
                     {g.rows.map(c => {
                       const on = picked[c.invoice_id] !== undefined;
@@ -174,9 +176,9 @@ function PrepareRun({ onBack, onCreated }: { onBack: () => void; onCreated: (id:
                           <td><input type="checkbox" checked={on} disabled={!!c.open_run} onChange={() => toggle(c)} aria-label={`Sélectionner ${c.invoice_number}`} /></td>
                           <td>{c.supplier_invoice_number || c.invoice_number}{c.open_run && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}> — déjà dans {c.open_run}</span>}</td>
                           <td>{dmy(c.due_date)}</td>
-                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(c.remaining)}</td>
-                          <td style={{ textAlign: 'right' }}>
-                            {on ? <input className="odoo-input" type="text" inputMode="decimal" style={{ width: 120, textAlign: 'right' }} aria-label={`Montant pour ${c.invoice_number}`}
+                          <td className="ds-num">{money(c.remaining)}</td>
+                          <td className="ds-num">
+                            {on ? <input className="ds-input sm" type="text" inputMode="decimal" style={{ width: 120, textAlign: 'right' }} aria-label={`Montant pour ${c.invoice_number}`}
                               value={picked[c.invoice_id]} onChange={e => setPicked(p => ({ ...p, [c.invoice_id]: e.target.value }))} /> : '—'}
                           </td>
                         </tr>
@@ -190,16 +192,16 @@ function PrepareRun({ onBack, onCreated }: { onBack: () => void; onCreated: (id:
         </div>
       )}
 
-      <div style={{ position: 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)' }}>
+      <div className="ds-panel" style={{ position: 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', overflow: 'visible' }}>
         <span>{selected.length} facture{selected.length > 1 ? 's' : ''} · <strong>{money(total)}</strong></span>
         {forecast && (
-          <span style={{ fontSize: '0.8rem', color: forecast.firstBelowThreshold ? '#c62828' : 'var(--theme-text-muted)' }}
+          <span style={{ fontSize: '0.8rem', color: forecast.firstBelowThreshold ? 'var(--ds-danger)' : 'var(--theme-text-muted)' }}
             title="Prévision de trésorerie avec ces factures payées à la date du virement (les autres à leur échéance)">
             {atDate ? `Solde prévu le ${dmy(paymentDate)} : ${money(atDate.balance)} · ` : ''}point bas sur 13 semaines : {money(forecast.minimum.balance)} le {dmy(forecast.minimum.date)}
             {forecast.firstBelowThreshold ? ' — sous le seuil d\'alerte' : ''}
           </span>
         )}
-        <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }}
           disabled={!selected.length || !bankId || create.isPending} onClick={() => create.mutate()}>
           {create.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Créer la campagne
         </button>
@@ -240,36 +242,35 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
-  if (isLoading || !run) return <Loader2 size={16} className="animate-spin" />;
+  if (isLoading || !run) return <LoadingState />;
   const st = STATUS[run.status];
   const badRib = run.lines.some(l => !l.ribValid);
   const busy = act.isPending;
   const btn = (kind: 'submit' | 'file' | 'letter' | 'execute' | 'cancel', label: string, Icon: typeof Send, primary = false) => (
-    <button type="button" className={primary ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={busy}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+    <button type="button" className={kind === 'cancel' ? 'ds-btn-danger' : primary ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={busy}
       onClick={async () => {
         if (kind === 'execute' && !(await confirm(`Exécuter la campagne ${run.run_number} ? ${run.lines.filter(l => l.status === 'pending').length} règlement(s) seront créés, avec leurs écritures. À faire une fois le virement remis à la banque.`, { title: 'Exécuter la campagne', confirmLabel: 'Exécuter' }))) return;
         if (kind === 'cancel' && !(await confirm(`Annuler la campagne ${run.run_number} ? Les factures redeviennent disponibles pour une autre campagne.`, { title: 'Annuler la campagne', confirmLabel: 'Annuler la campagne', danger: true }))) return;
         act.mutate(kind);
       }}>
-      <Icon size={14} /> {label}
+      <Icon size={14} aria-hidden="true" /> {label}
     </button>
   );
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <button type="button" className="odoo-pager-btn" onClick={onBack} title="Retour aux campagnes"><ArrowLeft size={16} /></button>
-        <span style={{ fontWeight: 600, fontSize: '1.05rem' }}>{run.run_number}</span>
+        <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={onBack}><ArrowLeft size={14} aria-hidden="true" /> Campagnes</button>
+        <h2 className="ds-subhead ds-ref" style={{ fontSize: 17 }}>{run.run_number}</h2>
         <StatusTag tone={st.tone} label={st.label} />
         <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>Virement du {dmy(run.payment_date)} · {run.treasury_label} · {money(run.total_amount)}</span>
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+        <AccHeaderActions>
+          {['draft', 'pending_approval', 'approved', 'file_generated'].includes(run.status) && btn('cancel', 'Annuler', X)}
           {run.status === 'draft' && btn('submit', 'Soumettre', Send, true)}
           {['approved', 'file_generated', 'executed'].includes(run.status) && btn('file', 'Fichier de virement', Download, run.status === 'approved')}
           {['approved', 'file_generated', 'executed'].includes(run.status) && btn('letter', 'Lettre d\'ordre', FileText)}
           {run.status === 'file_generated' && btn('execute', 'Exécuter', Play, true)}
-          {['draft', 'pending_approval', 'approved', 'file_generated'].includes(run.status) && btn('cancel', 'Annuler', X)}
-        </span>
+        </AccHeaderActions>
       </div>
 
       {run.status === 'draft' && badRib && (
@@ -286,33 +287,33 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </StatusBanner>
       )}
 
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, overflowX: 'auto', background: 'var(--odoo-bg)' }}>
-        <table className="odoo-table" style={{ width: '100%' }}>
+      <DataPanel>
+        <table className="odoo-table ds-dense">
           <thead><tr>
-            <th style={{ textAlign: 'left' }}>Fournisseur</th><th style={{ textAlign: 'left' }}>Facture</th><th style={{ textAlign: 'left' }}>RIB</th>
-            <th style={{ textAlign: 'right' }}>Montant</th><th style={{ textAlign: 'left' }}>État</th><th />
+            <th>Fournisseur</th><th>Facture</th><th>RIB</th>
+            <th className="ds-num">Montant</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
             {run.lines.map(l => (
               <tr key={l.id}>
-                <td style={{ fontWeight: 500 }}>{l.supplier_name}</td>
-                <td>{l.supplier_invoice_number || l.invoice_number}</td>
-                <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8rem', color: l.ribValid ? undefined : '#c62828' }}>{l.rib ?? 'absent'}</td>
-                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(l.amount)}</td>
+                <td className="ds-strong">{l.supplier_name}</td>
+                <td className="ds-ref">{l.supplier_invoice_number || l.invoice_number}</td>
+                <td className="ds-ref" style={{ color: l.ribValid ? undefined : 'var(--ds-danger)' }}>{l.rib ?? 'absent'}</td>
+                <td className="ds-num">{money(l.amount)}</td>
                 <td>
                   <StatusTag tone={l.status === 'paid' ? 'done' : l.status === 'rejected' ? 'late' : 'draft'} label={l.status === 'paid' ? 'Réglée' : l.status === 'rejected' ? 'Rejetée' : 'À régler'} />
                   {l.reject_reason && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}> — {l.reject_reason}</span>}
                 </td>
-                <td style={{ textAlign: 'right' }}>
+                <td className="ds-actions">
                   {run.status === 'executed' && l.status === 'paid' && (
-                    <button type="button" className="odoo-btn-secondary" onClick={() => setRejecting(l.id)}>Rejet bancaire</button>
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setRejecting(l.id)}>Rejet bancaire</button>
                   )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
 
       {rejecting && (
         <ReasonCodeDialog title="Rejet bancaire d'un virement" scope="void_payment"

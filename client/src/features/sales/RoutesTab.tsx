@@ -8,7 +8,9 @@ import { deliveryRoutesApi, type DeliveryRoute, type RouteStatus, type RouteStop
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
-import { ListKpi, ListPanel, ListEmpty } from './ListTemplate';
+import { ListKpi, ListPanel } from './ListTemplate';
+import { createPortal } from 'react-dom';
+import { TableFooter, EmptyState, LoadingState } from '../../components/ds';
 
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
@@ -17,7 +19,8 @@ const STATUS: Record<RouteStatus, { label: string; tone: StatusTone; icon?: Luci
   planned: { label: 'Planifiée', tone: 'todo' }, in_progress: { label: 'En cours', tone: 'progress', icon: Truck }, done: { label: 'Terminée', tone: 'done' },
 };
 
-export default function RoutesTab() {
+/** `actionsSlot` : emplacement de la barre du haut où poser l'action principale de la page. */
+export default function RoutesTab({ actionsSlot }: { actionsSlot?: HTMLElement | null } = {}) {
   const qc = useQueryClient();
   const { data: rows = [], isLoading } = useQuery({ queryKey: ['delivery-routes'], queryFn: () => deliveryRoutesApi.list() });
   const [showForm, setShowForm] = useState(false);
@@ -27,32 +30,31 @@ export default function RoutesTab() {
   const open = rows.filter(r => r.status !== 'done');
   const stops = open.reduce((n, r) => n + r.stops, 0);
   const delivered = open.reduce((n, r) => n + r.delivered, 0);
+  const newBtn = <button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouvelle tournée</button>;
   return (
-    <div className="odoo-scope prj" style={{ padding: '16px 20px' }}>
+    <div className="odoo-scope prj">
       <section className="prj-kpis" aria-label="Indicateurs">
         <ListKpi label="Tournées du jour" value={String(todayRoutes.length)} sub={`${todayRoutes.reduce((n, r) => n + r.stops, 0)} arrêt(s)`} />
         <ListKpi label="Planifiées" value={String(rows.filter(r => r.status === 'planned').length)} sub="à partir" />
         <ListKpi label="En cours" value={String(rows.filter(r => r.status === 'in_progress').length)} sub="sur la route" tone={rows.some(r => r.status === 'in_progress') ? 'orange' : undefined} />
         <ListKpi label="Arrêts livrés" value={`${delivered} / ${stops}`} sub="tournées non terminées" />
       </section>
-      <div className="prj-toolbar">
-        <p className="prj-note" style={{ flex: 1, minWidth: 260 }}>Regroupez les bons de livraison en tournées datées, ordonnez les arrêts et pointez chaque arrêt livré.</p>
-        <button className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouvelle tournée</button>
-      </div>
-      {!isLoading && rows.length === 0 ? (
-        <ListEmpty icon={Truck} title="Aucune tournée" text="Créez une tournée puis ajoutez-y les bons de livraison à remettre." />
+      {actionsSlot
+        ? createPortal(newBtn, actionsSlot)
+        : <div className="prj-toolbar"><span style={{ flex: 1 }} />{newBtn}</div>}
+      {isLoading ? <LoadingState label="Chargement des tournées…" /> : rows.length === 0 ? (
+        <EmptyState icon={Truck} title="Aucune tournée" text="Créez une tournée puis ajoutez-y les bons de livraison à remettre." />
       ) : (
-        <ListPanel footer={<div className="sal-foot"><span>{rows.length} tournée{rows.length > 1 ? 's' : ''}</span></div>}>
+        <ListPanel footer={<TableFooter note={<>{rows.length} tournée{rows.length > 1 ? 's' : ''}</>} />}>
           <table className="odoo-table">
-            <thead><tr><th>Date</th><th>Tournée</th><th>Chauffeur</th><th style={{ textAlign: 'center' }}>Arrêts</th><th>Statut</th></tr></thead>
+            <thead><tr><th>Date</th><th>Tournée</th><th>Chauffeur</th><th className="ds-num">Arrêts livrés</th><th>Statut</th></tr></thead>
             <tbody>
-              {isLoading && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
               {rows.map(r => (
                 <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setOpenId(r.id)}>
                   <td style={{ whiteSpace: 'nowrap' }}>{day(r.route_date)}</td>
-                  <td style={{ fontWeight: 500 }}>{r.label}</td>
-                  <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>{r.driver_name || '—'}</td>
-                  <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{r.delivered}/{r.stops}</td>
+                  <td className="ds-strong">{r.label}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>{r.driver_name || '—'}</td>
+                  <td className="ds-num">{r.delivered} / {r.stops}</td>
                   <td><StatusTag tone={STATUS[r.status].tone} icon={STATUS[r.status].icon} label={STATUS[r.status].label} /></td>
                 </tr>
               ))}
@@ -80,7 +82,7 @@ function RouteForm({ onClose, onSaved }: { onClose: () => void; onSaved: (r: Del
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(440px, 96vw)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Truck size={16} /> Nouvelle tournée</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={lab}>Libellé<input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Tournée centre-ville" style={inp} /></label>
@@ -119,7 +121,7 @@ function RouteDetail({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(720px, 96vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Truck size={16} /> {data?.label ?? 'Tournée'}{data && <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}> · {day(data.route_date)}{data.driver_name ? ` · ${data.driver_name}` : ''}</span>}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {isLoading || !data ? <div style={{ textAlign: 'center', padding: 24 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /></div> : (
@@ -155,8 +157,8 @@ function StopRow({ s, i, count, onMove, onToggle, onRemove }: { s: RouteStop; i:
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'center', border: '1px solid var(--odoo-border)', borderRadius: 8, padding: '8px 12px', background: done ? 'var(--theme-bg-secondary)' : 'var(--odoo-bg)' }}>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <button className="odoo-pager-btn" style={{ padding: 2 }} disabled={i === 0} onClick={onMove.bind(null, i, -1)}><ChevronUp size={12} /></button>
-        <button className="odoo-pager-btn" style={{ padding: 2 }} disabled={i === count - 1} onClick={onMove.bind(null, i, 1)}><ChevronDown size={12} /></button>
+        <button className="odoo-pager-btn" style={{ padding: 2 }} aria-label="Monter l'arrêt" disabled={i === 0} onClick={onMove.bind(null, i, -1)}><ChevronUp size={12} /></button>
+        <button className="odoo-pager-btn" style={{ padding: 2 }} aria-label="Descendre l'arrêt" disabled={i === count - 1} onClick={onMove.bind(null, i, 1)}><ChevronDown size={12} /></button>
       </div>
       <div style={{ width: 22, textAlign: 'center', fontWeight: 700, color: 'var(--theme-text-muted)' }}>{i + 1}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -169,7 +171,7 @@ function StopRow({ s, i, count, onMove, onToggle, onRemove }: { s: RouteStop; i:
       <button className={done ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }} onClick={onToggle}>
         <CheckCircle2 size={13} /> {done ? 'Livré' : 'À livrer'}
       </button>
-      <button className="odoo-btn-secondary" style={{ padding: '0.25rem 0.4rem' }} onClick={onRemove} title="Retirer"><Trash2 size={13} /></button>
+      <button className="odoo-btn-secondary" style={{ padding: '0.25rem 0.4rem' }} onClick={onRemove} title="Retirer" aria-label="Retirer l'arrêt"><Trash2 size={13} /></button>
     </div>
   );
 }
@@ -188,7 +190,7 @@ function AddStops({ routeId, onClose, onAdded }: { routeId: string; onClose: () 
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(560px, 96vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
           <span style={{ fontWeight: 600 }}>Ajouter des bons de livraison</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ overflowY: 'auto', padding: 12 }}>
           {isLoading ? <div style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div>

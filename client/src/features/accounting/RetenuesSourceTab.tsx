@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Lock, Settings, Receipt, Calendar, Send, Scale } from 'lucide-react';
+import { Lock, Receipt, Send } from 'lucide-react';
 import { withholdingApi } from '../../api/withholding.api';
 import type { WithholdingType, ToRemitLine } from '../../api/withholding.api';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { currencySymbol } from '../../utils/money';
+import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, Tabs, Toolbar } from '../../components/ds';
+import { DateRangeField } from './AccToolbarFields';
 
 function n(v: string | number | null): string {
   const num = typeof v === 'string' ? parseFloat(v) : v;
@@ -20,35 +22,14 @@ export default function RetenuesSourceTab() {
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>Les retenues à la source sont réservées à l'administrateur ou au gérant.</p>
-      </div>
+      <EmptyState icon={Lock} title="Les retenues à la source sont réservées à l'administrateur ou au gérant." />
     );
   }
 
   return (
     <>
-      <div style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--theme-bg-secondary)', borderRadius: 8, marginBottom: 12 }}>
-        {([
-          { key: 'a_reverser' as const, label: 'À reverser à la DGI', icon: Send },
-          { key: 'config' as const, label: 'Configuration des taux', icon: Settings },
-        ]).map(t => {
-          const Icon = t.icon; const active = view === t.key;
-          return (
-            <button key={t.key} onClick={() => setView(t.key)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6,
-                border: 'none', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: active ? 600 : 400,
-                background: active ? 'var(--theme-bg-card)' : 'transparent',
-                color: active ? 'var(--theme-text)' : 'var(--theme-text-muted)',
-                boxShadow: active ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
-              }}>
-              <Icon size={14} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <Tabs label="Retenues à la source" value={view} onChange={setView}
+        tabs={[{ key: 'a_reverser', label: 'À reverser à la DGI' }, { key: 'config', label: 'Configuration des taux' }]} />
 
       {view === 'a_reverser' ? <AReverserView /> : <ConfigView />}
     </>
@@ -69,38 +50,29 @@ function AReverserView() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="odoo-search-input" style={{ width: 140 }} />
-          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="odoo-search-input" style={{ width: 140 }} />
-        </div>
-      </div>
-
       {data && (
-        <div className="odoo-stat-grid">
-          <div className="odoo-stat-card" style={{ border: `1.5px solid ${data.total_a_reverser > 0 ? '#b71c1c' : '#0e7c3a'}` }}>
-            <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />Total à reverser à la DGI</div>
-            <div className="odoo-stat-card-value" style={{ color: data.total_a_reverser > 0 ? '#b71c1c' : '#0e7c3a' }}>{n(data.total_a_reverser)}</div>
-            <div className="odoo-stat-card-sub">{currencySymbol()} · sur la période</div>
-          </div>
-        </div>
+        <KpiGrid>
+          <KpiCard label="Total à reverser à la DGI" value={n(data.total_a_reverser)} sub={<>{currencySymbol()} · sur la période</>} tone={data.total_a_reverser > 0 ? 'red' : 'green'} />
+        </KpiGrid>
       )}
 
+      <Toolbar>
+        <DateRangeField from={startDate} to={endDate} onFrom={setStartDate} onTo={setEndDate} />
+      </Toolbar>
+
       {isLoading || !data ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}><Loader2 size={20} className="animate-spin" /></div>
+        <LoadingState />
       ) : (
-        <div className="odoo-section" style={{ padding: 0 }}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th>Retenue</th>
                 <th style={{ width: 70 }}>Compte</th>
-                <th style={{ width: 110, textAlign: 'right' }}>Retenu</th>
-                <th style={{ width: 110, textAlign: 'right' }}>Déjà reversé</th>
-                <th style={{ width: 110, textAlign: 'right' }}>À reverser</th>
-                <th style={{ width: 110 }}></th>
+                <th className="ds-num" style={{ width: 130 }}>Retenu ({currencySymbol()})</th>
+                <th className="ds-num" style={{ width: 150 }}>Déjà reversé ({currencySymbol()})</th>
+                <th className="ds-num" style={{ width: 140 }}>À reverser ({currencySymbol()})</th>
+                <th className="ds-actions" style={{ width: 120 }}><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -109,17 +81,17 @@ function AReverserView() {
                 return (
                   <tr key={l.code}>
                     <td>
-                      <div style={{ fontWeight: 500 }}>{l.label}</div>
+                      <div className="ds-strong">{l.label}</div>
                       {l.legal_ref && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{l.legal_ref}</div>}
                     </td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{l.account_code}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(l.total_retenu)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{n(l.total_reverse)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: aReverser > 0 ? '#b71c1c' : 'var(--theme-text-muted)' }}>{n(aReverser)}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="ds-ref">{l.account_code}</td>
+                    <td className="ds-num">{n(l.total_retenu)}</td>
+                    <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{n(l.total_reverse)}</td>
+                    <td className="ds-num ds-strong" style={{ color: aReverser > 0 ? undefined : 'var(--ds-muted)' }}>{n(aReverser)}</td>
+                    <td className="ds-actions">
                       {aReverser > 0.01 && (
-                        <button onClick={() => setReversing(l)} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <Send size={12} /> Reverser
+                        <button type="button" onClick={() => setReversing(l)} className="odoo-btn-secondary ds-btn-sm">
+                          <Send size={12} aria-hidden="true" /> Reverser
                         </button>
                       )}
                     </td>
@@ -127,14 +99,14 @@ function AReverserView() {
                 );
               })}
               {data.lines.every((l: ToRemitLine) => Math.abs(parseFloat(l.a_reverser) || 0) < 0.01) && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--theme-text-muted)', fontStyle: 'italic', padding: '1.5rem' }}>Aucune retenue à reverser sur la période</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--theme-text-muted)', padding: '1.5rem' }}>Aucune retenue à reverser sur la période</td></tr>
               )}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
-      <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
+      <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>
         Les retenues sont enregistrées au crédit des comptes 4452x. « Reverser » génère l'écriture 4452x → trésorerie et solde la dette envers la DGI.
       </p>
 
@@ -184,7 +156,7 @@ function ReversementModal({ line, onClose, onDone }: { line: ToRemitLine; onClos
         </div>
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={() => reverse.mutate()} disabled={reverse.isPending || !(parseFloat(amount) > 0)} className="odoo-btn-primary" style={{ opacity: (reverse.isPending || !(parseFloat(amount) > 0)) ? 0.5 : 1 }}>
+          <button onClick={() => reverse.mutate()} disabled={reverse.isPending || !(parseFloat(amount) > 0)} className="odoo-btn-primary">
             {reverse.isPending ? 'Enregistrement...' : 'Confirmer le reversement'}
           </button>
         </div>
@@ -206,19 +178,19 @@ function ConfigView() {
     onError: () => notify.error('Erreur mise à jour'),
   });
 
-  if (isLoading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={20} className="animate-spin" /></div>;
+  if (isLoading) return <LoadingState />;
 
   return (
     <>
-      <div className="odoo-section" style={{ padding: 0 }}>
-        <table className="odoo-table" style={{ margin: 0 }}>
+      <DataPanel>
+        <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th>Type de retenue</th>
               <th style={{ width: 70 }}>Compte</th>
-              <th style={{ width: 90, textAlign: 'right' }}>Taux %</th>
-              <th style={{ width: 110, textAlign: 'right' }}>Seuil ({currencySymbol()})</th>
-              <th style={{ width: 100, textAlign: 'right' }}>Taux &gt; seuil</th>
+              <th className="ds-num" style={{ width: 90 }}>Taux %</th>
+              <th className="ds-num" style={{ width: 110 }}>Seuil ({currencySymbol()})</th>
+              <th className="ds-num" style={{ width: 100 }}>Taux &gt; seuil</th>
               <th style={{ width: 80 }}>Actif</th>
             </tr>
           </thead>
@@ -229,22 +201,22 @@ function ConfigView() {
                   <div style={{ fontWeight: 500 }}>{t.label}</div>
                   {t.legal_ref && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{t.legal_ref}</div>}
                 </td>
-                <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{t.account_code}</td>
-                <td style={{ textAlign: 'right' }}>
+                <td className="ds-ref">{t.account_code}</td>
+                <td className="ds-num">
                   {t.code === 'ir_salaires' ? (
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>barème (paie)</span>
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>barème (paie)</span>
                   ) : (
                     <input type="number" step="0.01" defaultValue={t.rate ?? ''} onBlur={e => { const v = e.target.value === '' ? null : Number(e.target.value); if (String(v) !== String(t.rate)) update.mutate({ id: t.id, data: { rate: v } }); }}
                       style={{ width: 64, padding: '4px 6px', textAlign: 'right', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, background: 'var(--theme-bg-input)', fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }} />
                   )}
                 </td>
-                <td style={{ textAlign: 'right' }}>
+                <td className="ds-num">
                   {t.code === 'ir_salaires' ? '—' : (
                     <input type="number" step="1" defaultValue={t.threshold ?? ''} onBlur={e => { const v = e.target.value === '' ? null : Number(e.target.value); if (String(v) !== String(t.threshold)) update.mutate({ id: t.id, data: { threshold: v } }); }}
                       style={{ width: 90, padding: '4px 6px', textAlign: 'right', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, background: 'var(--theme-bg-input)', fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }} />
                   )}
                 </td>
-                <td style={{ textAlign: 'right' }}>
+                <td className="ds-num">
                   {t.code === 'ir_salaires' ? '—' : (
                     <input type="number" step="0.01" defaultValue={t.rate_above ?? ''} onBlur={e => { const v = e.target.value === '' ? null : Number(e.target.value); if (String(v) !== String(t.rate_above)) update.mutate({ id: t.id, data: { rateAbove: v } }); }}
                       style={{ width: 64, padding: '4px 6px', textAlign: 'right', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, background: 'var(--theme-bg-input)', fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }} />
@@ -257,8 +229,8 @@ function ConfigView() {
             ))}
           </tbody>
         </table>
-      </div>
-      <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
+      </DataPanel>
+      <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>
         <Receipt size={11} style={{ display: 'inline', marginRight: 4 }} />
         Taux par défaut basés sur le CGI / loi de finances 2026. Seul le 5 % sur produits de location (art. 73-II-A) est confirmé par la LF ;
         les autres sont à valider avec votre expert-comptable. Modification immédiate, sans redéploiement.

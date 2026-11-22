@@ -23,24 +23,23 @@ export default function OvertimeQuotaPanel({ year }: { year: number }) {
     <StatusBanner tone={over.length ? 'warning' : 'info'} icon={over.length ? AlertTriangle : Clock}
       title={`Heures supplémentaires ${year} : contingent ${data.quotaHours} h par salarié${over.length > 0 ? ` — ${over.length} dépassement(s)` : ''}`}
       actions={
-        <button type="button" className="odoo-btn-secondary" onClick={() => setToggled(!open)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setToggled(!open)} aria-expanded={open}>
           {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />} {open ? 'Masquer le détail' : 'Voir le détail'}
         </button>
       }>
       {open && (
       <table className="odoo-table" style={{ marginTop: 8 }}>
-        <thead><tr><th>Employé</th><th style={{ textAlign: 'right' }}>Heures sup</th><th style={{ textAlign: 'right' }}>dont nuit</th><th style={{ width: '40%' }}>Contingent</th></tr></thead>
+        <thead><tr><th>Employé</th><th className="ds-num">Heures sup (h)</th><th className="ds-num">Dont nuit (h)</th><th style={{ width: '40%' }}>Contingent</th></tr></thead>
         <tbody>
           {rows.map(r => (
             <tr key={r.employeeId}>
-              <td>{r.name}</td>
-              <td style={{ textAlign: 'right', fontWeight: 600, color: r.overQuota ? 'var(--prj-red)' : undefined }}>{r.hours} h</td>
-              <td style={{ textAlign: 'right' }}>{r.nightHours} h</td>
+              <td className="ds-strong">{r.name}</td>
+              <td className="ds-num ds-strong" style={{ color: r.overQuota ? 'var(--ds-danger)' : undefined }}>{r.hours}{r.overQuota ? ' (dépassé)' : ''}</td>
+              <td className="ds-num">{r.nightHours}</td>
               <td>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ flex: 1, height: 6, background: 'var(--odoo-border)', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ width: `${Math.min(100, r.quotaUsedPct)}%`, height: '100%', background: r.overQuota ? 'var(--prj-red)' : r.quotaUsedPct > 80 ? 'var(--prj-orange)' : 'var(--prj-green)' }} />
+                  <div style={{ flex: 1, height: 6, background: 'var(--ds-sep)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.min(100, r.quotaUsedPct)}%`, height: '100%', background: r.overQuota ? 'var(--ds-danger)' : r.quotaUsedPct > 80 ? 'var(--ds-warning)' : 'var(--ds-success)' }} />
                   </div>
                   <span style={{ width: 44, textAlign: 'right' }}>{r.quotaUsedPct} %</span>
                 </div>

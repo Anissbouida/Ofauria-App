@@ -10,6 +10,8 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi } from '../sales/ListTemplate';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { DataPanel, TableFooter, EmptyState } from '../../components/ds';
 import { BASE_CURRENCY } from '../../api/currencies.api';
 
 // Listes de prix (phase 6.1–6.3) : par canal, type/groupe de clients ou client précis,
@@ -20,6 +22,7 @@ const CUSTOMER_TYPES = ['particulier', 'professionnel', 'revendeur', 'associatio
 
 export default function PriceListsPage() {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data: lists = [] } = useQuery({ queryKey: ['price-lists'], queryFn: pricingApi.list });
   const { data: channels = [] } = useQuery({ queryKey: ['sales-channels'], queryFn: salesChannelsApi.list });
@@ -81,9 +84,9 @@ export default function PriceListsPage() {
       summary={`${lists.length} liste${lists.length > 1 ? 's' : ''}`}
       actions={<>
         <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-          onClick={() => setBulk({ family: '', mode: 'increase_pct', value: '5', reason: '' })}><TrendingUp size={13} /> Mise à jour</button>
-        <button className={showHistory ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-          onClick={() => setShowHistory(v => !v)}><History size={13} /> Historique</button>
+          onClick={() => setBulk({ family: '', mode: 'increase_pct', value: '5', reason: '' })}><TrendingUp size={13} /> Mise à jour des prix</button>
+        <button type="button" className="odoo-btn-secondary" aria-pressed={showHistory} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          onClick={() => setShowHistory(v => !v)}><History size={13} /> {showHistory ? 'Masquer l\'historique' : 'Historique'}</button>
         <button className="odoo-btn-primary" onClick={() => createList.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Nouvelle liste</button>
       </>}>
     <section className="prj prj-kpis" aria-label="Indicateurs">
@@ -124,9 +127,11 @@ export default function PriceListsPage() {
       {detail ? (
         <div style={{ flex: '999 1 480px', minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <input style={{ ...field, width: 280, fontWeight: 600 }} defaultValue={detail.name} key={detail.id}
+            <input aria-label="Nom de la liste" style={{ ...field, width: 280, fontWeight: 600 }} defaultValue={detail.name} key={detail.id}
               onBlur={(e) => e.target.value !== detail.name && updateList.mutate({ name: e.target.value })} />
-            <button className="odoo-btn-secondary" onClick={() => confirm('Supprimer cette liste ?') && delList.mutate(detail.id)}><Trash2 size={13} /></button>
+            <button type="button" className="ds-btn-danger ds-btn-sm"
+              onClick={async () => { if (await confirm(`Supprimer la liste « ${detail.name} » et ses prix ?`, { title: 'Supprimer la liste de prix', confirmLabel: 'Supprimer', danger: true })) delList.mutate(detail.id); }}>
+              <Trash2 size={13} /> Supprimer la liste</button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12 }}>
@@ -179,23 +184,28 @@ export default function PriceListsPage() {
               <Check size={13} /> Ajouter
             </button>
           </div>
-          <table className="odoo-table" style={{ width: '100%' }}>
-            <thead><tr><th>Article</th><th>À partir de</th><th style={{ textAlign: 'right' }}>Prix</th><th></th></tr></thead>
+          {(detail.items ?? []).length === 0 ? <EmptyState icon={Tag} title="Aucun prix dans cette liste" text="Ajoutez un article et son prix ci-dessus." /> : (
+          <DataPanel label="Prix par article" footer={<TableFooter note={`${(detail.items ?? []).length} prix`} />}>
+          <table className="odoo-table">
+            <thead><tr><th>Article</th><th className="ds-num">À partir de (qté)</th><th className="ds-num">Prix ({detail.currency})</th><th className="ds-actions">Actions</th></tr></thead>
             <tbody>
               {(detail.items ?? []).map(it => (
                 <tr key={it.id}>
-                  <td>{it.product_name}</td>
-                  <td>{Number(it.min_quantity)}</td>
-                  <td style={{ textAlign: 'right' }}>{Number(it.unit_price).toFixed(2)} {detail.currency}</td>
-                  <td style={{ textAlign: 'right' }}><button className="odoo-btn-secondary" onClick={() => delItem.mutate(it.id)}><Trash2 size={12} /></button></td>
+                  <td className="ds-strong">{it.product_name}</td>
+                  <td className="ds-num">{Number(it.min_quantity)}</td>
+                  <td className="ds-num">{Number(it.unit_price).toFixed(2)}</td>
+                  <td className="ds-actions"><button type="button" className="ds-icon-btn" aria-label={`Retirer le prix de ${it.product_name}`} disabled={delItem.isPending} onClick={() => delItem.mutate(it.id)}><Trash2 size={14} /></button></td>
                 </tr>
               ))}
-              {(detail.items ?? []).length === 0 && <tr><td colSpan={4} style={{ color: 'var(--odoo-text-muted)' }}>Aucun article.</td></tr>}
             </tbody>
           </table>
+          </DataPanel>
+          )}
         </div>
       ) : (
-        <div className="prj-panel sal-empty" style={{ flex: '999 1 480px' }}><Tag size={26} style={{ opacity: 0.4 }} /><strong>Aucune liste sélectionnée</strong><span>Choisissez une liste à gauche ou créez-en une.</span></div>
+        <div style={{ flex: '999 1 480px', minWidth: 0 }}>
+          <EmptyState icon={Tag} title="Aucune liste sélectionnée" text={lists.length ? 'Choisissez une liste à gauche.' : 'Aucune liste : le prix catalogue s\'applique partout. Créez-en une avec « Nouvelle liste ».'} />
+        </div>
       )}
 
     </div>
@@ -203,7 +213,7 @@ export default function PriceListsPage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setBulk(null)}>
           <div style={{ background: 'var(--odoo-bg)', borderRadius: 8, padding: 20, width: 420 }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ fontWeight: 700, marginBottom: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}><TrendingUp size={16} /> Mise à jour en masse des prix</h3>
-            <label><span style={lab}>Famille d'articles</span>
+            <label><span style={lab}>Famille d'articles<span className="ds-req" aria-hidden="true"> *</span></span>
               <input style={field} value={bulk.family} onChange={(e) => setBulk({ ...bulk, family: e.target.value })} placeholder="Nom exact de la famille (categories.family)" /></label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
               <label><span style={lab}>Opération</span>
@@ -219,7 +229,7 @@ export default function PriceListsPage() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button className="odoo-btn-secondary" onClick={() => setBulk(null)}>Annuler</button>
               <button className="odoo-btn-primary" disabled={!bulk.family.trim() || bulk.value === '' || bulkMut.isPending}
-                onClick={() => bulkMut.mutate()}>{bulkMut.isPending ? '…' : 'Appliquer'}</button>
+                onClick={() => bulkMut.mutate()}>{bulkMut.isPending ? 'Application…' : 'Appliquer'}</button>
             </div>
           </div>
         </div>

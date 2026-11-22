@@ -10,6 +10,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { currencySymbol } from '../../utils/money';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Règles de rapprochement bancaire (G4-02). Une règle reconnaît des lignes de relevé par
@@ -19,7 +20,6 @@ import { currencySymbol } from '../../utils/money';
  * d'un ou plusieurs jours et génère l'écart en commission, s'il reste dans la fourchette en %.
  */
 
-const field: React.CSSProperties = { width: '100%', fontSize: '0.85rem', padding: '7px 9px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
 const num = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')));
 
@@ -77,25 +77,25 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
         style={{ width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', background: 'var(--odoo-bg)', borderRadius: 6, padding: 18, display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <strong style={{ fontSize: '1rem' }}>{rule ? 'Modifier la règle' : 'Nouvelle règle de rapprochement'}</strong>
-          <button type="button" className="odoo-pager-btn" style={{ marginLeft: 'auto' }} onClick={onClose} title="Fermer"><X size={14} /></button>
+          <button type="button" className="odoo-pager-btn" style={{ marginLeft: 'auto' }} onClick={onClose} title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: 10 }}>
-          <div><label style={lbl} htmlFor="r-label">Nom</label><input id="r-label" style={field} value={f.label} onChange={e => set('label', e.target.value)} placeholder="Frais de tenue de compte" /></div>
-          <div><label style={lbl} htmlFor="r-prio">Priorité</label><input id="r-prio" style={field} inputMode="numeric" value={f.priority} onChange={e => set('priority', e.target.value)} /></div>
+          <div><label style={lbl} htmlFor="r-label">Nom</label><input id="r-label" className="ds-input sm" value={f.label} onChange={e => set('label', e.target.value)} placeholder="Frais de tenue de compte" /></div>
+          <div><label style={lbl} htmlFor="r-prio">Priorité</label><input id="r-prio" className="ds-input sm" inputMode="numeric" value={f.priority} onChange={e => set('priority', e.target.value)} /></div>
         </div>
         <fieldset style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 10, display: 'grid', gap: 10 }}>
           <legend style={{ fontSize: '0.78rem', fontWeight: 600, padding: '0 4px' }}>Condition (au moins une)</legend>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div><label style={lbl} htmlFor="r-contains">Le libellé contient</label><input id="r-contains" style={field} value={f.labelContains} onChange={e => set('labelContains', e.target.value)} placeholder="FRAIS TENUE" /></div>
-            <div><label style={lbl} htmlFor="r-regex">ou expression</label><input id="r-regex" style={{ ...field, fontFamily: 'ui-monospace, monospace' }} value={f.labelRegex} onChange={e => set('labelRegex', e.target.value)} placeholder="^COM\s*CB" /></div>
+            <div><label style={lbl} htmlFor="r-contains">Le libellé contient</label><input id="r-contains" className="ds-input sm" value={f.labelContains} onChange={e => set('labelContains', e.target.value)} placeholder="FRAIS TENUE" /></div>
+            <div><label style={lbl} htmlFor="r-regex">ou expression</label><input id="r-regex" className="ds-input sm" style={{ fontFamily: 'ui-monospace, monospace' }} value={f.labelRegex} onChange={e => set('labelRegex', e.target.value)} placeholder="^COM\s*CB" /></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <div><label style={lbl} htmlFor="r-dir">Sens</label>
-              <select id="r-dir" style={field} value={f.direction} onChange={e => set('direction', e.target.value as '' | 'in' | 'out')}>
+              <select id="r-dir" className="ds-input sm" value={f.direction} onChange={e => set('direction', e.target.value as '' | 'in' | 'out')}>
                 <option value="">Les deux</option><option value="out">Sortie (débit)</option><option value="in">Entrée (crédit)</option>
               </select></div>
-            <div><label style={lbl} htmlFor="r-min">Montant minimum</label><input id="r-min" style={field} inputMode="decimal" value={f.amountMin} onChange={e => set('amountMin', e.target.value)} /></div>
-            <div><label style={lbl} htmlFor="r-max">Montant maximum</label><input id="r-max" style={field} inputMode="decimal" value={f.amountMax} onChange={e => set('amountMax', e.target.value)} /></div>
+            <div><label style={lbl} htmlFor="r-min">Montant minimum</label><input id="r-min" className="ds-input sm" inputMode="decimal" value={f.amountMin} onChange={e => set('amountMin', e.target.value)} /></div>
+            <div><label style={lbl} htmlFor="r-max">Montant maximum</label><input id="r-max" className="ds-input sm" inputMode="decimal" value={f.amountMax} onChange={e => set('amountMax', e.target.value)} /></div>
           </div>
         </fieldset>
         <fieldset style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 10, display: 'grid', gap: 10 }}>
@@ -112,10 +112,10 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
                 s'il reste dans la fourchette, est passé en commission sur le compte choisi. Une seule combinaison doit convenir.
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-                <div><label style={lbl} htmlFor="r-fmin">Écart minimal (% du brut)</label><input id="r-fmin" style={field} inputMode="decimal" value={f.feePctMin} onChange={e => set('feePctMin', e.target.value)} /></div>
-                <div><label style={lbl} htmlFor="r-fmax">Écart maximal (% du brut)</label><input id="r-fmax" style={field} inputMode="decimal" value={f.feePctMax} onChange={e => set('feePctMax', e.target.value)} /></div>
-                <div><label style={lbl} htmlFor="r-fneg">Versé en trop toléré ({currencySymbol()})</label><input id="r-fneg" style={field} inputMode="decimal" value={f.amountTolerance} onChange={e => set('amountTolerance', e.target.value)} /></div>
-                <div><label style={lbl} htmlFor="r-fdays">Jours avant l'opération</label><input id="r-fdays" style={field} inputMode="numeric" value={f.dateToleranceDays} onChange={e => set('dateToleranceDays', e.target.value)} /></div>
+                <div><label style={lbl} htmlFor="r-fmin">Écart minimal (% du brut)</label><input id="r-fmin" className="ds-input sm" inputMode="decimal" value={f.feePctMin} onChange={e => set('feePctMin', e.target.value)} /></div>
+                <div><label style={lbl} htmlFor="r-fmax">Écart maximal (% du brut)</label><input id="r-fmax" className="ds-input sm" inputMode="decimal" value={f.feePctMax} onChange={e => set('feePctMax', e.target.value)} /></div>
+                <div><label style={lbl} htmlFor="r-fneg">Versé en trop toléré ({currencySymbol()})</label><input id="r-fneg" className="ds-input sm" inputMode="decimal" value={f.amountTolerance} onChange={e => set('amountTolerance', e.target.value)} /></div>
+                <div><label style={lbl} htmlFor="r-fdays">Jours avant l'opération</label><input id="r-fdays" className="ds-input sm" inputMode="numeric" value={f.dateToleranceDays} onChange={e => set('dateToleranceDays', e.target.value)} /></div>
               </div>
               <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.85rem' }}>
                 <input type="checkbox" checked={f.cardOnly} onChange={e => set('cardOnly', e.target.checked)} /> Encaissements carte uniquement (ventes carte, saisie du jour, écart carte de fermeture)
@@ -126,12 +126,12 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div><span style={lbl}>Compte de contrepartie</span>
                 <SearchSelect options={options} value={f.counterAccountId} onChange={v => set('counterAccountId', v)} placeholder="6147 — Services bancaires" size="md" width="100%" ariaLabel="Compte de contrepartie" /></div>
-              <div><label style={lbl} htmlFor="r-elabel">Libellé de l'écriture</label><input id="r-elabel" style={field} value={f.entryLabel} onChange={e => set('entryLabel', e.target.value)} placeholder="Frais bancaires" /></div>
+              <div><label style={lbl} htmlFor="r-elabel">Libellé de l'écriture</label><input id="r-elabel" className="ds-input sm" value={f.entryLabel} onChange={e => set('entryLabel', e.target.value)} placeholder="Frais bancaires" /></div>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div><label style={lbl} htmlFor="r-tol">Écart de montant toléré ({currencySymbol()})</label><input id="r-tol" style={field} inputMode="decimal" value={f.amountTolerance} onChange={e => set('amountTolerance', e.target.value)} /></div>
-              <div><label style={lbl} htmlFor="r-days">Écart de date toléré (jours)</label><input id="r-days" style={field} inputMode="numeric" value={f.dateToleranceDays} onChange={e => set('dateToleranceDays', e.target.value)} /></div>
+              <div><label style={lbl} htmlFor="r-tol">Écart de montant toléré ({currencySymbol()})</label><input id="r-tol" className="ds-input sm" inputMode="decimal" value={f.amountTolerance} onChange={e => set('amountTolerance', e.target.value)} /></div>
+              <div><label style={lbl} htmlFor="r-days">Écart de date toléré (jours)</label><input id="r-days" className="ds-input sm" inputMode="numeric" value={f.dateToleranceDays} onChange={e => set('dateToleranceDays', e.target.value)} /></div>
             </div>
           )}
         </fieldset>
@@ -140,8 +140,7 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
         </label>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={save.isPending || f.label.trim().length < 2} onClick={() => save.mutate()}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button type="button" className="odoo-btn-primary" disabled={save.isPending || f.label.trim().length < 2} onClick={() => save.mutate()}>
             {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Enregistrer
           </button>
         </div>
@@ -167,34 +166,34 @@ export default function BankRulesPanel() {
   ].filter(Boolean).join(' · ');
 
   return (
-    <div className="odoo-section" style={{ padding: 0, marginTop: 12 }}>
-      <div style={{ padding: '10px 14px', background: 'var(--theme-bg-secondary)', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="odoo-section ds-panel" style={{ padding: 0, marginTop: 12 }}>
+      <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--ds-hair)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <ListChecks size={14} /><strong style={{ fontSize: '0.85rem' }}>Règles de rapprochement</strong>
         <span style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>appliquées par priorité croissante, après la recherche par référence</span>
-        <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setEditing('new')}><Plus size={13} /> Nouvelle règle</button>
+        <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')}><Plus size={13} /> Nouvelle règle</button>
       </div>
-      {isLoading ? <div style={{ padding: 12 }}><Loader2 size={14} className="animate-spin" /></div> : rules.length === 0 ? (
+      {isLoading ? <LoadingState /> : rules.length === 0 ? (
         <div style={{ padding: 12, fontSize: '0.82rem', color: 'var(--theme-text-muted)' }}>
           Aucune règle. Exemple : « FRAIS TENUE », sortie → générer l'écriture sur 6147 ; « REMISE TPE », entrée → commission de carte 0 à 3 % sur 6147.
         </div>
       ) : (
-        <table className="odoo-table" style={{ margin: 0, width: '100%' }}>
-          <thead><tr><th style={{ textAlign: 'right', width: 60 }}>Priorité</th><th style={{ textAlign: 'left' }}>Règle</th><th style={{ textAlign: 'left' }}>Condition</th>
-            <th style={{ textAlign: 'left' }}>Action</th><th style={{ textAlign: 'right' }}>Utilisée</th><th /></tr></thead>
+        <table className="odoo-table ds-dense" style={{ margin: 0, width: '100%' }}>
+          <thead><tr><th className="ds-num" style={{ width: 60 }}>Priorité</th><th style={{ textAlign: 'left' }}>Règle</th><th style={{ textAlign: 'left' }}>Condition</th>
+            <th style={{ textAlign: 'left' }}>Action</th><th className="ds-num">Utilisée</th><th /></tr></thead>
           <tbody>
             {rules.map(r => (
               <tr key={r.id} style={{ opacity: r.is_active ? 1 : 0.55 }}>
-                <td style={{ textAlign: 'right' }}>{r.priority}</td>
+                <td className="ds-num">{r.priority}</td>
                 <td style={{ fontWeight: 500 }}>{r.label}{!r.is_active && <> <StatusTag tone="draft" label="Inactive" /></>}</td>
                 <td style={{ fontSize: '0.8rem' }}>{condition(r)}</td>
                 <td style={{ fontSize: '0.8rem' }}>{r.action === 'post_entry' ? `Écriture sur ${r.counter_account_code ?? '—'}`
                   : r.action === 'match_fee' ? `Commission ${r.fee_pct_min ?? 0} à ${r.fee_pct_max ?? 0} % sur ${r.counter_account_code ?? '—'} (${r.date_tolerance_days} j${r.candidate_source === 'card' ? ', cartes' : ''})`
                   : `Rapprocher (± ${r.amount_tolerance} ${currencySymbol()}, ± ${r.date_tolerance_days} j)`}</td>
-                <td style={{ textAlign: 'right' }}>{r.uses ?? 0}</td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <td className="ds-num">{r.uses ?? 0}</td>
+                <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
                   <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(r)}>Modifier</button>{' '}
-                  <button type="button" className="odoo-btn-secondary" title="Supprimer la règle" style={{ color: '#c62828' }}
-                    onClick={async () => { if (await confirm(`Supprimer la règle « ${r.label} » ? Les rapprochements déjà faits restent.`, { title: 'Supprimer la règle', confirmLabel: 'Supprimer', danger: true })) remove.mutate(r.id); }}>
+                  <button type="button" className="odoo-btn-secondary" title="Supprimer la règle" style={{ color: 'var(--ds-danger)' }}
+                    onClick={async () => { if (await confirm(`Supprimer la règle « ${r.label} » ? Les rapprochements déjà faits restent.`, { title: 'Supprimer la règle', confirmLabel: 'Supprimer', danger: true })) remove.mutate(r.id); }} aria-label="Supprimer la règle">
                     <Trash2 size={12} />
                   </button>
                 </td>

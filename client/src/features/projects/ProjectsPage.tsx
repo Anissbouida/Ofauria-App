@@ -1,11 +1,8 @@
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import {
-  LayoutDashboard, FolderKanban, ListChecks, Timer, BarChart3, Database, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, Trash2, LayoutGrid, List, GanttChartSquare, Columns3, PauseCircle,
-  ChevronRight, Receipt, Wallet,
-} from 'lucide-react';
+import { LayoutDashboard, FolderKanban, ListChecks, Timer, BarChart3, Database, Plus, Search, CheckCircle2, Trash2, LayoutGrid, List, GanttChartSquare, Columns3, PauseCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -14,16 +11,15 @@ import {
 import { apiErrorMessage } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
-import { PeriodFilter, Pager, periodParams, type PeriodKey } from '../../components/purchasing/ProcessBoard';
+import { PeriodFilter, periodParams, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { useAuth } from '../../context/AuthContext';
 import SearchSelect from '../../components/ui/SearchSelect';
 import ProjectsPlanning from './ProjectsPlanning';
-import {
-  ProjectFormModal, TimeEntryForm, TaskBoard, Kpi, Meter, usePeopleOptions, n2, n0, h1, initials, projectHealth, consumption, usageTone, needsAttention, projectRevenue, projectCost,
-} from './shared';
+import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, NoResultState, SectionHeader, TableFooter } from '../../components/ds';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { ProjectFormModal, TimeEntryForm, TaskBoard, Kpi, Meter, usePeopleOptions, n2, h1, initials, projectHealth, consumption, usageTone, needsAttention, projectRevenue, projectCost } from './shared';
 
 /**
  * Module Projets (mig 358), rubriques standard : tableau de bord, projets, tâches
@@ -31,6 +27,16 @@ import {
  * Module générique : un projet est un événement, un chantier, une mission…
  */
 type View = 'overview' | 'projects' | 'planning' | 'tasks' | 'time' | 'profitability' | 'activities';
+
+/** Description d'une ligne sous le titre de chaque écran (gabarit de page du Design System). */
+const PAGE_LEADS: Record<string, string> = {
+  overview: 'Projets en cours, tâches à traiter et temps passé sur la période.',
+  projects: 'Événements, chantiers et missions, avec leur avancement et leur santé.',
+  planning: 'Calendrier des projets et de leurs échéances.',
+  tasks: 'Tâches des projets en brouillon ou en cours, retards d’abord.',
+  time: 'Heures saisies par personne et par projet, avec leur coût et leur part facturable.',
+  profitability: 'Recette, coûts et marge de chaque projet.',
+};
 
 export default function ProjectsPage() {
   const { hasModule } = usePermissions();
@@ -50,9 +56,9 @@ export default function ProjectsPage() {
   return (
     <ModuleShell title="Projets" views={views} current={current} onSelect={select} flush
       actions={(current?.key === 'projects' || current?.key === 'overview') ? (
-        <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouveau projet</button>
+        <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)}><Plus size={14} aria-hidden="true" /> Nouveau projet</button>
       ) : undefined}>
-      <ModulePage title={current?.label}>
+      <ModulePage title={current?.label} summary={current ? PAGE_LEADS[current.key] : undefined}>
         {current?.key === 'overview' && <Overview />}
         {current?.key === 'projects' && <ProjectList onPlanning={() => select('planning')} />}
         {current?.key === 'planning' && <ProjectsPlanning />}
@@ -75,9 +81,9 @@ function Progress({ p }: { p: Project }) {
   return (
     <div title={`${p.task_done}/${p.task_count} tâches`} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 110 }}>
       <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--odoo-border)' }}>
-        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: pct === 100 ? 'var(--prj-green)' : 'var(--theme-accent)' }} />
+        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: pct === 100 ? 'var(--ds-success)' : 'var(--theme-accent)' }} />
       </div>
-      <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{pct}%</span>
+      <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{pct}%</span>
     </div>
   );
 }
@@ -87,16 +93,16 @@ function ProjectRow({ p }: { p: Project }) {
   const health = projectHealth(p);
   return (
     <tr onClick={() => navigate(`/projects/${p.id}`)} style={{ cursor: 'pointer' }}>
-      <td className="font-mono" style={{ whiteSpace: 'nowrap' }}>{p.number}</td>
-      <td><strong>{p.name}</strong></td>
-      <td>{p.customer_label || <span style={{ color: 'var(--theme-text-muted)' }}>interne</span>}</td>
+      <td className="ds-ref" style={{ whiteSpace: 'nowrap' }}>{p.number}</td>
+      <td className="ds-strong">{p.name}</td>
+      <td>{p.customer_label || <span style={{ color: 'var(--ds-muted)' }}>interne</span>}</td>
       <td><ProjectStatusTag status={p.status} /></td>
       <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}><span className={`prj-dot ${health.tone}`} />{health.label}</span></td>
-      <td style={{ whiteSpace: 'nowrap' }}>{p.due_date ? format(new Date(p.due_date), 'dd/MM/yyyy') : '—'}</td>
+      <td style={{ whiteSpace: 'nowrap' }}>{p.due_date ? format(new Date(p.due_date), 'd MMM yyyy', { locale: fr }) : '—'}</td>
       <td><Progress p={p} /></td>
-      <td style={{ textAlign: 'right' }}>{h1(p.hours_spent)} h</td>
-      <td style={{ textAlign: 'right' }}>{n2(projectCost(p))}</td>
-      <td style={{ textAlign: 'right' }}>{projectRevenue(p) ? n2(projectRevenue(p)) : '—'}</td>
+      <td className="ds-num">{h1(p.hours_spent)}</td>
+      <td className="ds-num">{n2(projectCost(p))}</td>
+      <td className="ds-num">{projectRevenue(p) ? n2(projectRevenue(p)) : '—'}</td>
       <td>{p.manager_name || '—'}</td>
     </tr>
   );
@@ -169,28 +175,29 @@ function ProjectList({ onPlanning }: { onPlanning: () => void }) {
 
   return (
     <div className="prj">
-      <section className="prj-kpis" aria-label="Indicateurs">
-        <div className="prj-kpi"><div className="prj-kpi-head">En cours</div><div className="prj-kpi-value">{running}</div><div className="prj-kpi-sub">{drafts} brouillon{drafts > 1 ? 's' : ''} à lancer</div></div>
-        <div className="prj-kpi"><div className="prj-kpi-head">À surveiller</div><div className="prj-kpi-value" style={{ color: attention.length ? 'var(--prj-red)' : undefined }}>{attention.length}</div>
-          <div className="prj-kpi-sub">{attention.length ? `${lateCount} en retard · ${attention.length - lateCount} autre${attention.length - lateCount > 1 ? 's' : ''}` : 'rien à signaler'}</div></div>
-        <div className="prj-kpi"><div className="prj-kpi-head">Heures ce mois</div><div className="prj-kpi-value">{ov ? `${h1(ov.time.hours)} h` : '…'}</div><div className="prj-kpi-sub">{ov ? `coût ${money(ov.time.cost, { decimals: 0 })}` : ''}</div></div>
-        <div className="prj-kpi"><div className="prj-kpi-head">Marge des projets terminés</div>
-          <div className="prj-kpi-value" style={{ color: doneMargin === null ? undefined : doneMargin < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }}>{doneMargin === null ? '—' : `${doneMargin} %`}</div>
-          <div className="prj-kpi-sub">{done.length} projet{done.length > 1 ? 's' : ''} facturé{done.length > 1 ? 's' : ''}</div></div>
-      </section>
+      <KpiGrid>
+        <KpiCard label="En cours" value={running} sub={`${drafts} brouillon${drafts > 1 ? 's' : ''} à lancer`} />
+        <KpiCard label="À surveiller" value={attention.length} tone={attention.length ? 'red' : undefined}
+          sub={attention.length ? `${lateCount} en retard · ${attention.length - lateCount} autre${attention.length - lateCount > 1 ? 's' : ''}` : 'rien à signaler'} />
+        <KpiCard label="Heures ce mois" value={ov ? `${h1(ov.time.hours)} h` : '…'} sub={ov ? `coût ${money(ov.time.cost, { decimals: 0 })}` : undefined} />
+        <KpiCard label="Marge des projets terminés" value={doneMargin === null ? '—' : `${doneMargin} %`}
+          tone={doneMargin === null ? undefined : doneMargin < 0 ? 'red' : 'green'}
+          sub={`${done.length} projet${done.length > 1 ? 's' : ''} facturé${done.length > 1 ? 's' : ''}`} />
+      </KpiGrid>
+
+      <div className="prj-chips" role="group" aria-label="Filtrer les projets">
+        {CHIPS.map(([k, l]) => (
+          <button key={k} type="button" className={`prj-chip${chip === k ? ' active' : ''}`} aria-pressed={chip === k} onClick={() => setChip(k)}>
+            {l} <small>{count(k)}</small>
+          </button>
+        ))}
+      </div>
 
       <div className="prj-toolbar">
         <label className="prj-search">
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
           <input type="search" aria-label="Rechercher un projet" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, nom, client…" />
         </label>
-        <div className="prj-chips" role="group" aria-label="Filtrer">
-          {CHIPS.map(([k, l]) => (
-            <button key={k} type="button" className={`prj-chip${chip === k ? ' active' : ''}`} aria-pressed={chip === k} onClick={() => setChip(k)}>
-              {l} <small>{count(k)}</small>
-            </button>
-          ))}
-        </div>
         <div className="prj-views" role="group" aria-label="Affichage">
           <button type="button" className={layout === 'cards' ? 'active' : ''} aria-pressed={layout === 'cards'} onClick={() => setLayout('cards')}><LayoutGrid size={14} /> Cartes</button>
           <button type="button" className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={14} /> Liste</button>
@@ -199,20 +206,20 @@ function ProjectList({ onPlanning }: { onPlanning: () => void }) {
       </div>
 
       {isLoading ? <Loading /> : !rows.length ? (
-        <StatusBanner tone="info" icon={FolderKanban} title={all.length ? 'Aucun projet dans ce filtre' : 'Aucun projet'}>
-          {all.length ? 'Changez de filtre ou de recherche.' : 'Créez un projet : un événement, un chantier, une mission, une commande sur devis.'}
-        </StatusBanner>
+        (all.length || search)
+          ? <NoResultState text="Aucun projet ne correspond aux filtres." onReset={() => { setChip('all'); setSearchInput(''); setSearch(''); }} />
+          : <EmptyState icon={FolderKanban} title="Aucun projet" text="Créez un projet : un événement, un chantier, une mission, une commande sur devis." />
       ) : layout === 'cards' ? (
         <div className="prj-cards">{rows.map(p => <ProjectCard key={p.id} p={p} />)}</div>
       ) : (
-        <section className="prj-panel prj-scroll">
+        <DataPanel label="Projets" footer={<TableFooter note={`${rows.length} projet${rows.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Projet</th><th>Client</th><th>Statut</th><th>Santé</th><th>Échéance</th><th>Avancement</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coûts</th><th style={{ textAlign: 'right' }}>Recette</th><th>Responsable</th></tr></thead>
+            <thead><tr><th>N°</th><th>Projet</th><th>Client</th><th>Statut</th><th>Santé</th><th>Échéance</th><th>Avancement</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coûts ({currencySymbol()})</th><th className="ds-num">Recette ({currencySymbol()})</th><th>Responsable</th></tr></thead>
             <tbody>{rows.map(p => <ProjectRow key={p.id} p={p} />)}</tbody>
           </table>
-        </section>
+        </DataPanel>
       )}
-      {data && data.total > all.length && <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{all.length} projets affichés sur {data.total} : affinez la recherche.</p>}
+      {data && data.total > all.length && <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)' }}>{all.length} projets affichés sur {data.total} : affinez la recherche.</p>}
     </div>
   );
 }
@@ -232,63 +239,40 @@ function Overview() {
       <div className="prj-toolbar">
         <PeriodFilter label="Temps passé" title="Période des heures" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
       </div>
-      <section className="kl-hero" aria-label="Indicateurs">
-        <div className="kl-widget">
-          <div className="kl-wlabel"><span className="kl-sq"><FolderKanban size={13} /></span>Projets en cours</div>
-          <div className="kl-big">{inProgress}</div>
-          <div className="kl-sub">{data.projects.draft} brouillon{data.projects.draft > 1 ? 's' : ''} à lancer · <span style={{ color: data.projects.overdue > 0 ? 'var(--prj-red)' : undefined }}>{data.projects.overdue} en retard</span></div>
-        </div>
-        <div className="kl-widget">
-          <div className="kl-wlabel"><span className="kl-sq"><ListChecks size={13} /></span>Tâches ouvertes</div>
-          <div className="kl-big">{data.tasks.open}</div>
-          <div className="kl-sub" style={{ color: data.tasks.overdue > 0 ? 'var(--prj-red)' : undefined }}>{data.tasks.overdue} en retard</div>
-        </div>
-        <div className="kl-widget">
-          <div className="kl-wlabel"><span className="kl-sq"><Timer size={13} /></span>Heures sur la période</div>
-          <div className="kl-big">{h1(data.time.hours)}<small>h</small></div>
-          <div className="kl-sub">coût {money(data.time.cost, { decimals: 0 })}</div>
-        </div>
-      </section>
-      <section className="kl-stats" aria-label="Facturation du temps">
-        <div className="kl-widget">
-          <div className="kl-wlabel"><span className="kl-sq"><Receipt size={13} /></span>Facturable sur la période</div>
-          <div className="kl-big" style={{ fontSize: 30 }}>{money(data.time.amount, { decimals: 0 })}</div>
-          <div className="kl-sub" style={{ color: margin < 0 ? 'var(--prj-red)' : undefined }}>marge {money(margin, { decimals: 0 })}</div>
-        </div>
-        <div className="kl-widget">
-          <div className="kl-wlabel"><span className="kl-sq"><Wallet size={13} /></span>Reste à facturer</div>
-          <div className="kl-big" style={{ fontSize: 30 }}>{money(data.time.unbilled, { decimals: 0 })}</div>
-          <div className="kl-sub">temps facturable non facturé</div>
-        </div>
-      </section>
-      <div className="kl-two">
-        <section className="a" aria-label="Projets en cours">
-          <div>
-            <div className="kl-sec"><h2>Projets en cours</h2><small>{data.active.length}</small></div>
-            {data.active.length === 0
-              ? <div className="kl-group kl-empty">Aucun projet en cours.</div>
-              : <div className="prj-cards">{data.active.map(p => <ProjectCard key={p.id} p={p} />)}</div>}
-          </div>
-        </section>
-        <section className="b" aria-label="Prochaines tâches">
-          <div>
-            <div className="kl-sec"><h2>Prochaines tâches</h2><small>{tasks.length ? 'retards d’abord' : ''}</small></div>
-            {tasks.length === 0 ? <div className="kl-group kl-empty">Aucune tâche ouverte.</div> : (
-              <div className="kl-group">
-                {tasks.map(t => (
-                  <button key={t.id} type="button" className="kl-cell ico" onClick={() => navigate(`/projects/${t.project_id}`)}>
-                    <span className={`kl-ic ${t.is_overdue ? 'r' : 'x'}`}>{t.is_overdue ? <AlertTriangle size={16} /> : <Clock size={16} />}</span>
-                    <span className="tx"><span className="t1">{t.title}</span>
-                      <span className="t2">{t.project_name}{t.assignee_name ? ` · ${t.assignee_name}` : ''}</span></span>
-                    {t.due_date && <span className={`tr${t.is_overdue ? ' red' : ''}`}>{format(new Date(t.due_date), 'd MMM', { locale: fr })}</span>}
-                    <ChevronRight size={15} className="chev" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
+      {/* Tableau de bord au gabarit commun : indicateurs, puis sections ; les tâches à traiter en tableau standard. */}
+      <KpiGrid>
+        <KpiCard label="Projets en cours" value={inProgress} tone={data.projects.overdue > 0 ? 'red' : undefined}
+          sub={`${data.projects.draft} brouillon${data.projects.draft > 1 ? 's' : ''} à lancer · ${data.projects.overdue} en retard`} />
+        <KpiCard label="Tâches ouvertes" value={data.tasks.open} sub={`${data.tasks.overdue} en retard`} tone={data.tasks.overdue > 0 ? 'red' : undefined} />
+        <KpiCard label="Heures sur la période" value={`${h1(data.time.hours)} h`} sub={`coût ${money(data.time.cost, { decimals: 0 })}`} />
+        <KpiCard label="Facturable sur la période" value={money(data.time.amount, { decimals: 0 })} sub={`marge ${money(margin, { decimals: 0 })}`} tone={margin < 0 ? 'red' : undefined} />
+        <KpiCard label="Reste à facturer" value={money(data.time.unbilled, { decimals: 0 })} sub="temps facturable non facturé" />
+      </KpiGrid>
+
+      <SectionHeader title="Prochaines tâches" note={tasks.length ? 'retards d’abord' : undefined} />
+      {tasks.length === 0 ? <EmptyState icon={CheckCircle2} title="Aucune tâche ouverte" /> : (
+        <DataPanel label="Prochaines tâches">
+          <table className="odoo-table">
+            <thead><tr><th>Tâche</th><th>Projet</th><th>Affectée à</th><th>Statut</th><th>Échéance</th></tr></thead>
+            <tbody>
+              {tasks.map(t => (
+                <tr key={t.id} onClick={() => navigate(`/projects/${t.project_id}`)} style={{ cursor: 'pointer' }}>
+                  <td className="ds-strong">{t.title}</td>
+                  <td>{t.project_name}</td>
+                  <td>{t.assignee_name || '—'}</td>
+                  <td><StatusTag tone={t.is_overdue ? 'late' : 'todo'} label={t.is_overdue ? 'En retard' : 'À faire'} /></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{t.due_date ? format(new Date(t.due_date), 'd MMM yyyy', { locale: fr }) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </DataPanel>
+      )}
+
+      <SectionHeader title="Projets en cours" note={data.active.length ? String(data.active.length) : undefined} />
+      {data.active.length === 0
+        ? <EmptyState icon={FolderKanban} title="Aucun projet en cours" text="Créez un projet : un événement, un chantier, une mission, une commande sur devis." />
+        : <div className="prj-cards">{data.active.map(p => <ProjectCard key={p.id} p={p} />)}</div>}
     </div>
   );
 }
@@ -314,11 +298,11 @@ function OpenTasks() {
   const unassigned = tasks.filter(t => !t.assignee_id).length;
   return (
     <div className="prj">
-      <section className="prj-kpis" aria-label="Indicateurs">
+      <KpiGrid>
         <Kpi label="Tâches ouvertes" value={String(tasks.length)} sub={`${doing} en cours`} />
         <Kpi label="En retard" value={String(late)} sub="échéance dépassée" tone={late ? 'red' : undefined} />
         <Kpi label="Sans responsable" value={String(unassigned)} sub="à affecter" />
-      </section>
+      </KpiGrid>
       <div className="prj-toolbar">
         <SearchSelect size="md" width={240} ariaLabel="Affectée à" placeholder="Tout le monde" value={assignee} onChange={setAssignee}
           options={peopleOptions} />
@@ -329,30 +313,32 @@ function OpenTasks() {
         </div>
       </div>
       {isLoading ? <Loading /> : tasks.length === 0 ? (
-        <StatusBanner tone="success" icon={CheckCircle2} title="Aucune tâche ouverte">Tout est fait, ou rien n'est encore planifié.</StatusBanner>
+        assignee
+          ? <NoResultState text="Aucune tâche ouverte pour cette personne." onReset={() => setAssignee('')} />
+          : <EmptyState icon={CheckCircle2} title="Aucune tâche ouverte" text="Tout est fait, ou rien n'est encore planifié." />
       ) : layout === 'board' ? (
         <TaskBoard tasks={tasks} editable={canEdit('projects')} showProject onMove={(id, status) => setStatus.mutate({ id, status })} onOpen={t => navigate(`/projects/${t.project_id}`)} />
       ) : (
-        <section className="prj-panel prj-scroll">
+        <DataPanel label="Tâches ouvertes" footer={<TableFooter note={`${tasks.length} tâche${tasks.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
-            <thead><tr><th>Tâche</th><th>Projet</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th style={{ textAlign: 'right' }}>Heures</th></tr></thead>
+            <thead><tr><th>Tâche</th><th>Projet</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th className="ds-num">Heures (h)</th></tr></thead>
             <tbody>{tasks.map(t => (
               <tr key={t.id}>
-                <td><strong>{t.title}</strong></td>
-                <td><button type="button" onClick={() => navigate(`/projects/${t.project_id}`)} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--theme-accent-hover)', cursor: 'pointer' }}>{t.project_name}</button></td>
+                <td className="ds-strong">{t.title}</td>
+                <td><button type="button" onClick={() => navigate(`/projects/${t.project_id}`)} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--ds-accent-ink)', cursor: 'pointer' }}>{t.project_name}</button></td>
                 <td>{t.assignee_name || '—'}</td>
                 <td><span className={`prj-prio ${t.priority}`}>{PRIORITY_LABELS[t.priority]}</span></td>
-                <td style={{ color: t.is_overdue ? 'var(--prj-red)' : undefined, fontWeight: t.is_overdue ? 600 : 400 }}>{t.due_date ? format(new Date(t.due_date), 'dd/MM/yyyy') : '—'}</td>
+                <td style={{ color: t.is_overdue ? 'var(--ds-danger)' : undefined, fontWeight: t.is_overdue ? 600 : 400 }}>{t.due_date ? format(new Date(t.due_date), 'd MMM yyyy', { locale: fr }) : '—'}</td>
                 <td>
                   <select className="odoo-filter-dropdown" aria-label="Statut" value={t.status} disabled={!canEdit('projects')} onChange={e => setStatus.mutate({ id: t.id, status: e.target.value as TaskStatus })}>
                     {Object.entries(TASK_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </td>
-                <td style={{ textAlign: 'right' }}>{h1(t.hours_spent)}{t.estimated_hours ? ` / ${h1(t.estimated_hours)}` : ''} h</td>
+                <td className="ds-num">{h1(t.hours_spent)}{t.estimated_hours ? ` / ${h1(t.estimated_hours)}` : ''}</td>
               </tr>
             ))}</tbody>
           </table>
-        </section>
+        </DataPanel>
       )}
     </div>
   );
@@ -373,19 +359,23 @@ function TimeSheet() {
   const { data, isLoading } = useQuery({ queryKey: ['project-time', params], queryFn: () => projectsApi.listTime(params) });
   const del = useMutation({ mutationFn: (id: string) => projectsApi.deleteTime(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['project-time'] }); qc.invalidateQueries({ queryKey: ['projects'] }); }, onError: e => notify.error(apiErrorMessage(e)) });
   const margin = data ? Number(data.amount) - Number(data.cost) : 0;
+  const confirm = useConfirm();
+  const removeEntry = async (id: string) => {
+    if (await confirm('Supprimer cette saisie de temps ?', { title: 'Supprimer la saisie', confirmLabel: 'Supprimer', danger: true })) del.mutate(id);
+  };
   return (
     <div className="prj">
+      <KpiGrid>
+        <Kpi label="Heures" value={data ? `${h1(data.hours)} h` : '…'} sub={data ? `${data.total} saisie${data.total > 1 ? 's' : ''}` : undefined} />
+        <Kpi label="Coût" value={data ? money(data.cost, { decimals: 0 }) : '…'} sub="heures × coût horaire" />
+        <Kpi label="Facturable" value={data ? money(data.amount, { decimals: 0 }) : '…'} sub="heures facturables × taux" />
+        <Kpi label="Marge sur le temps" value={data ? money(margin, { decimals: 0 }) : '…'} tone={data ? (margin < 0 ? 'red' : 'green') : undefined} />
+      </KpiGrid>
       <div className="prj-toolbar">
         <PeriodFilter label="Période" title="Dates de travail" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
         <SearchSelect size="md" width={240} ariaLabel="Personne" placeholder="Tout le monde" value={employee} onChange={setEmployee}
           options={peopleOptions} />
       </div>
-      <section className="prj-kpis" aria-label="Indicateurs">
-        <Kpi label="Heures" value={data ? `${h1(data.hours)} h` : '…'} sub={data ? `${data.total} saisie${data.total > 1 ? 's' : ''}` : undefined} />
-        <Kpi label="Coût" value={data ? money(data.cost, { decimals: 0 }) : '…'} sub="heures × coût horaire" />
-        <Kpi label="Facturable" value={data ? money(data.amount, { decimals: 0 }) : '…'} sub="heures facturables × taux" />
-        <Kpi label="Marge sur le temps" value={data ? money(margin, { decimals: 0 }) : '…'} tone={data ? (margin < 0 ? 'red' : 'green') : undefined} />
-      </section>
       {canEdit('projects') && (
         <section className="prj-panel">
           <div className="prj-panel-head">Saisir du temps</div>
@@ -393,30 +383,27 @@ function TimeSheet() {
         </section>
       )}
       {isLoading ? <Loading /> : !data?.rows.length ? (
-        <StatusBanner tone="info" icon={Timer} title="Aucun temps saisi">Aucune heure sur cette période.</StatusBanner>
+        <EmptyState icon={Timer} title="Aucun temps saisi" text="Aucune heure sur cette période." />
       ) : (
-        <section className="prj-panel">
-          <div className="prj-panel-head">Saisies <small>{data.total}</small></div>
-          <div className="prj-scroll">
+        <DataPanel label="Saisies de temps"
+          footer={<TableFooter page={page} pageSize={50} total={data.total} onPage={setPage} note={`${data.total} saisie${data.total > 1 ? 's' : ''}`} />}>
             <table className="odoo-table">
-              <thead><tr><th>Date</th><th>Qui</th><th>Projet</th><th>Tâche / activité</th><th>Note</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'right' }}>Facturable</th><th /></tr></thead>
+              <thead><tr><th>Date</th><th>Personne</th><th>Projet</th><th>Tâche ou activité</th><th>Note</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coût ({currencySymbol()})</th><th className="ds-num">Facturable ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{data.rows.map(t => (
                 <tr key={t.id}>
-                  <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.work_date), 'EEE dd/MM', { locale: fr })}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.work_date), 'EEE d MMM', { locale: fr })}</td>
                   <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span className="prj-avatar">{initials(t.employee_name)}</span>{t.employee_name}</span></td>
                   <td>{t.project_name}</td>
                   <td>{t.task_title || t.activity_label || '—'}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>{t.note || ''}</td>
-                  <td style={{ textAlign: 'right' }}>{h1(t.hours)}</td>
-                  <td style={{ textAlign: 'right' }}>{n2(t.cost)}</td>
-                  <td style={{ textAlign: 'right' }}>{t.billable ? n2(t.amount) : <span style={{ color: 'var(--theme-text-muted)' }}>non fact.</span>}</td>
-                  <td>{!t.invoice_id && canEdit('projects') && <button className="odoo-btn-secondary" title="Supprimer" aria-label="Supprimer la saisie" onClick={() => del.mutate(t.id)}><Trash2 size={12} /></button>}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>{t.note || ''}</td>
+                  <td className="ds-num">{h1(t.hours)}</td>
+                  <td className="ds-num">{n2(t.cost)}</td>
+                  <td className="ds-num">{t.billable ? n2(t.amount) : <span style={{ color: 'var(--ds-muted)' }}>non fact.</span>}</td>
+                  <td className="ds-actions">{!t.invoice_id && canEdit('projects') && <button type="button" className="ds-icon-btn" title="Supprimer" aria-label="Supprimer la saisie" disabled={del.isPending} onClick={() => removeEntry(t.id)}><Trash2 size={15} aria-hidden="true" /></button>}</td>
                 </tr>
               ))}</tbody>
             </table>
-          </div>
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} ligne${data.total > 1 ? 's' : ''}`} />
-        </section>
+        </DataPanel>
       )}
     </div>
   );
@@ -433,37 +420,39 @@ function Profitability() {
   const m = rev - cost;
   return (
     <div className="prj">
-      <section className="prj-kpis" aria-label="Indicateurs">
+      <KpiGrid>
         <Kpi label="Recette attendue" value={money(rev, { decimals: 0 })} sub={`${billed.length} projet${billed.length > 1 ? 's' : ''} facturé${billed.length > 1 ? 's' : ''}`} />
         <Kpi label="Coûts engagés" value={money(cost, { decimals: 0 })} sub="main-d’œuvre + achats rattachés" />
         <Kpi label="Marge" value={money(m, { decimals: 0 })} tone={rev ? (m < 0 ? 'red' : 'green') : undefined} />
         <Kpi label="Marge moyenne" value={rev ? `${Math.round(m / rev * 100)} %` : '—'} tone={rev ? (m < 0 ? 'red' : 'green') : undefined} />
-      </section>
+      </KpiGrid>
       <p className="prj-note">Recette = forfait, ou heures facturables × taux. Coûts = heures × coût horaire + factures fournisseurs rattachées.</p>
-      <section className="prj-panel prj-scroll">
+      {rows.length === 0 ? <EmptyState icon={BarChart3} title="Aucun projet" text="La rentabilité s'affiche dès le premier projet créé." /> : (
+      <DataPanel label="Rentabilité par projet" footer={<TableFooter note={`${rows.length} projet${rows.length > 1 ? 's' : ''}`} />}>
         <table className="odoo-table">
-          <thead><tr><th>Projet</th><th>Client</th><th>Statut</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coûts</th><th style={{ textAlign: 'right' }}>Recette</th><th style={{ textAlign: 'right' }}>Marge</th><th>Marge %</th></tr></thead>
+          <thead><tr><th>Projet</th><th>Client</th><th>Statut</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coûts ({currencySymbol()})</th><th className="ds-num">Recette ({currencySymbol()})</th><th className="ds-num">Marge ({currencySymbol()})</th><th>Marge (%)</th></tr></thead>
           <tbody>{rows.map(p => {
             const r = projectRevenue(p); const c = projectCost(p); const mm = r - c; const pct = r ? Math.round((mm / r) * 100) : null;
             return (
               <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)} style={{ cursor: 'pointer' }}>
-                <td><strong>{p.name}</strong> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{p.number}</span></td>
+                <td><span className="ds-strong">{p.name}</span> <span className="ds-ref" style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>{p.number}</span></td>
                 <td>{p.customer_label || '—'}</td>
                 <td><ProjectStatusTag status={p.status} /></td>
-                <td style={{ textAlign: 'right' }}>{h1(p.hours_spent)}{p.estimated_hours ? ` / ${h1(p.estimated_hours)}` : ''}</td>
-                <td style={{ textAlign: 'right' }}>{n2(c)}</td>
-                <td style={{ textAlign: 'right' }}>{r ? n2(r) : '—'}</td>
-                <td style={{ textAlign: 'right', color: r ? (mm < 0 ? 'var(--prj-red)' : 'var(--prj-green)') : undefined, fontWeight: 600 }}>{r ? n2(mm) : '—'}</td>
-                <td style={{ whiteSpace: 'nowrap' }}>{pct === null ? '—' : <>{pct} %<span className="prj-inline-bar" aria-hidden="true"><span style={{ width: `${Math.min(Math.max(pct, 0), 100)}%`, background: pct < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }} /></span></>}</td>
+                <td className="ds-num">{h1(p.hours_spent)}{p.estimated_hours ? ` / ${h1(p.estimated_hours)}` : ''}</td>
+                <td className="ds-num">{n2(c)}</td>
+                <td className="ds-num">{r ? n2(r) : '—'}</td>
+                <td className="ds-num" style={{ color: r ? (mm < 0 ? 'var(--ds-danger)' : 'var(--ds-success)') : undefined, fontWeight: 600 }}>{r ? n2(mm) : '—'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{pct === null ? '—' : <>{pct} %<span className="prj-inline-bar" aria-hidden="true"><span style={{ width: `${Math.min(Math.max(pct, 0), 100)}%`, background: pct < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }} /></span></>}</td>
               </tr>
             );
           })}</tbody>
         </table>
-      </section>
+      </DataPanel>
+      )}
     </div>
   );
 }
 
 function Loading() {
-  return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>;
+  return <LoadingState bare />;
 }

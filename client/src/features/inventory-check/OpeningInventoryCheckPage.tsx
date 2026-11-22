@@ -184,8 +184,8 @@ export default function OpeningInventoryCheckPage() {
               )}
               {existingCheck.status === 'rejected' && existingCheck.rejection_reason && (
                 <div>
-                  <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--prj-red)' }}>Motif du rejet :</p>
-                  <p style={{ color: 'var(--prj-red)' }}>{existingCheck.rejection_reason}</p>
+                  <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--ds-danger)' }}>Motif du rejet :</p>
+                  <p style={{ color: 'var(--ds-danger)' }}>{existingCheck.rejection_reason}</p>
                 </div>
               )}
             </div>
@@ -243,7 +243,7 @@ export default function OpeningInventoryCheckPage() {
         <div className="prj-kpi">
           <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={13} /> Écart</span></div>
           <div className="prj-kpi-value"
-            style={{ color: totals.totalDiscrepancy === 0 ? 'var(--prj-green)' : totals.totalDiscrepancy < 0 ? 'var(--prj-red)' : '#1f6391' }}>
+            style={{ color: totals.totalDiscrepancy === 0 ? 'var(--ds-success)' : totals.totalDiscrepancy < 0 ? 'var(--ds-danger)' : 'var(--ds-info)' }}>
             {totals.totalDiscrepancy > 0 ? '+' : ''}{totals.totalDiscrepancy}
           </div>
           <div className="prj-kpi-sub">{totals.totalDiscrepancy === 0 ? 'aucun' : 'unités'}</div>
@@ -251,7 +251,7 @@ export default function OpeningInventoryCheckPage() {
         <div className="prj-kpi">
           <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><XCircle size={13} /> Lignes en écart</span></div>
           <div className="prj-kpi-value"
-            style={{ color: totals.withDiscrepancy === 0 ? 'var(--prj-green)' : 'var(--prj-red)' }}>
+            style={{ color: totals.withDiscrepancy === 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
             {totals.withDiscrepancy}
           </div>
           <div className="prj-kpi-sub">{totals.withDiscrepancy === 0 ? 'tout conforme' : 'à motiver'}</div>
@@ -308,7 +308,7 @@ export default function OpeningInventoryCheckPage() {
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <button onClick={() => decCount(pid, it.expected_qty)}
-                            className="odoo-pager-btn" title="Diminuer">
+                            className="odoo-pager-btn" title="Diminuer" aria-label="Diminuer">
                             <Minus size={12} />
                           </button>
                           <input type="number" min={0}
@@ -334,13 +334,13 @@ export default function OpeningInventoryCheckPage() {
                               color: 'var(--odoo-text)', outline: 'none',
                             }} />
                           <button onClick={() => incCount(pid, it.expected_qty)}
-                            className="odoo-pager-btn" title="Augmenter">
+                            className="odoo-pager-btn" title="Augmenter" aria-label="Augmenter">
                             <Plus size={12} />
                           </button>
                         </div>
                       </td>
                       <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 600,
-                        color: hasDiscrepancy ? (discrepancy < 0 ? 'var(--prj-red)' : '#1f6391') : 'var(--odoo-text-light)',
+                        color: hasDiscrepancy ? (discrepancy < 0 ? 'var(--ds-danger)' : 'var(--ds-info)') : 'var(--odoo-text-light)',
                       }}>
                         {hasDiscrepancy ? (discrepancy > 0 ? `+${discrepancy}` : discrepancy) : '0'}
                       </td>
@@ -350,10 +350,10 @@ export default function OpeningInventoryCheckPage() {
                             onChange={(e) => updateReason(pid, e.target.value as MissingReason)}
                             style={{
                               fontSize: '0.75rem', padding: '0.125rem 0.375rem',
-                              border: c?.reason ? '1px solid var(--odoo-border-strong)' : '1px solid var(--prj-red)',
+                              border: c?.reason ? '1px solid var(--odoo-border-strong)' : '1px solid var(--ds-danger)',
                               borderRadius: '6px',
-                              backgroundColor: c?.reason ? 'var(--odoo-bg)' : 'color-mix(in srgb, var(--prj-red) 8%, transparent)',
-                              color: c?.reason ? 'var(--odoo-text)' : 'var(--prj-red)',
+                              backgroundColor: c?.reason ? 'var(--odoo-bg)' : 'color-mix(in srgb, var(--ds-danger) 8%, transparent)',
+                              color: c?.reason ? 'var(--odoo-text)' : 'var(--ds-danger)',
                               fontWeight: c?.reason ? 400 : 500, outline: 'none',
                             }}>
                             <option value="">Motif obligatoire</option>

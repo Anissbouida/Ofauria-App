@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../context/AuthContext';
 import '../settings/settings.css';
 
+import { DataPanel, LoadingState, TableFooter } from '../../components/ds';
 /**
  * Production › Paramétrage › Politiques (M1-04).
  *
@@ -105,25 +106,25 @@ export default function ProductionPoliciesPanel() {
         La valeur la plus précise l'emporte : article, type d'ordre, atelier, établissement, société, puis valeur par défaut.
       </StatusBanner>
 
-      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
-        <span style={{ fontWeight: 500 }}>Niveau regardé</span>
-        <select className="odoo-input" style={{ minWidth: 260 }} value={levelKey} aria-label="Niveau regardé"
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+        <span style={{ fontWeight: 600, color: 'var(--ds-ink)' }}>Niveau regardé</span>
+        <select className="ds-input" style={{ minWidth: 260, width: 'auto' }} value={levelKey} aria-label="Niveau regardé"
           onChange={e => { setLevelKey(e.target.value); setEditing(null); }}>
           {levels.map(l => <option key={`${l.type}:${l.id}`} value={`${l.type}:${l.id}`}>{l.label}</option>)}
         </select>
       </label>
 
-      {isLoading && <div style={{ padding: 24, color: 'var(--theme-text-muted)' }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /> Chargement…</div>}
+      {isLoading && <LoadingState />}
 
       {data && (
-        <div style={{ overflowX: 'auto' }}>
+        <DataPanel label="Politiques de production" footer={<TableFooter note={`${data.policies.length} politique(s)`} />}>
           <table className="odoo-table" style={{ width: '100%' }}>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left' }}>Politique</th>
-                <th style={{ textAlign: 'left' }}>Valeur effective</th>
-                <th style={{ textAlign: 'left' }}>Vient de</th>
-                <th style={{ textAlign: 'right' }}>Action</th>
+                <th>Politique</th>
+                <th>Valeur effective</th>
+                <th>Vient de</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -136,13 +137,13 @@ export default function ProductionPoliciesPanel() {
                   <tr key={p.key} style={{ verticalAlign: 'top' }}>
                     <td style={{ maxWidth: 380 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 500 }}>{p.label}</span>
+                        <span className="ds-strong">{p.label}</span>
                         {own && <span className="odoo-setting-changed">Modifié</span>}
                       </div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>{p.help}</div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--ds-muted)', marginTop: 2 }}>{p.help}</div>
                       {others.length > 0 && (
                         <button type="button" onClick={() => setOpen(open === p.key ? null : p.key)} aria-expanded={open === p.key}
-                          style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--theme-accent, #1a73e8)', fontSize: '0.76rem', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                          style={{ marginTop: 4, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--ds-accent-ink)', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                           {open === p.key ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                           {others.length} autre{others.length > 1 ? 's' : ''} valeur{others.length > 1 ? 's' : ''} posée{others.length > 1 ? 's' : ''}
                         </button>
@@ -167,11 +168,11 @@ export default function ProductionPoliciesPanel() {
                           {p.fields.map(f => (
                             <label key={f.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' }}>
                               {p.fields.length > 1 && <span style={{ minWidth: 150 }}>{f.label}</span>}
-                              <input className="odoo-input" style={{ width: 110, textAlign: f.type === 'time' ? 'left' : 'right' }} aria-label={f.label}
+                              <input className="ds-input sm" style={{ width: 110, textAlign: f.type === 'time' ? 'left' : 'right' }} aria-label={f.label}
                                 type={f.type === 'time' ? 'time' : 'number'} step={f.type === 'integer' ? 1 : 'any'} min={f.min} max={f.max}
                                 value={editing!.draft[f.name] ?? ''}
                                 onChange={e => setEditing(ed => ed && { ...ed, draft: { ...ed.draft, [f.name]: e.target.value } })} />
-                              {f.type !== 'time' && <span style={{ color: 'var(--theme-text-muted)' }}>{f.type === 'percent' ? '%' : f.unit}</span>}
+                              {f.type !== 'time' && <span style={{ color: 'var(--ds-muted)' }}>{f.type === 'percent' ? '%' : f.unit}</span>}
                             </label>
                           ))}
                         </div>
@@ -183,15 +184,15 @@ export default function ProductionPoliciesPanel() {
                       <StatusTag tone={SOURCE_TONE[p.effective.source]}
                         label={p.effective.source === 'default' || p.effective.source === 'company' ? p.effective.sourceLabel : `${p.effective.sourceLabel} · ${p.effective.scopeLabel}`} />
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className="ds-actions">
                       {isEditing ? (
                         <span style={{ display: 'inline-flex', gap: 6 }}>
-                          <button type="button" className="odoo-btn-primary" disabled={save.isPending} onClick={() => submit(p)}>
-                            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Enregistrer
+                          <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={save.isPending} onClick={() => setEditing(null)}>Annuler</button>
+                          <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={save.isPending} aria-busy={save.isPending || undefined} onClick={() => submit(p)}>
+                            {save.isPending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Save size={13} aria-hidden="true" />} Enregistrer
                           </button>
-                          <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(null)}><X size={13} /> Annuler</button>
                           {impact && (impact.draft + impact.underway > 0) && (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}
+                            <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', alignSelf: 'center' }}
                               title="Les ordres en cours gardent ce qui a déjà été calculé ; le nouveau réglage s'applique aux calculs à venir.">
                               S'applique à {impact.draft + impact.underway} ordre(s) non terminé(s){impact.underway ? `, dont ${impact.underway} en cours` : ''}
                             </span>
@@ -199,11 +200,11 @@ export default function ProductionPoliciesPanel() {
                         </span>
                       ) : !allowed ? (
                         scopeType === 'company' && p.companyManagedElsewhere
-                          ? <span style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>Se règle dans l'onglet Réglages</span>
-                          : <span style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>Non réglable à ce niveau</span>
+                          ? <span style={{ fontSize: '0.78rem', color: 'var(--ds-muted)' }}>Se règle dans l'onglet Réglages</span>
+                          : <span style={{ fontSize: '0.78rem', color: 'var(--ds-muted)' }}>Non réglable à ce niveau</span>
                       ) : canEdit ? (
                         <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                          <button type="button" className="odoo-btn-secondary" onClick={() => startEdit(p)}>
+                          <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => startEdit(p)}>
                             {own ? 'Modifier' : scopeType === 'company' ? 'Régler' : `Surcharger pour ${levelNoun}`}
                           </button>
                           {own && (
@@ -219,7 +220,7 @@ export default function ProductionPoliciesPanel() {
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
     </div>
   );

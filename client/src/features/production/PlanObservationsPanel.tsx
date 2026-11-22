@@ -35,13 +35,13 @@ export default function PlanObservationsPanel({ observations }: { observations: 
             {o.note && <p style={{ margin: '0.35rem 0 0', whiteSpace: 'pre-wrap' }}>{o.note}</p>}
             {o.bases.length > 0 && (
               <table className="odoo-table" style={{ marginTop: '0.5rem' }}>
-                <thead><tr><th>Base partagée</th><th style={{ textAlign: 'right' }}>Quantité déclarée</th><th>Origine</th></tr></thead>
+                <thead><tr><th>Base partagée</th><th className="ds-num">Quantité déclarée</th><th>Origine</th></tr></thead>
                 <tbody>
                   {o.bases.map((b, i) => (
                     <tr key={`${b.subRecipeId}-${i}`}>
                       <td style={{ fontWeight: 500 }}>{b.name ?? <span style={{ color: 'var(--theme-text-muted)' }}>Fiche supprimée</span>}</td>
                       {/* « Déjà produite » : aucune quantité saisie au lancement (champ masqué). */}
-                      <td style={{ textAlign: 'right' }}>{b.alreadyProduced ? '—' : `${qty(b.actualQuantity)}${b.unit ? ` ${b.unit}` : ''}`}</td>
+                      <td className="ds-num">{b.alreadyProduced ? '—' : `${qty(b.actualQuantity)}${b.unit ? ` ${b.unit}` : ''}`}</td>
                       <td>{b.alreadyProduced ? 'Déjà produite' : 'Produite au lancement'}</td>
                     </tr>
                   ))}

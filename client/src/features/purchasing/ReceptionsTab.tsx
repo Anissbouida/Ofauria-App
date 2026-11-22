@@ -1,12 +1,12 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, PackageCheck, Search, Truck, X, PackageSearch } from 'lucide-react';
-import PageNote from '../../components/ui/PageNote';
+import { PackageCheck, Truck, X, PackageSearch, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { receptionVouchersApi, purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { PODetailModal, DeliveryModal } from '../accounting/PurchaseOrdersTab';
-import { ListKpi } from '../sales/ListTemplate';
+import { KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
 import { ViewSwitch, PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { usePurLayout, LayoutSwitch, SplitView, KanbanView, POPane, pdate, pmoney } from './PurLayouts';
 import { StatusTag } from '../../components/ui/StatusTag';
@@ -14,7 +14,8 @@ import { money, currencySymbol } from '../../utils/money';
 
 const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const date = (v: string | null | undefined) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—');
+const sum = (rows: Array<{ total_amount?: unknown }>) => rows.reduce((a, r) => a + (Number(r.total_amount) || 0), 0);
+const cap = (v: string) => v.charAt(0).toUpperCase() + v.slice(1);
 const monthKey = (v: string | null | undefined) => (v ? String(v).slice(0, 7) : '');
 const monthLabel = (v: string | null | undefined) =>
   v ? format(new Date(`${String(v).slice(0, 10)}T00:00:00`), 'MMMM yyyy', { locale: fr }) : '—';
@@ -40,8 +41,6 @@ type ReceptionRow = {
 
 /** BC en attente de réception (board, étapes « envoyé » et « réception partielle »). */
 type PendingPO = Record<string, any>;
-
-const Dh = () => <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', fontWeight: 400 }}>{currencySymbol()}</span>;
 
 /**
  * Étape 6 du cycle d'achat — Réception. Deux vues (ViewSwitch) :
@@ -122,38 +121,31 @@ export default function ReceptionsTab() {
   const thisMonth = new Date().toISOString().slice(0, 7);
   const monthVouchers = vouchers.filter(r => String(r.reception_date ?? '').slice(0, 7) === thisMonth);
 
+  const resetFilters = () => { setSearchInput(''); setPeriod('all'); setCustomFrom(''); setCustomTo(''); };
+  const lastReception = vouchers.map(r => String(r.reception_date ?? '')).sort().pop();
+
   return (
     <>
-      <PageNote help="Chaque réception crée un bon de réception, classé dans l'Historique. L'écart de prix et le rapprochement facture se suivent dans Écarts de prix et Rapprochement.">
-        Choisissez un bon de commande envoyé et saisissez les quantités reçues.
-      </PageNote>
+      {layout !== 'split' && (
+        <KpiGrid>
+          <KpiCard label="À réceptionner" value={String(pending.length)} sub={`${money(sum(pending))} attendus`} />
+          <KpiCard label="Livraisons en retard" value={String(pending.filter(po => po.is_late).length)} sub="date prévue dépassée" tone={pending.some(po => po.is_late) ? 'red' : undefined} />
+          <KpiCard label="Reçues ce mois" value={String(monthVouchers.length)} sub={money(sum(monthVouchers))} />
+          <KpiCard label="Dernière réception" value={lastReception ? pdate(lastReception) : '—'} sub="bon de réception le plus récent" />
+        </KpiGrid>
+      )}
 
-      {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
-        <ListKpi label="À réceptionner" value={String(pending.length)} sub={`${money(pending.reduce((a, po) => a + (Number(po.total_amount) || 0), 0))} attendus`} />
-        <ListKpi label="Livraisons en retard" value={String(pending.filter(po => po.is_late).length)} sub="date prévue dépassée" tone={pending.some(po => po.is_late) ? 'red' : undefined} />
-        <ListKpi label="Reçues ce mois" value={String(monthVouchers.length)} sub={money(monthVouchers.reduce((a, r) => a + (Number(r.total_amount) || 0), 0))} />
-        <ListKpi label="Dernière réception" value={date(vouchers.map(r => String(r.reception_date ?? '')).sort().pop())} sub="bon de réception le plus récent" />
-      </section>}
-
-      {/* Barre d'outils unique : recherche, période (historique), bascule À réceptionner / Historique */}
-      <div className="prj-toolbar">
-        <label className="prj-search">
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="search" aria-label="Rechercher"
-            placeholder={view === 'open' ? 'N° de BC, fournisseur…' : 'N° de réception, BC, fournisseur…'}
-            value={searchInput} onChange={e => setSearchInput(e.target.value)} />
-        </label>
+      {/* Barre d'outils : recherche, période (historique), puis bascules à droite. */}
+      <Toolbar>
+        <SearchBar value={searchInput} onChange={setSearchInput} label="Rechercher une réception"
+          placeholder={view === 'open' ? 'N° de BC, fournisseur…' : 'N° de réception, BC, fournisseur…'} />
         {view === 'history' && (
           <PeriodFilter label="Reçu" title="Filtre sur la date de réception"
             period={period} onPeriod={setPeriod}
             from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
         )}
         {(searchInput || (view === 'history' && hasPeriodFilter)) && (
-          <button type="button"
-            onClick={() => { setSearchInput(''); setPeriod('all'); setCustomFrom(''); setCustomTo(''); }}
-            className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer
-          </button>
+          <button type="button" onClick={resetFilters} className="ds-btn-ghost ds-btn-sm"><X size={13} aria-hidden="true" /> Effacer</button>
         )}
         <LayoutSwitch value={layout} onChange={setLayout} />
         <ViewSwitch
@@ -163,32 +155,21 @@ export default function ReceptionsTab() {
           historyLabel={`Historique${loadingVouchers ? '' : ` · ${vouchers.length}`}`}
           ariaLabel="Vue des réceptions"
         />
-      </div>
+      </Toolbar>
 
       {/* ───────── À réceptionner ───────── */}
       {view === 'open' && (
-        loadingPending ? (
-          <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <Loader2 className="animate-spin" size={18} style={{ margin: '0 auto 8px' }} />
-            <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
-          </div>
-        ) : pendingRows.length === 0 ? (
-          <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <PackageSearch size={26} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-            <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
-              {term ? 'Aucun BC à réceptionner pour cette recherche' : 'Aucun bon de commande en attente de livraison'}
-            </p>
-          </div>
+        loadingPending ? <LoadingState /> : pendingRows.length === 0 ? (
+          term
+            ? <NoResultState onReset={resetFilters} text="Aucun bon de commande à réceptionner ne correspond à la recherche." />
+            : <EmptyState icon={PackageSearch} title="Aucun bon de commande en attente de livraison"
+                text="Les bons de commande envoyés au fournisseur apparaissent ici jusqu'à leur réception complète." />
         ) : layout === 'split' ? (
           <SplitView items={pendingRows} getId={po => po.id as string} activeId={activeId} onPick={setActiveId} label="Bons de commande à réceptionner"
             row={po => ({
               title: String(po.supplier_name ?? '—'), when: po.expected_delivery_date ? pdate(po.expected_delivery_date, 'd MMM') : undefined,
               l2: <><span className="sal-num">{po.order_number}</span> · <b>{pmoney(po.total_amount)}</b></>,
-              l3: po.is_late
-                ? <StatusTag tone="late" label={`En retard de ${daysLate(po.expected_delivery_date)} j`} />
-                : po.stage === 'partial'
-                  ? <StatusTag tone="progress" icon={PackageSearch} label="Reliquat attendu" />
-                  : <StatusTag tone="todo" icon={Truck} label="En attente de livraison" />,
+              l3: <PendingTag po={po} />,
               dot: po.is_late ? 'late' : '',
             })}
             pane={po => (
@@ -207,74 +188,53 @@ export default function ReceptionsTab() {
             card={po => ({ num: String(po.order_number ?? '—'), title: String(po.supplier_name ?? '—'),
               meta: po.expected_delivery_date ? `prévu ${pdate(po.expected_delivery_date, 'd MMM')}` : 'sans date', amount: pmoney(po.total_amount) })} />
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <DataPanel label="Bons de commande à réceptionner"
+            footer={<TableFooter note={`${pendingRows.length} bon${pendingRows.length > 1 ? 's' : ''} de commande à réceptionner · ${money(sum(pendingRows))} attendus`} />}>
             <table className="odoo-table">
               <thead><tr>
                 <th>N° BC</th>
                 <th>Fournisseur</th>
-                <th>Étape</th>
+                <th>Articles</th>
                 <th>Livraison prévue</th>
-                <th style={{ textAlign: 'right' }}>Montant</th>
-                <th style={{ textAlign: 'right' }}>Action</th>
+                <th>Statut</th>
+                <th className="ds-num">Montant ({currencySymbol()})</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr></thead>
               <tbody>{pendingRows.map(po => {
                 const id = po.id as string;
                 const isPartial = po.stage === 'partial';
-                const late = !!po.is_late;
                 return (
                   <tr key={id} onClick={() => setPoDetail(id)} style={{ cursor: 'pointer' }}
                     title="Ouvrir le détail du bon de commande">
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{po.order_number ?? '—'}</td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-                        <Truck size={11} style={{ color: 'var(--theme-accent)' }} />
-                        {po.supplier_name ?? '—'}
-                      </span>
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
-                        {po.item_count} article{Number(po.item_count) > 1 ? 's' : ''}
-                      </div>
-                    </td>
-                    <td style={{ fontSize: '0.75rem' }}>
-                      <strong style={{ fontWeight: 600 }}>{isPartial ? 'Réception partielle' : 'Envoyé'}</strong>
-                      <span style={{ color: 'var(--theme-text-muted)' }}> · {isPartial ? 'reliquat attendu' : 'en attente de livraison'}</span>
-                    </td>
-                    <td style={{ color: late ? '#dc3545' : 'var(--theme-text-muted)', fontWeight: late ? 600 : 400 }}>
-                      {po.expected_delivery_date ? date(po.expected_delivery_date) : '—'}
-                      {late && (
-                        <div style={{ fontSize: '0.6875rem', color: '#dc3545' }}>
-                          {daysLate(po.expected_delivery_date)} j de retard
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>{fmt(po.total_amount)} <Dh /></td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                      <button type="button" onClick={() => setReceivePoId(id)}
-                        className={late ? 'odoo-btn-danger' : 'odoo-btn-primary'}>
+                    <td className="ds-ref">{po.order_number ?? '—'}</td>
+                    <td className="ds-strong">{po.supplier_name ?? '—'}</td>
+                    <td>{po.item_count} article{Number(po.item_count) > 1 ? 's' : ''}</td>
+                    <td>{po.expected_delivery_date ? pdate(po.expected_delivery_date) : '—'}</td>
+                    <td><PendingTag po={po} /></td>
+                    <td className="ds-num">{fmt(po.total_amount)}</td>
+                    <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                      <button type="button" onClick={() => setReceivePoId(id)} className="odoo-btn-secondary ds-btn-sm">
                         {isPartial ? 'Réceptionner le reliquat' : 'Réceptionner'}
                       </button>
+                      <RowMenu label={`Plus d'actions pour ${po.order_number ?? 'ce bon'}`} items={[
+                        { label: 'Ouvrir le bon de commande', icon: FileText, onSelect: () => setPoDetail(id) },
+                      ]} />
                     </td>
                   </tr>
                 );
               })}</tbody>
             </table>
-          </div>
+          </DataPanel>
         )
       )}
 
       {/* ───────── Historique des bons de réception (par mois) ───────── */}
       {view === 'history' && (
-        loadingVouchers ? (
-          <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <Loader2 className="animate-spin" size={18} style={{ margin: '0 auto 8px' }} />
-            <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
-          </div>
-        ) : vouchersRows.length === 0 ? (
-          <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <PackageCheck size={26} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-            <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
-              {term || hasPeriodFilter ? 'Aucune réception pour ces filtres' : 'Aucune réception enregistrée'}
-            </p>
-          </div>
+        loadingVouchers ? <LoadingState /> : vouchersRows.length === 0 ? (
+          term || hasPeriodFilter
+            ? <NoResultState onReset={resetFilters} text="Aucune réception ne correspond aux filtres." />
+            : <EmptyState icon={PackageCheck} title="Aucune réception enregistrée"
+                text="Chaque réception crée un bon de réception, classé ici par mois. L'écart de prix et le rapprochement facture se suivent dans Écarts de prix et Rapprochement." />
         ) : layout === 'split' ? (
           <SplitView items={vouchersRows} getId={r => r.id} activeId={activeId} onPick={setActiveId} label="Bons de réception"
             row={r => ({
@@ -309,49 +269,50 @@ export default function ReceptionsTab() {
               card={r => ({ num: r.voucher_number, title: r.supplier_name ?? '—', meta: `${pdate(r.reception_date, 'd MMM')} · ${r.order_number ?? ''}`, amount: pmoney(r.total_amount) })} />
           );
         })() : (
-          <div style={{ overflowX: 'auto' }}>
+          <DataPanel label="Bons de réception"
+            footer={<TableFooter note={`${vouchersRows.length} réception${vouchersRows.length > 1 ? 's' : ''} · ${money(sum(vouchersRows))} · ${periodLabel(period, customFrom, customTo)}`} />}>
             <table className="odoo-table">
               <thead><tr>
-                <th>Reçu le</th>
                 <th>N° réception</th>
-                <th>BC</th>
+                <th>Reçu le</th>
+                <th>N° BC</th>
                 <th>Fournisseur</th>
-                <th style={{ textAlign: 'right' }}>Lignes</th>
-                <th style={{ textAlign: 'right' }}>Montant reçu</th>
+                <th className="ds-num">Lignes</th>
+                <th className="ds-num">Montant reçu ({currencySymbol()})</th>
                 <th>Reçu par</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr></thead>
               <tbody>{vouchersRows.map((r, i) => {
                 const prev = i > 0 ? vouchersRows[i - 1] : null;
                 const showMonth = !prev || monthKey(prev.reception_date) !== monthKey(r.reception_date);
+                const monthRows = showMonth ? vouchersRows.filter(x => monthKey(x.reception_date) === monthKey(r.reception_date)) : [];
                 return (
                   <Fragment key={r.id}>
                     {showMonth && (
-                      <tr>
-                        <td colSpan={7} style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize', color: 'var(--odoo-text)' }}>
-                          {monthLabel(r.reception_date)}
-                        </td>
+                      <tr className="ds-group">
+                        <td colSpan={5}>{cap(monthLabel(r.reception_date))}<small>{monthRows.length} réception{monthRows.length > 1 ? 's' : ''}</small></td>
+                        <td className="ds-num">{fmt(sum(monthRows))}</td>
+                        <td colSpan={2} />
                       </tr>
                     )}
                     <tr onClick={() => setPoDetail(r.purchase_order_id)}
                       style={{ cursor: 'pointer' }} title="Ouvrir le bon de commande et le détail de la réception">
-                      <td style={{ color: 'var(--theme-text-muted)' }}>{date(r.reception_date)}</td>
-                      <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.voucher_number}</td>
-                      <td style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--odoo-purple)', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 }}>
-                        {r.order_number ?? '—'}
+                      <td className="ds-ref">{r.voucher_number}</td>
+                      <td>{pdate(r.reception_date)}</td>
+                      <td className="ds-ref" style={{ fontWeight: 400 }}>{r.order_number ?? '—'}</td>
+                      <td className="ds-strong">{r.supplier_name ?? '—'}</td>
+                      <td className="ds-num">{r.item_count}</td>
+                      <td className="ds-num">{fmt(r.total_amount)}</td>
+                      <td>{r.received_by_name ?? '—'}</td>
+                      <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setPoDetail(r.purchase_order_id)}>Ouvrir</button>
                       </td>
-                      <td style={{ fontWeight: 600 }}>{r.supplier_name ?? '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{r.item_count}</td>
-                      <td style={{ textAlign: 'right' }}>{fmt(r.total_amount)} <Dh /></td>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>{r.received_by_name ?? '—'}</td>
                     </tr>
                   </Fragment>
                 );
               })}</tbody>
             </table>
-            <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
-              {vouchersRows.length} réception{vouchersRows.length > 1 ? 's' : ''} · {periodLabel(period, customFrom, customTo)}
-            </div>
-          </div>
+          </DataPanel>
         )
       )}
 
@@ -359,4 +320,12 @@ export default function ReceptionsTab() {
       {poDetail && <PODetailModal poId={poDetail} onClose={() => setPoDetail(null)} />}
     </>
   );
+}
+
+/** Statut d'un bon de commande en attente : retard, reliquat ou livraison attendue. */
+function PendingTag({ po }: { po: PendingPO }) {
+  if (po.is_late) return <StatusTag tone="late" label={`En retard de ${daysLate(po.expected_delivery_date)} j`} />;
+  return po.stage === 'partial'
+    ? <StatusTag tone="progress" icon={PackageSearch} label="Reliquat attendu" />
+    : <StatusTag tone="todo" icon={Truck} label="En attente de livraison" />;
 }

@@ -63,19 +63,19 @@ export default function DataTab() {
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 260px', display: 'grid', gap: 6, alignContent: 'start' }}>
             <div style={{ fontSize: '0.875rem' }}><strong>Configuration</strong> (fichier JSON)</div>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
               Société, établissements, rôles et droits, séries de numéros, modèles, notifications, TVA, référentiel. Sans mot de passe ni code PIN.
             </div>
-            <button className="odoo-btn-secondary" style={{ justifySelf: 'start' }} disabled={busy !== null} onClick={() => doExport('export/configuration', 'Configuration')}>
+            <button type="button" className="odoo-btn-secondary" style={{ justifySelf: 'start' }} disabled={busy !== null} onClick={() => doExport('export/configuration', 'Configuration')}>
               {busy === 'export/configuration' ? 'Export…' : 'Exporter la configuration'}
             </button>
           </div>
           <div style={{ flex: '1 1 260px', display: 'grid', gap: 6, alignContent: 'start' }}>
             <div style={{ fontSize: '0.875rem' }}><strong>Données de base</strong> (classeur Excel)</div>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+            <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
               Produits, ingrédients, fournisseurs, clients, personnel, établissements : une feuille chacun. Contient des données personnelles.
             </div>
-            <button className="odoo-btn-secondary" style={{ justifySelf: 'start' }} disabled={busy !== null} onClick={() => doExport('export/base', 'Export des données')}>
+            <button type="button" className="odoo-btn-secondary" style={{ justifySelf: 'start' }} disabled={busy !== null} onClick={() => doExport('export/base', 'Export des données')}>
               {busy === 'export/base' ? 'Export…' : 'Exporter les données'}
             </button>
           </div>
@@ -106,7 +106,7 @@ export default function DataTab() {
                   <td style={{ whiteSpace: 'nowrap' }}>{new Date(e.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
                   <td>{EVENT_LABELS[e.event_type]}</td>
                   <td>{e.by_name || '—'}</td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+                  <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
                     {e.event_type === 'data_import' && e.details ? `${String(e.details.entity)} · ${String(e.details.created)} créé(s), ${String(e.details.updated)} mis à jour` : ''}
                   </td>
                 </tr>

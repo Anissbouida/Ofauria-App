@@ -153,7 +153,7 @@ export default function BulkReplaceModal({ onClose }: { onClose: () => void }) {
                 <b>{preview.data.recipes_count}</b> fiche(s) utilisent {preview.data.source?.name}, <b>{preview.data.rows_count}</b> ligne(s)
               </div>
               {preview.data.unit_mismatch && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: '#b45309', background: 'rgba(234,179,8,0.08)', borderRadius: 4, padding: '6px 8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--ds-warning)', background: 'rgba(234,179,8,0.08)', borderRadius: 4, padding: '6px 8px' }}>
                   <AlertTriangle size={13} /> Unités différentes ({preview.data.source?.unit} → {preview.data.target?.unit}) : le ratio doit convertir la quantité.
                 </div>
               )}
@@ -171,13 +171,13 @@ export default function BulkReplaceModal({ onClose }: { onClose: () => void }) {
                         <input type="checkbox" aria-label="Toutes les fiches" checked={everyChecked} disabled={mode === 'substitute' && allRecipes}
                           onChange={e => setChecked(e.target.checked ? new Set(recipes.map(r => r.id)) : new Set())} />
                       </th>
-                      <th>Fiche</th><th style={{ textAlign: 'right' }}>Lignes</th><th>Version active</th>
+                      <th>Fiche</th><th className="ds-num">Lignes</th><th>Version active</th>
                     </tr></thead>
                     <tbody>{recipes.map(r => (
                       <tr key={r.id}>
                         <td><input type="checkbox" aria-label={r.name} checked={checked.has(r.id)} disabled={mode === 'substitute' && allRecipes} onChange={() => toggle(r.id)} /></td>
                         <td>{r.name}</td>
-                        <td style={{ textAlign: 'right' }}>{r.occurrences}</td>
+                        <td className="ds-num">{r.occurrences}</td>
                         <td style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>{r.active_version ? `v${r.active_version}` : '—'}</td>
                       </tr>
                     ))}</tbody>
@@ -207,7 +207,7 @@ export default function BulkReplaceModal({ onClose }: { onClose: () => void }) {
               <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 6 }}>Dernières opérations</div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="odoo-table">
-                  <thead><tr><th>Quand</th><th>Opération</th><th style={{ textAlign: 'right' }}>Ratio</th><th style={{ textAlign: 'right' }}>Fiches</th><th>État</th><th /></tr></thead>
+                  <thead><tr><th>Quand</th><th>Opération</th><th className="ds-num">Ratio</th><th className="ds-num">Fiches</th><th>État</th><th /></tr></thead>
                   <tbody>
                     {logs.map(l => (
                       <tr key={l.id}>
@@ -216,12 +216,12 @@ export default function BulkReplaceModal({ onClose }: { onClose: () => void }) {
                           {l.mode === 'substitute' ? 'Substitut' : 'Remplacement'} : {l.source_name} → {l.target_name}
                           {l.activated_versions > 0 && <span style={{ color: 'var(--theme-text-muted)' }}> · {l.activated_versions} version(s)</span>}
                         </td>
-                        <td style={{ textAlign: 'right' }}>{Number(l.ratio ?? 1).toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</td>
-                        <td style={{ textAlign: 'right' }}>{l.mode === 'substitute' && !l.recipes_count ? 'Toutes' : l.recipes_count}</td>
+                        <td className="ds-num">{Number(l.ratio ?? 1).toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</td>
+                        <td className="ds-num">{l.mode === 'substitute' && !l.recipes_count ? 'Toutes' : l.recipes_count}</td>
                         <td>{l.reverted_at
                           ? <StatusTag tone="cancelled" label="Annulé" />
                           : <StatusTag tone="done" label="Appliqué" />}</td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td className="ds-num">
                           {!l.reverted_at && (
                             <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem' }} disabled={revert.isPending}
                               title={l.mode === 'substitute' ? 'Retirer les substituts créés' : 'Restaurer l\'ingrédient et les quantités'} onClick={() => revert.mutate(l.id)}>

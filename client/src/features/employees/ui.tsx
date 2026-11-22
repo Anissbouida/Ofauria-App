@@ -1,41 +1,57 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { createContext, useContext, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Loader2, type LucideIcon } from 'lucide-react';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import {
+  EmptyState as DsEmptyState, LoadingState, Segmented as DsSegmented, FormField,
+} from '../../components/ds';
 
 /**
- * Briques visuelles du module Personnel, alignees sur le module Achats
- * (SuppliersTab, PurchaseOrdersTab) : modale « odoo » avec barre de titre en
- * fil d'ariane, champs et libelles, titres de section, pied de formulaire.
+ * Briques du module Personnel. Depuis le Design System commun (2026-11-22, docs/DESIGN_SYSTEM.md)
+ * elles délèguent aux composants de `components/ds` : mêmes signatures qu'avant, présentation
+ * commune (états, bascule segmentée, champs). Restent propres au module : la fenêtre HrModal
+ * et l'emplacement des actions d'en-tête.
  */
 
-export const fieldLabel: CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
-export const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400';
-/** Intertitre de section (design Ventes 2026-11-18 : casse normale, sans capitales forcées). */
-export const sectionTitle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem', fontWeight: 600, color: 'var(--kl-ink, var(--theme-text))', margin: '6px 0 2px' };
-/** Encadre d'un bloc de contenu (carte arrondie, trait fin). */
-export const panel: CSSProperties = { border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: 12, background: 'var(--theme-bg-card)' };
-/** Bouton compact (actions secondaires dans une section). */
-export const smallBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.2rem 0.55rem', fontSize: '0.75rem' };
+/** Libellé de champ posé à la main (hors `Field`) : même échelle que `ds-field > label`. */
+export const fieldLabel: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 };
+/** Contrôle de saisie standard du Design System (40 px ; ajouter `sm` dans un tableau). */
+export const inputCls = 'ds-input';
+/** Intertitre de sous-section (niveau 4 du Design System, casse normale). */
+export const sectionTitle: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6 };
+/** Encadré d'un bloc de contenu dans une fiche ou une fenêtre (trait fin, sans ombre). */
+export const panel: CSSProperties = { border: '1px solid var(--ds-sep)', borderRadius: 12, padding: 12, background: 'var(--ds-card)' };
+/** Bouton compact (actions secondaires dans une section) : à combiner avec `ds-btn-sm`. */
+export const smallBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, height: 30, padding: '0 12px', fontSize: 13 };
 
-/** Titre de section, avec icone. */
+/**
+ * Emplacement des actions de l'écran actif, à droite du fil d'Ariane du module (gabarit de page :
+ * exports en secondaire, puis une seule action principale). EmployeesPage fournit l'emplacement ;
+ * hors du module (espace salarié seul), les boutons restent à leur place dans la page.
+ */
+export const HrHeaderSlot = createContext<HTMLElement | null>(null);
+export function HrHeaderActions({ children }: { children: ReactNode }) {
+  const slot = useContext(HrHeaderSlot);
+  return slot ? createPortal(children, slot) : <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>{children}</div>;
+}
+
+/** Titre de sous-section, avec icône et actions à droite. */
 export function SectionTitle({ icon: Icon, children, actions }: { icon?: LucideIcon; children: ReactNode; actions?: ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-      <div style={sectionTitle}>{Icon && <Icon size={12} />} {children}</div>
-      {actions && <div style={{ display: 'inline-flex', gap: 4 }}>{actions}</div>}
+    <div className="ds-section-head">
+      <h3 className="ds-subhead" style={sectionTitle}>{Icon && <Icon size={14} aria-hidden="true" />} {children}</h3>
+      <span className="ds-grow" />
+      {actions && <div style={{ display: 'inline-flex', gap: 6 }}>{actions}</div>}
     </div>
   );
 }
 
-/** Champ libelle + controle. */
-export function Field({ label, children, hint, style }: { label: string; children: ReactNode; hint?: ReactNode; style?: CSSProperties }) {
-  return (
-    <div style={style}>
-      <label style={fieldLabel}>{label}</label>
-      {children}
-      {hint && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>{hint}</div>}
-    </div>
-  );
+/** Champ libellé + contrôle (FormField du Design System). */
+export function Field({ label, children, hint, style, required, error }: {
+  label: string; children: ReactNode; hint?: ReactNode; style?: CSSProperties; required?: boolean; error?: ReactNode;
+}) {
+  const field = <FormField label={label} hint={hint} required={required} error={error}>{children}</FormField>;
+  return style ? <div style={style}>{field}</div> : field;
 }
 
 /**
@@ -88,9 +104,9 @@ export function SubmitButton({ pending, children, disabled, onClick, type = 'but
   pending?: boolean; children: ReactNode; disabled?: boolean; onClick?: () => void; type?: 'button' | 'submit'; danger?: boolean;
 }) {
   return (
-    <button type={type} onClick={onClick} disabled={disabled || pending} className={danger ? 'odoo-btn-danger' : 'odoo-btn-primary'}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      {pending && <Loader2 size={12} className="animate-spin" />}
+    <button type={type} onClick={onClick} disabled={disabled || pending} className={danger ? 'ds-btn-danger solid' : 'odoo-btn-primary'}
+      aria-busy={pending || undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      {pending && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
       {children}
     </button>
   );
@@ -115,7 +131,7 @@ export function PromptDialog({
         <button type="button" className="odoo-btn-secondary" onClick={onCancel}>Annuler</button>
         <SubmitButton disabled={!ok} onClick={() => onConfirm(value)}>{confirmLabel}</SubmitButton>
       </>}>
-      <Field label={label} hint={hint}>
+      <Field label={label} hint={hint} required={required}>
         <input className={inputCls} type={type} step={type === 'number' ? '0.25' : undefined} value={value} placeholder={placeholder} autoFocus
           onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && ok) onConfirm(value); }} />
       </Field>
@@ -123,54 +139,25 @@ export function PromptDialog({
   );
 }
 
-/** Etat vide centre (meme rendu que les listes Ventes, sans cadre : a poser dans un panneau). */
-export function EmptyState({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
-  return (
-    <div className="sal-empty">
-      <Icon size={28} style={{ opacity: 0.4 }} />
-      <span>{children}</span>
-    </div>
-  );
+/** État vide sans cadre : à poser dans un panneau. */
+export function EmptyState({ icon, children }: { icon: LucideIcon; children: ReactNode }) {
+  return <DsEmptyState icon={icon} title={children} bare />;
 }
 
-/** Etat vide ou chargement dans sa propre carte (liste vide, ecran en chargement). */
-export function EmptyPanel({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
-  return (
-    <section className="prj-panel sal-empty">
-      <Icon size={28} style={{ opacity: 0.4 }} />
-      <span>{children}</span>
-    </section>
-  );
+/** État vide dans sa propre carte (liste vide). */
+export function EmptyPanel({ icon, children }: { icon: LucideIcon; children: ReactNode }) {
+  return <DsEmptyState icon={icon} title={children} />;
 }
 
-/** Chargement d'un ecran ou d'une liste, dans une carte (gabarit Ventes). */
+/** Chargement d'un écran ou d'une liste, dans une carte. */
 export function LoadingPanel({ label = 'Chargement…' }: { label?: string }) {
-  return (
-    <section className="prj-panel sal-empty">
-      <Loader2 className="animate-spin" size={20} />
-      <span>{label}</span>
-    </section>
-  );
+  return <LoadingState label={label} />;
 }
 
-/**
- * Controle segmente (2 a 4 vues), comme la bascule Colonnes/Liste/Kanban des Achats
- * (prj-views) : remplace les anciens odoo-view-switcher a fond violet.
- */
+/** Bascule segmentée (2 à 4 vues) : celle du Design System. */
 export function Segmented<K extends string>({ value, onChange, options, label }: {
   value: K; onChange: (k: K) => void; label: string;
   options: Array<{ key: K; label: ReactNode; icon?: LucideIcon; count?: number; title?: string }>;
 }) {
-  return (
-    <div className="prj-views" role="group" aria-label={label}>
-      {options.map(o => {
-        const Icon = o.icon;
-        return (
-          <button key={o.key} type="button" title={o.title} className={value === o.key ? 'active' : ''} aria-pressed={value === o.key} onClick={() => onChange(o.key)}>
-            {Icon && <Icon size={14} />} {o.label}{o.count !== undefined && <small style={{ marginLeft: 4, opacity: 0.6 }}>{o.count}</small>}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <DsSegmented value={value} onChange={onChange} options={options} label={label} />;
 }

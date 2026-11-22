@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Lock, LockOpen, ShieldCheck, ListChecks, AlertTriangle, CheckCircle2, CalendarRange, Fingerprint, Download } from 'lucide-react';
+import { Lock, LockOpen, ShieldCheck, ListChecks, AlertTriangle, CheckCircle2, Fingerprint, Download } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -8,6 +8,8 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { fiscalYearsApi, type CloseCheck, type FiscalYear } from '../../api/ledger.api';
 import { money } from '../../utils/money';
+import { DataPanel, LoadingState, SectionHeader } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
 
 const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -62,27 +64,25 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
     if (!(await confirm(
       `Clôturer définitivement l'exercice ${fy.year} ? Les à-nouveaux seront générés au 1er janvier ${fy.year + 1}, `
       + `les mois de ${fy.year} verrouillés et le grand livre scellé. Plus aucune écriture ne pourra être passée sur ${fy.year}, `
-      + `même par extourne : une correction se fera sur ${fy.year + 1}.`))) return;
+      + `même par extourne : une correction se fera sur ${fy.year + 1}.`, { title: `Clôturer l'exercice ${fy.year}`, confirmLabel: 'Clôturer l\'exercice', danger: true }))) return;
     close.mutate(fy.year);
   };
 
-  if (isLoading) return <div style={{ padding: 12 }}><Loader2 size={16} className="animate-spin" /></div>;
+  if (isLoading) return <LoadingState />;
 
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontWeight: 600, fontSize: '0.875rem' }}>
-        <CalendarRange size={14} /> Exercices
-      </div>
-      <div className="odoo-section" style={{ padding: 0 }}>
-        <table className="odoo-table" style={{ margin: 0 }}>
+    <div style={{ display: 'grid', gap: 8 }}>
+      <SectionHeader title="Exercices" />
+      <DataPanel label="Exercices">
+        <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th style={{ width: 110 }}>Exercice</th>
               <th style={{ width: 200 }}>Dates</th>
               <th style={{ width: 170 }}>Statut</th>
-              <th style={{ width: 170, textAlign: 'right' }}>Résultat</th>
+              <th className="ds-num" style={{ width: 170 }}>Résultat</th>
               <th>À-nouveaux</th>
-              <th style={{ width: 380, textAlign: 'right' }}>Actions</th>
+              <th className="ds-actions" style={{ width: 200 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -94,8 +94,8 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
               return (
                 <Fragment key={fy.id}>
                   <tr>
-                    <td style={{ fontWeight: 600 }}>{fy.year}</td>
-                    <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                    <td className="ds-strong">{fy.year}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>
                       {String(fy.start_date).slice(0, 10)} → {String(fy.end_date).slice(0, 10)}
                     </td>
                     <td>
@@ -105,38 +105,25 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
                         <StatusTag tone="progress" icon={LockOpen} label={`Ouvert${fy.months_open ? ` · ${fy.months_open} mois ouverts` : ''}`} />
                       )}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: Number(result) < 0 ? '#c62828' : undefined }}>
+                    <td className="ds-num" style={{ color: Number(result) < 0 ? 'var(--ds-danger)' : undefined }}>
                       {fmt(result)}
-                      {!closed && <span style={{ marginLeft: 4, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontFamily: 'inherit' }}>provisoire</span>}
+                      {!closed && <span style={{ marginLeft: 4, fontSize: 12, color: 'var(--ds-muted)' }}>provisoire</span>}
                     </td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>
+                    <td className="ds-ref">
                       {fy.opening_entries.length ? fy.opening_entries.join(', ') : '—'}
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: 6, whiteSpace: 'nowrap' }}>
-                        <button className="odoo-btn-secondary" onClick={() => setOpenYear(expanded ? null : fy.year)}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <ListChecks size={12} /> {expanded ? 'Masquer' : 'Contrôles'}
-                        </button>
-                        <button className="odoo-btn-secondary" disabled={fec.isPending} onClick={() => fec.mutate(fy.year)}
-                          title={closed ? 'Fichier des écritures comptables (avis CNC n° 24) et attestation d\'intégrité'
-                            : 'Export provisoire : l\'exercice est encore ouvert'}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          {fec.isPending && fec.variables === fy.year ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} FEC
-                        </button>
-                        {!closed && isAdmin && (
-                          <button className="odoo-btn-danger" disabled={!ended || close.isPending} onClick={() => doClose(fy)}
-                            title={ended ? undefined : `L'exercice ${fy.year} n'est pas terminé`}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            {close.isPending && close.variables === fy.year ? <Loader2 size={12} className="animate-spin" /> : <Lock size={12} />}
-                            Clôturer l'exercice
-                          </button>
-                        )}
-                      </div>
+                    <td className="ds-actions">
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-expanded={expanded} onClick={() => setOpenYear(expanded ? null : fy.year)}>
+                        <ListChecks size={12} aria-hidden="true" /> {expanded ? 'Masquer' : 'Contrôles'}
+                      </button>
+                      <RowMenu label={`Actions sur l'exercice ${fy.year}`} items={[
+                        { label: closed ? 'Télécharger le FEC' : 'Télécharger le FEC provisoire', icon: Download, disabled: fec.isPending, onSelect: () => fec.mutate(fy.year) },
+                        ...(!closed && isAdmin ? [{ label: ended ? 'Clôturer l\'exercice' : `Clôturer l'exercice (non terminé)`, icon: Lock, danger: true, disabled: !ended || close.isPending, onSelect: () => { void doClose(fy); } }] : []),
+                      ]} />
                     </td>
                   </tr>
                   {expanded && (
-                    <tr><td colSpan={6} style={{ background: 'var(--theme-bg-page)', padding: 12 }}>
+                    <tr><td colSpan={6} style={{ background: 'var(--ds-bg)', padding: 16 }}>
                       {closed ? <ClosedYear fy={fy} /> : <YearChecks year={fy.year} />}
                     </td></tr>
                   )}
@@ -145,7 +132,7 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
             })}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
     </div>
   );
 }
@@ -175,7 +162,7 @@ function YearChecks({ year }: { year: number }) {
   const { data: checks = [], isLoading } = useQuery({
     queryKey: ['ledger-fiscal-year-checklist', year], queryFn: () => fiscalYearsApi.checklist(year),
   });
-  if (isLoading) return <Loader2 size={16} className="animate-spin" />;
+  if (isLoading) return <LoadingState />;
   const rows = (checks as CloseCheck[]).filter(c => c.code !== 'result');
   const result = (checks as CloseCheck[]).find(c => c.code === 'result');
   const blocking = rows.filter(c => c.blocking && c.item_count > 0);
@@ -186,14 +173,14 @@ function YearChecks({ year }: { year: number }) {
         : <StatusBanner tone="success" icon={CheckCircle2} title="Aucun point bloquant">
             Les mois sans écriture encore ouverts seront fermés d'office ; les à-nouveaux reprendront le résultat de {money(result?.amount)}.
           </StatusBanner>}
-      <table className="odoo-table" style={{ margin: 0 }}>
-        <thead><tr><th>Contrôle</th><th style={{ width: 90, textAlign: 'right' }}>Nombre</th><th style={{ width: 130, textAlign: 'right' }}>Montant</th><th style={{ width: 120 }}>Effet</th></tr></thead>
+      <table className="odoo-table ds-dense">
+        <thead><tr><th>Contrôle</th><th className="ds-num" style={{ width: 90 }}>Nombre</th><th className="ds-num" style={{ width: 130 }}>Montant</th><th style={{ width: 120 }}>Effet</th></tr></thead>
         <tbody>
           {rows.map(c => (
             <tr key={c.code}>
               <td>{c.label}</td>
-              <td style={{ textAlign: 'right' }}>{c.item_count}</td>
-              <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{c.amount != null && c.item_count > 0 ? fmt(c.amount) : '—'}</td>
+              <td className="ds-num">{c.item_count}</td>
+              <td className="ds-num">{c.amount != null && c.item_count > 0 ? fmt(c.amount) : '—'}</td>
               <td>{c.item_count === 0
                 ? <StatusTag tone="done" label="OK" />
                 : c.blocking ? <StatusTag tone="blocked" label="Bloquant" /> : <StatusTag tone="todo" label="À examiner" />}</td>
@@ -203,8 +190,8 @@ function YearChecks({ year }: { year: number }) {
             <tr>
               <td style={{ fontWeight: 600 }}>{result.label}</td>
               <td />
-              <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: Number(result.amount) < 0 ? '#c62828' : '#0e7c3a' }}>{fmt(result.amount)}</td>
-              <td><span className="odoo-tag odoo-tag-grey">Information</span></td>
+              <td className="ds-num" style={{ fontWeight: 600, color: Number(result.amount) < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{fmt(result.amount)}</td>
+              <td><StatusTag tone="draft" label="Information" /></td>
             </tr>
           )}
         </tbody>

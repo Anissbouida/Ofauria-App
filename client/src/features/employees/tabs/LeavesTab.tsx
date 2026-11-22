@@ -4,7 +4,7 @@ const frDate = (raw: unknown) => { const s = isoDate(raw); return s ? `${s.slice
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { leavesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
-import { Plus, Users, CalendarOff, Check, X, Hourglass, Trash2 } from 'lucide-react';
+import { Plus, CalendarOff, Check, X, Hourglass, Trash2 } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../../utils/api-error';
 import { isoDate } from '../shared';
@@ -13,7 +13,9 @@ import LeaveBalancesView from '../leaves/LeaveBalancesView';
 import HolidaysView from '../leaves/HolidaysView';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { EmptyPanel, LoadingPanel, Segmented } from '../ui';
+import { RowMenu } from '../../../components/ui/RowMenu';
+import { EmptyPanel, LoadingPanel, Segmented, HrHeaderActions } from '../ui';
+import { Toolbar, DataPanel, TableFooter, NoResultState, ErrorState } from '../../../components/ds';
 import { FilterChips } from '../../sales/ListTemplate';
 
 const LEAVE_STAGES = [
@@ -40,7 +42,7 @@ function LeaveRequests({ queryClient, switcher }: { queryClient: ReturnType<type
   const confirm = useConfirm();
   const currentYear = new Date().getFullYear();
   const { getLabel: getLeaveLabel } = useReferentiel('leave_types');
-  const { data: leaves = [], isLoading } = useQuery({
+  const { data: leaves = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['leaves', currentYear],
     queryFn: () => leavesApi.list({ year: String(currentYear) }),
   });
@@ -71,63 +73,71 @@ function LeaveRequests({ queryClient, switcher }: { queryClient: ReturnType<type
 
   return (
     <>
-      {/* Barre d'outils (vues + action) puis pastilles de statut avec compteurs : clic = filtrer la liste */}
-      <div className="prj-toolbar">
-        {switcher}
-        <span className="hr-spacer" />
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
+      {/* Action principale de la page, à droite du fil d'Ariane. */}
+      <HrHeaderActions>
+        <button type="button" onClick={() => setShowForm(true)} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouvelle demande
+          <Plus size={13} aria-hidden="true" /> Nouvelle demande
         </button>
-      </div>
-      <div className="prj-toolbar">
-        <FilterChips label="Statut des demandes" value={stage} onChange={setStage}
-          chips={[{ key: '', label: 'Toutes', count: leavesList.length }, ...LEAVE_STAGES.map(st => ({ key: st.key, label: st.label, icon: st.icon, count: stageCount[st.key] }))]} />
-        <span className="hr-spacer" />
-        <small style={{ color: 'var(--theme-text-muted)', fontSize: 13 }}>
+      </HrHeaderActions>
+
+      {/* Pastilles de statut avec compteurs (clic = filtrer), puis barre d'outils : résumé et bascule de vue. */}
+      <FilterChips label="Statut des demandes" value={stage} onChange={setStage}
+        chips={[{ key: '', label: 'Toutes', count: leavesList.length }, ...LEAVE_STAGES.map(st => ({ key: st.key, label: st.label, icon: st.icon, count: stageCount[st.key] }))]} />
+      <Toolbar>
+        <span className="hr-tools-label">
           Demandes de congé {currentYear} · {daysOf('pending')} j en attente · {daysOf('approved')} j approuvés · {daysOf('rejected')} j refusés
-        </small>
-      </div>
+        </span>
+        {switcher}
+      </Toolbar>
 
       {isLoading ? (
         <LoadingPanel />
+      ) : isError ? (
+        <ErrorState onRetry={() => void refetch()} />
       ) : leavesList.length === 0 ? (
         <EmptyPanel icon={CalendarOff}>Aucun congé pour cette année</EmptyPanel>
       ) : visible.length === 0 ? (
-        <EmptyPanel icon={CalendarOff}>Aucune demande avec ce statut</EmptyPanel>
+        <NoResultState text="Aucune demande avec ce statut." onReset={() => setStage('')} />
       ) : (
-        <div className="prj-panel hr-plain"><div className="prj-scroll">
+        <DataPanel label="Demandes de congé" footer={<TableFooter note={`${visible.length} demande${visible.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 24 }}></th>
                 <th>Employé</th>
                 <th>Type</th>
                 <th>Période</th>
-                <th style={{ textAlign: 'center' }}>Jours</th>
+                <th className="ds-num">Durée (j)</th>
                 <th>Motif</th>
                 <th>Statut</th>
-                <th style={{ textAlign: 'center', width: 80 }}>Actions</th>
+                <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
-              {visible.map(l => (
-                <tr key={l.id as string} className={l.status === 'pending' ? 'row-warning' : ''}>
-                  <td>
-                    <span className={`odoo-status-dot ${l.status === 'approved' ? 'ok' : l.status === 'rejected' ? 'danger' : 'warning'}`} />
-                  </td>
-                  <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
-                      <Users size={11} style={{ color: 'var(--theme-accent)' }} />
-                      {l.first_name as string} {l.last_name as string}
-                    </span>
-                  </td>
+              {visible.map(l => {
+                const who = `${l.first_name} ${l.last_name}`;
+                const approve = async () => {
+                  if (!(await confirm(`Approuver le congé de ${who} du ${frDate(l.start_date)} au ${frDate(l.end_date)} (${l.days as number} j) ?`,
+                    { title: 'Approuver le congé', confirmLabel: 'Approuver' }))) return;
+                  approveMutation.mutate(l.id as string);
+                };
+                const reject = async () => {
+                  if (await confirm(`Refuser le congé de ${who} ?`, { title: 'Refuser la demande', confirmLabel: 'Refuser', danger: true })) rejectMutation.mutate(l.id as string);
+                };
+                // Suppression possible sur tous les statuts : un congé approuvé par erreur
+                // (dates incorrectes) se supprime, ce qui re-crédite les jours dans le solde.
+                const remove = async () => {
+                  if (!(await confirm(`Supprimer définitivement ce congé (${who}, ${l.days as number} j) ?\n\nSi le congé était approuvé, les jours seront re-crédités dans le solde.`,
+                    { title: 'Supprimer le congé', confirmLabel: 'Supprimer', danger: true }))) return;
+                  removeMutation.mutate(l.id as string);
+                };
+                return (
+                <tr key={l.id as string}>
+                  <td className="ds-strong">{who}</td>
                   <td>{getLeaveLabel(l.type as string)}</td>
-                  <td style={{ color: 'var(--odoo-text-muted)' }}>
-                    {frDate(l.start_date)} — {frDate(l.end_date)}
-                  </td>
-                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{parseFloat(String(l.days))}</td>
-                  <td style={{ color: 'var(--odoo-text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td>{frDate(l.start_date)} — {frDate(l.end_date)}</td>
+                  <td className="ds-num ds-strong">{parseFloat(String(l.days))}</td>
+                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.reason as string || undefined}>
                     {l.reason as string || '—'}
                   </td>
                   <td>
@@ -136,42 +146,21 @@ function LeaveRequests({ queryClient, switcher }: { queryClient: ReturnType<type
                       label={l.status === 'pending' ? 'En attente' : l.status === 'approved' ? 'Approuvé' : 'Refusé'}
                     />
                   </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <div style={{ display: 'inline-flex', gap: 2 }}>
-                      {l.status === 'pending' && (
-                        <>
-                          <button onClick={async () => {
-                            if (!(await confirm(`Approuver le conge de ${l.first_name} ${l.last_name} du ${frDate(l.start_date)} au ${frDate(l.end_date)} (${l.days as number} j) ?`,
-                              { title: 'Approuver le congé', confirmLabel: 'Approuver' }))) return;
-                            approveMutation.mutate(l.id as string);
-                          }}
-                            className="odoo-pager-btn" title="Approuver" style={{ color: 'var(--prj-green)' }}>
-                            <Check size={14} />
-                          </button>
-                          <button onClick={async () => { if (await confirm(`Refuser le congé de ${l.first_name} ${l.last_name} ?`, { title: 'Refuser la demande', confirmLabel: 'Refuser', danger: true })) rejectMutation.mutate(l.id as string); }}
-                            className="odoo-pager-btn" title="Refuser" style={{ color: 'var(--prj-red)' }}>
-                            <X size={14} />
-                          </button>
-                        </>
-                      )}
-                      {/* Suppression : possible sur tous statuts. Un conge approuve
-                          peut avoir ete accorde par erreur (dates incorrectes) ;
-                          la suppression re-libere les jours dans la balance. */}
-                      <button onClick={async () => {
-                        if (!(await confirm(`Supprimer definitivement ce conge (${l.first_name} ${l.last_name}, ${l.days as number} j) ?\n\nSi le conge etait approuve, les jours seront re-credites dans la balance.`,
-                          { title: 'Supprimer le congé', confirmLabel: 'Supprimer', danger: true }))) return;
-                        removeMutation.mutate(l.id as string);
-                      }}
-                        className="odoo-pager-btn" title="Supprimer" style={{ color: 'var(--odoo-text-muted)' }}>
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+                  <td className="ds-actions">
+                    {l.status === 'pending' && (
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => void approve()}><Check size={13} aria-hidden="true" /> Approuver</button>
+                    )}
+                    <RowMenu label={`Plus d'actions pour la demande de ${who}`} items={[
+                      ...(l.status === 'pending' ? [{ label: 'Refuser', icon: X, danger: true, onSelect: () => void reject() }] : []),
+                      { label: 'Supprimer', icon: Trash2, danger: true, onSelect: () => void remove() },
+                    ]} />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
-        </div></div>
+        </DataPanel>
       )}
 
       {showForm && <LeaveRequestForm onClose={() => setShowForm(false)} />}

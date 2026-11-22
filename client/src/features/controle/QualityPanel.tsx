@@ -34,19 +34,19 @@ export default function QualityPanel({ filter, links, title, canInspect = true }
         {canInspect && <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setForm({ title })}><Plus size={12} /> Inspection</button>}
       </div>
       <div style={{ padding: '0.5rem 1rem' }}>
-        {data.length === 0 ? <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune inspection rattachée.</span> : (
+        {data.length === 0 ? <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucune inspection rattachée.</span> : (
           <table className="odoo-table" style={{ margin: 0 }}>
-            <thead><tr><th>Date</th><th>Inspection</th><th>Par</th><th>Résultat</th><th /></tr></thead>
+            <thead><tr><th>Date</th><th>Inspection</th><th>Par</th><th>Résultat</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>{data.map(r => (
               <tr key={r.id}>
                 <td style={{ whiteSpace: 'nowrap' }}>{day(r.inspected_on)}</td>
-                <td style={{ fontWeight: 500 }}>{r.title}<div style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>{r.template_name}</div></td>
+                <td style={{ fontWeight: 500 }}>{r.title}<div style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--ds-muted)' }}>{r.template_name}</div></td>
                 <td>{r.inspected_by_name ?? '—'}</td>
                 <td>
                   {r.status === 'a_faire' ? <StatusTag tone="todo" label="À faire" />
                     : r.conformity ? <StatusTag tone="done" label="Conforme" /> : <StatusTag tone="blocked" label={`Non conforme (${r.failed})`} />}
                 </td>
-                <td style={{ textAlign: 'right' }}>
+                <td className="ds-num">
                   {r.status === 'a_faire' && canInspect && (
                     <button type="button" className="odoo-btn-secondary"
                       onClick={() => setForm({ pendingId: r.id, items: r.pending_items ?? null, title: r.title })}>Réaliser</button>
@@ -58,13 +58,13 @@ export default function QualityPanel({ filter, links, title, canInspect = true }
         )}
         {readings.length > 0 && (
           <table className="odoo-table" style={{ margin: '10px 0 0', boxShadow: 'none' }}>
-            <thead><tr><th>Relevé</th><th>Étape</th><th style={{ textAlign: 'right' }}>Mesure</th><th style={{ textAlign: 'right' }}>Consigne</th><th>Résultat</th></tr></thead>
+            <thead><tr><th>Relevé</th><th>Étape</th><th className="ds-num">Mesure</th><th className="ds-num">Consigne</th><th>Résultat</th></tr></thead>
             <tbody>{readings.map(r => (
               <tr key={r.id}>
-                <td style={{ fontWeight: 500 }}>{r.parametre}{r.est_ccp ? ' · CCP' : ''}<div style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>{new Date(r.at).toLocaleString('fr-FR')}{r.by_name ? ` · ${r.by_name}` : ''}</div></td>
+                <td style={{ fontWeight: 500 }}>{r.parametre}{r.est_ccp ? ' · CCP' : ''}<div style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--ds-muted)' }}>{new Date(r.at).toLocaleString('fr-FR')}{r.by_name ? ` · ${r.by_name}` : ''}</div></td>
                 <td>{r.step}</td>
-                <td style={{ textAlign: 'right' }}>{r.mesure}</td>
-                <td style={{ textAlign: 'right' }}>{r.consigne != null ? `${r.consigne}${r.tolerance != null ? ` ± ${r.tolerance}` : ''}` : '—'}</td>
+                <td className="ds-num">{r.mesure}</td>
+                <td className="ds-num">{r.consigne != null ? `${r.consigne}${r.tolerance != null ? ` ± ${r.tolerance}` : ''}` : '—'}</td>
                 <td>{r.conforme == null ? '—' : r.conforme ? <StatusTag tone="done" label="Conforme" /> : <StatusTag tone="blocked" label="Hors tolérance" />}</td>
               </tr>
             ))}</tbody>

@@ -96,8 +96,8 @@ export default function CompanyLegalEntities() {
   }, [stores, storeFilter]);
   const activeEntities = entities.filter(e => e.is_active);
 
-  const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)' };
+  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
   const set = (k: keyof Draft, v: string | boolean) => setEditing(e => e && { ...e, draft: { ...e.draft, [k]: v } });
   const iceDigits = editing?.draft.ice.replace(/\s/g, '') ?? '';
 
@@ -106,12 +106,12 @@ export default function CompanyLegalEntities() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontWeight: 600 }}>Entités juridiques</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
             Société qui émet les pièces de chaque établissement. L'entité par défaut reprend la fiche ci-dessus.
           </div>
         </div>
         {!editing && available && (
-          <button className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button type="button" className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Plus size={13} /> Ajouter une entité
           </button>
         )}
@@ -134,11 +134,11 @@ export default function CompanyLegalEntities() {
                   <td><StatusTag tone={e.is_active ? 'done' : 'cancelled'} label={e.is_active ? 'Active' : 'Désactivée'} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {e.is_default
-                      ? <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Fiche ci-dessus</span>
+                      ? <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>Fiche ci-dessus</span>
                       : <>
-                        <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(e)} aria-label={`Modifier ${e.legal_name}`}><Pencil size={13} /></button>
+                        <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(e)} aria-label={`Modifier ${e.legal_name}`}><Pencil size={13} /></button>
                         {e.is_active && (
-                          <button className="odoo-btn-secondary" style={{ padding: '2px 8px', marginLeft: 4 }} disabled={makeDefault.isPending}
+                          <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', marginLeft: 4 }} disabled={makeDefault.isPending}
                             onClick={() => makeDefault.mutate(e.id)} title="Les pièces sans établissement et la fiche société reprendront cette entité">
                             Par défaut
                           </button>
@@ -172,8 +172,8 @@ export default function CompanyLegalEntities() {
             </label>
           )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
-            <button className="odoo-btn-primary"
+            <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
+            <button type="button" className="odoo-btn-primary"
               disabled={save.isPending || !/^[A-Z0-9]{2,12}$/.test(editing.draft.code) || !editing.draft.legalName.trim() || (!!iceDigits && !/^\d{15}$/.test(iceDigits))}
               onClick={() => save.mutate()}>
               {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
@@ -215,14 +215,14 @@ export default function CompanyLegalEntities() {
             </table>
           </div>
           {stores.length > shownStores.length && (
-            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
               {shownStores.length} établissements affichés sur {stores.length} : précisez la recherche.
             </p>
           )}
         </div>
       )}
       {available && entities.length === 1 && activeEntities.length === 1 && (
-        <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+        <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
           Une seule société : tous les établissements ({stores.length}) émettent leurs pièces sous la fiche ci-dessus.
           Ajoutez une entité pour rattacher un établissement à une autre société.
         </p>

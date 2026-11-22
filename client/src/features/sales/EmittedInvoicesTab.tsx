@@ -1,5 +1,6 @@
 import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, paymentsApi } from '../../api/accounting.api';
 import { customersApi } from '../../api/customers.api';
@@ -9,10 +10,10 @@ import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { format, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, Pencil, X, Check, Download, Receipt, Loader2, Search, Banknote, Eye, Ban, Trash2,
-  AlertTriangle, CalendarDays, Building2, CheckCircle2, Clock, Coins, ClipboardList, Package,
-  FileText, Truck, Undo2, Columns3, List, SquareKanban, Maximize2,
-} from 'lucide-react';
+  Plus, Pencil, X, Check, Download, Receipt, Loader2, Banknote, Eye, Ban, Trash2,
+  AlertTriangle, Building2, CheckCircle2, Clock, Coins, ClipboardList, Package,
+  Truck, Undo2, Columns3, List, SquareKanban, Maximize2 } from 'lucide-react';
+
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -20,7 +21,8 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import { ListToolbar, FilterChips, ListKpi, ListPanel, ListEmpty, NextStep } from './ListTemplate';
+import { ListToolbar, FilterChips, ListKpi, ListPanel, NextStep } from './ListTemplate';
+import { Segmented, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 function n(val: number): string {
@@ -87,18 +89,16 @@ const modalPanelStyle: CSSProperties = {
   backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)',
   borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
 };
-const modalHeaderStyle: CSSProperties = { backgroundColor: 'var(--theme-accent)', padding: '0.875rem 1.25rem', color: '#fff' };
-const labelStyle: CSSProperties = {
-  display: 'block', fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase',
-  letterSpacing: '0.03em', color: 'var(--odoo-text-muted)', marginBottom: 4,
-};
+const modalHeaderStyle: CSSProperties = { background: 'var(--ds-card)', padding: '0.875rem 1.25rem', color: 'var(--ds-ink)', borderBottom: '1px solid var(--ds-hair)' };
+const labelStyle: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 };
 const fieldStyle: CSSProperties = {
-  width: '100%', padding: '0.375rem 0.5rem', border: '1px solid var(--odoo-border)',
-  borderRadius: 4, fontSize: '0.8125rem', backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)',
+  width: '100%', padding: '0.4375rem 0.625rem', border: '1px solid var(--ds-line)',
+  borderRadius: 8, fontSize: 14, backgroundColor: 'var(--ds-card)', color: 'var(--ds-ink)',
 };
 const sectionStyle: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' };
 
-export default function EmittedInvoicesTab() {
+/** `actionsSlot` : emplacement de la barre du haut (fil d'Ariane) où poser l'action principale de la page. */
+export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTMLElement | null } = {}) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const { getLabel: getPaymentLabel } = useReferentiel('payment_methods');
@@ -107,8 +107,8 @@ export default function EmittedInvoicesTab() {
   const [lateOnly, setLateOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewing, setViewing] = useState<Inv | null>(null);
-  // Style Apple (2026-11) : Colonnes (liste + fiche) par défaut sur grand écran, Liste, Kanban.
-  const [layout, setLayout] = useState<'split' | 'list' | 'kanban'>(() => (window.innerWidth >= 1100 ? 'split' : 'list'));
+  // Design System : Tableau par défaut ; Colonnes (liste + fiche) et Kanban au choix.
+  const [layout, setLayout] = useState<'split' | 'list' | 'kanban'>('list');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPayModal, setShowPayModal] = useState<Record<string, any> | null>(null);
@@ -382,6 +382,8 @@ export default function EmittedInvoicesTab() {
     return items;
   };
 
+  const newInvoiceBtn = <button type="button" onClick={openCreate} className="odoo-btn-primary"><Plus size={13} /> Nouvelle facture</button>;
+
   return (
     <div className="prj">
       {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
@@ -390,14 +392,6 @@ export default function EmittedInvoicesTab() {
         <ListKpi label="Taux d'encaissement" value={`${rate} %`} sub={`${money(totalPaid)} encaissés`} tone={rate >= 100 ? 'green' : undefined} />
       </section>}
 
-      <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="N° de facture, client, commande ou bon de livraison…">
-        <div className="prj-views" role="group" aria-label="Affichage">
-          <button type="button" className={layout === 'split' ? 'active' : ''} aria-pressed={layout === 'split'} onClick={() => setLayout('split')}><Columns3 size={14} /> Colonnes</button>
-          <button type="button" className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={14} /> Liste</button>
-          <button type="button" className={layout === 'kanban' ? 'active' : ''} aria-pressed={layout === 'kanban'} onClick={() => setLayout('kanban')}><SquareKanban size={14} /> Kanban</button>
-        </div>
-        <button type="button" onClick={openCreate} className="odoo-btn-primary"><Plus size={13} /> Nouvelle facture</button>
-      </ListToolbar>
       <FilterChips label="Filtrer les factures" value={lateOnly ? 'late' : statusFilter}
         onChange={k => { if (k === 'late') { setLateOnly(true); setStatusFilter(''); } else { setLateOnly(false); setStatusFilter(k); } }}
         chips={[
@@ -405,11 +399,20 @@ export default function EmittedInvoicesTab() {
           ...(overdue.length ? [{ key: 'late', label: 'En retard', count: overdue.length, tone: 'late' as const, icon: AlertTriangle }] : []),
           ...FILTER_CHIPS.filter(c => c.key).map(c => ({ key: c.key, label: c.label, count: counts[c.key] || 0 })),
         ]} />
+      <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="N° de facture, client, commande ou bon de livraison…">
+        <Segmented label="Affichage" value={layout} onChange={setLayout} options={[
+          { key: 'list', label: 'Tableau', icon: List },
+          { key: 'split', label: 'Colonnes', icon: Columns3 },
+          { key: 'kanban', label: 'Kanban', icon: SquareKanban },
+        ]} />
+        {!actionsSlot && newInvoiceBtn}
+      </ListToolbar>
+      {actionsSlot && createPortal(newInvoiceBtn, actionsSlot)}
 
-      {isLoading ? <ListEmpty icon={Loader2} title="Chargement des factures…" /> : filteredInvoices.length === 0 ? (
-        <ListEmpty icon={Receipt} title={hasFilters ? 'Aucune facture pour ces filtres' : 'Aucune facture'}
-          text={hasFilters ? 'Changez de filtre ou effacez la recherche.' : 'Les factures naissent des bons de livraison ou d\'une saisie manuelle.'}
-          action={hasFilters ? <button type="button" className="odoo-btn-secondary" onClick={() => { setStatusFilter(''); setLateOnly(false); setSearchQuery(''); }}>Effacer les filtres</button> : undefined} />
+      {isLoading ? <LoadingState label="Chargement des factures…" /> : filteredInvoices.length === 0 ? (
+        hasFilters
+          ? <NoResultState onReset={() => { setStatusFilter(''); setLateOnly(false); setSearchQuery(''); }} text="Aucune facture ne correspond aux filtres." />
+          : <EmptyState icon={Receipt} title="Aucune facture" text="Les factures naissent des bons de livraison ou d'une saisie manuelle." />
       ) : layout === 'split' ? (() => {
         const active = filteredInvoices.find(inv => inv.id === activeId) ?? filteredInvoices[0];
         return (
@@ -437,12 +440,7 @@ export default function EmittedInvoicesTab() {
       })() : layout === 'kanban' ? (
         <InvoiceKanban invoices={filteredInvoices} today={today} onOpen={setViewing} />
       ) : (
-        <ListPanel footer={
-          <div className="sal-foot">
-            <span>{filteredInvoices.length} facture{filteredInvoices.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''}</span>
-            <span>Total <strong>{money(filteredTotal)}</strong> · reste à encaisser <strong style={{ color: 'var(--prj-orange)' }}>{money(filteredRemaining)}</strong></span>
-          </div>
-        }>
+        <ListPanel footer={<TableFooter note={<>{filteredInvoices.length} facture{filteredInvoices.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''} · total <strong>{money(filteredTotal)}</strong> · reste à encaisser <strong style={{ color: 'var(--ds-warning)' }}>{money(filteredRemaining)}</strong></>} />}>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -453,9 +451,9 @@ export default function EmittedInvoicesTab() {
                 <th>Échéance</th>
                 <th>Statut</th>
                 <th>Encaissement</th>
-                <th style={{ textAlign: 'right' }}>Total TTC</th>
-                <th style={{ textAlign: 'right' }}>Reste</th>
-                <th style={{ textAlign: 'right' }}>Action</th>
+                <th className="ds-num">Total TTC ({currencySymbol()})</th>
+                <th className="ds-num">Reste ({currencySymbol()})</th>
+                <th className="ds-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -471,13 +469,13 @@ export default function EmittedInvoicesTab() {
                 return (
                   <tr key={inv.id as string} onClick={() => setViewing(inv)}>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <span className="sal-num">{inv.invoice_number as string}</span>
+                      <span className="ds-ref">{inv.invoice_number as string}</span>
                       {isCredit(inv) && inv.credited_invoice_number && <span className="sal-sub" style={{ whiteSpace: 'nowrap' }}>sur {inv.credited_invoice_number as string}</span>}
                       {!isCredit(inv) && inv.cancelled_by_credit && <span className="sal-late-txt">annulée par avoir</span>}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <span style={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        {isPro(inv) && <Building2 size={12} style={{ color: 'var(--theme-text-muted)' }} aria-label="Professionnel" />}
+                      <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {isPro(inv) && <Building2 size={12} style={{ color: 'var(--ds-muted)' }} aria-hidden="true" />}
                         {customerLabel(inv)}
                       </span>
                       <span className="sal-sub">{isPro(inv) ? 'Professionnel' : 'Particulier'}</span>
@@ -504,26 +502,23 @@ export default function EmittedInvoicesTab() {
                           </div>
                         )}
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                      <strong style={{ color: isCredit(inv) ? '#5B3A9E' : undefined }}>{isCredit(inv) ? '−' : ''}{n(total)}</strong>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>{currencySymbol()}</span>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
+                      <span className="ds-strong">{isCredit(inv) ? '−' : ''}{n(total)}</span>
                       {inv.foreign_total_amount != null && String(inv.currency_code).trim() !== BASE_CURRENCY && (
                         <span className="sal-sub">{n(num(inv.foreign_total_amount))} {String(inv.currency_code).trim()}</span>
                       )}
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                      {status === 'cancelled' ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
+                    <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
+                      {status === 'cancelled' ? <span style={{ color: 'var(--ds-muted)' }}>—</span>
                         : isCredit(inv) ? (remaining > 0.004
-                          ? <span style={{ color: '#5B3A9E', fontWeight: 600 }} title="Crédit du client, à imputer sur une facture">{money(remaining)}</span>
+                          ? <span className="ds-strong" title="Crédit du client, à imputer sur une facture">{n(remaining)}</span>
                           : <span className="sal-sub" style={{ margin: 0 }}>imputé</span>)
-                        : remaining > 0.004 ? <span style={{ color: late ? 'var(--prj-red)' : 'var(--prj-orange)', fontWeight: 600 }}>{money(remaining)}</span>
-                        : <span style={{ color: 'var(--prj-green)', fontSize: '0.8125rem' }}>soldée</span>}
+                        : remaining > 0.004 ? <span style={{ color: late ? 'var(--ds-danger)' : 'var(--ds-warning)', fontWeight: 600 }}>{n(remaining)}</span>
+                        : <span style={{ color: 'var(--ds-success)', fontSize: '0.8125rem' }}>soldée</span>}
                     </td>
-                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                      <div className="sal-actions">
-                        {open && !isCredit(inv) && remaining > 0.004 && <NextStep icon={Banknote} label="Encaisser" onClick={() => openPay(inv)} />}
-                        <RowMenu items={menuItems(inv)} />
-                      </div>
+                    <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
+                      {open && !isCredit(inv) && remaining > 0.004 && <NextStep icon={Banknote} label="Encaisser" onClick={() => openPay(inv)} />}
+                      <RowMenu items={menuItems(inv)} />
                     </td>
                   </tr>
                 );
@@ -555,7 +550,7 @@ export default function EmittedInvoicesTab() {
                 <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{editingInvoiceId ? 'Modifier la facture' : 'Nouvelle facture'}</div>
                 <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{editingInvoiceId ? 'Date, TVA ou articles' : 'Saisie manuelle d\'une facture client'}</div>
               </div>
-              <button onClick={() => { setShowCreateModal(false); resetManualForm(); }} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+              <button onClick={() => { setShowCreateModal(false); resetManualForm(); }} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
             </div>
             <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
               {!editingInvoiceId && (
@@ -637,9 +632,9 @@ export default function EmittedInvoicesTab() {
                               </select>
                             </td>
                             <td><input type="number" title="Prix unitaire TTC" value={unitTtc(item) || ''} min="0" step="0.01" onChange={e => setUnitTtc(idx, parseFloat(e.target.value) || 0)} style={{ ...fieldStyle, textAlign: 'right' }} /></td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(item.quantity * unitTtc(item))}</td>
+                            <td className="ds-num ds-strong">{n(item.quantity * unitTtc(item))}</td>
                             <td>
-                              <button onClick={() => removeManualItem(idx)} disabled={manualItems.length <= 1} className="odoo-pager-btn" title="Supprimer la ligne" style={{ color: '#dc3545' }}><Trash2 size={13} /></button>
+                              <button onClick={() => removeManualItem(idx)} disabled={manualItems.length <= 1} className="odoo-pager-btn" title="Supprimer la ligne" aria-label="Supprimer la ligne" style={{ color: 'var(--ds-danger)' }}><Trash2 size={13} /></button>
                             </td>
                           </tr>
                         ))}
@@ -727,16 +722,16 @@ export default function EmittedInvoicesTab() {
                   <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Encaisser la facture</div>
                   <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{inv.invoice_number as string} · {customerLabel(inv)}</div>
                 </div>
-                <button type="button" onClick={() => setShowPayModal(null)} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+                <button type="button" onClick={() => setShowPayModal(null)} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
               </div>
               <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div style={sectionStyle}>
                   <div className="odoo-section-header"><Banknote size={11} /> Solde de la facture</div>
                   <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total TTC</span><span style={{ fontWeight: 600 }}>{money(total)}</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Déjà encaissé</span><span style={{ fontWeight: 600 }}>{money(paid)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ds-success)' }}><span>Déjà encaissé</span><span style={{ fontWeight: 600 }}>{money(paid)}</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                      <span>Reste à encaisser</span><span style={{ color: '#b85d1a' }}>{money(remaining)}{payInFx ? ` · ${n(remainingFx)} ${payCur}` : ''}</span>
+                      <span>Reste à encaisser</span><span style={{ color: 'var(--ds-warning)' }}>{money(remaining)}{payInFx ? ` · ${n(remainingFx)} ${payCur}` : ''}</span>
                     </div>
                     {payInFx && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Facture en {payCur} au taux de {num(inv.exchange_rate)} {currencySymbol()}</div>}
                   </div>
@@ -771,7 +766,7 @@ export default function EmittedInvoicesTab() {
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Reçu en trésorerie</span><span>{money(fxDh)}</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Créance soldée (taux de la facture)</span><span>{money(fxSettled)}</span></div>
                     {Math.abs(fxGain) >= 0.01 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: fxGain > 0 ? '#155724' : '#721c24' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: fxGain > 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
                         <span>{fxGain > 0 ? 'Gain de change (7331)' : 'Perte de change (6331)'}</span><span>{money(Math.abs(fxGain))}</span>
                       </div>
                     )}
@@ -927,7 +922,7 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
           <section>
             <div className="kl-sec"><h2>Articles</h2><small>{items.length ? `${items.length} ligne${items.length > 1 ? 's' : ''}` : ''}</small></div>
             <div className="kl-group">
-              {!detail ? <div className="kl-empty"><Loader2 className="animate-spin" size={16} /> Chargement…</div>
+              {!detail ? <LoadingState bare />
                 : items.length === 0 ? <div className="kl-empty">Aucun article</div>
                 : items.map((it, idx) => (
                   <div key={idx} className="ord-line">
@@ -939,9 +934,9 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
               <div className="ord-kv"><span>Total HT</span><b>{money(ht)}</b></div>
               <div className="ord-kv"><span>TVA</span><b>{money(tva)}</b></div>
               <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{money(total)}</span></div>
-              <div className="ord-kv"><span>{credit ? 'Imputé' : 'Encaissé'}</span><b style={{ color: 'var(--prj-green, #15803D)' }}>{money(paid)}</b></div>
+              <div className="ord-kv"><span>{credit ? 'Imputé' : 'Encaissé'}</span><b style={{ color: 'var(--ds-success)' }}>{money(paid)}</b></div>
               <div className="ord-kv"><span>{credit ? 'À imputer' : 'Reste à encaisser'}</span>
-                <b style={{ fontWeight: 700, color: remaining > 0.004 && status !== 'cancelled' ? 'var(--prj-orange, #B45309)' : undefined }}>
+                <b style={{ fontWeight: 700, color: remaining > 0.004 && status !== 'cancelled' ? 'var(--ds-warning)' : undefined }}>
                   {status === 'cancelled' ? 'Annulée' : remaining > 0.004 ? `${money(remaining)}` : credit ? 'Imputé' : 'Soldée'}</b></div>
             </div>
           </section>
@@ -992,7 +987,7 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
 
         <footer className="kl-sheet-foot">
           {canCancel(inv) && (
-            <button onClick={() => onCancel(inv)} className="odoo-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la facture</button>
+            <button type="button" onClick={() => onCancel(inv)} className="ds-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la facture</button>
           )}
           {!credit && status !== 'cancelled' && !inv.cancelled_by_credit && (
             <button onClick={() => setCreditOpen(true)} className="odoo-btn-secondary" disabled={!detail}><Undo2 size={13} /> Émettre un avoir</button>
@@ -1052,7 +1047,7 @@ function CreditNoteModal({ invoice: inv, onClose, onDone }: {
             <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Avoir sur la facture {inv.invoice_number as string}</div>
             <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Pièce AV numérotée, imputée sur la facture ; le surplus reste au crédit du client</div>
           </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
           <div>
@@ -1067,16 +1062,16 @@ function CreditNoteModal({ invoice: inv, onClose, onDone }: {
             <thead>
               <tr>
                 <th>Ligne facturée</th>
-                <th style={{ textAlign: 'right' }}>Qté</th>
-                <th style={{ textAlign: 'right' }}>Montant HT</th>
+                <th className="ds-num">Qté</th>
+                <th className="ds-num">Montant HT</th>
                 <th style={{ width: 120, textAlign: 'right' }}>{byQty ? 'Qté retournée' : 'Avoir HT'}</th>
               </tr>
             </thead>
             <tbody>
               {items.map(it => (
                 <tr key={it.id as string} style={{ cursor: 'default' }}>
-                  <td style={{ fontWeight: 500 }}>{(it.description as string) || (it.product_name as string)}</td>
-                  <td style={{ textAlign: 'right' }}>{num(it.quantity)}</td>
+                  <td className="ds-strong">{(it.description as string) || (it.product_name as string)}</td>
+                  <td className="ds-num">{num(it.quantity)}</td>
                   <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{money(num(it.subtotal))}</td>
                   <td>
                     <input inputMode="decimal" value={values[it.id as string] ?? ''} placeholder="0"

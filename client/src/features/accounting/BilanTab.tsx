@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Lock, Download, Scale, Calendar } from 'lucide-react';
+import { Lock, Download, Scale, Calendar } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
-import type { BalanceSheet, BilanLine } from '../../api/ledger.api';
+import type { BilanLine } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
+import { EmptyState, LoadingState, Alert, DataPanel, SectionHeader, Toolbar } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -29,9 +31,9 @@ function MasseLines({ lines }: { lines: BilanLine[] }) {
     <>
       {lines.map(l => (
         <tr key={l.code}>
-          <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', width: 60, paddingLeft: 20 }}>{l.code}</td>
+          <td className="ds-ref" style={{ color: 'var(--theme-text-muted)', width: 60, paddingLeft: 20 }}>{l.code}</td>
           <td style={{ fontSize: '0.8125rem' }}>{l.label}</td>
-          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', color: l.amount < 0 ? '#c62828' : undefined }}>{n(l.amount)}</td>
+          <td className="ds-num" style={{ color: l.amount < 0 ? 'var(--ds-danger)' : undefined }}>{n(l.amount)}</td>
         </tr>
       ))}
     </>
@@ -52,10 +54,7 @@ export default function BilanTab() {
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.875rem' }}>Le bilan est réservé à l'administrateur ou au gérant.</p>
-      </div>
+      <EmptyState icon={Lock} title="Le bilan est réservé à l'administrateur ou au gérant." />
     );
   }
 
@@ -84,52 +83,48 @@ export default function BilanTab() {
   };
 
   const masseHeader = (label: string, total: number) => (
-    <tr style={{ background: 'var(--theme-bg-secondary)' }}>
-      <td colSpan={2} style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{label}</td>
-      <td style={{ textAlign: 'right', fontWeight: 600, fontFamily: 'ui-monospace, monospace' }}>{n(total)}</td>
+    <tr className="ds-group">
+      <td colSpan={2}>{label}</td>
+      <td className="ds-num">{n(total)}</td>
     </tr>
   );
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
-          <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Arrêté au</span>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="odoo-search-input" style={{ width: 140 }} />
-        </div>
-        <div style={{ flex: 1 }} />
-        <button onClick={handleExport} className="odoo-btn-secondary" disabled={!data}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: !data ? 0.5 : 1 }}>
-          <Download size={13} /> Exporter CSV
+      <AccHeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={!data}>
+          <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <EditionButtons kind="bilan" params={{ endDate }} />
-      </div>
+      </AccHeaderActions>
+
+      {data && (
+        <Alert tone={Math.abs(data.ecart) < 0.01 ? 'success' : 'danger'} icon={Scale}>
+          {Math.abs(data.ecart) < 0.01 ? 'Bilan équilibré' : 'Bilan déséquilibré'} · total actif {n(data.actif.total)} · total passif {money(data.passif.total)}
+          {Math.abs(data.ecart) >= 0.01 && <> · écart {money(data.ecart)}</>}
+        </Alert>
+      )}
+
+      <Toolbar>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ds-muted)' }}>
+          <Calendar size={14} aria-hidden="true" /> Arrêté au
+          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ds-input sm" style={{ width: 150 }} aria-label="Date d'arrêté" />
+        </label>
+      </Toolbar>
 
       {isLoading || !data ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
-        </div>
+        <LoadingState />
       ) : (
         <>
-          {/* Contrôle d'équilibre */}
-          <div style={{
-            padding: '10px 14px', borderRadius: 6, marginBottom: 12,
-            background: Math.abs(data.ecart) < 0.01 ? '#E1F5EE' : '#FCEBEB',
-            color: Math.abs(data.ecart) < 0.01 ? '#085041' : '#791F1F',
-            display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.8125rem',
-          }}>
-            <Scale size={15} />
-            <strong>{Math.abs(data.ecart) < 0.01 ? 'Bilan équilibré' : 'Bilan déséquilibré'}</strong>
-            <span>Total actif {n(data.actif.total)} = Total passif {money(data.passif.total)}</span>
-            {Math.abs(data.ecart) >= 0.01 && <span style={{ marginLeft: 'auto' }}>écart : {money(data.ecart)}</span>}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16, alignItems: 'start' }}>
             {/* ACTIF */}
-            <div className="odoo-section" style={{ padding: 0 }}>
-              <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: 15, color: 'var(--theme-text-strong)' }}>Actif</div>
-              <table className="odoo-table" style={{ margin: 0 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <SectionHeader title="Actif" />
+              <DataPanel label="Actif">
+              <table className="odoo-table ds-dense">
+                <thead>
+                  <tr><th style={{ width: 80 }}>Compte</th><th>Libellé</th><th className="ds-num">Montant ({currencySymbol()})</th></tr>
+                </thead>
                 <tbody>
                   {masseHeader('Actif immobilisé', data.actif.total_immobilise)}
                   <MasseLines lines={data.actif.immobilise} />
@@ -139,35 +134,40 @@ export default function BilanTab() {
                   <MasseLines lines={data.actif.tresorerie} />
                 </tbody>
                 <tfoot>
-                  <tr style={{ fontWeight: 700, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                  <tr>
                     <td colSpan={2}>Total actif</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(data.actif.total)}</td>
+                    <td className="ds-num">{n(data.actif.total)}</td>
                   </tr>
                 </tfoot>
               </table>
+              </DataPanel>
             </div>
 
             {/* PASSIF */}
-            <div className="odoo-section" style={{ padding: 0 }}>
-              <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: 15, color: 'var(--theme-text-strong)' }}>Passif</div>
-              <table className="odoo-table" style={{ margin: 0 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <SectionHeader title="Passif" />
+              <DataPanel label="Passif">
+              <table className="odoo-table ds-dense">
+                <thead>
+                  <tr><th style={{ width: 80 }}>Compte</th><th>Libellé</th><th className="ds-num">Montant ({currencySymbol()})</th></tr>
+                </thead>
                 <tbody>
                   {masseHeader('Financement permanent', data.passif.total_financement)}
                   <MasseLines lines={data.passif.financement_permanent} />
                   <tr>
                     <td style={{ width: 60, paddingLeft: 20 }}></td>
-                    <td style={{ fontSize: '0.8125rem', fontStyle: 'italic' }}>Résultat net de l'exercice</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', color: data.passif.resultat_net < 0 ? '#c62828' : '#0e7c3a' }}>{n(data.passif.resultat_net)}</td>
+                    <td>Résultat net de l'exercice</td>
+                    <td className="ds-num" style={{ color: data.passif.resultat_net < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{n(data.passif.resultat_net)}</td>
                   </tr>
                   {/* Mig 416 : tant que l'exercice précédent n'est pas clôturé, son résultat
                       n'est pas encore reporté (à-nouveaux) : il reste au passif à part. */}
                   {!!data.passif.resultat_anterieur && (
                     <tr>
                       <td style={{ width: 60, paddingLeft: 20 }}></td>
-                      <td style={{ fontSize: '0.8125rem', fontStyle: 'italic' }} title="Exercice précédent non encore clôturé : son résultat n'est pas reporté en à-nouveaux">
+                      <td title="Exercice précédent non encore clôturé : son résultat n'est pas reporté en à-nouveaux">
                         Résultats des exercices antérieurs non clôturés
                       </td>
-                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', color: data.passif.resultat_anterieur < 0 ? '#c62828' : '#0e7c3a' }}>{n(data.passif.resultat_anterieur)}</td>
+                      <td className="ds-num" style={{ color: data.passif.resultat_anterieur < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{n(data.passif.resultat_anterieur)}</td>
                     </tr>
                   )}
                   {masseHeader('Passif circulant', data.passif.total_circulant)}
@@ -176,16 +176,17 @@ export default function BilanTab() {
                   <MasseLines lines={data.passif.tresorerie} />
                 </tbody>
                 <tfoot>
-                  <tr style={{ fontWeight: 700, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                  <tr>
                     <td colSpan={2}>Total passif</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(data.passif.total)}</td>
+                    <td className="ds-num">{n(data.passif.total)}</td>
                   </tr>
                 </tfoot>
               </table>
+              </DataPanel>
             </div>
           </div>
 
-          <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
+          <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>
             Bilan à la date d'arrêté, soldes cumulés. Le résultat net (produits − charges) est porté au financement permanent.
           </p>
         </>

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Lock, ArrowDownToLine, ArrowUpFromLine, Wallet } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import { money as fmtMoney } from '../../utils/money';
+import { EmptyState, KpiCard, LoadingState, DataPanel, KpiGrid, SectionHeader, Toolbar } from '../../components/ds';
+import { DateRangeField } from './AccToolbarFields';
 
 /**
  * État de flux de trésorerie (comptes classe 5). Encaissements et décaissements
@@ -28,72 +30,51 @@ export default function CashFlowTab() {
 
   if (!isAdmin) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p>Réservé à l'administration.</p>
-      </div>
+      <EmptyState icon={Lock} title="Réservé à l'administration" />
     );
   }
 
   const net = data ? data.inflowTotal - data.outflowTotal : 0;
 
   return (
-    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-          Du
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inp} />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-          Au
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inp} />
-        </label>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {data && (
+        <KpiGrid>
+          <KpiCard label="Encaissements" value={money(data.inflowTotal)} />
+          <KpiCard label="Décaissements" value={money(data.outflowTotal)} />
+          <KpiCard label="Variation nette" value={money(net)} sub={net >= 0 ? 'excédent de la période' : 'déficit de la période'} tone={net >= 0 ? 'green' : 'red'} />
+          <KpiCard label="Trésorerie fin de période" value={money(data.closingTotal)} sub={<>ouverture {money(data.openingTotal)}</>} />
+        </KpiGrid>
+      )}
+
+      <Toolbar>
+        <DateRangeField from={startDate} to={endDate} onFrom={setStartDate} onTo={setEndDate} />
+      </Toolbar>
 
       {isLoading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /></div>
+        <LoadingState />
       ) : !data ? null : (
         <>
-          <div className="odoo-stat-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><ArrowDownToLine size={11} style={{ display: 'inline', marginRight: 4, color: '#15803d' }} /> Encaissements</div>
-              <div className="odoo-stat-card-value" style={{ color: '#15803d' }}>{money(data.inflowTotal)}</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><ArrowUpFromLine size={11} style={{ display: 'inline', marginRight: 4, color: '#dc2626' }} /> Décaissements</div>
-              <div className="odoo-stat-card-value" style={{ color: '#dc2626' }}>{money(data.outflowTotal)}</div>
-            </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><Wallet size={11} style={{ display: 'inline', marginRight: 4 }} /> Variation nette</div>
-              <div className="odoo-stat-card-value" style={{ color: net >= 0 ? '#15803d' : '#dc2626' }}>{money(net)}</div>
-            </div>
-            <div className="odoo-stat-card" style={{ background: 'var(--theme-bg-secondary)' }}>
-              <div className="odoo-stat-card-label">Trésorerie fin de période</div>
-              <div className="odoo-stat-card-value">{money(data.closingTotal)}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>ouverture {money(data.openingTotal)}</div>
-            </div>
-          </div>
-
-          <h3 style={{ margin: '4px 0 0', fontSize: '0.95rem' }}>Par compte de trésorerie</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="odoo-table">
+          <SectionHeader title="Par compte de trésorerie" />
+          <DataPanel>
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th>Compte</th>
-                  <th style={{ textAlign: 'right' }}>Ouverture</th>
-                  <th style={{ textAlign: 'right' }}>Encaissements</th>
-                  <th style={{ textAlign: 'right' }}>Décaissements</th>
-                  <th style={{ textAlign: 'right' }}>Clôture</th>
+                  <th className="ds-num">Ouverture</th>
+                  <th className="ds-num">Encaissements</th>
+                  <th className="ds-num">Décaissements</th>
+                  <th className="ds-num">Clôture</th>
                 </tr>
               </thead>
               <tbody>
                 {data.accounts.map(a => (
                   <tr key={a.code}>
                     <td><span style={{ fontFamily: 'ui-monospace, monospace' }}>{a.code}</span> {a.label}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(a.opening)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#15803d' }}>{a.inflow > 0 ? money(a.inflow) : '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#dc2626' }}>{a.outflow > 0 ? money(a.outflow) : '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(a.closing)}</td>
+                    <td className="ds-num">{money(a.opening)}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-success)' }}>{a.inflow > 0 ? money(a.inflow) : '—'}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{a.outflow > 0 ? money(a.outflow) : '—'}</td>
+                    <td className="ds-num" style={{ fontWeight: 600 }}>{money(a.closing)}</td>
                   </tr>
                 ))}
                 {data.accounts.length === 0 && (
@@ -102,34 +83,34 @@ export default function CashFlowTab() {
               </tbody>
               {data.accounts.length > 0 && (
                 <tfoot>
-                  <tr style={{ fontWeight: 700, borderTop: '2px solid var(--odoo-border)' }}>
+                  <tr>
                     <td>Total</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(data.openingTotal)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(data.inflowTotal)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(data.outflowTotal)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(data.closingTotal)}</td>
+                    <td className="ds-num">{money(data.openingTotal)}</td>
+                    <td className="ds-num">{money(data.inflowTotal)}</td>
+                    <td className="ds-num">{money(data.outflowTotal)}</td>
+                    <td className="ds-num">{money(data.closingTotal)}</td>
                   </tr>
                 </tfoot>
               )}
             </table>
-          </div>
+          </DataPanel>
 
-          <h3 style={{ margin: '8px 0 0', fontSize: '0.95rem' }}>Par nature <span style={{ fontWeight: 400, fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>(hors virements internes)</span></h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="odoo-table">
+          <SectionHeader title="Par nature" note="hors virements internes" />
+          <DataPanel>
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th>Nature</th>
-                  <th style={{ textAlign: 'right' }}>Entrées</th>
-                  <th style={{ textAlign: 'right' }}>Sorties</th>
+                  <th className="ds-num">Entrées</th>
+                  <th className="ds-num">Sorties</th>
                 </tr>
               </thead>
               <tbody>
                 {data.nature.map(n => (
                   <tr key={n.account_class}>
                     <td>{n.label}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: n.inflow > 0 ? '#15803d' : 'var(--theme-text-muted)' }}>{n.inflow > 0 ? money(n.inflow) : '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: n.outflow > 0 ? '#dc2626' : 'var(--theme-text-muted)' }}>{n.outflow > 0 ? money(n.outflow) : '—'}</td>
+                    <td className="ds-num" style={{ color: n.inflow > 0 ? 'var(--ds-success)' : 'var(--theme-text-muted)' }}>{n.inflow > 0 ? money(n.inflow) : '—'}</td>
+                    <td className="ds-num" style={{ color: n.outflow > 0 ? 'var(--ds-danger)' : 'var(--theme-text-muted)' }}>{n.outflow > 0 ? money(n.outflow) : '—'}</td>
                   </tr>
                 ))}
                 {data.nature.length === 0 && (
@@ -137,11 +118,10 @@ export default function CashFlowTab() {
                 )}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
         </>
       )}
     </div>
   );
 }
 
-const inp: React.CSSProperties = { padding: '0.4rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit' };

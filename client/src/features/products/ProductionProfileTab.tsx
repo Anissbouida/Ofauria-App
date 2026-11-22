@@ -4,6 +4,7 @@ import { contenantsApi } from '../../api/contenants.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { Package, Clock, Check, X, ChevronDown, Layers } from 'lucide-react';
 
+import { LoadingState } from '../../components/ds';
 const TYPE_LABELS: Record<number, string> = {
   1: 'Moule / Decoupe',
   2: 'Entremets monte',
@@ -179,7 +180,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
   });
 
   if (isEditMode && isLoading) {
-    return <div className="flex items-center justify-center py-12 text-gray-400 text-sm">Chargement...</div>;
+    return <LoadingState bare />;
   }
 
   return (
@@ -229,7 +230,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
                 if (typeContenants.length === 0) return null;
                 return (
                   <div key={type}>
-                    <div className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 sticky top-0">
+                    <div className="px-3 py-1.5 text-[10px] font-bold text-gray-400 bg-gray-50 sticky top-0">
                       {TYPE_ICONS[type]} {TYPE_LABELS[type]}
                     </div>
                     {typeContenants.map(c => (
@@ -263,19 +264,19 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
             <div className="grid grid-cols-4 gap-3 text-center">
               <div>
                 <div className="text-2xl font-bold text-indigo-700">{effectiveQte}</div>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Theorique</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">Theorique</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-red-500">-{effectivePertes}</div>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Pertes fixes</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">Pertes fixes</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-emerald-600">{effectiveNet}</div>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Net cible</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">Net cible</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-amber-600">{effectiveSeuil}%</div>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5">Seuil rend.</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">Seuil rend.</div>
               </div>
             </div>
             <div className="text-xs text-center text-gray-500 mt-3 pt-2 border-t border-indigo-100">

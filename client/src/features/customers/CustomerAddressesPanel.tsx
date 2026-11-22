@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Plus, Pencil, Trash2, Truck, Receipt, Check, X } from 'lucide-react';
 import { customersApi, type CustomerAddress } from '../../api/customers.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 // Panneau d'adresses multiples de la fiche client (phase 4.1). Liste + ajout/
 // édition inline + défauts livraison/facturation. Le gel sur les pièces (BL) se
@@ -23,6 +24,7 @@ const emptyForm = (): Form => ({ label: '', kind: 'both', addressLine: '', posta
 
 export default function CustomerAddressesPanel({ customerId }: { customerId: string }) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const { data: addresses = [] } = useQuery({ queryKey: ['customer-addresses', customerId], queryFn: () => customersApi.listAddresses(customerId) });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Form | null>(null);
@@ -54,7 +56,7 @@ export default function CustomerAddressesPanel({ customerId }: { customerId: str
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--odoo-text-muted)' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)' }}>
           <MapPin size={12} /> Adresses
         </div>
         {!form && <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={openNew}><Plus size={12} /> Ajouter</button>}
@@ -77,8 +79,9 @@ export default function CustomerAddressesPanel({ customerId }: { customerId: str
               </div>
             </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
-              <button type="button" className="odoo-btn-secondary" title="Modifier" onClick={() => openEdit(a)}><Pencil size={12} /></button>
-              <button type="button" className="odoo-btn-secondary" title="Supprimer" onClick={() => del.mutate(a.id)}><Trash2 size={12} /></button>
+              <button type="button" className="ds-icon-btn" title="Modifier" aria-label="Modifier l'adresse" onClick={() => openEdit(a)}><Pencil size={14} /></button>
+              <button type="button" className="ds-icon-btn" title="Supprimer" aria-label="Supprimer l'adresse" disabled={del.isPending} style={{ color: 'var(--ds-danger)' }}
+                onClick={async () => { if (await confirm('Supprimer cette adresse ?', { title: 'Supprimer l\'adresse', confirmLabel: 'Supprimer', danger: true })) del.mutate(a.id); }}><Trash2 size={14} /></button>
             </div>
           </div>
         ))}

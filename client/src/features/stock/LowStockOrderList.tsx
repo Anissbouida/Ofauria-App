@@ -65,9 +65,9 @@ export function LowStockOrderList() {
         <thead>
           <tr>
             <th>Ingrédient</th>
-            <th style={{ textAlign: 'right' }}>Stock</th>
-            <th style={{ textAlign: 'right' }}>Seuil</th>
-            <th style={{ textAlign: 'right' }}>À commander</th>
+            <th className="ds-num">Stock</th>
+            <th className="ds-num">Seuil</th>
+            <th className="ds-num">À commander</th>
             <th style={{ width: 140 }}></th>
           </tr>
         </thead>
@@ -82,10 +82,10 @@ export function LowStockOrderList() {
               <tr key={item.ingredient_id} className={current <= 0 ? 'row-danger' : 'row-warning'}
                 onClick={() => navigate(`/stock/${item.ingredient_id}`)}>
                 <td style={{ fontWeight: 500 }}>{item.ingredient_name}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: current <= 0 ? '#dc3545' : '#b85d1a' }}>{fmtQty(current)} {item.unit}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{fmtQty(threshold)} {item.unit}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{fmtQty(suggested)} {item.unit}</td>
-                <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: current <= 0 ? 'var(--ds-danger)' : 'var(--ds-warning)' }}>{fmtQty(current)} {item.unit}</td>
+                <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{fmtQty(threshold)} {item.unit}</td>
+                <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{fmtQty(suggested)} {item.unit}</td>
+                <td className="ds-actions" onClick={e => e.stopPropagation()}>
                   {done ? (
                     <StatusTag tone="progress" icon={ShoppingCart} label="Commandé" />
                   ) : (

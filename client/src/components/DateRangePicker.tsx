@@ -1,9 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import {
-  format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear,
-  addMonths, subMonths, eachDayOfInterval, isSameDay, isSameMonth, isWithinInterval,
-  getDay, subDays,
-} from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, addMonths, subMonths, eachDayOfInterval, isSameDay, isSameMonth, isWithinInterval, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -90,37 +86,39 @@ export default function DateRangePicker({ dateFrom, dateTo, onChange }: DateRang
   };
 
   // Display label
-  let displayLabel = 'Selectionner une periode';
+  let displayLabel = 'Sélectionner une période';
   if (from && to) {
     if (isSameDay(from, to)) {
-      displayLabel = format(from, 'dd MMM yyyy', { locale: fr });
+      displayLabel = format(from, 'd MMM yyyy', { locale: fr });
     } else if (isSameMonth(from, to)) {
-      displayLabel = `${format(from, 'dd', { locale: fr })} - ${format(to, 'dd MMM yyyy', { locale: fr })}`;
+      displayLabel = `${format(from, 'dd', { locale: fr })} - ${format(to, 'd MMM yyyy', { locale: fr })}`;
     } else {
-      displayLabel = `${format(from, 'dd MMM yyyy', { locale: fr })} - ${format(to, 'dd MMM yyyy', { locale: fr })}`;
+      displayLabel = `${format(from, 'd MMM yyyy', { locale: fr })} - ${format(to, 'd MMM yyyy', { locale: fr })}`;
     }
   }
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors text-sm">
-        <Calendar size={16} className="text-gray-400" />
-        <span className="font-medium text-gray-700">{displayLabel}</span>
+      <button type="button" onClick={() => setOpen(!open)} aria-haspopup="dialog" aria-expanded={open} aria-label={`Période : ${displayLabel}`}
+        className="flex items-center gap-2 px-3 rounded-lg transition-colors text-sm"
+        style={{ height: 36, background: 'var(--ds-card)', border: '1px solid var(--ds-line)', color: 'var(--ds-ink)' }}>
+        <Calendar size={16} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
+        <span className="font-medium">{displayLabel}</span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 bg-white rounded-xl shadow-xl border border-gray-200 z-50 flex">
+        <div role="dialog" aria-label="Choisir une période" className="absolute right-0 top-full mt-2 rounded-xl shadow-xl z-50 flex"
+          style={{ background: 'var(--ds-card)', border: '1px solid var(--ds-sep)' }}>
           {/* Presets */}
           <div className="w-40 border-r border-gray-100 p-2 space-y-0.5">
             {PRESETS.map((preset) => (
-              <button key={preset.label} onClick={() => handlePreset(preset.getRange)}
+              <button key={preset.label} type="button" onClick={() => handlePreset(preset.getRange)}
                 className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 text-gray-700 transition-colors">
                 {preset.label}
               </button>
             ))}
             <div className="border-t border-gray-100 my-2" />
-            <button onClick={handleMonthSelect}
+            <button type="button" onClick={handleMonthSelect}
               className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 text-gray-700 transition-colors">
               Mois entier
             </button>
@@ -130,14 +128,14 @@ export default function DateRangePicker({ dateFrom, dateTo, onChange }: DateRang
           <div className="p-4 w-72">
             {/* Month navigation */}
             <div className="flex items-center justify-between mb-3">
-              <button onClick={() => setViewMonth(subMonths(viewMonth, 1))} className="p-1 hover:bg-gray-100 rounded-lg">
-                <ChevronLeft size={18} className="text-gray-500" />
+              <button type="button" aria-label="Mois précédent" onClick={() => setViewMonth(subMonths(viewMonth, 1))} className="p-1 hover:bg-gray-100 rounded-lg">
+                <ChevronLeft size={18} aria-hidden="true" className="text-gray-500" />
               </button>
               <span className="text-sm font-semibold text-gray-800 capitalize">
                 {format(viewMonth, 'MMMM yyyy', { locale: fr })}
               </span>
-              <button onClick={() => setViewMonth(addMonths(viewMonth, 1))} className="p-1 hover:bg-gray-100 rounded-lg">
-                <ChevronRight size={18} className="text-gray-500" />
+              <button type="button" aria-label="Mois suivant" onClick={() => setViewMonth(addMonths(viewMonth, 1))} className="p-1 hover:bg-gray-100 rounded-lg">
+                <ChevronRight size={18} aria-hidden="true" className="text-gray-500" />
               </button>
             </div>
 
@@ -158,7 +156,7 @@ export default function DateRangePicker({ dateFrom, dateTo, onChange }: DateRang
                 const isRangeEnd = to && isSameDay(day, to) && from && !isSameDay(from, to);
 
                 return (
-                  <button key={day.toISOString()} onClick={() => handleDayClick(day)}
+                  <button key={day.toISOString()} type="button" aria-label={format(day, 'd MMMM yyyy', { locale: fr })} aria-pressed={selected} onClick={() => handleDayClick(day)}
                     className={`h-8 text-xs font-medium rounded-lg transition-colors relative
                       ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}
                       ${selected ? 'bg-primary-600 text-white' : ''}
@@ -175,7 +173,7 @@ export default function DateRangePicker({ dateFrom, dateTo, onChange }: DateRang
             </div>
 
             {selecting && (
-              <p className="text-xs text-primary-600 text-center mt-3">Selectionnez la date de fin</p>
+              <p role="status" className="text-xs text-center mt-3" style={{ color: 'var(--ds-accent-ink)' }}>Sélectionnez la date de fin</p>
             )}
           </div>
         </div>

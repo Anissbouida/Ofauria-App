@@ -20,7 +20,7 @@ type Filter = 'all' | 'open' | 'done';
 const STATUS: Record<SetupCheck['status'], { icon: typeof Info; color: string; label: string }> = {
   todo: { icon: CircleAlert, color: 'var(--prj-red, #c0392b)', label: 'À faire' },
   warn: { icon: TriangleAlert, color: 'var(--prj-orange, #b85d1a)', label: 'Recommandé' },
-  info: { icon: Info, color: 'var(--odoo-text-muted)', label: 'À vérifier' },
+  info: { icon: Info, color: 'var(--ds-muted)', label: 'À vérifier' },
   ok: { icon: CheckCircle2, color: 'var(--prj-green, #1e7e34)', label: 'Fait' },
 };
 const ORDER: Record<SetupCheck['status'], number> = { todo: 0, warn: 1, info: 2, ok: 3 };

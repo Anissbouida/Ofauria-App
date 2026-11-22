@@ -9,11 +9,10 @@ import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import {
-  PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
-} from '../../components/purchasing/ProcessBoard';
+import { PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar, ListEmpty } from '../sales/ListTemplate';
 import { StageChips, Panel, PagerFoot, PageLoading } from './KlUi';
+import { Breadcrumb, FormField, FormFooter, NoResultState } from '../../components/ds';
 
 /**
  * Contrôles à réception : un bon de réception = un contrôle (température, aspect,
@@ -64,6 +63,15 @@ export default function ReceptionChecks() {
 
   return (
     <>
+      {(counts.a_controler ?? 0) > 0 && status !== 'a_controler' && (
+        <StatusBanner tone="warning" icon={ClipboardCheck}
+          title={`${counts.a_controler} réception${counts.a_controler > 1 ? 's' : ''} sans contrôle`}
+          actions={<button type="button" className="odoo-btn-secondary" onClick={() => setStatus('a_controler')}>Les afficher</button>}>
+          Le contrôle à réception (température, aspect, emballage, étiquetage) est la première preuve HACCP de la marchandise entrée.
+        </StatusBanner>
+      )}
+
+
       <StageChips
         title="Contrôles à réception"
         summary={`${(counts.a_controler ?? 0) + (counts.non_conforme ?? 0) + (counts.conforme ?? 0)} réceptions · ${text}`}
@@ -77,28 +85,22 @@ export default function ReceptionChecks() {
         onPick={k => setStatus(status === k ? '' : (k as Status))}
       />
 
-      {(counts.a_controler ?? 0) > 0 && status !== 'a_controler' && (
-        <StatusBanner tone="warning" icon={ClipboardCheck}
-          title={`${counts.a_controler} réception${counts.a_controler > 1 ? 's' : ''} sans contrôle`}
-          actions={<button type="button" className="odoo-btn-secondary" onClick={() => setStatus('a_controler')}>Les afficher</button>}>
-          Le contrôle à réception (température, aspect, emballage, étiquetage) est la première preuve HACCP de la marchandise entrée.
-        </StatusBanner>
-      )}
 
       <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher un bon, un fournisseur, un BC...">
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
         <PeriodFilter label="Reçu" title="Date de réception"
           period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
         {(status || search || period !== '3m') && (
-          <button type="button" onClick={() => { setStatus(''); setSearchInput(''); setSearch(''); setPeriod('3m'); }} className="odoo-btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer les filtres
+          <button type="button" onClick={() => { setStatus(''); setSearchInput(''); setSearch(''); setPeriod('3m'); }} className="ds-btn-ghost ds-btn-sm">
+            <X size={12} aria-hidden="true" /> Effacer les filtres
           </button>
         )}
       </ListToolbar>
 
       {isLoading ? <PageLoading /> : rows.length === 0 ? (
-        <ListEmpty icon={ClipboardCheck} title="Aucune réception pour ces filtres." />
+        (status || search || period !== '3m')
+          ? <NoResultState text="Aucune réception ne correspond aux filtres." onReset={() => { setStatus(''); setSearchInput(''); setSearch(''); setPeriod('3m'); }} />
+          : <ListEmpty icon={ClipboardCheck} title="Aucune réception sur la période" text="Les bons de réception à contrôler s'affichent ici dès qu'une livraison est enregistrée." />
       ) : (
         <Panel style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}
           footer={<PagerFoot page={page} total={data?.total ?? 0} onPage={setPage} note={`Réceptions · ${text}`} />}>
@@ -108,35 +110,35 @@ export default function ReceptionChecks() {
                 <th>Bon de réception</th>
                 <th>Fournisseur</th>
                 <th>Reçu le</th>
-                <th style={{ textAlign: 'right' }}>Lignes</th>
+                <th className="ds-num">Lignes</th>
                 <th>Contrôle</th>
-                <th style={{ textAlign: 'right' }}>Prochaine action</th>
+                <th className="ds-actions">Prochaine action</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(r => (
                 <tr key={r.id}>
                   <td>
-                    <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.voucher_number}</span>
-                    {r.order_number && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontFamily: 'ui-monospace, monospace' }}>{r.order_number}</div>}
+                    <span className="ds-ref">{r.voucher_number}</span>
+                    {r.order_number && <div className="ds-ref" style={{ fontSize: 12, fontWeight: 400, color: 'var(--ds-muted)' }}>{r.order_number}</div>}
                   </td>
-                  <td style={{ fontWeight: 500 }}>{r.supplier_name ?? '—'}</td>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>
-                    {format(new Date(r.reception_date), 'dd MMM yyyy', { locale: fr })}
-                    {r.received_by_name && <div style={{ fontSize: '0.6875rem' }}>par {r.received_by_name}</div>}
+                  <td className="ds-strong">{r.supplier_name ?? '—'}</td>
+                  <td style={{ color: 'var(--ds-muted)' }}>
+                    {format(new Date(r.reception_date), 'd MMM yyyy', { locale: fr })}
+                    {r.received_by_name && <div style={{ fontSize: 12 }}>par {r.received_by_name}</div>}
                   </td>
-                  <td style={{ textAlign: 'right' }}>{r.line_count}</td>
+                  <td className="ds-num">{r.line_count}</td>
                   <td>
                     <StatusTag tone={STATUS_TAG[r.check_status].tone} label={STATUS_TAG[r.check_status].label} />
                     {r.check_id && (
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                      <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
                         {r.temperature_value != null && <>{Number(r.temperature_value).toLocaleString('fr-FR')} °C · </>}
                         {r.checked_by_name ?? ''}{r.checked_at ? ` · ${format(new Date(r.checked_at), 'dd/MM HH:mm')}` : ''}
                       </div>
                     )}
                   </td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button type="button" onClick={() => setChecking(r)} className={r.check_status === 'a_controler' ? 'odoo-btn-primary' : 'odoo-btn-secondary'}>
+                  <td className="ds-actions">
+                    <button type="button" onClick={() => setChecking(r)} className="odoo-btn-secondary ds-btn-sm">
                       {r.check_status === 'a_controler' ? 'Contrôler' : 'Modifier le contrôle'}
                     </button>
                   </td>
@@ -184,14 +186,14 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
 
   const Crit = ({ label, value, onChange, optional }: { label: string; value: boolean | null; onChange: (v: boolean | null) => void; optional?: boolean }) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--odoo-border)' }}>
-      <span style={{ fontSize: '0.8125rem' }}>{label}</span>
+      <span style={{ fontSize: 14, color: 'var(--ds-ink)' }}>{label}</span>
       <span className="odoo-view-switcher" role="radiogroup" aria-label={label}>
         {([[true, 'Conforme'], [false, 'Non conforme'], ...(optional ? [[null, 'Sans objet']] as const : [])] as const).map(([v, l]) => (
           <button key={String(v)} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
             style={{
               padding: '0.3rem 0.65rem', fontSize: '0.75rem',
-              background: value === v ? (v === false ? 'color-mix(in srgb, var(--prj-red) 12%, transparent)' : 'var(--odoo-purple-light)') : 'transparent',
-              color: value === v ? (v === false ? 'var(--prj-red)' : 'var(--odoo-purple)') : 'var(--odoo-text-muted)',
+              background: value === v ? (v === false ? 'color-mix(in srgb, var(--ds-danger) 12%, transparent)' : 'var(--odoo-purple-light)') : 'transparent',
+              color: value === v ? (v === false ? 'var(--ds-danger)' : 'var(--odoo-purple)') : 'var(--ds-muted)',
               fontWeight: value === v ? 600 : 400,
             }}>
             {l}
@@ -206,23 +208,18 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
       <div className="odoo-scope" role="dialog" aria-label="Contrôle à réception" onClick={e => e.stopPropagation()}
         style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
         <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Contrôle à réception</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{row.voucher_number}</span>
-          </div>
+          <Breadcrumb icon={ClipboardCheck} items={[{ label: 'Contrôle à réception' }, { label: <span className="ds-ref">{row.voucher_number}</span> }]} />
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', marginBottom: 6 }}>
-            {row.supplier_name ?? 'Fournisseur inconnu'} · reçu le {format(new Date(row.reception_date), 'dd MMM yyyy', { locale: fr })} · {row.line_count} ligne{row.line_count > 1 ? 's' : ''}
+          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', marginBottom: 6 }}>
+            {row.supplier_name ?? 'Fournisseur inconnu'} · reçu le {format(new Date(row.reception_date), 'd MMM yyyy', { locale: fr })} · {row.line_count} ligne{row.line_count > 1 ? 's' : ''}
           </div>
           <Crit label="Température de livraison" value={temperatureOk} onChange={setTemperatureOk} optional />
           {temperatureOk !== null && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', padding: '8px 0', borderBottom: '1px solid var(--odoo-border)' }}>
-              <Thermometer size={14} style={{ color: 'var(--theme-text-muted)' }} /> Température relevée
+              <Thermometer size={14} style={{ color: 'var(--ds-muted)' }} /> Température relevée
               <input type="number" step="0.1" value={temperatureValue} onChange={e => setTemperatureValue(e.target.value)}
                 className="odoo-filter-dropdown" style={{ width: 90, textAlign: 'right' }} aria-label="Température en degrés" /> °C
             </label>
@@ -230,11 +227,13 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
           <Crit label="Aspect visuel (couleur, odeur, intégrité)" value={visualOk} onChange={v => setVisualOk(v !== false)} />
           <Crit label="Emballage intact" value={packagingOk} onChange={v => setPackagingOk(v !== false)} />
           <Crit label="Étiquetage, lot et DLC lisibles" value={labelsOk} onChange={v => setLabelsOk(v !== false)} />
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginTop: 10 }}>
-            Observations
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Facultatif — obligatoire en pratique si non conforme"
-              className="odoo-filter-dropdown" style={{ fontWeight: 400, width: '100%', resize: 'vertical' }} />
-          </label>
+          <div style={{ marginTop: 10 }}>
+            <FormField label="Observations" htmlFor="rc-notes" required={!overall}
+              hint={overall ? 'Facultatif' : undefined}
+              error={!overall && !notes.trim() ? 'Décrivez la non-conformité constatée.' : undefined}>
+              <textarea id="rc-notes" value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="ds-input" />
+            </FormField>
+          </div>
           <div style={{ marginTop: 10 }}>
             <StatusBanner tone={overall ? 'success' : 'danger'} icon={overall ? CheckCircle2 : XCircle}
               title={overall ? 'Verdict : conforme' : 'Verdict : non conforme'}
@@ -245,13 +244,9 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
             </StatusBanner>
           </div>
         </div>
-        <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button type="button" onClick={() => save.mutate()} disabled={save.isPending || (!overall && !notes.trim())}
-            title={!overall && !notes.trim() ? 'Décrivez la non-conformité dans les observations' : undefined}
-            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            {save.isPending && <Loader2 size={12} className="animate-spin" />} Enregistrer le contrôle
-          </button>
+        <div style={{ position: 'sticky', bottom: 0, background: 'var(--ds-card)' }}>
+          <FormFooter onCancel={onClose} onSubmit={() => save.mutate()} submitLabel="Enregistrer le contrôle"
+            busy={save.isPending} disabled={!overall && !notes.trim()} />
         </div>
       </div>
     </ModalBackdrop>

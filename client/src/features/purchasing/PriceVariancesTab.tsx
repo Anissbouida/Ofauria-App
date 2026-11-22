@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Scale, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
-import PageNote from '../../components/ui/PageNote';
+import { Scale, Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { receptionVouchersApi } from '../../api/purchase-orders.api';
-import { StatusBanner } from '../../components/ui/StatusBanner';
+import { SectionHeader, DataPanel, TableFooter, EmptyState, LoadingState, Alert } from '../../components/ds';
+import { currencySymbol } from '../../utils/money';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -96,31 +96,23 @@ export default function PriceVariancesTab() {
   const toDecide = variances.filter(v => v.price_status === 'variance').length;
 
   return (
-    <div className="space-y-6">
-      <PageNote help="Un écart entre le prix saisi à la réception et le prix du bon de commande est signalé ici ; l'approbation ou le rejet est tracé.">
-        Le magasinier reçoit, le gérant décide des écarts de prix.
-      </PageNote>
-
+    <>
       {/* ─── 1. Écarts de prix à la réception (prix saisi vs prix BC) ─── */}
-      <section>
-        <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>
-          Écarts à la réception{toDecide > 0 ? ` · ${toDecide} à décider` : ''}
-        </div>
-        {loadingVar ? (
-          <p className="text-sm text-gray-400">Chargement…</p>
-        ) : variances.length === 0 ? (
-          <StatusBanner tone="success" icon={Check} title="Aucun écart de prix">
-            Toutes les réceptions sont au prix du bon de commande.
-          </StatusBanner>
-        ) : (
+      <SectionHeader title="Écarts à la réception" note={toDecide > 0 ? `${toDecide} à décider` : undefined} />
+      {loadingVar ? <LoadingState /> : variances.length === 0 ? (
+        <EmptyState icon={Check} title="Aucun écart de prix"
+          text="Toutes les réceptions sont au prix du bon de commande. Un écart entre le prix saisi à la réception et le prix commandé apparaît ici ; la décision est tracée." />
+      ) : (
+        <DataPanel label="Écarts de prix à la réception"
+          footer={<TableFooter note={`${variances.length} écart${variances.length > 1 ? 's' : ''}${toDecide > 0 ? ` · ${toDecide} à décider` : ''}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
                 <th>Réception</th><th>Date</th><th>Fournisseur</th><th>Article</th>
-                <th style={{ textAlign: 'right' }}>Prix BC</th>
-                <th style={{ textAlign: 'right' }}>Prix reçu</th>
-                <th style={{ textAlign: 'right' }}>Écart/u</th>
-                <th>Statut</th><th style={{ textAlign: 'right' }}>Décision</th>
+                <th className="ds-num">Prix commandé ({currencySymbol()})</th>
+                <th className="ds-num">Prix reçu ({currencySymbol()})</th>
+                <th className="ds-num">Écart par unité ({currencySymbol()})</th>
+                <th>Statut</th><th className="ds-actions">Décision</th>
               </tr>
             </thead>
             <tbody>
@@ -129,30 +121,26 @@ export default function PriceVariancesTab() {
                 const tag = STATUS_TAG[v.price_status];
                 return (
                   <tr key={v.id}>
-                    <td>{v.voucher_number ?? '—'}</td>
-                    <td>{d(v.reception_date)}</td>
+                    <td className="ds-ref">{v.voucher_number ?? '—'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{d(v.reception_date)}</td>
                     <td>{v.supplier_name ?? '—'}</td>
-                    <td>{v.item_name ?? '—'}</td>
-                    <td style={{ textAlign: 'right' }}>{money(v.po_unit_price)}</td>
-                    <td style={{ textAlign: 'right' }}>{money(v.unit_price)}</td>
-                    <td style={{ textAlign: 'right', color: delta > 0 ? '#b91c1c' : delta < 0 ? '#047857' : undefined }}>
+                    <td className="ds-strong">{v.item_name ?? '—'}</td>
+                    <td className="ds-num">{money(v.po_unit_price)}</td>
+                    <td className="ds-num">{money(v.unit_price)}</td>
+                    <td className="ds-num ds-strong" style={{ color: delta > 0 ? 'var(--ds-danger)' : delta < 0 ? 'var(--ds-success)' : undefined }}>
                       {delta > 0 ? '+' : ''}{money(delta)}
                     </td>
                     <td><StatusTag tone={tag.tone} label={tag.label} /></td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="ds-actions">
                       {v.price_status === 'variance' ? (
-                        <span className="inline-flex gap-1">
-                          <button className="odoo-btn-primary" disabled={decide.isPending}
-                            onClick={() => decide.mutate({ id: v.id, decision: 'approved' })}>
-                            <Check size={13} /> Approuver
-                          </button>
-                          <button className="odoo-btn-secondary" disabled={decide.isPending}
-                            onClick={() => decide.mutate({ id: v.id, decision: 'rejected' })}>
-                            <X size={13} /> Rejeter
-                          </button>
-                        </span>
+                        <>
+                          <button type="button" className="ds-btn-danger ds-btn-sm" disabled={decide.isPending}
+                            onClick={() => decide.mutate({ id: v.id, decision: 'rejected' })}>Rejeter</button>
+                          <button type="button" className="odoo-btn-primary ds-btn-sm" disabled={decide.isPending}
+                            onClick={() => decide.mutate({ id: v.id, decision: 'approved' })}>Approuver</button>
+                        </>
                       ) : (
-                        <span className="text-xs text-gray-500">
+                        <span style={{ fontSize: 12, color: 'var(--ds-muted)', whiteSpace: 'normal' }}>
                           {v.decided_by_name ?? '—'}{v.price_decided_at ? ` · ${d(v.price_decided_at)}` : ''}
                           {v.price_decision_note ? ` — ${v.price_decision_note}` : ''}
                         </span>
@@ -163,32 +151,29 @@ export default function PriceVariancesTab() {
               })}
             </tbody>
           </table>
-        )}
-      </section>
+        </DataPanel>
+      )}
 
       {/* ─── 2. Simulation de réévaluation (écart facture vs coût du lot) ─── */}
-      <section>
-        <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>
-          Réévaluation sur écart de prix — simulation
-        </div>
-        <PageNote help="La part encore en stock réévaluerait le lot (et le CMUP), la part déjà consommée partirait en compte d'écart (IPV). La réévaluation effective est un geste séparé : elle exige un compte « price_variance » dans les profils de posting et un dry-run de validation.">
-          Simulation en lecture seule : aucune écriture n'est passée.
-        </PageNote>
-        {loadingCand ? (
-          <p className="text-sm text-gray-400">Chargement…</p>
-        ) : candidates.length === 0 ? (
-          <StatusBanner tone="neutral" icon={Scale} title="Aucune facture ne déclencherait de réévaluation">
-            Les prix de facture correspondent aux prix reçus : rien à réévaluer.
-          </StatusBanner>
-        ) : (
+      <SectionHeader title="Réévaluation sur écart de prix" note="simulation" />
+      <Alert tone="info" icon={Info}>
+        Simulation en lecture seule : aucune écriture n'est passée. La part encore en stock réévaluerait le lot (et le coût moyen), la part déjà consommée
+        partirait en compte d'écart. La réévaluation effective est un geste séparé : elle exige un compte « price_variance » dans les profils de comptabilisation.
+      </Alert>
+      {loadingCand ? <LoadingState /> : candidates.length === 0 ? (
+        <EmptyState icon={Scale} title="Aucune facture ne déclencherait de réévaluation"
+          text="Les prix de facture correspondent aux prix reçus : rien à réévaluer." />
+      ) : (
+        <DataPanel label="Factures à réévaluer"
+          footer={<TableFooter note={`${candidates.length} facture${candidates.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 28 }}></th>
+                <th style={{ width: 44 }}><span className="sr-only">Détail</span></th>
                 <th>Facture</th><th>Date</th><th>Fournisseur</th>
-                <th style={{ textAlign: 'right' }}>Lignes</th>
-                <th style={{ textAlign: 'right' }}>À réévaluer (stock)</th>
-                <th style={{ textAlign: 'right' }}>En écart (IPV)</th>
+                <th className="ds-num">Lignes</th>
+                <th className="ds-num">À réévaluer en stock ({currencySymbol()})</th>
+                <th className="ds-num">En écart ({currencySymbol()})</th>
               </tr>
             </thead>
             <tbody>
@@ -197,9 +182,9 @@ export default function PriceVariancesTab() {
               ))}
             </tbody>
           </table>
-        )}
-      </section>
-    </div>
+        </DataPanel>
+      )}
+    </>
   );
 }
 
@@ -216,55 +201,54 @@ function CandidateRows({ c }: { c: CandidateRow }) {
     <>
       <tr>
         <td>
-          <button className="odoo-btn-link" onClick={() => setOpen(o => !o)} aria-label={open ? 'Replier' : 'Détail'}>
-            {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          <button type="button" className="ds-icon-btn" onClick={() => setOpen(o => !o)} aria-expanded={open}
+            aria-label={`${open ? 'Replier' : 'Afficher'} le détail de la facture ${c.invoice_number ?? ''}`.trim()}>
+            {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
         </td>
-        <td>{c.invoice_number ?? '—'}</td>
-        <td>{d(c.invoice_date)}</td>
-        <td>{c.supplier_name ?? '—'}</td>
-        <td style={{ textAlign: 'right' }}>{c.lines}</td>
-        <td style={{ textAlign: 'right' }}>{money(c.total_stock)}</td>
-        <td style={{ textAlign: 'right' }}>{money(c.total_variance)}</td>
+        <td className="ds-ref">{c.invoice_number ?? '—'}</td>
+        <td style={{ whiteSpace: 'nowrap' }}>{d(c.invoice_date)}</td>
+        <td className="ds-strong">{c.supplier_name ?? '—'}</td>
+        <td className="ds-num">{c.lines}</td>
+        <td className="ds-num">{money(c.total_stock)}</td>
+        <td className="ds-num">{money(c.total_variance)}</td>
       </tr>
       {open && (
         <tr>
-          <td colSpan={7} style={{ background: '#fafafa' }}>
-            {isLoading ? (
-              <p className="text-sm text-gray-400 p-2">Chargement du détail…</p>
-            ) : (
-              <div className="p-2 space-y-2">
-                <div className="text-xs text-gray-500">
-                  Compte d'écart (IPV) :{' '}
+          <td colSpan={7} style={{ background: 'var(--ds-bg)', padding: 12 }}>
+            {isLoading ? <LoadingState bare label="Chargement du détail…" /> : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ fontSize: 13, color: 'var(--ds-muted)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  Compte d'écart :
                   {data?.ipv_account
-                    ? <span className="odoo-tag success">{data.ipv_account}</span>
-                    : <span className="odoo-tag danger">non configuré</span>}
-                  {' '}— requis pour la réévaluation effective (profil de posting « price_variance »).
+                    ? <StatusTag tone="done" label={data.ipv_account} />
+                    : <StatusTag tone="blocked" label="Non configuré" />}
+                  requis pour la réévaluation effective (profil « price_variance »).
                 </div>
-                <table className="odoo-table">
+                <table className="odoo-table ds-dense">
                   <thead>
                     <tr>
                       <th>Article</th>
-                      <th style={{ textAlign: 'right' }}>Coût lot</th>
-                      <th style={{ textAlign: 'right' }}>Prix facture</th>
-                      <th style={{ textAlign: 'right' }}>Écart/u</th>
-                      <th style={{ textAlign: 'right' }}>Qté facturée</th>
-                      <th style={{ textAlign: 'right' }}>Qté en stock</th>
-                      <th style={{ textAlign: 'right' }}>→ Stock</th>
-                      <th style={{ textAlign: 'right' }}>→ Écart</th>
+                      <th className="ds-num">Coût du lot</th>
+                      <th className="ds-num">Prix facturé</th>
+                      <th className="ds-num">Écart par unité</th>
+                      <th className="ds-num">Qté facturée</th>
+                      <th className="ds-num">Qté en stock</th>
+                      <th className="ds-num">Part en stock ({currencySymbol()})</th>
+                      <th className="ds-num">Part en écart ({currencySymbol()})</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(data?.lines ?? []).map(l => (
                       <tr key={l.ingredient_lot_id}>
                         <td>{l.item_name ?? '—'}</td>
-                        <td style={{ textAlign: 'right' }}>{money(l.lot_unit_cost)}</td>
-                        <td style={{ textAlign: 'right' }}>{money(l.invoice_unit_price)}</td>
-                        <td style={{ textAlign: 'right' }}>{money(l.unit_delta)}</td>
-                        <td style={{ textAlign: 'right' }}>{money(l.qty_basis)}</td>
-                        <td style={{ textAlign: 'right' }}>{money(l.qty_remaining)}</td>
-                        <td style={{ textAlign: 'right' }}>{money(l.amount_to_stock)}</td>
-                        <td style={{ textAlign: 'right' }}>{money(l.amount_to_variance)}</td>
+                        <td className="ds-num">{money(l.lot_unit_cost)}</td>
+                        <td className="ds-num">{money(l.invoice_unit_price)}</td>
+                        <td className="ds-num">{money(l.unit_delta)}</td>
+                        <td className="ds-num">{money(l.qty_basis)}</td>
+                        <td className="ds-num">{money(l.qty_remaining)}</td>
+                        <td className="ds-num">{money(l.amount_to_stock)}</td>
+                        <td className="ds-num">{money(l.amount_to_variance)}</td>
                       </tr>
                     ))}
                   </tbody>

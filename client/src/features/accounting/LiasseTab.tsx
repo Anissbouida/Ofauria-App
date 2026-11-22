@@ -6,6 +6,8 @@ import { liasseApi } from '../../api/ledger.api';
 import type { Liasse, LiasseModel, LiasseTable, LiasseKind } from '../../api/ledger.api';
 import EditionButtons from './EditionButtons';
 import LiasseEdiPanel from './LiasseEdiPanel';
+import { DataPanel, KpiCard, KpiGrid, LoadingState, Tabs } from '../../components/ds';
+import { AccHeaderActions } from './AccHeaderActions';
 
 /**
  * Liasse fiscale (lot Bonus 14) : tableaux du modèle comptable CGNC (bilan
@@ -38,48 +40,51 @@ export default function LiasseTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <select value={year} onChange={e => setYear(Number(e.target.value))} className="odoo-search-input" style={{ minWidth: 110 }} aria-label="Exercice">
+      <AccHeaderActions>
+        {view !== 'edi' && <EditionButtons kind="liasse" params={{ endDate: `${year}-12-31`, table: view, model }} disabled={!l} />}
+      </AccHeaderActions>
+
+      {l && (
+        <>
+        {l.status === 'final'
+          ? <StatusBanner tone="success" icon={CheckCircle2} title={`Exercice ${year} clôturé`}>
+              Les écritures sont scellées : la liasse est définitive.
+            </StatusBanner>
+          : <StatusBanner tone="info" icon={Info} title={`Liasse provisoire de l'exercice ${year}`}>
+              Calculée depuis les écritures validées au 31/12/{year}. Elle devient définitive à la clôture de l'exercice (Comptabilité › Clôture).
+            </StatusBanner>}
+        {errors.length > 0 && (
+          <StatusBanner tone="danger" icon={XCircle} title={`${errors.length} contrôle(s) bloquant(s)`}>
+            <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{errors.map((c, i) => <li key={i}>{c.message}</li>)}</ul>
+          </StatusBanner>
+        )}
+        {warnings.filter(w => !w.message.startsWith('Exercice')).length > 0 && (
+          <StatusBanner tone="warning" icon={AlertTriangle} title="Points à vérifier">
+            <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{warnings.filter(w => !w.message.startsWith('Exercice')).map((c, i) => <li key={i}>{c.message}</li>)}</ul>
+          </StatusBanner>
+        )}
+        <KpiGrid>
+          <Stat label="Total du bilan" value={l.totals.actif} sub={Math.abs(l.totals.actif - l.totals.passif) < 0.01 ? 'actif = passif' : `passif ${n(l.totals.passif)}`} />
+          <Stat label="Chiffre d'affaires" value={l.totals.revenue} sub={l.suggested_model === 'simplifie' ? 'modèle simplifié possible (≤ 10 MDH)' : 'modèle normal'} />
+          <Stat label="Résultat net" value={l.totals.result} sub={l.has_previous ? `${year - 1} : ${n(l.totals.previous_result) || '0,00'}` : 'pas d\'exercice précédent'} tone={l.totals.result < 0 ? 'neg' : undefined} />
+          <Stat label="Résultat fiscal" value={l.passage.taxable_result} sub={`impôt dû ${n(l.passage.tax_due) || '0,00'}${l.passage.tax_status === 'booked' ? ' (comptabilisé)' : ''}`} tone={l.passage.taxable_result < 0 ? 'neg' : undefined} />
+        </KpiGrid>
+        </>
+      )}
+
+      <div className="prj-toolbar">
+        <select value={year} onChange={e => setYear(Number(e.target.value))} className="ds-input sm" style={{ minWidth: 110, width: 'auto' }} aria-label="Exercice">
           {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => <option key={y} value={y}>Exercice {y}</option>)}
         </select>
-        <select value={model} onChange={e => setModel(e.target.value as LiasseModel)} className="odoo-search-input" style={{ minWidth: 170 }} aria-label="Modèle">
+        <select value={model} onChange={e => setModel(e.target.value as LiasseModel)} className="ds-input sm" style={{ minWidth: 170, width: 'auto' }} aria-label="Modèle">
           <option value="normal">Modèle normal</option>
           <option value="simplifie">Modèle simplifié</option>
         </select>
-        {isFetching && !isLoading && <Loader2 size={14} className="animate-spin" />}
-        <div style={{ flex: 1 }} />
-        {view !== 'edi' && <EditionButtons kind="liasse" params={{ endDate: `${year}-12-31`, table: view, model }} disabled={!l} />}
+        {isFetching && !isLoading && <Loader2 size={14} className="animate-spin" aria-label="Actualisation" />}
       </div>
-      {isLoading || !l ? <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={20} className="animate-spin" /></div> : (
+      {isLoading || !l ? <LoadingState /> : (
         <>
-          {l.status === 'final'
-            ? <StatusBanner tone="success" icon={CheckCircle2} title={`Exercice ${year} clôturé`}>
-                Les écritures sont scellées : la liasse est définitive.
-              </StatusBanner>
-            : <StatusBanner tone="info" icon={Info} title={`Liasse provisoire de l'exercice ${year}`}>
-                Calculée depuis les écritures validées au 31/12/{year}. Elle devient définitive à la clôture de l'exercice (Comptabilité › Clôture).
-              </StatusBanner>}
-          {errors.length > 0 && (
-            <StatusBanner tone="danger" icon={XCircle} title={`${errors.length} contrôle(s) bloquant(s)`}>
-              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{errors.map((c, i) => <li key={i}>{c.message}</li>)}</ul>
-            </StatusBanner>
-          )}
-          {warnings.filter(w => !w.message.startsWith('Exercice')).length > 0 && (
-            <StatusBanner tone="warning" icon={AlertTriangle} title="Points à vérifier">
-              <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{warnings.filter(w => !w.message.startsWith('Exercice')).map((c, i) => <li key={i}>{c.message}</li>)}</ul>
-            </StatusBanner>
-          )}
-          <div className="odoo-stat-grid">
-            <Stat label="Total du bilan" value={l.totals.actif} sub={Math.abs(l.totals.actif - l.totals.passif) < 0.01 ? 'actif = passif' : `passif ${n(l.totals.passif)}`} />
-            <Stat label="Chiffre d'affaires" value={l.totals.revenue} sub={l.suggested_model === 'simplifie' ? 'modèle simplifié possible (≤ 10 MDH)' : 'modèle normal'} />
-            <Stat label="Résultat net" value={l.totals.result} sub={l.has_previous ? `${year - 1} : ${n(l.totals.previous_result) || '0,00'}` : 'pas d\'exercice précédent'} tone={l.totals.result < 0 ? 'neg' : undefined} />
-            <Stat label="Résultat fiscal" value={l.passage.taxable_result} sub={`impôt dû ${n(l.passage.tax_due) || '0,00'}${l.passage.tax_status === 'booked' ? ' (comptabilisé)' : ''}`} tone={l.passage.taxable_result < 0 ? 'neg' : undefined} />
-          </div>
-          <div className="odoo-tabs">
-            {VIEWS.map(v => (
-              <button key={v.key} type="button" onClick={() => setView(v.key)} className={`odoo-tab ${view === v.key ? 'active' : ''}`}>{v.label}</button>
-            ))}
-          </div>
+          <Tabs label="États de la liasse" value={view} onChange={setView} tabs={VIEWS.map(v => ({ key: v.key, label: v.label }))} />
           {view === 'actif' && <ActifTable l={l} />}
           {view === 'passif' && <AmountTable title="Passif" year={year} lines={l.passif} />}
           {view === 'cpc' && <AmountTable title="Compte de produits et charges (hors taxes)" year={year} lines={l.cpc} />}
@@ -99,11 +104,7 @@ export default function LiasseTab() {
 
 function Stat({ label, value, sub, tone }: { label: string; value: number; sub: string; tone?: 'neg' }) {
   return (
-    <div className="odoo-stat-card">
-      <div className="odoo-stat-card-label">{label}</div>
-      <div className="odoo-stat-card-value" style={{ color: tone === 'neg' ? '#c62828' : undefined }}>{n(value) || '0,00'}</div>
-      <div className="odoo-stat-card-sub">{sub}</div>
-    </div>
+    <KpiCard label={label} value={n(value) || '0,00'} sub={sub} tone={tone === 'neg' ? 'red' : undefined} />
   );
 }
 
@@ -119,8 +120,8 @@ function Accounts({ codes }: { codes: string[] }) {
 
 function ActifTable({ l }: { l: Liasse }) {
   return (
-    <div className="odoo-section" style={{ padding: 0, overflowX: 'auto' }}>
-      <table className="odoo-table" style={{ width: '100%' }}>
+    <DataPanel>
+      <table className="odoo-table ds-dense">
         <thead>
           <tr>
             <th style={{ minWidth: 300 }}>Actif</th><th style={num}>Brut</th><th style={num}>Amort. et provisions</th>
@@ -131,36 +132,36 @@ function ActifTable({ l }: { l: Liasse }) {
           {l.actif.map(x => (
             <tr key={x.id} style={rowStyle(x.kind)}>
               <td style={{ paddingLeft: x.kind === 'line' && l.model === 'normal' && /\d/.test(x.id) ? 22 : undefined }}>{x.label}<Accounts codes={x.accounts} /></td>
-              <td style={{ ...mono, textAlign: 'right' }}>{n(x.gross)}</td>
-              <td style={{ ...mono, textAlign: 'right' }}>{n(x.amort)}</td>
-              <td style={{ ...mono, textAlign: 'right' }}>{n(x.net)}</td>
-              <td style={{ ...mono, textAlign: 'right', color: 'var(--theme-text-muted)' }}>{n(x.previous_net)}</td>
+              <td className="ds-num">{n(x.gross)}</td>
+              <td className="ds-num">{n(x.amort)}</td>
+              <td className="ds-num">{n(x.net)}</td>
+              <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{n(x.previous_net)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </DataPanel>
   );
 }
 
 function AmountTable({ title, year, lines }: { title: string; year: number; lines: Liasse['cpc'] }) {
   return (
-    <div className="odoo-section" style={{ padding: 0, overflowX: 'auto' }}>
-      <table className="odoo-table" style={{ width: '100%' }}>
+    <DataPanel>
+      <table className="odoo-table ds-dense">
         <thead>
-          <tr><th>{title}</th><th style={{ textAlign: 'right', width: 160 }}>Exercice {year}</th><th style={{ textAlign: 'right', width: 160 }}>Exercice {year - 1}</th></tr>
+          <tr><th>{title}</th><th className="ds-num" style={{ width: 160 }}>Exercice {year}</th><th className="ds-num" style={{ width: 160 }}>Exercice {year - 1}</th></tr>
         </thead>
         <tbody>
           {lines.map(x => (
             <tr key={x.id} style={rowStyle(x.kind)}>
               <td style={{ paddingLeft: x.kind === 'line' ? 22 : undefined }}>{x.label}<Accounts codes={x.accounts} /></td>
-              <td style={{ ...mono, textAlign: 'right', color: x.amount < 0 ? '#c62828' : undefined }}>{n(x.amount)}</td>
-              <td style={{ ...mono, textAlign: 'right', color: 'var(--theme-text-muted)' }}>{n(x.previous)}</td>
+              <td className="ds-num" style={{ color: x.amount < 0 ? 'var(--ds-danger)' : undefined }}>{n(x.amount)}</td>
+              <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{n(x.previous)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </DataPanel>
   );
 }
 
@@ -170,13 +171,13 @@ function Passage({ l }: { l: Liasse }) {
   const row = (label: string, v: number | null, k: LiasseKind = 'line') => (
     <tr key={label} style={rowStyle(k)}>
       <td style={{ paddingLeft: k === 'line' ? 22 : undefined }}>{label}</td>
-      <td style={{ ...mono, textAlign: 'right', width: 180, color: v != null && v < 0 ? '#c62828' : undefined }}>{v == null ? '' : n(v) || '0,00'}</td>
+      <td className="ds-num" style={{ width: 180, color: v != null && v < 0 ? 'var(--ds-danger)' : undefined }}>{v == null ? '' : n(v) || '0,00'}</td>
     </tr>
   );
   return (
-    <div className="odoo-section" style={{ padding: 0 }}>
-      <table className="odoo-table" style={{ width: '100%' }}>
-        <thead><tr><th>Passage du résultat net comptable au résultat net fiscal</th><th style={{ textAlign: 'right' }}>Montant</th></tr></thead>
+    <div className="odoo-section ds-panel" style={{ padding: 0 }}>
+      <table className="odoo-table ds-dense">
+        <thead><tr><th>Passage du résultat net comptable au résultat net fiscal</th><th className="ds-num">Montant</th></tr></thead>
         <tbody>
           {row(p.net_result >= 0 ? 'I. Résultat net comptable — bénéfice' : 'I. Résultat net comptable — perte', p.net_result, 'subtotal')}
           {row('II. Réintégrations fiscales', null, 'group')}

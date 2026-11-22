@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, type LucideIcon } from 'lucide-react';
-import { Pager } from '../../components/purchasing/ProcessBoard';
+import { createContext, useContext, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowDown, ArrowUp, type LucideIcon } from 'lucide-react';
+import { PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { Breadcrumb, SectionHeader, Segmented, TableFooter } from '../../components/ds';
 import '../sales/ListTemplate';
 import './stock.css';
 
@@ -43,33 +45,29 @@ export function SortSelect<K extends string>({ value, onChange, options, dir, on
 
 export interface SubView<K extends string> { key: K; label: string; icon?: LucideIcon; count?: number }
 
-/** Contrôle segmenté (2 à 4 vues) : même grammaire que LayoutSwitch des Achats. */
+/** Contrôle segmenté (2 à 4 vues) : délègue à `Segmented` du Design System. */
 export function SubViews<K extends string>({ value, onChange, views, label }: {
   value: K; onChange: (k: K) => void; views: SubView<K>[]; label: string;
 }) {
   return (
-    <div className="prj-views" role="group" aria-label={label} style={{ alignSelf: 'flex-start' }}>
-      {views.map(v => {
-        const Icon = v.icon;
-        return (
-          <button key={v.key} type="button" className={value === v.key ? 'active' : ''} aria-pressed={value === v.key} onClick={() => onChange(v.key)}>
-            {Icon && <Icon size={14} />} {v.label}
-            {!!v.count && <span className="stk-count">{v.count}</span>}
-          </button>
-        );
-      })}
+    <div style={{ display: 'flex', alignSelf: 'flex-start' }}>
+      <Segmented label={label} value={value} onChange={onChange}
+        options={views.map(v => ({ key: v.key, label: v.label, icon: v.icon, count: v.count || undefined }))} />
     </div>
   );
 }
 
-/** Pied d'un ListPanel : compteur + pagination. */
+/** Pied d'un tableau : compteur + pagination (délègue à `TableFooter`). */
 export function PagerFoot({ page, total, onPage, note }: { page: number; total: number; onPage: (p: number) => void; note: string }) {
-  return <div className="stk-foot"><Pager page={page} total={total} onPage={onPage} note={note} /></div>;
+  return <TableFooter page={page} pageSize={PAGE_SIZE} total={total} onPage={onPage} note={note} />;
 }
 
 /** Intertitre d'une section de page (h2), avec un complément discret. */
 export function SectionTitle({ icon: Icon, children, hint }: { icon?: LucideIcon; children: ReactNode; hint?: ReactNode }) {
-  return <h2 className="stk-section-title">{Icon && <Icon size={16} style={{ color: 'var(--theme-accent)' }} />}{children}{hint && <small>{hint}</small>}</h2>;
+  return (
+    <SectionHeader note={hint}
+      title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{Icon && <Icon size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} />}{children}</span>} />
+  );
 }
 
 /**
@@ -81,16 +79,22 @@ export function FullPageBar({ backLabel, onBack, trail = [], current, actions }:
 }) {
   return (
     <div className="odoo-control-bar">
-      <div className="odoo-breadcrumb">
-        <button type="button" className="sal-link" style={{ marginLeft: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={onBack}>
-          <ArrowLeft size={14} /> {backLabel}
-        </button>
-        {trail.map(t => <span key={t} style={{ display: 'contents' }}><span className="odoo-breadcrumb-separator">›</span><span>{t}</span></span>)}
-        <span className="odoo-breadcrumb-separator">›</span>
-        <span className="odoo-breadcrumb-current">{current}</span>
-      </div>
+      <Breadcrumb items={[{ label: backLabel, onClick: onBack }, ...trail.map(t => ({ label: t })), { label: current }]} />
       <div style={{ flex: 1 }} />
       {actions}
     </div>
   );
+}
+
+/**
+ * Emplacement des actions de page, à droite du fil d'Ariane de la coquille du module
+ * (Design System : une seule action principale en haut à droite, « Importer » / « Exporter »
+ * en secondaire à sa gauche). StockPage fournit l'élément ; un écran y pose ses boutons
+ * avec `HeaderActions`. Hors coquille, les boutons restent là où l'écran les écrit.
+ */
+export const StockHeaderSlot = createContext<HTMLElement | null>(null);
+
+export function HeaderActions({ children }: { children: ReactNode }) {
+  const slot = useContext(StockHeaderSlot);
+  return slot ? createPortal(children, slot) : <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>{children}</div>;
 }

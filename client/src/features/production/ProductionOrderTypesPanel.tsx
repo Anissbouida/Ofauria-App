@@ -7,6 +7,7 @@ import {
 } from '../../api/production.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { DataPanel, EmptyState, FormField, LoadingState, TableFooter } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../context/AuthContext';
@@ -84,27 +85,29 @@ export default function ProductionOrderTypesPanel() {
             code: '', label: '', requiresBonSortie: true, requiresWeighing: true, requiresQualityCheck: false,
             consumptionMode: 'au_bon_de_sortie', isActive: true, isDefault: false,
           })}>
-            <Plus size={14} /> Nouveau type
+            <Plus size={14} aria-hidden="true" /> Nouveau type
           </button>
         </div>
       )}
 
-      {isLoading ? <Loader2 className="animate-spin" size={18} /> : (
-        <div style={{ overflowX: 'auto' }}>
+      {isLoading ? <LoadingState /> : types.length === 0 ? (
+        <EmptyState icon={Workflow} title="Aucun type d'ordre" text="Créez un type pour décrire les étapes d'un ordre de fabrication." />
+      ) : (
+        <DataPanel label="Types d'ordre" footer={<TableFooter note={`${types.length} type(s) d'ordre`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
                 <th>Code</th><th>Libellé</th><th>Bon de sortie</th><th>Pesage</th><th>Contrôle</th>
-                <th>Consommation</th><th>Sous-traité</th><th>Atelier par défaut</th><th style={{ textAlign: 'right' }}>Ordres</th><th>État</th>
-                {canEdit && <th />}
+                <th>Consommation</th><th>Sous-traité</th><th>Atelier par défaut</th><th className="ds-num">Ordres</th><th>État</th>
+                {canEdit && <th className="ds-actions"><span className="sr-only">Actions</span></th>}
               </tr>
             </thead>
             <tbody>
               {types.map(t => (
                 <tr key={t.id}>
-                  <td style={{ fontFamily: 'monospace' }}>{t.code}</td>
+                  <td><span className="ds-ref">{t.code}</span></td>
                   <td>
-                    <span style={{ fontWeight: 500 }}>{t.label}</span>
+                    <span className="ds-strong">{t.label}</span>
                     {t.is_default && <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6 }}>Par défaut</span>}
                   </td>
                   <td>{yesNo(t.requires_bon_sortie)}</td>
@@ -113,12 +116,12 @@ export default function ProductionOrderTypesPanel() {
                   <td>{CONSUMPTION_MODE_LABELS[t.consumption_mode]}</td>
                   <td>{yesNo(!!t.is_subcontracting)}</td>
                   <td>{t.default_target_role ? ws.label(t.default_target_role) : '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{(t.plan_count ?? 0).toLocaleString('fr-FR')}</td>
+                  <td className="ds-num">{(t.plan_count ?? 0).toLocaleString('fr-FR')}</td>
                   <td><StatusTag tone={t.is_active ? 'done' : 'draft'} label={t.is_active ? 'Actif' : 'Inactif'} /></td>
                   {canEdit && (
-                    <td style={{ textAlign: 'right' }}>
-                      <button type="button" className="odoo-btn-secondary" onClick={() => edit(t)} aria-label={`Modifier ${t.label}`}>
-                        <Pencil size={13} />
+                    <td className="ds-actions">
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => edit(t)} aria-label={`Modifier ${t.label}`}>
+                        <Pencil size={12} aria-hidden="true" /> Modifier
                       </button>
                     </td>
                   )}
@@ -126,38 +129,38 @@ export default function ProductionOrderTypesPanel() {
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {draft && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.35)', padding: 16 }}>
-          <div className="odoo-scope" role="dialog" aria-label="Type d'ordre"
-            style={{ background: 'var(--theme-bg-card, #fff)', borderRadius: 8, width: '100%', maxWidth: 560, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div className="odoo-scope" role="dialog" aria-modal="true" aria-label="Type d'ordre"
+            style={{ background: 'var(--ds-card)', borderRadius: 16, width: '100%', maxWidth: 560, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 600 }}>{draft.id ? `Type ${draft.code}` : 'Nouveau type d\'ordre'}</h2>
-              <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)} aria-label="Fermer"><X size={14} /></button>
+              <h2 className="ds-subhead">{draft.id ? `Type ${draft.code}` : 'Nouveau type d\'ordre'}</h2>
+              <button type="button" className="ds-icon-btn" onClick={() => setDraft(null)} aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-              <label className="block text-xs font-medium text-gray-500">Code
-                <input className="input" value={draft.code ?? ''} disabled={!!draft.id} placeholder="SOUS_TRAITANCE"
+              <FormField label="Code" htmlFor="ot-code" required hint="En majuscules, sans espace.">
+                <input id="ot-code" className="ds-input" value={draft.code ?? ''} disabled={!!draft.id} placeholder="SOUS_TRAITANCE"
                   onChange={(e) => set({ code: e.target.value.toUpperCase() })} />
-              </label>
-              <label className="block text-xs font-medium text-gray-500">Libellé
-                <input className="input" value={draft.label ?? ''} onChange={(e) => set({ label: e.target.value })} />
-              </label>
-              <label className="block text-xs font-medium text-gray-500">Consommation des matières
-                <select className="input" disabled={stepsLocked} value={draft.consumptionMode} onChange={(e) => set({ consumptionMode: e.target.value as Draft['consumptionMode'] })}>
+              </FormField>
+              <FormField label="Libellé" htmlFor="ot-label" required>
+                <input id="ot-label" className="ds-input" value={draft.label ?? ''} onChange={(e) => set({ label: e.target.value })} />
+              </FormField>
+              <FormField label="Consommation des matières" htmlFor="ot-conso">
+                <select id="ot-conso" className="ds-input" disabled={stepsLocked} value={draft.consumptionMode} onChange={(e) => set({ consumptionMode: e.target.value as Draft['consumptionMode'] })}>
                   {(Object.keys(CONSUMPTION_MODE_LABELS) as (keyof typeof CONSUMPTION_MODE_LABELS)[])
                     .filter(k => draft.requiresBonSortie !== false || k !== 'au_bon_de_sortie')
                     .map(k => <option key={k} value={k}>{CONSUMPTION_MODE_LABELS[k]}</option>)}
                 </select>
-              </label>
-              <label className="block text-xs font-medium text-gray-500">Atelier par défaut
-                <select className="input" value={draft.defaultTargetRole ?? ''} onChange={(e) => set({ defaultTargetRole: e.target.value || null })}>
-                  <option value="">— Aucun —</option>
+              </FormField>
+              <FormField label="Atelier par défaut" htmlFor="ot-atelier">
+                <select id="ot-atelier" className="ds-input" value={draft.defaultTargetRole ?? ''} onChange={(e) => set({ defaultTargetRole: e.target.value || null })}>
+                  <option value="">Aucun</option>
                   {ws.workshops.map(w => <option key={w.code} value={w.code}>{w.label}</option>)}
                 </select>
-              </label>
+              </FormField>
             </div>
             {impact && impact.draft + impact.underway > 0 && (
               <StatusBanner tone={impact.underway ? 'warning' : 'info'} icon={Workflow} title={`${impact.draft + impact.underway} ordre(s) de ce type non terminé(s)`}>
@@ -176,13 +179,13 @@ export default function ProductionOrderTypesPanel() {
               <label><input type="checkbox" checked={!!draft.isDefault} onChange={(e) => set({ isDefault: e.target.checked, ...(e.target.checked ? { isActive: true } : {}) })} /> Par défaut</label>
               <label><input type="checkbox" checked={draft.isActive !== false} disabled={!!draft.isDefault} onChange={(e) => set({ isActive: e.target.checked })} /> Actif</label>
             </div>
-            <label className="block text-xs font-medium text-gray-500">Description
-              <textarea className="input" rows={2} value={draft.description ?? ''} onChange={(e) => set({ description: e.target.value })} />
-            </label>
+            <FormField label="Description" htmlFor="ot-desc">
+              <textarea id="ot-desc" className="ds-input" rows={2} value={draft.description ?? ''} onChange={(e) => set({ description: e.target.value })} />
+            </FormField>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
-              <button type="button" className="odoo-btn-primary" disabled={save.isPending || !draft.label?.trim() || !draft.code?.trim()} onClick={() => save.mutate(draft)}>
-                {save.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer
+              <button type="button" className="odoo-btn-secondary" disabled={save.isPending} onClick={() => setDraft(null)}>Annuler</button>
+              <button type="button" className="odoo-btn-primary" disabled={save.isPending || !draft.label?.trim() || !draft.code?.trim()} aria-busy={save.isPending || undefined} onClick={() => save.mutate(draft)}>
+                {save.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />} Enregistrer
               </button>
             </div>
           </div>

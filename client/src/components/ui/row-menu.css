@@ -6,5 +6,5 @@
 .row-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; font: inherit; font-size: 0.8125rem; color: var(--odoo-text); text-align: left; cursor: pointer; white-space: nowrap; }
 .row-menu-item svg { color: var(--odoo-text-muted); flex: none; }
 .row-menu-item:hover:not(:disabled) { background: var(--odoo-bg-hover, color-mix(in srgb, var(--odoo-text-muted) 8%, transparent)); }
-.row-menu-item.danger, .row-menu-item.danger svg { color: #B42318; }
+.row-menu-item.danger, .row-menu-item.danger svg { color: var(--ds-danger, #B91C1C); }
 .row-menu-item:disabled { opacity: .5; cursor: default; }

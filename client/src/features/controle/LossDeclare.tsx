@@ -46,7 +46,7 @@ export default function LossDeclare({ onClose }: { onClose: () => void }) {
           <div className="odoo-breadcrumb">
             <Trash2 size={14} style={{ color: 'var(--theme-accent)' }} />
             <span>Pertes</span>
-            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">{kind === 'matiere' ? 'Matière première' : 'Déclarer une perte'}</span>
           </div>
           <div style={{ flex: 1 }} />
@@ -76,7 +76,7 @@ function KindCard({ icon: Icon, title, text, onClick }: { icon: typeof Trash2; t
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: '0.875rem', color: 'var(--odoo-text)' }}>
         <Icon size={16} style={{ color: 'var(--theme-accent)' }} /> {title}
       </span>
-      <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', lineHeight: 1.45 }}>{text}</span>
+      <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', lineHeight: 1.45 }}>{text}</span>
     </button>
   );
 }
@@ -102,19 +102,19 @@ function LotPicker({ onBack, onPick }: { onBack: () => void; onPick: (lot: LotMo
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <Search size={14} style={{ color: 'var(--ds-muted)', flexShrink: 0 }} />
         <input type="text" value={input} onChange={e => setInput(e.target.value)} autoFocus aria-label="Rechercher un ingrédient"
           placeholder="Ingrédient, n° de lot fournisseur, fournisseur..." className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--ds-muted)' }} />}
       </div>
       {isLoading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>
       ) : lots.length === 0 ? (
-        <p style={{ padding: '1.5rem', textAlign: 'center', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucun lot en stock pour cette recherche.</p>
+        <p style={{ padding: '1.5rem', textAlign: 'center', fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucun lot en stock pour cette recherche.</p>
       ) : (
         <table className="odoo-table">
           <thead>
-            <tr><th>Ingrédient · lot</th><th>DLC</th><th style={{ textAlign: 'right' }}>Réserve</th><th style={{ textAlign: 'right' }}>Pesage</th><th /></tr>
+            <tr><th>Ingrédient · lot</th><th>DLC</th><th className="ds-num">Réserve</th><th className="ds-num">Pesage</th><th /></tr>
           </thead>
           <tbody>
             {lots.map(l => {
@@ -123,15 +123,15 @@ function LotPicker({ onBack, onPick }: { onBack: () => void; onPick: (lot: LotMo
                 <tr key={l.id}>
                   <td>
                     <span style={{ fontWeight: 500 }}>{l.ingredient_name}</span>
-                    {(l.lot_number || l.supplier_lot_number) && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontFamily: 'ui-monospace, monospace' }}>{l.lot_number ?? l.supplier_lot_number}</div>}
+                    {(l.lot_number || l.supplier_lot_number) && <div style={{ fontSize: 12, color: 'var(--ds-muted)', fontFamily: 'ui-monospace, monospace' }}>{l.lot_number ?? l.supplier_lot_number}</div>}
                   </td>
-                  <td style={{ fontSize: '0.75rem', color: expired ? 'var(--prj-red)' : 'var(--theme-text-muted)', fontWeight: expired ? 600 : 400, whiteSpace: 'nowrap' }}>
+                  <td style={{ fontSize: '0.75rem', color: expired ? 'var(--ds-danger)' : 'var(--ds-muted)', fontWeight: expired ? 600 : 400, whiteSpace: 'nowrap' }}>
                     {expired && <AlertTriangle size={11} style={{ verticalAlign: -1, marginRight: 3 }} />}
                     {l.expiration_date ? format(new Date(l.expiration_date), 'dd/MM/yyyy') : '—'}
                   </td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{fmt(n(l.economat_quantity))} {l.ingredient_unit}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{fmt(n(l.pesage_quantity))} {l.ingredient_unit}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{fmt(n(l.economat_quantity))} {l.ingredient_unit}</td>
+                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{fmt(n(l.pesage_quantity))} {l.ingredient_unit}</td>
+                  <td className="ds-num">
                     <button type="button" className="odoo-btn-secondary" onClick={() => onPick({
                       id: l.id, lot_number: l.lot_number ?? l.supplier_lot_number, ingredient_name: l.ingredient_name, unit: l.ingredient_unit,
                       economat_quantity: n(l.economat_quantity), pesage_quantity: n(l.pesage_quantity),
@@ -144,7 +144,7 @@ function LotPicker({ onBack, onPick }: { onBack: () => void; onPick: (lot: LotMo
           </tbody>
         </table>
       )}
-      <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', margin: 0 }}>
+      <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: 0 }}>
         Une perte partielle se prend sur la quantité au pesage (contenant ouvert) ; un contenant encore scellé part en entier aux pertes.
       </p>
       <div style={{ display: 'flex', justifyContent: 'flex-start' }}>

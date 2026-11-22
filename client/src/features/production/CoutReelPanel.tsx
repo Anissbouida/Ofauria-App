@@ -5,6 +5,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { LoadingState } from '../../components/ds';
 import {
   Calculator, Loader2,
   ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock, Scissors, Gauge
@@ -176,7 +177,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
       <div className="odoo-section-header">
         <Calculator size={12} /> Coût de revient
         {cout && (
-          <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', fontWeight: 600, color: '#28a745' }}>
+          <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--ds-success)' }}>
             {fmtMoney(coutRevient)}
           </span>
         )}
@@ -196,9 +197,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
       )}
 
       {isLoading && (
-        <div style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={14} className="animate-spin" /> Chargement...
-        </div>
+        <LoadingState bare />
       )}
 
       {cout && (
@@ -245,9 +244,9 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             )}
             <div className="odoo-stat-card" style={{ cursor: 'default', backgroundColor: 'var(--theme-bg-secondary)' }}>
               <div className="odoo-stat-card-label">
-                <DollarSign size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Revient
+                <DollarSign size={11} style={{ display: 'inline', marginRight: 4, color: 'var(--ds-success)' }} />Revient
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem', color: '#28a745' }}>{fmtMoney(coutRevient)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem', color: 'var(--ds-success)' }}>{fmtMoney(coutRevient)}</div>
             </div>
           </div>
 
@@ -261,10 +260,10 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               fontSize: '0.8125rem',
             }}>
               <span style={{ color: 'var(--theme-text-muted)' }}>
-                <TrendingDown size={11} style={{ display: 'inline', marginRight: 4, color: '#dc3545' }} />
+                <TrendingDown size={11} style={{ display: 'inline', marginRight: 4, color: 'var(--ds-danger)' }} />
                 dont pertes (matière perdue, déjà comptée dans Matières)
               </span>
-              <span style={{ fontWeight: 600, color: '#dc3545' }}>
+              <span style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>
                 {fmtMoney(coutPertes)}{coutMat > 0 ? ` (${((coutPertes / coutMat) * 100).toFixed(1)} % des matières)` : ''}
               </span>
             </div>
@@ -294,7 +293,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             const ecartMix = cout.ecart_mix != null ? toNum(cout.ecart_mix)
               : (prevuMix != null ? prevu - prevuMix : null);
             const ecartPrix = prevuMix != null ? coutRevient - prevuMix : null;
-            const color = (v: number) => v > 0 ? '#c62828' : v < 0 ? '#2e7d32' : 'var(--theme-text-muted)';
+            const color = (v: number) => v > 0 ? 'var(--ds-danger)' : v < 0 ? 'var(--ds-success)' : 'var(--theme-text-muted)';
             const sign = (v: number) => (v > 0 ? '+' : '');
             return (
               <div style={{
@@ -437,7 +436,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                         <td className="py-1 px-2 text-right text-gray-500">{d.std_cost != null ? d.std_cost.toFixed(2) : '—'}</td>
                         <td className="py-1 px-2 text-right text-gray-500">{d.reel_cost.toFixed(2)}</td>
                         <td className="py-1 px-2 text-right font-medium"
-                          style={{ color: d.ecart_cost == null ? '#9ca3af' : d.ecart_cost > 0 ? '#c62828' : d.ecart_cost < 0 ? '#2e7d32' : undefined }}>
+                          style={{ color: d.ecart_cost == null ? '#9ca3af' : d.ecart_cost > 0 ? 'var(--ds-danger)' : d.ecart_cost < 0 ? 'var(--ds-success)' : undefined }}>
                           {d.ecart_cost == null ? '—' : `${d.ecart_cost > 0 ? '+' : ''}${d.ecart_cost.toFixed(2)}`}
                         </td>
                       </tr>
@@ -450,7 +449,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                         <td className="py-1 px-2 text-right">{moEcart.totals.std_cost.toFixed(2)}</td>
                         <td className="py-1 px-2 text-right">{moEcart.totals.reel_cost.toFixed(2)}</td>
                         <td className="py-1 px-2 text-right"
-                          style={{ color: moEcart.totals.ecart_cost > 0 ? '#c62828' : moEcart.totals.ecart_cost < 0 ? '#2e7d32' : undefined }}>
+                          style={{ color: moEcart.totals.ecart_cost > 0 ? 'var(--ds-danger)' : moEcart.totals.ecart_cost < 0 ? 'var(--ds-success)' : undefined }}>
                           {moEcart.totals.ecart_cost > 0 ? '+' : ''}{moEcart.totals.ecart_cost.toFixed(2)}
                         </td>
                       </tr>
@@ -514,7 +513,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                       <td className="py-1 px-2 text-right text-gray-500">{c.minutes_required} min</td>
                       <td className="py-1 px-2 text-right text-gray-500">{c.capacity_minutes_per_day != null ? `${c.capacity_minutes_per_day} min/j` : '—'}</td>
                       <td className="py-1 px-2 text-right font-medium"
-                        style={{ color: c.utilisation_pct == null ? '#9ca3af' : c.overloaded ? '#c62828' : c.utilisation_pct > 80 ? '#b45309' : '#2e7d32' }}>
+                        style={{ color: c.utilisation_pct == null ? '#9ca3af' : c.overloaded ? 'var(--ds-danger)' : c.utilisation_pct > 80 ? 'var(--ds-warning)' : 'var(--ds-success)' }}>
                         {c.utilisation_pct == null ? '—' : `${c.utilisation_pct}%`}{c.overloaded ? ' ⚠' : ''}
                       </td>
                     </tr>

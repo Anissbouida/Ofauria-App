@@ -9,6 +9,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../context/AuthContext';
 
+import { FormField, LoadingState } from '../../components/ds';
 /**
  * Production › Paramétrage › Impressions (M8-04, mig 582).
  *
@@ -83,40 +84,40 @@ export default function ProductionPrintTemplatesPanel() {
       </StatusBanner>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
-        <label className="block text-xs font-medium text-gray-500">Document
-          <select className="input" value={doc} onChange={e => setDoc(e.target.value as ProductionPrintDoc)}>
+        <FormField label="Document" htmlFor="pt-doc">
+          <select id="pt-doc" className="ds-input" value={doc} onChange={e => setDoc(e.target.value as ProductionPrintDoc)}>
             {PRODUCTION_PRINT_DOC_TYPES.map(d => {
               const n = variantsByDoc.get(d) ?? 0;
               return <option key={d} value={d}>{PRODUCTION_PRINT_DOCS[d].label}{n ? ` (${n} variante${n > 1 ? 's' : ''})` : ''}</option>;
             })}
           </select>
-        </label>
-        <label className="block text-xs font-medium text-gray-500">S'applique à
-          <select className="input" value={scope} onChange={e => setScope(e.target.value)}>
+        </FormField>
+        <FormField label="S'applique à" htmlFor="pt-scope">
+          <select id="pt-scope" className="ds-input" value={scope} onChange={e => setScope(e.target.value)}>
             <option value="">Modèle général (tous les types d'ordre)</option>
             {types.map(t => <option key={t.id} value={t.id}>Type : {t.label}</option>)}
           </select>
-        </label>
+        </FormField>
       </div>
 
-      {isLoading || !tpl ? <Loader2 className="animate-spin" size={18} /> : (
-        <div className="odoo-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      {isLoading || !tpl ? <LoadingState /> : (
+        <div className="ds-panel" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontWeight: 600 }}>{def.label}</span>
+            <h2 className="ds-subhead">{def.label}</h2>
             <StatusTag tone={tpl.source === 'variant' ? 'progress' : tpl.source === 'base' ? 'done' : 'draft'} label={SOURCE_LABEL[tpl.source]} />
           </div>
 
-          <label className="block text-xs font-medium text-gray-500">Titre imprimé
-            <input className="input" value={title} maxLength={120} disabled={!canEdit} placeholder={def.defaultTitle}
+          <FormField label="Titre imprimé" htmlFor="pt-title">
+            <input id="pt-title" className="ds-input" value={title} maxLength={120} disabled={!canEdit} placeholder={def.defaultTitle}
               onChange={e => setTitle(e.target.value)} />
-          </label>
+          </FormField>
 
           {def.columns.length > 0 && (
-            <fieldset>
-              <legend className="text-xs font-medium text-gray-500" style={{ marginBottom: 4 }}>
-                {doc === 'production_ticket' ? 'Rubriques affichées' : 'Colonnes affichées'}
+            <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend className="ds-field-label" style={{ marginBottom: 6, padding: 0 }}>
+                {doc === 'production_ticket' ? 'Rubriques affichées' : 'Colonnes affichées'}<span className="ds-req" aria-hidden="true"> *</span>
               </legend>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1.25rem', fontSize: '0.875rem' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1.25rem', fontSize: 14 }}>
                 {def.columns.map(c => (
                   <label key={c.key}>
                     <input type="checkbox" checked={columns.includes(c.key)} disabled={!canEdit} onChange={() => toggle(c.key)} /> {c.label}
@@ -127,27 +128,27 @@ export default function ProductionPrintTemplatesPanel() {
           )}
 
           {def.hasSignatures && (
-            <label className="block text-xs font-medium text-gray-500">Cases de signature (une par ligne, 6 au plus)
-              <textarea className="input" rows={3} value={signatures} disabled={!canEdit}
+            <FormField label="Cases de signature" htmlFor="pt-sign" hint="Une par ligne, 6 au plus.">
+              <textarea id="pt-sign" className="ds-input" rows={3} value={signatures} disabled={!canEdit}
                 onChange={e => setSignatures(e.target.value.split('\n').slice(0, 6).join('\n'))} />
-            </label>
+            </FormField>
           )}
 
-          <label className="block text-xs font-medium text-gray-500">Mention de pied de page
-            <input className="input" value={footer} maxLength={300} disabled={!canEdit} placeholder={def.defaultFooter ?? 'Aucune'}
+          <FormField label="Mention de pied de page" htmlFor="pt-footer">
+            <input id="pt-footer" className="ds-input" value={footer} maxLength={300} disabled={!canEdit} placeholder={def.defaultFooter ?? 'Aucune'}
               onChange={e => setFooter(e.target.value)} />
-          </label>
+          </FormField>
 
           {canEdit && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               {hasVariant && (
                 <button type="button" className="odoo-btn-secondary" disabled={reset.isPending} onClick={() => reset.mutate()}>
-                  <RotateCcw size={14} /> Revenir au modèle général
+                  <RotateCcw size={14} aria-hidden="true" /> Revenir au modèle général
                 </button>
               )}
-              <button type="button" className="odoo-btn-primary" disabled={save.isPending || (def.columns.length > 0 && columns.length === 0)}
+              <button type="button" className="odoo-btn-primary" disabled={save.isPending || (def.columns.length > 0 && columns.length === 0)} aria-busy={save.isPending || undefined}
                 onClick={() => save.mutate()}>
-                {save.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                {save.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />}
                 {scope ? ' Enregistrer pour ce type' : ' Enregistrer le modèle général'}
               </button>
             </div>

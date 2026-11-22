@@ -6,8 +6,10 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { ListToolbar, FilterChips } from '../sales/ListTemplate';
 import './stock.css';
+import { HeaderActions } from './StockUi';
+import { DataPanel, EmptyState, LoadingState, NoResultState, TableFooter } from '../../components/ds';
 
 /**
  * Stock › Paramétrage › Points de commande (G5-02, mig 550).
@@ -54,7 +56,7 @@ export default function ReorderPointsTab() {
   const numberCell = (r: ReorderPointRow, field: 'reorderPoint' | 'safetyStock' | 'maxStock', value: number | null, disabled = false) => (
     <input type="number" min={0} step="any" defaultValue={value ?? ''} disabled={disabled || update.isPending}
       aria-label={`${field === 'reorderPoint' ? 'Point de commande' : field === 'safetyStock' ? 'Stock de sécurité' : 'Maximum'} de ${r.ingredient_name}`}
-      className="input" style={{ width: 90, textAlign: 'right', padding: '2px 6px' }}
+      className="ds-input sm ds-num" style={{ width: 90 }}
       onBlur={(e) => {
         const raw = e.target.value.trim();
         const v = raw === '' ? null : Number(raw.replace(',', '.'));
@@ -64,7 +66,7 @@ export default function ReorderPointsTab() {
       }} />
   );
 
-  if (isLoading || !data) return <ListEmpty icon={Loader2} title="Chargement…" />;
+  if (isLoading || !data) return <LoadingState label="Chargement des points de commande…" />;
 
   return (
     <div className="stk-stack">
@@ -74,22 +76,28 @@ export default function ReorderPointsTab() {
         Mode « calculé » : mis à jour chaque semaine. Mode « manuel » : le recalcul propose, vous validez.
       </StatusBanner>
 
-      <ListToolbar search={query} onSearch={setQuery} placeholder="Rechercher un article">
-        <span className="stk-grow" />
-        <button type="button" className="odoo-btn-secondary" disabled={recalc.isPending} onClick={() => recalc.mutate()}>
-          {recalc.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Recalculer
+      <HeaderActions>
+        <button type="button" className="odoo-btn-secondary" disabled={recalc.isPending} aria-busy={recalc.isPending || undefined} onClick={() => recalc.mutate()}>
+          {recalc.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />} Recalculer
         </button>
         <button type="button" className="odoo-btn-primary" disabled={!selected.size || apply.isPending} onClick={() => apply.mutate([...selected])}>
-          <Check size={14} /> Valider les propositions ({selected.size})
+          <Check size={14} aria-hidden="true" /> Valider les propositions ({selected.size})
         </button>
-      </ListToolbar>
+      </HeaderActions>
 
       <FilterChips label="Filtrer les points de commande" value={onlyProposals ? 'proposals' : ''} onChange={k => setOnlyProposals(k === 'proposals')} chips={[
         { key: '', label: 'Tous les articles', count: data.rows.length },
         { key: 'proposals', label: 'Propositions à valider', count: proposals.length },
       ]} />
 
-      <ListPanel>
+      <ListToolbar search={query} onSearch={setQuery} placeholder="Rechercher un article" />
+
+      {rows.length === 0 ? (
+        (query || onlyProposals)
+          ? <NoResultState text="Aucun article ne correspond aux filtres." onReset={() => { setQuery(''); setOnlyProposals(false); }} />
+          : <EmptyState icon={Gauge} title="Aucun article suivi" text="Les articles stockés apparaîtront ici avec leur point de commande." />
+      ) : (
+      <DataPanel label="Points de commande" footer={<TableFooter note={`${rows.length} article${rows.length > 1 ? 's' : ''} · ${proposals.length} proposition${proposals.length > 1 ? 's' : ''} à valider`} />}>
         <table className="odoo-table">
           <thead>
             <tr>
@@ -99,13 +107,13 @@ export default function ReorderPointsTab() {
                   onChange={e => setSelected(e.target.checked ? new Set(proposals.map(p => p.id)) : new Set())} />
               </th>
               <th>Article</th>
-              <th style={{ textAlign: 'right' }}>Stock</th>
-              <th style={{ textAlign: 'right' }}>Conso. / jour</th>
-              <th style={{ textAlign: 'right' }}>Délai (j)</th>
-              <th style={{ textAlign: 'right' }}>Sécurité</th>
-              <th style={{ textAlign: 'right' }}>Point de commande</th>
-              <th style={{ textAlign: 'right' }}>Proposé</th>
-              <th style={{ textAlign: 'right' }}>Maximum</th>
+              <th className="ds-num">Stock</th>
+              <th className="ds-num">Conso. / jour</th>
+              <th className="ds-num">Délai (j)</th>
+              <th className="ds-num">Sécurité</th>
+              <th className="ds-num">Point de commande</th>
+              <th className="ds-num">Proposé</th>
+              <th className="ds-num">Maximum</th>
               <th>Mode</th>
             </tr>
           </thead>
@@ -117,20 +125,20 @@ export default function ReorderPointsTab() {
                     onChange={e => setSelected(s => { const x = new Set(s); if (e.target.checked) x.add(r.id); else x.delete(r.id); return x; })} />
                 )}</td>
                 <td>
-                  <span style={{ fontWeight: 500 }}>{r.ingredient_name}</span>
+                  <span className="ds-strong">{r.ingredient_name}</span>
                   {r.below && <span style={{ marginLeft: 6 }}><StatusTag tone="todo" label="Sous le point" /></span>}
                 </td>
-                <td style={{ textAlign: 'right' }}>{n(r.current_quantity)} {r.unit}</td>
-                <td style={{ textAlign: 'right' }}>{n(r.avg_daily_usage)}</td>
-                <td style={{ textAlign: 'right' }} title={r.lead_from_supplier ? 'Délai du fournisseur' : 'Délai par défaut (aucun délai fournisseur renseigné)'}>
+                <td className="ds-num">{n(r.current_quantity)} {r.unit}</td>
+                <td className="ds-num">{n(r.avg_daily_usage)}</td>
+                <td className="ds-num" title={r.lead_from_supplier ? 'Délai du fournisseur' : 'Délai par défaut (aucun délai fournisseur renseigné)'}>
                   {r.lead_days}{r.lead_from_supplier ? '' : ' *'}
                 </td>
-                <td style={{ textAlign: 'right' }}>{numberCell(r, 'safetyStock', r.safety_stock, r.replenish_mode === 'calcule')}</td>
-                <td style={{ textAlign: 'right' }}>{numberCell(r, 'reorderPoint', r.reorder_point, r.replenish_mode === 'calcule')}</td>
-                <td style={{ textAlign: 'right', color: hasProposal(r) ? 'var(--odoo-text)' : 'var(--odoo-text-muted)' }}>{n(r.proposed_reorder_point ?? r.live_reorder_point)}</td>
-                <td style={{ textAlign: 'right' }}>{numberCell(r, 'maxStock', r.max_stock)}</td>
+                <td className="ds-num">{numberCell(r, 'safetyStock', r.safety_stock, r.replenish_mode === 'calcule')}</td>
+                <td className="ds-num">{numberCell(r, 'reorderPoint', r.reorder_point, r.replenish_mode === 'calcule')}</td>
+                <td className="ds-num" style={{ color: hasProposal(r) ? 'var(--odoo-text)' : 'var(--odoo-text-muted)' }}>{n(r.proposed_reorder_point ?? r.live_reorder_point)}</td>
+                <td className="ds-num">{numberCell(r, 'maxStock', r.max_stock)}</td>
                 <td>
-                  <select className="input" value={r.replenish_mode} aria-label={`Mode de ${r.ingredient_name}`} style={{ padding: '2px 6px', width: 'auto' }}
+                  <select className="ds-input sm" value={r.replenish_mode} aria-label={`Mode de ${r.ingredient_name}`} style={{ width: 'auto' }}
                     onChange={e => update.mutate({ id: r.id, patch: { mode: e.target.value as 'manuel' | 'calcule' } })}>
                     <option value="manuel">Manuel</option>
                     <option value="calcule">Calculé</option>
@@ -140,7 +148,8 @@ export default function ReorderPointsTab() {
             ))}
           </tbody>
         </table>
-      </ListPanel>
+      </DataPanel>
+      )}
       <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
         * Délai par défaut ({data.params.default_lead_days} j) : renseignez le délai sur la fiche article × fournisseur pour un calcul juste.
       </p>

@@ -12,7 +12,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StageProgress, SelectFilter, type StageDef } from '../../components/purchasing/ProcessBoard';
 import {
-  ClipboardList, Plus, Pencil, Search, Eye, X,
+  ClipboardList, Plus, Pencil, Eye, X,
   Clock, CheckCircle2, Factory, Truck, Ban, CalendarDays,
   Banknote, CreditCard, Package, PackageCheck, FileText,
   AlertTriangle, Trash2, Loader2, Tag, Building2, CalendarClock, Printer, List, SquareKanban, Columns3,
@@ -24,6 +24,7 @@ import OrderFormModal from '../../components/orders/OrderFormModal';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi } from '../sales/ListTemplate';
+import { Toolbar, SearchBar, Segmented, DataPanel, BulkBar, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
 import { OrderList, OrderPane, OrderPaneEmpty, OrderStatusTag } from './OrderSplit';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import '../projects/projects.css';
@@ -108,14 +109,11 @@ const modalPanelStyle: CSSProperties = {
   backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)',
   borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
 };
-const modalHeaderStyle: CSSProperties = { backgroundColor: 'var(--theme-accent)', padding: '0.875rem 1.25rem', color: '#fff' };
-const labelStyle: CSSProperties = {
-  display: 'block', fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase',
-  letterSpacing: '0.03em', color: 'var(--odoo-text-muted)', marginBottom: 4,
-};
+const modalHeaderStyle: CSSProperties = { background: 'var(--ds-card)', padding: '0.875rem 1.25rem', color: 'var(--ds-ink)', borderBottom: '1px solid var(--ds-hair)' };
+const labelStyle: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 };
 const fieldStyle: CSSProperties = {
-  width: '100%', padding: '0.375rem 0.5rem', border: '1px solid var(--odoo-border)',
-  borderRadius: 4, fontSize: '0.8125rem', backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)',
+  width: '100%', padding: '0.4375rem 0.625rem', border: '1px solid var(--ds-line)',
+  borderRadius: 8, fontSize: 14, backgroundColor: 'var(--ds-card)', color: 'var(--ds-ink)',
 };
 const sectionStyle: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' };
 
@@ -137,8 +135,8 @@ export default function OrdersPage() {
   const [editingOrder, setEditingOrder] = useState<OrderRow | null>(null);
   const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
   const [prepayOrder, setPrepayOrder] = useState<OrderRow | null>(null);
-  // Style Apple (2026-11) : trois colonnes (liste + fiche) par défaut sur grand écran.
-  const [view, setView] = useState<'split' | 'list' | 'kanban'>(() => (window.innerWidth >= 1100 ? 'split' : 'list'));
+  // Design System : Tableau par défaut ; Colonnes (liste + fiche) et Kanban au choix.
+  const [view, setView] = useState<'split' | 'list' | 'kanban'>('list');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState<string | null>(null);
@@ -205,6 +203,7 @@ export default function OrdersPage() {
 
   const filteredTotal = filteredOrders.reduce((s, o) => s + num(o.total), 0);
   const hasFilters = !!(statusFilter || typeFilter || lateOnly || searchQuery);
+  const resetFilters = () => { setStatusFilter(''); setTypeFilter(''); setLateOnly(false); setSearchQuery(''); };
 
   const cancelOrder = async (o: OrderRow) => {
     const adv = num(o.advance_amount);
@@ -336,22 +335,6 @@ export default function OrdersPage() {
           <ListKpi label="Livrées à facturer" value={String(kpis.toInvoiceCount)} sub={`${money(kpis.toInvoice)}`} tone={kpis.toInvoiceCount ? 'orange' : undefined} />
         </section>}
 
-        <div className="prj-toolbar">
-          <label className="prj-search">
-            <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
-            <input type="search" aria-label="Rechercher une commande" placeholder="N° de commande, client ou téléphone…"
-              value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-          </label>
-          {typeOptions.length > 1 && (
-            <SelectFilter label="Type" icon={Tag} value={typeFilter} onChange={setTypeFilter} options={typeOptions} allLabel="Tous les types" />
-          )}
-          <div className="prj-views" role="group" aria-label="Affichage">
-            <button type="button" className={view === 'split' ? 'active' : ''} aria-pressed={view === 'split'} onClick={() => setView('split')}><Columns3 size={14} /> Colonnes</button>
-            <button type="button" className={view === 'list' ? 'active' : ''} aria-pressed={view === 'list'} onClick={() => setView('list')}><List size={14} /> Liste</button>
-            <button type="button" className={view === 'kanban' ? 'active' : ''} aria-pressed={view === 'kanban'} onClick={() => setView('kanban')}><SquareKanban size={14} /> Kanban</button>
-          </div>
-        </div>
-
         <div className="prj-chips" role="group" aria-label="Filtrer par étape">
           {FILTER_CHIPS.flatMap((chip) => {
             const active = statusFilter === chip.key && !lateOnly;
@@ -373,42 +356,27 @@ export default function OrdersPage() {
           })}
         </div>
 
-        {view !== 'split' && selectedOrders.length > 0 && (
-          <div className="sal-bulk" role="region" aria-label="Actions sur la sélection">
-            <strong>
-              {selectedOrders.length} commande{selectedOrders.length > 1 ? 's sélectionnées' : ' sélectionnée'} · {money(selectedOrders.reduce((s, o) => s + num(o.total), 0))}
-            </strong>
-            {BULK_STEPS.map(b => {
-              const eligible = selectedOrders.filter(o => o.status === b.from).map(o => o.id as string);
-              if (!eligible.length) return null;
-              return (
-                <button key={b.to} type="button" disabled={busy} onClick={() => bulkMutation.mutate({ ids: eligible, status: b.to })}>
-                  {b.label} ({eligible.length})
-                </button>
-              );
-            })}
-            {selectedOrders.some(o => CAN_CANCEL.has(o.status as string)) && (
-              <button type="button" className="danger" disabled={busy} onClick={bulkCancel}>Annuler</button>
-            )}
-            <button type="button" onClick={() => setSelected(new Set())}>Désélectionner</button>
-          </div>
-        )}
+        <Toolbar>
+          <SearchBar value={searchQuery} onChange={setSearchQuery} label="Rechercher une commande" placeholder="N° de commande, client ou téléphone…" />
+          {typeOptions.length > 1 && (
+            <SelectFilter label="Type" icon={Tag} value={typeFilter} onChange={setTypeFilter} options={typeOptions} allLabel="Tous les types" />
+          )}
+          <Segmented label="Affichage" value={view} onChange={setView} options={[
+            { key: 'list', label: 'Tableau', icon: List },
+            { key: 'split', label: 'Colonnes', icon: Columns3 },
+            { key: 'kanban', label: 'Kanban', icon: SquareKanban },
+          ]} />
+        </Toolbar>
 
         {isLoading ? (
-          <div className="prj-panel sal-empty">
-            <Loader2 className="animate-spin" size={20} />
-            <span>Chargement des commandes…</span>
-          </div>
+          <LoadingState label="Chargement des commandes…" />
+        ) : filteredOrders.length === 0 && view !== 'kanban' ? (
+          hasFilters
+            ? <NoResultState onReset={resetFilters} text="Aucune commande ne correspond aux filtres." />
+            : <EmptyState icon={ClipboardList} title="Aucune commande" text="Les commandes des clients apparaîtront ici, du brouillon jusqu'à la livraison."
+                action={<button type="button" onClick={() => setShowForm(true)} className="odoo-btn-secondary ds-btn-sm"><Plus size={13} /> Nouvelle commande</button>} />
         ) : view === 'split' ? (
-          filteredOrders.length === 0 ? (
-            <div className="prj-panel sal-empty">
-              <ClipboardList size={28} style={{ opacity: 0.4 }} />
-              <strong>{hasFilters ? 'Aucune commande pour ces filtres' : 'Aucune commande'}</strong>
-              {hasFilters
-                ? <button type="button" className="odoo-btn-secondary" onClick={() => { setStatusFilter(''); setTypeFilter(''); setLateOnly(false); setSearchQuery(''); }}>Effacer les filtres</button>
-                : <button type="button" onClick={() => setShowForm(true)} className="odoo-btn-primary"><Plus size={13} /> Créer une commande</button>}
-            </div>
-          ) : (() => {
+          (() => {
             const active = filteredOrders.find(o => o.id === activeId) ?? filteredOrders[0];
             return (
               <div className="ord-split">
@@ -452,21 +420,24 @@ export default function OrdersPage() {
             })}
           </div>
         ) : (
-          <section className="prj-panel sal-panel">
-            {filteredOrders.length === 0 ? (
-              <div className="sal-empty">
-                <ClipboardList size={28} style={{ opacity: 0.4 }} />
-                <strong>{hasFilters ? 'Aucune commande pour ces filtres' : 'Aucune commande'}</strong>
-                <span>{hasFilters ? 'Changez d\'étape ou effacez la recherche.' : 'Créez votre première commande.'}</span>
-                {hasFilters ? (
-                  <button type="button" className="odoo-btn-secondary" onClick={() => { setStatusFilter(''); setTypeFilter(''); setLateOnly(false); setSearchQuery(''); }}>Effacer les filtres</button>
-                ) : (
-                  <button type="button" onClick={() => setShowForm(true)} className="odoo-btn-primary"><Plus size={13} /> Créer une commande</button>
+          <DataPanel label="Commandes"
+            bulk={(
+              <BulkBar count={selectedOrders.length} noun="commande" detail={money(selectedOrders.reduce((sum, o) => sum + num(o.total), 0))} onClear={() => setSelected(new Set())}>
+                {BULK_STEPS.map(b => {
+                  const eligible = selectedOrders.filter(o => o.status === b.from).map(o => o.id as string);
+                  if (!eligible.length) return null;
+                  return (
+                    <button key={b.to} type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={() => bulkMutation.mutate({ ids: eligible, status: b.to })}>
+                      {b.label} ({eligible.length})
+                    </button>
+                  );
+                })}
+                {selectedOrders.some(o => CAN_CANCEL.has(o.status as string)) && (
+                  <button type="button" className="ds-btn-danger ds-btn-sm" disabled={busy} onClick={bulkCancel}>Annuler les commandes</button>
                 )}
-              </div>
-            ) : (
-              <>
-                <div className="prj-scroll">
+              </BulkBar>
+            )}
+            footer={<TableFooter note={<>{filteredOrders.length} commande{filteredOrders.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''} · total affiché <strong>{money(filteredTotal)} TTC</strong></>} />}>
                   <table className="odoo-table">
                     <thead>
                       <tr>
@@ -478,9 +449,9 @@ export default function OrdersPage() {
                         <th>Retrait</th>
                         <th>Avancement</th>
                         <th>Statut</th>
-                        <th style={{ textAlign: 'right' }}>Total TTC</th>
+                        <th className="ds-num">Total TTC ({currencySymbol()})</th>
                         <th>Règlement</th>
-                        <th style={{ textAlign: 'right' }}>Action</th>
+                        <th className="ds-actions">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -491,14 +462,14 @@ export default function OrdersPage() {
                         const isSel = selected.has(id);
                         const next = nextAction(o);
                         return (
-                          <tr key={id} onClick={() => navigate(`/orders/${o.id as string}`)} className={isSel ? 'selected' : undefined}>
+                          <tr key={id} onClick={() => navigate(`/orders/${o.id as string}`)} className={isSel ? 'ds-selected' : undefined} style={{ cursor: 'pointer' }}>
                             <td onClick={e => e.stopPropagation()}>
                               <input type="checkbox" className="sal-check" checked={isSel} onChange={() => toggleOne(id)} aria-label={`Sélectionner ${o.order_number as string}`} />
                             </td>
-                            <td style={{ whiteSpace: 'nowrap' }}><span className="sal-num">{o.order_number as string}</span></td>
+                            <td style={{ whiteSpace: 'nowrap' }}><span className="ds-ref">{o.order_number as string}</span></td>
                             <td>
-                              <span style={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                {isPro(o) && <Building2 size={12} style={{ color: 'var(--theme-text-muted)' }} aria-label="Professionnel" />}
+                              <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {isPro(o) && <Building2 size={12} style={{ color: 'var(--ds-muted)' }} aria-hidden="true" />}
                                 {customerName(o)}
                               </span>
                               <span className="sal-sub">
@@ -516,34 +487,22 @@ export default function OrdersPage() {
                                 : <StageProgress count={STAGES.length - 1} current={STAGE_KEYS.indexOf(status)} done={status === 'completed'} late={late} />}
                             </td>
                             <td><OrderStatusTag status={status} /></td>
-                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                              <strong>{n(num(o.total))}</strong>
-                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>{currencySymbol()}</span>
-                            </td>
+                            <td className="ds-num ds-strong" style={{ whiteSpace: 'nowrap' }}>{n(num(o.total))}</td>
                             <td style={{ whiteSpace: 'nowrap' }}>{paymentCell(o)}</td>
-                            <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                              <div className="sal-actions">
-                                {next && (
-                                  <button type="button" className="sal-next" disabled={busy} onClick={next.run}>
-                                    <next.icon size={13} /> {next.label}
-                                  </button>
-                                )}
-                                <RowMenu items={menuItems(o)} />
-                              </div>
+                            <td className="ds-actions" onClick={e => e.stopPropagation()}>
+                              {next && (
+                                <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={busy} onClick={next.run}>
+                                  <next.icon size={13} /> {next.label}
+                                </button>
+                              )}
+                              <RowMenu items={menuItems(o)} />
                             </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
-                </div>
-                <div className="sal-foot">
-                  <span>{filteredOrders.length} commande{filteredOrders.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''}</span>
-                  <span>Total affiché <strong>{money(filteredTotal)} TTC</strong></span>
-                </div>
-              </>
-            )}
-          </section>
+          </DataPanel>
         )}
 
       {/* Formulaire création / édition */}
@@ -618,7 +577,7 @@ export function PrepaymentModal({ order, onClose, onDone }: { order: OrderRow; o
             <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Facture d'acompte</div>
             <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · total {money(total)}</div>
           </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <StatusBanner tone="info" icon={FileText} title="Pièce numérotée (série FA)">
@@ -678,7 +637,7 @@ export function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow;
             <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Remise au client</div>
             <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · {customerName(order)}</div>
           </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
         </div>
 
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -686,9 +645,9 @@ export function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow;
             <div className="odoo-section-header"><Banknote size={11} /> Solde de la commande</div>
             <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total commande</span><span style={{ fontWeight: 600 }}>{money(totalAmt)}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Avance déjà versée</span><span style={{ fontWeight: 600 }}>{money(advanceAmt)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ds-success)' }}><span>Avance déjà versée</span><span style={{ fontWeight: 600 }}>{money(advanceAmt)}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                <span>Reste à encaisser</span><span style={{ color: '#b85d1a' }}>{money(remaining)}</span>
+                <span>Reste à encaisser</span><span style={{ color: 'var(--ds-warning)' }}>{money(remaining)}</span>
               </div>
             </div>
           </div>
@@ -806,7 +765,7 @@ export function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderR
             <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Livraison sur bon de livraison</div>
             <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · {customerName(order)}</div>
           </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
         </div>
 
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
@@ -824,25 +783,25 @@ export function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderR
                 <thead>
                   <tr>
                     <th>Produit</th>
-                    <th style={{ textAlign: 'right' }}>Commandé</th>
-                    {alreadyDelivered && <th style={{ textAlign: 'right' }}>Déjà livré</th>}
+                    <th className="ds-num">Commandé</th>
+                    {alreadyDelivered && <th className="ds-num">Déjà livré</th>}
                     <th style={{ textAlign: 'right', width: 110 }}>À livrer</th>
-                    <th style={{ textAlign: 'right' }}>P.U. HT</th>
-                    <th style={{ textAlign: 'right' }}>TVA</th>
+                    <th className="ds-num">P.U. HT</th>
+                    <th className="ds-num">TVA</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lines.map(l => (
                     <tr key={l.id} style={{ cursor: 'default' }}>
-                      <td style={{ fontWeight: 500 }}>{l.description}</td>
+                      <td className="ds-strong">{l.description}</td>
                       <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{num(l.quantity)}</td>
                       {alreadyDelivered && <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{num(l.qty_delivered)}</td>}
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="ds-num">
                         <input type="number" min="0" step="0.01" value={qty[l.id] ?? String(num(l.remaining))}
                           onChange={e => setQty({ ...qty, [l.id]: e.target.value })}
                           style={{ ...fieldStyle, width: 90, textAlign: 'right', fontWeight: 600 }} />
                       </td>
-                      <td style={{ textAlign: 'right' }}>{n(num(l.unit_price))}</td>
+                      <td className="ds-num">{n(num(l.unit_price))}</td>
                       <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{l.tva_rate != null ? `${num(l.tva_rate)} %` : '—'}</td>
                     </tr>
                   ))}
@@ -931,7 +890,7 @@ export function RescheduleModal({ order, isDirection, onClose, onDone }: { order
             <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Reporter le retrait</div>
             <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · prévu le {fmtDate(order.pickup_date)}</div>
           </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {late ? (

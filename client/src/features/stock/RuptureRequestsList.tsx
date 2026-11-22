@@ -95,7 +95,7 @@ export function RuptureRequestsList({ variant = 'tab' }: { variant?: 'tab' | 'co
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {variant === 'tab' && (
         <div className="odoo-alert warning">
-          <AlertTriangle size={14} style={{ color: '#856404', marginTop: 2, flexShrink: 0 }} />
+          <AlertTriangle size={14} style={{ color: 'var(--ds-warning)', marginTop: 2, flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
             <span className="odoo-alert-title">{rows.length} ingrédient{rows.length > 1 ? 's' : ''} en rupture sur les bons de sortie actifs</span>
             {' — '}absent du stock scellé et du stock entamé. Déclenchez la commande fournisseur ; après réception, « Actualiser le stock » sur le bon ré-alloue les lignes.
@@ -118,9 +118,9 @@ export function RuptureRequestsList({ variant = 'tab' }: { variant?: 'tab' | 'co
             <thead>
               <tr>
                 <th>Ingrédient</th>
-                <th style={{ textAlign: 'right' }}>Besoin</th>
-                <th style={{ textAlign: 'right' }}>Disponible</th>
-                <th style={{ textAlign: 'right' }}>Manque</th>
+                <th className="ds-num">Besoin</th>
+                <th className="ds-num">Disponible</th>
+                <th className="ds-num">Manque</th>
                 <th style={{ width: 140 }}></th>
               </tr>
             </thead>
@@ -136,10 +136,10 @@ export function RuptureRequestsList({ variant = 'tab' }: { variant?: 'tab' | 'co
                 return (
                   <tr key={lineId} className="row-danger">
                     <td style={{ fontWeight: 500 }}>{l.ingredient_name as string}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{need.toFixed(2)} {unit}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{avail.toFixed(2)} {unit}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#dc3545' }}>{missing.toFixed(2)} {unit}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{need.toFixed(2)} {unit}</td>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{avail.toFixed(2)} {unit}</td>
+                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: 'var(--ds-danger)' }}>{missing.toFixed(2)} {unit}</td>
+                    <td className="ds-num">
                       {alreadyOrdered ? (
                         <StatusTag tone="progress" icon={ShoppingCart} label="Commandé" />
                       ) : (

@@ -1,4 +1,5 @@
-import { money } from '../../../utils/money';
+import { money, currencySymbol } from '../../../utils/money';
+import { Alert } from '../../../components/ds';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileText, AlertTriangle, X } from 'lucide-react';
@@ -40,45 +41,44 @@ export default function SalaryTransferDialog({ month, year, onClose }: { month: 
         style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '90vh', overflowY: 'auto', padding: 24, background: 'var(--kl-card)' }}>
         <div className="flex items-center justify-between">
           <h2 style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: '-.02em' }}>Virement des salaires — {MONTH_NAMES[month - 1]} {year}</h2>
-          <button onClick={onClose} className="kl-sheet-close" aria-label="Fermer"><X size={16} /></button>
+          <button type="button" onClick={onClose} className="kl-sheet-close" aria-label="Fermer"><X size={16} /></button>
         </div>
         <label className="text-sm flex items-center gap-2">
           <input type="checkbox" checked={includeUnpaid} onChange={e => setIncludeUnpaid(e.target.checked)} />
           Inclure les bulletins pas encore payés (préparer l'ordre avant de pointer les paiements par virement)
         </label>
         {!data?.employerRib && !isLoading && (
-          <div className="odoo-alert warning" style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}>
-            <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4 }} />
+          <Alert tone="warning" icon={AlertTriangle}>
             RIB de l'entreprise absent : renseignez-le dans Paramètres de paie pour éditer la lettre d'ordre de virement.
-          </div>
+          </Alert>
         )}
         {data?.employerRib && !data.employerRibValid && (
-          <div className="odoo-alert warning" style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}>
+          <Alert tone="warning" icon={AlertTriangle}>
             Clé du RIB de l'entreprise incorrecte ({data.employerRib}) : vérifiez-le avant d'envoyer l'ordre.
-          </div>
+          </Alert>
         )}
         {issues.length > 0 && (
-          <div className="odoo-alert warning" style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}>
+          <Alert tone="warning" icon={AlertTriangle}>
             <strong>Exclus de l'ordre ({issues.length})</strong> — à corriger sur la fiche employé ou à payer autrement :
-            <ul style={{ margin: '4px 0 0 16px', listStyle: 'disc' }}>{issues.map(i => <li key={i.name}>{i.name} : {i.problem}</li>)}</ul>
-          </div>
+            <ul style={{ margin: '4px 0 0 16px', listStyle: 'disc', fontWeight: 400 }}>{issues.map(i => <li key={i.name}>{i.name} : {i.problem}</li>)}</ul>
+          </Alert>
         )}
         <table className="odoo-table">
-          <thead><tr><th>Bénéficiaire</th><th>RIB</th><th>Banque</th><th style={{ textAlign: 'right' }}>Montant</th></tr></thead>
+          <thead><tr><th>Bénéficiaire</th><th>RIB</th><th>Banque</th><th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
           <tbody>
             {lines.map(l => (
-              <tr key={l.payrollId}><td>{l.name}</td><td style={{ fontFamily: 'monospace' }}>{ribBlocks(l.rib)}</td><td>{l.bankName ?? '—'}</td><td style={{ textAlign: 'right' }}>{fmt(l.amount)}</td></tr>
+              <tr key={l.payrollId}><td className="ds-strong">{l.name}</td><td className="ds-ref">{ribBlocks(l.rib)}</td><td>{l.bankName ?? '—'}</td><td className="ds-num">{fmt(l.amount)}</td></tr>
             ))}
-            {!lines.length && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
+            {!lines.length && <tr><td colSpan={4} style={{ color: 'var(--ds-muted)' }}>
               {isLoading ? 'Chargement…' : 'Aucun salaire à virer : bulletins payés en espèces, ou RIB manquants.'}</td></tr>}
           </tbody>
-          {lines.length > 0 && <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={3}>{lines.length} virement(s)</td><td style={{ textAlign: 'right' }}>{money(data!.total)}</td></tr></tfoot>}
+          {lines.length > 0 && <tfoot><tr><td colSpan={3}>{lines.length} virement(s)</td><td className="ds-num">{money(data!.total)}</td></tr></tfoot>}
         </table>
         <div className="flex justify-end gap-2">
-          <button className="odoo-btn-secondary" disabled={!lines.length} onClick={() => download('csv')}
+          <button type="button" className="odoo-btn-secondary" disabled={!lines.length} onClick={() => download('csv')}
             title="Fichier à importer sur le portail de la banque (bénéficiaire ; RIB ; banque ; montant ; motif)"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Download size={13} /> Fichier banque (CSV)</button>
-          <button className="odoo-btn-primary" disabled={!lines.length || !data?.employerRib} onClick={() => download('pdf')}
+          <button type="button" className="odoo-btn-primary" disabled={!lines.length || !data?.employerRib} onClick={() => download('pdf')}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileText size={13} /> Ordre de virement (PDF)</button>
         </div>
       </div>

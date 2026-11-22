@@ -9,6 +9,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
+import { FormField } from '../../components/ds';
 /**
  * Création d'une fiche : on ne demande que l'identité (type, nom, catégorie),
  * puis on ouvre la page complète — la MÊME qu'en modification. Composition,
@@ -92,7 +93,6 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
 
   const pending = createMut.isPending || editMut.isPending;
   const canSubmit = name.trim().length > 0 && !pending;
-  const field = 'h-9 w-full px-3 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400';
   const typeBtn = (active: boolean) =>
     `flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm ${active ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
 
@@ -100,7 +100,8 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <form className="odoo-scope" onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => { e.preventDefault(); if (canSubmit) (isEdit ? editMut : createMut).mutate(); }}
-        style={{ width: '100%', maxWidth: 480, minHeight: 0, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        role="dialog" aria-modal="true" aria-label={isEdit ? 'Modifier la fiche' : 'Nouvelle fiche'}
+        style={{ width: '100%', maxWidth: 480, minHeight: 0, borderRadius: 16, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
             {isBase ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
@@ -109,12 +110,12 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
             <span className="odoo-breadcrumb-current">{isEdit ? recipe!.name : batchMode ? (isBase ? 'Nouvelle préparation' : 'Nouvelle recette') : (isBase ? `Nouveau : ${tBase.toLowerCase()}` : `Nouvelle ${sectorLabel('recipe', 'recette').toLowerCase()}`)}</span>
           </div>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="ds-icon-btn" title="Fermer" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
         </div>
 
         <div className="p-5 space-y-4 bg-white">
           {!isEdit && <div>
-            <div className="text-xs text-gray-500 mb-1" id="recipe-type-label">Type</div>
+            <div className="ds-field-label" style={{ marginBottom: 6 }} id="recipe-type-label">Type</div>
             <div className="flex rounded-md border border-gray-200 overflow-hidden" role="group" aria-labelledby="recipe-type-label">
               <button type="button" aria-pressed={!isBase} onClick={() => setIsBase(false)} className={typeBtn(!isBase)}>
                 <ChefHat size={15} /> {tFinished}
@@ -123,43 +124,39 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
                 <Layers size={15} /> {tBase}
               </button>
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">
+            <p className="ds-field-hint" style={{ marginTop: 4 }}>
               {batchMode
                 ? (isBase ? 'Réutilisable dans d\'autres recettes (pâte, crème, glaçage…).' : 'Produit vendu, composé d\'ingrédients et de préparations de base.')
                 : (isBase ? `${tBase} réutilisable dans d'autres nomenclatures.` : `${tFinished} composé de composants et de ${tBase.toLowerCase()}s.`)}
             </p>
           </div>}
 
-          <label className="block" htmlFor="recipe-name">
-            <span className="text-xs text-gray-500">Nom</span>
-            <input id="recipe-name" autoFocus className={`${field} mt-1`} value={name} onChange={(e) => setName(e.target.value)}
-              maxLength={200} placeholder={batchMode ? (isBase ? 'ex : Crème pâtissière' : 'ex : Croissant') : (isBase ? 'ex : Sous-ensemble châssis' : 'ex : Article fini')} />
-          </label>
+          <FormField label="Nom" htmlFor="recipe-name" required>
+            <input id="recipe-name" autoFocus className="ds-input" value={name} onChange={(e) => setName(e.target.value)} required
+              maxLength={200} placeholder={batchMode ? (isBase ? 'Ex. : crème pâtissière' : 'Ex. : croissant') : (isBase ? 'Ex. : sous-ensemble châssis' : 'Ex. : article fini')} />
+          </FormField>
 
           {isBase && (
             <label className="flex items-start gap-2 text-sm" htmlFor="recipe-phantom">
               <input id="recipe-phantom" type="checkbox" className="mt-0.5" checked={isPhantom} onChange={(e) => setIsPhantom(e.target.checked)} />
               <span>
                 <span className="font-medium">Fantôme (jamais stocké)</span>
-                <span className="block text-[11px] text-gray-400">
+                <span className="block ds-field-hint">
                   Pas d'ordre ni de stock propre : ses composants sont tirés directement dans l'ordre qui l'utilise.
                 </span>
               </span>
             </label>
           )}
 
-          <label className="block" htmlFor="recipe-category">
-            <span className="text-xs text-gray-500">Catégorie de production</span>
-            <div className="mt-1">
-              <SearchSelect value={categoryId} onChange={setCategoryId}
-                placeholder="— Aucune (à classifier) —" width="100%" size="md" ariaLabel="Catégorie de production"
-                options={categories.map((c) => ({ id: String(c.id), label: c.label as string }))} />
-            </div>
-          </label>
+          <FormField label="Catégorie de production" hint="Sans catégorie, la fiche reste à classer.">
+            <SearchSelect value={categoryId} onChange={setCategoryId}
+              placeholder="Aucune" width="100%" size="md" ariaLabel="Catégorie de production"
+              options={categories.map((c) => ({ id: String(c.id), label: c.label as string }))} />
+          </FormField>
 
           {!isBase && batchMode && (
             <div>
-              <div className="text-xs text-gray-500 mb-1" id="recipe-mode-label">Mode de saisie des quantités</div>
+              <div className="ds-field-label" style={{ marginBottom: 6 }} id="recipe-mode-label">Mode de saisie des quantités</div>
               <div className="flex rounded-md border border-gray-200 overflow-hidden" role="group" aria-labelledby="recipe-mode-label">
                 <button type="button" aria-pressed={!compoParPiece} onClick={() => setCompoParPiece(false)} className={typeBtn(!compoParPiece)}>
                   Par {tBatch.toLowerCase()} (lot)
@@ -168,7 +165,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
                   Par pièce (unité)
                 </button>
               </div>
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="ds-field-hint" style={{ marginTop: 4 }}>
                 {compoParPiece
                   ? 'Les quantités décrivent UNE pièce (entremets individuel, monoportion…). Coût/pièce = somme des composants.'
                   : 'Les quantités décrivent TOUTE la fournée (cadre/plaque découpé). Coût/pièce = total ÷ rendement.'}
@@ -180,30 +177,29 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
           {/* M8-06 : paramètres de pâte (température, hydratation) — boulangerie seulement. */}
           {isBase && batchMode && (
             <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-xs text-gray-500">Température de pâte cible (°C)</span>
-                <input type="number" step="any" className={`${field} mt-1`} value={tempPate}
-                  onChange={(e) => setTempPate(e.target.value)} placeholder="ex. 24" aria-label="Température de pâte cible en degrés Celsius" />
-              </label>
-              <label className="block">
-                <span className="text-xs text-gray-500">Hydratation (% boulanger)</span>
-                <input type="number" step="any" className={`${field} mt-1`} value={hydr}
-                  onChange={(e) => setHydr(e.target.value)} placeholder="ex. 65" aria-label="Hydratation en pourcentage boulanger" />
-              </label>
+              <FormField label="Température de pâte cible (°C)" htmlFor="recipe-temp">
+                <input id="recipe-temp" type="number" step="any" className="ds-input" value={tempPate}
+                  onChange={(e) => setTempPate(e.target.value)} placeholder="Ex. : 24" />
+              </FormField>
+              <FormField label="Hydratation (% boulanger)" htmlFor="recipe-hydr">
+                <input id="recipe-hydr" type="number" step="any" className="ds-input" value={hydr}
+                  onChange={(e) => setHydr(e.target.value)} placeholder="Ex. : 65" />
+              </FormField>
             </div>
           )}
 
           {!isEdit && (
-            <p className="text-xs text-gray-500">
+            <p className="ds-field-hint">
               La composition, les formats, les frais et les étapes se saisissent ensuite sur la page de la fiche.
             </p>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-white border-t border-gray-200">
-          <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button type="submit" disabled={!canSubmit} className="odoo-btn-primary inline-flex items-center gap-1">
-            {isEdit ? (pending ? 'Enregistrement…' : 'Enregistrer') : <>{pending ? 'Création…' : 'Créer et composer'} <ArrowRight size={15} /></>}
+        <div className="ds-form-foot" style={{ background: 'var(--ds-card)' }}>
+          <span className="ds-grow" />
+          <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={pending}>Annuler</button>
+          <button type="submit" disabled={!canSubmit} aria-busy={pending || undefined} className="odoo-btn-primary">
+            {isEdit ? (pending ? 'Enregistrement…' : 'Enregistrer') : <>{pending ? 'Création…' : 'Créer et composer'} <ArrowRight size={15} aria-hidden="true" /></>}
           </button>
         </div>
       </form>

@@ -95,7 +95,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
             onChange={e => { const md = e.target.value as ImportMode; setMode(md); if (file) runPreview(file, mapping, md); }}>
             {modes.map(m => <option key={m} value={m}>{MODE_LABELS[m].label}</option>)}
           </select>
-          <button className="odoo-btn-secondary" onClick={() => run('tpl', () => onTemplate(entity))} disabled={busy !== null} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button type="button" className="odoo-btn-secondary" onClick={() => run('tpl', () => onTemplate(entity))} disabled={busy !== null} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <FileSpreadsheet size={13} /> Modèle Excel
           </button>
           {canCreate('settings') && (
@@ -106,7 +106,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
           )}
           {busy === 'preview' && <Loader2 className="animate-spin" size={16} />}
         </div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{MODE_LABELS[mode].hint}{def?.note ? ` · ${def.note}` : ''}</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{MODE_LABELS[mode].hint}{def?.note ? ` · ${def.note}` : ''}</div>
 
         {preview && mapping && (
           <div style={{ display: 'grid', gap: 10 }}>
@@ -138,7 +138,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
               </StatusBanner>
             )}
             {mappingDirty && (
-              <div><button className="odoo-btn-primary" disabled={busy !== null} onClick={() => file && runPreview(file, mapping, mode)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <div><button type="button" className="odoo-btn-primary" disabled={busy !== null} onClick={() => file && runPreview(file, mapping, mode)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <RefreshCw size={13} /> Appliquer et recontrôler
               </button></div>
             )}
@@ -168,7 +168,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                         <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.line}</td>
                         <td><StatusTag tone={ACTION_TAG[r.action].tone} label={ACTION_TAG[r.action].label} /></td>
                         <td style={{ fontSize: '0.8125rem' }}>{Object.values(r.values).filter(v => v !== null && v !== '').slice(0, 4).map(String).join(' · ')}</td>
-                        <td style={{ fontSize: '0.8125rem', color: r.action === 'error' ? 'var(--odoo-danger, #b3261e)' : 'var(--odoo-text-muted)' }}>
+                        <td style={{ fontSize: '0.8125rem', color: r.action === 'error' ? 'var(--odoo-danger, #b3261e)' : 'var(--ds-muted)' }}>
                           {r.errors.length ? r.errors.map(e => `${e.column} : ${e.message}`).join(' ; ') : r.reason ?? ''}
                         </td>
                       </tr>
@@ -177,8 +177,8 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button className="odoo-btn-secondary" onClick={reset}>Annuler</button>
-                <button className="odoo-btn-primary" onClick={commit}
+                <button type="button" className="odoo-btn-secondary" onClick={reset}>Annuler</button>
+                <button type="button" className="odoo-btn-primary" onClick={commit}
                   disabled={busy !== null || preview.summary.error > 0 || preview.summary.create + preview.summary.update === 0}>
                   {busy === 'commit' ? 'Import…' : `Importer ${preview.summary.create + preview.summary.update} ligne(s)`}
                 </button>
@@ -190,25 +190,25 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
 
       <section className="prj-panel" style={card}>
         <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}><History size={15} /> Journal des imports</div>
-        {imports.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>Aucun import enregistré.</p> : (
+        {imports.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', margin: 0 }}>Aucun import enregistré.</p> : (
           <div style={{ overflowX: 'auto' }}>
             <table className="odoo-table">
-              <thead><tr><th>Date</th><th>Données</th><th>Fichier</th><th>Mode</th><th style={{ textAlign: 'right' }}>Créées</th><th style={{ textAlign: 'right' }}>Mises à jour</th><th>Par</th><th>Statut</th><th></th></tr></thead>
+              <thead><tr><th>Date</th><th>Données</th><th>Fichier</th><th>Mode</th><th className="ds-num">Créées</th><th className="ds-num">Mises à jour</th><th>Par</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{imports.map(i => (
                 <tr key={i.id} style={{ opacity: i.status === 'undone' ? 0.6 : 1 }}>
                   <td style={{ whiteSpace: 'nowrap' }}>{new Date(i.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
                   <td>{i.entity_label}</td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{i.file_name ?? '—'}</td>
+                  <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{i.file_name ?? '—'}</td>
                   <td style={{ fontSize: '0.8125rem' }}>{MODE_LABELS[i.mode].label}</td>
-                  <td style={{ textAlign: 'right' }}>{i.created_count}</td>
-                  <td style={{ textAlign: 'right' }}>{i.updated_count}</td>
+                  <td className="ds-num">{i.created_count}</td>
+                  <td className="ds-num">{i.updated_count}</td>
                   <td>{i.by_name ?? '—'}</td>
                   <td>{i.status === 'undone'
                     ? <StatusTag tone="cancelled" title={i.undo_report ? `${i.undo_report.deleted} supprimée(s), ${i.undo_report.deactivated} désactivée(s), ${i.undo_report.restored} remise(s) en l'état` : undefined} label={`Annulé${i.undone_by_name ? ` par ${i.undone_by_name}` : ''}`} />
                     : <StatusTag tone="done" label="Importé" />}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td className="ds-num">
                     {i.can_undo && canEdit('settings') && (
-                      <button className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={busy !== null}
+                      <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={busy !== null}
                         onClick={() => undo(i.id, `${i.entity_label} · ${i.file_name ?? ''}`)}><Undo2 size={12} /> Annuler</button>
                     )}
                   </td>

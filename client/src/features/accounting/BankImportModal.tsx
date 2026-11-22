@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Landmark, X, Upload, Loader2, AlertTriangle, CheckCircle2, Save, Columns3 } from 'lucide-react';
+import { Landmark, X, Upload, AlertTriangle, CheckCircle2, Save, Columns3 } from 'lucide-react';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
@@ -9,6 +9,8 @@ import { paymentsApi } from '../../api/accounting.api';
 import { bankImportApi } from '../../api/bank-reconciliation.api';
 import type { BankCsvProfile, BankDateFormat, BankFormat, BankImportProfile } from '../../api/bank-reconciliation.api';
 import { money } from '../../utils/money';
+import { LoadingState } from '../../components/ds';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
  * Import d'un relevé bancaire (mig 426) : fichier de la banque (CSV, Excel,
@@ -213,7 +215,7 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
           </div>
 
           {previewQ.isFetching && !pv && (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '1.5rem' }}><Loader2 size={18} className="animate-spin" /></div>
+            <LoadingState />
           )}
           {previewQ.isError && (
             <StatusBanner tone="danger" icon={AlertTriangle} title="Fichier illisible">{apiErrorMessage(previewQ.error, 'Lecture impossible')}</StatusBanner>
@@ -221,7 +223,7 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
 
           {/* 2. Colonnes d'un CSV / Excel */}
           {pv && tabular && (
-            <div className="odoo-section" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="odoo-section ds-panel" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <Columns3 size={14} />
                 <strong style={{ fontSize: '0.8125rem' }}>Colonnes du fichier</strong>
@@ -253,7 +255,7 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
                     )}
                   </div>
                   <div style={{ overflowX: 'auto' }}>
-                    <table className="odoo-table" style={{ margin: 0, fontSize: '0.75rem' }}>
+                    <table className="odoo-table ds-dense" style={{ margin: 0, fontSize: '0.75rem' }}>
                       <thead>
                         <tr>
                           {Array.from({ length: Math.max(...pv.rawRows.map(r => r.length)) }, (_, i) => (
@@ -276,8 +278,7 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <input value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Nom du profil (ex. BMCE — export CSV)" style={{ ...inputStyle, maxWidth: 300 }} />
-                    <button type="button" className="odoo-btn-secondary" disabled={!profileName.trim() || saveProfile.isPending} onClick={() => saveProfile.mutate()}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Save size={13} /> Enregistrer le profil</button>
+                    <button type="button" className="odoo-btn-secondary" disabled={!profileName.trim() || saveProfile.isPending} onClick={() => saveProfile.mutate()}><Save size={13} /> Enregistrer le profil</button>
                   </div>
                 </>
               )}
@@ -300,22 +301,22 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
 
               <div style={{ fontSize: '0.8125rem', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
                 <span><strong>{pv.stats.count}</strong> opération(s) lue(s){pv.accountNumber ? ` · compte ${pv.accountNumber}` : ''}</span>
-                {pv.stats.duplicates > 0 && <span style={{ color: '#856404' }}>{pv.stats.duplicates} déjà importée(s), écartée(s)</span>}
-                <span style={{ color: '#0e7c3a' }}>+ {n(pv.stats.in)}</span>
-                <span style={{ color: '#c62828' }}>− {n(pv.stats.out)}</span>
+                {pv.stats.duplicates > 0 && <span style={{ color: 'var(--ds-warning)' }}>{pv.stats.duplicates} déjà importée(s), écartée(s)</span>}
+                <span style={{ color: 'var(--ds-success)' }}>+ {n(pv.stats.in)}</span>
+                <span style={{ color: 'var(--ds-danger)' }}>− {n(pv.stats.out)}</span>
               </div>
               {pv.lines.length > 0 && (
-                <div className="odoo-section" style={{ padding: 0, maxHeight: 280, overflowY: 'auto' }}>
-                  <table className="odoo-table" style={{ margin: 0 }}>
-                    <thead><tr><th style={{ width: 86 }}>Date</th><th>Libellé</th><th style={{ width: 120 }}>Référence</th><th style={{ width: 110, textAlign: 'right' }}>Montant</th><th style={{ width: 110 }} /></tr></thead>
+                <div className="odoo-section ds-panel" style={{ padding: 0, maxHeight: 280, overflowY: 'auto' }}>
+                  <table className="odoo-table ds-dense" style={{ margin: 0 }}>
+                    <thead><tr><th style={{ width: 86 }}>Date</th><th>Libellé</th><th style={{ width: 120 }}>Référence</th><th className="ds-num" style={{ width: 110 }}>Montant</th><th style={{ width: 110 }} /></tr></thead>
                     <tbody>
                       {pv.lines.map((l, i) => (
                         <tr key={i} style={{ opacity: l.duplicate ? 0.5 : 1 }}>
                           <td style={{ fontSize: '0.75rem' }}>{fmtDate(l.operationDate)}</td>
                           <td style={{ fontSize: '0.8125rem' }}>{l.label || '—'}</td>
-                          <td style={{ fontSize: '0.75rem', fontFamily: 'ui-monospace, monospace' }}>{l.reference ?? ''}</td>
-                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: l.direction === 'in' ? '#0e7c3a' : '#c62828' }}>{l.direction === 'in' ? '+' : '−'}{n(l.amount)}</td>
-                          <td>{l.duplicate && <span className="odoo-tag odoo-tag-grey">Déjà importée</span>}</td>
+                          <td className="ds-ref">{l.reference ?? ''}</td>
+                          <td className="ds-num" style={{ color: l.direction === 'in' ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{l.direction === 'in' ? '+' : '−'}{n(l.amount)}</td>
+                          <td>{l.duplicate && <StatusTag tone="draft" label="Déjà importée" />}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -328,8 +329,7 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
 
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button type="button" onClick={() => doImport.mutate()} disabled={!pv || fresh === 0 || doImport.isPending} className="odoo-btn-primary"
-            style={{ opacity: !pv || fresh === 0 || doImport.isPending ? 0.5 : 1 }}>
+          <button type="button" onClick={() => doImport.mutate()} disabled={!pv || fresh === 0 || doImport.isPending} className="odoo-btn-primary">
             {doImport.isPending ? 'Import…' : fresh ? `Importer ${fresh} opération(s)` : 'Rien de nouveau à importer'}
           </button>
         </div>
