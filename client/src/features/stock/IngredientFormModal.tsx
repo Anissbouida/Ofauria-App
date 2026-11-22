@@ -70,6 +70,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
     containerSize: ing.container_size != null ? String(ing.container_size) : '',
     densiteKgL: ing.densite_kg_l != null ? String(ing.densite_kg_l) : '',
     poidsPieceKg: ing.poids_piece_kg != null ? String(ing.poids_piece_kg) : '',
+    nonStocke: ing.non_stocke === true,
     allergens: (Array.isArray(ing.allergens) ? ing.allergens : []) as string[],
   });
   const [submitted, setSubmitted] = useState(false);
@@ -138,6 +139,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
       containerSize: !consumable && form.containerTypeId && size > 0 ? size : null,
       densiteKgL: form.densiteKgL !== '' ? (parseFloat(form.densiteKgL) || null) : null,
       poidsPieceKg: form.poidsPieceKg !== '' ? (parseFloat(form.poidsPieceKg) || null) : null,
+      nonStocke: !consumable && form.nonStocke,
       allergens: form.allergens,
     };
     if (mode === 'edit') payload.threshold = parseFloat(form.threshold) || 0;
@@ -230,6 +232,15 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                   hint="Permet de répartir les frais d'approche au poids pour un article compté à la pièce. Ex : 0,25 pour une pièce de 250 g.">
                   <input type="number" step="0.0001" min="0" className="input" value={form.poidsPieceKg}
                     onChange={e => set('poidsPieceKg', e.target.value)} placeholder="ex 0.25" style={{ maxWidth: 180 }} />
+                </Field>
+              )}
+              {!consumable && (
+                <Field label="Matière non stockée"
+                  hint="Eau du réseau, par exemple : pas de stock, pas de bon de sortie ni de commande. Elle reste dans les fiches techniques.">
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={form.nonStocke} onChange={e => set('nonStocke', e.target.checked)} />
+                    Ne pas gérer de stock pour cette matière
+                  </label>
                 </Field>
               )}
               {mode === 'edit' && ing.id && <ItemConversionsPanel kind="ingredient" itemId={ing.id as string} />}

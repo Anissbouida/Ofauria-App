@@ -74,6 +74,8 @@ const ingredientFields = {
   unit: z.string().max(20).optional(), supplier: optText(200), category: z.string().max(60).nullish(),
   categoryId: rawUuid, containerTypeId: rawUuid,
   containerSize: rawNum(0, 1e7), densiteKgL: rawNum(0, 1e6), poidsPieceKg: rawNum(0, 1e6),
+  // Matière non stockée (eau du réseau) : exclue des besoins, des bons de sortie et des achats (mig 347, constat 134).
+  nonStocke: z.boolean().optional(),
 };
 export const createIngredientSchema = z.object({
   name: nonBlankName(200),
