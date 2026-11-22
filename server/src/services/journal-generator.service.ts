@@ -1721,57 +1721,11 @@ export async function regenerateSaleEntry(
   }
 }
 
-/* ═══ Generateur — perte produit (section 3.3) ═══ */
-
-export interface ProductLossRow {
-  id: string;
-  product_id: string;
-  quantity: string | number;
-  loss_type: string;   // 'production' | 'vitrine' | 'perime' | 'recyclage'
-  reason: string;
-  unit_cost: string | number;
-  total_cost: string | number;
-  created_at: string;
-  store_id: string | null;
-  ingredients_consumed?: boolean;
-}
-
-/**
- * Section 3.3 — Comptabilise une perte produit fini.
- *   6114 Variations stock produits finis (D) — charge de gestion
- *   7132 Variations stock produits finis (C) — mais on utilise plutot
- *          3421 Stock produits finis (C) pour materialiser la sortie
- *          de stock, coherent avec le CGNC.
- *
- * loss_type = 'production' : les ingredients ont deja ete consommes cote
- *   plan de production, aucune sortie supplementaire de stock produit fini
- *   -> on ne genere PAS d'ecriture ici (evite double comptage).
- * Autres types (vitrine/perime/recyclage) : la vitrine a ete decrementee ->
- *   on trace la sortie en compta.
- */
-export async function fromProductLoss(
-  _client: PoolClient | typeof db,
-  loss: ProductLossRow
-): Promise<GeneratedEntry | null> {
-  if (loss.loss_type === 'production') return null;
-  const totalCost = round2(parseFloat(String(loss.total_cost)) || 0);
-  if (totalCost <= 0) return null;
-
-  const date = toIsoDate(loss.created_at);
-
-  return {
-    journal_code: 'OD',
-    entry_date: date,
-    description: `Perte ${loss.loss_type} (${loss.reason}) x${loss.quantity}`,
-    source_kind: 'product_loss',
-    source_id: loss.id,
-    store_id: loss.store_id,
-    lines: [
-      { account_code: '6114', debit: totalCost, credit: 0, label: `Perte ${loss.loss_type}` },
-      { account_code: '3421', debit: 0, credit: totalCost, label: 'Sortie stock produit fini' },
-    ],
-  };
-}
+/* ═══ Perte produit (section 3.3) — pas d'écriture (constat 143, scénario 2) ═══
+ * Les achats de matières sont en charge à la réception (inventaire intermittent) : une perte
+ * de produit fini est déjà comprise dans les achats et la variation de stock d'inventaire
+ * (mig 627). L'ancien générateur fromProductLoss, jamais appelé, visait un compte 6114 absent
+ * du plan et créditait le compte clients 3421 : supprimé pour ne pas être rebranché tel quel. */
 
 /* ═══ Generateur — ecart de caisse (section 4.3) ═══ */
 
