@@ -66,14 +66,14 @@ livré a sa facture ; prix d'achat dans la grille ; bulletins tous payés.
 | 142 | Pesée d'une ligne sur plusieurs lots en FEFO, consommation et traçabilité par lot | b9751c40 (mig 626) |
 | 133 | Variation de stock comptabilisée à l'inventaire complet ; reprise des 5 inventaires mensuels | mig 627 |
 | 134 | Matière « non stockée » réglable depuis la fiche ; l'eau est déclarée non stockée | 93eccc3b |
+| 143 | Générateur d'écriture des pertes (comptes faux, jamais appelé) retiré | voir journal git |
 
 ## Reste à corriger avant une vraie exploitation
 
-1. **143 — écriture des pertes de produits finis** : compte 6114 absent du plan, crédit sur le compte clients.
-2. **138 — BC > 5 000 DH approuvés par l'administrateur seul** : décision du 25/10 à confirmer.
-3. **124 (scénario 1) — pas de TVA d'achat** : écart de TVA non bloquant sur les factures fournisseurs.
-4. **135, 136** : RIB de la société (administrateur) ; fiches Pain rond et Chebakia manquantes.
-5. Suites de 141 : « Re-vérifier dispo » et l'ouverture depuis l'économat ne tiennent pas encore compte des autres bons ; l'écran du bon n'affiche pas encore le détail des lots pesés.
+1. **138 — BC > 5 000 DH approuvés par l'administrateur seul** : décision du 25/10 à confirmer.
+2. **124 (scénario 1) — pas de TVA d'achat** : écart de TVA non bloquant sur les factures fournisseurs.
+3. **135, 136** : RIB de la société (administrateur) ; fiches Pain rond et Chebakia manquantes.
+4. Suites de 141 : « Re-vérifier dispo » et l'ouverture depuis l'économat ne tiennent pas encore compte des autres bons ; l'écran du bon n'affiche pas encore le détail des lots pesés.
 
 ## Limites de la simulation
 
