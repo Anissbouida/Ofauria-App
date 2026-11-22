@@ -17,6 +17,64 @@ const lotExpiredSql = (alias: string) =>
   `(${alias}.status = 'expired' OR (${alias}.expiration_date IS NOT NULL AND ${alias}.expiration_date < CURRENT_DATE))`;
 const lotUsableSql = (alias: string) => `(${alias}.status = 'active' AND NOT ${lotExpiredSql(alias)})`;
 
+// Bons encore ouverts : leurs lignes ne sont pas encore sorties du stock (la sortie se
+// fait a la remise du bon, consumeBonLines).
+const OPEN_BON_STATUSES = `('genere', 'preparation', 'preparation_partielle', 'pret')`;
+
+/** Quantites deja promises sur le lot `alias` par les lignes des bons OUVERTS (tous bons
+ *  confondus), hors la ligne `excludeLine` (expression SQL uuid, NULL::uuid = aucune) :
+ *   - hard_qty          : lignes deja pesees (sorti du contenant, pas encore decremente) ;
+ *   - soft_pesage_qty   : lignes allouees au pesage, pas encore pesees ;
+ *   - soft_economat_qty : lignes a ouvrir depuis l'economat sur ce lot suggere.
+ *  Une ligne pesee sur plusieurs lots compte lot par lot (mig 626). A utiliser apres
+ *  `FROM ingredient_lots <alias>`. */
+const lotClaimsLateral = (alias: string, excludeLine: string) => `
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(SUM(c.qty) FILTER (WHERE c.kind = 'hard'), 0)::numeric AS hard_qty,
+           COALESCE(SUM(c.qty) FILTER (WHERE c.kind = 'soft_pesage'), 0)::numeric AS soft_pesage_qty,
+           COALESCE(SUM(c.qty) FILTER (WHERE c.kind = 'soft_economat'), 0)::numeric AS soft_economat_qty
+      FROM (
+        SELECT 'hard'::text AS kind, ll.quantity AS qty, cl.id AS ligne_id
+          FROM production_bons_sortie_ligne_lots ll
+          JOIN production_bons_sortie_lignes cl ON cl.id = ll.ligne_id
+          JOIN production_bons_sortie cb ON cb.id = cl.bon_id
+         WHERE ll.ingredient_lot_id = ${alias}.id
+           AND cl.status IN ('preleve', 'substitue', 'ecart')
+           AND cb.status IN ${OPEN_BON_STATUSES}
+        UNION ALL
+        SELECT CASE WHEN cl.actual_quantity IS NOT NULL THEN 'hard' ELSE 'soft_pesage' END,
+               COALESCE(cl.actual_quantity, cl.allocated_quantity), cl.id
+          FROM production_bons_sortie_lignes cl
+          JOIN production_bons_sortie cb ON cb.id = cl.bon_id
+         WHERE cl.ingredient_lot_id = ${alias}.id
+           AND cl.source_location = 'PESAGE'
+           AND cl.status IN ('en_attente', 'preleve', 'substitue', 'ecart')
+           AND cb.status IN ${OPEN_BON_STATUSES}
+           AND NOT EXISTS (SELECT 1 FROM production_bons_sortie_ligne_lots x WHERE x.ligne_id = cl.id)
+        UNION ALL
+        SELECT 'soft_economat', cl.transfer_required_qty, cl.id
+          FROM production_bons_sortie_lignes cl
+          JOIN production_bons_sortie cb ON cb.id = cl.bon_id
+         WHERE cl.suggested_economat_lot_id = ${alias}.id
+           AND cl.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
+           AND cl.status = 'en_attente'
+           AND cb.status IN ${OPEN_BON_STATUSES}
+      ) c
+     WHERE c.ligne_id IS DISTINCT FROM ${excludeLine}
+  ) claims ON TRUE`;
+
+/** Disponible d'un lot (zones pesage / economat) une fois deduites les promesses des
+ *  autres lignes. `strict` : toutes les promesses ; sinon seulement les pesees deja
+ *  faites (le stock promis a un bon non encore pese reste physiquement la). Une promesse
+ *  pesage qui depasse le pesage du lot deborde sur son economat. */
+function lotFree(row: Record<string, any>, strict: boolean): { pesage: number; economat: number } {
+  const pesage = parseFloat(row.pesage_quantity || '0');
+  const economat = parseFloat(row.economat_quantity || '0');
+  const onPesage = parseFloat(row.hard_qty || '0') + (strict ? parseFloat(row.soft_pesage_qty || '0') : 0);
+  const onEconomat = (strict ? parseFloat(row.soft_economat_qty || '0') : 0) + Math.max(0, onPesage - pesage);
+  return { pesage: Math.max(0, pesage - onPesage), economat: Math.max(0, economat - onEconomat) };
+}
+
 /** Ouvre un contenant : deplace `qty` du lot de la zone Economat vers la zone
  *  Pesage, dans la transaction de l'appelant, avec la trace zone_transfers.
  *  Le lot est verrouille ici. Refuse un lot d'un autre ingredient / magasin,
@@ -120,49 +178,68 @@ async function consumeBonLines(client: PoolClient, bon: BonRow, userId: string) 
      FOR UPDATE OF bsl`,
     [bon.id]
   );
+  // Pesee multi-lots (mig 626) : detail des lots pris par ligne. Une ligne sans detail
+  // (auto-confirmee, pesee avant la mig 626) sort de son lot unique, comme avant.
+  const partsResult = await client.query(
+    `SELECT ll.ligne_id, ll.ingredient_lot_id, ll.quantity
+       FROM production_bons_sortie_ligne_lots ll
+       JOIN production_bons_sortie_lignes bsl ON bsl.id = ll.ligne_id
+      WHERE bsl.bon_id = $1
+      ORDER BY ll.created_at, ll.id`,
+    [bon.id]
+  );
+  const partsByLine = new Map<string, { lotId: string; qty: number }[]>();
+  for (const p of partsResult.rows) {
+    const list = partsByLine.get(p.ligne_id) || [];
+    list.push({ lotId: p.ingredient_lot_id, qty: parseFloat(p.quantity) });
+    partsByLine.set(p.ligne_id, list);
+  }
+
   for (const line of linesResult.rows) {
-    const lotId = line.substitute_lot_id || line.ingredient_lot_id;
-    if (!lotId) continue;
-    const qty = parseFloat(line.actual_quantity ?? line.allocated_quantity ?? '0');
-    if (qty <= 0) continue;
-    // Decremente pesage_quantity ; 'depleted' si tout est consomme. Le trigger
-    // sync_quantity_remaining maintient quantity_remaining, trg_inventory_sync_lots
-    // resynchronise inventory.current_quantity.
-    // Si la pesee depasse ce que la zone pesage detenait (le magasinier a pris le
-    // complement dans le sac encore range en economat), le surplus est preleve sur
-    // l'economat du meme lot : avant, le lot etait borne a 0 alors que le mouvement
-    // enregistrait la quantite complete, et l'inventaire derivait a chaque fois.
-    // G0-18 : pesée supérieure à ce que le lot détient (réserve + pesage), refusée ou tracée.
-    const lotBefore = await client.query(
-      `SELECT (COALESCE(economat_quantity, 0) + COALESCE(pesage_quantity, 0))::float8 AS available
-         FROM ingredient_lots WHERE id = $1 FOR UPDATE`, [lotId]);
-    await applyStockOut(client, { kind: 'ingredient', itemId: line.ingredient_id, lotId, storeId: bon.store_id,
-      requested: qty, available: lotBefore.rows[0]?.available ?? 0, origin: { type: 'bon_sortie', id: bon.id }, userId,
-      label: `${line.ingredient_name} — BSI ${bon.numero}` });
-    await client.query(
-      `UPDATE ingredient_lots
-          SET economat_quantity = GREATEST(economat_quantity - GREATEST($1 - pesage_quantity, 0), 0),
-              pesage_quantity   = GREATEST(pesage_quantity - $1, 0),
-              status = CASE WHEN economat_quantity + pesage_quantity - $1 <= 0.0005 THEN 'depleted' ELSE status END
-        WHERE id = $2`,
-      [qty, lotId]
-    );
-    await client.query(
-      `INSERT INTO inventory_transactions
-         (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id, production_plan_id)
-       VALUES ($1, 'production', $2, $3, $4, $5, $6, $7)`,
-      [line.ingredient_id, -qty,
-       `BSI ${bon.numero} — Reception acceptee : ${qty.toFixed(3)} ${line.unit || ''} ${line.ingredient_name}`,
-       userId, bon.store_id, lotId, bon.plan_id]
-    );
-    // Tracabilite lot -> production (mig 300) : c'est ce que lisent la
-    // tracabilite avant/arriere et le cout reel FIFO. N'etait jamais ecrit sur
-    // le chemin BSI avant.
-    await client.query(
-      `INSERT INTO production_lot_usage (production_plan_id, ingredient_lot_id, ingredient_id, quantity_used, bon_ligne_id, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [bon.plan_id, lotId, line.ingredient_id, qty, line.id, userId]
-    );
+    const singleLotId = line.substitute_lot_id || line.ingredient_lot_id;
+    const draws = (!line.substitute_lot_id && partsByLine.get(line.id))
+      || (singleLotId ? [{ lotId: singleLotId as string, qty: parseFloat(line.actual_quantity ?? line.allocated_quantity ?? '0') }] : []);
+    for (const { lotId, qty } of draws) {
+      if (qty <= 0) continue;
+      // Decremente pesage_quantity ; 'depleted' si tout est consomme. Le trigger
+      // sync_quantity_remaining maintient quantity_remaining, trg_inventory_sync_lots
+      // resynchronise inventory.current_quantity.
+      // Si la pesee depasse ce que la zone pesage detenait (le magasinier a pris le
+      // complement dans le sac encore range en economat), le surplus est preleve sur
+      // l'economat du meme lot : avant, le lot etait borne a 0 alors que le mouvement
+      // enregistrait la quantite complete, et l'inventaire derivait a chaque fois.
+      // G0-18 : pesée supérieure à ce que le lot détient (réserve + pesage), refusée ou tracée.
+      const lotBefore = await client.query(
+        `SELECT (COALESCE(economat_quantity, 0) + COALESCE(pesage_quantity, 0))::float8 AS available
+           FROM ingredient_lots WHERE id = $1 FOR UPDATE`, [lotId]);
+      await applyStockOut(client, { kind: 'ingredient', itemId: line.ingredient_id, lotId, storeId: bon.store_id,
+        requested: qty, available: lotBefore.rows[0]?.available ?? 0, origin: { type: 'bon_sortie', id: bon.id }, userId,
+        label: `${line.ingredient_name} — BSI ${bon.numero}` });
+      await client.query(
+        `UPDATE ingredient_lots
+            SET economat_quantity = GREATEST(economat_quantity - GREATEST($1 - pesage_quantity, 0), 0),
+                pesage_quantity   = GREATEST(pesage_quantity - $1, 0),
+                status = CASE WHEN economat_quantity + pesage_quantity - $1 <= 0.0005 THEN 'depleted' ELSE status END
+          WHERE id = $2`,
+        [qty, lotId]
+      );
+      await client.query(
+        `INSERT INTO inventory_transactions
+           (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id, production_plan_id)
+         VALUES ($1, 'production', $2, $3, $4, $5, $6, $7)`,
+        [line.ingredient_id, -qty,
+         `BSI ${bon.numero} — Reception acceptee : ${qty.toFixed(3)} ${line.unit || ''} ${line.ingredient_name}`,
+         userId, bon.store_id, lotId, bon.plan_id]
+      );
+      // Tracabilite lot -> production (mig 300) : c'est ce que lisent la
+      // tracabilite avant/arriere et le cout reel FIFO. N'etait jamais ecrit sur
+      // le chemin BSI avant.
+      await client.query(
+        `INSERT INTO production_lot_usage (production_plan_id, ingredient_lot_id, ingredient_id, quantity_used, bon_ligne_id, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [bon.plan_id, lotId, line.ingredient_id, qty, line.id, userId]
+      );
+    }
   }
 
   // Lignes emballages : consommees ici, au meme moment que les ingredients.
@@ -1322,18 +1399,16 @@ export const bonSortieRepository = {
     let lotId: string | null = options.lotId || null;
     if (!lotId && isOpening) {
       // Stock deja mis au pesage a l'avance (TransferToPesage) : on le prend en
-      // priorite (FEFO), sinon on ouvrira le lot suggere.
+      // priorite (FEFO), sinon on ouvrira le lot suggere. Pesage libre = hors ce que
+      // les lignes des bons ouverts (celui-ci compris) ont deja promis ou pese.
       const staged = await client.query(
         `SELECT il.id FROM ingredient_lots il
+         ${lotClaimsLateral('il', '$3::uuid')}
           WHERE il.ingredient_id = $1 AND il.store_id = $2 AND ${lotUsableSql('il')}
-            AND il.pesage_quantity - COALESCE((
-              SELECT SUM(bsl2.allocated_quantity) FROM production_bons_sortie_lignes bsl2
-               WHERE bsl2.bon_id = $3 AND bsl2.id <> $4 AND bsl2.ingredient_lot_id = il.id
-                 AND bsl2.source_location = 'PESAGE' AND bsl2.status IN ('en_attente', 'preleve', 'substitue', 'ecart')
-            ), 0) >= $5
+            AND il.pesage_quantity - claims.hard_qty - claims.soft_pesage_qty >= $4
           ORDER BY il.expiration_date ASC NULLS LAST, il.first_opened_at ASC NULLS FIRST, il.received_at ASC
           LIMIT 1`,
-        [line.ingredient_id, line.store_id, line.bon_id, line.id, actualQuantity]
+        [line.ingredient_id, line.store_id, line.id, actualQuantity]
       );
       lotId = (staged.rows[0]?.id as string | undefined) || line.suggested_economat_lot_id || null;
     }
@@ -1343,111 +1418,161 @@ export const bonSortieRepository = {
     if (!lotId) lotId = line.ingredient_lot_id;
 
     let openedQty = 0;
-    let lotChanged = false;
-    let newLotNumber: string | null = null;
     const noteParts: string[] = [];
-
-    if (lotId !== line.ingredient_lot_id || isOpening) {
-      // Lot choisi, suggere ou a ouvrir : on le verrouille et on verifie qu'il
-      // peut servir cette pesee (zone pesage libre, sinon ouverture depuis l'economat).
-      const lotRes = await client.query(
-        `SELECT il.id, il.ingredient_id, il.store_id, il.status, il.lot_number,
-                il.pesage_quantity, il.economat_quantity, il.expiration_date,
-                ${lotExpiredSql('il')} AS is_expired,
-                GREATEST(0, il.pesage_quantity - COALESCE((
-                  SELECT SUM(bsl2.allocated_quantity)
-                    FROM production_bons_sortie_lignes bsl2
-                   WHERE bsl2.bon_id = $2 AND bsl2.id <> $3
-                     AND bsl2.ingredient_lot_id = il.id
-                     AND bsl2.source_location = 'PESAGE'
-                     AND bsl2.status IN ('en_attente', 'preleve', 'substitue', 'ecart')
-                ), 0)) AS pesage_free
-           FROM ingredient_lots il
-          WHERE il.id = $1
-          FOR UPDATE`,
-        [lotId, line.bon_id, line.id]
-      );
-      let lot = lotRes.rows[0];
-      // Lot suggere disparu ou insuffisant (reappro dans un lot neuf) : FEFO sur un
-      // lot non perime qui couvre la pesee, pesage libre d'abord puis economat.
-      const lotCovers = (l: Record<string, any> | undefined) => !!l && l.status === 'active' && !l.is_expired
-        && l.ingredient_id === line.ingredient_id && l.store_id === line.store_id
-        && parseFloat(l.pesage_free) + parseFloat(l.economat_quantity) + 1e-9 >= actualQuantity;
-      if (!options.lotId && !lotCovers(lot)) {
-        const fallback = await client.query(
-          `SELECT il.id FROM ingredient_lots il
-            WHERE il.ingredient_id = $1 AND il.store_id = $2 AND ${lotUsableSql('il')}
-              AND il.pesage_quantity + il.economat_quantity >= $3
-            ORDER BY (il.pesage_quantity >= $3) DESC, il.expiration_date ASC NULLS LAST, il.received_at ASC
-            LIMIT 1`,
-          [line.ingredient_id, line.store_id, actualQuantity]
-        );
-        if (fallback.rows[0] && fallback.rows[0].id !== lotId) {
-          lotId = fallback.rows[0].id as string;
-          const again = await client.query(
-            `SELECT il.id, il.ingredient_id, il.store_id, il.status, il.lot_number,
-                    il.pesage_quantity, il.economat_quantity, il.expiration_date,
-                    ${lotExpiredSql('il')} AS is_expired,
-                    GREATEST(0, il.pesage_quantity - COALESCE((
-                      SELECT SUM(bsl2.allocated_quantity)
-                        FROM production_bons_sortie_lignes bsl2
-                       WHERE bsl2.bon_id = $2 AND bsl2.id <> $3
-                         AND bsl2.ingredient_lot_id = il.id
-                         AND bsl2.source_location = 'PESAGE'
-                         AND bsl2.status IN ('en_attente', 'preleve', 'substitue', 'ecart')
-                    ), 0)) AS pesage_free
-               FROM ingredient_lots il WHERE il.id = $1 FOR UPDATE`,
-            [lotId, line.bon_id, line.id]
-          );
-          lot = again.rows[0];
-        }
-      }
-      if (!lot) throw new Error('Lot introuvable');
-      if (lot.ingredient_id !== line.ingredient_id) throw new Error('Le lot ne correspond pas a l\'ingredient de la ligne');
-      if (lot.store_id !== line.store_id) throw new Error('Le lot n\'appartient pas au magasin du bon');
-      if (lot.status !== 'active') throw new Error(`Lot ${lot.lot_number} non actif (${lot.status})`);
-      if (lot.is_expired) throw new Error(`Lot ${lot.lot_number} perime (DLC ${lot.expiration_date}) : prelevement interdit, choisissez un autre lot.`);
-
-      const pesageFree = parseFloat(lot.pesage_free || '0');
-      const shortfall = actualQuantity - pesageFree;
-      if (shortfall > 1e-9) {
-        // Il faut ouvrir : des contenants entiers quand l'ingredient en a, sinon le manque.
-        const containerSize = line.container_size != null ? parseFloat(line.container_size) : 0;
-        let qty: number;
-        if (options.transferQty != null && Number.isFinite(Number(options.transferQty))) {
-          qty = Number(options.transferQty);
-        } else if (options.containerCount && containerSize > 0) {
-          qty = Number(options.containerCount) * containerSize;
-        } else if (containerSize > 0) {
-          qty = Math.ceil(shortfall / containerSize - 1e-9) * containerSize;
-        } else {
-          qty = shortfall;
-        }
-        const economat = parseFloat(lot.economat_quantity || '0');
-        // Le dernier contenant d'un lot peut etre entame : on ne depasse jamais l'economat.
-        qty = Math.min(qty, economat);
-        if (qty + 1e-9 < shortfall) {
-          throw new Error(`${line.ingredient_name} : le lot ${lot.lot_number} ne couvre pas la pesee (${pesageFree.toFixed(3)} ${unit} au pesage + ${economat.toFixed(3)} ${unit} en economat pour ${actualQuantity.toFixed(3)} ${unit}).`);
-        }
-        const move = {
-          lotId: lot.id, ingredientId: line.ingredient_id, storeId: line.store_id, qty, userId: userId as string,
-          bonId: line.bon_id, ligneId: line.id, planId: line.plan_id,
-          reason: `BSI ${line.bon_numero} — ouverture au pesage`,
-          containerCount: options.containerCount ?? (containerSize > 0 ? Math.round(qty / containerSize) : null),
-          containerTypeId: options.containerTypeId ?? line.container_type_id ?? null,
-        };
-        await moveEconomatToPesage(client as unknown as PoolClient, move);
-        qty = move.qty; // quantite reellement ouverte (contenants entiers)
-        openedQty = qty;
-        noteParts.push(`Ouvert ${qty.toFixed(2)} ${unit} depuis l'economat (lot ${lot.lot_number})`);
-      }
-      lotChanged = lotId !== line.ingredient_lot_id;
-      newLotNumber = lot.lot_number;
-      if (lotChanged && line.ingredient_lot_id) {
-        noteParts.push(`Lot substitue : ${line.lot_number || '?'} -> ${lot.lot_number}`);
-      }
-    } else if (line.lot_expired) {
+    const explicitLot = !!options.lotId;
+    // Ligne deja au pesage sur son propre lot, sans choix du magasinier : comme avant, un
+    // lot perime est refuse, et un depassement du stock reste admis (voir plus bas).
+    const ownPesageLot = !explicitLot && !isOpening && !!lotId && lotId === line.ingredient_lot_id;
+    if (ownPesageLot && line.lot_expired) {
       throw new Error(`Lot ${line.lot_number} perime : prelevement interdit, choisissez un autre lot.`);
+    }
+
+    // ─── Pesee multi-lots FEFO (scenario 2, constats 141 et 142) ───
+    // Le lot principal (choisi, alloue, deja au pesage ou suggere) sert d'abord. S'il ne
+    // couvre pas la pesee — ou s'il a ete vide entre-temps par un autre bon ou un plan
+    // enfant — on complete sur les lots valides suivants du meme ingredient (actifs, non
+    // perimes, FEFO), en ouvrant les contenants necessaires. Avant, la pesee etait
+    // refusee (« le lot ne couvre pas la pesee », « Lot non actif (depleted) »).
+    // Deux passes : d'abord le stock qu'aucune autre ligne d'un bon ouvert n'a promis,
+    // puis le stock promis mais pas encore pese (l'autre ligne se reportera a son tour
+    // sur le lot suivant a sa pesee). Le detail des lots pris est garde par ligne
+    // (production_bons_sortie_ligne_lots, mig 626) et sorti lot par lot a la remise.
+    //
+    // Verrou des lots candidats, en ordre stable (pas d'interblocage entre deux pesees).
+    await client.query(
+      `SELECT il.id FROM ingredient_lots il
+        WHERE il.id = $3::uuid
+           OR (il.ingredient_id = $1 AND il.store_id = $2 AND il.status = 'active'
+               AND il.pesage_quantity + il.economat_quantity > 0)
+        ORDER BY il.id
+        FOR UPDATE`,
+      [line.ingredient_id, line.store_id, lotId]
+    );
+    const candResult = await client.query(
+      `SELECT il.id, il.ingredient_id, il.store_id, il.status, il.lot_number,
+              il.pesage_quantity, il.economat_quantity, il.expiration_date,
+              ${lotExpiredSql('il')} AS is_expired,
+              claims.hard_qty, claims.soft_pesage_qty, claims.soft_economat_qty
+         FROM ingredient_lots il
+         ${lotClaimsLateral('il', '$4::uuid')}
+        WHERE il.id = $3::uuid
+           OR (il.ingredient_id = $1 AND il.store_id = $2 AND ${lotUsableSql('il')}
+               AND il.pesage_quantity + il.economat_quantity > 0)
+        ORDER BY (il.id = $3::uuid) DESC NULLS LAST, il.expiration_date ASC NULLS LAST,
+                 (il.pesage_quantity > 0) DESC, il.first_opened_at ASC NULLS LAST, il.received_at ASC`,
+      [line.ingredient_id, line.store_id, lotId, line.id]
+    );
+    const primary = lotId ? candResult.rows.find(r => r.id === lotId) : undefined;
+    if (explicitLot) {
+      // Lot choisi par le magasinier : il doit etre valide (controles inchanges).
+      if (!primary) throw new Error('Lot introuvable');
+      if (primary.ingredient_id !== line.ingredient_id) throw new Error('Le lot ne correspond pas a l\'ingredient de la ligne');
+      if (primary.store_id !== line.store_id) throw new Error('Le lot n\'appartient pas au magasin du bon');
+      if (primary.status !== 'active') throw new Error(`Lot ${primary.lot_number} non actif (${primary.status})`);
+      if (primary.is_expired) throw new Error(`Lot ${primary.lot_number} perime (DLC ${primary.expiration_date}) : prelevement interdit, choisissez un autre lot.`);
+    }
+    const lotValid = (l: Record<string, any>) => l.status === 'active' && !l.is_expired
+      && l.ingredient_id === line.ingredient_id && l.store_id === line.store_id;
+    // Lot principal en tete (ORDER BY) ; un lot principal vide ou devenu invalide est
+    // simplement saute, sans choix explicite du magasinier.
+    const candidates = candResult.rows.filter(lotValid);
+
+    const containerSize = line.container_size != null ? parseFloat(line.container_size) : 0;
+    const used = new Map<string, { row: Record<string, any>; taken: number; opened: number }>();
+    let remaining = actualQuantity;
+    const drawPass = async (strict: boolean) => {
+      for (const row of candidates) {
+        if (remaining <= 1e-9) return;
+        const isPrimary = row.id === lotId;
+        // Le lot choisi par le magasinier se pese sur son stock physique (hors pesees faites).
+        const free = lotFree(row, strict && !(isPrimary && explicitLot));
+        const u = used.get(row.id) || { row, taken: 0, opened: 0 };
+        const pesageLeft = Math.max(0, free.pesage + u.opened - u.taken);
+        const economatLeft = Math.max(0, free.economat - u.opened);
+        let take = Math.min(remaining, pesageLeft + economatLeft);
+        if (take <= 1e-9) continue;
+        const shortfall = take - pesageLeft;
+        if (shortfall > 1e-9) {
+          // Il faut ouvrir : des contenants entiers quand l'ingredient en a, sinon le manque.
+          // Quantite / nombre de contenants saisis : pour la premiere ouverture du lot principal.
+          const userOpening = isPrimary && u.opened === 0;
+          let qty: number;
+          if (userOpening && options.transferQty != null && Number.isFinite(Number(options.transferQty))) {
+            qty = Number(options.transferQty);
+          } else if (userOpening && options.containerCount && containerSize > 0) {
+            qty = Number(options.containerCount) * containerSize;
+          } else if (containerSize > 0) {
+            qty = Math.ceil(shortfall / containerSize - 1e-9) * containerSize;
+          } else {
+            qty = shortfall;
+          }
+          // Le dernier contenant d'un lot peut etre entame : on ne depasse jamais l'economat.
+          qty = Math.min(qty, parseFloat(row.economat_quantity || '0') - u.opened);
+          if (qty > 1e-9) {
+            const move = {
+              lotId: row.id as string, ingredientId: line.ingredient_id, storeId: line.store_id, qty, userId: userId as string,
+              bonId: line.bon_id, ligneId: line.id, planId: line.plan_id,
+              reason: `BSI ${line.bon_numero} — ouverture au pesage`,
+              containerCount: (userOpening ? options.containerCount : undefined) ?? (containerSize > 0 ? Math.round(qty / containerSize) : null),
+              containerTypeId: options.containerTypeId ?? line.container_type_id ?? null,
+            };
+            await moveEconomatToPesage(client as unknown as PoolClient, move);
+            u.opened += move.qty; // quantite reellement ouverte (contenants entiers)
+            openedQty += move.qty;
+            noteParts.push(`Ouvert ${move.qty.toFixed(2)} ${unit} depuis l'economat (lot ${row.lot_number})`);
+          }
+          take = Math.min(take, Math.max(0, free.pesage + u.opened - u.taken));
+        }
+        used.set(row.id, u);
+        if (take <= 1e-9) continue;
+        u.taken += take;
+        remaining -= take;
+      }
+    };
+    if (actualQuantity > 1e-9) {
+      await drawPass(true);
+      if (remaining > 1e-9) await drawPass(false);
+    }
+    if (remaining > 1e-9) {
+      if (ownPesageLot) {
+        // Comportement anterieur conserve pour une ligne pesee sur son propre lot : le
+        // depassement reste admis sur le dernier lot pris (ou le lot de la ligne), et la
+        // remise applique la politique de stock negatif (G0-18 : refus ou manque trace).
+        const last = [...used.values()].filter(u => u.taken > 1e-9).pop();
+        if (last) last.taken += remaining;
+        else used.set(lotId as string, { row: primary || { id: lotId, lot_number: line.lot_number }, taken: remaining, opened: 0 });
+        remaining = 0;
+      } else {
+        const available = candidates.reduce((s, r) => { const f = lotFree(r, false); return s + f.pesage + f.economat; }, 0);
+        throw new Error(`${line.ingredient_name} : les lots valides ne couvrent pas la pesee (${available.toFixed(3)} ${unit} disponibles${primary ? `, lot ${primary.lot_number} compris` : ''} pour ${actualQuantity.toFixed(3)} ${unit}).`);
+      }
+    }
+
+    const parts = [...used.values()].filter(u => u.taken > 1e-9);
+    const mainLotId: string | null = (parts[0]?.row.id as string | undefined) ?? lotId;
+    if (!mainLotId) throw new Error('Lot introuvable');
+    const lotChanged = mainLotId !== line.ingredient_lot_id;
+    const newLotNumber: string | null = parts[0]?.row.lot_number ?? primary?.lot_number ?? null;
+    if (lotChanged && line.ingredient_lot_id) {
+      noteParts.push(`Lot substitue : ${line.lot_number || '?'} -> ${newLotNumber || '?'}`);
+    }
+    if (parts.length > 1) {
+      noteParts.push(`Pesee multi-lots : ${parts.map(p => `${p.row.lot_number} ${p.taken.toFixed(3)} ${unit}`).join(' + ')}`);
+    }
+
+    // Detail des lots de la ligne, reecrit a chaque (re)pesee ; somme = quantite pesee.
+    await client.query(`DELETE FROM production_bons_sortie_ligne_lots WHERE ligne_id = $1`, [line.id]);
+    const round4 = (v: number) => Math.round(v * 10000) / 10000;
+    let rest = round4(actualQuantity);
+    for (let i = 0; i < parts.length; i++) {
+      const q = i === parts.length - 1 ? rest : Math.min(rest, round4(parts[i].taken));
+      rest = round4(rest - q);
+      if (q <= 0) continue;
+      await client.query(
+        `INSERT INTO production_bons_sortie_ligne_lots (ligne_id, ingredient_lot_id, quantity, opened_quantity, created_by)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [line.id, parts[i].row.id, q, round4(parts[i].opened), userId]
+      );
     }
 
     // Tolerance calculee par la fonction SQL — meme source que celle affichee a l'ecran.
@@ -1495,10 +1620,11 @@ export const bonSortieRepository = {
         actualQuantity, ecart, status, notes,
         options.tareQuantity ?? null, userId, options.source || 'manual',
         tolerance, reason, ligneId,
-        lotId, target, openedQty,
+        mainLotId, target, openedQty,
       ]
     );
-    return { ...result.rows[0], out_of_tolerance: outOfBand, tolerance_qty: tolerance, opened_qty: openedQty, lot_changed: lotChanged, lot_number: newLotNumber || line.lot_number };
+    return { ...result.rows[0], out_of_tolerance: outOfBand, tolerance_qty: tolerance, opened_qty: openedQty, lot_changed: lotChanged, lot_number: newLotNumber || line.lot_number,
+      lots: parts.map(p => ({ ingredient_lot_id: p.row.id, lot_number: p.row.lot_number, quantity: p.taken, opened_quantity: p.opened })) };
   },
 
   /** Pesee d'une seule ligne (transaction autonome). */
