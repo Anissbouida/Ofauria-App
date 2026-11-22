@@ -311,4 +311,4 @@ textarea.ds-input { height: auto; min-height: 84px; padding: 8px 12px; resize: v
    passe au-dessus des cellules des lignes suivantes (sinon elles masquent le menu). */
 .kl-ds.kl-ds .ds-panel .odoo-table :is(td, th).ds-actions { z-index: 1; }
 .kl-ds.kl-ds .ds-panel .odoo-table td.ds-actions:has(.row-menu-list) { z-index: 30; }
-.kl-ds.kl-ds .ds-panel .odoo-table td:has(.row-menu-list) { position: relative; z-index: 30; }
+.kl-ds.kl-ds .ds-panel .odoo-table td:not(.ds-actions):has(.row-menu-list) { position: relative; z-index: 30; }
