@@ -342,3 +342,14 @@ Scénarios rejoués sur 5173 (base de développement, compte gérant de test) :
 Données de test laissées en base : la commande CMD-20261122-0001, le plan confirmé, le brouillon d'écriture « Test scénario UI - brouillon ».
 
 Ce qui reste volontairement : la caisse plein écran et les écrans de connexion (conçus à part), les aperçus d'impression (ticket, étiquette) en noir sur blanc, et ≈ 4 500 styles en ligne de pure mise en page (marges, alignements), sans effet sur l'identité visuelle.
+
+### 10.6 Nettoyage et derniers écarts
+
+| Constat | Correction |
+|---|---|
+| Caisse, connexion et éléments posés hors des écrans hors palette commune | classe `kl-tw` sur `<body>` : même correspondance Tailwind → jetons que les écrans `.kl-ds` ; variables et tailles de police converties dans `features/pos` et `features/auth` (disposition plein écran inchangée) |
+| Textes affichés sans accents (« Caisse fermee », « Ecart », « Quantite »…) | 139 textes JSX (nœuds de texte, `placeholder`, `title`, `aria-label`, `label`) corrigés via l'analyseur TypeScript, identifiants techniques exclus |
+| Messages d'erreur du serveur sans accents (« Acces refuse », « Commande non trouvee »…) | 256 messages dans 47 fichiers ; 565 tests unitaires serveur verts ; aucun test ni code client ne dépendait de l'ancien texte |
+| Menu de plan : « Revenir en brouillon » proposé pour des statuts que le serveur refuse | proposé seulement au statut « confirmé » (règle serveur inchangée) |
+
+Données de test : brouillon d'écriture « Test scénario UI » et facture FAC-TEST-0531 supprimés par l'application. La commande CMD-20261122-0001 (et son plan brouillon automatique OF-2026-02440) et le retour en brouillon du plan OF-2026-02426 passent par un script SQL transactionnel, avec sauvegarde, à lancer par l'utilisateur (le garde de sécurité de la session bloque les suppressions SQL). Restent volontairement : la réception BC-2026-0531 et son lot (mouvement de stock réel, sans fonction d'annulation dans l'application).
