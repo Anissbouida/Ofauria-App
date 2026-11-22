@@ -49,7 +49,7 @@ function Statement({ switcher }: { switcher: ReactNode }) {
   const [from, setFrom] = useState(firstOfMonth());
   const [to, setTo] = useState(today());
   const [payout, setPayout] = useState(false);
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['commission-statement', from, to], queryFn: () => commissionsApi.statement({ from, to }) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['commission-statement', from, to], queryFn: () => commissionsApi.statement({ from, to }) });
   const rows = data?.rows ?? [];
   const hasDue = rows.some(r => r.commission > 0 && !r.already_paid);
   const cur = currencySymbol();
@@ -65,7 +65,7 @@ function Statement({ switcher }: { switcher: ReactNode }) {
         {switcher}
       </Toolbar>
       {isLoading ? <LoadingState />
-        : isError ? <ErrorState onRetry={() => void refetch()} />
+        : isError ? <ErrorState error={error} onRetry={() => void refetch()} />
         : rows.length === 0 ? <EmptyState icon={Percent} title="Aucune commission sur la période" text="Aucune vente n'est attribuée à un vendeur entre ces deux dates." />
         : (
           <DataPanel label="Relevé des commissions" footer={<TableFooter note={<>
@@ -138,7 +138,7 @@ function PayoutModal({ from, to, onClose, onDone }: { from: string; to: string; 
 function Rules({ switcher }: { switcher: ReactNode }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: rules = [], isLoading, isError, refetch } = useQuery({ queryKey: ['commission-rules'], queryFn: () => commissionsApi.listRules() });
+  const { data: rules = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['commission-rules'], queryFn: () => commissionsApi.listRules() });
   const [modal, setModal] = useState<null | { rule?: CommissionRule }>(null);
   const invalidate = () => qc.invalidateQueries({ queryKey: ['commission-rules'] });
   const del = useMutation({ mutationFn: (id: string) => commissionsApi.deleteRule(id), onSuccess: invalidate, onError: e => notify.error(apiErrorMessage(e)) });
@@ -152,7 +152,7 @@ function Rules({ switcher }: { switcher: ReactNode }) {
         {switcher}
       </Toolbar>
       {isLoading ? <LoadingState />
-        : isError ? <ErrorState onRetry={() => void refetch()} />
+        : isError ? <ErrorState error={error} onRetry={() => void refetch()} />
         : rules.length === 0 ? <EmptyState icon={Percent} title="Aucun barème" text="Un barème fixe le taux de commission d'un vendeur."
             action={<button type="button" className="odoo-btn-primary" onClick={() => setModal({})}>Nouveau barème</button>} />
         : (
@@ -250,7 +250,7 @@ function RuleModal({ rule, onClose, onSaved }: { rule?: CommissionRule; onClose:
 function Schemes({ switcher }: { switcher: ReactNode }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: schemes = [], isLoading, isError, refetch } = useQuery({ queryKey: ['commission-schemes'], queryFn: () => commissionsApi.listSchemes() });
+  const { data: schemes = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['commission-schemes'], queryFn: () => commissionsApi.listSchemes() });
   const { data: assignments = [] } = useQuery({ queryKey: ['commission-assignments'], queryFn: () => commissionsApi.listAssignments() });
   const [modal, setModal] = useState<null | { scheme?: CommissionScheme }>(null);
   const [assign, setAssign] = useState(false);
@@ -273,7 +273,7 @@ function Schemes({ switcher }: { switcher: ReactNode }) {
       </Toolbar>
 
       {isLoading ? <LoadingState />
-        : isError ? <ErrorState onRetry={() => void refetch()} />
+        : isError ? <ErrorState error={error} onRetry={() => void refetch()} />
         : schemes.length === 0 ? <EmptyState icon={Layers} title="Aucun contrat-cadre" text="Un contrat-cadre définit des paliers de taux selon le volume vendu."
             action={<button type="button" className="odoo-btn-primary" onClick={() => setModal({})}>Nouveau contrat-cadre</button>} />
         : (
@@ -371,7 +371,8 @@ function SchemeModal({ scheme, onClose, onSaved }: { scheme?: CommissionScheme; 
         <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} /> Actif
       </label>
       <Field label="Paliers progressifs" required hint="La tranche de chiffre d'affaires au-delà du seuil est commissionnée au taux indiqué.">
-        <table className="odoo-table">
+        <DataPanel label="Paliers progressifs">
+        <table className="odoo-table ds-dense">
           <thead><tr><th>À partir de ({currencySymbol()} de CA)</th><th style={{ width: 120 }}>Taux (%)</th><th className="ds-actions" style={{ width: 48 }}><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {tiers.map((t, i) => (
@@ -383,6 +384,7 @@ function SchemeModal({ scheme, onClose, onSaved }: { scheme?: CommissionScheme; 
             ))}
           </tbody>
         </table>
+        </DataPanel>
         <div><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setTiers(ts => [...ts, { fromAmount: '', ratePercent: '' }])}><Plus size={13} aria-hidden="true" /> Ajouter un palier</button></div>
       </Field>
     </HrModal>

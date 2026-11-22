@@ -2,14 +2,13 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChefHat, Layers, X, ArrowRight } from 'lucide-react';
+import { ChefHat, Layers } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
-import { FormField } from '../../components/ds';
+import { FormField, FormFooter, Modal } from '../../components/ds';
 /**
  * Création d'une fiche : on ne demande que l'identité (type, nom, catégorie),
  * puis on ouvre la page complète — la MÊME qu'en modification. Composition,
@@ -93,27 +92,20 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
 
   const pending = createMut.isPending || editMut.isPending;
   const canSubmit = name.trim().length > 0 && !pending;
+  const submit = () => { if (canSubmit) (isEdit ? editMut : createMut).mutate(); };
   const typeBtn = (active: boolean) =>
     `flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm ${active ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <form className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        onSubmit={(e) => { e.preventDefault(); if (canSubmit) (isEdit ? editMut : createMut).mutate(); }}
-        role="dialog" aria-modal="true" aria-label={isEdit ? 'Modifier la fiche' : 'Nouvelle fiche'}
-        style={{ width: '100%', maxWidth: 480, minHeight: 0, borderRadius: 16, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            {isBase ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
-            <span>{sectorLabel('recipes', 'Fiches techniques')}</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">{isEdit ? recipe!.name : batchMode ? (isBase ? 'Nouvelle préparation' : 'Nouvelle recette') : (isBase ? `Nouveau : ${tBase.toLowerCase()}` : `Nouvelle ${sectorLabel('recipe', 'recette').toLowerCase()}`)}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" title="Fermer" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-        </div>
-
-        <div className="p-5 space-y-4 bg-white">
+    <Modal onClose={onClose} width={480} locked={pending}
+      title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{isBase ? <Layers size={18} aria-hidden="true" /> : <ChefHat size={18} aria-hidden="true" />}{isEdit ? recipe!.name : batchMode ? (isBase ? 'Nouvelle préparation' : 'Nouvelle recette') : (isBase ? `Nouveau : ${tBase.toLowerCase()}` : `Nouvelle ${sectorLabel('recipe', 'recette').toLowerCase()}`)}</span>}
+      subtitle={sectorLabel('recipes', 'Fiches techniques')}
+      footer={<FormFooter onCancel={onClose} onSubmit={submit} busy={pending} disabled={!canSubmit}
+        submitLabel={isEdit ? (pending ? 'Enregistrement…' : 'Enregistrer') : (pending ? 'Création…' : 'Créer et composer →')} />}>
+      <form onSubmit={(e) => { e.preventDefault(); submit(); }} aria-label={isEdit ? 'Modifier la fiche' : 'Nouvelle fiche'}>
+        {/* Bouton invisible : Entrée dans un champ valide le formulaire. */}
+        <button type="submit" className="ds-sr-only" tabIndex={-1} aria-hidden="true" />
+        <div className="space-y-4">
           {!isEdit && <div>
             <div className="ds-field-label" style={{ marginBottom: 6 }} id="recipe-type-label">Type</div>
             <div className="flex rounded-md border border-gray-200 overflow-hidden" role="group" aria-labelledby="recipe-type-label">
@@ -195,14 +187,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
           )}
         </div>
 
-        <div className="ds-form-foot" style={{ background: 'var(--ds-card)' }}>
-          <span className="ds-grow" />
-          <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={pending}>Annuler</button>
-          <button type="submit" disabled={!canSubmit} aria-busy={pending || undefined} className="odoo-btn-primary">
-            {isEdit ? (pending ? 'Enregistrement…' : 'Enregistrer') : <>{pending ? 'Création…' : 'Créer et composer'} <ArrowRight size={15} aria-hidden="true" /></>}
-          </button>
-        </div>
       </form>
-    </ModalBackdrop>
+    </Modal>
   );
 }

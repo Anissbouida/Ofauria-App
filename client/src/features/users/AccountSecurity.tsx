@@ -9,7 +9,8 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import type { RowMenuItem } from '../../components/ui/RowMenu';
-import { HrModal, SubmitButton, LoadingPanel } from '../employees/ui';
+import { SubmitButton, LoadingPanel } from '../employees/ui';
+import { Modal, ErrorState } from '../../components/ds';
 import { ROLE_LABELS } from '@ofauria/shared';
 
 /**
@@ -253,7 +254,7 @@ export function SecuritySection({ userId, selfId, onDeleted }: { userId: string;
 
 export function MfaPolicyModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
-  const { data: policy, isLoading } = useQuery({ queryKey: ['mfa-policy'], queryFn: usersApi.mfaPolicy });
+  const { data: policy, isLoading, isError, error, refetch } = useQuery({ queryKey: ['mfa-policy'], queryFn: usersApi.mfaPolicy });
   const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, retry: false });
   const [selected, setSelected] = useState<string[] | null>(null);
   // Codes de la politique absents des rôles de la base (ex. rôle par défaut jamais créé) :
@@ -276,7 +277,7 @@ export function MfaPolicyModal({ onClose }: { onClose: () => void }) {
   const toggle = (code: string) => setSelected(current.includes(code) ? current.filter(c => c !== code) : [...current, code]);
 
   return (
-    <HrModal icon={ShieldCheck} crumb="Utilisateurs" title="Double authentification" width={560} onClose={onClose}
+    <Modal subtitle="Utilisateurs" title="Double authentification" width={560} onClose={onClose} locked={save.isPending}
       footer={<>
         <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
         <SubmitButton pending={save.isPending} disabled={isLoading} onClick={() => save.mutate()}><Check size={13} /> Enregistrer</SubmitButton>
@@ -285,7 +286,7 @@ export function MfaPolicyModal({ onClose }: { onClose: () => void }) {
         Un compte qui porte l'un de ces rôles doit configurer une application d'authentification à sa prochaine connexion, avant tout autre écran.
         Vous pouvez aussi l'exiger compte par compte depuis la fiche utilisateur.
       </StatusBanner>
-      {isLoading ? <LoadingPanel /> : (
+      {isError ? <ErrorState bare error={error} title="La politique n'a pas pu être chargée" onRetry={() => void refetch()} /> : isLoading ? <LoadingPanel /> : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {choices.map(([code, label, count]) => {
             const on = current.includes(code);
@@ -303,6 +304,6 @@ export function MfaPolicyModal({ onClose }: { onClose: () => void }) {
           Il est recommandé d'exiger la double authentification pour les administrateurs.
         </StatusBanner>
       )}
-    </HrModal>
+    </Modal>
   );
 }

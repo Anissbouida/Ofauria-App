@@ -62,7 +62,7 @@ function Breakdown({ rows, unit }: { rows: Array<{ label: string; value: number 
  */
 export default function HrAnalyticsTab() {
   const [year, setYear] = useState(new Date().getFullYear());
-  const { data, isLoading, isError, refetch } = useQuery<Record<string, any>>({
+  const { data, isLoading, isError, error, refetch } = useQuery<Record<string, any>>({
     queryKey: ['hr-analytics', year],
     queryFn: () => employeesApi.hrAnalytics(year),
   });
@@ -97,7 +97,7 @@ export default function HrAnalyticsTab() {
       {isLoading ? (
         <LoadingPanel />
       ) : isError ? (
-        <ErrorState title="Les indicateurs n'ont pas pu être chargés" onRetry={() => void refetch()} />
+        <ErrorState error={error} title="Les indicateurs n'ont pas pu être chargés" onRetry={() => void refetch()} />
       ) : !t ? (
         <EmptyPanel icon={BarChart3}>Aucune donnée RH pour {year}</EmptyPanel>
       ) : (

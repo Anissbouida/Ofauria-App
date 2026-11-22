@@ -17,7 +17,7 @@ import {
 } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar, ListEmpty } from '../sales/ListTemplate';
 import { StageChips, Segmented, Panel, PagerFoot, PageLoading } from './KlUi';
-import { DataPanel, KpiCard, KpiGrid, NoResultState, SectionHeader } from '../../components/ds';
+import { DataPanel, HeaderSlotContext, KpiCard, KpiGrid, Modal, NoResultState, SectionHeader } from '../../components/ds';
 import GoodsEntryRegisterTab from '../stock/GoodsEntryRegisterTab';
 import PurchasingPilotageTab from '../purchasing/PurchasingPilotageTab';
 import ProductionControl from './ProductionControl';
@@ -93,7 +93,9 @@ export default function ControlePage() {
   // Boutons de l'écran posés dans la barre (fil d'Ariane) : déclarer une perte, nouvelle réclamation.
   const [declaring, setDeclaring] = useState(false);
   const [creatingComplaint, setCreatingComplaint] = useState(false);
-  const actions = tab === 'pertes' ? (
+  // Emplacement commun des actions des sous-onglets (HeaderActions), à droite du fil d'Ariane.
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
+  const tabActions = tab === 'pertes' ? (
     <button type="button" onClick={() => setDeclaring(true)} className="odoo-btn-primary"
       title="Perte de produit fini ou de matière première"
       style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -109,9 +111,13 @@ export default function ControlePage() {
       <Thermometer size={13} /> Feuille du jour
     </Link>
   ) : undefined;
+  const actions = (
+    <div ref={setHeaderSlot} style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>{tabActions}</div>
+  );
 
   return (
     <ModuleShell title="Contrôle & Qualité" views={views} current={current} onSelect={select} flush actions={actions}>
+      <HeaderSlotContext.Provider value={headerSlot}>
       <ModulePage title={current?.label} summary={tab ? PAGE_LEADS[tab] : undefined}>
         {(tab === 'overview' || tab === 'production' || tab === 'pertes' || tab === 'sav') && (
           <div className="prj-toolbar">
@@ -131,6 +137,7 @@ export default function ControlePage() {
         {tab === 'sav' && <ComplaintsTab range={range} periodText={periodLabel(period, customFrom, customTo)} creating={creatingComplaint} onCreatingChange={setCreatingComplaint} />}
         {tab === 'qualite' && <QualityTab />}
       </ModulePage>
+      </HeaderSlotContext.Provider>
       {declaring && <LossDeclare onClose={() => setDeclaring(false)} />}
     </ModuleShell>
   );
@@ -464,9 +471,9 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
       )}
 
       {photo && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-label="Photo de la perte" onClick={() => setPhoto(null)}>
-          <img src={photo} alt="Photo de la perte" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 4 }} />
-        </div>
+        <Modal title="Photo de la perte" onClose={() => setPhoto(null)} width={960}>
+          <img src={photo} alt="Photo de la perte" style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 4, margin: '0 auto', display: 'block' }} />
+        </Modal>
       )}
     </>
   );

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2, AlertTriangle, X, TrendingUp, TrendingDown, Package, Recycle, ArrowLeftRight, Boxes } from 'lucide-react';
@@ -13,7 +13,7 @@ import { RowMenu } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { currencySymbol } from '../../utils/money';
 import { apiErrorMessage } from '../../api/errors';
-import { DataPanel, EmptyState, FormField, LoadingState, NoResultState } from '../../components/ds';
+import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, Modal, NoResultState } from '../../components/ds';
 
 /** Situation d'un consommable (exclusive) : mêmes cartes que le stock des ingrédients. */
 const PKG_SITUATIONS: StageDef[] = [
@@ -314,6 +314,7 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
     onError: () => notify.error('Erreur lors de la sauvegarde'),
   });
 
+  const formRef = useRef<HTMLFormElement>(null);
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     saveMutation.mutate({
@@ -323,19 +324,13 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" style={{ width: '100%', maxWidth: 576, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }} role="dialog" aria-label={isEdit ? 'Modifier le consommable' : 'Nouveau consommable'}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Package size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-            <span className="odoo-breadcrumb-current">{isEdit ? `Modifier ${item?.name}` : 'Nouveau consommable'}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
-        </div>
-        <form onSubmit={onSubmit} className="p-5 space-y-4">
-          <FormField label="Nom" required>
-            <input type="text" required value={form.name}
+    <Modal title={isEdit ? `Modifier ${item?.name}` : 'Nouveau consommable'} label={isEdit ? 'Modifier le consommable' : 'Nouveau consommable'}
+      onClose={onClose} locked={saveMutation.isPending} width={576}
+      footer={<FormFooter onCancel={onClose} busy={saveMutation.isPending} onSubmit={() => formRef.current?.requestSubmit()}
+        submitLabel={saveMutation.isPending ? 'Enregistrement…' : isEdit ? 'Enregistrer' : 'Créer le consommable'} />}>
+        <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
+          <FormField label="Nom" htmlFor="pkg-f1" required>
+            <input id="pkg-f1" type="text" required value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="Caissette alvéolée brownie"
               className="ds-input" />
@@ -352,30 +347,30 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
           </FormField>
 
           <div className="grid grid-cols-3 gap-3">
-            <FormField label="Format">
-              <input type="text" value={form.format}
+            <FormField label="Format" htmlFor="pkg-f2">
+              <input id="pkg-f2" type="text" value={form.format}
                 onChange={(e) => setForm({ ...form, format: e.target.value })}
                 placeholder="24cm rond..."
                 className="ds-input" />
             </FormField>
-            <FormField label="Unité">
-              <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
+            <FormField label="Unité" htmlFor="pkg-f3">
+              <select id="pkg-f3" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
                 className="ds-input">
                 <option value="piece">pièce (unité)</option>
                 <option value="m">m (mètre)</option>
                 <option value="kg">kg</option>
               </select>
             </FormField>
-            <FormField label={<>Coût unitaire ({currencySymbol()})</>} required>
-              <input type="number" step="0.01" min="0" required value={form.unit_cost}
+            <FormField label={<>Coût unitaire ({currencySymbol()})</>} htmlFor="pkg-f4" required>
+              <input id="pkg-f4" type="number" step="0.01" min="0" required value={form.unit_cost}
                 onChange={(e) => setForm({ ...form, unit_cost: e.target.value })}
                 placeholder="0.30"
                 className="ds-input" />
             </FormField>
           </div>
 
-          <FormField label="Fournisseur">
-            <input type="text" value={form.supplier}
+          <FormField label="Fournisseur" htmlFor="pkg-f5">
+            <input id="pkg-f5" type="text" value={form.supplier}
               onChange={(e) => setForm({ ...form, supplier: e.target.value })}
               placeholder="Nom du fournisseur"
               className="ds-input" />
@@ -399,21 +394,14 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
             </label>
           </div>
 
-          <FormField label="Notes">
-            <textarea value={form.notes} rows={2}
+          <FormField label="Notes" htmlFor="pkg-f6">
+            <textarea id="pkg-f6" value={form.notes} rows={2}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               className="ds-input" />
           </FormField>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={saveMutation.isPending}>Annuler</button>
-            <button type="submit" disabled={saveMutation.isPending} aria-busy={saveMutation.isPending || undefined} className="odoo-btn-primary">
-              {saveMutation.isPending ? 'Enregistrement…' : isEdit ? 'Enregistrer' : 'Créer le consommable'}
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -439,17 +427,19 @@ function StockAdjustModal({ item, onClose, onSaved }: { item: PackagingItem; onC
   });
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" style={{ width: '100%', maxWidth: 448, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }} role="dialog" aria-label="Mouvement de stock">
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <ArrowLeftRight size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span className="odoo-breadcrumb-current">Mouvement de stock · {item.name}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
+    <Modal title="Mouvement de stock" subtitle={item.name} onClose={onClose} locked={adjustMutation.isPending} width={448}
+      footer={
+        <div className="ds-form-foot">
+          <span className="ds-grow" />
+          <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={adjustMutation.isPending}>Annuler</button>
+          <button type="button" onClick={() => adjustMutation.mutate()}
+            disabled={adjustMutation.isPending || !quantity} aria-busy={adjustMutation.isPending || undefined}
+            className={type === 'waste' ? 'ds-btn-danger solid' : 'odoo-btn-primary'}>
+            {type === 'waste' ? 'Déclarer la perte' : 'Enregistrer le mouvement'}
+          </button>
         </div>
-        <div className="p-5 space-y-4">
+      }>
+        <div className="space-y-4">
           <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--odoo-text-muted)' }}>Stock actuel</span>
             <strong>{parseFloat(String(item.stock_quantity || 0)).toFixed(0)} {item.unit}</strong>
@@ -471,38 +461,29 @@ function StockAdjustModal({ item, onClose, onSaved }: { item: PackagingItem; onC
             </div>
           </FormField>
 
-          <FormField label="Quantité" required>
-            <input type="number" step="0.01" min="0" value={quantity}
+          <FormField label="Quantité" htmlFor="pkg-f7" required>
+            <input id="pkg-f7" type="number" step="0.01" min="0" value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               placeholder="0"
               className="ds-input" />
           </FormField>
 
           {type === 'reception' && (
-            <FormField label="Prix unitaire (met à jour le catalogue)">
-              <input type="number" step="0.01" min="0" value={unitCost}
+            <FormField label="Prix unitaire (met à jour le catalogue)" htmlFor="pkg-f8">
+              <input id="pkg-f8" type="number" step="0.01" min="0" value={unitCost}
                 onChange={(e) => setUnitCost(e.target.value)}
                 className="ds-input" />
             </FormField>
           )}
 
-          <FormField label="Note">
-            <input type="text" value={note}
+          <FormField label="Note" htmlFor="pkg-f9">
+            <input id="pkg-f9" type="text" value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Ex: BC-2026-XXX, ajustement inventaire..."
               className="ds-input" />
           </FormField>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={adjustMutation.isPending}>Annuler</button>
-            <button type="button" onClick={() => adjustMutation.mutate()}
-              disabled={adjustMutation.isPending || !quantity} aria-busy={adjustMutation.isPending || undefined}
-              className={type === 'waste' ? 'ds-btn-danger' : 'odoo-btn-primary'}>
-              {type === 'waste' ? 'Déclarer la perte' : 'Enregistrer le mouvement'}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

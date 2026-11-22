@@ -9,9 +9,10 @@ import '../purchasing/purchasing.css';
 import '../sales/sales.css';
 import { ListKpi } from '../sales/ListTemplate';
 import {
-  Alert, Breadcrumb, BulkBar, DataPanel, EmptyState, FormField, FormFooter, LoadingState, NoResultState,
-  SearchBar, SectionHeader, TableFooter,
+  Alert, BulkBar, DataPanel, EmptyState, ErrorState, FormField, FormFooter, FormSection, LoadingState, Modal, NoResultState,
+  PageHeader, SearchBar, SectionHeader, TableFooter,
 } from '../../components/ds';
+import { useOpenReception } from '../purchasing/purchasingNav';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { PurHeaderActions } from '../purchasing/PurHeaderActions';
@@ -30,7 +31,6 @@ import {
 import { format, differenceInCalendarDays, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import IngredientFormModal from '../stock/IngredientFormModal';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
@@ -77,13 +77,13 @@ type PoLineKind = 'ingredient' | 'consumable' | 'product' | 'service' | 'asset';
 const isFreeLine = (k: unknown) => k === 'service' || k === 'asset';
 /* Nature d'un nouveau BC, choisie avant la saisie des lignes. */
 const ORDER_TYPES = [
-  { key: 'stock' as const, label: 'Articles stockés', icon: Boxes, color: '#2f6f3e', tint: '#e8f5ec',
+  { key: 'stock' as const, label: 'Articles stockés', icon: Boxes, color: 'var(--ds-success)', tint: 'var(--ds-success-bg)',
     examples: 'Matières premières, emballages, consommables d\'entretien, produits de revente (boissons)',
     effect: 'Entrée en stock (lots, DLC), coût moyen mis à jour' },
-  { key: 'service' as const, label: 'Service / frais', icon: Wrench, color: '#1d4f91', tint: '#e7f0fb',
+  { key: 'service' as const, label: 'Service / frais', icon: Wrench, color: 'var(--ds-info)', tint: 'var(--ds-info-bg)',
     examples: 'Réparation, maintenance, transport, énergie, loyer, prestations',
     effect: 'Pas de stock : réception = service rendu, charge (classe 6)' },
-  { key: 'asset' as const, label: 'Immobilisation', icon: Landmark, color: '#9a5b13', tint: '#fdf1e2',
+  { key: 'asset' as const, label: 'Immobilisation', icon: Landmark, color: 'var(--ds-warning)', tint: 'var(--ds-warning-bg)',
     examples: 'Four, pétrin, chambre froide, vitrine, caisse, véhicule',
     effect: 'Pas de stock : mise en service, actif (classe 2) et fiche d\'amortissement' },
 ];
@@ -103,34 +103,6 @@ function trimNum(v: unknown): string {
   const f = parseFloat(String(v));
   return Number.isFinite(f) ? f.toFixed(2) : '';
 }
-
-const STATUS_LABELS: Record<string, string> = {
-  en_attente: 'En attente',
-  envoye: 'Envoyé',
-  livre_complet: 'Livré',
-  livre_partiel: 'Partiel',
-  non_livre: 'Non livré',
-  annule: 'Annulé',
-  en_attente_facturation: 'Att. facturation',
-};
-const STATUS_COLORS: Record<string, string> = {
-  en_attente: 'bg-amber-100 text-amber-800 border border-amber-200',
-  envoye: 'bg-blue-100 text-blue-800 border border-blue-200',
-  livre_complet: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
-  livre_partiel: 'bg-orange-100 text-orange-800 border border-orange-200',
-  non_livre: 'bg-red-100 text-red-800 border border-red-200',
-  annule: 'bg-gray-100 text-gray-500 border border-gray-200',
-  en_attente_facturation: 'bg-purple-100 text-purple-800 border border-purple-200',
-};
-const STATUS_ICONS: Record<string, typeof Clock> = {
-  en_attente: Clock,
-  envoye: Send,
-  livre_complet: CheckCircle2,
-  livre_partiel: Package,
-  non_livre: PackageX,
-  annule: Ban,
-  en_attente_facturation: FileText,
-};
 
 /**
  * Étapes du processus d'un BC (dérivées côté serveur, cf. purchaseOrderRepository._stagedCte).
@@ -163,24 +135,6 @@ const VIEW_STATUSES: Record<'open' | 'history', Array<{ key: string; label: stri
   ],
 };
 
-
-// Styles partagés pour les formulaires en style Odoo (cf. .odoo-scope dans index.css)
-const odooLabelStyle: CSSProperties = {
-  display: 'block', fontSize: '0.75rem', fontWeight: 600,
-  color: 'var(--odoo-text-muted)', marginBottom: 4,
-};
-const odooFieldStyle: CSSProperties = {
-  width: '100%', padding: '0.375rem 0.5rem', border: '1px solid var(--odoo-border)',
-  borderRadius: 4, fontSize: '0.8125rem', backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)',
-};
-const odooNumFieldStyle: CSSProperties = { ...odooFieldStyle, textAlign: 'right' };
-const odooModalPanelStyle: CSSProperties = {
-  backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)',
-  borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
-};
-const odooModalHeaderStyle: CSSProperties = {
-  backgroundColor: 'var(--theme-accent)', padding: '0.875rem 1.25rem',
-};
 
 type POItem = {
   id: string;
@@ -215,11 +169,9 @@ type POItem = {
   tva_rate?: string | null;
 };
 
-export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToReception }: {
+export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
   /** Pré-filtre fournisseur (ouverture depuis l'onglet Fournisseurs). */
   initialSupplierId?: string;
-  /** Renvoie vers l'onglet « 6 · Réceptions » : la réception d'un BC envoyé s'y fait, plus ici. */
-  onGoToReception?: () => void;
 } = {}) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -243,7 +195,8 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
   const [supplierFilter, setSupplierFilter] = useState(initialSupplierId);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<string | null>(null);
-  const [showDelivery, setShowDelivery] = useState<string | null>(null);
+  // Réception : page dédiée du module Achats (?tab=reception&po=<id>).
+  const openReception = useOpenReception();
   // Modal d'edition complete (admin) : qty/prix/ajout/suppression de lignes
   const [editPoId, setEditPoId] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -285,7 +238,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
     setPeriod(view === 'history' ? '3m' : 'all'); setCustomFrom(''); setCustomTo('');
   };
 
-  const { data: board, isLoading, isFetching } = useQuery({
+  const { data: board, isLoading, isFetching, error: boardError, refetch: refetchBoard } = useQuery({
     queryKey: ['purchase-orders', 'board', boardParams],
     queryFn: () => purchaseOrdersApi.board(boardParams),
     placeholderData: (prev) => prev,
@@ -482,11 +435,10 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
         if (po.approval_pending === true) return null;
         return { label: 'Envoyer', run: () => sendMutation.mutate(id), primary: true };
       case 'sent':
-        // La réception se fait dans l'onglet « 6 · Réceptions ». Ici on y renvoie seulement
-        // (repli : ouvrir le modal si aucun aiguillage n'est fourni, ex. onglet Fournisseurs).
-        return { label: 'Réceptionner →', run: () => (onGoToReception ? onGoToReception() : setShowDelivery(id)), primary: false, danger: !!po.is_late };
+        // La réception s'ouvre en page dédiée (Achats › Réceptions › n° du BC).
+        return { label: 'Réceptionner →', run: () => openReception(id), primary: false, danger: !!po.is_late };
       case 'partial':
-        return { label: 'Réceptionner le reliquat →', run: () => (onGoToReception ? onGoToReception() : setShowDelivery(id)), primary: false, danger: !!po.is_late };
+        return { label: 'Réceptionner le reliquat →', run: () => openReception(id), primary: false, danger: !!po.is_late };
       case 'invoice':
         if (po.status === 'en_attente_facturation') {
           return po.frozen ? null : { label: 'Compléter les prix', run: () => setEditPoId(id), primary: false };
@@ -559,7 +511,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
           {lateList.slice(0, 3).map((l, i) => (
             <span key={l.id}>
               {i > 0 && ' · '}
-              <button type="button" onClick={() => setShowDelivery(l.id)}
+              <button type="button" onClick={() => openReception(l.id)}
                 style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, textDecoration: 'underline', color: 'inherit' }}>
                 {l.order_number}
               </button>
@@ -628,6 +580,8 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
       {/* Liste */}
       {isLoading ? (
         <LoadingState label="Chargement des bons de commande…" />
+      ) : boardError && !board ? (
+        <ErrorState error={boardError} onRetry={() => { void refetchBoard(); }} />
       ) : rows.length === 0 ? (
         hasFilters ? (
           <NoResultState onReset={resetFilters} text="Aucun bon de commande ne correspond aux filtres." />
@@ -658,10 +612,8 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
               const action = view === 'open' ? nextAction(po) : null;
               return (
                 <POPane poId={po.id as string} onFull={() => setShowDetail(po.id as string)}
-                  actions={<>
-                    {action && <button type="button" className="odoo-btn-primary" onClick={action.run}>{action.label}</button>}
-                    <button type="button" className="odoo-btn-secondary" onClick={() => handleDownloadPoPdf(po)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={13} aria-hidden="true" /> PDF</button>
-                  </>} />
+                  actions={action ? <button type="button" className="odoo-btn-primary" onClick={action.run}>{action.label}</button> : undefined}
+                  menu={[{ label: 'Télécharger le PDF', icon: Download, onSelect: () => { void handleDownloadPoPdf(po); } }]} />
               );
             }} />
           <TableFooter page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} note="bons de commande" />
@@ -825,7 +777,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
                         <td colSpan={colCount} style={{ background: 'var(--ds-bg)', padding: '12px 16px' }}>
                           <ExpandedPORow poId={id} status={status} isAdmin={isAdmin}
                             onSend={() => sendMutation.mutate(id)}
-                            onDelivery={() => setShowDelivery(id)}
+                            onDelivery={() => openReception(id)}
                             onNotDelivered={() => setPoReason({ kind: 'not_delivered', poId: id, orderNumber: po.order_number as string })}
                             onCancel={() => setPoReason({ kind: 'cancel', poId: id, orderNumber: po.order_number as string })}
                             onHold={() => setPoReason({ kind: 'hold', poId: id, orderNumber: po.order_number as string })}
@@ -847,12 +799,11 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
       {showDetail && (
         <PODetailModal poId={showDetail} onClose={() => setShowDetail(null)}
           onSend={() => sendMutation.mutate(showDetail)}
-          onDelivery={() => setShowDelivery(showDetail)}
+          onDelivery={() => openReception(showDetail)}
           onCompletePrices={() => setEditPoId(showDetail)}
           onGenerateInvoice={async () => { if (await confirmDialog('Générer la facture de ce BC ?', { title: 'Générer la facture', confirmLabel: 'Générer la facture' })) generateInvoiceMutation.mutate(showDetail); }}
         />
       )}
-      {showDelivery && <DeliveryModal poId={showDelivery} onClose={() => setShowDelivery(null)} />}
       {editPoId && <EditPOModal poId={editPoId} onClose={() => setEditPoId(null)} />}
       {reverseFor && (
         <ReasonCodeDialog
@@ -1161,6 +1112,7 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
   allowConvert?: boolean;
   onSaved?: (categoryId: string, changed?: { kind: 'consumable'; refId: string }) => void;
 }) {
+  const confirmConvert = useConfirm();
   const queryClient = useQueryClient();
   const { resolve, tagClass, kindOf } = useStockCategories();
   const [editing, setEditing] = useState(false);
@@ -1181,11 +1133,12 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
         notify.success('Catégorie de l\'article corrigée');
       } else if (kind === 'ingredient' && allowConvert) {
         const catName = resolve(selectedId)?.path || 'consommable';
-        if (!window.confirm(
-          `Cette catégorie (${catName}) transforme l'article en CONSOMMABLE.\n\n` +
+        if (!(await confirmConvert(
+          `Cette catégorie (${catName}) transforme l'article en consommable.\n\n` +
           `Le stock sera transféré vers les Consommables, et l'article sera retiré ` +
-          `des ingrédients ainsi que des lignes de BC non facturées. Continuer ?`
-        )) { setSaving(false); return; }
+          `des ingrédients ainsi que des lignes de BC non facturées.`,
+          { title: 'Convertir en consommable', confirmLabel: 'Convertir', danger: true },
+        ))) { setSaving(false); return; }
         const resp = await ingredientsApi.convertToConsumable(refId, selectedId);
         changed = { kind: 'consumable', refId: resp.packagingId as string };
         notify.success('Article converti en consommable');
@@ -1227,55 +1180,30 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
         ) : (
           <span style={{ fontSize: '0.75rem', color: 'var(--ds-warning)', fontWeight: 600 }}>Sans catégorie</span>
         )}
-        <button onClick={(e) => { e.stopPropagation(); setSelectedId(categoryId || ''); setEditing(true); }}
-          title="Corriger la catégorie de l'article"
-          className="hover:bg-gray-100"
-          style={{ padding: 3, borderRadius: 4, color: 'var(--odoo-text-muted)', flexShrink: 0 }}>
-          <Pencil size={11} />
+        <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedId(categoryId || ''); setEditing(true); }}
+          title="Corriger la catégorie de l'article" aria-label={`Corriger la catégorie${itemName ? ` de ${itemName}` : ''}`}
+          className="ds-icon-btn" style={{ flexShrink: 0 }}>
+          <Pencil size={12} />
         </button>
       </div>
 
-      {/* Mini-fenetre superposee : evite de deformer le tableau (le selecteur
-          en cascade est trop haut pour une cellule). zIndex 60 > modal BC (50). */}
+      {/* Mini-fenêtre superposée : évite de déformer le tableau (le sélecteur en cascade est trop haut pour une cellule). */}
       {editing && (
-        <ModalBackdrop onClose={() => !saving && setEditing(false)}
-          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4"
-          style={{ zIndex: 60 }}>
-          <div className="odoo-scope w-full" style={{ ...odooModalPanelStyle, maxWidth: 560 }}
-            onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between" style={odooModalHeaderStyle}>
-              <div className="flex items-center gap-3">
-                <Pencil size={16} style={{ color: '#fff' }} />
-                <div>
-                  <h3 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Corriger la catégorie</h3>
-                  {itemName && <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>{itemName}</p>}
-                </div>
-              </div>
-              <button onClick={() => !saving && setEditing(false)} className="hover:bg-white/20"
-                style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
-            </div>
-            <div style={{ padding: '1.25rem' }} className="space-y-4">
-              {cat && (
-                <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>
-                  Catégorie actuelle : <span style={{ fontWeight: 600, color: 'var(--odoo-text)' }}>{cat.path}</span>
-                </p>
-              )}
-              <CategoryCascadeSelector value={selectedId} onChange={setSelectedId} rootIds={PURCHASABLE_ROOT_IDS} />
-              <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0 }}>
-                La correction s'applique à l'article dans le référentiel : Économat, prochains BC et charges en profitent aussitôt.
-              </p>
-            </div>
-            <div className="flex justify-end gap-2"
-              style={{ borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem' }}>
-              <button onClick={() => setEditing(false)} disabled={saving} className="odoo-btn-secondary">Annuler</button>
-              <button onClick={save} disabled={saving || !selectedId} className="odoo-btn-primary"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {saving ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={13} />}
-                {saving ? 'Enregistrement...' : 'Enregistrer'}
-              </button>
-            </div>
-          </div>
-        </ModalBackdrop>
+        <Modal title="Corriger la catégorie" subtitle={itemName} width={560} locked={saving} onClose={() => !saving && setEditing(false)}
+          footer={<FormFooter onCancel={() => setEditing(false)} onSubmit={() => { void save(); }} busy={saving} disabled={!selectedId}
+            submitLabel={saving ? 'Enregistrement…' : 'Enregistrer'} />}>
+          {cat && (
+            <p style={{ fontSize: 14, color: 'var(--ds-muted)', margin: 0 }}>
+              Catégorie actuelle : <span style={{ fontWeight: 600, color: 'var(--ds-ink)' }}>{cat.path}</span>
+            </p>
+          )}
+          <FormField label="Nouvelle catégorie" required>
+            <CategoryCascadeSelector value={selectedId} onChange={setSelectedId} rootIds={PURCHASABLE_ROOT_IDS} />
+          </FormField>
+          <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: 0 }}>
+            La correction s'applique à l'article dans le référentiel : Économat, prochains BC et charges en profitent aussitôt.
+          </p>
+        </Modal>
       )}
     </>
   );
@@ -1283,6 +1211,7 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
 
 /* ═══ Create PO Modal ═══ */
 function CreatePOModal({ onClose }: { onClose: () => void }) {
+  const confirmLeave = useConfirm();
   const [createIdemKey] = useState(newIdempotencyKey);
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState('');
@@ -1307,8 +1236,8 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     setOrderType(t);
     setFreeLine(t === 'stock' ? null : emptyFreeLine(t));
   };
-  const changeOrderType = () => {
-    if (items.length > 0 && !window.confirm('Changer de type d\'achat retire les lignes déjà saisies. Continuer ?')) return;
+  const changeOrderType = async () => {
+    if (items.length > 0 && !(await confirmLeave('Changer de type d\'achat retire les lignes déjà saisies.', { title: 'Changer de type d\'achat', confirmLabel: 'Changer', danger: true }))) return;
     setItems([]);
     setOrderType(null);
     setFreeLine(null);
@@ -1366,8 +1295,8 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const supplierName = supplierOptions.find(o => o.id === supplierId)?.label || '';
 
   // Fermer un BC en cours de saisie fait perdre les lignes : on demande confirmation.
-  const requestClose = () => {
-    if (items.length > 0 && !window.confirm('Abandonner ce bon de commande ? Les articles saisis seront perdus.')) return;
+  const requestClose = async () => {
+    if (items.length > 0 && !(await confirmLeave('Les articles saisis seront perdus.', { title: 'Abandonner ce bon de commande ?', confirmLabel: 'Abandonner', cancelLabel: 'Continuer la saisie', danger: true }))) return;
     onClose();
   };
 
@@ -1533,52 +1462,42 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-    <ModalBackdrop onClose={requestClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      {/* Quasi plein ecran : le BC est le flux de saisie principal, on lui donne
-          toute la place (tableau articles + recherche). Corps scrollable entre
-          en-tete et pied fixes. */}
-      <div className="odoo-scope w-full flex flex-col" onClick={(e) => e.stopPropagation()}
-        style={{ ...odooModalPanelStyle, maxWidth: '95vw', height: '92vh' }}>
-        {/* Header */}
-        <div className="flex items-center justify-between shrink-0" style={odooModalHeaderStyle}>
-          <div className="flex items-center gap-3">
-            <ShoppingBag size={16} style={{ color: '#fff' }} />
-            <div>
-              <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Nouveau bon de commande</h2>
-              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>
-                {!orderType ? 'Quel type d\'achat ?'
-                  : `${ORDER_TYPES.find(t => t.key === orderType)!.label}${supplierName ? ` · chez ${supplierName}` : ''}`}
-              </p>
-            </div>
-            {orderType && (
-              <button type="button" onClick={changeOrderType}
-                style={{ marginLeft: 8, fontSize: '0.6875rem', color: '#fff', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 999, padding: '0.1rem 0.6rem' }}>
-                Changer de type
-              </button>
-            )}
-          </div>
-          <button type="button" onClick={requestClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
-        </div>
-
-        <div style={{ padding: '1.25rem' }} className="space-y-5 flex-1 overflow-y-auto min-h-0">
+    {/* Quasi plein écran : le BC est le flux de saisie principal (tableau articles + recherche). */}
+    <Modal title="Nouveau bon de commande" width={1600} onClose={() => { void requestClose(); }}
+      locked={createMutation.isPending || showNewIngredient}
+      subtitle={!orderType ? 'Quel type d\'achat ?'
+        : `${ORDER_TYPES.find(t => t.key === orderType)!.label}${supplierName ? ` · chez ${supplierName}` : ''}`}
+      aside={orderType ? (
+        <button type="button" onClick={changeOrderType} className="ds-btn-ghost ds-btn-sm">Changer de type</button>
+      ) : undefined}
+      footer={
+        <FormFooter onCancel={() => { void requestClose(); }} onSubmit={handleSubmit} busy={createMutation.isPending}
+          disabled={items.length === 0 || !supplierId} dirty={items.length > 0}
+          submitLabel={createMutation.isPending ? 'Création…' : 'Créer le bon de commande'}>
+          {items.length > 0 && (
+            <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>{items.length} article{items.length > 1 ? 's' : ''} — <span style={{ fontWeight: 700, color: 'var(--ds-ink)' }}>{n(totalAmount)} {curLabel}</span>{currency !== BASE_CURRENCY && rate > 0 && <> ≈ {money(totalAmount * rate)}</>}</span>
+          )}
+          {items.length > 0 && !supplierId && <span style={{ fontSize: 12, color: 'var(--ds-danger)' }}>Choisissez un fournisseur.</span>}
+        </FormFooter>
+      }>
           {/* Étape 0 : nature de l'achat (comme le « type de commande » des ERP). */}
           {!orderType && (
             <div style={{ maxWidth: 920, margin: '2rem auto 0' }}>
-              <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--odoo-text)', marginBottom: 4 }}>Que voulez-vous commander ?</p>
-              <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginBottom: 16 }}>
+              <h3 className="ds-subhead" style={{ marginBottom: 4 }}>Que voulez-vous commander ?</h3>
+              <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: '0 0 16px' }}>
                 Le type décide de la réception et de la comptabilisation. Il ne change plus une fois des lignes saisies.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {ORDER_TYPES.map(t => (
                   <button key={t.key} type="button" onClick={() => chooseOrderType(t.key)}
-                    className="text-left hover:shadow-md transition-shadow"
-                    style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, padding: '1rem', backgroundColor: 'var(--odoo-bg)', cursor: 'pointer' }}>
+                    className="ds-panel text-left hover:shadow-md transition-shadow"
+                    style={{ border: 0, padding: '16px 20px', cursor: 'pointer', font: 'inherit' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 8, backgroundColor: t.tint, color: t.color, marginBottom: 10 }}>
                       <t.icon size={18} />
                     </span>
-                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', color: 'var(--odoo-text)' }}>{t.label}</span>
-                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginTop: 4 }}>{t.examples}</span>
-                    <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--odoo-border)' }}>{t.effect}</span>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: 15, color: 'var(--ds-ink)' }}>{t.label}</span>
+                    <span style={{ display: 'block', fontSize: 13, color: 'var(--ds-muted)', marginTop: 4 }}>{t.examples}</span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--ds-hair)' }}>{t.effect}</span>
                   </button>
                 ))}
               </div>
@@ -1587,9 +1506,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
           {orderType && (<>
           {/* Fournisseur + livraison + notes */}
+          <FormSection title="Commande">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label style={odooLabelStyle}>Fournisseur *</label>
+            <FormField label="Fournisseur" required error={items.length > 0 && !supplierId ? 'Choisissez le fournisseur de ce bon de commande.' : undefined}>
               <SearchSelect options={supplierOptions} value={supplierId} width="100%"
                 onChange={id => {
                   setSupplierId(id);
@@ -1597,66 +1516,65 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                   if (id && currencies.some(c => c.code === sc)) changeCurrency(sc);
                   if (id && orderType === 'stock') setTimeout(() => searchRef.current?.focus(), 0); }}
                 placeholder="Rechercher un fournisseur…" />
-            </div>
-            <div>
-              <label style={odooLabelStyle}>Livraison prévue</label>
+            </FormField>
+            <FormField label="Livraison prévue" htmlFor="po-new-expected">
               <div className="flex items-center gap-2">
-                <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} style={{ ...odooFieldStyle, flex: 1, minWidth: 0 }} />
+                <input id="po-new-expected" type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} className="ds-input" style={{ flex: 1, minWidth: 0 }} />
                 {deliveryQuick.map(q => {
                   const active = expectedDate === format(addDays(new Date(), q.days), 'yyyy-MM-dd');
                   return (
                     <button key={q.days} type="button" onClick={() => setDeliveryIn(q.days)}
-                      className={active ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-                      style={{ whiteSpace: 'nowrap', padding: '0.3rem 0.55rem', fontSize: '0.75rem' }}>
+                      className={`${active ? 'odoo-btn-primary' : 'odoo-btn-secondary'} ds-btn-sm`} aria-pressed={active}
+                      style={{ whiteSpace: 'nowrap' }}>
                       {q.label}
                     </button>
                   );
                 })}
               </div>
-            </div>
-            <div>
-              <label style={odooLabelStyle}>Notes</label>
-              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} style={odooFieldStyle} placeholder="Optionnel…" />
-            </div>
+            </FormField>
+            <FormField label="Notes" htmlFor="po-new-notes">
+              <input id="po-new-notes" type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="ds-input" placeholder="Optionnel…" />
+            </FormField>
           </div>
 
           {currencies.length > 1 && (
             <div className="flex items-end gap-3 flex-wrap">
               <div style={{ width: 200 }}>
-                <label style={odooLabelStyle}>Devise du bon</label>
-                <SearchSelect value={currency} onChange={changeCurrency} clearable={false}
-                  placeholder="Devise" width="100%" size="md" ariaLabel="Devise du bon"
-                  options={currencies.map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} />
+                <FormField label="Devise du bon">
+                  <SearchSelect value={currency} onChange={changeCurrency} clearable={false}
+                    placeholder="Devise" width="100%" size="md" ariaLabel="Devise du bon"
+                    options={currencies.map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} />
+                </FormField>
               </div>
               {currency !== BASE_CURRENCY && (<>
                 <div style={{ width: 180 }}>
-                  <label style={odooLabelStyle}>Taux : 1 {currency} =</label>
-                  <div className="flex items-center gap-1">
-                    <input type="number" min={0} step="0.0001" value={rateInput} onChange={e => setRateInput(e.target.value)} style={odooNumFieldStyle} />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{currencySymbol()}</span>
-                  </div>
+                  <FormField label={`Taux : 1 ${currency} = … ${currencySymbol()}`} htmlFor="po-new-rate" required error={rate > 0 ? undefined : 'Saisissez le taux de change.'}>
+                    <input id="po-new-rate" type="number" min={0} step="0.0001" value={rateInput} onChange={e => setRateInput(e.target.value)} className="ds-input ds-num" aria-required="true" />
+                  </FormField>
                 </div>
-                <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0, flex: '1 1 260px' }}>
+                <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: 0, flex: '1 1 260px' }}>
                   Prix saisis en {currency}. Le taux est figé sur le bon ; stock, coût matière et facture restent en {currencySymbol()}.
                 </p>
               </>)}
             </div>
           )}
+          </FormSection>
 
           {/* Recherche d'articles (ingredients + consommables) */}
+          <FormSection title="Articles">
           <div>
             {orderType === 'stock' && (<>
-            <label style={odooLabelStyle}>Ajouter des articles</label>
+            <label htmlFor="po-new-search" className="ds-field-label" style={{ display: 'block', marginBottom: 6 }}>Ajouter des articles</label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--odoo-text-muted)' }} />
-                <input ref={searchRef} type="text" placeholder="Tapez le nom d'un article puis Entrée (↑ ↓ pour choisir)…"
+                <input id="po-new-search" ref={searchRef} type="text" placeholder="Tapez le nom d'un article puis Entrée (↑ ↓ pour choisir)…"
                   value={searchIngredient}
                   onChange={e => { setSearchIngredient(e.target.value); setSearchOpen(true); }}
                   onFocus={() => setSearchOpen(true)}
                   onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
                   onKeyDown={onSearchKeyDown}
-                  style={{ ...odooFieldStyle, paddingLeft: 30 }} />
+                  className="ds-input" style={{ paddingLeft: 30 }} />
                 {searchOpen && search && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 30, backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 4, maxHeight: 320, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>
                     {filteredProducts.map((p, i) => {
@@ -1667,7 +1585,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                           onMouseDown={e => { e.preventDefault(); addProduct(p); }}
                           onMouseEnter={() => setHighlighted(i)}
                           className="w-full text-left text-sm flex items-center justify-between gap-3"
-                          style={{ padding: '0.5rem 0.75rem', backgroundColor: i === highlighted ? 'var(--odoo-bg-hover, #f3f4f6)' : 'transparent' }}>
+                          style={{ padding: '0.5rem 0.75rem', backgroundColor: i === highlighted ? 'var(--ds-tint)' : 'transparent' }}>
                           <span style={{ minWidth: 0 }}>
                             <span className="font-medium">
                               {p.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({p.unit as string})</span>
@@ -1687,7 +1605,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                     <button type="button" onMouseDown={e => { e.preventDefault(); setShowNewIngredient(true); }}
                       className="w-full text-left text-sm flex items-center gap-2"
                       style={{ padding: '0.5rem 0.75rem', borderTop: filteredProducts.length ? '1px solid var(--odoo-border)' : 'none', color: 'var(--theme-accent)', fontWeight: 600,
-                        backgroundColor: filteredProducts.length === 0 ? 'var(--odoo-bg-hover, #f3f4f6)' : 'transparent' }}>
+                        backgroundColor: filteredProducts.length === 0 ? 'var(--ds-tint)' : 'transparent' }}>
                       <Plus size={14} /> Créer « {searchIngredient.trim()} »
                       {filteredProducts.length === 0 && <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>— aucun article trouvé (Entrée)</span>}
                     </button>
@@ -1703,51 +1621,55 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             {!freeLine && (
               <button type="button"
                 onClick={() => setFreeLine({ kind: 'service', fee: true, description: 'Transport', categoryId: byId.has(DEFAULT_FEE_CATEGORY_ID) ? DEFAULT_FEE_CATEGORY_ID : '', quantity: '1', unitPrice: '' })}
-                style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--theme-accent)', fontWeight: 600 }}>
-                <Plus size={12} /> Frais annexes <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)' }}>(transport, livraison… facturés avec la marchandise)</span>
+                className="ds-btn-ghost ds-btn-sm" style={{ marginTop: 8, color: 'var(--ds-accent-ink)' }}>
+                <Plus size={12} aria-hidden="true" /> Frais annexes <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>(transport, livraison… facturés avec la marchandise)</span>
               </button>
             )}
             </>)}
             {freeLine && (
-              <div style={{ marginTop: 10, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--odoo-bg-alt)' }}>
+              <div style={{ marginTop: 10, border: '1px solid var(--ds-hair)', borderRadius: 12, padding: '12px 16px', backgroundColor: 'var(--ds-bg)' }}>
                 <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
-                  <strong style={{ fontSize: '0.8125rem' }}>
+                  <strong className="ds-subhead">
                     {freeLine.fee ? 'Ajouter des frais annexes' : freeLine.kind === 'asset' ? 'Ajouter une immobilisation' : 'Ajouter un service / des frais'}
                   </strong>
                   {freeLine.fee && (
-                    <button type="button" onClick={() => setFreeLine(null)} title="Fermer" style={{ color: 'var(--odoo-text-muted)', padding: 2 }}><X size={14} /></button>
+                    <button type="button" onClick={() => setFreeLine(null)} title="Fermer" aria-label="Fermer les frais annexes" className="ds-icon-btn"><X size={14} /></button>
                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                   <div className="md:col-span-4">
-                    <label style={odooLabelStyle}>Désignation *</label>
-                    <input type="text" autoFocus key={`desc-${items.length}`} value={freeLine.description} style={odooFieldStyle}
+                    <FormField label="Désignation" htmlFor="po-free-desc" required>
+                    <input id="po-free-desc" type="text" autoFocus key={`desc-${items.length}`} value={freeLine.description} className="ds-input"
                       placeholder={freeLine.fee ? 'Ex : Transport, frais de livraison' : freeLine.kind === 'asset' ? 'Ex : Pétrin spirale 60 L' : 'Ex : Réparation four à sole'}
                       onChange={e => setFreeLine({ ...freeLine, description: e.target.value })}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFreeLine(); } }} />
+                    </FormField>
                   </div>
                   <div className="md:col-span-4">
-                    <label style={odooLabelStyle}>Catégorie *</label>
+                    <FormField label="Catégorie" required>
                     <SearchSelect options={freeCategoryOptions} value={freeLine.categoryId} width="100%"
                       onChange={id => setFreeLine({ ...freeLine, categoryId: id })}
                       placeholder={freeLine.kind === 'asset' ? 'Matériel, mobilier, informatique…' : 'Réparations, transport, énergie…'} />
+                    </FormField>
                   </div>
                   <div className="md:col-span-1">
-                    <label style={odooLabelStyle}>Qté</label>
-                    <input type="number" min={0} step="1" value={freeLine.quantity} style={odooNumFieldStyle}
+                    <FormField label="Qté" htmlFor="po-free-qty" required>
+                    <input id="po-free-qty" type="number" min={0} step="1" value={freeLine.quantity} className="ds-input ds-num"
                       onChange={e => setFreeLine({ ...freeLine, quantity: e.target.value })} />
+                    </FormField>
                   </div>
                   <div className="md:col-span-2">
-                    <label style={odooLabelStyle}>Prix unit. HT ({curLabel})</label>
-                    <input type="number" min={0} step="0.01" value={freeLine.unitPrice} style={odooNumFieldStyle}
+                    <FormField label={`Prix unit. HT (${curLabel})`} htmlFor="po-free-price">
+                    <input id="po-free-price" type="number" min={0} step="0.01" value={freeLine.unitPrice} className="ds-input ds-num"
                       onChange={e => setFreeLine({ ...freeLine, unitPrice: e.target.value })}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFreeLine(); } }} />
+                    </FormField>
                   </div>
                   <div className="md:col-span-1">
                     <button type="button" onClick={addFreeLine} className="odoo-btn-primary w-full" style={{ justifyContent: 'center' }}>Ajouter</button>
                   </div>
                 </div>
-                <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 8 }}>
+                <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: '8px 0 0' }}>
                   {freeLine.kind === 'asset'
                     ? <>Pas de stock : à la réception (mise en service), le bien est porté en immobilisation (compte 23xx) et sa fiche d'amortissement est créée automatiquement{(() => { const y = (byId.get(freeLine.categoryId) as any)?.asset_duration_years; return y ? `, amortie sur ${y} ans` : ''; })()}.</>
                     : freeLine.fee
@@ -1758,15 +1680,13 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             )}
             {orderType === 'stock' && usualProducts.length > 0 && (
               <div style={{ marginTop: 10 }}>
-                <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginBottom: 6 }}>
+                <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: '0 0 6px' }}>
                   Articles habituels chez <strong>{supplierName}</strong> — un clic pour ajouter
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {usualProducts.map(p => (
-                    <button type="button" key={`${p._kind}:${p.id as string}`} onClick={() => addProduct(p)}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.65rem', borderRadius: 999, fontSize: '0.75rem',
-                        border: '1px solid var(--odoo-border)', backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)', cursor: 'pointer' }}>
-                      <Plus size={11} style={{ color: 'var(--theme-accent)' }} /> {p.name as string}
+                    <button type="button" key={`${p._kind}:${p.id as string}`} onClick={() => addProduct(p)} className="prj-chip">
+                      <Plus size={11} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} /> {p.name as string}
                     </button>
                   ))}
                 </div>
@@ -1774,26 +1694,31 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             )}
           </div>
 
-          {/* Items list */}
+          {/* Lignes du BC */}
           {items.length > 0 && (
-            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' }}>
-              <table className="odoo-table">
+            <DataPanel label="Lignes du bon de commande"
+              footer={
+                <TableFooter note={<>{items.length} article{items.length > 1 ? 's' : ''}{hasMissingPrices && <span style={{ marginLeft: 8, color: 'var(--ds-warning)' }}>(prix à définir par le fournisseur)</span>}</>}>
+                  <strong style={{ color: 'var(--ds-ink)' }}>{totalAmount > 0 ? `Total : ${n(totalAmount)} ${curLabel}${currency !== BASE_CURRENCY && rate > 0 ? ` ≈ ${money(totalAmount * rate)}` : ''}` : 'Prix à définir'}</strong>
+                </TableFooter>
+              }>
+              <table className="odoo-table ds-dense">
                 <thead>
                   <tr>
                     <th>Article</th>
                     <th>Catégorie</th>
-                    <th style={{ textAlign: 'right', width: 128 }}>Quantité</th>
-                    <th style={{ textAlign: 'right', width: 128 }}>Prix unit. ({curLabel})</th>
-                    <th style={{ textAlign: 'right', width: 112 }}>Sous-total</th>
-                    <th style={{ width: 40 }}></th>
+                    <th className="ds-num" style={{ width: 128 }}>Quantité</th>
+                    <th className="ds-num" style={{ width: 128 }}>Prix unit. ({curLabel})</th>
+                    <th className="ds-num" style={{ width: 112 }}>Sous-total ({curLabel})</th>
+                    <th className="ds-actions" style={{ width: 40 }}><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item, idx) => (
                     <tr key={`${item.kind}:${item.refId}`}>
                       <td>
-                        <span className="font-medium">{item.name}</span>
-                        {!isFreeLine(item.kind) && <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.unit})</span>}
+                        <span className="ds-strong">{item.name}</span>
+                        {!isFreeLine(item.kind) && <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 4 }}>({item.unit})</span>}
                         <LineKindTag kind={item.kind} />
                       </td>
                       <td>
@@ -1815,33 +1740,34 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                       <td>
                         {item.container ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-                            <input type="number" min={1} step="1" value={item.containerCount || ''}
+                            <input type="number" min={1} step="1" value={item.containerCount || ''} className="ds-input sm ds-num"
+                              aria-label={`Nombre de contenants — ${item.name}`}
                               onChange={(e) => {
                                 const count = Math.max(1, Math.floor(parseFloat(e.target.value) || 1));
                                 setItems(prev => prev.map((it, i) => i === idx ? { ...it, containerCount: count, quantityOrdered: count * (it.container as ContainerDef).size } : it));
                               }}
-                              style={{ ...odooNumFieldStyle, width: 64 }} title={`${containerLabel(item.container, item.unit)} — commande par contenant entier`} />
+                              style={{ width: 64 }} title={`${containerLabel(item.container, item.unit)} — commande par contenant entier`} />
                             <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>
                               × {containerLabel(item.container, item.unit)} = <strong>{n(item.quantityOrdered)} {item.unit}</strong>
                             </span>
                           </div>
                         ) : (
-                          <input type="number" min={0.01} step="0.01" value={item.quantityOrdered || ''}
-                            onChange={(e) => updateItem(idx, 'quantityOrdered', parseFloat(e.target.value) || 0)}
-                            style={odooNumFieldStyle} />
+                          <input type="number" min={0.01} step="0.01" value={item.quantityOrdered || ''} className="ds-input sm ds-num"
+                            aria-label={`Quantité — ${item.name}`} aria-invalid={item.quantityOrdered <= 0 || undefined}
+                            onChange={(e) => updateItem(idx, 'quantityOrdered', parseFloat(e.target.value) || 0)} />
                         )}
                       </td>
                       <td>
-                        <input type="number" min={0} step="0.01" value={item.unitPrice ?? ''}
+                        <input type="number" min={0} step="0.01" value={item.unitPrice ?? ''} className="ds-input sm ds-num"
+                          aria-label={`Prix unitaire — ${item.name}`}
                           onChange={(e) => updateItem(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          placeholder="Optionnel"
-                          style={odooNumFieldStyle} />
+                          placeholder="Optionnel" />
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {item.unitPrice ? n(item.quantityOrdered * item.unitPrice) : <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>À définir</span>}
+                      <td className="ds-num ds-strong">
+                        {item.unitPrice ? n(item.quantityOrdered * item.unitPrice) : <span style={{ color: 'var(--ds-muted)', fontSize: 12, fontWeight: 400 }}>À définir</span>}
                       </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button onClick={() => removeItem(idx)} className="odoo-btn-danger" title="Retirer" style={{ padding: '0.25rem 0.4rem' }}>
+                      <td className="ds-actions">
+                        <button type="button" onClick={() => removeItem(idx)} className="ds-icon-btn" title="Retirer" aria-label={`Retirer ${item.name}`}>
                           <X size={14} />
                         </button>
                       </td>
@@ -1849,51 +1775,18 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                   ))}
                 </tbody>
               </table>
-              <div className="flex items-center justify-between"
-                style={{ backgroundColor: 'var(--theme-accent-light, rgba(0,0,0,0.04))', borderTop: '1px solid var(--odoo-border)', padding: '0.625rem 0.875rem' }}>
-                <span style={{ fontSize: '0.8125rem', color: 'var(--theme-accent)', fontWeight: 600 }}>
-                  {items.length} article{items.length > 1 ? 's' : ''}
-                  {hasMissingPrices && <span style={{ marginLeft: 8, color: 'var(--ds-warning)', fontSize: '0.6875rem' }}>(prix à définir par le fournisseur)</span>}
-                </span>
-                <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{totalAmount > 0 ? `Total: ${n(totalAmount)} ${curLabel}${currency !== BASE_CURRENCY && rate > 0 ? ` ≈ ${money(totalAmount * rate)}` : ''}` : 'Prix à définir'}</span>
-              </div>
-            </div>
+            </DataPanel>
           )}
 
           {items.length === 0 && (
-            <div className="flex flex-col items-center justify-center"
-              style={{ padding: '2.5rem 0', backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 4, border: '1px dashed var(--odoo-border)' }}>
-              <ShoppingBag size={24} style={{ color: 'var(--odoo-text-light)', marginBottom: 8 }} />
-              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-                {!supplierId ? 'Commencez par choisir le fournisseur.'
-                  : orderType === 'stock' ? 'Aucune ligne pour l\'instant — recherchez un article ou cliquez un article habituel.'
-                  : 'Aucune ligne pour l\'instant — remplissez le formulaire ci-dessus puis « Ajouter ».'}
-              </p>
-            </div>
+            <EmptyState icon={ShoppingBag} title="Aucune ligne pour l'instant"
+              text={!supplierId ? 'Commencez par choisir le fournisseur.'
+                : orderType === 'stock' ? 'Recherchez un article ou cliquez un article habituel.'
+                : 'Remplissez le formulaire ci-dessus puis « Ajouter ».'} />
           )}
+          </FormSection>
           </>)}
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-between items-center shrink-0"
-          style={{ backgroundColor: 'var(--odoo-bg)', borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem' }}>
-          <div>
-            {items.length > 0 && (
-              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{items.length} article{items.length > 1 ? 's' : ''} — <span style={{ fontWeight: 700, color: 'var(--odoo-text)' }}>{n(totalAmount)} {curLabel}</span>{currency !== BASE_CURRENCY && rate > 0 && <> ≈ {money(totalAmount * rate)}</>}</p>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={requestClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="button" onClick={handleSubmit} disabled={createMutation.isPending || items.length === 0 || !supplierId}
-              title={!supplierId ? 'Choisissez un fournisseur' : items.length === 0 ? 'Ajoutez au moins un article' : undefined}
-              className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={16} />}
-              {createMutation.isPending ? 'Création...' : 'Créer le bon de commande'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
     {showNewIngredient && (
       <IngredientFormModal mode="create" title="Nouvel article" initialName={searchIngredient.trim()} initialSupplier={supplierName}
         rootIds={PURCHASABLE_ROOT_IDS} isConsumable={id => kindOf(id) === 'consumable'}
@@ -1918,7 +1811,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
   onCompletePrices?: () => void;
   onGenerateInvoice?: () => void;
 }) {
-  const { data: po, isLoading } = useQuery({
+  const { data: po, isLoading, error } = useQuery({
     queryKey: ['purchase-orders', poId],
     queryFn: () => purchaseOrdersApi.getById(poId),
   });
@@ -1926,15 +1819,13 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
   // Note fournisseur (mig 362) pour la carte fournisseur ; absente = pas encore évalué.
   const { data: standings = [] } = useQuery({ queryKey: ['supplier-scores', 'latest'], queryFn: supplierScoreApi.latest, retry: false, staleTime: 300_000 });
 
-  const panel: CSSProperties = { width: '100%', maxWidth: 1120, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' };
-
   if (isLoading || !po) {
     return (
-      <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="odoo-scope" style={{ ...panel, maxWidth: 360, padding: '2rem', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
-          {isLoading ? <LoadingState bare label="Chargement du bon de commande…" /> : <EmptyState bare icon={FileText} title="Bon de commande introuvable" />}
-        </div>
-      </ModalBackdrop>
+      <Modal title="Bon de commande" width={420} onClose={onClose}>
+        {isLoading ? <LoadingState bare label="Chargement du bon de commande…" />
+          : error ? <ErrorState bare error={error} title="Le bon de commande n'a pas pu être chargé" />
+          : <EmptyState bare icon={FileText} title="Bon de commande introuvable" />}
+      </Modal>
     );
   }
 
@@ -2029,23 +1920,18 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
   const stageKey = cancelled ? null : ['draft', 'sent', 'partial', 'invoice', 'closed', 'closed'][stage] ?? null;
   const stageDef = PO_STAGES.find(x => x.key === stageKey);
   // Fond gris de feuille, cartes blanches sans bordure, titres en casse normale.
-  const card: CSSProperties = { borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--theme-bg-card)', boxShadow: '0 1px 2px rgba(15,23,42,.04)' };
+  const card: CSSProperties = { borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--ds-card)', boxShadow: 'var(--ds-shadow)' };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope pur-scope" role="dialog" aria-label={`Bon de commande ${po.order_number}`} style={panel} onClick={(e) => e.stopPropagation()}>
-        {/* En-tête */}
-        <div className="odoo-control-bar" style={{ flexWrap: 'wrap', rowGap: 6 }}>
-          <Breadcrumb icon={FileText} items={[{ label: 'Bons de commande' }, { label: po.order_number }]} />
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={downloadPdf} disabled={downloading || stage === 0} className="odoo-btn-secondary"
-            title={stage === 0 ? 'PDF disponible une fois le BC envoyé' : 'Ouvrir le PDF'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            {downloading ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Download size={12} aria-hidden="true" />} PDF
-          </button>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
-        </div>
-
-        <div className="kl-po-body" style={{ overflowY: 'auto', flex: 1, minHeight: 0, background: 'var(--theme-bg-page)' }}>
+    <Modal title={`Bon de commande ${po.order_number}`} subtitle="Bons de commande" width={1120} onClose={onClose} label={`Bon de commande ${po.order_number}`}
+      aside={
+        <button type="button" onClick={downloadPdf} disabled={downloading || stage === 0} className="odoo-btn-secondary ds-btn-sm"
+          title={stage === 0 ? 'PDF disponible une fois le BC envoyé' : 'Ouvrir le PDF'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {downloading ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Download size={12} aria-hidden="true" />} PDF
+        </button>
+      }>
+        {/* Fond gris de feuille sous les cartes blanches (le corps de la fenêtre est blanc). */}
+        <div className="kl-po-body pur-scope" style={{ margin: -20, background: 'var(--ds-bg)' }}>
           {/* Identité */}
           <div style={{ padding: '16px 20px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: 14 }}>
             <span style={{ fontWeight: 700, fontSize: 21, letterSpacing: '-.02em', color: 'var(--ds-ink)' }}>{po.supplier_name}</span>
@@ -2228,8 +2114,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
             </section>
           </div>
         </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -2237,16 +2122,51 @@ function trimQty(v: number) {
   return v.toLocaleString('fr-FR', { maximumFractionDigits: 3 });
 }
 
-/* ═══ Delivery Confirmation Modal ═══ */
-export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void }) {
+/* ═══ Réception d'un bon de commande ═══
+ * Page du module Achats (?tab=reception&po=<id>, fil d'Ariane « Achats › Réceptions › n° du BC »),
+ * ouverte depuis la liste des BC, la fiche du BC et la liste des Réceptions. Ex-DeliveryModal :
+ * mêmes champs, mêmes contrôles, même appel (confirmDelivery).
+ */
+const RCPT_CARD: CSSProperties = { padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 };
+const LINK_BTN: CSSProperties = { background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--ds-accent-ink)', cursor: 'pointer', textDecoration: 'underline' };
+
+/** Étiquette d'étape d'un BC chargé par getById (même dérivation que la fiche du BC et le serveur). */
+function poStageTagOf(po: Record<string, any>) {
+  const status = po.status as string;
+  const invoices = (po.invoices || []) as unknown[];
+  const cancelled = status === 'annule' || status === 'non_livre';
+  const key = cancelled ? null
+    : status === 'en_attente' ? 'draft'
+    : status === 'envoye' ? 'sent'
+    : status === 'livre_partiel' ? 'partial'
+    : status === 'en_attente_facturation' || (status === 'livre_complet' && invoices.length === 0) ? 'invoice'
+    : status === 'livre_complet' ? 'closed' : null;
+  const def = PO_STAGES.find(x => x.key === key);
+  const isLate = (key === 'draft' || key === 'sent' || key === 'partial') && !!po.expected_delivery_date
+    && new Date(po.expected_delivery_date) < new Date(new Date().toDateString());
+  return (
+    <StatusTag tone={cancelled ? 'cancelled' : po.on_hold ? 'blocked' : isLate ? 'late' : PO_TONE[key ?? ''] ?? 'cancelled'} icon={def?.icon}
+      label={`${def?.label ?? (status === 'non_livre' ? 'Non livré' : 'Annulé')}${cancelled ? '' : po.on_hold ? ' · bloqué' : isLate ? ' · en retard' : ''}`} />
+  );
+}
+
+export function ReceptionForm({ poId, onDone, onCancel }: {
+  poId: string;
+  /** Après une réception enregistrée (la notification est déjà affichée). */
+  onDone: () => void;
+  /** Annuler : retour à la page précédente. */
+  onCancel: () => void;
+}) {
   // Une clé par réception ouverte : une validation rejouée ne réceptionne pas deux fois (mig 307).
   const [deliveryIdemKey] = useState(newIdempotencyKey);
   const queryClient = useQueryClient();
   const confirmDialog = useConfirm();
-  const { data: po, isLoading } = useQuery({
+  const { data: po, isLoading, error } = useQuery({
     queryKey: ['purchase-orders', poId],
     queryFn: () => purchaseOrdersApi.getById(poId),
   });
+  // Fiche du BC consultée depuis la page (lien « ouvrir le bon de commande »).
+  const [showOrder, setShowOrder] = useState(false);
 
   const [deliveries, setDeliveries] = useState<Record<string, number>>({});
   // Saisie par contenant : nb de contenants par ligne. Pilote la qty reçue en kg
@@ -2292,7 +2212,7 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
       notify.success(`Réception confirmée${r?.lotNumbers?.length ? ` — lots ${r.lotNumbers.join(', ')}` : ''}`);
       // Exigences lot / DLC non satisfaites (mode « warn », mig 308) : signalées sans bloquer.
       if (r?.warnings?.length) notify.warning(`Traçabilité incomplète : ${r.warnings.join(' ; ')}`, { duration: 12000 });
-      onClose();
+      onDone();
     },
     onError: (err: unknown) => {
       const msg = err && typeof err === 'object' && 'response' in err
@@ -2302,16 +2222,17 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
     },
   });
 
-  if (isLoading) return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="odoo-scope" style={{ ...odooModalPanelStyle, padding: '1rem 2rem' }} onClick={(e) => e.stopPropagation()}>
-        <LoadingState bare label="Chargement du bon de commande…" />
-      </div>
-    </ModalBackdrop>
-  );
-  if (!po) return null;
+  if (isLoading) return <LoadingState label="Chargement du bon de commande…" />;
+  if (error) return <ErrorState error={error} title="Le bon de commande n'a pas pu être chargé" />;
+  if (!po) {
+    return (
+      <EmptyState icon={FileText} title="Bon de commande introuvable"
+        action={<button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={onCancel}>Retour</button>} />
+    );
+  }
 
   const items = (po.items || []) as POItem[];
+  const pending = confirmMutation.isPending;
 
   // Cette reception va-t-elle completer entierement le BC ?
   // (impacte la creation automatique de la facture cote backend)
@@ -2325,6 +2246,8 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
   const willCompletePO = naturallyComplete || forceComplete;
 
   const handleSubmit = async () => {
+    // Anti double envoi : une réception en cours d'enregistrement n'est pas relancée.
+    if (confirmMutation.isPending) return;
     const deliveredItems = Object.entries(deliveries)
       .filter(([, qty]) => qty > 0)
       .map(([itemId, quantityDelivered]) => {
@@ -2388,351 +2311,352 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
     return sum + qty * price;
   }, 0);
 
+  const submitLabel = pending ? 'Confirmation…' : 'Confirmer la réception';
+  const expected = po.expected_delivery_date ? format(new Date(po.expected_delivery_date), 'd MMM yyyy', { locale: fr }) : null;
+
   return (
-    <div className="fixed inset-0 bg-black/40 z-50">
-      <div className="odoo-scope w-full h-full flex flex-col" role="dialog" aria-label={`Réception du bon de commande ${po.order_number}`} style={{ backgroundColor: 'var(--ds-bg)' }}>
-        {/* En-tête : même barre que la fiche du BC (pas d'en-tête coloré) */}
-        <div className="odoo-control-bar shrink-0">
-          <Breadcrumb icon={PackageCheck} items={[{ label: 'Confirmer la réception' }, { label: `${po.order_number} — ${po.supplier_name}` }]} />
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
+    <>
+      {/* Actions de la page, à droite du fil d'Ariane : Annuler puis l'action principale. */}
+      <PurHeaderActions>
+        <button type="button" className="odoo-btn-secondary" onClick={onCancel} disabled={pending}>Annuler</button>
+        <button type="button" className="odoo-btn-primary" onClick={() => { void handleSubmit(); }} disabled={pending} aria-busy={pending || undefined}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {pending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <PackageCheck size={14} aria-hidden="true" />} {submitLabel}
+        </button>
+      </PurHeaderActions>
+
+      <PageHeader title={`Réception · ${po.order_number}`} aside={poStageTagOf(po)}
+        description={<>
+          {po.supplier_name} · {items.length} article{items.length > 1 ? 's' : ''}
+          {' · '}{expected ? `livraison prévue le ${expected}` : 'livraison sans date prévue'}
+          {' · '}<button type="button" style={LINK_BTN} onClick={() => setShowOrder(true)}>ouvrir le bon de commande</button>
+        </>} />
+
+      {/* Bon de livraison : facture fournisseur (N° et date imprimés sur le document papier) et frais annexes. */}
+      <section className="ds-panel" style={RCPT_CARD} aria-label="Bon de livraison">
+        <SectionHeader title="Bon de livraison"
+          note={willCompletePO ? 'cette réception clôture le BC et crée la facture' : 'facture optionnelle pour une livraison partielle'} />
+        <Alert tone={willCompletePO ? 'warning' : 'info'} icon={FileText}>
+          {willCompletePO
+            ? 'Cette réception va clôturer le BC. Saisis le N° imprimé sur la facture papier du fournisseur (il sera utilisé tel quel, pas auto-généré).'
+            : 'Optionnel pour une livraison partielle. Tu pourras le saisir lors de la livraison finale.'}
+        </Alert>
+        <div className="ds-form-grid cols-4">
+          <FormField label="N° de facture fournisseur" htmlFor="po-rcpt-inv-number" required={willCompletePO}>
+            <input id="po-rcpt-inv-number" type="text" className="ds-input" value={supplierInvoiceNumber}
+              onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+              placeholder="Ex: FAC-2026-12345" />
+          </FormField>
+          <FormField label="Date de la facture" htmlFor="po-rcpt-inv-date">
+            <input id="po-rcpt-inv-date" type="date" className="ds-input" value={supplierInvoiceDate}
+              onChange={(e) => setSupplierInvoiceDate(e.target.value)} />
+          </FormField>
         </div>
-
-        <div style={{ padding: '1.25rem' }} className="space-y-4 flex-1 overflow-y-auto">
-          {/* Force-complete : le fournisseur ne livrera pas le reste, on
-              cloture le BC sur ce qui est recu et la facture est emise sur ce
-              perimetre. */}
-          {!naturallyComplete && (
-            <label className="flex items-start gap-3 cursor-pointer"
-              style={{ borderRadius: 8, padding: '0.75rem', border: `1px solid ${forceComplete ? 'var(--ds-warning)' : 'var(--ds-hair)'}`, backgroundColor: forceComplete ? 'var(--ds-warning-bg)' : 'var(--ds-card)' }}>
-              <input type="checkbox" checked={forceComplete}
-                onChange={e => setForceComplete(e.target.checked)}
-                style={{ marginTop: 2, accentColor: 'var(--ds-warning)' }} />
-              <div className="flex-1">
-                <div style={{ fontSize: 14, fontWeight: 600, color: forceComplete ? 'var(--ds-warning)' : 'var(--ds-ink)' }}>
-                  Clôturer le BC : le fournisseur ne livrera pas le reste
-                </div>
-                <div style={{ fontSize: 12, marginTop: 2, color: forceComplete ? 'var(--ds-warning)' : 'var(--ds-muted)' }}>
-                  Les lignes non livrées sont supprimées du BC, les lignes partielles sont alignées sur la quantité reçue. La facture est créée sur ce périmètre.
-                </div>
-              </div>
-            </label>
-          )}
-
-          {/* Facture fournisseur — N° et date imprimes sur le document papier */}
-          <div style={{ borderRadius: 8, padding: '1rem', border: `1px solid ${willCompletePO ? 'var(--ds-warning)' : 'var(--ds-hair)'}`, backgroundColor: willCompletePO ? 'var(--ds-warning-bg)' : 'var(--ds-card)' }}>
-            <div className="flex items-start gap-2" style={{ marginBottom: 12 }}>
-              <FileText size={16} aria-hidden="true" style={{ marginTop: 2, color: willCompletePO ? 'var(--ds-warning)' : 'var(--ds-muted)' }} />
-              <div className="flex-1">
-                <h3 className="ds-subhead">Facture fournisseur</h3>
-                <p style={{ fontSize: 12, margin: '2px 0 0', color: willCompletePO ? 'var(--ds-warning)' : 'var(--ds-muted)' }}>
-                  {willCompletePO
-                    ? 'Cette réception va clôturer le BC. Saisis le N° imprimé sur la facture papier du fournisseur (il sera utilisé tel quel, pas auto-généré).'
-                    : 'Optionnel pour une livraison partielle. Tu pourras le saisir lors de la livraison finale.'}
-                </p>
-              </div>
-            </div>
-            <div className="ds-form-grid">
-              <FormField label="N° de facture fournisseur" htmlFor="po-rcpt-inv-number" required={willCompletePO}>
-                <input id="po-rcpt-inv-number" type="text" className="ds-input" value={supplierInvoiceNumber}
-                  onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
-                  placeholder="Ex: FAC-2026-12345" />
-              </FormField>
-              <FormField label="Date de la facture" htmlFor="po-rcpt-inv-date">
-                <input id="po-rcpt-inv-date" type="date" className="ds-input" value={supplierInvoiceDate}
-                  onChange={(e) => setSupplierInvoiceDate(e.target.value)} />
-              </FormField>
-            </div>
-            {/* Frais annexes à la réception : intégrés au coût des articles reçus (frais d'approche, mig 361). */}
-            {fees.length === 0 ? (
-              <button type="button" onClick={addFee} className="ds-btn-ghost ds-btn-sm" style={{ marginTop: 10, color: 'var(--ds-accent-ink)' }}>
-                <Plus size={12} aria-hidden="true" /> Frais annexes <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>(transport, douane, manutention… répartis sur les articles reçus)</span>
-              </button>
-            ) : (
-              <div style={{ marginTop: 12, border: '1px solid var(--ds-hair)', borderRadius: 8, padding: '0.75rem', backgroundColor: 'var(--ds-card)' }}>
-                <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
-                  <h4 className="ds-subhead">Frais annexes de cette réception</h4>
-                  <span style={{ fontSize: 14 }}>Total <strong>{feesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currencySymbol()}</strong></span>
-                </div>
-                {fees.map((f, fi) => (
-                  <div key={f.key} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end" style={{ marginBottom: 8 }}>
-                    <div className="md:col-span-5">
-                      <FormField label="Désignation" htmlFor={`po-rcpt-fee-label-${f.key}`} required>
-                        <input id={`po-rcpt-fee-label-${f.key}`} type="text" className="ds-input" value={f.label} placeholder="Ex : Transport, droits de douane"
-                          onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, label: e.target.value } : x))} />
-                      </FormField>
-                    </div>
-                    <div className="md:col-span-4">
-                      <FormField label="Catégorie de charge">
-                        <SearchSelect options={feeCategoryOptions} value={f.categoryId} width="100%"
-                          onChange={id => setFees(fs => fs.map(x => x.key === f.key ? { ...x, categoryId: id } : x))} placeholder="Transport, livraison…" />
-                      </FormField>
-                    </div>
-                    <div className="md:col-span-2">
-                      <FormField label={`Montant HT (${currencySymbol()})`} htmlFor={`po-rcpt-fee-amount-${f.key}`}>
-                        <input id={`po-rcpt-fee-amount-${f.key}`} type="number" min={0} step="0.01" className="ds-input ds-num" value={f.amount}
-                          onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, amount: e.target.value } : x))} />
-                      </FormField>
-                    </div>
-                    <div className="md:col-span-1" style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: 4 }}>
-                      <button type="button" onClick={() => setFees(fs => fs.filter(x => x.key !== f.key))} className="ds-icon-btn"
-                        title="Retirer ce frais" aria-label={`Retirer le frais ${f.label.trim() || fi + 1}`}><X size={16} /></button>
-                    </div>
-                  </div>
-                ))}
-                <button type="button" onClick={addFee} className="ds-btn-ghost ds-btn-sm" style={{ color: 'var(--ds-accent-ink)' }}><Plus size={12} aria-hidden="true" /> Autre frais</button>
-                <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: '8px 0 0' }}>
-                  Répartis au prorata de la valeur sur les articles reçus et ajoutés à leur coût (lot et coût standard) dès la réception : c'est le coût rendu.
-                  La facture du transporteur se saisit à part dans Factures reçues ; elle reste une charge en comptabilité. Détail dans Achats › Frais d'approche.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Articles à réceptionner */}
-          <SectionHeader title="Articles reçus"
-            note={<>Saisissez les quantités reçues pour chaque article · pour les articles au poids, <Scale size={11} aria-hidden="true" style={{ display: 'inline', verticalAlign: '-1px' }} /> ajoute une pesée de contrôle.</>}>
-            <button type="button" onClick={fillAll} className="odoo-btn-secondary ds-btn-sm">
-              <CheckCircle2 size={14} aria-hidden="true" /> Tout reçu
+        {/* Frais annexes à la réception : intégrés au coût des articles reçus (frais d'approche, mig 361). */}
+        {fees.length === 0 ? (
+          <div>
+            <button type="button" onClick={addFee} className="ds-btn-ghost ds-btn-sm" style={{ color: 'var(--ds-accent-ink)' }}>
+              <Plus size={12} aria-hidden="true" /> Frais annexes <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>(transport, douane, manutention… répartis sur les articles reçus)</span>
             </button>
-          </SectionHeader>
-
-          <DataPanel label="Articles à réceptionner">
-            <table className="odoo-table" style={{ minWidth: 1180 }}>
-              <thead>
-                <tr>
-                  <th>Article</th>
-                  <th className="ds-num">Commandé</th>
-                  <th className="ds-num">Déjà reçu</th>
-                  <th className="ds-num">Restant</th>
-                  <th style={{ width: 190 }}>Contenants</th>
-                  <th className="ds-num" style={{ width: 130 }}>Quantité reçue</th>
-                  <th className="ds-num" style={{ width: 120 }}>Prix unitaire ({currencySymbol()})</th>
-                  <th className="ds-num" style={{ width: 110 }}>Total HT ({currencySymbol()})</th>
-                  <th style={{ width: 110 }}>Réf. lot</th>
-                  <th style={{ width: 140 }}>DLC</th>
-                  <th style={{ width: 140 }}>Date de production</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => {
-                  const ordered = parseFloat(item.quantity_ordered);
-                  const alreadyDelivered = parseFloat(item.quantity_delivered);
-                  const remaining = ordered - alreadyDelivered;
-                  const isComplete = remaining <= 0;
-                  return (
-                    <Fragment key={item.id}>
-                    <tr style={isComplete ? { backgroundColor: 'var(--ds-success-bg)' } : undefined}>
-                      <td>
-                        <span className="ds-strong" style={isComplete ? { color: 'var(--ds-success)' } : undefined}>
-                          {item.ingredient_name}
-                        </span>
-                        {!isFreeLine(item.kind) && <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 4 }}>({item.ingredient_unit})</span>}
-                        {!isComplete && !isFreeLine(item.kind) && isWeighable(item.ingredient_unit) && (() => {
-                          const w = weights[item.id]; const hasW = !!(w?.gross || w?.tare);
-                          return (
-                            <button type="button" onClick={() => setWeighFor(item.id)}
-                              title="Pesée de contrôle (brut / tare / net)"
-                              aria-label={`Pesée de contrôle de ${item.ingredient_name}${hasW ? ' (saisie)' : ''}`}
-                              className="ds-icon-btn"
-                              style={{ marginLeft: 4, ...(hasW ? { color: 'var(--ds-accent-ink)', background: 'var(--ds-tint)' } : {}) }}>
-                              <Scale size={14} />
-                            </button>
-                          );
-                        })()}
-                        <LineKindTag kind={item.kind} />
-                        {isFreeLine(item.kind) && (
-                          <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)' }}>
-                            {item.kind === 'asset' ? 'Réception = mise en service · fiche d\'immobilisation créée' : 'Réception = service rendu · pas de stock'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{ordered}</td>
-                      <td className="ds-num">
-                        <span style={alreadyDelivered > 0 ? { color: 'var(--ds-success)', fontWeight: 600 } : { color: 'var(--ds-muted)' }}>{alreadyDelivered}</span>
-                      </td>
-                      <td className="ds-num">
-                        {isComplete
-                          ? <StatusTag tone="done" label="Complet" />
-                          : <span className="ds-strong">{remaining}</span>}
-                      </td>
-                      {(() => {
-                        const size = item.container_size != null ? parseFloat(item.container_size) : 0;
-                        // Un contenant n'est "defini" que si le TYPE ET la quantite/contenant sont
-                        // renseignes sur l'ingredient. Une simple container_size heritee (sans type)
-                        // ne compte pas -> saisie kg classique.
-                        const hasContainer = size > 0 && !!item.container_type_label;
-                        const unit = item.ingredient_unit || 'kg';
-                        const count = parseInt(containerCounts[item.id] ?? '', 10);
-                        const typeName = (item.container_type_label || 'contenant').toLowerCase();
-                        const typeLabel = Number.isFinite(count) && count > 1 ? `${typeName}s` : typeName;
-                        return (
-                          <>
-                            {/* Contenants : nombre saisi + rappel de la contenance unitaire. */}
-                            <td>
-                              {isComplete ? (
-                                <span style={{ color: 'var(--ds-muted)' }}>—</span>
-                              ) : hasContainer ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <input type="number" min={0} step={1} className="ds-input sm ds-num"
-                                    aria-label={`Nombre de contenants reçus — ${item.ingredient_name}`}
-                                    value={containerCounts[item.id] ?? ''}
-                                    onChange={(e) => {
-                                      const raw = e.target.value;
-                                      setContainerCounts({ ...containerCounts, [item.id]: raw });
-                                      const c = parseInt(raw, 10);
-                                      setDeliveries({ ...deliveries, [item.id]: Number.isFinite(c) && c > 0 ? c * size : 0 });
-                                    }}
-                                    style={{ width: 64 }}
-                                    placeholder="0" />
-                                  <span style={{ fontSize: 12, color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
-                                    {typeLabel} × {size} {unit}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span style={{ color: 'var(--ds-muted)' }}>—</span>
-                              )}
-                            </td>
-                            {/* Qté reçue : total en unité de base (auto depuis les contenants, ajustable). */}
-                            <td className="ds-num">
-                              {!isComplete ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-                                  <input type="number" min={0} max={remaining} step="0.01" className="ds-input sm ds-num"
-                                    aria-label={`Quantité reçue — ${item.ingredient_name}`}
-                                    value={deliveries[item.id] ?? ''}
-                                    onChange={(e) => setDeliveries({ ...deliveries, [item.id]: parseFloat(e.target.value) || 0 })}
-                                    style={{ width: 88 }}
-                                    placeholder="0"
-                                    title={hasContainer ? `Total en ${unit} (calculé depuis les contenants, ajustable si contenant entamé)` : undefined} />
-                                  <span style={{ fontSize: 12, color: 'var(--ds-muted)', minWidth: 16 }}>{unit}</span>
-                                </div>
-                              ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                            </td>
-                          </>
-                        );
-                      })()}
-                      <td className="ds-num">
-                        {!isComplete ? (
-                          <input type="number" min={0} step="0.01" className="ds-input sm ds-num"
-                            aria-label={`Prix unitaire — ${item.ingredient_name}`}
-                            value={prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : '')}
-                            onChange={(e) => setPrices({ ...prices, [item.id]: parseFloat(e.target.value) || 0 })}
-                            placeholder="Prix" />
-                        ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                      </td>
-                      <td className="ds-num">
-                        {(() => {
-                          const qty = deliveries[item.id] || 0;
-                          const price = prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : 0);
-                          const lineTotal = qty * price;
-                          return lineTotal > 0
-                            ? <span className="ds-strong">{n(lineTotal)}</span>
-                            : <span style={{ color: 'var(--ds-muted)' }}>—</span>;
-                        })()}
-                      </td>
-                      <td>
-                        {!isComplete && !isFreeLine(item.kind) ? (
-                          <input type="text" className="ds-input sm"
-                            aria-label={`Référence du lot fournisseur — ${item.ingredient_name}`}
-                            value={lotInfo[item.id]?.supplierLotNumber ?? ''}
-                            onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], supplierLotNumber: e.target.value } })}
-                            style={(item.requires_lot || item.requires_qc) && !lotInfo[item.id]?.supplierLotNumber ? { borderColor: 'var(--ds-warning)' } : undefined}
-                            placeholder={(item.requires_lot || item.requires_qc) ? 'Lot *' : 'Lot'} title={item.requires_qc ? 'Lot fournisseur OBLIGATOIRE (article sous contrôle qualité)' : item.requires_lot ? 'Lot fournisseur exigé pour cet article' : undefined} />
-                        ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                      </td>
-                      <td>
-                        {!isComplete && !isFreeLine(item.kind) ? (
-                          <input type="date" className="ds-input sm"
-                            aria-label={`DLC — ${item.ingredient_name}`}
-                            value={lotInfo[item.id]?.expirationDate ?? ''}
-                            onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], expirationDate: e.target.value } })}
-                            min={new Date().toISOString().slice(0, 10)}
-                            title={item.requires_dlc ? 'DLC exigée pour cet article' : undefined}
-                            style={item.requires_dlc && !lotInfo[item.id]?.expirationDate ? { borderColor: 'var(--ds-warning)' } : undefined} />
-                        ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                      </td>
-                      <td>
-                        {!isComplete && !isFreeLine(item.kind) ? (
-                          <input type="date" className="ds-input sm"
-                            aria-label={`Date de production — ${item.ingredient_name}`}
-                            value={lotInfo[item.id]?.manufacturedDate ?? ''}
-                            onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], manufacturedDate: e.target.value } })} />
-                        ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
-                      </td>
-                    </tr>
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </DataPanel>
-
-          {/* Summary of what's being received */}
-          {totalDelivering > 0 && (
-            <div className="flex items-center justify-between"
-              style={{ backgroundColor: 'var(--ds-tint)', borderRadius: 8, padding: '0.625rem 0.875rem' }}>
-              <span style={{ fontSize: 14, color: 'var(--ds-accent-ink)', fontWeight: 600 }} className="flex items-center gap-1.5">
-                <ArrowRight size={14} aria-hidden="true" />
-                Valeur de cette réception
-              </span>
-              <span style={{ fontWeight: 700, color: 'var(--ds-accent-ink)' }}>{money(totalDelivering)}</span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--ds-hair)', paddingTop: 12 }}>
+            <div className="flex items-center justify-between">
+              <h3 className="ds-subhead">Frais annexes de cette réception</h3>
+              <span style={{ fontSize: 14 }}>Total <strong>{feesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currencySymbol()}</strong></span>
             </div>
-          )}
-        </div>
-
-        {/* Pesée de contrôle d'une ligne : petite fenêtre, indépendante de la position de la ligne. */}
-        {weighFor && (() => {
-          const id = weighFor;
-          const item = items.find(i => i.id === id);
-          if (!item) return null;
-          const w = weights[id] || {};
-          const g = w.gross != null && w.gross !== '' ? Number(w.gross) : null;
-          const t = w.tare != null && w.tare !== '' ? Number(w.tare) : 0;
-          const net = g != null ? Math.max(0, g - t) : null;
-          const qty = deliveries[id] || 0;
-          const ecart = net != null && qty > 0 ? net - qty : null;
-          const bad = ecart != null && Math.abs(ecart) > Math.max(0.01, 0.02 * qty);
-          const setW = (patch: { gross?: string; tare?: string }) => setWeights(s => ({ ...s, [id]: { ...s[id], ...patch } }));
-          const u = item.ingredient_unit;
-          return (
-            <ModalBackdrop onClose={() => setWeighFor(null)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-              <div className="odoo-scope" onClick={e => e.stopPropagation()} role="dialog" aria-label={`Pesée de contrôle de ${item.ingredient_name}`} style={{ width: '100%', maxWidth: 420, background: 'var(--odoo-bg)', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
-                <div className="odoo-control-bar">
-                  <Breadcrumb icon={Scale} items={[{ label: 'Pesée de contrôle' }, { label: item.ingredient_name }]} />
-                  <div style={{ flex: 1 }} />
-                  <button type="button" className="ds-icon-btn" onClick={() => setWeighFor(null)} aria-label="Fermer"><X size={16} /></button>
+            {fees.map((f, fi) => (
+              <div key={f.key} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                <div className="md:col-span-5">
+                  <FormField label="Désignation" htmlFor={`po-rcpt-fee-label-${f.key}`} required>
+                    <input id={`po-rcpt-fee-label-${f.key}`} type="text" className="ds-input" value={f.label} placeholder="Ex : Transport, droits de douane"
+                      onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, label: e.target.value } : x))} />
+                  </FormField>
                 </div>
-                <div style={{ padding: 16, display: 'grid', gap: 12 }}>
-                  <div className="ds-form-grid">
-                    <FormField label={`Brut (${u})`} htmlFor="po-rcpt-weigh-gross">
-                      <input id="po-rcpt-weigh-gross" type="number" min={0} step="0.001" className="ds-input ds-num" value={w.gross ?? ''} onChange={e => setW({ gross: e.target.value })} autoFocus />
-                    </FormField>
-                    <FormField label={`Tare (${u})`} htmlFor="po-rcpt-weigh-tare">
-                      <input id="po-rcpt-weigh-tare" type="number" min={0} step="0.001" className="ds-input ds-num" value={w.tare ?? ''} onChange={e => setW({ tare: e.target.value })} />
-                    </FormField>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 14, flexWrap: 'wrap', gap: 6 }}>
-                    <span>Net <strong>{net != null ? net.toLocaleString('fr-FR', { maximumFractionDigits: 3 }) : '—'}</strong> {u} <span style={{ color: 'var(--ds-muted)' }}>· reçu {qty.toLocaleString('fr-FR')} {u}</span></span>
-                    {ecart != null && <span style={{ color: bad ? 'var(--ds-danger)' : 'var(--ds-success)', fontWeight: 600 }}>Écart {ecart > 0 ? '+' : ''}{ecart.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {u}</span>}
-                  </div>
-                  {bad && <Alert tone="danger" icon={AlertTriangle}>Écart significatif (&gt; 2 %) — à vérifier avec le fournisseur.</Alert>}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button type="button" className="odoo-btn-secondary" onClick={() => { setWeights(s => { const n = { ...s }; delete n[id]; return n; }); setWeighFor(null); }}>Effacer</button>
-                    <button type="button" className="odoo-btn-primary" onClick={() => setWeighFor(null)}>OK</button>
-                  </div>
+                <div className="md:col-span-4">
+                  <FormField label="Catégorie de charge">
+                    <SearchSelect options={feeCategoryOptions} value={f.categoryId} width="100%"
+                      onChange={id => setFees(fs => fs.map(x => x.key === f.key ? { ...x, categoryId: id } : x))} placeholder="Transport, livraison…" />
+                  </FormField>
+                </div>
+                <div className="md:col-span-2">
+                  <FormField label={`Montant HT (${currencySymbol()})`} htmlFor={`po-rcpt-fee-amount-${f.key}`}>
+                    <input id={`po-rcpt-fee-amount-${f.key}`} type="number" min={0} step="0.01" className="ds-input ds-num" value={f.amount}
+                      onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, amount: e.target.value } : x))} />
+                  </FormField>
+                </div>
+                <div className="md:col-span-1" style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: 4 }}>
+                  <button type="button" onClick={() => setFees(fs => fs.filter(x => x.key !== f.key))} className="ds-icon-btn"
+                    title="Retirer ce frais" aria-label={`Retirer le frais ${f.label.trim() || fi + 1}`}><X size={16} /></button>
                 </div>
               </div>
-            </ModalBackdrop>
-          );
-        })()}
+            ))}
+            <div>
+              <button type="button" onClick={addFee} className="ds-btn-ghost ds-btn-sm" style={{ color: 'var(--ds-accent-ink)' }}><Plus size={12} aria-hidden="true" /> Autre frais</button>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: 0 }}>
+              Répartis au prorata de la valeur sur les articles reçus et ajoutés à leur coût (lot et coût standard) dès la réception : c'est le coût rendu.
+              La facture du transporteur se saisit à part dans Factures reçues ; elle reste une charge en comptabilité. Détail dans Achats › Frais d'approche.
+            </p>
+          </div>
+        )}
+      </section>
 
-        {/* Pied : Annuler puis l'action principale, désactivés pendant l'envoi */}
-        <div className="shrink-0" style={{ backgroundColor: 'var(--odoo-bg)' }}>
-          <FormFooter onCancel={onClose} onSubmit={() => { void handleSubmit(); }} busy={confirmMutation.isPending}
-            submitLabel={confirmMutation.isPending ? 'Confirmation…' : 'Confirmer la réception'} />
-        </div>
-      </div>
-    </div>
+      {/* Articles à réceptionner */}
+      <SectionHeader title="Articles reçus"
+        note={<>Saisissez les quantités reçues pour chaque article · pour les articles au poids, <Scale size={11} aria-hidden="true" style={{ display: 'inline', verticalAlign: '-1px' }} /> ajoute une pesée de contrôle.</>}>
+        <button type="button" onClick={fillAll} className="odoo-btn-secondary ds-btn-sm">
+          <CheckCircle2 size={14} aria-hidden="true" /> Tout reçu
+        </button>
+      </SectionHeader>
+
+      <DataPanel label="Articles à réceptionner"
+        footer={totalDelivering > 0 ? (
+          <TableFooter note={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ArrowRight size={14} aria-hidden="true" /> Valeur de cette réception</span>}>
+            <strong style={{ color: 'var(--ds-ink)' }}>{money(totalDelivering)}</strong>
+          </TableFooter>
+        ) : undefined}>
+        <table className="odoo-table" style={{ minWidth: 1180 }}>
+          <thead>
+            <tr>
+              <th>Article</th>
+              <th className="ds-num">Commandé</th>
+              <th className="ds-num">Déjà reçu</th>
+              <th className="ds-num">Restant</th>
+              <th style={{ width: 190 }}>Contenants</th>
+              <th className="ds-num" style={{ width: 130 }}>Quantité reçue</th>
+              <th className="ds-num" style={{ width: 120 }}>Prix unitaire ({currencySymbol()})</th>
+              <th className="ds-num" style={{ width: 110 }}>Total HT ({currencySymbol()})</th>
+              <th style={{ width: 110 }}>Réf. lot</th>
+              <th style={{ width: 140 }}>DLC</th>
+              <th style={{ width: 140 }}>Date de production</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => {
+              const ordered = parseFloat(item.quantity_ordered);
+              const alreadyDelivered = parseFloat(item.quantity_delivered);
+              const remaining = ordered - alreadyDelivered;
+              const isComplete = remaining <= 0;
+              return (
+                <tr key={item.id} style={isComplete ? { backgroundColor: 'var(--ds-success-bg)' } : undefined}>
+                  <td>
+                    <span className="ds-strong" style={isComplete ? { color: 'var(--ds-success)' } : undefined}>
+                      {item.ingredient_name}
+                    </span>
+                    {!isFreeLine(item.kind) && <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 4 }}>({item.ingredient_unit})</span>}
+                    {!isComplete && !isFreeLine(item.kind) && isWeighable(item.ingredient_unit) && (() => {
+                      const w = weights[item.id]; const hasW = !!(w?.gross || w?.tare);
+                      return (
+                        <button type="button" onClick={() => setWeighFor(item.id)}
+                          title="Pesée de contrôle (brut / tare / net)"
+                          aria-label={`Pesée de contrôle de ${item.ingredient_name}${hasW ? ' (saisie)' : ''}`}
+                          className="ds-icon-btn"
+                          style={{ marginLeft: 4, ...(hasW ? { color: 'var(--ds-accent-ink)', background: 'var(--ds-tint)' } : {}) }}>
+                          <Scale size={14} />
+                        </button>
+                      );
+                    })()}
+                    <LineKindTag kind={item.kind} />
+                    {isFreeLine(item.kind) && (
+                      <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)' }}>
+                        {item.kind === 'asset' ? 'Réception = mise en service · fiche d\'immobilisation créée' : 'Réception = service rendu · pas de stock'}
+                      </span>
+                    )}
+                  </td>
+                  <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{ordered}</td>
+                  <td className="ds-num">
+                    <span style={alreadyDelivered > 0 ? { color: 'var(--ds-success)', fontWeight: 600 } : { color: 'var(--ds-muted)' }}>{alreadyDelivered}</span>
+                  </td>
+                  <td className="ds-num">
+                    {isComplete
+                      ? <StatusTag tone="done" label="Complet" />
+                      : <span className="ds-strong">{remaining}</span>}
+                  </td>
+                  {(() => {
+                    const size = item.container_size != null ? parseFloat(item.container_size) : 0;
+                    // Un contenant n'est "defini" que si le TYPE ET la quantite/contenant sont
+                    // renseignes sur l'ingredient. Une simple container_size heritee (sans type)
+                    // ne compte pas -> saisie kg classique.
+                    const hasContainer = size > 0 && !!item.container_type_label;
+                    const unit = item.ingredient_unit || 'kg';
+                    const count = parseInt(containerCounts[item.id] ?? '', 10);
+                    const typeName = (item.container_type_label || 'contenant').toLowerCase();
+                    const typeLabel = Number.isFinite(count) && count > 1 ? `${typeName}s` : typeName;
+                    return (
+                      <>
+                        {/* Contenants : nombre saisi + rappel de la contenance unitaire. */}
+                        <td>
+                          {isComplete ? (
+                            <span style={{ color: 'var(--ds-muted)' }}>—</span>
+                          ) : hasContainer ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <input type="number" min={0} step={1} className="ds-input sm ds-num"
+                                aria-label={`Nombre de contenants reçus — ${item.ingredient_name}`}
+                                value={containerCounts[item.id] ?? ''}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setContainerCounts({ ...containerCounts, [item.id]: raw });
+                                  const c = parseInt(raw, 10);
+                                  setDeliveries({ ...deliveries, [item.id]: Number.isFinite(c) && c > 0 ? c * size : 0 });
+                                }}
+                                style={{ width: 64 }}
+                                placeholder="0" />
+                              <span style={{ fontSize: 12, color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
+                                {typeLabel} × {size} {unit}
+                              </span>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--ds-muted)' }}>—</span>
+                          )}
+                        </td>
+                        {/* Qté reçue : total en unité de base (auto depuis les contenants, ajustable). */}
+                        <td className="ds-num">
+                          {!isComplete ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                              <input type="number" min={0} max={remaining} step="0.01" className="ds-input sm ds-num"
+                                aria-label={`Quantité reçue — ${item.ingredient_name}`}
+                                value={deliveries[item.id] ?? ''}
+                                onChange={(e) => setDeliveries({ ...deliveries, [item.id]: parseFloat(e.target.value) || 0 })}
+                                style={{ width: 88 }}
+                                placeholder="0"
+                                title={hasContainer ? `Total en ${unit} (calculé depuis les contenants, ajustable si contenant entamé)` : undefined} />
+                              <span style={{ fontSize: 12, color: 'var(--ds-muted)', minWidth: 16 }}>{unit}</span>
+                            </div>
+                          ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
+                        </td>
+                      </>
+                    );
+                  })()}
+                  <td className="ds-num">
+                    {!isComplete ? (
+                      <input type="number" min={0} step="0.01" className="ds-input sm ds-num"
+                        aria-label={`Prix unitaire — ${item.ingredient_name}`}
+                        value={prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : '')}
+                        onChange={(e) => setPrices({ ...prices, [item.id]: parseFloat(e.target.value) || 0 })}
+                        placeholder="Prix" />
+                    ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
+                  </td>
+                  <td className="ds-num">
+                    {(() => {
+                      const qty = deliveries[item.id] || 0;
+                      const price = prices[item.id] ?? (item.unit_price != null ? parseFloat(item.unit_price) : 0);
+                      const lineTotal = qty * price;
+                      return lineTotal > 0
+                        ? <span className="ds-strong">{n(lineTotal)}</span>
+                        : <span style={{ color: 'var(--ds-muted)' }}>—</span>;
+                    })()}
+                  </td>
+                  <td>
+                    {!isComplete && !isFreeLine(item.kind) ? (
+                      <input type="text" className="ds-input sm"
+                        aria-label={`Référence du lot fournisseur — ${item.ingredient_name}`}
+                        value={lotInfo[item.id]?.supplierLotNumber ?? ''}
+                        onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], supplierLotNumber: e.target.value } })}
+                        style={(item.requires_lot || item.requires_qc) && !lotInfo[item.id]?.supplierLotNumber ? { borderColor: 'var(--ds-warning)' } : undefined}
+                        placeholder={(item.requires_lot || item.requires_qc) ? 'Lot *' : 'Lot'} title={item.requires_qc ? 'Lot fournisseur OBLIGATOIRE (article sous contrôle qualité)' : item.requires_lot ? 'Lot fournisseur exigé pour cet article' : undefined} />
+                    ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
+                  </td>
+                  <td>
+                    {!isComplete && !isFreeLine(item.kind) ? (
+                      <input type="date" className="ds-input sm"
+                        aria-label={`DLC — ${item.ingredient_name}`}
+                        value={lotInfo[item.id]?.expirationDate ?? ''}
+                        onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], expirationDate: e.target.value } })}
+                        min={new Date().toISOString().slice(0, 10)}
+                        title={item.requires_dlc ? 'DLC exigée pour cet article' : undefined}
+                        style={item.requires_dlc && !lotInfo[item.id]?.expirationDate ? { borderColor: 'var(--ds-warning)' } : undefined} />
+                    ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
+                  </td>
+                  <td>
+                    {!isComplete && !isFreeLine(item.kind) ? (
+                      <input type="date" className="ds-input sm"
+                        aria-label={`Date de production — ${item.ingredient_name}`}
+                        value={lotInfo[item.id]?.manufacturedDate ?? ''}
+                        onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], manufacturedDate: e.target.value } })} />
+                    ) : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </DataPanel>
+
+      {/* Reliquat : le fournisseur ne livrera pas le reste, on clôture le BC sur ce qui est reçu
+          et la facture est émise sur ce périmètre. */}
+      {!naturallyComplete && (
+        <section className="ds-panel" style={RCPT_CARD} aria-label="Reliquat">
+          <SectionHeader title="Reliquat" note="articles commandés non couverts par cette réception" />
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={forceComplete}
+              onChange={e => setForceComplete(e.target.checked)}
+              style={{ marginTop: 3, accentColor: 'var(--ds-warning)' }} />
+            <span className="flex-1">
+              <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: forceComplete ? 'var(--ds-warning)' : 'var(--ds-ink)' }}>
+                Clôturer le BC : le fournisseur ne livrera pas le reste
+              </span>
+              <span style={{ display: 'block', fontSize: 12, marginTop: 2, color: 'var(--ds-muted)' }}>
+                Les lignes non livrées sont supprimées du BC, les lignes partielles sont alignées sur la quantité reçue. La facture est créée sur ce périmètre.
+              </span>
+            </span>
+          </label>
+        </section>
+      )}
+
+      {/* Notes du bon de commande (lecture seule). */}
+      {po.notes && (
+        <section className="ds-panel" style={RCPT_CARD} aria-label="Notes du bon de commande">
+          <SectionHeader title="Notes" note="saisies sur le bon de commande" />
+          <p style={{ margin: 0, fontSize: 14, whiteSpace: 'pre-line', color: 'var(--ds-body)' }}>{po.notes}</p>
+        </section>
+      )}
+
+      {/* Pied : Annuler puis l'action principale, désactivés pendant l'envoi */}
+      <section className="ds-panel">
+        <FormFooter onCancel={onCancel} onSubmit={() => { void handleSubmit(); }} busy={pending} submitLabel={submitLabel} />
+      </section>
+
+      {/* Pesée de contrôle d'une ligne : petite fenêtre, indépendante de la position de la ligne. */}
+      {weighFor && (() => {
+        const id = weighFor;
+        const item = items.find(i => i.id === id);
+        if (!item) return null;
+        const w = weights[id] || {};
+        const g = w.gross != null && w.gross !== '' ? Number(w.gross) : null;
+        const t = w.tare != null && w.tare !== '' ? Number(w.tare) : 0;
+        const net = g != null ? Math.max(0, g - t) : null;
+        const qty = deliveries[id] || 0;
+        const ecart = net != null && qty > 0 ? net - qty : null;
+        const bad = ecart != null && Math.abs(ecart) > Math.max(0.01, 0.02 * qty);
+        const setW = (patch: { gross?: string; tare?: string }) => setWeights(s => ({ ...s, [id]: { ...s[id], ...patch } }));
+        const u = item.ingredient_unit;
+        return (
+          <Modal title="Pesée de contrôle" subtitle={item.ingredient_name} width={420} onClose={() => setWeighFor(null)}
+            footer={<>
+              <span className="ds-grow" />
+              <button type="button" className="odoo-btn-secondary" onClick={() => { setWeights(s => { const n = { ...s }; delete n[id]; return n; }); setWeighFor(null); }}>Effacer</button>
+              <button type="button" className="odoo-btn-primary" onClick={() => setWeighFor(null)}>OK</button>
+            </>}>
+            <div className="ds-form-grid">
+              <FormField label={`Brut (${u})`} htmlFor="po-rcpt-weigh-gross">
+                <input id="po-rcpt-weigh-gross" type="number" min={0} step="0.001" className="ds-input ds-num" value={w.gross ?? ''} onChange={e => setW({ gross: e.target.value })} autoFocus />
+              </FormField>
+              <FormField label={`Tare (${u})`} htmlFor="po-rcpt-weigh-tare">
+                <input id="po-rcpt-weigh-tare" type="number" min={0} step="0.001" className="ds-input ds-num" value={w.tare ?? ''} onChange={e => setW({ tare: e.target.value })} />
+              </FormField>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 14, flexWrap: 'wrap', gap: 6 }}>
+              <span>Net <strong>{net != null ? net.toLocaleString('fr-FR', { maximumFractionDigits: 3 }) : '—'}</strong> {u} <span style={{ color: 'var(--ds-muted)' }}>· reçu {qty.toLocaleString('fr-FR')} {u}</span></span>
+              {ecart != null && <span style={{ color: bad ? 'var(--ds-danger)' : 'var(--ds-success)', fontWeight: 600 }}>Écart {ecart > 0 ? '+' : ''}{ecart.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {u}</span>}
+            </div>
+            {bad && <Alert tone="danger" icon={AlertTriangle}>Écart significatif (&gt; 2 %) — à vérifier avec le fournisseur.</Alert>}
+          </Modal>
+        );
+      })()}
+
+      {showOrder && <PODetailModal poId={poId} onClose={() => setShowOrder(false)} />}
+    </>
   );
 }
 
@@ -2863,36 +2787,17 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
   const isPending = headerMutation.isPending || itemsMutation.isPending;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="odoo-scope flex flex-col" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 1100, maxHeight: '92vh', backgroundColor: 'var(--odoo-bg)',
-          border: '1px solid var(--odoo-border)', borderRadius: 6, overflow: 'hidden',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.18)' }}>
-        {/* Header */}
-        <div className="flex items-center justify-between shrink-0"
-          style={{ backgroundColor: 'var(--theme-accent)', padding: '0.875rem 1.25rem' }}>
-          <div className="flex items-center gap-3">
-            <Pencil size={16} style={{ color: '#fff' }} />
-            <div>
-              <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Modifier le bon de commande</h2>
-              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>{po?.order_number as string || '...'}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="hover:bg-white/20"
-            style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto" style={{ padding: '1.25rem' }}>
+    <Modal title="Modifier le bon de commande" subtitle={po?.order_number as string || '…'} width={1100} onClose={onClose} locked={isPending}
+      aside={po?.status ? poStageTagOf(po) : undefined}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => { void handleSave(); }} busy={isPending} disabled={isLoading} />}>
           {isLoading ? (
-            <div className="flex items-center justify-center" style={{ padding: '2.5rem 0', color: 'var(--odoo-text-muted)' }}>
-              <Loader2 size={20} className="animate-spin" style={{ marginRight: 8 }} /> Chargement...
-            </div>
+            <LoadingState bare label="Chargement…" />
           ) : (
             <>
               {/* En-tete */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label style={odooLabelStyle}>Fournisseur</label>
+              <FormSection title="En-tête">
+              <div className="ds-form-grid">
+                <FormField label="Fournisseur">
                   <SearchSelect
                     ariaLabel="Fournisseur"
                     placeholder="—"
@@ -2902,54 +2807,36 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                     onChange={setSupplierId}
                     options={(suppliers as Record<string, any>[]).filter(s => s.is_active || s.id === supplierId).map(s => ({ id: s.id as string, label: s.name as string }))}
                   />
-                </div>
-                <div>
-                  <label style={odooLabelStyle}>Date livraison prévue</label>
-                  <input type="date" value={expectedDate} onChange={e => setExpectedDate(e.target.value)} style={odooFieldStyle} />
-                </div>
-                <div>
-                  <label style={odooLabelStyle}>Statut actuel</label>
-                  <div style={{ ...odooFieldStyle, display: 'flex', alignItems: 'center', minHeight: 34 }}>
-                    {po?.status ? (() => {
-                      const Icon = STATUS_ICONS[po.status as string];
-                      return (
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold ${STATUS_COLORS[po.status as string] || 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
-                          {Icon && <Icon size={12} />}
-                          {STATUS_LABELS[po.status as string] || (po.status as string)}
-                        </span>
-                      );
-                    })() : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}
-                  </div>
-                </div>
+                </FormField>
+                <FormField label="Date livraison prévue" htmlFor="po-edit-expected">
+                  <input id="po-edit-expected" type="date" value={expectedDate} onChange={e => setExpectedDate(e.target.value)} className="ds-input" />
+                </FormField>
               </div>
-              <div style={{ marginTop: 12 }}>
-                <label style={odooLabelStyle}>Notes</label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-                  style={{ ...odooFieldStyle, resize: 'vertical' }} />
-              </div>
+              <FormField label="Notes" htmlFor="po-edit-notes">
+                <textarea id="po-edit-notes" value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                  className="ds-input" style={{ resize: 'vertical', minHeight: 64 }} />
+              </FormField>
+              </FormSection>
 
-              <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 8,
-                padding: '0.5rem 0.75rem', borderRadius: 4, fontSize: '0.75rem',
-                backgroundColor: '#fff8e8', color: '#856404', border: '1px solid #ffeeba' }}>
-                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
-                <span>
-                  Modifier la <strong>qté livrée</strong> ajuste automatiquement le stock (mouvement
-                  d'inventaire tracé). Supprimer une ligne déjà référencée par un bon de réception
-                  sera refusé — annule la réception d'abord.
-                </span>
-              </div>
+              <Alert tone="warning" icon={AlertTriangle}>
+                Modifier la <strong>qté livrée</strong> ajuste automatiquement le stock (mouvement
+                d'inventaire tracé). Supprimer une ligne déjà référencée par un bon de réception
+                sera refusé — annule la réception d'abord.
+              </Alert>
 
               {/* Lignes */}
-              <div style={{ marginTop: 12, border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
-                <table className="odoo-table" style={{ minWidth: 900 }}>
+              <FormSection title="Lignes">
+              <DataPanel label="Lignes du bon de commande"
+                footer={<TableFooter note="Nouveau total BC (qté commandée × prix)"><strong style={{ color: 'var(--ds-ink)' }}>{money(newTotalOrdered)}</strong></TableFooter>}>
+                <table className="odoo-table ds-dense" style={{ minWidth: 900 }}>
                   <thead>
                     <tr>
                       <th style={{ width: '28%' }}>Article</th>
-                      <th style={{ textAlign: 'right' }}>Qté commandée</th>
-                      <th style={{ textAlign: 'right' }}>Qté livrée</th>
-                      <th style={{ textAlign: 'right' }}>Prix U.</th>
-                      <th style={{ textAlign: 'right' }}>Sous-total</th>
-                      <th style={{ width: 36 }}></th>
+                      <th className="ds-num">Qté commandée</th>
+                      <th className="ds-num">Qté livrée</th>
+                      <th className="ds-num">Prix U. ({currencySymbol()})</th>
+                      <th className="ds-num">Sous-total ({currencySymbol()})</th>
+                      <th className="ds-actions" style={{ width: 36 }}><span className="sr-only">Actions</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2961,8 +2848,8 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                         <tr key={idx}>
                           <td>
                             {isExisting ? (
-                              <span style={{ fontWeight: 500 }}>
-                                {line.ingredientName} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>({line.ingredientUnit})</span>
+                              <span className="ds-strong">
+                                {line.ingredientName} <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--ds-muted)' }}>({line.ingredientUnit})</span>
                                 <LineKindTag kind={line.kind} />
                               </span>
                             ) : (
@@ -2992,41 +2879,44 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                               const count = roundUpToContainer(parseFloat(line.quantityOrdered) || 0, line.container.size).count;
                               return (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-                                  <input type="number" step="1" min={1} value={count || ''}
+                                  <input type="number" step="1" min={1} value={count || ''} className="ds-input sm ds-num"
+                                    aria-label={`Nombre de contenants — ${line.ingredientName}`}
                                     onChange={e => {
                                       const c = Math.max(1, Math.floor(parseFloat(e.target.value) || 1));
                                       updateLine(idx, { quantityOrdered: String(c * (line.container as ContainerDef).size) });
                                     }}
-                                    style={{ ...odooNumFieldStyle, width: 64 }} title={`${containerLabel(line.container, line.ingredientUnit)} — commande par contenant entier`} />
-                                  <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>
+                                    style={{ width: 64 }} title={`${containerLabel(line.container, line.ingredientUnit)} — commande par contenant entier`} />
+                                  <span style={{ fontSize: 12, color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>
                                     × {containerLabel(line.container, line.ingredientUnit)} = <strong>{q} {line.ingredientUnit}</strong>
                                   </span>
                                 </div>
                               );
                             })() : (
-                              <input type="number" step="0.01" min={0} value={line.quantityOrdered}
-                                onChange={e => updateLine(idx, { quantityOrdered: e.target.value })}
-                                style={odooNumFieldStyle} />
+                              <input type="number" step="0.01" min={0} value={line.quantityOrdered} className="ds-input sm ds-num"
+                                aria-label={`Quantité commandée — ${line.ingredientName || `ligne ${idx + 1}`}`}
+                                onChange={e => updateLine(idx, { quantityOrdered: e.target.value })} />
                             )}
                           </td>
                           <td>
-                            <input type="number" step="0.01" min={0} value={line.quantityDelivered}
+                            <input type="number" step="0.01" min={0} value={line.quantityDelivered} className="ds-input sm ds-num"
+                              aria-label={`Quantité livrée — ${line.ingredientName || `ligne ${idx + 1}`} (ajuste le stock)`}
+                              title="Ajuste le stock (mouvement tracé)"
                               onChange={e => updateLine(idx, { quantityDelivered: e.target.value })}
-                              style={{ ...odooNumFieldStyle, backgroundColor: '#fff8e8' }} />
+                              style={{ backgroundColor: 'var(--ds-warning-bg)' }} />
                           </td>
                           <td>
-                            <input type="number" step="0.01" min={0} value={line.unitPrice}
+                            <input type="number" step="0.01" min={0} value={line.unitPrice} className="ds-input sm ds-num"
+                              aria-label={`Prix unitaire — ${line.ingredientName || `ligne ${idx + 1}`}`}
                               onChange={e => updateLine(idx, { unitPrice: e.target.value })}
-                              placeholder="—"
-                              style={odooNumFieldStyle} />
+                              placeholder="—" />
                           </td>
-                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 500 }}>
+                          <td className="ds-num ds-strong">
                             {n(q * p)}
                           </td>
-                          <td style={{ textAlign: 'center' }}>
+                          <td className="ds-actions">
                             <button type="button" onClick={() => removeLine(idx)}
-                              className="odoo-btn-danger" title="Supprimer"
-                              style={{ padding: '0.25rem 0.4rem' }}>
+                              className="ds-icon-btn" title="Supprimer" aria-label={`Supprimer la ligne ${line.ingredientName || idx + 1}`}
+                              style={{ color: 'var(--ds-danger)' }}>
                               <Trash2 size={14} />
                             </button>
                           </td>
@@ -3035,35 +2925,18 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </DataPanel>
 
-              <button type="button" onClick={addLine} className="odoo-btn-secondary"
-                style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Plus size={14} /> Ajouter une ligne
-              </button>
-
-              {/* Total */}
-              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '0.625rem 0.875rem', borderRadius: 4,
-                backgroundColor: 'var(--theme-accent-light, rgba(0,0,0,0.04))', border: '1px solid var(--odoo-border)' }}>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-accent)' }}>Nouveau total BC (qté commandée × prix)</span>
-                <span style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace', fontSize: '1.0625rem', color: 'var(--theme-accent)' }}>{money(newTotalOrdered)}</span>
+              <div>
+                <button type="button" onClick={addLine} className="odoo-btn-secondary ds-btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Plus size={14} aria-hidden="true" /> Ajouter une ligne
+                </button>
               </div>
+              </FormSection>
             </>
           )}
-        </div>
-
-        <div className="flex justify-end gap-2 shrink-0"
-          style={{ borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem', backgroundColor: 'var(--odoo-bg)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={handleSave} disabled={isPending || isLoading}
-            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {isPending && <Loader2 size={14} className="animate-spin" />}
-            <CheckCircle2 size={14} /> Enregistrer
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -3085,72 +2958,43 @@ function MergeInvoicesModal({
   const supplierName = selectedPOs[0]?.supplier_name as string || '';
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope w-full max-w-lg flex flex-col" style={odooModalPanelStyle} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between" style={odooModalHeaderStyle}>
-          <div className="flex items-center gap-2">
-            <Combine size={16} style={{ color: '#fff' }} />
-            <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Fusionner les factures</h2>
-          </div>
-          <button onClick={onClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
-        </div>
+    <Modal title="Fusionner les factures" subtitle={supplierName} width={560} onClose={onClose} locked={isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => { if (!isPending) onConfirm({ supplierInvoiceNumber, invoiceDate }); }} busy={isPending}
+        submitLabel="Confirmer la fusion" />}>
+      <Alert tone="warning" icon={AlertTriangle}>
+        Cette action remplace plusieurs factures par une seule, en additionnant les lignes et les montants.
+        Refus si l'une des factures a déjà un paiement enregistré.
+      </Alert>
 
-        <div style={{ padding: '1.25rem' }} className="space-y-4">
-          <div style={{ display: 'flex', gap: 8, padding: '0.5rem 0.75rem', borderRadius: 4, fontSize: '0.75rem', backgroundColor: '#fff8e8', color: '#856404', border: '1px solid #ffeeba' }}>
-            <AlertTriangle size={14} className="shrink-0" style={{ marginTop: 2 }} />
-            <div>
-              Cette action remplace plusieurs factures par une seule, en additionnant les lignes et les montants.
-              Refus si l'une des factures a déjà un paiement enregistré.
-            </div>
-          </div>
-
-          <div>
-            <div style={odooLabelStyle}>Fournisseur</div>
-            <div style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{supplierName}</div>
-          </div>
-
-          <div>
-            <div style={odooLabelStyle}>BCs à fusionner ({selectedPOs.length})</div>
-            <div style={{ backgroundColor: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '0.75rem', maxHeight: 192, overflow: 'auto' }} className="space-y-1">
+      <section style={{ display: 'grid', gap: 8 }}>
+        <h3 className="ds-subhead">Bons de commande à fusionner ({selectedPOs.length})</h3>
+        <DataPanel label="Bons de commande à fusionner">
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>N° de commande</th><th className="ds-num">Montant HT ({currencySymbol()})</th></tr></thead>
+            <tbody>
               {selectedPOs.map(po => (
-                <div key={po.id as string} className="flex justify-between" style={{ fontSize: '0.75rem' }}>
-                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>{po.order_number as string}</span>
-                  <span style={{ fontWeight: 600 }}>{money(parseFloat(po.total_amount as string))}</span>
-                </div>
+                <tr key={po.id as string}>
+                  <td className="ds-ref">{po.order_number as string}</td>
+                  <td className="ds-num">{n(parseFloat(po.total_amount as string) || 0)}</td>
+                </tr>
               ))}
-              <div className="flex justify-between" style={{ fontSize: '0.8125rem', fontWeight: 700, paddingTop: 8, marginTop: 8, borderTop: '1px solid var(--odoo-border)' }}>
-                <span>Total fusionné</span>
-                <span>{money(totalAmount)}</span>
-              </div>
-            </div>
-          </div>
+            </tbody>
+            <tfoot><tr><td>Total fusionné</td><td className="ds-num">{n(totalAmount)}</td></tr></tfoot>
+          </table>
+        </DataPanel>
+      </section>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label style={odooLabelStyle}>N° facture fournisseur</label>
-              <input type="text" value={supplierInvoiceNumber}
-                onChange={e => setSupplierInvoiceNumber(e.target.value)}
-                placeholder="Optionnel" style={odooFieldStyle} />
-            </div>
-            <div>
-              <label style={odooLabelStyle}>Date facture</label>
-              <input type="date" value={invoiceDate}
-                onChange={e => setInvoiceDate(e.target.value)} style={odooFieldStyle} />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2" style={{ borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem', backgroundColor: 'var(--odoo-bg)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={() => onConfirm({ supplierInvoiceNumber, invoiceDate })}
-            disabled={isPending}
-            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {isPending && <Loader2 size={14} className="animate-spin" />}
-            <Combine size={14} /> Confirmer la fusion
-          </button>
-        </div>
+      <div className="ds-form-grid">
+        <FormField label="N° facture fournisseur" htmlFor="merge-inv-number" hint="Optionnel">
+          <input id="merge-inv-number" type="text" value={supplierInvoiceNumber} className="ds-input"
+            onChange={e => setSupplierInvoiceNumber(e.target.value)} placeholder="Optionnel" />
+        </FormField>
+        <FormField label="Date facture" htmlFor="merge-inv-date">
+          <input id="merge-inv-date" type="date" value={invoiceDate} className="ds-input"
+            onChange={e => setInvoiceDate(e.target.value)} />
+        </FormField>
       </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -3168,39 +3012,49 @@ function CorrectReceiptDialog({ target, pending, onClose, onSubmit }: {
   const requiresNote = !!reasons.find(r => r.id === reasonCodeId)?.metadata?.requires_note;
   const q = Number(qty);
   const valid = q > 0 && !!reasonCodeId && (!requiresNote || note.trim().length >= 3);
+  const formId = 'po-correct-receipt';
+  const submit = () => { if (valid && !pending) onSubmit({ delta: sign * q, reasonCodeId, note: note.trim() || undefined }); };
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Corriger la réception · {target.label}</span></div>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+    <Modal title="Corriger la réception" subtitle={target.label} width={460} onClose={onClose} locked={pending}
+      footer={
+        <div className="ds-form-foot">
+          <span className="ds-grow" />
+          <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={pending}>Retour</button>
+          <button type="submit" form={formId} disabled={!valid || pending} aria-busy={pending || undefined} className="odoo-btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {pending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
+            Corriger {q > 0 ? `${sign > 0 ? '+' : '−'}${q} ${target.unit}` : ''}
+          </button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit({ delta: sign * q, reasonCodeId, note: note.trim() || undefined }); }}
-          style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-            La correction s'ajoute au bon de réception (la ligne d'origine reste visible) et ajuste le lot. Une baisse ne peut pas dépasser ce qui reste à l'économat.
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <select id="cr-sign" value={sign} onChange={e => setSign(Number(e.target.value) as 1 | -1)} className="px-3 py-2 border border-gray-200 rounded-md text-sm">
+      }>
+      <form id={formId} onSubmit={(e) => { e.preventDefault(); submit(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--ds-muted)' }}>
+          La correction s'ajoute au bon de réception (la ligne d'origine reste visible) et ajuste le lot. Une baisse ne peut pas dépasser ce qui reste à l'économat.
+        </p>
+        <div className="ds-form-grid">
+          <FormField label="Sens" htmlFor="cr-sign" required>
+            <select id="cr-sign" value={sign} onChange={e => setSign(Number(e.target.value) as 1 | -1)} className="ds-input">
               <option value={-1}>Retirer</option>
               <option value={1}>Ajouter</option>
             </select>
+          </FormField>
+          <FormField label={`Quantité (${target.unit})`} htmlFor="cr-qty" required error={qty !== '' && !(q > 0) ? 'Saisissez une quantité supérieure à zéro.' : undefined}>
             <input id="cr-qty" type="number" step="any" min="0" value={qty} onChange={e => setQty(e.target.value)} autoFocus
-              className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm" placeholder={`Quantité en ${target.unit}`} />
-          </div>
-          <select id="cr-reason" value={reasonCodeId} onChange={e => setReasonCodeId(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm">
-            <option value="">— Motif * —</option>
+              className="ds-input ds-num" aria-required="true" placeholder={`Quantité en ${target.unit}`} />
+          </FormField>
+        </div>
+        <FormField label="Motif" htmlFor="cr-reason" required>
+          <select id="cr-reason" value={reasonCodeId} onChange={e => setReasonCodeId(e.target.value)} className="ds-input" aria-required="true">
+            <option value="">— Choisir un motif —</option>
             {reasons.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
+        </FormField>
+        <FormField label="Précision" htmlFor="cr-note" required={requiresNote}
+          hint={requiresNote ? 'Obligatoire pour ce motif (3 caractères au moins).' : 'Facultatif'}>
           <textarea id="cr-note" rows={2} value={note} onChange={e => setNote(e.target.value)} maxLength={1000}
-            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm" placeholder={requiresNote ? 'Précision (obligatoire)' : 'Précision (facultatif)'} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Retour</button>
-            <button type="submit" disabled={!valid || pending} className="odoo-btn-primary">Corriger {q > 0 ? `${sign > 0 ? '+' : '−'}${q} ${target.unit}` : ''}</button>
-          </div>
-        </form>
-      </div>
-    </ModalBackdrop>
+            className="ds-input" style={{ minHeight: 64 }} />
+        </FormField>
+      </form>
+    </Modal>
   );
 }

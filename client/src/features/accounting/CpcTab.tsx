@@ -5,9 +5,7 @@ import { financialStatementsApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
-import { EmptyState, KpiCard, KpiGrid, LoadingState, DataPanel, SectionHeader, Toolbar } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
-import { DateRangeField } from './AccToolbarFields';
+import { EmptyState, KpiCard, KpiGrid, LoadingState, DataPanel, SectionHeader, Toolbar, HeaderActions, DateRangeField } from '../../components/ds';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -64,12 +62,12 @@ export default function CpcTab() {
 
   return (
     <>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={!data}>
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <EditionButtons kind="cpc" params={{ startDate, endDate }} />
-      </AccHeaderActions>
+      </HeaderActions>
 
       {data && (
         <KpiGrid>

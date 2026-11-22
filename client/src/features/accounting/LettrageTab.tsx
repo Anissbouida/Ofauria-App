@@ -9,8 +9,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { lettrageApi } from '../../api/ledger.api';
 import type { LettrageLine, LettrageStatus } from '../../api/ledger.api';
 import { currencySymbol } from '../../utils/money';
-import { KpiCard, KpiGrid, LoadingState, EmptyState, Segmented, Toolbar } from '../../components/ds';
-import { DateRangeField } from './AccToolbarFields';
+import { KpiCard, KpiGrid, LoadingState, EmptyState, ErrorState, Segmented, Toolbar, DataPanel, DateRangeField } from '../../components/ds';
 
 /**
  * Lettrage manuel (mig 420) : sur un compte de tiers (et un tiers pour un
@@ -216,13 +215,19 @@ export default function LettrageTab() {
 
       {!ready ? (
         accountsQ.isLoading ? <LoadingState />
+          : accountsQ.isError ? <ErrorState error={accountsQ.error} onRetry={() => accountsQ.refetch()} />
           : <EmptyState icon={Link2} title={account?.is_collective ? 'Choisissez le tiers dont vous voulez lettrer le compte' : 'Choisissez un compte de tiers'} text="Les lignes à lettrer s'affichent une fois le compte choisi." />
       ) : linesQ.isLoading ? (
         <LoadingState />
+      ) : linesQ.isError ? (
+        <ErrorState error={linesQ.error} onRetry={() => linesQ.refetch()} />
       ) : linesQ.data && (
         <>
-          <div className="odoo-section ds-panel" style={{ padding: 0, position: 'relative' }}>
-            {status !== 'lettered' && (
+          <DataPanel label="Lignes à lettrer"
+            footer={linesQ.data.truncated && (
+              <div className="ds-foot"><Info size={13} aria-hidden="true" /> Affichage limité aux 3 000 premières lignes : resserrez la période.</div>
+            )}
+            bulk={status !== 'lettered' && (
               <div className="ds-bulk" role="status" style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <strong>{sel.length} ligne{sel.length > 1 ? 's' : ''} sélectionnée{sel.length > 1 ? 's' : ''}</strong>
                 <span className="ds-num" style={{ color: 'var(--ds-muted)' }}>· débit {n(selDebit / 100) || '0,00'} · crédit {n(selCredit / 100) || '0,00'}</span>
@@ -246,7 +251,7 @@ export default function LettrageTab() {
                   <Link2 size={13} /> Lettrer
                 </button>
               </div>
-            )}
+            )}>
             {lines.length === 0 ? (
               <EmptyState bare icon={CheckCircle2} title={status === 'open' ? 'Rien à lettrer' : 'Aucune ligne'}
                 text={status === 'open' ? 'Toutes les lignes de ce compte sont lettrées sur la période.' : 'Aucune ligne sur la période choisie.'} />
@@ -273,7 +278,7 @@ export default function LettrageTab() {
                     <tr key={l.id} onClick={() => selectable(l) && toggle(l.id)} className={selected.has(l.id) ? 'ds-selected' : undefined}
                       style={{ cursor: selectable(l) ? 'pointer' : 'default' }}>
                       <td onClick={e => e.stopPropagation()}>
-                        {l.frozen ? <Lock size={12} style={{ color: 'var(--theme-text-muted)' }} aria-label="Exercice clôturé" />
+                        {l.frozen ? <Lock size={12} style={{ color: 'var(--ds-muted)' }} aria-label="Exercice clôturé" />
                           : !l.lettrage_id && <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} aria-label={`Sélectionner ${l.entry_number}`} />}
                       </td>
                       <td>{l.code && <span className={`odoo-tag ${l.lettrage_partiel_id ? 'odoo-tag-orange' : 'odoo-tag-green'}`} style={{ ...mono, fontWeight: 600 }}
@@ -300,12 +305,17 @@ export default function LettrageTab() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={7} className="ds-strong">Total des lignes affichées</td>
+                    <td className="ds-num ds-strong">{n(lines.reduce((s, l) => s + cents(l.debit), 0) / 100) || '0,00'}</td>
+                    <td className="ds-num ds-strong">{n(lines.reduce((s, l) => s + cents(l.credit), 0) / 100) || '0,00'}</td>
+                    <td />
+                  </tr>
+                </tfoot>
               </table>
             )}
-            {linesQ.data.truncated && (
-              <div className="ds-foot"><Info size={13} aria-hidden="true" /> Affichage limité aux 3 000 premières lignes : resserrez la période.</div>
-            )}
-          </div>
+          </DataPanel>
         </>
       )}
     </>

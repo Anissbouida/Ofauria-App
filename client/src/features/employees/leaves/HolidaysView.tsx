@@ -22,7 +22,7 @@ export default function HolidaysView({ switcher }: { switcher?: ReactNode } = {}
   const [year, setYear] = useState(new Date().getFullYear());
   const confirm = useConfirm();
   const [draft, setDraft] = useState<{ date: string; label: string } | null>(null);
-  const { data: rows = [], isLoading, isError, refetch } = useQuery<Record<string, any>[]>({
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery<Record<string, any>[]>({
     queryKey: ['holidays', year],
     queryFn: () => leavesApi.holidays(year),
   });
@@ -69,7 +69,7 @@ export default function HolidaysView({ switcher }: { switcher?: ReactNode } = {}
       {isLoading ? (
         <LoadingPanel />
       ) : isError ? (
-        <ErrorState onRetry={() => void refetch()} />
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : !rows.length ? (
         <EmptyPanel icon={CalendarDays}>Aucun jour férié saisi pour {year}.</EmptyPanel>
       ) : (

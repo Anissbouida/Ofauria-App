@@ -1,5 +1,6 @@
 import { MessageSquareText } from 'lucide-react';
 import { format } from 'date-fns';
+import './production.css';
 
 /**
  * Observations du lancement (G0-24, mig 528) : note du chef et bases partagées déclarées
@@ -19,8 +20,8 @@ const qty = (n: number) => Number(n).toLocaleString('fr-FR', { maximumFractionDi
 export default function PlanObservationsPanel({ observations }: { observations: PlanObservation[] }) {
   if (observations.length === 0) return null;
   return (
-    <div className="odoo-section" style={{ margin: '1rem' }}>
-      <div className="odoo-section-header">
+    <div className="ds-panel pd-section" style={{ margin: '1rem' }}>
+      <div className="pd-section-head">
         <MessageSquareText size={12} /> Observations du lancement
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
           {observations.length} déclaration{observations.length > 1 ? 's' : ''}
@@ -34,7 +35,7 @@ export default function PlanObservationsPanel({ observations }: { observations: 
             </div>
             {o.note && <p style={{ margin: '0.35rem 0 0', whiteSpace: 'pre-wrap' }}>{o.note}</p>}
             {o.bases.length > 0 && (
-              <table className="odoo-table" style={{ marginTop: '0.5rem' }}>
+              <table className="odoo-table ds-dense" style={{ marginTop: '0.5rem' }}>
                 <thead><tr><th>Base partagée</th><th className="ds-num">Quantité déclarée</th><th>Origine</th></tr></thead>
                 <tbody>
                   {o.bases.map((b, i) => (

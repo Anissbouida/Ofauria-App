@@ -10,6 +10,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { money } from '../../utils/money';
 
 import { LoadingState } from '../../components/ds';
+import './production.css';
 /**
  * Sous-traitance de l'ordre (M9, mig 584) : sous-traitant et prix de façon, bon d'envoi des
  * composants, puis réception par la déclaration habituelle (« Lancer / déclarer »).
@@ -63,8 +64,8 @@ export default function SubcontractPanel({ planId, planStatus, canEdit }: { plan
   const canShip = canEdit && data.status === 'to_ship' && !!data.subcontractorId && ['confirmed', 'ready_to_produce', 'in_progress'].includes(planStatus);
 
   return (
-    <div className="odoo-section" style={{ margin: '1rem' }}>
-      <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Truck size={12} /> Sous-traitance <StatusTag tone={st.tone} label={st.label} />
       </div>
       <div style={{ padding: '0.75rem 1rem', display: 'grid', gap: 12 }}>
@@ -112,7 +113,7 @@ export default function SubcontractPanel({ planId, planStatus, canEdit }: { plan
               <span>{new Date(s.shipped_at).toLocaleString('fr-FR')}</span>
               {s.shipped_by_name && <span style={{ color: 'var(--odoo-text-muted)' }}>par {s.shipped_by_name}</span>}
             </div>
-            <table className="odoo-table">
+            <table className="odoo-table ds-dense">
               <thead><tr><th>Composant</th><th className="ds-num">Quantité envoyée</th></tr></thead>
               <tbody>
                 {s.lines.length === 0 && <tr><td colSpan={2} style={{ color: 'var(--odoo-text-muted)' }}>Aucun composant calculé</td></tr>}

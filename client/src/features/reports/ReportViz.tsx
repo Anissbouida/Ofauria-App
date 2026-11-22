@@ -1,4 +1,5 @@
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
+import { DataPanel } from '../../components/ds';
 import type { ReportColumn } from '../../api/reports.api';
 
 export type VizType = 'table' | 'bar' | 'line' | 'kpi';
@@ -86,17 +87,18 @@ export function ReportViz({ columns, rows, viz, measureKey }: { columns: ReportC
     );
   }
 
-  // Table (défaut)
+  // Table (défaut) : montants sans devise, devise dans l'en-tête.
+  const cell = (v: any, c: ReportColumn) => (v != null && c.kind === 'measure' && c.format === 'currency' ? (Number(v) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : fmtVal(v, c));
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <DataPanel label="Résultat du rapport">
       <table className="odoo-table ds-dense">
-        <thead><tr>{columns.map(c => <th key={c.key} style={{ textAlign: c.kind === 'measure' ? 'right' : 'left', whiteSpace: 'nowrap' }}>{c.label}</th>)}</tr></thead>
+        <thead><tr>{columns.map(c => <th key={c.key} className={c.kind === 'measure' ? 'ds-num' : undefined} style={{ whiteSpace: 'nowrap' }}>{c.label}{c.kind === 'measure' && c.format === 'currency' ? ` (${currencySymbol()})` : ''}</th>)}</tr></thead>
         <tbody>
           {rows.slice(0, 200).map((r, i) => (
-            <tr key={i}>{columns.map(c => <td key={c.key} style={{ textAlign: c.kind === 'measure' ? 'right' : 'left', fontVariantNumeric: c.kind === 'measure' ? 'tabular-nums' : undefined, fontWeight: c.kind === 'measure' ? 600 : 400 }}>{fmtVal(r[c.key], c)}</td>)}</tr>
+            <tr key={i}>{columns.map((c, j) => <td key={c.key} className={c.kind === 'measure' ? 'ds-num ds-strong' : j === 0 ? 'ds-strong' : undefined}>{cell(r[c.key], c)}</td>)}</tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </DataPanel>
   );
 }

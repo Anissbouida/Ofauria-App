@@ -16,16 +16,18 @@ import {
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
-import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
+import PurchaseOrdersTab, { ReceptionForm } from '../accounting/PurchaseOrdersTab';
+import { useSearchParams } from 'react-router-dom';
+import { rfqApi } from '../../api/rfq.api';
+import { DETAIL_PARAMS } from './purchasingNav';
 import SuppliersTab from './SuppliersTab';
 import PurchasingPilotageTab from './PurchasingPilotageTab';
 import PurchasingWorkbench from './PurchasingWorkbench';
 import '../projects/projects.css';
 import './purchasing.css';
 import '../sales/sales.css';
-import RfqTab from './RfqTab';
+import RfqTab, { RfqPage } from './RfqTab';
 import { PurHeaderSlot, PurHeaderActions } from './PurHeaderActions';
 import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, InvoiceStageTag, pdate, pmoney, pn, KANBAN_ALL } from './PurLayouts';
 import { ListKpi } from '../sales/ListTemplate';
@@ -49,7 +51,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { ModuleShell, useModuleView, MODULE_SECTIONS, type ModuleView } from '../../components/layout/ModuleShell';
 import {
   Breadcrumb, PageHeader, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState,
-  FormField, FormFooter, Alert,
+  FormField, FormFooter, Alert, Modal, ErrorState,
 } from '../../components/ds';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -153,14 +155,46 @@ export default function PurchasingPage() {
   const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
   // Ouverture d'un onglet pré-filtré (fournisseur, recherche, vue) depuis Fournisseurs ou Pilotage.
   const [focus, setFocus] = useState<TabFocus>({});
-  const openTab = (next: PurchasingTab, f: TabFocus = {}) => { setFocus(f); select(next); };
+  // Pages de détail ouvertes par l'URL (purchasingNav) : réception d'un BC, demande de prix.
+  const [params, setParams] = useSearchParams();
+  const receptionPoId = tab === 'reception' ? params.get('po') : null;
+  const rfqId = tab === 'rfq' ? params.get('rfq') : null;
+  const fromTab = params.get('from') as PurchasingTab | null;
+  // Changer de rubrique referme la page de détail (les paramètres po / rfq / from sont retirés).
+  const openTab = (next: PurchasingTab, f: TabFocus = {}) => {
+    setFocus(f);
+    if (!DETAIL_PARAMS.some(k => params.has(k))) { select(next); return; }
+    const p = new URLSearchParams(params);
+    DETAIL_PARAMS.forEach(k => p.delete(k));
+    p.set('tab', next);
+    setParams(p);
+  };
+  // Retour de la page de détail vers la rubrique d'où l'on vient (Annuler, après validation).
+  const closeDetail = () => openTab(fromTab ?? (tab as PurchasingTab), focus);
+  // Numéro de la pièce pour le fil d'Ariane (mêmes clés de cache que les pages : pas de second appel).
+  const { data: receptionPo } = useQuery({
+    queryKey: ['purchase-orders', receptionPoId],
+    queryFn: () => purchaseOrdersApi.getById(receptionPoId!),
+    enabled: !!receptionPoId,
+  });
+  const { data: rfqDoc } = useQuery({
+    queryKey: ['rfq', rfqId],
+    queryFn: () => rfqApi.get(rfqId!),
+    enabled: !!rfqId,
+  });
+  const detailLabel = receptionPoId ? (receptionPo?.order_number ?? '…') : rfqId ? (rfqDoc?.number ?? '…') : null;
 
   return (
     <ModuleShell title="Achats" views={views} current={current} onSelect={k => openTab(k as PurchasingTab)} bar={false} flush look="apple">
       {/* En-tête « Achats / rubrique », même barre que les onglets Ventes (SalesPageShell). */}
       <div className="odoo-control-bar">
         {/* Fil d'Ariane à trois niveaux : module › rubrique › page (Design System). */}
-        <Breadcrumb icon={CurrentIcon} items={[
+        <Breadcrumb icon={CurrentIcon} items={detailLabel ? [
+          // Page de détail : « Achats › Réceptions › n° du BC », « Achats › Demandes de prix › n° ».
+          { label: 'Achats', onClick: () => openTab('workbench') },
+          { label: current?.label, onClick: () => openTab(tab as PurchasingTab) },
+          { label: detailLabel },
+        ] : [
           { label: 'Achats', onClick: tab === 'workbench' ? undefined : () => openTab('workbench') },
           ...(sectionLabel ? [{ label: sectionLabel }] : []),
           { label: current?.label },
@@ -174,7 +208,7 @@ export default function PurchasingPage() {
       <ProcessBoardVariant.Provider value="chips">
       <div className="pur-module pur-head-body">
       {/* Style Apple (2026-11) : grand titre de la rubrique ; le Poste de travail pose le sien. */}
-      {tab !== 'workbench' && <PageHeader title={current?.label} description={tab ? PAGE_LEADS[tab] : undefined} />}
+      {tab !== 'workbench' && !detailLabel && <PageHeader title={current?.label} description={tab ? PAGE_LEADS[tab] : undefined} />}
       {tab === 'suppliers' && (
         <SuppliersTab
           onOpenOrders={id => openTab('purchase_orders', { supplierId: id })}
@@ -184,9 +218,13 @@ export default function PurchasingPage() {
       {tab === 'identification' && <ToOrderBoard />}
       {tab === 'purchase_requests' && <PurchaseRequestsPage />}
       {tab === 'approvals' && <ApprovalsPage />}
-      {tab === 'rfq' && <RfqTab onOpenOrder={() => openTab('purchase_orders')} />}
-      {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} onGoToReception={() => openTab('reception')} />}
-      {tab === 'reception' && <ReceptionsTab />}
+      {tab === 'rfq' && (rfqId
+        ? <RfqPage key={rfqId} id={rfqId} onBack={closeDetail} onOpenOrder={() => openTab('purchase_orders')} />
+        : <RfqTab onOpenOrder={() => openTab('purchase_orders')} />)}
+      {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
+      {tab === 'reception' && (receptionPoId
+        ? <ReceptionForm key={receptionPoId} poId={receptionPoId} onDone={closeDetail} onCancel={closeDetail} />
+        : <ReceptionsTab />)}
       {tab === 'price_variances' && <PriceVariancesTab />}
       {tab === 'invoices' && <InvoicesTab {...focus} />}
       {tab === 'landed' && <LandedCostTab />}
@@ -206,9 +244,6 @@ export default function PurchasingPage() {
 /* ═══════════════════════ INVOICES TAB (factures reçues only) ═══════════════════════ */
 type TabFocus = { supplierId?: string; search?: string; view?: 'open' | 'history' };
 
-/** Coquille et pied des fenêtres de cette rubrique (pied collé en bas, Annuler puis action à droite). */
-const MODAL_BOX: CSSProperties = { width: '100%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 };
-const MODAL_FOOT: CSSProperties = { position: 'sticky', bottom: 0, background: 'var(--ds-card)' };
 const MUTED: CSSProperties = { color: 'var(--ds-muted)' };
 
 function InvoicesTab({ supplierId, search, view }: TabFocus) {
@@ -230,6 +265,8 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
   // (consulter les paiements existants + supprimer un paiement erroné)
   const [paymentsInvoiceId, setPaymentsInvoiceId] = useState<string | null>(null);
   const [showPayForm, setShowPayForm] = useState<Record<string, any> | null>(null);
+  // Le pied commun de la fenêtre de paiement soumet ce formulaire (validation native conservée).
+  const payFormRef = useRef<HTMLFormElement>(null);
   // scheduleInvoice = facture a echelonner en N echeances (materiel a credit) — mig 258
   const [scheduleInvoice, setScheduleInvoice] = useState<Record<string, any> | null>(null);
   // Mig 310 : payMethod porte désormais le mode TYPÉ (cash, cheque_barre, effet, virement…) ;
@@ -294,7 +331,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
     return { ...p, ...periodParams(period, customFrom, customTo) };
   }, [view, stage, statusFilter, searchTerm, supplierFilter, categoryFilter, period, customFrom, customTo, page, sortBy, sortDir, layout]);
 
-  const { data: board, isLoading, isFetching } = useQuery({
+  const { data: board, isLoading, isFetching, error: boardError, refetch: refetchBoard } = useQuery({
     queryKey: ['invoices', 'received-board', boardParams],
     queryFn: () => invoicesApi.receivedBoard(boardParams),
     placeholderData: (prev) => prev,
@@ -711,6 +748,8 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
       {/* 4. Liste */}
       {isLoading ? (
         <LoadingState label="Chargement des factures…" />
+      ) : boardError && !board ? (
+        <ErrorState error={boardError} onRetry={() => { void refetchBoard(); }} />
       ) : rows.length === 0 ? (
         hasFilters ? (
           <NoResultState onReset={resetFilters} text="Aucune facture ne correspond aux filtres." />
@@ -924,22 +963,13 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
 
       {/* Pay invoice modal */}
       {showPayForm && (
-        <ModalBackdrop onClose={() => setShowPayForm(null)} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="odoo-scope" onClick={(e) => e.stopPropagation()} style={{ ...MODAL_BOX, maxWidth: 480 }}>
-            <div className="odoo-control-bar">
-              <div className="odoo-breadcrumb">
-                <Banknote size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-                <span>Payer</span>
-                <span className="odoo-breadcrumb-separator" aria-hidden="true">›</span>
-                <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{showPayForm.invoice_number as string}</span>
-              </div>
-              <div style={{ flex: 1 }} />
-              <span className="odoo-tag odoo-tag-orange">Reste {payIsForeign
-                ? `${n(parseFloat(showPayForm.foreign_total_amount as string) - parseFloat((showPayForm.foreign_paid_amount as string) || '0'))} ${payCurrency}`
-                : `${money(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string))}`}</span>
-              <button type="button" onClick={() => setShowPayForm(null)} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-            </div>
-            <form onSubmit={e => {
+        <Modal title="Payer la facture" subtitle={<span className="ds-ref">{showPayForm.invoice_number as string}</span>} width={480}
+          onClose={() => setShowPayForm(null)} locked={payMutation.isPending}
+          aside={<StatusTag tone="todo" label={`Reste ${payIsForeign
+            ? `${n(parseFloat(showPayForm.foreign_total_amount as string) - parseFloat((showPayForm.foreign_paid_amount as string) || '0'))} ${payCurrency}`
+            : `${money(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string))}`}`} />}
+          footer={<FormFooter onCancel={() => setShowPayForm(null)} submitLabel="Payer" busy={payMutation.isPending} onSubmit={() => payFormRef.current?.requestSubmit()} />}>
+            <form ref={payFormRef} onSubmit={e => {
               e.preventDefault();
               if (payMutation.isPending) return;
               const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
@@ -966,8 +996,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                 fd.avoirAmount = av > 0 ? Math.round(av * 100) / 100 : undefined;
               }
               payMutation.mutate(fd);
-            }} className="flex-1 overflow-y-auto">
-              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {payIsForeign ? (() => {
                   const foreign = parseFloat(payForeign) || 0; const rate = parseFloat(payRate) || 0;
                   const invRate = parseFloat(showPayForm.exchange_rate as string) || 0;
@@ -1052,13 +1081,8 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                     </FormField>
                   );
                 })()}
-              </div>
-              <div style={MODAL_FOOT}>
-                <FormFooter onCancel={() => setShowPayForm(null)} submitLabel="Payer" busy={payMutation.isPending} />
-              </div>
             </form>
-          </div>
-        </ModalBackdrop>
+        </Modal>
       )}
     </>
   );
@@ -1090,22 +1114,12 @@ function ValidateInvoiceModal({ invoice, pending, onClose, onSubmit }: {
   const declared = parseFloat(ttc) || 0;
   const diff = declared - computed;
   const canSubmit = number.trim().length > 0 && declared > 0 && !pending;
+  const formRef = useRef<HTMLFormElement>(null);
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()} style={{ ...MODAL_BOX, maxWidth: 460 }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-            <span>Valider la facture</span>
-            <span className="odoo-breadcrumb-separator" aria-hidden="true">›</span>
-            <span className="odoo-breadcrumb-current">{(invoice.supplier_name as string) ?? ''}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <form onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit({ supplierInvoiceNumber: number.trim(), invoiceDate: date || null, declaredTtc: declared }); }}>
-          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Modal title="Valider la facture" subtitle={(invoice.supplier_name as string) ?? ''} width={460} onClose={onClose} locked={pending}
+      footer={<FormFooter onCancel={onClose} submitLabel={pending ? 'Validation…' : 'Valider'} busy={pending} disabled={!canSubmit} onSubmit={() => formRef.current?.requestSubmit()} />}>
+        <form ref={formRef} onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit({ supplierInvoiceNumber: number.trim(), invoiceDate: date || null, declaredTtc: declared }); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p style={{ fontSize: 14, color: 'var(--ds-muted)', margin: 0 }}>
               Confrontez la pré-facture au papier du fournisseur : saisissez son numéro et le total TTC imprimé, puis validez.
             </p>
@@ -1125,11 +1139,8 @@ function ValidateInvoiceModal({ invoice, pending, onClose, onSubmit }: {
                 Écart avec le total calculé ({money(computed)}) : {money(diff, { signed: true })}
               </Alert>
             )}
-          </div>
-          <FormFooter onCancel={onClose} submitLabel={pending ? 'Validation…' : 'Valider'} busy={pending} disabled={!canSubmit} />
         </form>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -1204,6 +1215,7 @@ function ReceivedInvoiceFormModal({
   const [notes, setNotes] = useState<string>(invoice?.notes as string || '');
   // Fournisseur manquant à l'envoi : le message s'affiche sous le champ.
   const [supplierMissing, setSupplierMissing] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Quand un taux TVA est selectionne, on derive le montant TVA depuis HT.
   // Le useEffect HT+TVA=TTC en aval s'occupera de mettre a jour le TTC.
@@ -1266,22 +1278,10 @@ function ReceivedInvoiceFormModal({
   };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()} style={{ ...MODAL_BOX, maxWidth: 600 }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <FileText size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-            <span>Facture fournisseur</span>
-            <span className="odoo-breadcrumb-separator" aria-hidden="true">›</span>
-            <span className="odoo-breadcrumb-current">
-              {isEdit ? `Modifier ${invoice?.invoice_number as string}` : 'Nouvelle'}
-            </span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Modal title={isEdit ? `Modifier la facture ${invoice?.invoice_number as string}` : 'Nouvelle facture fournisseur'} subtitle="Facture fournisseur"
+      width={600} onClose={onClose} locked={isPending}
+      footer={<FormFooter onCancel={onClose} submitLabel={isEdit ? 'Enregistrer' : 'Créer la facture'} busy={isPending} disabled={ttcBelowPaid} onSubmit={() => formRef.current?.requestSubmit()} />}>
+        <form ref={formRef} onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="ds-form-grid">
               <FormField label="N° de facture" htmlFor="inv-number" required>
                 <input id="inv-number" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} className="ds-input" required />
@@ -1366,13 +1366,8 @@ function ReceivedInvoiceFormModal({
                 Déjà payé : {money(paidAmount)}. Le statut sera recalculé automatiquement après modification.
               </Alert>
             )}
-          </div>
-          <div style={MODAL_FOOT}>
-            <FormFooter onCancel={onClose} submitLabel={isEdit ? 'Enregistrer' : 'Créer la facture'} busy={isPending} disabled={ttcBelowPaid} />
-          </div>
         </form>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -1427,6 +1422,7 @@ function InvoiceScheduleModal({ invoice, onClose, onSuccess }: {
   const [intervalMonths, setIntervalMonths] = useState('1');
   const [firstDueDate, setFirstDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [mode, setMode] = useState((invoice.expected_payment_mode as string) || '');
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Apercu des echeances : meme repartition que le serveur (dernier terme ajuste).
   const nbEch = Math.max(1, Math.floor(parseFloat(installments) || 1));
@@ -1464,22 +1460,11 @@ function InvoiceScheduleModal({ invoice, onClose, onSuccess }: {
   });
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()} style={{ ...MODAL_BOX, maxWidth: 480 }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <CalendarClock size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-            <span>Échelonner</span>
-            <span className="odoo-breadcrumb-separator" aria-hidden="true">›</span>
-            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{invoice.invoice_number as string}</span>
-            <span style={MUTED}>· {(invoice.supplier_name as string) || 'Fournisseur'}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <span className="odoo-tag odoo-tag-orange">Reste {money(reste)}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <form onSubmit={(e) => { e.preventDefault(); if (!create.isPending) create.mutate(); }} className="flex-1 overflow-y-auto">
-          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Modal title="Échelonner la facture" width={480} onClose={onClose} locked={create.isPending}
+      subtitle={<><span className="ds-ref">{invoice.invoice_number as string}</span> · {(invoice.supplier_name as string) || 'Fournisseur'}</>}
+      aside={<StatusTag tone="todo" label={`Reste ${money(reste)}`} />}
+      footer={<FormFooter onCancel={onClose} submitLabel={create.isPending ? 'Création…' : 'Créer l\'échéancier'} busy={create.isPending} onSubmit={() => formRef.current?.requestSubmit()} />}>
+        <form ref={formRef} onSubmit={(e) => { e.preventDefault(); if (!create.isPending) create.mutate(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="ds-form-grid">
               <FormField label="Nombre d'échéances" htmlFor="sch-count" required>
                 <input id="sch-count" type="number" min="1" max="120" value={installments}
@@ -1507,32 +1492,28 @@ function InvoiceScheduleModal({ invoice, onClose, onSuccess }: {
             {apercu.length > 0 && (
               <div>
                 <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Aperçu</h3>
-                <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid var(--ds-hair)', borderRadius: 'var(--ds-r-field)' }}>
-                  <table className="odoo-table ds-dense" style={{ margin: 0 }}>
+                <DataPanel label="Aperçu de l'échéancier" style={{ maxHeight: 220, overflowY: 'auto' }}>
+                  <table className="odoo-table ds-dense">
+                    <thead><tr><th>Échéance</th><th>Date</th><th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
                     <tbody>
                       {apercu.map((e, i) => (
                         <tr key={i}>
                           <td>Échéance {i + 1}</td>
                           <td>{e.date}</td>
-                          <td className="ds-num ds-strong">{money(e.montant)}</td>
+                          <td className="ds-num ds-strong">{n(e.montant)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </DataPanel>
               </div>
             )}
             <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>
               Les échéances apparaîtront dans <strong>Comptabilité → Créances &amp; dettes → Échéancier</strong>.
               Le reste à payer de la facture ne change pas : l'échéancier n'est qu'un calendrier.
             </p>
-          </div>
-          <div style={MODAL_FOOT}>
-            <FormFooter onCancel={onClose} submitLabel={create.isPending ? 'Création…' : 'Créer l\'échéancier'} busy={create.isPending} />
-          </div>
         </form>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -1712,22 +1693,10 @@ function InvoiceLinesEditorModal({
   };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()} style={{ ...MODAL_BOX, maxWidth: 900 }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <ClipboardList size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-            <span>Lignes de facture</span>
-            <span className="odoo-breadcrumb-separator" aria-hidden="true">›</span>
-            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>
-              {(invoice?.invoice_number as string) || '…'}
-            </span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
+    <Modal title="Lignes de facture" subtitle={<span className="ds-ref">{(invoice?.invoice_number as string) || '…'}</span>} width={900}
+      onClose={onClose} locked={mutation.isPending || showPayments}
+      footer={<FormFooter onCancel={onClose} onSubmit={handleSave} submitLabel="Enregistrer les lignes"
+        busy={mutation.isPending} disabled={isLoading || ttcBelowPaid || lines.length === 0} />}>
           {isLoading ? (
             <LoadingState bare />
           ) : (
@@ -1761,6 +1730,7 @@ function InvoiceLinesEditorModal({
                 Modifiez, ajoutez ou supprimez des lignes. Le <strong>total HT</strong> est recalculé comme la somme des sous-totaux. Choisissez un <strong>taux de TVA par ligne</strong> (les articles peuvent avoir des taux différents) : la TVA totale devient la somme des TVA par ligne. Laissez le taux vide (—) pour conserver la TVA d'en-tête actuelle.
               </p>
 
+              <DataPanel label="Lignes de facture">
               <table className="odoo-table ds-dense">
                 <thead>
                   <tr>
@@ -1835,6 +1805,7 @@ function InvoiceLinesEditorModal({
                   })}
                 </tbody>
               </table>
+              </DataPanel>
 
               <button type="button" onClick={addLine} className="ds-btn-ghost ds-btn-sm" style={{ marginTop: 10 }}>
                 <Plus size={13} aria-hidden="true" /> Ajouter une ligne
@@ -1898,13 +1869,6 @@ function InvoiceLinesEditorModal({
               </div>
             </>
           )}
-        </div>
-
-        <div style={MODAL_FOOT}>
-          <FormFooter onCancel={onClose} onSubmit={handleSave} submitLabel="Enregistrer les lignes"
-            busy={mutation.isPending} disabled={isLoading || ttcBelowPaid || lines.length === 0} />
-        </div>
-      </div>
 
       {/* Modal Paiements ouvert au-dessus pour resoudre le blocage 'TTC < deja paye'.
           A la fermeture, la query 'invoice' est invalide et le paid_amount est
@@ -1915,7 +1879,7 @@ function InvoiceLinesEditorModal({
           onClose={() => setShowPayments(false)}
         />
       )}
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -1981,22 +1945,9 @@ function InvoicePaymentsModal({
   const tile: CSSProperties = { padding: '8px 12px', borderRadius: 'var(--ds-r-field)', display: 'grid', gap: 2 };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()} style={{ ...MODAL_BOX, maxWidth: 820 }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Coins size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-            <span>Paiements</span>
-            <span className="odoo-breadcrumb-separator" aria-hidden="true">›</span>
-            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>
-              {(invoice?.invoice_number as string) || '…'}
-            </span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
+    <Modal title="Paiements de la facture" subtitle={<span className="ds-ref">{(invoice?.invoice_number as string) || '…'}</span>} width={820}
+      onClose={onClose} locked={!!voidTarget || !!reissueTarget}
+      footer={<button type="button" onClick={onClose} className="odoo-btn-secondary">Fermer</button>}>
           {isLoading ? (
             <LoadingState bare />
           ) : (
@@ -2025,7 +1976,8 @@ function InvoicePaymentsModal({
               {payments.length === 0 ? (
                 <EmptyState bare icon={Coins} title="Aucun paiement" text="Aucun paiement n'est enregistré pour cette facture." />
               ) : (
-                <table className="odoo-table ds-dense" style={{ margin: 0 }}>
+                <DataPanel label="Paiements de la facture">
+                <table className="odoo-table ds-dense">
                   <thead>
                     <tr>
                       <th style={{ width: 110 }}>Saisi le</th>
@@ -2069,13 +2021,13 @@ function InvoicePaymentsModal({
                         <td className="ds-actions">
                           {p.status !== 'void' && !p.voids_payment_id && p.payment_method !== 'avoir' && (
                             <button type="button" onClick={() => setVoidTarget(p)} disabled={voidMutation.isPending}
-                              className="odoo-pager-btn" title="Annuler ce paiement (motif obligatoire)" aria-label="Annuler ce paiement" style={{ color: 'var(--ds-danger)' }}>
+                              className="ds-icon-btn" title="Annuler ce paiement (motif obligatoire)" aria-label="Annuler ce paiement" style={{ color: 'var(--ds-danger)' }}>
                               <Ban size={13} />
                             </button>
                           )}
                           {p.status === 'void' && !p.voids_payment_id && p.payment_method !== 'avoir'
                             && !payments.some(x => x.replaces_payment_id === p.id && x.status !== 'void') && (
-                            <button type="button" onClick={() => setReissueTarget(p)} className="odoo-pager-btn" title="Ré-émettre ce règlement" aria-label="Ré-émettre ce règlement">
+                            <button type="button" onClick={() => setReissueTarget(p)} className="ds-icon-btn" title="Ré-émettre ce règlement" aria-label="Ré-émettre ce règlement">
                               <RotateCcw size={13} />
                             </button>
                           )}
@@ -2084,15 +2036,10 @@ function InvoicePaymentsModal({
                     ))}
                   </tbody>
                 </table>
+                </DataPanel>
               )}
             </>
           )}
-        </div>
-
-        <div className="ds-form-foot" style={{ ...MODAL_FOOT, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} className="odoo-btn-secondary">Fermer</button>
-        </div>
-      </div>
       {voidTarget && (
         <ReasonCodeDialog title={`Annuler le paiement de ${money(parseFloat(voidTarget.amount as string))}`} scope="void_payment"
           description="Le paiement reste dans l'historique : une contre-pièce négative le neutralise et son écriture est extournée. Un chèque déjà encaissé ou un paiement rapproché en banque ne peut pas être annulé."
@@ -2105,7 +2052,7 @@ function InvoicePaymentsModal({
           onClose={() => setReissueTarget(null)}
           onSubmit={(data) => reissueMutation.mutate({ id: reissueTarget.id as string, data })} />
       )}
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -2136,14 +2083,19 @@ function ReceivedInvoicePane({ inv, detail, action, onControl, onEdit, onLines, 
         sub={<><span className="sal-num">{inv.invoice_number as string}</span>{inv.supplier_invoice_number ? ` · réf. ${inv.supplier_invoice_number as string}` : ''}{inv.purchase_order_number ? ` · ${inv.purchase_order_number as string}` : ''}</>}
         amount={pmoney(total)} amountSub={st === 'cancelled' ? 'annulée' : remaining > 0.004 ? `reste à payer ${money(remaining)}` : 'réglée'} />
       <div className="ord-actions">
-        {action && <button type="button" className={action.cls} onClick={action.run} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{(st === 'to_pay' || st === 'partial') && <Banknote size={14} />}{action.label}</button>}
-        <button type="button" className="odoo-btn-secondary" onClick={onControl} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Number(inv.blocking_holds) > 0 ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />} Contrôle</button>
-        <button type="button" className="odoo-btn-secondary" onClick={onEdit} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Pencil size={13} /> Modifier</button>
-        <button type="button" className="odoo-btn-secondary" onClick={onLines} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ClipboardList size={13} /> Lignes</button>
-        {onPayments && <button type="button" className="odoo-btn-secondary" onClick={onPayments} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Coins size={13} /> Paiements</button>}
-        {inv.attachment_url
-          ? <a className="odoo-btn-secondary" href={inv.attachment_url as string} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Eye size={13} /> Pièce jointe</a>
-          : <button type="button" className="odoo-btn-secondary" onClick={onAttach} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Upload size={13} /> Joindre</button>}
+        {/* Une action principale visible (ou le contrôle à défaut), le reste dans le menu « ⋯ ». */}
+        {action
+          ? <button type="button" className={action.cls} onClick={action.run} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{(st === 'to_pay' || st === 'partial') && <Banknote size={14} aria-hidden="true" />}{action.label}</button>
+          : <button type="button" className="odoo-btn-secondary" onClick={onControl} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Number(inv.blocking_holds) > 0 ? <ShieldAlert size={13} aria-hidden="true" /> : <ShieldCheck size={13} aria-hidden="true" />} Contrôle</button>}
+        <RowMenu label={`Plus d'actions sur ${inv.invoice_number as string}`} items={[
+          ...(action ? [{ label: 'Contrôle', icon: Number(inv.blocking_holds) > 0 ? ShieldAlert : ShieldCheck, onSelect: onControl }] : []),
+          { label: 'Modifier', icon: Pencil, onSelect: onEdit },
+          { label: 'Lignes', icon: ClipboardList, onSelect: onLines },
+          ...(onPayments ? [{ label: 'Paiements', icon: Coins, onSelect: onPayments }] : []),
+          inv.attachment_url
+            ? { label: 'Pièce jointe', icon: Eye, onSelect: () => { window.open(inv.attachment_url as string, '_blank', 'noopener,noreferrer'); } }
+            : { label: 'Joindre une pièce', icon: Upload, onSelect: onAttach },
+        ]} />
       </div>
       {st === 'cancelled' ? (
         <div className="kl-widget"><div className="ord-state">Facture annulée</div><div className="ord-state-sub">Conservée comme pièce ; son écriture est extournée.</div></div>

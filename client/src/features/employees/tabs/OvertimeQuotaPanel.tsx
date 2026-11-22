@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { attendanceApi } from '../../../api/employees.api';
+import { DataPanel } from '../../../components/ds';
 
 /**
  * Contingent annuel d'heures supplementaires (decret d'application du Code du
@@ -28,7 +29,8 @@ export default function OvertimeQuotaPanel({ year }: { year: number }) {
         </button>
       }>
       {open && (
-      <table className="odoo-table" style={{ marginTop: 8 }}>
+      <DataPanel label="Contingent d'heures supplémentaires">
+      <table className="odoo-table ds-dense">
         <thead><tr><th>Employé</th><th className="ds-num">Heures sup (h)</th><th className="ds-num">Dont nuit (h)</th><th style={{ width: '40%' }}>Contingent</th></tr></thead>
         <tbody>
           {rows.map(r => (
@@ -48,6 +50,7 @@ export default function OvertimeQuotaPanel({ year }: { year: number }) {
           ))}
         </tbody>
       </table>
+      </DataPanel>
       )}
     </StatusBanner>
   );

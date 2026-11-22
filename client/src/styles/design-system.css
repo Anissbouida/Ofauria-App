@@ -239,3 +239,23 @@ textarea.ds-input { height: auto; min-height: 84px; padding: 8px 12px; resize: v
 @media (max-width: 900px) {
   .kl-ds.kl-ds .prj-kpis, .kl-ds.kl-ds .kl-stats, .ds-kpis { grid-template-columns: repeat(auto-fit, minmax(max(180px, calc(50% - var(--ds-s4))), 1fr)); }
 }
+
+/* ── Fenêtre et tiroir communs ── */
+.ds-scrim { background: rgba(15, 23, 42, .45); }
+.ds-sheet { background: var(--ds-card); color: var(--ds-body); display: flex; flex-direction: column; max-height: calc(100vh - 32px); box-shadow: 0 16px 48px rgba(15, 23, 42, .22); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; }
+.ds-modal { border-radius: var(--ds-r-card); overflow: hidden; }
+.ds-drawer { height: 100vh; max-height: 100vh; border-radius: 0; }
+.ds-sheet-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--ds-hair); }
+.ds-sheet-sub { margin: 4px 0 0; font-size: 13px; color: var(--ds-muted); }
+.ds-sheet-body { flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+.ds-sheet-foot { border-top: 1px solid var(--ds-hair); background: color-mix(in srgb, var(--ds-bg) 50%, var(--ds-card)); }
+.ds-sheet-foot > .ds-form-foot { border-top: 0; }
+.ds-sheet-foot:not(:has(.ds-form-foot)) { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; }
+.ds-period { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ds-muted); }
+
+/* Section de formulaire repliable. */
+.ds-collapsible > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--ds-ink); border-bottom: 1px solid var(--ds-hair); }
+.ds-collapsible > summary::-webkit-details-marker { display: none; }
+.ds-collapsible > summary::before { content: '›'; display: inline-block; transition: transform .15s; color: var(--ds-muted); }
+.ds-collapsible[open] > summary::before { transform: rotate(90deg); }
+.ds-collapsible-body { display: flex; flex-direction: column; gap: 14px; padding-top: 12px; }

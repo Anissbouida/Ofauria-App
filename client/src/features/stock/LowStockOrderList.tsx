@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { fmtQty, type InventoryItem } from './types';
+import { DataPanel } from '../../components/ds';
 
 /**
  * Onglet « À commander » : ingredients sous le seuil minimum (GET /inventory/alerts),
@@ -56,11 +57,12 @@ export function LowStockOrderList() {
   }
 
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header">
-        <AlertTriangle size={12} /> Stock bas ({alerts.length})
-        <span style={{ fontWeight: 400, color: 'var(--theme-text-muted)', marginLeft: 6 }}>seuil minimum franchi, toutes zones confondues</span>
+    <DataPanel label="Stock bas" bulk={
+      <div className="prj-panel-head">
+        <AlertTriangle size={14} aria-hidden="true" /> Stock bas ({alerts.length})
+        <small>seuil minimum franchi, toutes zones confondues</small>
       </div>
+    }>
       <table className="odoo-table">
         <thead>
           <tr>
@@ -68,7 +70,7 @@ export function LowStockOrderList() {
             <th className="ds-num">Stock</th>
             <th className="ds-num">Seuil</th>
             <th className="ds-num">À commander</th>
-            <th style={{ width: 140 }}></th>
+            <th className="ds-actions" style={{ width: 140 }}><span className="ds-sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -81,15 +83,15 @@ export function LowStockOrderList() {
             return (
               <tr key={item.ingredient_id} className={current <= 0 ? 'row-danger' : 'row-warning'}
                 onClick={() => navigate(`/stock/${item.ingredient_id}`)}>
-                <td style={{ fontWeight: 500 }}>{item.ingredient_name}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: current <= 0 ? 'var(--ds-danger)' : 'var(--ds-warning)' }}>{fmtQty(current)} {item.unit}</td>
-                <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{fmtQty(threshold)} {item.unit}</td>
-                <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{fmtQty(suggested)} {item.unit}</td>
+                <td className="ds-strong">{item.ingredient_name}</td>
+                <td className="ds-num" style={{ fontWeight: 600, color: current <= 0 ? 'var(--ds-danger)' : 'var(--ds-warning)' }}>{fmtQty(current)} {item.unit}</td>
+                <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{fmtQty(threshold)} {item.unit}</td>
+                <td className="ds-num">{fmtQty(suggested)} {item.unit}</td>
                 <td className="ds-actions" onClick={e => e.stopPropagation()}>
                   {done ? (
                     <StatusTag tone="progress" icon={ShoppingCart} label="Commandé" />
                   ) : (
-                    <button type="button" className="odoo-btn-primary" disabled={pending} onClick={() => orderMutation.mutate(item)}
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={pending} onClick={() => orderMutation.mutate(item)}
                       title={`Ajouter ${fmtQty(suggested)} ${item.unit} à la liste d'attente d'achat`}>
                       {pending ? <Loader2 size={12} className="animate-spin" /> : <ShoppingCart size={12} />} Commander
                     </button>
@@ -100,6 +102,6 @@ export function LowStockOrderList() {
           })}
         </tbody>
       </table>
-    </div>
+    </DataPanel>
   );
 }

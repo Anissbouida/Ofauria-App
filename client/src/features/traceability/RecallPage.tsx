@@ -10,6 +10,7 @@ import { recallApi, type RecallResult, type RecallNode, type RecallSale, type Re
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { planStatusTag } from '../production/status';
+import { DataPanel, SectionHeader } from '../../components/ds';
 
 /** Statut d'un lot matière (valeur brute affichée) en étiquette commune. */
 const LOT_TONE: Record<string, StatusTone> = { active: 'done', quarantine: 'blocked', blocked: 'blocked', waste: 'cancelled', consumed: 'cancelled' };
@@ -132,8 +133,8 @@ export default function RecallPage() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--odoo-border, var(--ds-sep))', borderRadius: 6 }}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Lots de matière première" style={{ maxHeight: 260, overflow: 'auto' }}>
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th>Lot</th><th>Ingrédient</th><th>Fournisseur</th><th>DLC</th><th>Statut</th>
@@ -152,8 +153,8 @@ export default function RecallPage() {
                   onClick={() => setSelectedLotId(l.id)}
                   style={{ cursor: 'pointer', background: l.id === selectedLotId ? 'var(--ds-tint)' : undefined }}
                 >
-                  <td style={{ fontFamily: 'monospace' }}>{l.lot_number}</td>
-                  <td>{l.ingredient_name || '—'}</td>
+                  <td className="ds-ref">{l.lot_number}</td>
+                  <td className="ds-strong">{l.ingredient_name || '—'}</td>
                   <td>{l.supplier_name || '—'}{l.supplier_lot_number ? ` · ${l.supplier_lot_number}` : ''}</td>
                   <td>{fmtDate(l.expiration_date)}</td>
                   <td><StatusTag tone={LOT_TONE[l.status] ?? 'draft'} label={l.status} /></td>
@@ -161,7 +162,7 @@ export default function RecallPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       </div>
 
       {/* ══════ Résultat du rappel ══════ */}
@@ -214,42 +215,44 @@ export default function RecallPage() {
             const deliveries = flattenDeliveries(recall.root);
             if (deliveries.length === 0) return null;
             return (
-              <div className="odoo-section" style={{ marginTop: 16 }}>
-                <div className="odoo-section-header">Clients professionnels livrés ({deliveries.length})</div>
+              <div style={{ marginTop: 16 }}>
+                <DataPanel label="Clients professionnels livrés" bulk={<div className="prj-panel-head">Clients professionnels livrés <small>{deliveries.length}</small></div>}>
                 <table className="odoo-table">
-                  <thead><tr><th>Client</th><th>Téléphone</th><th>Produit</th><th>Lot produit</th><th>Bon de livraison</th><th>Livré le</th><th>Qté</th><th>Magasin</th></tr></thead>
+                  <thead><tr><th>Client</th><th>Téléphone</th><th>Produit</th><th>Lot produit</th><th>Bon de livraison</th><th>Livré le</th><th className="ds-num">Qté</th><th>Magasin</th></tr></thead>
                   <tbody>
                     {deliveries.map((d, i) => (
                       <tr key={`${d.deliveryNoteId}-${d.lotNumber}-${i}`}>
                         <td><Phone size={11} style={{ verticalAlign: '-1px', marginRight: 4, color: 'var(--odoo-green, var(--ds-success))' }} />{d.customerName || 'Client'}</td>
                         <td>{d.customerPhone || '—'}</td>
                         <td>{d.productName}</td>
-                        <td style={{ fontFamily: 'monospace' }}>{d.lotNumber}</td>
-                        <td style={{ fontFamily: 'monospace' }}>{d.number}</td>
+                        <td className="ds-ref">{d.lotNumber}</td>
+                        <td className="ds-ref">{d.number}</td>
                         <td>{fmtDate(d.deliveryDate)}</td>
-                        <td>{n2(d.quantity)}</td>
+                        <td className="ds-num">{n2(d.quantity)}</td>
                         <td>{d.storeName || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                </DataPanel>
               </div>
             );
           })()}
 
           {/* Liste consolidée des clients à contacter */}
-          <div className="odoo-section" style={{ marginTop: 16 }}>
-            <div className="odoo-section-header">Clients à contacter ({allSales.length})</div>
+          <div style={{ marginTop: 16 }}>
+            <SectionHeader title="Clients à contacter" note={String(allSales.length)} />
             {allSales.length === 0 ? (
               <StatusBanner tone="success" icon={Info} title="Aucune vente rattachée">
                 Aucun produit issu de ce lot n'a encore été vendu.
               </StatusBanner>
             ) : (
+              <DataPanel label="Clients à contacter">
               <table className="odoo-table">
                 <thead>
                   <tr>
                     <th>Client</th><th>Téléphone</th><th>Produit</th><th>Lot produit</th>
-                    <th>Date de vente</th><th>Qté</th><th>Magasin</th><th>Caissier</th><th>Fiabilité</th>
+                    <th>Date de vente</th><th className="ds-num">Qté</th><th>Magasin</th><th>Caissier</th><th>Fiabilité</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -264,9 +267,9 @@ export default function RecallPage() {
                       </td>
                       <td>{s.customerPhone || '—'}</td>
                       <td>{s.productName}</td>
-                      <td style={{ fontFamily: 'monospace' }}>{s.lotNumber}</td>
+                      <td className="ds-ref">{s.lotNumber}</td>
                       <td>{fmtDateTime(s.createdAt)}</td>
-                      <td>{n2(s.quantity)}</td>
+                      <td className="ds-num">{n2(s.quantity)}</td>
                       <td>{s.storeName || '—'}</td>
                       <td>{s.cashierName || '—'}</td>
                       <td>
@@ -278,6 +281,7 @@ export default function RecallPage() {
                   ))}
                 </tbody>
               </table>
+              </DataPanel>
             )}
           </div>
 
@@ -330,24 +334,25 @@ function RecallNodeView({ node, depth }: { node: RecallNode; depth: number }) {
             {plan.batches.length === 0 ? (
               <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8rem', marginLeft: 20 }}>Aucune fournée enregistrée.</p>
             ) : (
-              <table className="odoo-table" style={{ marginLeft: 20, width: 'calc(100% - 20px)' }}>
+              <DataPanel label={`Fournées du plan du ${fmtDate(plan.planDate)}`} style={{ marginLeft: 20 }}>
+              <table className="odoo-table ds-dense">
                 <thead>
                   <tr>
                     <th>Fournée</th><th>Produit</th><th>Produit le</th><th>DLC</th>
-                    <th>Vendu</th><th>En stock</th><th>Jeté</th><th>Recyclé</th><th>Ventes rattachées</th>
+                    <th className="ds-num">Vendu</th><th className="ds-num">En stock</th><th className="ds-num">Jeté</th><th className="ds-num">Recyclé</th><th>Ventes rattachées</th>
                   </tr>
                 </thead>
                 <tbody>
                   {plan.batches.map(b => (
                     <tr key={b.productLotId}>
-                      <td style={{ fontFamily: 'monospace' }}>{b.lotNumber}</td>
-                      <td>{b.productName}</td>
+                      <td className="ds-ref">{b.lotNumber}</td>
+                      <td className="ds-strong">{b.productName}</td>
                       <td>{fmtDate(b.producedAt)}</td>
                       <td>{fmtDate(b.expiresAt)}</td>
-                      <td>{n2(b.states.sold)}</td>
-                      <td>{n2(b.states.backroom + b.states.vitrine)}</td>
-                      <td>{b.states.wasted > 0 ? <span className="odoo-tag odoo-tag-red">{n2(b.states.wasted)}</span> : '0'}</td>
-                      <td>{b.states.recycled > 0 ? <span className="odoo-tag odoo-tag-purple">{n2(b.states.recycled)}</span> : '0'}</td>
+                      <td className="ds-num">{n2(b.states.sold)}</td>
+                      <td className="ds-num">{n2(b.states.backroom + b.states.vitrine)}</td>
+                      <td className="ds-num">{b.states.wasted > 0 ? <span className="odoo-tag odoo-tag-red">{n2(b.states.wasted)}</span> : '0'}</td>
+                      <td className="ds-num">{b.states.recycled > 0 ? <span className="odoo-tag odoo-tag-purple">{n2(b.states.recycled)}</span> : '0'}</td>
                       <td>
                         {b.sales.length > 0 && <span className="odoo-tag odoo-tag-green" style={{ marginRight: 4 }}>{b.sales.length} tracée(s)</span>}
                         {b.approximateSales.length > 0 && <span className="odoo-tag odoo-tag-orange">{b.approximateSales.length} approx.</span>}
@@ -358,6 +363,7 @@ function RecallNodeView({ node, depth }: { node: RecallNode; depth: number }) {
                   ))}
                 </tbody>
               </table>
+              </DataPanel>
             )}
             {/* Chaînes de recyclage issues des fournées de ce plan */}
             {plan.batches.flatMap(b => b.recycledInto).map(child => (

@@ -8,12 +8,11 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { money } from '../../utils/money';
 import '../sales/ListTemplate';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { HeaderActions } from './StockUi';
-import { DataPanel, EmptyState, FormField, LoadingState, SectionHeader, TableFooter } from '../../components/ds';
+import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, Modal, SectionHeader, TableFooter } from '../../components/ds';
 import './stock.css';
 
 /**
@@ -114,13 +113,9 @@ function ClosingForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
   });
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(460px, 96vw)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Lock size={16} aria-hidden="true" /> Clôturer une période</span>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Modal title="Clôturer une période" onClose={onClose} locked={save.isPending} width={460}
+      footer={<FormFooter onCancel={onClose} submitLabel="Clôturer" busy={save.isPending} disabled={!periodLabel.trim()} onSubmit={() => save.mutate()} />}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ background: 'var(--theme-bg-secondary)', borderRadius: 6, padding: 12, textAlign: 'center' }}>
             <div style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>Valeur du stock à figer</div>
             {isLoading ? <Loader2 size={16} className="animate-spin" style={{ display: 'inline', marginTop: 4 }} /> : (
@@ -138,64 +133,49 @@ function ClosingForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
             <input id="closing-date" type="date" className="ds-input" value={closingDate} onChange={e => setClosingDate(e.target.value)} />
           </FormField>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={save.isPending}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={!periodLabel.trim() || save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Lock size={13} />} Clôturer
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
 function ClosingDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, isLoading } = useQuery<StockClosingDetail>({ queryKey: ['stock-closing', id], queryFn: () => inventoryApi.closingGet(id) });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(680px, 96vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Archive size={16} aria-hidden="true" /> Clôture — {data?.period_label ?? ''}
-          </span>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
-        </div>
-        <div style={{ overflowY: 'auto', padding: '8px 16px 16px' }}>
+    <Modal title={<>Clôture — {data?.period_label ?? ''}</>} onClose={onClose} width={680}>
           {isLoading ? (
             <LoadingState bare label="Chargement de la clôture…" />
           ) : (
-            <table className="odoo-table">
+            <DataPanel label="Articles de la clôture">
+            <table className="odoo-table ds-dense">
               <thead>
-                <tr style={{ color: 'var(--theme-text-muted)', textAlign: 'left' }}>
-                  <th style={{ padding: 4 }}>Article</th>
-                  <th className="ds-num" style={{ padding: 4 }}>Quantité</th>
-                  <th className="ds-num" style={{ padding: 4 }}>Coût unitaire</th>
-                  <th className="ds-num" style={{ padding: 4 }}>Valeur</th>
+                <tr>
+                  <th>Article</th>
+                  <th className="ds-num">Quantité</th>
+                  <th className="ds-num">Coût unitaire</th>
+                  <th className="ds-num">Valeur</th>
                 </tr>
               </thead>
               <tbody>
                 {data?.lines.map((l, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid var(--odoo-border)' }}>
-                    <td style={{ padding: 4 }}>{l.ingredient_name}</td>
-                    <td className="ds-num" style={{ padding: 4, fontVariantNumeric: 'tabular-nums' }}>{qty(l.quantity, l.unit)}</td>
-                    <td className="ds-num" style={{ padding: 4, fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{money(l.unit_cost)}</td>
-                    <td className="ds-num" style={{ padding: 4, fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{money(l.value)}</td>
+                  <tr key={i}>
+                    <td className="ds-strong">{l.ingredient_name}</td>
+                    <td className="ds-num">{qty(l.quantity, l.unit)}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{money(l.unit_cost)}</td>
+                    <td className="ds-num">{money(l.value)}</td>
                   </tr>
                 ))}
               </tbody>
               {data && (
                 <tfoot>
-                  <tr style={{ borderTop: '2px solid var(--odoo-border)', fontWeight: 700 }}>
-                    <td style={{ padding: 4 }} colSpan={3}>Valeur totale du stock</td>
-                    <td className="ds-num" style={{ padding: 4, fontVariantNumeric: 'tabular-nums' }}>{money(Number(data.total_value))}</td>
+                  <tr>
+                    <td colSpan={3}>Valeur totale du stock</td>
+                    <td className="ds-num">{money(Number(data.total_value))}</td>
                   </tr>
                 </tfoot>
               )}
             </table>
+            </DataPanel>
           )}
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -236,18 +216,18 @@ function StockAtDatePanel() {
         </StatusBanner>
       )}
       {showGaps && gaps.length > 0 && (
-        <div style={{ maxHeight: 220, overflow: 'auto' }}>
-          <table className="odoo-table">
+        <DataPanel label="Articles au journal incomplet" style={{ maxHeight: 220, overflow: 'auto' }}>
+          <table className="odoo-table ds-dense">
             <thead><tr><th>Article</th><th className="ds-num">Stock actuel</th><th className="ds-num">Somme du journal</th><th className="ds-num">Écart</th></tr></thead>
             <tbody>{gaps.map(g => (
-              <tr key={`${g.ingredient_id}`}><td>{g.ingredient_name}</td><td className="ds-num">{qty(g.current_quantity, g.unit)}</td>
+              <tr key={`${g.ingredient_id}`}><td className="ds-strong">{g.ingredient_name}</td><td className="ds-num">{qty(g.current_quantity, g.unit)}</td>
                 <td className="ds-num">{qty(g.journal_quantity, g.unit)}</td><td className="ds-num">{qty(g.gap, g.unit)}</td></tr>
             ))}</tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
       {isLoading ? <LoadingState bare label="Calcul du stock à cette date…" /> : data && (
-        <div style={{ maxHeight: 320, overflow: 'auto' }}>
+        <DataPanel label="Stock valorisé à la date" style={{ maxHeight: 320, overflow: 'auto' }}>
           <table className="odoo-table">
             <thead><tr><th>Article</th><th className="ds-num">Quantité</th><th className="ds-num">Coût unitaire</th><th className="ds-num">Valeur</th></tr></thead>
             <tbody>{data.lines.map(l => (
@@ -259,7 +239,7 @@ function StockAtDatePanel() {
               </tr>
             ))}</tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
     </section>
   );

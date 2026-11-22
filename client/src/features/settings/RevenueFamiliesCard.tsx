@@ -6,7 +6,7 @@ import { revenueFamiliesApi, planComptableApi, type RevenueFamily } from '../../
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
-import { LoadingState } from '../../components/ds';
+import { DataPanel, EmptyState, LoadingState, SectionHeader } from '../../components/ds';
 
 const DEFAULT_ACCOUNT = '7111';
 
@@ -43,11 +43,8 @@ export default function RevenueFamiliesCard() {
   });
 
   return (
-    <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <BookOpen size={16} style={{ color: 'var(--theme-accent)' }} />
-        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Comptes de produits par famille</div>
-      </div>
+    <section style={{ display: 'grid', gap: 10 }}>
+      <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><BookOpen size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} /> Comptes de produits par famille</span>} />
       <PageNote help="À la comptabilisation d'une vente (ticket ou facture), le chiffre d'affaires est ventilé par famille de catégorie sur le compte choisi ici.">
         Sans compte choisi, une famille reste sur <strong>{DEFAULT_ACCOUNT}</strong>.
       </PageNote>
@@ -55,21 +52,20 @@ export default function RevenueFamiliesCard() {
       {isLoading ? (
         <LoadingState bare />
       ) : families.length === 0 ? (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
-          Aucune famille de catégorie définie. Créez-les dans « Catégories de vente ».
-        </div>
+        <EmptyState icon={BookOpen} title="Aucune famille de catégorie définie" text="Créez-les dans « Catégories de vente »." />
       ) : (
-        <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Comptes de produits par famille">
+        <table className="odoo-table">
           <thead><tr>
             <th>Famille</th>
-            <th style={{ width: 90, textAlign: 'center' }}>Catégories</th>
+            <th className="ds-num" style={{ width: 110 }}>Catégories</th>
             <th style={{ width: 320 }}>Compte de produit</th>
           </tr></thead>
           <tbody>
             {families.map(f => (
               <tr key={f.family}>
-                <td>{f.family}</td>
-                <td style={{ textAlign: 'center', color: 'var(--ds-muted)' }}>{f.category_count}</td>
+                <td className="ds-strong">{f.family}</td>
+                <td className="ds-num">{f.category_count}</td>
                 <td>
                   <SearchSelect
                     value={f.account_code ?? ''}
@@ -85,7 +81,8 @@ export default function RevenueFamiliesCard() {
             ))}
           </tbody>
         </table>
+        </DataPanel>
       )}
-    </div>
+    </section>
   );
 }

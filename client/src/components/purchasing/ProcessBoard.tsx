@@ -196,7 +196,7 @@ export function StageProgress({ count, current, done, late }: { count: number; c
         <span key={k} style={{
           height: 5, flex: '1 1 0', maxWidth: 30, borderRadius: 3,
           background: k < current || done ? 'var(--odoo-purple)'
-            : k === current ? (late ? '#dc3545' : 'color-mix(in srgb, var(--odoo-purple) 40%, transparent)')
+            : k === current ? (late ? 'var(--ds-danger)' : 'color-mix(in srgb, var(--odoo-purple) 40%, transparent)')
             : 'var(--odoo-border)',
         }} />
       ))}

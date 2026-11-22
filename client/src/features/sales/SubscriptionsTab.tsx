@@ -3,19 +3,18 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Repeat, Plus, Play, Pause, X, Loader2, Eye, RotateCcw, Archive } from 'lucide-react';
+import { Repeat, Plus, Play, Pause, Loader2, Eye, RotateCcw, Archive } from 'lucide-react';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { subscriptionsApi, type Subscription, type SubscriptionDetail, type SubFrequency } from '../../api/subscriptions.api';
 import { customersApi } from '../../api/customers.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { createPortal } from 'react-dom';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { currencySymbol } from '../../utils/money';
-import { KpiGrid, KpiCard, DataPanel, TableFooter, EmptyState, LoadingState } from '../../components/ds';
+import { KpiGrid, KpiCard, DataPanel, TableFooter, EmptyState, LoadingState, ErrorState, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 
 const day = (d: string | null) => d ? format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr }) : '—';
 const FREQ: Record<SubFrequency, string> = { monthly: 'Mensuel', quarterly: 'Trimestriel', yearly: 'Annuel' };
@@ -24,7 +23,7 @@ const FREQ: Record<SubFrequency, string> = { monthly: 'Mensuel', quarterly: 'Tri
 export default function SubscriptionsTab({ actionsSlot }: { actionsSlot?: HTMLElement | null } = {}) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: rows = [], isLoading } = useQuery({ queryKey: ['subscriptions'], queryFn: subscriptionsApi.list });
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['subscriptions'], queryFn: subscriptionsApi.list });
   const [showForm, setShowForm] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -70,7 +69,7 @@ export default function SubscriptionsTab({ actionsSlot }: { actionsSlot?: HTMLEl
         <KpiCard label="Total déjà facturé" value={money(rows.reduce((s, r) => s + Number(r.invoiced_total || 0), 0))} sub="factures générées par les abonnements" />
       </KpiGrid>
 
-      {isLoading ? <LoadingState label="Chargement des abonnements…" /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState label="Chargement des abonnements…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
         <EmptyState icon={Repeat} title="Aucun abonnement" text="Un abonnement génère une facture client à échéance régulière." />
       ) : (
       <DataPanel label="Abonnements" footer={<TableFooter note={`${rows.length} abonnement${rows.length > 1 ? 's' : ''} · ${active.length} actif${active.length > 1 ? 's' : ''}`} />}>
@@ -136,87 +135,76 @@ function SubForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
   });
   const invalid = !customerId || !label.trim() || !(Number(amount) > 0) || (!!endDate && endDate < startDate);
 
+  const dirty = !!(customerId || label || amount);
+  const endError = !!endDate && endDate < startDate ? 'La fin doit suivre la première échéance.' : undefined;
+
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(520px, 96vw)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Repeat size={16} /> Nouvel abonnement</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+    <Modal title="Nouvel abonnement" onClose={onClose} width={520} locked={save.isPending}
+      footer={<FormFooter dirty={dirty} onCancel={onClose} onSubmit={() => save.mutate()} submitLabel="Créer" disabled={invalid} busy={save.isPending} />}>
+      <FormSection title="Abonnement">
+        <FormField label="Client" required>
+          <SearchSelect options={custOptions} value={customerId} onChange={setCustomerId} placeholder="Choisir un client…" ariaLabel="Client" width="100%" size="md" />
+        </FormField>
+        <FormField label="Libellé" htmlFor="sub-label" required>
+          <input id="sub-label" type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Contrat pain quotidien" className="ds-input" />
+        </FormField>
+        <div className="ds-form-grid">
+          <FormField label={`Montant HT par échéance (${currencySymbol()})`} htmlFor="sub-amount" required>
+            <input id="sub-amount" type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="ds-input" />
+          </FormField>
+          <FormField label="TVA (%)" htmlFor="sub-tva">
+            <input id="sub-tva" type="number" step="0.01" min="0" max="100" value={tvaRate} onChange={e => setTvaRate(e.target.value)} className="ds-input" />
+          </FormField>
         </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Client">
-            <SearchSelect options={custOptions} value={customerId} onChange={setCustomerId} placeholder="Choisir un client…" width={468} />
-          </Field>
-          <Field label="Libellé"><input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Contrat pain quotidien" style={inp} /></Field>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Field label="Montant HT par échéance"><input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" style={inp} /></Field>
-            <Field label="TVA (%)"><input type="number" step="0.01" min="0" max="100" value={tvaRate} onChange={e => setTvaRate(e.target.value)} style={inp} /></Field>
-          </div>
-          <Field label="Fréquence">
-            <select value={frequency} onChange={e => setFrequency(e.target.value as SubFrequency)} style={inp}>
-              <option value="monthly">Mensuel</option>
-              <option value="quarterly">Trimestriel</option>
-              <option value="yearly">Annuel</option>
-            </select>
-          </Field>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Field label="Première échéance"><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inp} /></Field>
-            <Field label="Fin (optionnel)"><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inp} /></Field>
-          </div>
+      </FormSection>
+      <FormSection title="Échéancier">
+        <FormField label="Fréquence" htmlFor="sub-freq">
+          <select id="sub-freq" value={frequency} onChange={e => setFrequency(e.target.value as SubFrequency)} className="ds-input">
+            <option value="monthly">Mensuel</option>
+            <option value="quarterly">Trimestriel</option>
+            <option value="yearly">Annuel</option>
+          </select>
+        </FormField>
+        <div className="ds-form-grid">
+          <FormField label="Première échéance" htmlFor="sub-start" required>
+            <input id="sub-start" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ds-input" />
+          </FormField>
+          <FormField label="Fin (optionnel)" htmlFor="sub-end" error={endError}>
+            <input id="sub-end" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ds-input" />
+          </FormField>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={invalid || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Créer
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+      </FormSection>
+    </Modal>
   );
 }
 
 function SubDetail({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, isLoading } = useQuery<SubscriptionDetail>({ queryKey: ['subscription', id], queryFn: () => subscriptionsApi.getById(id) });
+  const { data, isLoading, isError, error, refetch } = useQuery<SubscriptionDetail>({ queryKey: ['subscription', id], queryFn: () => subscriptionsApi.getById(id) });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(560px, 96vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Repeat size={16} /> {data?.label ?? 'Abonnement'}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ overflowY: 'auto', padding: '8px 16px 16px' }}>
-          {isLoading ? <div style={{ textAlign: 'center', padding: 32 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /></div> : (
-            <>
-              <p style={{ fontSize: '0.85rem', color: 'var(--theme-text-muted)', marginTop: 8 }}>{data?.customer_name} · {data && FREQ[data.frequency]} · {data && money(Number(data.amount))} HT</p>
-              <table className="odoo-table" style={{ marginTop: 8 }}>
-                <thead>
-                  <tr style={{ color: 'var(--theme-text-muted)', textAlign: 'left' }}>
-                    <th style={{ padding: 4 }}>Période</th><th style={{ padding: 4 }}>Facture</th>
-                    <th style={{ padding: 4, textAlign: 'right' }}>TTC</th><th style={{ padding: 4 }}>Statut</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data?.invoices.map((f, i) => (
-                    <tr key={i} style={{ borderTop: '1px solid var(--odoo-border)' }}>
-                      <td style={{ padding: 4 }}>{day(f.period_date)}</td>
-                      <td style={{ padding: 4, fontFamily: 'ui-monospace, monospace' }}>{f.invoice_number || '—'}</td>
-                      <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(Number(f.amount_ttc))}</td>
-                      <td style={{ padding: 4 }}>{f.invoice_status || '—'}</td>
-                    </tr>
-                  ))}
-                  {data && data.invoices.length === 0 && <tr><td colSpan={4} style={{ padding: 16, textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune facture générée pour l'instant.</td></tr>}
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
-      </div>
-    </ModalBackdrop>
+    <Modal title={data?.label ?? 'Abonnement'} subtitle={data ? `${data.customer_name} · ${FREQ[data.frequency]} · ${money(Number(data.amount))} HT` : undefined} onClose={onClose} width={560}>
+      {isLoading ? <LoadingState bare /> : isError ? <ErrorState error={error} onRetry={() => refetch()} bare /> : (
+        <DataPanel label="Factures de l'abonnement">
+          <table className="odoo-table ds-dense">
+            <thead>
+              <tr>
+                <th>Période</th><th>Facture</th>
+                <th className="ds-num">TTC ({currencySymbol()})</th><th>Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data?.invoices.map((f, i) => (
+                <tr key={i}>
+                  <td>{day(f.period_date)}</td>
+                  <td>{f.invoice_number ? <span className="ds-ref">{f.invoice_number}</span> : '—'}</td>
+                  <td className="ds-num">{Number(f.amount_ttc).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td>{f.invoice_status || '—'}</td>
+                </tr>
+              ))}
+              {data && data.invoices.length === 0 && <tr><td colSpan={4}><EmptyState bare icon={Repeat} title="Aucune facture générée pour l'instant." /></td></tr>}
+            </tbody>
+          </table>
+        </DataPanel>
+      )}
+    </Modal>
   );
-}
-
-const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1 }}><span style={{ color: 'var(--theme-text-muted)' }}>{label}</span>{children}</label>;
 }

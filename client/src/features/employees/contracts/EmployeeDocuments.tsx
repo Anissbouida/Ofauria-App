@@ -7,6 +7,7 @@ import { apiErrorMessage, saveBlobResponse } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { RowMenu } from '../../../components/ui/RowMenu';
 import { SectionTitle, SubmitButton, Field, inputCls, panel } from '../ui';
+import { DataPanel } from '../../../components/ds';
 
 export const DOC_TYPES: Record<string, string> = {
   cin: 'CIN', contrat: 'Contrat signé', avenant: 'Avenant signé', cnss: 'Attestation CNSS', diplome: 'Diplôme',
@@ -84,6 +85,7 @@ export default function EmployeeDocuments({ employeeId }: { employeeId: string }
         </div>
       )}
       {docs.length === 0 ? <p style={{ fontSize: 14, color: 'var(--ds-muted)', margin: 0 }}>Aucun document.</p> : (
+        <DataPanel label="Documents">
         <table className="odoo-table">
           <thead><tr><th>Type</th><th>Titre</th><th>Échéance</th><th className="ds-num">Taille (Ko)</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
@@ -112,6 +114,7 @@ export default function EmployeeDocuments({ employeeId }: { employeeId: string }
             })}
           </tbody>
         </table>
+        </DataPanel>
       )}
     </section>
   );

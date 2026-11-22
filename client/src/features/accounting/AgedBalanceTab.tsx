@@ -8,8 +8,7 @@ import { agedBalanceApi } from '../../api/ledger.api';
 import type { AgedBucket, AgedItem, AgedSide } from '../../api/ledger.api';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
-import { KpiCard, KpiGrid, LoadingState, SearchBar, DataPanel, EmptyState, NoResultState, TableFooter, Toolbar, Segmented } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { KpiCard, KpiGrid, LoadingState, SearchBar, DataPanel, EmptyState, NoResultState, TableFooter, Toolbar, Segmented, HeaderActions } from '../../components/ds';
 
 /**
  * Balance âgée comptable : par tiers, les lignes non lettrées des comptes
@@ -95,12 +94,12 @@ export default function AgedBalanceTab() {
 
   return (
     <>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={!tiers.length}>
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <EditionButtons kind="balance-agee" params={{ side, endDate: asOf }} />
-      </AccHeaderActions>
+      </HeaderActions>
 
       {data && t && (
         <>
@@ -129,11 +128,11 @@ export default function AgedBalanceTab() {
 
       <Toolbar>
         <SearchBar value={search} onChange={setSearch} placeholder={isCustomers ? 'Filtrer un client…' : 'Filtrer un fournisseur…'} />
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ds-muted)' }}>
+        <label className="ds-period">
           Arrêtée au
           <input type="date" value={asOf} onChange={e => setAsOf(e.target.value)} className="ds-input sm" style={{ width: 150 }} aria-label="Date de la balance" />
         </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+        <label className="ds-period">
           <input type="checkbox" checked={onlyOverdue} onChange={e => setOnlyOverdue(e.target.checked)} /> Échus seulement
         </label>
         <Segmented label="Tiers" value={side} onChange={s => { setSide(s); setExpanded(new Set()); }}

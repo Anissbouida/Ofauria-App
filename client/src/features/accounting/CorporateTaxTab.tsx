@@ -8,8 +8,8 @@ import { corporateTaxApi } from '../../api/ledger.api';
 import type { CorporateTax, TaxParams } from '../../api/ledger.api';
 import EditionButtons from './EditionButtons';
 import { money, currencySymbol } from '../../utils/money';
-import { KpiCard, KpiGrid, LoadingState } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { DataPanel, ErrorState, FormField, HeaderActions, KpiCard, KpiGrid, LoadingState, SectionHeader } from '../../components/ds';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
  * Impôt sur les sociétés (mig 430) : résultat fiscal, IS / cotisation
@@ -22,18 +22,17 @@ const num = (s: string) => Number(s.replace(/\s/g, '').replace(',', '.')) || 0;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' });
 const mono = { fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' } as const;
 
-function Section({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
+/** Carte à en-tête : SectionHeader au-dessus, contenu dans un DataPanel (`flush` = tableau sans marge). */
+function Section({ title, children, note, aside, flush }: { title: string; children: React.ReactNode; note?: React.ReactNode; aside?: React.ReactNode; flush?: boolean }) {
   return (
-    <div className="odoo-section ds-panel" style={{ padding: 0 }}>
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--theme-bg-secondary)' }}>
-        <strong style={{ fontSize: '0.8125rem', flex: 1 }}>{title}</strong>{aside}
-      </div>
-      <div style={{ padding: 12 }}>{children}</div>
+    <div style={{ display: 'grid', gap: 8, alignContent: 'start' }}>
+      <SectionHeader title={title} note={note}>{aside}</SectionHeader>
+      <DataPanel label={title}>{flush ? children : <div style={{ padding: 12 }}>{children}</div>}</DataPanel>
     </div>
   );
 }
 const Line = ({ label, value, strong, muted }: { label: React.ReactNode; value: number; strong?: boolean; muted?: boolean }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.8125rem', fontWeight: strong ? 700 : 400, color: muted ? 'var(--theme-text-muted)' : undefined, borderTop: strong ? '1px solid var(--theme-bg-separator)' : undefined }}>
+  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13, fontWeight: strong ? 700 : 400, color: muted ? 'var(--ds-muted)' : undefined, borderTop: strong ? '1px solid var(--ds-hair)' : undefined }}>
     <span>{label}</span><span style={mono}>{n(value)}</span>
   </div>
 );
@@ -41,16 +40,16 @@ const Line = ({ label, value, strong, muted }: { label: React.ReactNode; value: 
 export default function CorporateTaxTab() {
   const qc = useQueryClient();
   const [year, setYear] = useState(new Date().getFullYear());
-  const { data: s, isLoading } = useQuery({ queryKey: ['corporate-tax', year], queryFn: () => corporateTaxApi.get(year) });
+  const { data: s, isLoading, isError, error, refetch } = useQuery({ queryKey: ['corporate-tax', year], queryFn: () => corporateTaxApi.get(year) });
   const refresh = () => { qc.invalidateQueries({ queryKey: ['corporate-tax'] }); qc.invalidateQueries({ queryKey: ['ledger-entries'] }); };
   const onErr = (e: unknown) => notify.error(apiErrorMessage(e, 'Opération impossible'));
   const draft = s?.status !== 'booked';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <AccHeaderActions>
+      <HeaderActions>
         <EditionButtons kind="is" params={{ endDate: `${year}-12-31` }} />
-      </AccHeaderActions>
+      </HeaderActions>
 
       {s && (
         <>
@@ -72,7 +71,7 @@ export default function CorporateTaxTab() {
         </select>
       </div>
 
-      {isLoading || !s ? <LoadingState /> : (
+      {isError ? <ErrorState error={error} title="Le calcul de l'IS n'a pas pu être chargé" onRetry={() => refetch()} /> : isLoading || !s ? <LoadingState /> : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 12 }}>
             <FiscalResult s={s} draft={draft} refresh={refresh} onErr={onErr} />
@@ -98,23 +97,23 @@ function FiscalResult({ s, draft, refresh, onErr }: P) {
   });
   const del = useMutation({ mutationFn: (id: string) => corporateTaxApi.removeAdjustment(id), onSuccess: refresh, onError: onErr });
   return (
-    <Section title="Du résultat comptable au résultat fiscal">
+    <Section title="Du résultat comptable au résultat fiscal" note={`montants en ${currencySymbol()}`}>
       <Line label="Produits de l'exercice" value={s.produits} muted />
       <Line label="Charges (hors IS)" value={s.charges} muted />
       <Line label="Résultat comptable avant impôt" value={s.accounting_result} strong />
       {s.adjustments.map(a => (
-        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', padding: '3px 0' }}>
+        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '3px 0' }}>
           <span style={{ flex: 1 }}>{a.kind === 'reintegration' ? '+ Réintégration' : '− Déduction'} : {a.label}</span>
           <span style={mono}>{a.kind === 'reintegration' ? '' : '−'}{n(a.amount)}</span>
-          {draft && <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 5px' }} onClick={() => del.mutate(a.id)} aria-label="Retirer"><Trash2 size={11} /></button>}
+          {draft && <button type="button" className="ds-icon-btn" onClick={() => del.mutate(a.id)} aria-label={`Retirer ${a.label}`} title="Retirer"><Trash2 size={13} /></button>}
         </div>
       ))}
       {draft && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '6px 0' }}>
-          <select value={kind} onChange={e => setKind(e.target.value as typeof kind)} className="ds-input sm" style={{ width: 'auto' }}><option value="reintegration">Réintégration</option><option value="deduction">Déduction</option></select>
-          <input value={label} onChange={e => setLabel(e.target.value)} placeholder={kind === 'reintegration' ? 'Amendes, charges non déductibles…' : 'Dividendes, déficit antérieur…'} className="ds-input sm" style={{ flex: 1, minWidth: 140 }} />
-          <input value={amount} onChange={e => setAmount(e.target.value)} placeholder="Montant" inputMode="decimal" className="ds-input sm" style={{ width: 110 }} />
-          <button type="button" className="odoo-btn-secondary" disabled={label.trim().length < 2 || num(amount) <= 0 || add.isPending} onClick={() => add.mutate()} aria-label="Ajouter"><Plus size={13} /></button>
+          <select value={kind} onChange={e => setKind(e.target.value as typeof kind)} className="ds-input sm" style={{ width: 'auto' }} aria-label="Nature de l'ajustement"><option value="reintegration">Réintégration</option><option value="deduction">Déduction</option></select>
+          <input value={label} onChange={e => setLabel(e.target.value)} placeholder={kind === 'reintegration' ? 'Amendes, charges non déductibles…' : 'Dividendes, déficit antérieur…'} className="ds-input sm" style={{ flex: 1, minWidth: 140 }} aria-label="Libellé de l'ajustement" />
+          <input value={amount} onChange={e => setAmount(e.target.value)} placeholder="Montant" inputMode="decimal" className="ds-input sm" style={{ width: 110 }} aria-label={`Montant (${currencySymbol()})`} />
+          <button type="button" className="odoo-btn-secondary" disabled={label.trim().length < 2 || num(amount) <= 0 || add.isPending} onClick={() => add.mutate()} aria-label="Ajouter l'ajustement"><Plus size={13} /></button>
         </div>
       )}
       <Line label="Résultat fiscal" value={s.taxable_result} strong />
@@ -128,21 +127,27 @@ function TaxCalc({ s, draft, refresh, onErr }: P) {
   useEffect(() => setP(s.params), [s.params]);
   const save = useMutation({ mutationFn: () => corporateTaxApi.setParams(s.year, p), onSuccess: () => { setEdit(false); refresh(); }, onError: onErr });
   const field = (k: keyof TaxParams, label: string) => (
-    <label style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.75rem', alignItems: 'center' }}>{label}
-      <input value={String(p[k] ?? '')} onChange={e => setP({ ...p, [k]: e.target.value === '' && k === 'cm_base_override' ? null : num(e.target.value) })} inputMode="decimal" className="ds-input sm" style={{ width: 130, textAlign: 'right' }} />
-    </label>
+    <FormField label={label} htmlFor={`is-${k}`}>
+      <input id={`is-${k}`} value={String(p[k] ?? '')} onChange={e => setP({ ...p, [k]: e.target.value === '' && k === 'cm_base_override' ? null : num(e.target.value) })} inputMode="decimal" className="ds-input" style={{ textAlign: 'right' }} />
+    </FormField>
   );
   return (
-    <Section title="Calcul de l'impôt" aside={draft && <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={() => setEdit(!edit)}><Settings2 size={12} /> Paramètres</button>}>
+    <Section title="Calcul de l'impôt" note={`montants en ${currencySymbol()}`} aside={draft && <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-expanded={edit} onClick={() => setEdit(!edit)}><Settings2 size={12} /> Paramètres</button>}>
       {edit && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, marginBottom: 8, background: 'var(--theme-bg-tertiary)', borderRadius: 4 }}>
-          <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', alignItems: 'center' }}>Régime
-            <select value={p.regime} onChange={e => setP({ ...p, regime: e.target.value as TaxParams['regime'] })} className="ds-input sm" style={{ width: 'auto' }}><option value="standard">Droit commun</option><option value="credit">Établissement de crédit</option></select>
-          </label>
-          {field('rate_standard', 'Taux (%)')}{field('rate_high', 'Taux au-delà du seuil (%)')}{field('high_threshold', `Seuil de bénéfice (${currencySymbol()})`)}
-          {field('cm_rate', 'Taux de cotisation minimale (%)')}{field('cm_minimum', `Minimum de CM (${currencySymbol()})`)}{field('cm_base_override', 'Base de CM saisie (vide = calculée)')}
-          <label style={{ fontSize: '0.75rem' }}><input type="checkbox" checked={p.cm_exempt} onChange={e => setP({ ...p, cm_exempt: e.target.checked })} /> Exonéré de CM (36 premiers mois d'exploitation)</label>
-          <button type="button" className="odoo-btn-primary" disabled={save.isPending} onClick={() => save.mutate()} style={{ alignSelf: 'flex-end' }}>Enregistrer</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 12, marginBottom: 12, background: 'var(--ds-bg)', borderRadius: 8 }}>
+          <div className="ds-form-grid">
+            <FormField label="Régime" htmlFor="is-regime">
+              <select id="is-regime" value={p.regime} onChange={e => setP({ ...p, regime: e.target.value as TaxParams['regime'] })} className="ds-input"><option value="standard">Droit commun</option><option value="credit">Établissement de crédit</option></select>
+            </FormField>
+            {field('rate_standard', 'Taux (%)')}{field('rate_high', 'Taux au-delà du seuil (%)')}{field('high_threshold', `Seuil de bénéfice (${currencySymbol()})`)}
+            {field('cm_rate', 'Taux de cotisation minimale (%)')}{field('cm_minimum', `Minimum de CM (${currencySymbol()})`)}{field('cm_base_override', 'Base de CM saisie (vide = calculée)')}
+          </div>
+          <label htmlFor="is-cm-exempt" style={{ fontSize: 13, display: 'inline-flex', gap: 6, alignItems: 'center' }}><input id="is-cm-exempt" type="checkbox" checked={p.cm_exempt} onChange={e => setP({ ...p, cm_exempt: e.target.checked })} /> Exonéré de CM (36 premiers mois d'exploitation)</label>
+          <div className="ds-form-foot" style={{ padding: 0, border: 0 }}>
+            <span className="ds-grow" />
+            <button type="button" className="odoo-btn-secondary" disabled={save.isPending} onClick={() => { setP(s.params); setEdit(false); }}>Annuler</button>
+            <button type="button" className="odoo-btn-primary" disabled={save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>{save.isPending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />} Enregistrer</button>
+          </div>
         </div>
       )}
       <Line label={`IS : ${n(Math.max(0, s.taxable_result))} × ${s.rate} %`} value={s.is_amount} />
@@ -178,30 +183,30 @@ function Installments({ s, draft, refresh, onErr }: P) {
     onSuccess: () => { notify.success('Versement annulé (écriture extournée)'); refresh(); }, onError: onErr,
   });
   return (
-    <Section title={`Acomptes provisionnels ${s.year}`} aside={<span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-      {s.basis.source === 'previous' ? `Base : impôt ${s.year - 1} aux taux ${s.year} = ${n(s.basis.tax ?? 0)}` : `Pas d'IS ${s.year - 1} comptabilisé : saisissez les montants`}
-    </span>}>
-      {s.prior_credit > 0 && <p style={{ margin: '0 0 6px', fontSize: '0.75rem' }}>Crédit d'acomptes de {s.year - 1} : {money(s.prior_credit)}, imputé d'abord sur les premiers acomptes.</p>}
+    <Section flush title={`Acomptes provisionnels ${s.year}`} note={
+      s.basis.source === 'previous' ? `Base : impôt ${s.year - 1} aux taux ${s.year} = ${n(s.basis.tax ?? 0)}` : `Pas d'IS ${s.year - 1} comptabilisé : saisissez les montants`
+    }>
+      {s.prior_credit > 0 && <p style={{ margin: 0, padding: '10px 12px', fontSize: 12 }}>Crédit d'acomptes de {s.year - 1} : {money(s.prior_credit)}, imputé d'abord sur les premiers acomptes.</p>}
       <table className="odoo-table ds-dense">
-        <thead><tr><th>N°</th><th>Échéance</th><th className="ds-num">Théorique</th><th className="ds-num">Crédit imputé</th><th className="ds-num">À verser</th><th>Versement</th></tr></thead>
+        <thead><tr><th>N°</th><th>Échéance</th><th className="ds-num">Théorique ({currencySymbol()})</th><th className="ds-num">Crédit imputé ({currencySymbol()})</th><th className="ds-num">À verser ({currencySymbol()})</th><th>Versement</th></tr></thead>
         <tbody>
           {s.schedule.map(q => (
             <tr key={q.quarter}>
               <td>{q.quarter}</td>
-              <td style={{ fontSize: '0.75rem' }}>{fmtDate(q.due_date)}</td>
+              <td>{fmtDate(q.due_date)}</td>
               <td className="ds-num">{q.theoretical != null ? n(q.theoretical) : '—'}</td>
               <td className="ds-num">{q.credit_used ? n(q.credit_used) : ''}</td>
               <td className="ds-num">{q.to_pay != null ? n(q.to_pay) : '—'}</td>
               <td>
                 {q.payment ? (
-                  <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem' }}>
-                    <span className="odoo-tag odoo-tag-green">{n(q.payment.amount)} le {fmtDate(q.payment.paid_on)}</span>
-                    <span style={{ ...mono, color: 'var(--ds-info)' }}>{q.payment.entry_number}</span>
-                    {draft && <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 5px' }} onClick={() => cancel.mutate(q.payment!.id)} title="Annuler le versement" aria-label="Annuler le versement"><Undo2 size={11} /></button>}
+                  <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                    <StatusTag tone="done" label={`${n(q.payment.amount)} le ${fmtDate(q.payment.paid_on)}`} />
+                    <span className="ds-ref">{q.payment.entry_number}</span>
+                    {draft && <button type="button" className="ds-icon-btn" onClick={() => cancel.mutate(q.payment!.id)} title="Annuler le versement" aria-label="Annuler le versement"><Undo2 size={13} /></button>}
                   </span>
                 ) : draft ? (
                   <PayForm defaultAmount={q.to_pay} defaultDate={q.due_date < today() ? today() : q.due_date} pending={pay.isPending} onPay={b => pay.mutate({ quarter: q.quarter, ...b })} />
-                ) : <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>non versé</span>}
+                ) : <span style={{ color: 'var(--ds-muted)' }}>non versé</span>}
               </td>
             </tr>
           ))}
@@ -222,10 +227,10 @@ function Booking({ s, refresh, onErr }: Omit<P, 'draft'>) {
   const cancel = useMutation({ mutationFn: (id: string) => corporateTaxApi.cancelPayment(id, 'Saisie erronée'), onSuccess: refresh, onError: onErr });
   const rest = Math.round((s.tax_due - s.imputed) * 100) / 100;
   return (
-    <Section title="Charge de l'exercice et solde">
+    <Section title="Charge de l'exercice et solde" note={`montants en ${currencySymbol()}`}>
       {s.status !== 'booked' ? (
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: '0.8125rem', flex: 1, minWidth: 260 }}>
+          <div style={{ fontSize: 13, flex: 1, minWidth: 260 }}>
             Écriture au 31/12/{s.year} : <span style={mono}>6701</span> débit {n(s.tax_due)} ; <span style={mono}>3453</span> crédit {n(s.imputed)} (acomptes imputés) ;
             {' '}<span style={mono}>4453</span> crédit {n(rest)} (reste dû).
           </div>
@@ -238,18 +243,18 @@ function Booking({ s, refresh, onErr }: Omit<P, 'draft'>) {
           <Line label="IS dû" value={s.tax_due} />
           <Line label="Acomptes imputés" value={s.imputed} />
           {s.payments.filter(p => p.kind === 'solde').map(p => (
-            <div key={p.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: '0.8125rem' }}>
-              <span style={{ flex: 1 }}>Solde versé le {fmtDate(p.paid_on)} <span style={{ ...mono, color: 'var(--ds-info)' }}>{p.entry_number}</span></span>
+            <div key={p.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+              <span style={{ flex: 1 }}>Solde versé le {fmtDate(p.paid_on)} <span className="ds-ref">{p.entry_number}</span></span>
               <span style={mono}>{n(p.amount)}</span>
-              <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 5px' }} onClick={() => cancel.mutate(p.id)} title="Annuler le versement" aria-label="Annuler le versement"><Undo2 size={11} /></button>
+              <button type="button" className="ds-icon-btn" onClick={() => cancel.mutate(p.id)} title="Annuler le versement" aria-label="Annuler le versement"><Undo2 size={13} /></button>
             </div>
           ))}
           <Line label="Reste à payer" value={s.balance_due} strong />
           {s.credit_after > 0 && <StatusBanner tone="info" icon={Info} title={`Crédit d'acomptes de ${money(s.credit_after)}`}>Il reste au compte 3453 et s'imputera sur les acomptes de {s.year + 1}.</StatusBanner>}
-          {s.balance_due > 0 && <div style={{ fontSize: '0.8125rem' }}>Verser le solde (avant le {fmtDate(s.solde_deadline)}) : <PayForm defaultAmount={s.balance_due} defaultDate={today()} pending={paySolde.isPending} onPay={b => paySolde.mutate(b)} /></div>}
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: 8 }}>
-            <AlertTriangle size={13} style={{ color: 'var(--ds-warning)' }} />
-            <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Motif pour annuler la comptabilisation" className="ds-input sm" style={{ flex: 1 }} />
+          {s.balance_due > 0 && <div style={{ fontSize: 13 }}>Verser le solde (avant le {fmtDate(s.solde_deadline)}) : <PayForm defaultAmount={s.balance_due} defaultDate={today()} pending={paySolde.isPending} onPay={b => paySolde.mutate(b)} /></div>}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', borderTop: '1px solid var(--ds-hair)', paddingTop: 8 }}>
+            <AlertTriangle size={13} style={{ color: 'var(--ds-warning)' }} aria-hidden="true" />
+            <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Motif pour annuler la comptabilisation" aria-label="Motif pour annuler la comptabilisation" className="ds-input sm" style={{ flex: 1 }} />
             <button type="button" className="odoo-btn-secondary" disabled={reason.trim().length < 3 || unbook.isPending} onClick={() => unbook.mutate()}><Undo2 size={12} /> Annuler la comptabilisation</button>
           </div>
         </div>

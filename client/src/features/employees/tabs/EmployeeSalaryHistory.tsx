@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
 import { employeesApi } from '../../../api/employees.api';
 import { SectionTitle } from '../ui';
+import { DataPanel } from '../../../components/ds';
 
 const FREQ_LABELS: Record<string, string> = { monthly: 'mensuelle', biweekly: 'quinzaine', weekly: 'hebdo' };
 
@@ -27,6 +28,7 @@ export default function EmployeeSalaryHistory({ employeeId }: { employeeId: stri
       ) : rows.length === 0 ? (
         <p style={muted}>Aucune modification enregistrée.</p>
       ) : (
+        <DataPanel label="Historique des salaires">
         <table className="odoo-table">
           <thead>
             <tr>
@@ -55,6 +57,7 @@ export default function EmployeeSalaryHistory({ employeeId }: { employeeId: stri
             })}
           </tbody>
         </table>
+        </DataPanel>
       )}
     </section>
   );

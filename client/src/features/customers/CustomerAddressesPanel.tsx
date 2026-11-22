@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Plus, Pencil, Trash2, Truck, Receipt, Check, X } from 'lucide-react';
+import { MapPin, Plus, Pencil, Trash2, Truck, Receipt } from 'lucide-react';
+import { Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 import { customersApi, type CustomerAddress } from '../../api/customers.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -50,9 +51,6 @@ export default function CustomerAddressesPanel({ customerId }: { customerId: str
     setForm({ label: a.label ?? '', kind: a.kind, addressLine: a.address_line, postalCode: a.postal_code ?? '', city: a.city ?? '', countryCode: a.country_code ?? 'MA', isDefaultDelivery: a.is_default_delivery, isDefaultBilling: a.is_default_billing });
   };
 
-  const input: React.CSSProperties = { width: '100%', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', background: 'var(--odoo-bg)' };
-  const lab: React.CSSProperties = { fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'block', marginBottom: 2 };
-
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -88,30 +86,41 @@ export default function CustomerAddressesPanel({ customerId }: { customerId: str
       </div>
 
       {form && (
-        <div style={{ border: '1px solid var(--odoo-purple)', borderRadius: 4, padding: 10, marginTop: 6, display: 'grid', gap: 8, background: 'var(--odoo-bg)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label><span style={lab}>Libellé (optionnel)</span><input style={input} value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} placeholder="Siège, Entrepôt…" /></label>
-            <label><span style={lab}>Rôle</span>
-              <select style={input} value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value as CustomerAddress['kind'] })}>
-                {KINDS.map(k => <option key={k.v} value={k.v}>{k.label}</option>)}
-              </select>
-            </label>
-          </div>
-          <label><span style={lab}>Adresse</span><input style={input} value={form.addressLine} onChange={e => setForm({ ...form, addressLine: e.target.value })} placeholder="123 rue Mohammed V" /></label>
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 90px', gap: 8 }}>
-            <label><span style={lab}>Code postal</span><input style={input} value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} placeholder="20000" /></label>
-            <label><span style={lab}>Ville</span><input style={input} value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Casablanca" /></label>
-            <label><span style={lab}>Pays</span><input style={{ ...input, textTransform: 'uppercase' }} maxLength={2} value={form.countryCode} onChange={e => setForm({ ...form, countryCode: e.target.value.toUpperCase() })} placeholder="MA" /></label>
-          </div>
-          <div style={{ display: 'flex', gap: 16, fontSize: '0.8125rem' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><input type="checkbox" checked={form.isDefaultDelivery} onChange={e => setForm({ ...form, isDefaultDelivery: e.target.checked })} /> Livraison par défaut</label>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><input type="checkbox" checked={form.isDefaultBilling} onChange={e => setForm({ ...form, isDefaultBilling: e.target.checked })} /> Facturation par défaut</label>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-            <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => { setForm(null); setEditingId(null); }}><X size={12} /> Annuler</button>
-            <button type="button" className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={!form.addressLine.trim() || save.isPending} onClick={() => save.mutate(form)}><Check size={12} /> Enregistrer</button>
-          </div>
-        </div>
+        <Modal title={editingId ? 'Modifier l\'adresse' : 'Nouvelle adresse'} onClose={() => { setForm(null); setEditingId(null); }} width={560} locked={save.isPending}
+          footer={<FormFooter onCancel={() => { setForm(null); setEditingId(null); }} onSubmit={() => save.mutate(form)} disabled={!form.addressLine.trim()} busy={save.isPending} />}>
+          <FormSection title="Adresse">
+            <div className="ds-form-grid">
+              <FormField label="Libellé (optionnel)" htmlFor="ca-label">
+                <input id="ca-label" className="ds-input" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} placeholder="Siège, Entrepôt…" />
+              </FormField>
+              <FormField label="Rôle" htmlFor="ca-kind">
+                <select id="ca-kind" className="ds-input" value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value as CustomerAddress['kind'] })}>
+                  {KINDS.map(k => <option key={k.v} value={k.v}>{k.label}</option>)}
+                </select>
+              </FormField>
+            </div>
+            <FormField label="Adresse" htmlFor="ca-line" required>
+              <input id="ca-line" className="ds-input" value={form.addressLine} onChange={e => setForm({ ...form, addressLine: e.target.value })} placeholder="123 rue Mohammed V" />
+            </FormField>
+            <div style={{ display: 'grid', gridTemplateColumns: '120px minmax(0, 1fr) 90px', gap: 'var(--ds-s4)' }}>
+              <FormField label="Code postal" htmlFor="ca-cp">
+                <input id="ca-cp" className="ds-input" value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} placeholder="20000" />
+              </FormField>
+              <FormField label="Ville" htmlFor="ca-city">
+                <input id="ca-city" className="ds-input" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Casablanca" />
+              </FormField>
+              <FormField label="Pays" htmlFor="ca-country">
+                <input id="ca-country" className="ds-input" style={{ textTransform: 'uppercase' }} maxLength={2} value={form.countryCode} onChange={e => setForm({ ...form, countryCode: e.target.value.toUpperCase() })} placeholder="MA" />
+              </FormField>
+            </div>
+          </FormSection>
+          <FormSection title="Usage par défaut">
+            <div style={{ display: 'flex', gap: 16, fontSize: '0.8125rem' }}>
+              <label htmlFor="ca-def-del" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><input id="ca-def-del" type="checkbox" checked={form.isDefaultDelivery} onChange={e => setForm({ ...form, isDefaultDelivery: e.target.checked })} /> Livraison par défaut</label>
+              <label htmlFor="ca-def-bill" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><input id="ca-def-bill" type="checkbox" checked={form.isDefaultBilling} onChange={e => setForm({ ...form, isDefaultBilling: e.target.checked })} /> Facturation par défaut</label>
+            </div>
+          </FormSection>
+        </Modal>
       )}
     </div>
   );

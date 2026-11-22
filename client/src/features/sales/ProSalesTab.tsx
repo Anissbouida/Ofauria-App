@@ -3,21 +3,20 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Truck, FileText, Plus, X, Trash2, Loader2, Ban, Eye, CheckSquare, ClipboardList, Printer, Columns3, List, SquareKanban, Send, PackageCheck, ExternalLink, type LucideIcon } from 'lucide-react';
+import { Truck, FileText, Plus, Trash2, Loader2, Ban, Eye, CheckSquare, Printer, Columns3, List, SquareKanban, Send, PackageCheck, ExternalLink, type LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { deliveryNotesApi, type DeliveryNote, type ToInvoiceGroup } from '../../api/delivery-notes.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import SalesPageShell from './SalesPageShell';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import { ListToolbar, FilterChips, ListPanel, NextStep, ListKpi } from './ListTemplate';
-import { Segmented, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { ListToolbar, FilterChips, NextStep, ListKpi } from './ListTemplate';
+import { Segmented, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, DataPanel, Alert, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 
 /** BL imprimable (mig 354) : remis avec la marchandise, signé par le client. */
 async function printNote(id: string) {
@@ -141,7 +140,7 @@ export default function ProSalesTab() {
 function NotesList({ status, search, onReset, onOpen, onToInvoice }: { status: string; search: string; onReset: () => void; onOpen: (id: string) => void; onToInvoice: () => void }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const { data: all = [], isLoading } = useQuery({
+  const { data: all = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['delivery-notes', 'list', status],
     queryFn: () => deliveryNotesApi.list(status ? { status } : undefined),
   });
@@ -165,6 +164,7 @@ function NotesList({ status, search, onReset, onOpen, onToInvoice }: { status: s
     return items;
   };
   if (isLoading) return <LoadingState label="Chargement des bons de livraison…" />;
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
   if (!notes.length) {
     return search
       ? <NoResultState onReset={onReset} text="Aucun bon de livraison ne correspond à la recherche." />
@@ -172,7 +172,7 @@ function NotesList({ status, search, onReset, onOpen, onToInvoice }: { status: s
   }
   const ttc = notes.reduce((s, n) => s + Number(n.total_ttc), 0);
   return (
-    <ListPanel footer={<TableFooter note={<>{notes.length} bon{notes.length > 1 ? 's' : ''} de livraison · total <strong>{money(ttc)} TTC</strong></>} />}>
+    <DataPanel label="Bons de livraison" footer={<TableFooter note={<>{notes.length} bon{notes.length > 1 ? 's' : ''} de livraison · total <strong>{money(ttc)} TTC</strong></>} />}>
       <table className="odoo-table">
         <thead><tr><th>N° BL</th><th>Date</th><th>Client</th><th>Commande</th><th className="ds-num">HT ({currencySymbol()})</th><th className="ds-num">TTC ({currencySymbol()})</th><th>Statut</th><th className="ds-actions">Actions</th></tr></thead>
         <tbody>
@@ -196,7 +196,7 @@ function NotesList({ status, search, onReset, onOpen, onToInvoice }: { status: s
           ))}
         </tbody>
       </table>
-    </ListPanel>
+    </DataPanel>
   );
 }
 
@@ -234,9 +234,9 @@ function InvoiceGroup({ g, onOpen }: { g: ToInvoiceGroup; onOpen: (id: string) =
           <small>{g.notes.length} bon{g.notes.length > 1 ? 's' : ''} du {day(g.firstDate)} au {day(g.lastDate)} · {money(g.totalTtc)} TTC</small>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <label style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Date de facture
-            <input type="date" className="ds-input sm" value={date} onChange={e => setDate(e.target.value)} style={{ width: 'auto' }} />
-          </label>
+          <span className="ds-period">Date de facture
+            <input type="date" className="ds-input sm" aria-label={`Date de facture pour ${g.name}`} value={date} onChange={e => setDate(e.target.value)} style={{ width: 'auto' }} />
+          </span>
           <button type="button" className="odoo-btn-primary" disabled={chosen.length === 0 || mutation.isPending} onClick={() => mutation.mutate()}>
             {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
             Facturer {chosen.length} BL · {money(ttc)}
@@ -344,119 +344,113 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
     },
   });
 
-  const field: React.CSSProperties = { padding: '0.35rem 0.5rem', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', width: '100%' };
+  const dirty = !!(customerId || notes || lines.some(l => l.productId || l.description || l.unitPrice));
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 980, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 6, overflow: 'hidden', background: 'var(--odoo-bg)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb"><Truck size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">Nouveau bon de livraison</span></div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+    <Modal title="Nouveau bon de livraison" onClose={onClose} width={980} locked={save.isPending}
+      footer={<FormFooter dirty={dirty} onCancel={onClose} onSubmit={() => save.mutate()}
+        submitLabel={creditBlock ? 'Déroger et enregistrer' : 'Enregistrer le bon de livraison'}
+        disabled={!valid || (!!creditBlock && overrideReason.trim().length < 3)} busy={save.isPending} />}>
+      <FormSection title="En-tête">
+        <div className="ds-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+          <FormField label="Client" required>
+            <SearchSelect options={customerOptions} value={customerId} onChange={id => { setCustomerId(id); setOrderId(''); }} placeholder="Rechercher un client…" ariaLabel="Client" width="100%" size="md" />
+          </FormField>
+          <FormField label="Date de livraison" htmlFor="bl-date" required>
+            <input id="bl-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input" />
+          </FormField>
+          <FormField label="Depuis une commande (facultatif)" htmlFor="bl-order">
+            <select id="bl-order" value={orderId} onChange={e => pickOrder(e.target.value)} disabled={!customerId || orders.length === 0} className="ds-input">
+              <option value="">{!customerId ? 'Choisissez le client' : orders.length ? '— Saisie libre —' : 'Aucune commande prête'}</option>
+              {orders.map(o => <option key={o.id} value={o.id}>{o.order_number} · {money(o.total)}</option>)}
+            </select>
+          </FormField>
         </div>
-        <div style={{ padding: 16, overflowY: 'auto', display: 'grid', gap: 14 }}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label style={{ display: 'grid', gap: 4, fontSize: '0.75rem', fontWeight: 600 }}><span>Client<span className="ds-req" aria-hidden="true"> *</span></span>
-              <SearchSelect options={customerOptions} value={customerId} onChange={id => { setCustomerId(id); setOrderId(''); }} placeholder="Rechercher un client…" width="100%" size="md" />
-            </label>
-            <label style={{ display: 'grid', gap: 4, fontSize: '0.75rem', fontWeight: 600 }}>Date de livraison
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} style={field} />
-            </label>
-            <label style={{ display: 'grid', gap: 4, fontSize: '0.75rem', fontWeight: 600 }}>Depuis une commande (facultatif)
-              <select value={orderId} onChange={e => pickOrder(e.target.value)} disabled={!customerId || orders.length === 0} style={field}>
-                <option value="">{!customerId ? 'Choisissez le client' : orders.length ? '— Saisie libre —' : 'Aucune commande prête'}</option>
-                {orders.map(o => <option key={o.id} value={o.id}>{o.order_number} · {money(o.total)}</option>)}
-              </select>
-            </label>
+      </FormSection>
+      <FormSection title="Lignes">
+        <DataPanel label="Lignes du bon de livraison">
+          <table className="odoo-table ds-dense" style={{ minWidth: 760 }}>
+            <thead><tr><th style={{ width: '36%' }}>Produit / désignation</th><th className="ds-num" style={{ width: 90 }}>Qté</th><th className="ds-num" style={{ width: 120 }}>Prix unit. HT ({currencySymbol()})</th><th style={{ width: 90 }}>TVA</th><th className="ds-num">Total HT ({currencySymbol()})</th><th style={{ width: 36 }} /></tr></thead>
+            <tbody>
+              {lines.map((l, i) => (
+                <tr key={i}>
+                  <td>
+                    <SearchSelect options={productOptions} value={l.productId} onChange={id => pickProduct(i, id)} placeholder="Produit…" ariaLabel="Produit" width="100%" />
+                    {!l.productId && <input value={l.description} onChange={e => setLine(i, { description: e.target.value })} aria-label="Désignation libre" placeholder="ou désignation libre" className="ds-input sm" style={{ marginTop: 4 }} />}
+                  </td>
+                  <td><input type="number" min={0} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} aria-label="Quantité" className="ds-input sm" style={{ textAlign: 'right' }} /></td>
+                  <td><input type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} aria-label="Prix unitaire HT" placeholder="0,00" className="ds-input sm" style={{ textAlign: 'right' }} /></td>
+                  <td>
+                    <select value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })} aria-label="Taux de TVA" className="ds-input sm">
+                      <option value="">—</option>
+                      {TVA_RATES.map(r => <option key={r} value={String(r)}>{r} %</option>)}
+                    </select>
+                  </td>
+                  <td className="ds-num ds-strong">{amt((parseFloat(l.quantity) || 0) * (parseFloat(l.unitPrice) || 0))}</td>
+                  <td><button type="button" className="odoo-pager-btn" aria-label="Retirer la ligne" disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, k) => k !== i))}><Trash2 size={13} /></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </DataPanel>
+        <div className="flex items-start gap-4" style={{ flexWrap: 'wrap' }}>
+          <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, emptyLine()])}><Plus size={13} /> Ajouter une ligne</button>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <FormField label="Notes" htmlFor="bl-notes">
+              <textarea id="bl-notes" value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Notes (adresse, heure de livraison…)" className="ds-input" />
+            </FormField>
           </div>
-          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
-            <table className="odoo-table" style={{ minWidth: 760 }}>
-              <thead><tr><th style={{ width: '36%' }}>Produit / désignation</th><th style={{ textAlign: 'right', width: 90 }}>Qté</th><th style={{ textAlign: 'right', width: 120 }}>Prix unit. HT</th><th style={{ width: 90 }}>TVA</th><th className="ds-num">Total HT</th><th style={{ width: 36 }} /></tr></thead>
-              <tbody>
-                {lines.map((l, i) => (
-                  <tr key={i}>
-                    <td>
-                      <SearchSelect options={productOptions} value={l.productId} onChange={id => pickProduct(i, id)} placeholder="Produit…" width="100%" />
-                      {!l.productId && <input value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="ou désignation libre" style={{ ...field, marginTop: 4 }} />}
-                    </td>
-                    <td><input type="number" min={0} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} style={{ ...field, textAlign: 'right' }} /></td>
-                    <td><input type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} placeholder="0,00" style={{ ...field, textAlign: 'right' }} /></td>
-                    <td>
-                      <select value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })} style={field}>
-                        <option value="">—</option>
-                        {TVA_RATES.map(r => <option key={r} value={String(r)}>{r} %</option>)}
-                      </select>
-                    </td>
-                    <td className="ds-num ds-strong">{money((parseFloat(l.quantity) || 0) * (parseFloat(l.unitPrice) || 0))}</td>
-                    <td><button type="button" className="odoo-pager-btn" aria-label="Retirer la ligne" disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, k) => k !== i))}><Trash2 size={13} /></button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex items-start gap-4">
-            <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, emptyLine()])}><Plus size={13} /> Ajouter une ligne</button>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Notes (adresse, heure de livraison…)" style={{ ...field, flex: 1 }} />
-            <div style={{ minWidth: 220, fontSize: '0.8125rem', display: 'grid', gap: 2 }}>
-              <div className="flex justify-between"><span>Total HT</span><b>{money(totals.ht)}</b></div>
-              <div className="flex justify-between"><span>TVA</span><span>{money(totals.tva)}</span></div>
-              <div className="flex justify-between" style={{ fontSize: '0.9375rem' }}><span>Total TTC</span><b>{money(totals.ht + totals.tva)}</b></div>
-            </div>
-          </div>
-          <p style={{ margin: 0, fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
-            Prix proposés : tarif catalogue moins la remise du client ; TVA : dernier taux utilisé pour le produit. Le BL sort les produits du stock avec leurs lots ; il sera facturé depuis « À facturer ».
-          </p>
-          {creditBlock && (
-            <div role="alert" style={{ border: '1px solid var(--ds-danger)', background: 'var(--ds-danger-bg)', color: 'var(--ds-danger)', borderRadius: 8, padding: '8px 10px', fontSize: '0.8125rem' }}>
-              <b>Expédition bloquée par le contrôle de crédit.</b> {creditBlock}
-              <div style={{ marginTop: 6 }}>
-                <input type="text" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} maxLength={500} style={field}
-                  placeholder="Motif de la dérogation (direction) — ex. règlement promis vendredi" />
-              </div>
-            </div>
-          )}
+          <table className="odoo-table ds-dense" aria-label="Totaux" style={{ width: 'auto', minWidth: 220 }}>
+            <tbody>
+              <tr><td>Total HT ({currencySymbol()})</td><td className="ds-num ds-strong">{amt(totals.ht)}</td></tr>
+              <tr><td>TVA ({currencySymbol()})</td><td className="ds-num">{amt(totals.tva)}</td></tr>
+              <tr><td className="ds-strong">Total TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{amt(totals.ht + totals.tva)}</td></tr>
+            </tbody>
+          </table>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={!valid || save.isPending || (!!creditBlock && overrideReason.trim().length < 3)} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <ClipboardList size={13} />} {creditBlock ? 'Déroger et enregistrer' : 'Enregistrer le bon de livraison'}
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+        <p style={{ margin: 0, fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>
+          Prix proposés : tarif catalogue moins la remise du client ; TVA : dernier taux utilisé pour le produit. Le BL sort les produits du stock avec leurs lots ; il sera facturé depuis « À facturer ».
+        </p>
+      </FormSection>
+      {creditBlock && (
+        <Alert tone="danger">
+          <b>Expédition bloquée par le contrôle de crédit.</b> {creditBlock}
+          <div style={{ marginTop: 6 }}>
+            <FormField label="Motif de la dérogation (direction)" htmlFor="bl-override" required
+              error={overrideReason !== '' && overrideReason.trim().length < 3 ? 'Au moins 3 caractères.' : undefined}>
+              <input id="bl-override" type="text" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} maxLength={500} className="ds-input"
+                placeholder="Ex. règlement promis vendredi" />
+            </FormField>
+          </div>
+        </Alert>
+      )}
+    </Modal>
   );
 }
 
 function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { data: n } = useQuery({ queryKey: ['delivery-notes', 'detail', id], queryFn: () => deliveryNotesApi.getById(id) });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 720, maxHeight: '90vh', display: 'flex', flexDirection: 'column', borderRadius: 6, overflow: 'hidden', background: 'var(--odoo-bg)', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb"><Truck size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">{n ? `Bon de livraison ${n.number}` : 'Bon de livraison'}</span></div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={() => printNote(id)} className="odoo-btn-secondary"><Printer size={13} /> Imprimer</button>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        {!n ? <LoadingState bare /> : (
-          <div style={{ padding: 16, overflowY: 'auto', display: 'grid', gap: 10, fontSize: '0.8125rem' }}>
-            <div className="flex flex-wrap gap-6">
-              <div><div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Client</div><b>{n.customer_name}</b></div>
-              <div><div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Livré le</div>{day(n.delivery_date)}</div>
-              {n.order_number && <div><div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Commande</div>{n.order_number}</div>}
-              <div><div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Statut</div>
-                <StatusTag tone={STATUS_TAG[n.status].tone} icon={STATUS_TAG[n.status].icon} label={STATUS[n.status].label} />{n.invoice_number ? ` ${n.invoice_number}` : ''}</div>
-            </div>
-            {n.notes && <div><b>Notes :</b> {n.notes}</div>}
-            <table className="odoo-table">
+    <Modal title={n ? `Bon de livraison ${n.number}` : 'Bon de livraison'} onClose={onClose} width={720}
+      aside={n && <StatusTag tone={STATUS_TAG[n.status].tone} icon={STATUS_TAG[n.status].icon} label={STATUS[n.status].label} />}
+      footer={<button type="button" onClick={() => printNote(id)} className="odoo-btn-secondary"><Printer size={13} /> Imprimer</button>}>
+      {!n ? <LoadingState bare /> : (
+        <>
+          <div className="flex flex-wrap gap-6" style={{ fontSize: '0.8125rem' }}>
+            <div><div style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}>Client</div><b>{n.customer_name}</b></div>
+            <div><div style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}>Livré le</div>{day(n.delivery_date)}</div>
+            {n.order_number && <div><div style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}>Commande</div><span className="ds-ref">{n.order_number}</span></div>}
+            {n.invoice_number && <div><div style={{ color: 'var(--ds-muted)', fontSize: '0.75rem' }}>Facture</div><span className="ds-ref">{n.invoice_number}</span></div>}
+          </div>
+          {n.notes && <div style={{ fontSize: '0.8125rem' }}><b>Notes :</b> {n.notes}</div>}
+          <DataPanel label="Lignes du bon de livraison">
+            <table className="odoo-table ds-dense">
               <thead><tr><th>Désignation</th><th className="ds-num">Qté</th><th className="ds-num">Prix HT ({currencySymbol()})</th><th className="ds-num">TVA</th><th className="ds-num">Total HT ({currencySymbol()})</th></tr></thead>
               <tbody>
                 {(n.items ?? []).map(i => (
                   <tr key={i.id}>
                     <td>{i.description}
                       {(i.lots ?? []).length > 0 && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 2 }}>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)', marginTop: 2 }}>
                           {(i.lots ?? []).map(l => `Lot ${l.lot_number} · ${Number(l.quantity).toLocaleString('fr-FR')}${l.dlc ? ` (DLC ${l.dlc.slice(0, 10).split('-').reverse().join('/')})` : ''}`).join(' — ')}
                         </div>
                       )}
@@ -468,12 +462,16 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr><td colSpan={4} style={{ textAlign: 'right' }}>Total HT ({currencySymbol()})</td><td className="ds-num">{amt(n.total_ht)}</td></tr>
+                <tr><td colSpan={4} style={{ textAlign: 'right' }}>TVA ({currencySymbol()})</td><td className="ds-num">{amt(n.total_tva)}</td></tr>
+                <tr><td colSpan={4} className="ds-strong" style={{ textAlign: 'right' }}>Total TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{amt(n.total_ttc)}</td></tr>
+              </tfoot>
             </table>
-            <div style={{ textAlign: 'right' }}>{money(n.total_ht)} HT · {money(n.total_tva)} TVA · <b>{money(n.total_ttc)} TTC</b></div>
-          </div>
-        )}
-      </div>
-    </ModalBackdrop>
+          </DataPanel>
+        </>
+      )}
+    </Modal>
   );
 }
 

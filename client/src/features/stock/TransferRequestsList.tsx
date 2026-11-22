@@ -15,7 +15,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import '../sales/ListTemplate';
 import { bonStatusTag } from '../production/status';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { Alert, DataPanel, EmptyState, ErrorState, LoadingState, TableFooter } from '../../components/ds';
+import { Alert, DataPanel, EmptyState, ErrorState, FormField, FormFooter, LoadingState, Modal, TableFooter } from '../../components/ds';
 
 type TransferModalPayload = {
   ligneId: string;
@@ -150,7 +150,7 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
     const errMsg = (error as any)?.response?.data?.error || (error as any)?.message || 'Erreur inconnue';
     const status = (error as any)?.response?.status;
     return (
-      <ErrorState title="Les contenants à ouvrir n'ont pas pu être chargés"
+      <ErrorState error={error} title="Les contenants à ouvrir n'ont pas pu être chargés"
         text={<>{status ? `[${status}] ` : ''}{errMsg}{status === 403 && ' (accès réservé aux rôles magasinier, admin et gérant)'}</>} />
     );
   }
@@ -382,18 +382,13 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
     && !!effectiveLotId;
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" style={{ width: '100%', maxWidth: 448, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }} role="dialog" aria-label="Transfert Économat vers Pesage">
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <PackageOpen size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-            <span className="odoo-breadcrumb-current">Ouvrir un contenant · {payload.ingredientName}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-
-        <div className="p-5 space-y-4">
+    <Modal title="Ouvrir un contenant" subtitle={payload.ingredientName} label="Transfert Économat vers Pesage" onClose={onClose} locked={isLoading} width={448}
+      footer={
+        <FormFooter onCancel={onClose} busy={isLoading} disabled={!isValid}
+          submitLabel={isLoading ? 'Ouverture…' : 'Ouvrir le contenant'}
+          onSubmit={() => onConfirm(qty, note.trim() || undefined, isOverride ? (effectiveLotId || undefined) : undefined, containerTypeId || undefined, effectiveCount)} />
+      }>
+        <div className="space-y-4">
           <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--odoo-text-muted)' }}>Bon de sortie</span>
@@ -408,9 +403,9 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
           {/* Delta v1 point 4 : selecteur de lot FEFO. Le lot suggere est presente en premier
               (marque par is_suggested). Le magasinier peut le confirmer ou en choisir un autre. */}
           <div>
-            <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-              Lot à transférer {lotsLoading && <Loader2 size={11} className="inline animate-spin ml-1" />}
-            </label>
+            <span className="ds-field-label" style={{ display: 'block', marginBottom: 6 }}>
+              Lot à transférer<span className="ds-req" aria-hidden="true"> *</span> {lotsLoading && <Loader2 size={11} className="inline animate-spin ml-1" />}
+            </span>
             {economatLots.length === 0 && !lotsLoading && (
               <Alert tone="danger">Aucun lot en réserve pour cet ingrédient.</Alert>
             )}
@@ -484,14 +479,11 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
               de contenant definie (ex Seau de 5 kg), le NOMBRE pilote la quantite transferee
               (transfert par contenant entier). Sinon, saisie libre en kg ci-dessous. */}
           <div className="grid grid-cols-[1fr_auto] gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-                Type de contenant
-              </label>
-              <select
+            <FormField label="Type de contenant" htmlFor="open-container-type">
+              <select id="open-container-type"
                 value={containerTypeId}
                 onChange={(e) => setContainerTypeId(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none bg-white"
+                className="ds-input"
               >
                 <option value="">— Aucun —</option>
                 {containerTypes.map((ct) => (
@@ -500,18 +492,17 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
                   </option>
                 ))}
               </select>
-            </div>
+            </FormField>
             <div className="w-28">
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-                {containerSize ? 'Nombre de contenants' : 'Nombre'}
-              </label>
-              <input
-                type="number" min={1} step={1}
-                value={containerCount}
-                onChange={(e) => setContainerCount(e.target.value)}
-                placeholder="ex 2"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none font-mono text-right"
-              />
+              <FormField label={containerSize ? 'Nombre de contenants' : 'Nombre'} htmlFor="open-container-count">
+                <input id="open-container-count"
+                  type="number" min={1} step={1}
+                  value={containerCount}
+                  onChange={(e) => setContainerCount(e.target.value)}
+                  placeholder="ex 2"
+                  className="ds-input ds-num"
+                />
+              </FormField>
             </div>
           </div>
 
@@ -532,24 +523,19 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
             </div>
           ) : (
             /* Mode libre : pas de contenant defini sur l'ingredient, saisie directe en kg. */
-            <div>
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-                Quantité à transférer
-              </label>
+            <FormField label="Quantité à transférer" htmlFor="open-container-qty" required
+              hint={<>Doit être ≥ {fmtQty(payload.requiredQty)} (besoin BSI) et ≤ {fmtQty(effectiveAvailable)} (dispo du lot sélectionné).
+                Tu peux transférer plus si tu ouvres un contenant entier — le surplus restera au pesage.</>}>
               <div className="flex items-center gap-2">
-                <input
+                <input id="open-container-qty"
                   type="number" step="0.01" min={payload.requiredQty} max={effectiveAvailable}
                   value={freeQty}
                   onChange={(e) => setFreeQty(e.target.value)}
-                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none font-mono text-right"
+                  className="ds-input ds-num" style={{ flex: 1 }}
                 />
-                <span className="text-sm text-gray-500 font-medium">{payload.unit}</span>
+                <span className="text-sm font-medium" style={{ color: 'var(--ds-muted)' }}>{payload.unit}</span>
               </div>
-              <p className="text-[11px] text-gray-500 mt-1.5">
-                Doit être ≥ {fmtQty(payload.requiredQty)} (besoin BSI) et ≤ {fmtQty(effectiveAvailable)} (dispo du lot sélectionné).
-                Tu peux transférer plus si tu ouvres un contenant entier — le surplus restera au pesage.
-              </p>
-            </div>
+            </FormField>
           )}
           {qty < payload.requiredQty && (
             <p className="ds-field-hint" role="alert" style={{ color: 'var(--ds-danger)', fontWeight: 600, marginTop: -8 }}>Inférieur au besoin BSI ({fmtQty(payload.requiredQty)} {payload.unit}).</p>
@@ -558,32 +544,15 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
             <p className="ds-field-hint" role="alert" style={{ color: 'var(--ds-danger)', fontWeight: 600, marginTop: -8 }}>Dépasse la quantité dispo sur ce lot ({fmtQty(effectiveAvailable)} {payload.unit}).</p>
           )}
 
-          <div>
-            <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-              Note (optionnelle)
-            </label>
-            <input
+          <FormField label="Note (optionnelle)" htmlFor="open-container-note">
+            <input id="open-container-note"
               type="text" value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="Ex : Ouverture nouveau sac, contenant entamé..."
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none"
+              className="ds-input"
             />
-          </div>
+          </FormField>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
-            <button type="button" onClick={onClose}
-              disabled={isLoading}
-              className="odoo-btn-secondary" style={{ minHeight: 44 }}>
-              Annuler
-            </button>
-            <button type="button" onClick={() => onConfirm(qty, note.trim() || undefined, isOverride ? (effectiveLotId || undefined) : undefined, containerTypeId || undefined, effectiveCount)}
-              disabled={!isValid || isLoading} aria-busy={isLoading || undefined}
-              className="odoo-btn-primary" style={{ minHeight: 44 }}>
-              {isLoading ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <PackageOpen size={14} aria-hidden="true" />}
-              {isLoading ? 'Ouverture…' : 'Ouvrir le contenant'}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,14 +1,13 @@
 import { money } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Banknote, ShieldAlert, ShieldCheck, Undo2, X } from 'lucide-react';
+import { Banknote, ShieldAlert, ShieldCheck, Undo2 } from 'lucide-react';
 import { StatusTag } from '../ui/StatusTag';
 import { paymentsApi, type PaymentMode, type TreasuryAccount } from '../../api/accounting.api';
 import { StatusBanner } from '../ui/StatusBanner';
 import ReasonCodeDialog from './ReasonCodeDialog';
-import ModalBackdrop from '../ui/ModalBackdrop';
 import { useAuth } from '../../context/AuthContext';
-import { FormField, FormFooter } from '../ds';
+import { FormField, FormFooter, Modal } from '../ds';
 
 /**
  * Règlement typé (mig 310, D7).
@@ -140,22 +139,15 @@ export function ReissuePaymentDialog({ payment, pending, onClose, onSubmit }: {
   const isInstrument = def?.legacy_method === 'check' || def?.legacy_method === 'traite';
   const valid = !!date && (!def?.requires_reference || ref.trim().length > 0);
   const amount = parseFloat(String(payment.amount ?? 0));
+  const submit = () => {
+    if (!valid || pending) return;
+    onSubmit({ paymentMode: mode, paymentDate: date,
+      ...(isInstrument ? { checkNumber: ref.trim(), checkDate: date } : { reference: ref.trim() || undefined }) });
+  };
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 440, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Ré-émettre le règlement de {money(amount)}</span></div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          if (!valid || pending) return;
-          onSubmit({ paymentMode: mode, paymentDate: date,
-            ...(isInstrument ? { checkNumber: ref.trim(), checkDate: date } : { reference: ref.trim() || undefined }) });
-        }}>
-          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Modal title={`Ré-émettre le règlement de ${money(amount)}`} width={440} onClose={onClose} locked={pending}
+      footer={<FormFooter onCancel={onClose} submitLabel="Ré-émettre" busy={pending} disabled={!valid} onSubmit={() => submit()} />}>
+        <form onSubmit={(e) => { e.preventDefault(); submit(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p style={{ margin: 0, fontSize: 14, color: 'var(--ds-muted)' }}>
               Le nouveau règlement est lié au paiement annulé : la trace « remplace » reste dans l'historique.
             </p>
@@ -169,11 +161,8 @@ export function ReissuePaymentDialog({ payment, pending, onClose, onSubmit }: {
             <FormField label="Date" htmlFor="reissue-date" required>
               <input id="reissue-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input" />
             </FormField>
-          </div>
-          <FormFooter onCancel={onClose} submitLabel="Ré-émettre" busy={pending} disabled={!valid} />
         </form>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 

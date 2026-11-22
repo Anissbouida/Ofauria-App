@@ -9,6 +9,7 @@ import { bonSortieApi } from '../../api/bon-sortie.api';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { DataPanel } from '../../components/ds';
 
 /**
  * Onglet « À commander » du module Stock (ex-Économat, delta v1 point 5).
@@ -104,16 +105,17 @@ export function RuptureRequestsList({ variant = 'tab' }: { variant?: 'tab' | 'co
       )}
 
       {Array.from(groups.entries()).map(([bonId, g]) => (
-        <div key={bonId} className="odoo-section">
-          <div className="odoo-section-header">
-            <Package size={12} />
-            <span style={{ fontFamily: 'ui-monospace, monospace' }}>{g.bon_numero}</span>
-            <span style={{ color: 'var(--theme-text-muted)' }}>·</span>
+        <DataPanel key={bonId} label={`Bon ${g.bon_numero}`} bulk={
+          <div className="prj-panel-head">
+            <Package size={14} aria-hidden="true" />
+            <span className="ds-ref">{g.bon_numero}</span>
+            <span style={{ color: 'var(--ds-muted)' }}>·</span>
             <span>Plan du {g.plan_date ? format(new Date(g.plan_date), 'dd MMM yyyy', { locale: fr }) : '—'}</span>
             {g.plan_type && <span className="odoo-tag odoo-tag-grey">{g.plan_type}</span>}
             <div style={{ flex: 1 }} />
-            <Link to={`/stock?tab=bons&bon=${bonId}`} className="odoo-btn-secondary" style={{ textDecoration: 'none' }}>Ouvrir le bon</Link>
+            <Link to={`/stock?tab=bons&bon=${bonId}`} className="odoo-btn-secondary ds-btn-sm" style={{ textDecoration: 'none' }}>Ouvrir le bon</Link>
           </div>
+        }>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -121,7 +123,7 @@ export function RuptureRequestsList({ variant = 'tab' }: { variant?: 'tab' | 'co
                 <th className="ds-num">Besoin</th>
                 <th className="ds-num">Disponible</th>
                 <th className="ds-num">Manque</th>
-                <th style={{ width: 140 }}></th>
+                <th className="ds-actions" style={{ width: 140 }}><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -135,16 +137,16 @@ export function RuptureRequestsList({ variant = 'tab' }: { variant?: 'tab' | 'co
                 const isPending = commanderMutation.isPending && (commanderMutation.variables as any)?.line_id === lineId;
                 return (
                   <tr key={lineId} className="row-danger">
-                    <td style={{ fontWeight: 500 }}>{l.ingredient_name as string}</td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{need.toFixed(2)} {unit}</td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{avail.toFixed(2)} {unit}</td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: 'var(--ds-danger)' }}>{missing.toFixed(2)} {unit}</td>
-                    <td className="ds-num">
+                    <td className="ds-strong">{l.ingredient_name as string}</td>
+                    <td className="ds-num">{need.toFixed(2)} {unit}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{avail.toFixed(2)} {unit}</td>
+                    <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>{missing.toFixed(2)} {unit}</td>
+                    <td className="ds-actions">
                       {alreadyOrdered ? (
                         <StatusTag tone="progress" icon={ShoppingCart} label="Commandé" />
                       ) : (
                         <button type="button" onClick={() => commanderMutation.mutate(l)} disabled={isPending}
-                          className="odoo-btn-primary" title={`Ajouter ${need.toFixed(2)} ${unit} à la liste d'attente d'achat`}>
+                          className="odoo-btn-secondary ds-btn-sm" title={`Ajouter ${need.toFixed(2)} ${unit} à la liste d'attente d'achat`}>
                           {isPending ? <Loader2 size={12} className="animate-spin" /> : <ShoppingCart size={12} />} Commander
                         </button>
                       )}
@@ -154,7 +156,7 @@ export function RuptureRequestsList({ variant = 'tab' }: { variant?: 'tab' | 'co
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       ))}
     </div>
   );

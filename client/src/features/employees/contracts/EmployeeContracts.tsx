@@ -9,6 +9,7 @@ import { apiErrorMessage, isoDate } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusTag, type StatusTone } from '../../../components/ui/StatusTag';
 import { SectionTitle, SubmitButton, Field, inputCls, panel } from '../ui';
+import { DataPanel } from '../../../components/ds';
 
 const fr = (d: unknown) => { const s = isoDate(d); return s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : ''; };
 const KIND: Record<string, string> = { contrat: 'Contrat', avenant: 'Avenant', renouvellement: 'Renouvellement' };
@@ -163,6 +164,7 @@ export default function EmployeeContracts({ employeeId, onChanged }: { employeeI
       )}
 
       {contracts.length === 0 ? <p style={muted}>Aucun contrat enregistré.</p> : (
+        <DataPanel label="Contrats">
         <table className="odoo-table">
           <thead><tr><th>Pièce</th><th>Type</th><th>Période</th><th className="ds-num">Salaire mensuel ({currencySymbol()})</th><th>Essai</th><th>Statut</th></tr></thead>
           <tbody>
@@ -178,6 +180,7 @@ export default function EmployeeContracts({ employeeId, onChanged }: { employeeI
             ))}
           </tbody>
         </table>
+        </DataPanel>
       )}
     </section>
   );

@@ -1,14 +1,13 @@
 import { Fragment, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { History, LogIn, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, Plus, Pencil, Trash2, type LucideIcon } from 'lucide-react';
+import { History, LogIn, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, Plus, Pencil, Trash2, type LucideIcon } from 'lucide-react';
 import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type AuditLogEntry, type AuthEventEntry } from '../../api/settings.api';
 import { usersApi } from '../../api/users.api';
 import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
-import { LoadingState } from '../../components/ds';
+import { DataPanel, DateRangeField, EmptyState, ErrorState, LoadingState } from '../../components/ds';
 
 /**
  * Journal des modifications du paramétrage (mig 328) et des connexions.
@@ -114,8 +113,6 @@ function Pager({ offset, total, onChange }: { offset: number; total: number; onC
   );
 }
 
-const filterInput: React.CSSProperties = { fontSize: '0.8125rem', padding: '4px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
-
 export default function AuditLogTab() {
   const [view, setView] = useState<'changes' | 'logins'>('changes');
   // Liste des comptes pour les filtres : réservée aux admins côté API, filtre masqué sinon.
@@ -155,7 +152,7 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
 
   const { data: tables = [] } = useQuery({ queryKey: ['audit-log-tables'], queryFn: settingsApi.auditTables, retry: 1 });
   const params = { table: table || undefined, changedBy: changedBy || undefined, from: from || undefined, to: to || undefined, q: q.trim() || undefined, limit: PAGE, offset };
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['audit-log', params],
     queryFn: () => settingsApi.auditLog(params),
     placeholderData: keepPreviousData,
@@ -177,33 +174,23 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
           <SearchSelect value={changedBy} onChange={reset(setChangedBy)} ariaLabel="Auteur" placeholder="Tous les auteurs" width={200}
             options={users.map(u => ({ id: String(u.id), label: `${u.firstName} ${u.lastName}` }))} />
         )}
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
-          Du <input type="date" style={filterInput} value={from} onChange={e => reset(setFrom)(e.target.value)} />
-        </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
-          au <input type="date" style={filterInput} value={to} onChange={e => reset(setTo)(e.target.value)} />
-        </label>
+        <DateRangeField from={from} to={to} onFrom={reset(setFrom)} onTo={reset(setTo)} />
         <div style={{ flex: 1 }} />
         <Pager offset={offset} total={data?.total ?? 0} onChange={setOffset} />
       </div>
 
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--ds-muted)' }}>
-          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-          <LoadingState bare />
-        </div>
+        <LoadingState />
       ) : isError ? (
-        <StatusBanner tone="danger" icon={History} title="Journal indisponible">
-          Le journal n'a pas pu être chargé. Vérifiez que la migration 328 est appliquée et que vous avez accès à la section « Journal ».
-        </StatusBanner>
+        <ErrorState error={error} text="Le journal n'a pas pu être chargé. Vérifiez que la migration 328 est appliquée, puis réessayez." />
       ) : !data?.rows.length ? (
-        <section className="prj-panel sal-empty"><History size={28} style={{ opacity: 0.4 }} /><strong>Aucune modification pour ces filtres.</strong></section>
+        <EmptyState icon={History} title="Aucune modification pour ces filtres" />
       ) : (
-        <div className="prj-panel prj-scroll">
+        <DataPanel>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th style={{ width: 28 }}></th><th>Date</th><th>Auteur</th><th>Objet</th><th>Élément</th><th>Action</th><th>Champs</th>
+                <th style={{ width: 28 }}><span className="sr-only">Détail</span></th><th>Date</th><th>Auteur</th><th>Objet</th><th>Élément</th><th>Action</th><th>Champs</th>
               </tr>
             </thead>
             <tbody>
@@ -211,19 +198,19 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
                 const isOpen = open === e.id;
                 return (
                   <Fragment key={e.id}>
-                    <tr onClick={() => setOpen(isOpen ? null : e.id)} style={{ cursor: 'pointer' }}>
+                    <tr className="ds-clickable" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : e.id)}>
                       <td>{isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</td>
                       <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtDate(e.changed_at)}</td>
                       <td>{e.changed_by_name || <span style={{ color: 'var(--ds-muted)' }}>Système</span>}</td>
                       <td>{tableLabel(e.table_name)}</td>
-                      <td>{rowTitle(e)}</td>
+                      <td className="ds-strong">{rowTitle(e)}</td>
                       <td><StatusTag tone={OP_TAG[e.operation].tone} icon={OP_TAG[e.operation].icon} label={OP_TAG[e.operation].label} /></td>
                       <td style={{ color: 'var(--ds-muted)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary(e)}</td>
                     </tr>
                     {isOpen && (
                       <tr>
                         <td></td>
-                        <td colSpan={6} style={{ background: 'var(--odoo-bg-alt)' }}>
+                        <td colSpan={6} style={{ background: 'var(--ds-bg)' }}>
                           <ChangeDetail e={e} />
                         </td>
                       </tr>
@@ -233,7 +220,7 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
     </>
   );
@@ -252,7 +239,7 @@ function ChangeDetail({ e }: { e: AuditLogEntry }) {
       <tbody>
         {pairs.map(([k, o, n]) => (
           <tr key={k}>
-            <td style={{ fontWeight: 500 }}>{fieldLabel(k)}</td>
+            <td className="ds-strong">{fieldLabel(k)}</td>
             <td style={{ color: 'var(--ds-muted)', wordBreak: 'break-word' }}>{o === undefined ? '' : fmtValue(o)}</td>
             <td style={{ wordBreak: 'break-word' }}>{n === undefined ? '' : fmtValue(n)}</td>
           </tr>
@@ -284,11 +271,11 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
   return (
     <>
       <div className="prj-toolbar">
-        <select style={filterInput} value={eventType} onChange={e => reset(setEventType)(e.target.value)} aria-label="Événement">
+        <select className="ds-input sm" style={{ width: 'auto' }} value={eventType} onChange={e => reset(setEventType)(e.target.value)} aria-label="Événement">
           <option value="">Tous les événements</option>
           {Object.entries(EVENT_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
-        <select style={filterInput} value={result} onChange={e => reset(setResult)(e.target.value as '' | 'true' | 'false')} aria-label="Résultat">
+        <select className="ds-input sm" style={{ width: 'auto' }} value={result} onChange={e => reset(setResult)(e.target.value as '' | 'true' | 'false')} aria-label="Résultat">
           <option value="">Réussis et échoués</option>
           <option value="true">Réussis</option>
           <option value="false">Échoués</option>
@@ -297,23 +284,16 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
           <SearchSelect value={userId} onChange={reset(setUserId)} ariaLabel="Utilisateur" placeholder="Tous les utilisateurs" width={200}
             options={users.map(u => ({ id: String(u.id), label: `${u.firstName} ${u.lastName}` }))} />
         )}
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
-          Du <input type="date" style={filterInput} value={from} onChange={e => reset(setFrom)(e.target.value)} />
-        </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
-          au <input type="date" style={filterInput} value={to} onChange={e => reset(setTo)(e.target.value)} />
-        </label>
+        <DateRangeField from={from} to={to} onFrom={reset(setFrom)} onTo={reset(setTo)} />
         <div style={{ flex: 1 }} />
         <Pager offset={offset} total={data?.total ?? 0} onChange={setOffset} />
       </div>
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--ds-muted)' }}>
-          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-        </div>
+        <LoadingState />
       ) : !data?.rows.length ? (
-        <section className="prj-panel sal-empty"><LogIn size={28} style={{ opacity: 0.4 }} /><strong>Aucun événement pour ces filtres.</strong></section>
+        <EmptyState icon={LogIn} title="Aucun événement pour ces filtres" />
       ) : (
-        <div className="prj-panel prj-scroll">
+        <DataPanel>
           <table className="odoo-table">
             <thead><tr><th>Date</th><th>Événement</th><th>Utilisateur</th><th>Compte visé</th><th>Adresse IP</th><th>Détail</th></tr></thead>
             <tbody>
@@ -331,7 +311,7 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
     </>
   );

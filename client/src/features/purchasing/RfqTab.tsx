@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  FileQuestion, Send, Plus, XCircle, Trophy, Trash2, X, Inbox, FilePenLine, Clock, Ban, RotateCcw, Award, Filter, ClipboardList,
+  FileQuestion, Send, Plus, XCircle, Trophy, Trash2, Inbox, FilePenLine, Clock, Ban, RotateCcw, Award, Filter, ClipboardList, CheckCircle2,
 } from 'lucide-react';
 import '../projects/projects.css';
 import './purchasing.css';
 import { PurHeaderActions } from './PurHeaderActions';
+import { useOpenRfq } from './purchasingNav';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { rfqApi, RFQ_STATUS_LABELS, type Rfq, type RfqStatus, type RfqItem, type RfqItemInput, type Quotation, type RfqSupplier } from '../../api/rfq.api';
@@ -15,16 +16,15 @@ import { suppliersApi } from '../../api/accounting.api';
 import { apiErrorMessage } from '../../api/errors';
 import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { RowMenu } from '../../components/ui/RowMenu';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StagePipeline, SelectFilter, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 import {
-  Alert, DataPanel, EmptyState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, LoadingState, NoResultState,
-  SearchBar, SectionHeader, Segmented, TableFooter, Toolbar,
+  Alert, DataPanel, EmptyState, ErrorState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, LoadingState, Modal, NoResultState,
+  PageHeader, SearchBar, SectionHeader, Segmented, TableFooter, Toolbar,
 } from '../../components/ds';
 import { money, currencySymbol } from '../../utils/money';
 
@@ -59,13 +59,14 @@ export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId
   const [status, setStatus] = useState<RfqStatus | ''>('');
   const [searchInput, setSearchInput] = useState(''); const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // Fiche d'une demande de prix : page dédiée (?tab=rfq&rfq=<id>).
+  const setOpenId = useOpenRfq();
   const [creating, setCreating] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim()), 300); return () => clearTimeout(t); }, [searchInput]);
   useEffect(() => { setPage(1); }, [view, status, search]);
   const params: Record<string, string> = { page: String(page), pageSize: String(PAGE_SIZE), view };
   if (status) params.status = status; if (search) params.search = search;
-  const { data, isLoading } = useQuery({ queryKey: ['rfqs', params], queryFn: () => rfqApi.list(params) });
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ['rfqs', params], queryFn: () => rfqApi.list(params) });
   const by = data?.byStatus ?? {};
   const count = (keys: RfqStatus[]) => keys.reduce((s, k) => s + (by[k]?.count ?? 0), 0);
   const openCount = count(OPEN_STATUSES);
@@ -101,7 +102,7 @@ export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId
         <Segmented label="Vue des demandes de prix" value={view} onChange={switchView}
           options={[{ key: 'open', label: 'En cours', count: openCount }, { key: 'history', label: 'Historique', count: historyCount }]} />
       </Toolbar>
-      {isLoading ? <LoadingState /> : !data?.rows.length ? (
+      {isLoading ? <LoadingState /> : error ? <ErrorState error={error} onRetry={() => { void refetch(); }} /> : !data?.rows.length ? (
         filtered ? <NoResultState text="Aucune demande de prix ne correspond aux filtres." onReset={() => { setSearchInput(''); setStatus(''); }} />
           : (
             <EmptyState icon={FileQuestion} title={view === 'history' ? 'Aucune demande de prix clôturée' : 'Aucune demande de prix en cours'}
@@ -139,7 +140,6 @@ export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId
         </DataPanel>
       )}
       {creating && <RfqFormModal onClose={() => setCreating(false)} onSaved={id => setOpenId(id)} />}
-      {openId && <RfqDrawer id={openId} onClose={() => setOpenId(null)} onOpenOrder={onOpenOrder} />}
     </>
   );
 }
@@ -194,14 +194,8 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
   const [titleTouched, setTitleTouched] = useState(false);
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{rfq ? `Modifier ${rfq.number}` : 'Nouvelle demande de prix'}</span></div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
-        </div>
-        <div style={{ padding: '16px 24px', display: 'grid', gap: 20 }}>
+    <Modal title={rfq ? `Modifier ${rfq.number}` : 'Nouvelle demande de prix'} subtitle={rfq?.title} width={820} onClose={onClose} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} submitLabel="Enregistrer" busy={save.isPending} disabled={!can} onSubmit={() => save.mutate()} />}>
           <FormSection title="Demande">
             <FormField label="Objet" htmlFor="rfq-title" required error={titleTouched && !title.trim() ? 'Indiquez l\'objet de la demande de prix.' : undefined}>
               <input id="rfq-title" className="ds-input" value={title} maxLength={200} aria-required="true" onChange={e => setTitle(e.target.value)} onBlur={() => setTitleTouched(true)}
@@ -227,7 +221,8 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
               </div>
             )}
             {items.length === 0 ? <span className="ds-field-hint">Aucun article : ajoutez-en au moins un pour enregistrer la demande.</span> : (
-              <table className="odoo-table">
+              <DataPanel label="Articles demandés">
+              <table className="odoo-table ds-dense">
                 <thead><tr><th>Article</th><th style={{ width: 130 }}>Quantité</th><th style={{ width: 120 }}>Unité</th><th style={{ width: 48 }} /></tr></thead>
                 <tbody>{items.map((it, idx) => (
                   <tr key={it.key}>
@@ -238,6 +233,7 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
                   </tr>
                 ))}</tbody>
               </table>
+              </DataPanel>
             )}
             {items.some(i => !(i.quantity > 0)) && <span className="ds-field-hint" role="alert" style={{ color: 'var(--ds-danger)', fontWeight: 600 }}>Chaque quantité doit être supérieure à zéro.</span>}
           </FormSection>
@@ -258,20 +254,20 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
               <textarea id="rfq-notes" className="ds-input" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Qualité attendue, conditions de livraison, lieu…" />
             </FormField>
           </FormSection>
-        </div>
-        <div style={{ position: 'sticky', bottom: 0, background: 'var(--ds-card)' }}>
-          <FormFooter onCancel={onClose} submitLabel="Enregistrer" busy={save.isPending} disabled={!can} onSubmit={() => save.mutate()} />
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
-/* ═══════════════════ Fiche : fournisseurs, devis, comparatif ═══════════════════ */
-function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => void; onOpenOrder?: (poId: string) => void }) {
+/* ═══════════════════ Page : fournisseurs, devis, comparatif ═══════════════════ */
+/**
+ * Page d'une demande de prix (?tab=rfq&rfq=<id>, fil d'Ariane « Achats › Demandes de prix › n° ») :
+ * avancement, fournisseurs consultés, tableau comparatif et attribution. Ex-tiroir RfqDrawer :
+ * mêmes appels (envoi, statuts, devis, attribution).
+ */
+export function RfqPage({ id, onBack, onOpenOrder }: { id: string; onBack: () => void; onOpenOrder?: (poId: string) => void }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: r, isLoading } = useQuery({ queryKey: ['rfq', id], queryFn: () => rfqApi.get(id) });
+  const { data: r, isLoading, error, refetch } = useQuery({ queryKey: ['rfq', id], queryFn: () => rfqApi.get(id) });
   const [editing, setEditing] = useState(false);
   const [quoting, setQuoting] = useState<RfqSupplier | null>(null);
   // Devis choisi dans le comparatif avant l'attribution (par défaut : le devis recommandé).
@@ -286,7 +282,9 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
-  if (isLoading || !r) return <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex justify-end bg-black/30"><div className="odoo-scope" style={{ width: 'min(960px, 100%)', height: '100%', background: 'var(--theme-bg-card)' }}><LoadingState bare /></div></ModalBackdrop>;
+  if (isLoading) return <LoadingState label="Chargement de la demande de prix…" />;
+  if (error) return <ErrorState error={error} title="La demande de prix n'a pas pu être chargée" onRetry={() => { void refetch(); }} />;
+  if (!r) return <EmptyState icon={FileQuestion} title="Demande de prix introuvable" action={<button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={onBack}>Retour</button>} />;
   const items = r.items ?? []; const quotes = r.quotations ?? []; const suppliers = r.suppliers ?? [];
   const open = ['sent', 'quoted'].includes(r.status);
   const cs = currencySymbol();
@@ -298,224 +296,248 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
   const tint = (q: Quotation): CSSProperties | undefined => (q.id === retainedId ? { background: 'var(--ds-tint)' } : undefined);
   const criteria = r.criteria ?? [];
   const totalWeight = criteria.reduce((t, x) => t + Number(x.weight || 0), 0) || 1;
+  const canAward = open && quotes.length > 0;
+  // Attribution : même confirmation et même appel depuis l'en-tête et le pied du comparatif.
+  const doAward = async () => {
+    const q = retained; if (!q || award.isPending) return;
+    if (await confirm(`Retenir le devis de ${q.supplier_name} (note ${q.score ?? '—'}/100${q.id === r.recommended_quotation_id ? ', recommandé' : ''}) et créer le bon de commande (${money(q.total_ht)} HT) ?`)) award.mutate(q.id);
+  };
+  const awardButton = (
+    <button type="button" className="odoo-btn-primary" disabled={!retained || award.isPending} aria-busy={award.isPending || undefined}
+      onClick={() => { void doAward(); }}>
+      <Award size={14} aria-hidden="true" /> Attribuer et créer le bon de commande
+    </button>
+  );
+  // Actions secondaires de la demande (menu « ⋯ » de l'en-tête).
+  const menu: RowMenuItem[] = [
+    ...(open ? [{ label: 'Sans suite', icon: Ban, disabled: setStatus.isPending, onSelect: async () => { if (await confirm('Clore sans retenir de devis ?')) setStatus.mutate('closed'); } }] : []),
+    ...(['draft', 'sent', 'quoted'].includes(r.status) ? [{ label: 'Annuler la demande de prix', icon: XCircle, danger: true, disabled: setStatus.isPending, onSelect: async () => { if (await confirm('Annuler cet appel d\'offres ?', { danger: true })) setStatus.mutate('cancelled'); } }] : []),
+    ...(['cancelled', 'closed'].includes(r.status) ? [{ label: 'Rouvrir', icon: RotateCcw, disabled: setStatus.isPending, onSelect: () => setStatus.mutate('draft') }] : []),
+  ];
+  // Avancement : brouillon → envoyée → devis reçus → attribuée (hors annulée / sans suite).
+  const stepIndex = ({ draft: 0, sent: 1, quoted: 2, awarded: 3 } as Partial<Record<RfqStatus, number>>)[r.status];
+  const steps = [
+    { label: 'Brouillon', detail: `créée le ${day(r.created_at)}` },
+    { label: 'Envoyée', detail: r.sent_at ? `le ${day(r.sent_at)}` : 'à envoyer' },
+    { label: 'Devis reçus', detail: `${quotes.length} sur ${suppliers.length}` },
+    { label: 'Attribuée', detail: r.awarded_at ? `le ${day(r.awarded_at)}` : r.response_deadline ? `réponse avant le ${day(r.response_deadline)}` : '—' },
+  ];
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex justify-end bg-black/30">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: 'min(960px, 100%)', height: '100%', overflowY: 'auto', background: 'var(--theme-bg-card)', boxShadow: '-6px 0 24px rgba(0,0,0,0.15)' }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-          <div className="odoo-breadcrumb">
-            <FileQuestion size={14} style={{ color: 'var(--ds-accent)' }} aria-hidden="true" />
-            <span className="ds-ref">{r.number}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          {r.status === 'draft' && <>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(true)}><FilePenLine size={13} aria-hidden="true" /> Modifier</button>
-            <button type="button" className="odoo-btn-primary" onClick={() => send.mutate()} disabled={send.isPending}><Send size={13} aria-hidden="true" /> Envoyer aux fournisseurs</button>
-          </>}
-          {open && <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(true)}><FilePenLine size={13} aria-hidden="true" /> Fournisseurs / dates</button>}
-          {open && <button type="button" className="odoo-btn-secondary" onClick={async () => { if (await confirm('Clore sans retenir de devis ?')) setStatus.mutate('closed'); }}><Ban size={13} aria-hidden="true" /> Sans suite</button>}
-          {['draft', 'sent', 'quoted'].includes(r.status) && <button type="button" className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler cet appel d\'offres ?', { danger: true })) setStatus.mutate('cancelled'); }}><XCircle size={13} aria-hidden="true" /> Annuler</button>}
-          {['cancelled', 'closed'].includes(r.status) && <button type="button" className="odoo-btn-secondary" onClick={() => setStatus.mutate('draft')}><RotateCcw size={13} aria-hidden="true" /> Rouvrir</button>}
-          <button type="button" className="ds-icon-btn" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
-        </div>
+    <>
+      <PurHeaderActions>
+        {r.status === 'draft' && <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(true)}><FilePenLine size={13} aria-hidden="true" /> Modifier</button>}
+        {open && <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(true)}><FilePenLine size={13} aria-hidden="true" /> Fournisseurs / dates</button>}
+        {menu.length > 0 && <RowMenu items={menu} label={`Plus d'actions pour ${r.number}`} />}
+        {r.status === 'draft' && <button type="button" className="odoo-btn-primary" onClick={() => send.mutate()} disabled={send.isPending} aria-busy={send.isPending || undefined}><Send size={13} aria-hidden="true" /> Envoyer aux fournisseurs</button>}
+        {canAward && awardButton}
+        {r.status === 'awarded' && r.purchase_order_id && onOpenOrder && (
+          <button type="button" className="odoo-btn-primary" onClick={() => onOpenOrder(r.purchase_order_id!)}><ClipboardList size={13} aria-hidden="true" /> Ouvrir le BC {r.purchase_order_number}</button>
+        )}
+      </PurHeaderActions>
 
-        <div style={{ padding: '16px 24px', display: 'grid', gap: 20 }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-.02em', color: 'var(--ds-ink)' }}>{r.title}</h2>
-              <RfqStatusTag status={r.status} />
-            </div>
-            <div style={{ ...muted, fontSize: 14, marginTop: 4 }}>
-              {r.response_deadline ? `Réponse avant le ${day(r.response_deadline)}` : 'Pas de date limite'}{r.needed_by ? ` · besoin pour le ${day(r.needed_by)}` : ''}
-              {r.sent_at ? ` · envoyé le ${day(r.sent_at)}` : ''} · créé par {r.created_by_name || '—'}
-            </div>
-            {r.notes && <p style={{ margin: '6px 0 0', fontSize: 14, whiteSpace: 'pre-wrap' }}>{r.notes}</p>}
-          </div>
-          {r.is_overdue && <Alert tone="warning" icon={Clock}>Date limite de réponse dépassée : relancez les fournisseurs sans réponse, ou comparez avec les devis reçus.</Alert>}
-          {r.status === 'awarded' && (
-            <StatusBanner tone="success" icon={Trophy} title={`Devis retenu : ${r.awarded_supplier_name}`}
-              actions={r.purchase_order_id && onOpenOrder ? <button type="button" className="odoo-btn-primary" onClick={() => onOpenOrder(r.purchase_order_id!)}>Ouvrir le BC {r.purchase_order_number}</button> : undefined}>
-              Le bon de commande {r.purchase_order_number} a été créé depuis ce devis{r.awarded_at ? ` le ${day(r.awarded_at)}` : ''}.
-            </StatusBanner>
-          )}
+      <PageHeader title={r.title} aside={<RfqStatusTag status={r.status} />}
+        description={<>
+          <span className="ds-ref">{r.number}</span>
+          {` · ${suppliers.length} fournisseur${suppliers.length > 1 ? 's' : ''} consulté${suppliers.length > 1 ? 's' : ''}`}
+          {r.response_deadline ? ` · réponse avant le ${day(r.response_deadline)}` : ' · pas de date limite'}
+          {r.needed_by ? ` · besoin pour le ${day(r.needed_by)}` : ''}
+          {` · créée par ${r.created_by_name || '—'}`}
+        </>} />
 
-          {/* Fournisseurs consultés : une ligne par fournisseur, avec l'en-tête de son devis. */}
-          <section style={{ display: 'grid', gap: 12 }}>
-            <SectionHeader title="Fournisseurs consultés" note={`${quotes.length} devis reçu${quotes.length > 1 ? 's' : ''} sur ${suppliers.length}`} />
-            {suppliers.length === 0 ? <EmptyState bare icon={Inbox} title="Aucun fournisseur consulté" text="Modifiez la demande de prix pour en ajouter." /> : (
-              <DataPanel label="Fournisseurs consultés">
-                <table className="odoo-table">
-                  <thead><tr>
-                    <th>Fournisseur</th><th>Contact</th><th>Réponse</th><th>Reçu le</th><th>Référence du devis</th><th>Valable jusqu'au</th>
-                    <th>Conditions de paiement</th><th className="ds-num">Total HT ({cs})</th><th className="ds-actions">Action</th>
-                  </tr></thead>
-                  <tbody>{suppliers.map(s => {
-                    const q = quotes.find(x => x.supplier_id === s.supplier_id);
-                    return (
-                      <tr key={s.id}>
-                        <td className="ds-strong">{s.supplier_name}</td>
-                        <td style={muted}>{[s.contact_name, s.phone, s.email].filter(Boolean).join(' · ') || '—'}</td>
-                        <td>
-                          {s.status === 'quoted' ? <StatusTag tone="done" label="Devis reçu" />
-                            : s.status === 'declined' ? <StatusTag tone="cancelled" label="A décliné" />
-                            : s.status === 'no_response' ? <StatusTag tone="blocked" label="Sans réponse" />
-                            : r.status === 'draft' ? <StatusTag tone="todo" label="À consulter" />
-                            : <StatusTag tone="progress" label="En attente" icon={Send} />}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>{day(q?.received_at)}</td>
-                        <td>{q?.quotation_ref ? <span className="ds-ref">{q.quotation_ref}</span> : '—'}</td>
-                        <td style={{ whiteSpace: 'nowrap' }}>{day(q?.valid_until)}</td>
-                        <td>{q?.payment_terms || '—'}</td>
-                        <td className="ds-num">{q ? n2(q.total_ht) : '—'}</td>
-                        <td className="ds-actions">
-                          {open && <>
-                            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setQuoting(s)}>{s.quotation_id ? 'Modifier le devis' : 'Saisir le devis'}</button>
-                            <RowMenu label={`Plus d'actions pour ${s.supplier_name}`} items={s.status !== 'quoted' ? [{
-                              label: s.status === 'declined' ? 'Rétablir' : 'A décliné', icon: s.status === 'declined' ? RotateCcw : Ban, disabled: supplierStatus.isPending,
-                              onSelect: () => supplierStatus.mutate({ supplierId: s.supplier_id, status: s.status === 'declined' ? 'invited' : 'declined' }),
-                            }] : []} />
-                          </>}
-                        </td>
-                      </tr>
-                    );
-                  })}</tbody>
-                </table>
-              </DataPanel>
-            )}
-          </section>
+      {stepIndex !== undefined && (
+        <ol className="ui-timeline" aria-label="Avancement de la demande de prix">
+          {steps.map((s, i) => {
+            const done = i < stepIndex || r.status === 'awarded';
+            const current = i === stepIndex && r.status !== 'awarded';
+            return (
+              <li key={s.label} className={`ui-timeline-step ${done ? 'is-done' : current ? 'is-current' : ''}`} aria-current={current ? 'step' : undefined}>
+                <span className="ui-timeline-dot">{done ? <CheckCircle2 size={14} /> : i + 1}</span>
+                <span className="ui-timeline-label">{s.label}</span>
+                <span className="ui-timeline-detail" style={current && r.is_overdue ? { color: 'var(--ds-danger)', fontWeight: 600 } : undefined}>{s.detail}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
 
-          {/* Tableau comparatif : une ligne par article, deux colonnes (prix unitaire, total) par devis ; notation (mig 459) en pied. */}
-          <section style={{ display: 'grid', gap: 12 }}>
-            <SectionHeader title="Tableau comparatif" note={quotes.length ? 'le meilleur prix de chaque ligne en vert' : 'aucun devis saisi'} />
-            <DataPanel label="Tableau comparatif">
-              <table className="odoo-table">
-                <thead>
-                  <tr>
-                    <th rowSpan={quotes.length ? 2 : 1}>Article</th>
-                    <th rowSpan={quotes.length ? 2 : 1} className="ds-num">Qté demandée</th>
-                    <th rowSpan={quotes.length ? 2 : 1} className="ds-num">Dernier prix payé ({cs})</th>
-                    {quotes.map(q => (
-                      <th key={q.id} colSpan={2} style={{ ...tint(q), textAlign: 'right' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                          <span className="ds-strong" style={{ fontSize: 14 }}>{q.supplier_name}</span>
-                          {q.status === 'selected' && <StatusTag tone="done" label="Retenu" icon={Trophy} />}
-                          {q.status !== 'selected' && q.id === r.recommended_quotation_id && <StatusTag tone="progress" label="Recommandé" icon={Award} />}
-                          {q.id === r.best_total_quotation_id && <StatusTag tone="done" label="Moins cher" />}
-                        </span>
-                      </th>
-                    ))}
+      {r.notes && <Alert tone="info" icon={Inbox}><span style={{ whiteSpace: 'pre-wrap' }}>{r.notes}</span></Alert>}
+      {r.is_overdue && <Alert tone="warning" icon={Clock}>Date limite de réponse dépassée : relancez les fournisseurs sans réponse, ou comparez avec les devis reçus.</Alert>}
+      {r.status === 'awarded' && (
+        <StatusBanner tone="success" icon={Trophy} title={`Devis retenu : ${r.awarded_supplier_name}`}>
+          Le bon de commande {r.purchase_order_number} a été créé depuis ce devis{r.awarded_at ? ` le ${day(r.awarded_at)}` : ''}.
+        </StatusBanner>
+      )}
+
+      {/* Fournisseurs consultés : une ligne par fournisseur, avec l'en-tête de son devis. */}
+      <section style={{ display: 'grid', gap: 12 }}>
+        <SectionHeader title="Fournisseurs consultés" note={`${quotes.length} devis reçu${quotes.length > 1 ? 's' : ''} sur ${suppliers.length}`} />
+        {suppliers.length === 0 ? <EmptyState icon={Inbox} title="Aucun fournisseur consulté" text="Modifiez la demande de prix pour en ajouter." /> : (
+          <DataPanel label="Fournisseurs consultés">
+            <table className="odoo-table">
+              <thead><tr>
+                <th>Fournisseur</th><th>Contact</th><th>Réponse</th><th>Reçu le</th><th>Référence du devis</th><th>Valable jusqu'au</th>
+                <th>Conditions de paiement</th><th className="ds-num">Total HT ({cs})</th><th className="ds-actions">Action</th>
+              </tr></thead>
+              <tbody>{suppliers.map(s => {
+                const q = quotes.find(x => x.supplier_id === s.supplier_id);
+                return (
+                  <tr key={s.id}>
+                    <td className="ds-strong">{s.supplier_name}</td>
+                    <td style={muted}>{[s.contact_name, s.phone, s.email].filter(Boolean).join(' · ') || '—'}</td>
+                    <td>
+                      {s.status === 'quoted' ? <StatusTag tone="done" label="Devis reçu" />
+                        : s.status === 'declined' ? <StatusTag tone="cancelled" label="A décliné" />
+                        : s.status === 'no_response' ? <StatusTag tone="blocked" label="Sans réponse" />
+                        : r.status === 'draft' ? <StatusTag tone="todo" label="À consulter" />
+                        : <StatusTag tone="progress" label="En attente" icon={Send} />}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{day(q?.received_at)}</td>
+                    <td>{q?.quotation_ref ? <span className="ds-ref">{q.quotation_ref}</span> : '—'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{day(q?.valid_until)}</td>
+                    <td>{q?.payment_terms || '—'}</td>
+                    <td className="ds-num">{q ? n2(q.total_ht) : '—'}</td>
+                    <td className="ds-actions">
+                      {open && <>
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setQuoting(s)}>{s.quotation_id ? 'Modifier le devis' : 'Saisir le devis'}</button>
+                        <RowMenu label={`Plus d'actions pour ${s.supplier_name}`} items={s.status !== 'quoted' ? [{
+                          label: s.status === 'declined' ? 'Rétablir' : 'A décliné', icon: s.status === 'declined' ? RotateCcw : Ban, disabled: supplierStatus.isPending,
+                          onSelect: () => supplierStatus.mutate({ supplierId: s.supplier_id, status: s.status === 'declined' ? 'invited' : 'declined' }),
+                        }] : []} />
+                      </>}
+                    </td>
                   </tr>
-                  {quotes.length > 0 && (
-                    <tr>
-                      {quotes.map(q => (
-                        <Fragment key={q.id}>
-                          <th className="ds-num" style={tint(q)}>Prix unitaire ({cs})</th>
-                          <th className="ds-num" style={tint(q)}>Total ({cs})</th>
-                        </Fragment>
-                      ))}
-                    </tr>
-                  )}
-                </thead>
-                <tbody>
-                  {items.map(it => (
-                    <tr key={it.id}>
-                      <td className="ds-strong">{it.label}</td>
-                      <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</td>
-                      <td className="ds-num" style={muted}>{it.last_price ? n4(it.last_price) : '—'}</td>
-                      {quotes.map(q => {
-                        const l = q.lines.find(x => x.rfq_item_id === it.id);
-                        const priced = !!l && l.available && l.unit_price != null;
-                        const best = r.best_by_item?.[it.id]?.quotationId === q.id;
-                        const qty = l?.quantity != null && l.quantity !== '' ? Number(l.quantity) : Number(it.quantity);
-                        return (
-                          <Fragment key={q.id}>
-                            <td className="ds-num" style={{ ...tint(q), ...(best ? { color: 'var(--ds-success)', fontWeight: 700 } : {}) }}>
-                              {priced ? n4(l!.unit_price) : <span style={muted}>—</span>}
-                              {l?.note && <div style={sub}>{l.note}</div>}
-                            </td>
-                            <td className="ds-num" style={tint(q)}>{priced ? n2(Number(l!.unit_price) * qty) : <span style={muted}>—</span>}</td>
-                          </Fragment>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-                {quotes.length > 0 && (
-                  <tfoot>
-                    <tr>
-                      <td colSpan={3} className="ds-strong">Total HT ({cs})<div style={sub}>remise et port compris</div></td>
-                      {quotes.map(q => (
-                        <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 700 }}>
-                          {n2(q.total_ht)}
-                          {q.total_foreign && <div style={sub}>{n2(q.total_foreign)} {String(q.currency_code).trim()}</div>}
-                          {!q.complete && <div style={{ ...sub, color: 'var(--ds-warning)', fontWeight: 600 }}>{q.covered} sur {items.length} lignes chiffrées</div>}
-                        </td>
-                      ))}
-                    </tr>
-                    <tr>
-                      <td colSpan={3} className="ds-strong">Délai</td>
-                      {quotes.map(q => <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }}>{q.delivery_days != null ? `Livré en ${q.delivery_days} j` : 'Délai non précisé'}</td>)}
-                    </tr>
-                    <tr>
-                      <td colSpan={3} className="ds-strong">Conditions<div style={sub}>validité · paiement · port · remise</div></td>
-                      {quotes.map(q => (
-                        <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }}>
-                          {[q.valid_until ? `valable jusqu'au ${day(q.valid_until)}` : null, q.payment_terms || null,
-                            Number(q.shipping_cost) > 0 ? `port ${n2(q.shipping_cost)}` : 'franco', Number(q.discount_pct) > 0 ? `remise ${q.discount_pct} %` : null].filter(Boolean).join(' · ')}
-                        </td>
-                      ))}
-                    </tr>
-                    {criteria.map(c => (
-                      <tr key={c.code}>
-                        <td colSpan={3} style={{ fontWeight: 400 }}>{c.label}<div style={sub}>critère · {Math.round(Number(c.weight) / totalWeight * 100)} % · {c.type === 'manual' ? 'noté à la main' : 'calculé'}</div></td>
-                        {quotes.map(q => {
-                          const v = q.scores?.[c.code];
-                          const unrated = c.type === 'manual' && q.criteria_scores?.[c.code] == null;
-                          return <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }} title={unrated ? 'non noté' : undefined}>{v ?? '—'}{unrated ? ' *' : ''}</td>;
-                        })}
-                      </tr>
-                    ))}
-                    <tr>
-                      <td colSpan={3} className="ds-strong">Note (sur 100)</td>
-                      {quotes.map(q => <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 700 }}>{q.score ?? '—'}</td>)}
-                    </tr>
-                    <tr>
-                      <td colSpan={3} className="ds-strong">Devis retenu</td>
-                      {quotes.map(q => (
-                        <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }}>
-                          {open ? (
-                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                              <input type="radio" name={`rfq-award-${r.id}`} checked={retainedId === q.id} onChange={() => setChosen(q.id)} /> Retenir ce devis
-                            </label>
-                          ) : q.id === retainedId ? <StatusTag tone="done" label="Retenu" icon={Trophy} /> : <span style={muted}>—</span>}
-                        </td>
-                      ))}
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </DataPanel>
-            {open && quotes.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-                <span style={{ ...muted, fontSize: 14 }}>
-                  {retained ? `Devis retenu : ${retained.supplier_name} · ${money(retained.total_ht)} HT` : 'Choisissez le devis à retenir dans le tableau.'}
-                </span>
-                <button type="button" className="odoo-btn-primary" disabled={!retained || award.isPending} aria-busy={award.isPending || undefined}
-                  onClick={async () => {
-                    const q = retained; if (!q) return;
-                    if (await confirm(`Retenir le devis de ${q.supplier_name} (note ${q.score ?? '—'}/100${q.id === r.recommended_quotation_id ? ', recommandé' : ''}) et créer le bon de commande (${money(q.total_ht)} HT) ?`)) award.mutate(q.id);
-                  }}>
-                  <Award size={14} aria-hidden="true" /> Attribuer et créer le bon de commande
-                </button>
-              </div>
-            )}
-          </section>
-        </div>
+                );
+              })}</tbody>
+            </table>
+          </DataPanel>
+        )}
+      </section>
 
-        {editing && <RfqFormModal rfq={r} onClose={() => setEditing(false)} />}
-        {quoting && <QuotationModal rfq={r} supplier={quoting} onClose={() => setQuoting(null)} />}
-      </div>
-    </ModalBackdrop>
+      {/* Tableau comparatif : une ligne par article, deux colonnes (prix unitaire, total) par devis ; notation (mig 459) en pied. */}
+      <section style={{ display: 'grid', gap: 12 }}>
+        <SectionHeader title="Tableau comparatif" note={quotes.length ? 'le meilleur prix de chaque ligne en vert' : 'aucun devis saisi'} />
+        <DataPanel label="Tableau comparatif">
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th rowSpan={quotes.length ? 2 : 1}>Article</th>
+                <th rowSpan={quotes.length ? 2 : 1} className="ds-num">Qté demandée</th>
+                <th rowSpan={quotes.length ? 2 : 1} className="ds-num">Dernier prix payé ({cs})</th>
+                {quotes.map(q => (
+                  <th key={q.id} colSpan={2} style={{ ...tint(q), textAlign: 'right' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <span className="ds-strong" style={{ fontSize: 14 }}>{q.supplier_name}</span>
+                      {q.status === 'selected' && <StatusTag tone="done" label="Retenu" icon={Trophy} />}
+                      {q.status !== 'selected' && q.id === r.recommended_quotation_id && <StatusTag tone="progress" label="Recommandé" icon={Award} />}
+                      {q.id === r.best_total_quotation_id && <StatusTag tone="done" label="Moins cher" />}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+              {quotes.length > 0 && (
+                <tr>
+                  {quotes.map(q => (
+                    <Fragment key={q.id}>
+                      <th className="ds-num" style={tint(q)}>Prix unitaire ({cs})</th>
+                      <th className="ds-num" style={tint(q)}>Total ({cs})</th>
+                    </Fragment>
+                  ))}
+                </tr>
+              )}
+            </thead>
+            <tbody>
+              {items.map(it => (
+                <tr key={it.id}>
+                  <td className="ds-strong">{it.label}</td>
+                  <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</td>
+                  <td className="ds-num" style={muted}>{it.last_price ? n4(it.last_price) : '—'}</td>
+                  {quotes.map(q => {
+                    const l = q.lines.find(x => x.rfq_item_id === it.id);
+                    const priced = !!l && l.available && l.unit_price != null;
+                    const best = r.best_by_item?.[it.id]?.quotationId === q.id;
+                    const qty = l?.quantity != null && l.quantity !== '' ? Number(l.quantity) : Number(it.quantity);
+                    return (
+                      <Fragment key={q.id}>
+                        <td className="ds-num" style={{ ...tint(q), ...(best ? { color: 'var(--ds-success)', fontWeight: 700 } : {}) }}>
+                          {priced ? n4(l!.unit_price) : <span style={muted}>—</span>}
+                          {l?.note && <div style={sub}>{l.note}</div>}
+                        </td>
+                        <td className="ds-num" style={tint(q)}>{priced ? n2(Number(l!.unit_price) * qty) : <span style={muted}>—</span>}</td>
+                      </Fragment>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+            {quotes.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td colSpan={3} className="ds-strong">Total HT ({cs})<div style={sub}>remise et port compris</div></td>
+                  {quotes.map(q => (
+                    <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 700 }}>
+                      {n2(q.total_ht)}
+                      {q.total_foreign && <div style={sub}>{n2(q.total_foreign)} {String(q.currency_code).trim()}</div>}
+                      {!q.complete && <div style={{ ...sub, color: 'var(--ds-warning)', fontWeight: 600 }}>{q.covered} sur {items.length} lignes chiffrées</div>}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <td colSpan={3} className="ds-strong">Délai</td>
+                  {quotes.map(q => <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }}>{q.delivery_days != null ? `Livré en ${q.delivery_days} j` : 'Délai non précisé'}</td>)}
+                </tr>
+                <tr>
+                  <td colSpan={3} className="ds-strong">Conditions<div style={sub}>validité · paiement · port · remise</div></td>
+                  {quotes.map(q => (
+                    <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }}>
+                      {[q.valid_until ? `valable jusqu'au ${day(q.valid_until)}` : null, q.payment_terms || null,
+                        Number(q.shipping_cost) > 0 ? `port ${n2(q.shipping_cost)}` : 'franco', Number(q.discount_pct) > 0 ? `remise ${q.discount_pct} %` : null].filter(Boolean).join(' · ')}
+                    </td>
+                  ))}
+                </tr>
+                {criteria.map(c => (
+                  <tr key={c.code}>
+                    <td colSpan={3} style={{ fontWeight: 400 }}>{c.label}<div style={sub}>critère · {Math.round(Number(c.weight) / totalWeight * 100)} % · {c.type === 'manual' ? 'noté à la main' : 'calculé'}</div></td>
+                    {quotes.map(q => {
+                      const v = q.scores?.[c.code];
+                      const unrated = c.type === 'manual' && q.criteria_scores?.[c.code] == null;
+                      return <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }} title={unrated ? 'non noté' : undefined}>{v ?? '—'}{unrated ? ' *' : ''}</td>;
+                    })}
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={3} className="ds-strong">Note (sur 100)</td>
+                  {quotes.map(q => <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 700 }}>{q.score ?? '—'}</td>)}
+                </tr>
+                <tr>
+                  <td colSpan={3} className="ds-strong">Devis retenu</td>
+                  {quotes.map(q => (
+                    <td key={q.id} colSpan={2} className="ds-num" style={{ ...tint(q), fontWeight: 400 }}>
+                      {open ? (
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                          <input type="radio" name={`rfq-award-${r.id}`} checked={retainedId === q.id} onChange={() => setChosen(q.id)} /> Retenir ce devis
+                        </label>
+                      ) : q.id === retainedId ? <StatusTag tone="done" label="Retenu" icon={Trophy} /> : <span style={muted}>—</span>}
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </DataPanel>
+        {canAward && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ ...muted, fontSize: 14 }}>
+              {retained ? `Devis retenu : ${retained.supplier_name} · ${money(retained.total_ht)} HT` : 'Choisissez le devis à retenir dans le tableau.'}
+            </span>
+            {awardButton}
+          </div>
+        )}
+      </section>
+
+      {editing && <RfqFormModal rfq={r} onClose={() => setEditing(false)} />}
+      {quoting && <QuotationModal rfq={r} supplier={quoting} onClose={() => setQuoting(null)} />}
+    </>
   );
 }
 
@@ -595,14 +617,8 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
   const set = (k: keyof typeof head, v: string) => setHead(h => ({ ...h, [k]: v }));
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Devis de {supplier.supplier_name}</span></div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
-        </div>
-        <div style={{ padding: '16px 24px', display: 'grid', gap: 20 }}>
+    <Modal title={`Devis de ${supplier.supplier_name}`} subtitle={`${rfq.number} · ${rfq.title}`} width={820} onClose={onClose} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} submitLabel="Enregistrer le devis" busy={save.isPending} disabled={!(rate > 0)} onSubmit={() => save.mutate()} />}>
           <FormSection title="Devis">
             <div className="ds-form-grid cols-4">
               <FormField label="Référence du devis" htmlFor="q-ref"><input id="q-ref" className="ds-input" value={head.quotationRef} onChange={e => set('quotationRef', e.target.value)} /></FormField>
@@ -639,8 +655,8 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
           </FormSection>
 
           <FormSection title="Prix par article">
-            <div style={{ overflowX: 'auto' }}>
-              <table className="odoo-table">
+            <DataPanel label="Prix par article">
+              <table className="odoo-table ds-dense">
                 <thead><tr><th>Article</th><th className="ds-num">Qté demandée</th><th style={{ width: 140 }}>Prix unitaire HT ({cur})</th><th style={{ width: 120 }}>Qté proposée</th><th>Remarque</th><th style={{ width: 80, textAlign: 'center' }}>Proposé</th></tr></thead>
                 <tbody>{items.map(it => { const l = lines[it.id]; const upd = (p: Partial<typeof l>) => setLines(s => ({ ...s, [it.id]: { ...s[it.id], ...p } }));
                   const { size, hasContainer, pack } = packOf(it);
@@ -662,15 +678,10 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
                   </tr>
                 ); })}</tbody>
               </table>
-            </div>
+            </DataPanel>
           </FormSection>
 
           <FormField label="Notes" htmlFor="q-notes"><textarea id="q-notes" className="ds-input" value={head.notes} onChange={e => set('notes', e.target.value)} /></FormField>
-        </div>
-        <div style={{ position: 'sticky', bottom: 0, background: 'var(--ds-card)' }}>
-          <FormFooter onCancel={onClose} submitLabel="Enregistrer le devis" busy={save.isPending} disabled={!(rate > 0)} onSubmit={() => save.mutate()} />
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }

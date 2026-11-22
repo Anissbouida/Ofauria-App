@@ -73,7 +73,7 @@ export default function NomenclaturePage() {
           {forbidden
             ? <EmptyState icon={Lock} title="Vous n'avez pas accès aux fiches techniques" text="La consultation des fiches est réservée à la production, au magasin et à la direction." action={back} />
             : error
-              ? <ErrorState title="La fiche n'a pas pu être chargée" onRetry={() => refetch()} />
+              ? <ErrorState error={error} title="La fiche n'a pas pu être chargée" onRetry={() => refetch()} />
               : <EmptyState icon={ChefHat} title={`${T.recipe} introuvable`} text="Elle a peut-être été archivée ou supprimée." action={back} />}
         </div>
       </div>

@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Building, Loader2 } from 'lucide-react';
+import { Plus, Building } from 'lucide-react';
 import { settingsApi, type LegalEntity } from '../../api/settings.api';
 import { useSettings } from '../../context/SettingsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { settingAnchor } from './SettingsPrimitives';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { DataPanel, FormField, FormFooter, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Entités juridiques (G6-03, mig 608) : chaque établissement appartient à une société
@@ -96,74 +98,62 @@ export default function CompanyLegalEntities() {
   }, [stores, storeFilter]);
   const activeEntities = entities.filter(e => e.is_active);
 
-  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
   const set = (k: keyof Draft, v: string | boolean) => setEditing(e => e && { ...e, draft: { ...e.draft, [k]: v } });
   const iceDigits = editing?.draft.ice.replace(/\s/g, '') ?? '';
 
   return (
     <div id={settingAnchor('Entités juridiques')} data-toc="Entités juridiques" className="odoo-scope" style={{ display: 'grid', gap: 10, scrollMarginTop: '1rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontWeight: 600 }}>Entités juridiques</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
-            Société qui émet les pièces de chaque établissement. L'entité par défaut reprend la fiche ci-dessus.
-          </div>
-        </div>
+      <SectionHeader title="Entités juridiques" note="Société qui émet les pièces de chaque établissement. L'entité par défaut reprend la fiche ci-dessus.">
         {!editing && available && (
           <button type="button" className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Plus size={13} /> Ajouter une entité
           </button>
         )}
-      </div>
+      </SectionHeader>
 
       {isError && <StatusBanner tone="warning" icon={Building} title="Entités juridiques indisponibles">La migration 608 n'est pas appliquée sur cette base.</StatusBanner>}
-      {isLoading ? <Loader2 className="animate-spin" size={16} /> : entities.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
+      {isLoading ? <LoadingState /> : entities.length > 0 && (
+        <DataPanel label="Entités juridiques">
           <table className="odoo-table">
-            <thead><tr><th>Code</th><th>Raison sociale</th><th>ICE</th><th>Ville</th><th>Devise</th><th>Établissements</th><th>Statut</th><th style={{ width: 120 }}></th></tr></thead>
+            <thead><tr><th>Code</th><th>Raison sociale</th><th>ICE</th><th>Ville</th><th>Devise</th><th className="ds-num">Établissements</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
               {entities.map(e => (
                 <tr key={e.id} style={{ opacity: e.is_active ? 1 : 0.6 }}>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>{e.code}</td>
-                  <td>{e.legal_name} {e.is_default && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>Par défaut</span>}</td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>{e.ice ?? '—'}</td>
+                  <td className="ds-ref">{e.code}</td>
+                  <td className="ds-strong">{e.legal_name} {e.is_default && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>Par défaut</span>}</td>
+                  <td className="ds-ref">{e.ice ?? '—'}</td>
                   <td>{e.city ?? '—'}</td>
                   <td>{e.currency_code}</td>
-                  <td>{e.store_count}</td>
+                  <td className="ds-num">{e.store_count}</td>
                   <td><StatusTag tone={e.is_active ? 'done' : 'cancelled'} label={e.is_active ? 'Active' : 'Désactivée'} /></td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
+                  <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
                     {e.is_default
                       ? <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>Fiche ci-dessus</span>
-                      : <>
-                        <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(e)} aria-label={`Modifier ${e.legal_name}`}><Pencil size={13} /></button>
+                      : <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => open(e)} aria-label={`Modifier ${e.legal_name}`}>Modifier</button>
                         {e.is_active && (
-                          <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', marginLeft: 4 }} disabled={makeDefault.isPending}
-                            onClick={() => makeDefault.mutate(e.id)} title="Les pièces sans établissement et la fiche société reprendront cette entité">
-                            Par défaut
-                          </button>
+                          <RowMenu label={`Actions sur ${e.legal_name}`} items={[{ label: 'Définir par défaut', disabled: makeDefault.isPending, onSelect: () => makeDefault.mutate(e.id) }]} />
                         )}
-                      </>}
+                      </span>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {editing && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg-alt)' }}>
+        <section className="ds-panel" style={{ padding: 16, display: 'grid', gap: 12 }} aria-label={editing.id ? "Modifier l'entité" : 'Nouvelle entité'}>
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
             {TEXT_FIELDS.map(([k, label, max, placeholder]) => (
-              <label key={k} style={lab}>{label}
-                <input id={`entity-${k}`} style={field} maxLength={max} placeholder={placeholder}
+              <FormField key={k} label={label} htmlFor={`entity-${k}`} required={k === 'code' || k === 'legalName'}
+                hint={k === 'code' ? '2 à 12 lettres majuscules ou chiffres' : undefined}
+                error={k === 'ice' && iceDigits && !/^\d{15}$/.test(iceDigits) ? `${iceDigits.length}/15 chiffres : l'ICE compte 15 chiffres` : undefined}>
+                <input id={`entity-${k}`} className="ds-input" maxLength={max} placeholder={placeholder}
                   value={editing.draft[k] as string}
                   onChange={ev => set(k, k === 'code' || k === 'currencyCode' || k === 'countryCode' ? ev.target.value.toUpperCase() : ev.target.value)} />
-                {k === 'ice' && iceDigits && !/^\d{15}$/.test(iceDigits) && (
-                  <span style={{ fontSize: '0.75rem', color: 'var(--odoo-danger, #b3261e)' }}>{iceDigits.length}/15 chiffres</span>
-                )}
-              </label>
+              </FormField>
             ))}
           </div>
           {editing.id && (
@@ -171,37 +161,31 @@ export default function CompanyLegalEntities() {
               <input id="entity-isActive" type="checkbox" checked={editing.draft.isActive} onChange={ev => set('isActive', ev.target.checked)} /> Entité active
             </label>
           )}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
-            <button type="button" className="odoo-btn-primary"
-              disabled={save.isPending || !/^[A-Z0-9]{2,12}$/.test(editing.draft.code) || !editing.draft.legalName.trim() || (!!iceDigits && !/^\d{15}$/.test(iceDigits))}
-              onClick={() => save.mutate()}>
-              {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
-          </div>
-        </div>
+          <FormFooter onCancel={() => setEditing(null)} busy={save.isPending}
+            disabled={!/^[A-Z0-9]{2,12}$/.test(editing.draft.code) || !editing.draft.legalName.trim() || (!!iceDigits && !/^\d{15}$/.test(iceDigits))}
+            onSubmit={() => save.mutate()} />
+        </section>
       )}
 
       {available && entities.length > 1 && (
         <div style={{ display: 'grid', gap: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Rattachement des établissements</div>
+          <SectionHeader title="Rattachement des établissements">
             {stores.length > 8 && (
-              <input aria-label="Rechercher un établissement" style={{ ...field, width: 220 }} placeholder="Rechercher un établissement"
+              <input type="search" aria-label="Rechercher un établissement" className="ds-input sm" style={{ width: 220 }} placeholder="Rechercher un établissement"
                 value={storeFilter} onChange={ev => setStoreFilter(ev.target.value)} />
             )}
-          </div>
-          <div style={{ overflowX: 'auto' }}>
+          </SectionHeader>
+          <DataPanel label="Rattachement des établissements">
             <table className="odoo-table">
               <thead><tr><th>Établissement</th><th>Code</th><th>Statut</th><th style={{ width: 280 }}>Entité juridique</th></tr></thead>
               <tbody>
                 {shownStores.map(s => (
                   <tr key={s.id} style={{ opacity: s.is_active ? 1 : 0.6 }}>
-                    <td>{s.name}</td>
-                    <td>{s.code ?? '—'}</td>
+                    <td className="ds-strong">{s.name}</td>
+                    <td className="ds-ref">{s.code ?? '—'}</td>
                     <td><StatusTag tone={s.is_active ? 'done' : 'cancelled'} label={s.is_active ? 'Ouvert' : 'Fermé'} /></td>
                     <td>
-                      <select aria-label={`Entité de ${s.name}`} style={{ ...field, width: '100%' }} value={s.legal_entity_id}
+                      <select aria-label={`Entité de ${s.name}`} className="ds-input sm" value={s.legal_entity_id}
                         disabled={assign.isPending}
                         onChange={ev => assign.mutate({ storeId: s.id, entityId: ev.target.value })}>
                         {entities.filter(e => e.is_active || e.id === s.legal_entity_id).map(e => (
@@ -213,7 +197,7 @@ export default function CompanyLegalEntities() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
           {stores.length > shownStores.length && (
             <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
               {shownStores.length} établissements affichés sur {stores.length} : précisez la recherche.

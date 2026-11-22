@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Globe, Lock } from 'lucide-react';
+import { Globe, Lock } from 'lucide-react';
 import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type CountryPackParameter } from '../../api/settings.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { money } from '../../utils/money';
+import { DataPanel, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Pack pays (G6-06, mig 606) en lecture seule : pays de la société, paramètres légaux en
@@ -45,7 +46,7 @@ function formatValue(key: string, value: unknown): string {
 
 export default function CountryPackTab() {
   const { data, isLoading } = useQuery({ queryKey: ['country-pack'], queryFn: settingsApi.countryPack });
-  if (isLoading) return <Loader2 className="animate-spin" size={16} />;
+  if (isLoading) return <LoadingState />;
   if (!data) return null;
   const s = data.payrollScale;
   const scaleRows: [string, string][] = s ? [
@@ -74,14 +75,14 @@ export default function CountryPackTab() {
 
       {groups.map(([cat, list]) => (
         <section key={cat} style={{ display: 'grid', gap: 6 }}>
-          <h3 style={{ margin: 0, fontSize: '0.9375rem' }}>{CATEGORY_LABELS[cat]}</h3>
-          <div style={{ overflowX: 'auto' }}>
+          <SectionHeader title={<>{CATEGORY_LABELS[cat]}</>} />
+          <DataPanel>
             <table className="odoo-table">
               <thead><tr><th>Paramètre</th><th>Valeur en vigueur</th><th>Depuis</th><th>Référence</th></tr></thead>
               <tbody>
                 {list.map(p => (
                   <tr key={p.key}>
-                    <td>{p.label}</td>
+                    <td className="ds-strong">{p.label}</td>
                     <td>
                       {formatValue(p.key, p.value)}
                       {p.upcoming.map(u => (
@@ -96,37 +97,38 @@ export default function CountryPackTab() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
         </section>
       ))}
 
       {s && (
         <section style={{ display: 'grid', gap: 6 }}>
-          <h3 style={{ margin: 0, fontSize: '0.9375rem' }}>Cotisations sociales et IR — barème {String(s.label ?? '')} (depuis le {d(String(s.effective_from ?? ''))})</h3>
-          <div style={{ overflowX: 'auto' }}>
+          <SectionHeader title={<>Cotisations sociales et IR — barème {String(s.label ?? '')} (depuis le {d(String(s.effective_from ?? ''))})</>} />
+          <DataPanel>
             <table className="odoo-table">
-              <tbody>{scaleRows.map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody>
+              <thead><tr><th>Élément</th><th>Valeur</th></tr></thead>
+              <tbody>{scaleRows.map(([k, v]) => <tr key={k}><td className="ds-strong">{k}</td><td>{v}</td></tr>)}</tbody>
             </table>
-          </div>
+          </DataPanel>
           <PageNote>Le barème daté (CNSS, AMO, IR, SMIG) se tient dans Personnel › Paramètres de paie.</PageNote>
         </section>
       )}
 
       {data.taxCodes.length > 0 && (
         <section style={{ display: 'grid', gap: 6 }}>
-          <h3 style={{ margin: 0, fontSize: '0.9375rem' }}>Codes de TVA en vigueur</h3>
-          <div style={{ overflowX: 'auto' }}>
+          <SectionHeader title={<>Codes de TVA en vigueur</>} />
+          <DataPanel>
             <table className="odoo-table">
-              <thead><tr><th>Code</th><th>Libellé</th><th>Taux</th></tr></thead>
-              <tbody>{data.taxCodes.map(t => <tr key={t.id}><td>{t.code}</td><td>{t.label}</td><td>{Number(t.rate)} %</td></tr>)}</tbody>
+              <thead><tr><th>Code</th><th>Libellé</th><th className="ds-num">Taux (%)</th></tr></thead>
+              <tbody>{data.taxCodes.map(t => <tr key={t.id}><td className="ds-ref">{t.code}</td><td>{t.label}</td><td className="ds-num">{Number(t.rate)}</td></tr>)}</tbody>
             </table>
-          </div>
+          </DataPanel>
         </section>
       )}
 
       {data.pack && data.pack.declarativeFormats.length > 0 && (
         <section style={{ display: 'grid', gap: 6 }}>
-          <h3 style={{ margin: 0, fontSize: '0.9375rem' }}>Formats déclaratifs du pays</h3>
+          <SectionHeader title={<>Formats déclaratifs du pays</>} />
           <PageNote>Ces fichiers suivent le format de l'administration du pays ({data.pack.name}) : ils ne sont pas produits pour une société d'un autre pays.</PageNote>
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.875rem' }}>
             {data.pack.declarativeFormats.map(f => <li key={f}>{FORMAT_LABELS[f] ?? f}</li>)}

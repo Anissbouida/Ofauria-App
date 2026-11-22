@@ -159,7 +159,7 @@ export default function SettingsSearch({ open, onClose, pages, onSelect }: {
   let idx = -1;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[80] flex justify-center p-4" style={{ background: 'rgba(0,0,0,0.35)' }}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[80] flex justify-center p-4 ds-scrim">
       <div className="odoo-scope odoo-cmdk" role="dialog" aria-modal="true" aria-label="Rechercher un réglage" onKeyDown={onKeyDown}>
         <div className="odoo-cmdk-input-row">
           <Search size={16} />

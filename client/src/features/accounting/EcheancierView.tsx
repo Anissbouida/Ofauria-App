@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, type CashOverride } from '../../components/purchasing/PaymentModeFields';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
-  X, Coins, Plus, CalendarClock, Pencil, Repeat, Trash2, Power, Building2,
+  Coins, Plus, CalendarClock, Pencil, Repeat, Trash2, Power, Building2,
 } from 'lucide-react';
 import {
   paymentSchedulesApi, debtsApi, recurringChargesApi,
@@ -15,8 +15,7 @@ import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { money, currencySymbol } from '../../utils/money';
-import { KpiCard, KpiGrid, LoadingState, Toolbar, EmptyState, SectionHeader, DataPanel } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { KpiCard, KpiGrid, LoadingState, ErrorState, Toolbar, EmptyState, SectionHeader, DataPanel, HeaderActions, Modal, FormSection, FormField, FormFooter, Alert } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
@@ -116,7 +115,7 @@ export default function EcheancierView() {
   const [showDebtForm, setShowDebtForm] = useState(false);
   const [showRecurring, setShowRecurring] = useState(false);
 
-  const { data: echeances = [], isLoading } = useQuery({
+  const { data: echeances = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['payment-schedules', showAll],
     queryFn: () => paymentSchedulesApi.list({ status: showAll ? 'all' : 'open' }) as Promise<Echeance[]>,
   });
@@ -189,15 +188,15 @@ export default function EcheancierView() {
       </KpiGrid>
 
       {/* ─── Barre d'actions ─── */}
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={() => setShowDebtForm(true)} className="odoo-btn-primary">
           <Plus size={13} aria-hidden="true" /> Dette à crédit
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
       <Toolbar>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
+        <label htmlFor="ech-show-all" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+          <input id="ech-show-all" type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
           Afficher aussi les échéances réglées
         </label>
         <span className="ds-grow" />
@@ -211,6 +210,8 @@ export default function EcheancierView() {
       {/* ─── Calendrier ─── */}
       {isLoading ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : groupes.length === 0 ? (
         <EmptyState icon={CalendarClock} title="Aucune échéance à venir"
           text="Créez une dette à crédit pour du matériel acheté en plusieurs fois, ou une charge fixe pour que le loyer et l'électricité apparaissent chaque mois." />
@@ -254,7 +255,7 @@ export default function EcheancierView() {
                           </span>
                         )}
                         {e.category_name && (
-                          <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{e.category_name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--ds-muted)' }}>{e.category_name}</div>
                         )}
                       </td>
                       <td>
@@ -289,6 +290,13 @@ export default function EcheancierView() {
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={6} className="ds-strong">Reste du mois{g.indefinis > 0 ? ` (${g.indefinis} à chiffrer)` : ''}</td>
+                  <td className="ds-num ds-strong">{n(g.total)}</td>
+                  <td />
+                </tr>
+              </tfoot>
             </table>
             </DataPanel>
           </div>
@@ -343,108 +351,89 @@ function PayEcheanceModal({ echeance, pending, onClose, onSubmit }: {
   const modeDef = byCode(method);
   const legacy = modeDef?.legacy_method ?? method;
 
+  const formRef = useRef<HTMLFormElement>(null);
+  const isEffect = legacy === 'check' || legacy === 'traite';
+
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 448, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-              <div className="odoo-control-bar">
-                <div className="odoo-breadcrumb">
-                  <Coins size={14} style={{ color: 'var(--theme-accent)' }} />
-                  <span className="odoo-breadcrumb-current">Régler une échéance</span>
-                <span className="odoo-breadcrumb-separator">›</span>
-                <span>{echeance.label} · {fmtDate(echeance.due_date)}</span>
-                </div>
-                <div style={{ flex: 1 }} />
-                <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-              </div>
-        <form onSubmit={ev => {
-          ev.preventDefault();
-          const fd = Object.fromEntries(new FormData(ev.currentTarget)) as Record<string, string>;
-          const montant = parseFloat(amount);
-          if (!Number.isFinite(montant) || montant <= 0) { notify.error('Montant invalide'); return; }
-          if (montant > reste + 0.01) {
-            notify.error(`Le montant dépasse le reste à payer (${money(reste)})`); return;
-          }
-          const payload: Record<string, unknown> = {
-            scheduledPaymentId: echeance.id,
-            // Une echeance de facture reste un reglement de facture : on passe
-            // invoiceId pour que paid_amount/statut de la facture suivent aussi.
-            ...(echeance.invoice_id
-              ? { invoiceId: echeance.invoice_id, type: 'invoice' }
-              : { type: 'expense' }),
-            categoryId: echeance.category_id || undefined,
-            supplierId: echeance.supplier_id || undefined,
-            amount: montant,
-            paymentMode: method,
-            paymentMethod: legacy,
-            paymentDate: fd.paymentDate,
-            reference: fd.reference || undefined,
-            description: fd.description || echeance.label,
-          };
-          if (override) payload.cashOverride = override;
-          if (legacy === 'check' || legacy === 'traite') {
-            payload.checkNumber = fd.checkNumber || undefined;
-            payload.checkDate = fd.checkDate || undefined;
-          }
-          onSubmit(payload);
-        }} className="p-5 space-y-4">
-          <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 flex justify-between">
+    <Modal title={<><Coins size={16} aria-hidden="true" style={{ color: 'var(--theme-accent)', verticalAlign: '-2px' }} /> Régler une échéance</>}
+      subtitle={`${echeance.label} · ${fmtDate(echeance.due_date)}`} onClose={onClose} width={480} locked={pending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => formRef.current?.requestSubmit()} busy={pending} submitLabel={pending ? 'Enregistrement...' : 'Enregistrer'} />}>
+      <form ref={formRef} onSubmit={ev => {
+        ev.preventDefault();
+        const fd = Object.fromEntries(new FormData(ev.currentTarget)) as Record<string, string>;
+        const montant = parseFloat(amount);
+        if (!Number.isFinite(montant) || montant <= 0) { notify.error('Montant invalide'); return; }
+        if (montant > reste + 0.01) {
+          notify.error(`Le montant dépasse le reste à payer (${money(reste)})`); return;
+        }
+        const payload: Record<string, unknown> = {
+          scheduledPaymentId: echeance.id,
+          // Une echeance de facture reste un reglement de facture : on passe
+          // invoiceId pour que paid_amount/statut de la facture suivent aussi.
+          ...(echeance.invoice_id
+            ? { invoiceId: echeance.invoice_id, type: 'invoice' }
+            : { type: 'expense' }),
+          categoryId: echeance.category_id || undefined,
+          supplierId: echeance.supplier_id || undefined,
+          amount: montant,
+          paymentMode: method,
+          paymentMethod: legacy,
+          paymentDate: fd.paymentDate,
+          reference: fd.reference || undefined,
+          description: fd.description || echeance.label,
+        };
+        if (override) payload.cashOverride = override;
+        if (legacy === 'check' || legacy === 'traite') {
+          payload.checkNumber = fd.checkNumber || undefined;
+          payload.checkDate = fd.checkDate || undefined;
+        }
+        onSubmit(payload);
+      }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <Alert tone="info">
+          <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
             <span>Reste à payer sur cette échéance</span>
-            <strong style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--ds-danger)' }}>{money(reste)}</strong>
+            <strong className="ds-num" style={{ color: 'var(--ds-danger)' }}>{money(reste)}</strong>
+          </span>
+        </Alert>
+        <FormSection title="Règlement">
+          <div className="ds-form-grid">
+            <FormField label={`Montant (${currencySymbol()})`} htmlFor="pay-amount" required>
+              <input id="pay-amount" className="ds-input" type="number" step="0.01" min="0" max={reste} value={amount}
+                onChange={e => setAmount(e.target.value)} required />
+            </FormField>
+            <FormField label="Date" htmlFor="pay-date" required>
+              <input id="pay-date" className="ds-input" name="paymentDate" type="date" value={payDate} onChange={e => setPayDate(e.target.value)} required />
+            </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant *</label>
-              <input type="number" step="0.01" min="0" max={reste} value={amount}
-                onChange={e => setAmount(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-              <input name="paymentDate" type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" required />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de règlement</label>
+          <FormField label="Mode de règlement">
             <PaymentModeSelect value={method} onChange={setMethod} />
-          </div>
-          {modeDef?.requires_reference && legacy !== 'check' && legacy !== 'traite' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Référence du virement *</label>
-              <input name="reference" required placeholder="N° d'ordre ou référence bancaire"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
-            </div>
+          </FormField>
+          {modeDef?.requires_reference && !isEffect && (
+            <FormField label="Référence du virement" htmlFor="pay-ref" required>
+              <input id="pay-ref" className="ds-input" name="reference" required placeholder="N° d'ordre ou référence bancaire" />
+            </FormField>
           )}
           <CashLimitGauge supplierId={echeance.supplier_id} date={payDate} amount={parseFloat(amount) || 0}
             modeCode={method} override={override} onOverrideChange={setOverride} />
-          {(legacy === 'check' || legacy === 'traite') && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">N° {legacy === 'traite' ? 'traite' : 'chèque'}</label>
-                <input name="checkNumber" type="text" required
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Date {legacy === 'traite' ? 'traite' : 'chèque'}</label>
-                <input name="checkDate" type="date"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
-              </div>
+        </FormSection>
+        {isEffect && (
+          <FormSection title={legacy === 'traite' ? 'Traite' : 'Chèque'}>
+            <div className="ds-form-grid">
+              <FormField label={`N° ${legacy === 'traite' ? 'traite' : 'chèque'}`} htmlFor="pay-check-no" required>
+                <input id="pay-check-no" className="ds-input" name="checkNumber" type="text" required />
+              </FormField>
+              <FormField label={`Date ${legacy === 'traite' ? 'traite' : 'chèque'}`} htmlFor="pay-check-date">
+                <input id="pay-check-date" className="ds-input" name="checkDate" type="date" />
+              </FormField>
             </div>
-          )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-            <input name="description" type="text" defaultValue={echeance.label}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" style={{ flex: 1 }}>Annuler</button>
-            <button type="submit" disabled={pending} className="odoo-btn-primary" style={{ flex: 1 }}>
-              {pending ? 'Enregistrement...' : 'Enregistrer'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          </FormSection>
+        )}
+        <FormField label="Description" htmlFor="pay-desc">
+          <input id="pay-desc" className="ds-input" name="description" type="text" defaultValue={echeance.label} />
+        </FormField>
+        <button type="submit" className="ds-sr-only" tabIndex={-1} aria-hidden="true" />
+      </form>
+    </Modal>
   );
 }
 
@@ -459,55 +448,37 @@ function EditEcheanceModal({ echeance, pending, onClose, onSubmit }: {
   const [amount, setAmount] = useState(echeance.amount_due ? parseFloat(echeance.amount_due).toFixed(2) : '');
   const [dueDate, setDueDate] = useState(String(echeance.due_date).slice(0, 10));
 
+  const formRef = useRef<HTMLFormElement>(null);
+
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" aria-label="Modifier l'échéance"
-        style={{ width: '100%', maxWidth: 448, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <span className="odoo-breadcrumb-current">Modifier l'échéance</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span>{echeance.label}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+    <Modal title="Modifier l'échéance" subtitle={echeance.label} onClose={onClose} width={480} locked={pending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => formRef.current?.requestSubmit()} busy={pending} submitLabel={pending ? 'Enregistrement...' : 'Enregistrer'} />}>
+      <form ref={formRef} onSubmit={ev => {
+        ev.preventDefault();
+        const montant = amount.trim() === '' ? null : parseFloat(amount);
+        if (montant !== null && (!Number.isFinite(montant) || montant <= 0)) {
+          notify.error('Montant invalide'); return;
+        }
+        onSubmit({ amountDue: montant, dueDate });
+      }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {echeance.amount_pending && (
+          <Alert tone="warning">
+            Cette échéance vient d'une charge à montant variable. Saisissez le montant
+            de la facture reçue pour pouvoir enregistrer le règlement.
+          </Alert>
+        )}
+        <div className="ds-form-grid">
+          <FormField label={`Montant dû (${currencySymbol()})`} htmlFor="ech-amount">
+            <input id="ech-amount" className="ds-input" type="number" step="0.01" min="0" value={amount}
+              onChange={e => setAmount(e.target.value)} placeholder="À chiffrer" />
+          </FormField>
+          <FormField label="Date d'échéance" htmlFor="ech-date" required>
+            <input id="ech-date" className="ds-input" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
+          </FormField>
         </div>
-        <form onSubmit={ev => {
-          ev.preventDefault();
-          const montant = amount.trim() === '' ? null : parseFloat(amount);
-          if (montant !== null && (!Number.isFinite(montant) || montant <= 0)) {
-            notify.error('Montant invalide'); return;
-          }
-          onSubmit({ amountDue: montant, dueDate });
-        }} className="p-5 space-y-4">
-          {echeance.amount_pending && (
-            <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-              Cette échéance vient d'une charge à montant variable. Saisissez le montant
-              de la facture reçue pour pouvoir enregistrer le règlement.
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant dû ({currencySymbol()})</label>
-              <input type="number" step="0.01" min="0" value={amount}
-                onChange={e => setAmount(e.target.value)} placeholder="À chiffrer"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Date d'échéance</label>
-              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" required />
-            </div>
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" style={{ flex: 1 }}>Annuler</button>
-            <button type="submit" disabled={pending} className="odoo-btn-primary" style={{ flex: 1 }}>
-              {pending ? 'Enregistrement...' : 'Enregistrer'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <button type="submit" className="ds-sr-only" tabIndex={-1} aria-hidden="true" />
+      </form>
+    </Modal>
   );
 }
 
@@ -540,107 +511,84 @@ function DebtFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const montant = parseFloat(total) || 0;
   const mensualite = nbEch > 0 ? Math.floor((montant / nbEch) * 100) / 100 : 0;
 
+  const formRef = useRef<HTMLFormElement>(null);
+
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
-              <div className="odoo-control-bar">
-                <div className="odoo-breadcrumb">
-                  <Building2 size={14} style={{ color: 'var(--theme-accent)' }} />
-                  <span className="odoo-breadcrumb-current">Dette à crédit</span>
-                <span className="odoo-breadcrumb-separator">›</span>
-                <span>Matériel ou équipement acheté en plusieurs fois</span>
-                </div>
-                <div style={{ flex: 1 }} />
-                <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-              </div>
-        <form onSubmit={ev => {
-          ev.preventDefault();
-          if (!label.trim()) { notify.error('Libellé requis'); return; }
-          if (montant <= 0) { notify.error('Montant total invalide'); return; }
-          create.mutate({
-            label: label.trim(),
-            totalAmount: montant,
-            installments: nbEch,
-            firstDueDate,
-            intervalMonths: Math.max(1, Math.floor(parseFloat(intervalMonths) || 1)),
-            supplierId: supplierId || null,
-            categoryId: categoryId || null,
-            expectedPaymentMode: mode || null,
-          });
-        }} className="p-5 space-y-4">
-          <div className="rounded-xl bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-800">
-            À utiliser quand la facture n'est <strong>pas</strong> saisie dans le système.
-            Si elle existe déjà, échelonnez-la directement depuis <strong>Achats → Factures reçues</strong>
-            pour éviter de compter la dette deux fois.
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Libellé *</label>
-            <input type="text" value={label} onChange={e => setLabel(e.target.value)}
-              placeholder="Ex : Four rotatif 10 plaques"
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur</label>
+    <Modal title={<><Building2 size={16} aria-hidden="true" style={{ color: 'var(--theme-accent)', verticalAlign: '-2px' }} /> Dette à crédit</>}
+      subtitle="Matériel ou équipement acheté en plusieurs fois" onClose={onClose} width={560} locked={create.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => formRef.current?.requestSubmit()} busy={create.isPending} submitLabel={create.isPending ? 'Création...' : 'Créer la dette'} />}>
+      <form ref={formRef} onSubmit={ev => {
+        ev.preventDefault();
+        if (!label.trim()) { notify.error('Libellé requis'); return; }
+        if (montant <= 0) { notify.error('Montant total invalide'); return; }
+        create.mutate({
+          label: label.trim(),
+          totalAmount: montant,
+          installments: nbEch,
+          firstDueDate,
+          intervalMonths: Math.max(1, Math.floor(parseFloat(intervalMonths) || 1)),
+          supplierId: supplierId || null,
+          categoryId: categoryId || null,
+          expectedPaymentMode: mode || null,
+        });
+      }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <Alert tone="info">
+          À utiliser quand la facture n'est <strong>pas</strong> saisie dans le système.
+          Si elle existe déjà, échelonnez-la directement depuis <strong>Achats → Factures reçues</strong>
+          pour éviter de compter la dette deux fois.
+        </Alert>
+        <FormSection title="Dette">
+          <FormField label="Libellé" htmlFor="debt-label" required>
+            <input id="debt-label" className="ds-input" type="text" value={label} onChange={e => setLabel(e.target.value)}
+              placeholder="Ex : Four rotatif 10 plaques" required />
+          </FormField>
+          <FormField label="Fournisseur">
             <SearchSelect
               options={suppliers.map(s => ({ id: s.id, label: s.name }))}
               value={supplierId} onChange={setSupplierId}
-              placeholder="Aucun fournisseur" width="100%" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Catégorie de charge</label>
+              placeholder="Aucun fournisseur" width="100%" size="md" ariaLabel="Fournisseur" />
+          </FormField>
+          <FormField label="Catégorie de charge">
             <CategoryCascadeSelector value={categoryId} onChange={setCategoryId} type="expense" />
+          </FormField>
+        </FormSection>
+        <FormSection title="Échéancier">
+          <div className="ds-form-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+            <FormField label={`Montant total (${currencySymbol()})`} htmlFor="debt-total" required>
+              <input id="debt-total" className="ds-input" type="number" step="0.01" min="0" value={total} onChange={e => setTotal(e.target.value)} required />
+            </FormField>
+            <FormField label="Nb échéances" htmlFor="debt-n" required>
+              <input id="debt-n" className="ds-input" type="number" min="1" max="120" value={installments}
+                onChange={e => setInstallments(e.target.value)} required />
+            </FormField>
+            <FormField label="Tous les (mois)" htmlFor="debt-interval">
+              <input id="debt-interval" className="ds-input" type="number" min="1" max="12" value={intervalMonths}
+                onChange={e => setIntervalMonths(e.target.value)} />
+            </FormField>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant total *</label>
-              <input type="number" step="0.01" min="0" value={total} onChange={e => setTotal(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Nb échéances *</label>
-              <input type="number" min="1" max="120" value={installments}
-                onChange={e => setInstallments(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Tous les (mois)</label>
-              <input type="number" min="1" max="12" value={intervalMonths}
-                onChange={e => setIntervalMonths(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">1ère échéance *</label>
-              <input type="date" value={firstDueDate} onChange={e => setFirstDueDate(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Règlement prévu</label>
-              <select value={mode} onChange={e => setMode(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-400">
+          <div className="ds-form-grid">
+            <FormField label="1ère échéance" htmlFor="debt-first" required>
+              <input id="debt-first" className="ds-input" type="date" value={firstDueDate} onChange={e => setFirstDueDate(e.target.value)} required />
+            </FormField>
+            <FormField label="Règlement prévu" htmlFor="debt-mode">
+              <select id="debt-mode" className="ds-input" value={mode} onChange={e => setMode(e.target.value)}>
                 <option value="">Non précisé</option>
                 {(paymentMethods as Array<{ code: string; label: string }>).map(m => (
                   <option key={m.code} value={m.code}>{m.label}</option>
                 ))}
               </select>
-            </div>
+            </FormField>
           </div>
           {montant > 0 && nbEch > 1 && (
-            <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-              {nbEch} échéances d'environ <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{money(mensualite)}</strong>,
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)' }}>
+              {nbEch} échéances d'environ <strong className="ds-num" style={{ color: 'var(--ds-ink)' }}>{money(mensualite)}</strong>,
               la dernière ajustée pour tomber juste sur {money(montant)}.
-            </div>
+            </p>
           )}
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" style={{ flex: 1 }}>Annuler</button>
-            <button type="submit" disabled={create.isPending} className="odoo-btn-primary" style={{ flex: 1 }}>
-              {create.isPending ? 'Création...' : 'Créer la dette'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </FormSection>
+        <button type="submit" className="ds-sr-only" tabIndex={-1} aria-hidden="true" />
+      </form>
+    </Modal>
   );
 }
 
@@ -658,7 +606,7 @@ function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; on
   const [creating, setCreating] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
 
-  const { data: charges = [], isLoading } = useQuery({
+  const { data: charges = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['recurring-charges', showInactive],
     queryFn: () => recurringChargesApi.list(showInactive) as Promise<RecurringCharge[]>,
   });
@@ -682,24 +630,23 @@ function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; on
   });
 
   return (
-    <div className="odoo-section ds-panel">
-      <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span><Repeat size={13} style={{ display: 'inline', marginRight: 6 }} />Charges fixes récurrentes</span>
-        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-          <label style={{ fontSize: '0.75rem', fontWeight: 400, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-            <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
-            Inactives
-          </label>
-          <button onClick={() => setCreating(true)} className="odoo-btn-primary" style={{ padding: '3px 10px', fontSize: '0.6875rem' }}>
-            <Plus size={11} /> Ajouter
-          </button>
-          <button onClick={onClose} className="odoo-btn-secondary"
-            style={{ padding: '3px 8px', fontSize: '0.6875rem' }}>Fermer</button>
-        </span>
-      </div>
+    <div>
+      <SectionHeader title={<><Repeat size={14} aria-hidden="true" /> Charges fixes récurrentes</>}>
+        <label htmlFor="rc-inactive" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input id="rc-inactive" type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+          Inactives
+        </label>
+        <button type="button" onClick={() => setCreating(true)} className="odoo-btn-primary ds-btn-sm">
+          <Plus size={13} aria-hidden="true" /> Ajouter
+        </button>
+        <button type="button" onClick={onClose} className="odoo-btn-secondary ds-btn-sm">Fermer</button>
+      </SectionHeader>
 
+      <DataPanel label="Charges fixes récurrentes">
       {isLoading ? (
-        <LoadingState />
+        <LoadingState bare />
+      ) : isError ? (
+        <ErrorState bare error={error} onRetry={() => refetch()} />
       ) : charges.length === 0 ? (
         <EmptyState bare icon={Repeat} title="Aucune charge fixe" text="Ajoutez le loyer, l'électricité ou l'eau : leurs échéances apparaîtront ensuite d'elles-mêmes dans l'échéancier." />
       ) : (
@@ -709,7 +656,7 @@ function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; on
               <th>Charge</th>
               <th>Catégorie</th>
               <th>Périodicité</th>
-              <th className="ds-num">Montant</th>
+              <th className="ds-num">Montant ({currencySymbol()})</th>
               <th>Prochaine échéance</th>
               <th className="ds-actions" style={{ width: 90 }}><span className="ds-sr-only">Actions</span></th>
             </tr>
@@ -729,7 +676,7 @@ function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; on
                   <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>le {c.due_day} du mois</div>
                 </td>
                 <td className="ds-num">
-                  {c.amount ? `${money(parseFloat(c.amount))}` : <StatusTag tone="todo" label="Variable" />}
+                  {c.amount ? n(parseFloat(c.amount)) : <StatusTag tone="todo" label="Variable" />}
                 </td>
                 <td>
                   {fmtDate(c.next_due_date)}
@@ -751,6 +698,7 @@ function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; on
           </tbody>
         </table>
       )}
+      </DataPanel>
 
       {(creating || editing) && (
         <RecurringChargeForm
@@ -794,125 +742,98 @@ function RecurringChargeForm({ charge, onClose, onSaved }: {
     onError: (err: unknown) => notify.error(apiMessage(err) || 'Erreur lors de l\'enregistrement'),
   });
 
+  const formRef = useRef<HTMLFormElement>(null);
+
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
-              <div className="odoo-control-bar">
-                <div className="odoo-breadcrumb">
-                  <Repeat size={14} style={{ color: 'var(--theme-accent)' }} />
-                  <span className="odoo-breadcrumb-current">{charge ? 'Modifier la charge fixe' : 'Nouvelle charge fixe'}</span>
-                <span className="odoo-breadcrumb-separator">›</span>
-                <span>Loyer, électricité, eau, internet...</span>
-                </div>
-                <div style={{ flex: 1 }} />
-                <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-              </div>
-        <form onSubmit={ev => {
-          ev.preventDefault();
-          if (!label.trim()) { notify.error('Libellé requis'); return; }
-          if (!categoryId) { notify.error('Catégorie requise'); return; }
-          const montant = variable ? null : parseFloat(amount);
-          if (!variable && (!Number.isFinite(montant as number) || (montant as number) <= 0)) {
-            notify.error('Montant invalide'); return;
-          }
-          save.mutate({
-            label: label.trim(),
-            categoryId,
-            supplierId: supplierId || null,
-            amount: montant,
-            intervalMonths: Math.max(1, Math.floor(parseFloat(intervalMonths) || 1)),
-            dueDay: Math.min(31, Math.max(1, Math.floor(parseFloat(dueDay) || 1))),
-            startDate,
-            endDate: endDate || null,
-            expectedPaymentMode: mode || null,
-          });
-        }} className="p-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Libellé *</label>
-            <input type="text" value={label} onChange={e => setLabel(e.target.value)}
-              placeholder="Ex : Loyer local commercial"
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Catégorie *</label>
+    <Modal title={<><Repeat size={16} aria-hidden="true" style={{ color: 'var(--theme-accent)', verticalAlign: '-2px' }} /> {charge ? 'Modifier la charge fixe' : 'Nouvelle charge fixe'}</>}
+      subtitle="Loyer, électricité, eau, internet..." onClose={onClose} width={560} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => formRef.current?.requestSubmit()} busy={save.isPending} submitLabel={save.isPending ? 'Enregistrement...' : 'Enregistrer'} />}>
+      <form ref={formRef} onSubmit={ev => {
+        ev.preventDefault();
+        if (!label.trim()) { notify.error('Libellé requis'); return; }
+        if (!categoryId) { notify.error('Catégorie requise'); return; }
+        const montant = variable ? null : parseFloat(amount);
+        if (!variable && (!Number.isFinite(montant as number) || (montant as number) <= 0)) {
+          notify.error('Montant invalide'); return;
+        }
+        save.mutate({
+          label: label.trim(),
+          categoryId,
+          supplierId: supplierId || null,
+          amount: montant,
+          intervalMonths: Math.max(1, Math.floor(parseFloat(intervalMonths) || 1)),
+          dueDay: Math.min(31, Math.max(1, Math.floor(parseFloat(dueDay) || 1))),
+          startDate,
+          endDate: endDate || null,
+          expectedPaymentMode: mode || null,
+        });
+      }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <FormSection title="Charge">
+          <FormField label="Libellé" htmlFor="rcf-label" required>
+            <input id="rcf-label" className="ds-input" type="text" value={label} onChange={e => setLabel(e.target.value)}
+              placeholder="Ex : Loyer local commercial" required />
+          </FormField>
+          <FormField label="Catégorie" required>
             <CategoryCascadeSelector value={categoryId} onChange={setCategoryId} type="expense" required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur / bailleur</label>
+          </FormField>
+          <FormField label="Fournisseur / bailleur">
             <SearchSelect
               options={suppliers.map(s => ({ id: s.id, label: s.name }))}
               value={supplierId} onChange={setSupplierId}
-              placeholder="Aucun" width="100%" />
-          </div>
-          <div className="rounded-xl border border-gray-200 p-3 space-y-3">
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-              <input type="checkbox" checked={variable} onChange={e => setVariable(e.target.checked)} />
-              Montant variable (facture à recevoir)
-            </label>
-            {variable ? (
-              <p className="text-xs text-gray-500">
-                L'échéance sera créée sans montant. Vous le saisirez à réception de la facture —
-                c'est le fonctionnement typique de l'électricité et de l'eau.
-              </p>
-            ) : (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant ({currencySymbol()}) *</label>
-                <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Périodicité</label>
-              <select value={intervalMonths} onChange={e => setIntervalMonths(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+              placeholder="Aucun" width="100%" size="md" ariaLabel="Fournisseur / bailleur" />
+          </FormField>
+        </FormSection>
+        <FormSection title="Montant">
+          <label htmlFor="rcf-variable" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+            <input id="rcf-variable" type="checkbox" checked={variable} onChange={e => setVariable(e.target.checked)} />
+            Montant variable (facture à recevoir)
+          </label>
+          {variable ? (
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--ds-muted)' }}>
+              L'échéance sera créée sans montant. Vous le saisirez à réception de la facture —
+              c'est le fonctionnement typique de l'électricité et de l'eau.
+            </p>
+          ) : (
+            <FormField label={`Montant (${currencySymbol()})`} htmlFor="rcf-amount" required>
+              <input id="rcf-amount" className="ds-input" type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} />
+            </FormField>
+          )}
+        </FormSection>
+        <FormSection title="Calendrier">
+          <div className="ds-form-grid">
+            <FormField label="Périodicité" htmlFor="rcf-interval">
+              <select id="rcf-interval" className="ds-input" value={intervalMonths} onChange={e => setIntervalMonths(e.target.value)}>
                 {PERIODICITES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Jour d'échéance</label>
-              <input type="number" min="1" max="31" value={dueDay} onChange={e => setDueDay(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-            </div>
+            </FormField>
+            <FormField label="Jour d'échéance" htmlFor="rcf-day">
+              <input id="rcf-day" className="ds-input" type="number" min="1" max="31" value={dueDay} onChange={e => setDueDay(e.target.value)} />
+            </FormField>
+            <FormField label="À partir du" htmlFor="rcf-start" required>
+              <input id="rcf-start" className="ds-input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+            </FormField>
+            <FormField label="Jusqu'au (fin de bail)" htmlFor="rcf-end">
+              <input id="rcf-end" className="ds-input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">À partir du *</label>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Jusqu'au (fin de bail)</label>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Règlement prévu</label>
-            <select value={mode} onChange={e => setMode(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          <FormField label="Règlement prévu" htmlFor="rcf-mode">
+            <select id="rcf-mode" className="ds-input" value={mode} onChange={e => setMode(e.target.value)}>
               <option value="">Non précisé</option>
               {(paymentMethods as Array<{ code: string; label: string }>).map(m => (
                 <option key={m.code} value={m.code}>{m.label}</option>
               ))}
             </select>
-          </div>
-          {charge && (
-            <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-              Les échéances déjà réglées ne bougent pas. Seules les échéances futures
-              non réglées seront regénérées avec ces nouveaux paramètres.
-            </div>
-          )}
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" style={{ flex: 1 }}>Annuler</button>
-            <button type="submit" disabled={save.isPending} className="odoo-btn-primary" style={{ flex: 1 }}>
-              {save.isPending ? 'Enregistrement...' : 'Enregistrer'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          </FormField>
+        </FormSection>
+        {charge && (
+          <Alert tone="warning">
+            Les échéances déjà réglées ne bougent pas. Seules les échéances futures
+            non réglées seront regénérées avec ces nouveaux paramètres.
+          </Alert>
+        )}
+        <button type="submit" className="ds-sr-only" tabIndex={-1} aria-hidden="true" />
+      </form>
+    </Modal>
   );
 }
 

@@ -11,7 +11,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SalesPageShell from '../sales/SalesPageShell';
-import { DataPanel, EmptyState, ErrorState, LoadingState, SectionHeader, Segmented, TableFooter, Toolbar } from '../../components/ds';
+import { DataPanel, EmptyState, ErrorState, HeaderActions, HeaderSlotContext, LoadingState, SectionHeader, Segmented, TableFooter, Toolbar } from '../../components/ds';
 import MrpPhasedView from './MrpPhasedView';
 import MasterScheduleView from './MasterScheduleView';
 import { useAuth } from '../../context/AuthContext';
@@ -34,17 +34,22 @@ export default function MrpPage() {
   const { user } = useAuth();
   const canPlan = !!user && ['admin', 'manager'].includes(user.role);
   const [date, setDate] = useState(tomorrow());
+  // Emplacement des actions de la vue (Générer les plans, Valider) à droite du fil d'Ariane.
+  const [headerSlot, setHeaderSlot] = useState<HTMLSpanElement | null>(null);
 
   return (
     <SalesPageShell icon={ClipboardList} parent="Production › Opérations" title="Plan directeur"
       summary="Combien produire de chaque article : prévision et commandes fermes, moins le stock disponible et le déjà planifié."
-      actions={
+      actions={<>
         <Segmented label="Vue" value={mode} onChange={setMode}
           options={[{ key: 'day', label: 'Jour' }, { key: 'week', label: 'Semaine' }, { key: 'phased', label: 'Besoins phasés' }, { key: 'mps', label: 'Plan par semaine' }]} />
-      }>
+        <span ref={setHeaderSlot} style={{ display: 'contents' }} />
+      </>}>
+      <HeaderSlotContext.Provider value={headerSlot}>
 
       {mode === 'day' ? <DayView date={date} setDate={setDate} /> : mode === 'week' ? <WeekView from={date} setFrom={setDate} />
         : mode === 'phased' ? <MrpPhasedView from={new Date().toLocaleDateString('sv-SE')} /> : <MasterScheduleView canEdit={canPlan} />}
+      </HeaderSlotContext.Provider>
     </SalesPageShell>
   );
 }
@@ -99,14 +104,15 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
         <input type="date" className="ds-input" aria-label="Jour à planifier" value={date} onChange={e => setDate(e.target.value)} style={dateInp} />
         <button type="button" className="ds-icon-btn" aria-label="Jour suivant" onClick={() => setDate(addDays(date, 1))}><ChevronRight size={16} aria-hidden="true" /></button>
         {date !== tomorrow() && <button type="button" className="odoo-btn-secondary" onClick={() => setDate(tomorrow())}>Demain</button>}
-        <span className="ds-grow" />
+      </Toolbar>
+      <HeaderActions>
         <button type="button" className="odoo-btn-primary" disabled={toProduce === 0 || generate.isPending} aria-busy={generate.isPending || undefined}
           onClick={async () => { if (await confirm(`Créer les plans de production du ${date} pour les ${toProduce} article(s) à produire ? Un plan par atelier, chaque article sur son format par défaut.`, { title: 'Générer les plans' })) generate.mutate(); }}>
           {generate.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Factory size={14} aria-hidden="true" />} Générer les plans
         </button>
-      </Toolbar>
+      </HeaderActions>
 
-      {isLoading ? <LoadingState /> : isError ? <ErrorState text={apiErrorMessage(error)} onRetry={() => refetch()} />
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} text={apiErrorMessage(error)} onRetry={() => refetch()} />
         : rows.length === 0 ? <EmptyState icon={ClipboardList} title="Rien à planifier" text="Aucune demande ni plan pour cette date." /> : (
       <DataPanel label="Besoins nets du jour" footer={<TableFooter note={`${rows.length} article(s) · ${toProduce} à produire`} />}>
         <table className="odoo-table">
@@ -231,7 +237,7 @@ function WeekView({ from, setFrom }: { from: string; setFrom: (d: string) => voi
         <span style={note}>Du {dayLabel(from)} au {dayLabel(to)}</span>
       </Toolbar>
 
-      {isLoading ? <LoadingState /> : isError ? <ErrorState text={apiErrorMessage(error)} onRetry={() => refetch()} />
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} text={apiErrorMessage(error)} onRetry={() => refetch()} />
         : rows.length === 0 ? <EmptyState icon={ClipboardList} title="Rien à planifier" text="Aucune demande ni plan sur la semaine." /> : (
       <DataPanel label="Besoins nets de la semaine" footer={<TableFooter note={`${rows.length} article(s)`} />}>
         <table className="odoo-table">

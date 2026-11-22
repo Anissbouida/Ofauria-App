@@ -13,7 +13,8 @@ import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../ui/InlineNotification';
-import { Plus, Trash2, Search, Phone, User, Users, Check, UserCircle, ClipboardList, X, ChevronLeft, ChevronRight, Building2, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Search, Phone, User, Users, Check, UserCircle, Building2, AlertTriangle } from 'lucide-react';
+import { Modal, FormField, FormFooter, FormSection, LoadingState } from '../ds';
 
 /* ─── Step indicators ─── */
 const STEPS = [
@@ -390,41 +391,58 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   if (isEdit && !detailLoaded) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center z-50" style={{ background: 'rgba(0,0,0,0.45)' }}>
-        <div className="odoo-scope text-center" style={{ padding: '2rem', borderRadius: 6, border: '1px solid var(--odoo-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.18)' }}>
-          <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin mx-auto mb-3" style={{ borderColor: 'var(--theme-accent)', borderTopColor: 'transparent' }} />
-          <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Chargement de la commande...</p>
-        </div>
-      </div>
+      <Modal title="Modifier la commande" subtitle={order?.order_number as string | undefined} onClose={onClose} width={420}>
+        <LoadingState label="Chargement de la commande…" bare />
+      </Modal>
     );
   }
 
-  return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 sm:p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="odoo-scope w-full h-full flex flex-col sm:max-h-full"
-        style={{ maxWidth: 1100, border: '1px solid var(--odoo-border)', borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)' }}>
-        {/* Header */}
-        <div className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.875rem 1.25rem', background: 'var(--ds-card)', color: 'var(--ds-ink)', borderBottom: '1px solid var(--ds-hair)' }}>
-          <ClipboardList size={18} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ fontWeight: 700, fontSize: '0.9375rem', margin: 0 }}>
-              {isEdit ? 'Modifier la commande' : 'Nouvelle commande'}
-            </h2>
-            {isEdit && order?.order_number && (
-              <div style={{ fontSize: '0.75rem', opacity: 0.85, fontFamily: 'ui-monospace, monospace' }}>{order.order_number as string}</div>
-            )}
-          </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
-        </div>
+  // Dates de commande et de retrait (communes aux trois types de client).
+  const datesFields = (
+    <FormSection title="Dates">
+      <div className="ds-form-grid">
+        <FormField label="Date de commande" htmlFor="ofm-order-date" required>
+          <input id="ofm-order-date" type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
+            disabled={isEdit} className="ds-input" required />
+        </FormField>
+        <FormField label="Date de retrait" htmlFor="ofm-pickup-date" required
+          hint={isEdit ? 'Pour changer la date, utilisez « Reporter » sur la commande' : undefined}>
+          <input id="ofm-pickup-date" type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
+            disabled={isEdit} title={isEdit ? 'Pour changer la date, utilisez « Reporter » sur la commande' : undefined}
+            className="ds-input" required />
+        </FormField>
+      </div>
+    </FormSection>
+  );
 
+  return (
+    <Modal
+      title={isEdit ? 'Modifier la commande' : 'Nouvelle commande'}
+      subtitle={isEdit && order?.order_number ? <span className="ds-ref">{order.order_number as string}</span> : undefined}
+      onClose={onClose}
+      width={1100}
+      locked={saving}
+      footer={
+        <FormFooter
+          cancelLabel={step === 1 ? 'Annuler' : 'Retour'}
+          onCancel={step === 1 ? onClose : () => setStep(step - 1)}
+          submitLabel={step < 3 ? 'Suivant' : saving ? 'Enregistrement...' : isEdit ? 'Enregistrer les modifications' : 'Confirmer la commande'}
+          onSubmit={step < 3 ? handleNext : handleSubmit}
+          disabled={step === 1 ? !canNextStep1 : step === 2 ? !canNextStep2 : false}
+          busy={step === 3 && saving}
+        >
+          <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Étape {step} / {STEPS.length} · {STEPS[step - 1]?.label}</span>
+        </FormFooter>
+      }
+    >
         {/* Step indicator */}
-        <StepIndicator current={step} />
+        <div style={{ margin: '-20px -20px 0' }}><StepIndicator current={step} /></div>
 
         {/* Step content */}
-        <div className="flex-1 overflow-y-auto">
+        <div>
           {/* ── STEP 1: Client ── */}
           {step === 1 && (
-            <div className="p-5 space-y-5">
+            <div className="space-y-5">
               {/* Mode selector: 3 cards (Client / Passager / Personnel) */}
               {!clientMode && type !== 'staff' && (
                 <div className="space-y-4">
@@ -504,7 +522,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input type="text" autoFocus value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
                       placeholder="Rechercher par nom ou telephone..."
-                      className="input text-base py-3 w-full pl-10" />
+                      className="ds-input" style={{ paddingLeft: 36 }} />
                   </div>
 
                   {/* Customer list */}
@@ -552,20 +570,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       );
                     })}
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de commande *</label>
-                      <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
-                        disabled={isEdit}
-                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
-                      <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                        disabled={isEdit} title={isEdit ? 'Pour changer la date, utilisez « Reporter » sur la commande' : undefined}
-                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
-                    </div>
-                  </div>
+                  {datesFields}
                 </div>
               )}
 
@@ -583,35 +588,21 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nom du client *</label>
-                    <input type="text" autoFocus value={customerName} onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Nom complet du client"
-                      className="input text-base py-3 w-full" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Numero de telephone</label>
-                    <div className="relative">
-                      <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
-                        placeholder="06 XX XX XX XX"
-                        className="input text-base py-3 w-full pl-10" />
+                  <FormSection title="Client">
+                    <div className="ds-form-grid">
+                      <FormField label="Nom du client" htmlFor="ofm-walkin-name" required>
+                        <input id="ofm-walkin-name" type="text" autoFocus value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+                          placeholder="Nom complet du client"
+                          className="ds-input" />
+                      </FormField>
+                      <FormField label="Numéro de téléphone" htmlFor="ofm-walkin-phone">
+                        <input id="ofm-walkin-phone" type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
+                          placeholder="06 XX XX XX XX"
+                          className="ds-input" />
+                      </FormField>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de commande *</label>
-                      <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
-                        disabled={isEdit}
-                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
-                      <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                        disabled={isEdit} title={isEdit ? 'Pour changer la date, utilisez « Reporter » sur la commande' : undefined}
-                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
-                    </div>
-                  </div>
+                  </FormSection>
+                  {datesFields}
                 </div>
               )}
 
@@ -632,28 +623,14 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     </div>
                   </div>
 
-                  {/* Dates : commande + retrait */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de commande *</label>
-                      <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)}
-                        disabled={isEdit}
-                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
-                      <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                        disabled={isEdit} title={isEdit ? 'Pour changer la date, utilisez « Reporter » sur la commande' : undefined}
-                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
-                    </div>
-                  </div>
+                  {datesFields}
 
                   {/* Employee search */}
                   <div className="relative">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input type="text" autoFocus value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)}
                       placeholder="Rechercher un employe..."
-                      className="input text-base py-3 w-full pl-10" />
+                      className="ds-input" style={{ paddingLeft: 36 }} />
                   </div>
 
                   {/* Employee list */}
@@ -699,7 +676,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
           {/* ── STEP 2: Products (grid with category sidebar) ── */}
           {step === 2 && (
-            <div className="flex h-full">
+            <div className="flex" style={{ height: 'min(64vh, 640px)', margin: '-20px -20px -20px' }}>
               {/* Category sidebar (left) */}
               <div className="w-40 shrink-0 border-r bg-gray-50 overflow-y-auto py-3 px-2 flex flex-col gap-1.5">
                 <button type="button" onClick={() => setProductCatFilter('')}
@@ -726,7 +703,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)}
                       placeholder="Rechercher un produit..."
-                      className="input text-base py-2.5 w-full pl-10" />
+                      className="ds-input" style={{ paddingLeft: 36 }} />
                   </div>
                 </div>
 
@@ -847,7 +824,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
           {/* ── STEP 3: Payment ── */}
           {step === 3 && (
-            <div className="p-5 space-y-5">
+            <div className="space-y-5">
               {/* Order summary */}
               <div className="bg-gray-50 rounded-xl p-4">
                 <h3 className="text-sm font-semibold text-gray-500 mb-3">Recapitulatif</h3>
@@ -918,10 +895,12 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       ? 'Prix modifié par rapport à la grille : la dérogation est tracée avec son motif.'
                       : 'Prix modifié par rapport à la grille : seule la direction peut déroger au prix.'}</p>
                   {isDirection && (
-                    <input type="text" value={priceOverrideReason} maxLength={300}
-                      onChange={(e) => setPriceOverrideReason(e.target.value)}
-                      placeholder="Motif de la dérogation (ex. geste commercial, prix négocié)"
-                      className="input py-2 w-full text-sm bg-white" />
+                    <FormField label="Motif de la dérogation" htmlFor="ofm-override-reason">
+                      <input id="ofm-override-reason" type="text" value={priceOverrideReason} maxLength={300}
+                        onChange={(e) => setPriceOverrideReason(e.target.value)}
+                        placeholder="Motif de la dérogation (ex. geste commercial, prix négocié)"
+                        className="ds-input" />
+                    </FormField>
                   )}
                 </div>
               )}
@@ -945,49 +924,46 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                         pour un plafond de {money(situation.creditLimit!)}{situation.overdue > 0 ? ` (dont ${money(situation.overdue)} en retard)` : ''}.</span>
                     </div>
                   )}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Remise sur la commande (%)</label>
-                    <div className="relative">
-                      <input type="number" min="0" max="100" step="0.5" value={discountPct}
+                  <FormSection title="Remise">
+                    <FormField label="Remise sur la commande (%)" htmlFor="ofm-discount-pro"
+                      hint={effectiveDiscount > 0 ? `Soit ${money(effectiveDiscount)} HT, en plus de la remise client déjà dans les prix.` : undefined}>
+                      <input id="ofm-discount-pro" type="number" min="0" max="100" step="0.5" value={discountPct}
                         onChange={(e) => setDiscountPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                        className="input py-3 w-full text-base pr-10" />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
-                    </div>
-                    {effectiveDiscount > 0 && <p className="text-xs text-gray-500 mt-1">Soit {money(effectiveDiscount)} HT, en plus de la remise client déjà dans les prix.</p>}
-                  </div>
+                        className="ds-input" />
+                    </FormField>
+                  </FormSection>
                 </>
               ) : (
                 <>
                   {/* Particulier : avance facultative, non remboursable, solde intégral au retrait */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Remise (%)</label>
-                      {type === 'staff' ? (
-                        <div className="input py-3 w-full text-base bg-purple-50 border-purple-200 text-purple-700 font-semibold flex items-center justify-between">
+                  <FormSection title="Règlement">
+                  <div className="ds-form-grid">
+                    {type === 'staff' ? (
+                      <div className="ds-field">
+                        <span className="ds-field-label">Remise (%)</span>
+                        <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 600 }}>
                           <span>{effectiveDiscount.toFixed(2)}</span>
                           <span className="text-xs font-medium bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">{staffDiscountPercent}%</span>
                         </div>
-                      ) : (
-<div className="relative">
-                          <input type="number" min="0" max="100" step="0.5" value={discountPct}
-                            onChange={(e) => setDiscountPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                            className="input py-3 w-full text-base pr-10" />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Avance ({currencySymbol()}) — facultative</label>
-                      <input type="number" min="0" step="0.01" value={advanceAmount} disabled={isEdit}
+                      </div>
+                    ) : (
+                      <FormField label="Remise (%)" htmlFor="ofm-discount">
+                        <input id="ofm-discount" type="number" min="0" max="100" step="0.5" value={discountPct}
+                          onChange={(e) => setDiscountPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                          className="ds-input" />
+                      </FormField>
+                    )}
+                    <FormField label={`Avance (${currencySymbol()}) — facultative`} htmlFor="ofm-advance">
+                      <input id="ofm-advance" type="number" min="0" step="0.01" value={advanceAmount} disabled={isEdit}
                         title={isEdit ? 'L\'avance a été encaissée à la prise de commande' : undefined}
                         onChange={(e) => setAdvanceAmount(parseFloat(e.target.value) || 0)}
-                        className="input py-3 w-full text-base disabled:bg-gray-50 disabled:text-gray-400" />
-                    </div>
+                        className="ds-input" />
+                    </FormField>
                   </div>
 
                   {advanceAmount > 0 && !isEdit && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement de l'avance</label>
+                    <div className="ds-field" role="group" aria-labelledby="ofm-advance-method">
+                      <span id="ofm-advance-method" className="ds-field-label">Mode de paiement de l'avance</span>
                       <div className="grid grid-cols-3 gap-2">
                         {paymentMethods.filter(pm => pm.code !== 'deferred').map((pm) => (
                           <button key={pm.code} type="button" onClick={() => setPaymentMethod(pm.code)}
@@ -1006,15 +982,15 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     L'avance est encaissée maintenant et n'est pas remboursable. Le reste se règle en totalité au retrait ;
                     un report est possible si le client prévient au moins 24 h avant.
                   </p>
+                  </FormSection>
                 </>
               )}
 
               {/* Notes */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optionnel)</label>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
-                  className="input py-2.5 w-full text-base" rows={2} placeholder="Instructions speciales..." />
-              </div>
+              <FormField label="Notes (optionnel)" htmlFor="ofm-notes">
+                <textarea id="ofm-notes" value={notes} onChange={(e) => setNotes(e.target.value)}
+                  className="ds-input" rows={2} placeholder="Instructions speciales..." />
+              </FormField>
 
               {/* Total summary */}
               <div className="bg-primary-50 rounded-xl p-4 space-y-2">
@@ -1062,32 +1038,6 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
           )}
         </div>
 
-        {/* Footer navigation */}
-        <div className="shrink-0" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginRight: 'auto' }}>
-            Étape {step} / {STEPS.length} · {STEPS[step - 1]?.label}
-          </span>
-          {step === 1 ? (
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          ) : (
-            <button type="button" onClick={() => setStep(step - 1)} className="odoo-btn-secondary">
-              <ChevronLeft size={13} /> Retour
-            </button>
-          )}
-          {step < 3 ? (
-            <button type="button" onClick={handleNext}
-              disabled={step === 1 ? !canNextStep1 : !canNextStep2}
-              className="odoo-btn-primary">
-              Suivant <ChevronRight size={13} />
-            </button>
-          ) : (
-            <button type="button" onClick={handleSubmit} disabled={saving}
-              className="odoo-btn-primary">
-              <Check size={13} /> {saving ? 'Enregistrement...' : isEdit ? 'Enregistrer les modifications' : 'Confirmer la commande'}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

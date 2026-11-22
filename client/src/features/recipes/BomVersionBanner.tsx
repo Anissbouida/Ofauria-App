@@ -7,6 +7,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { money } from '../../utils/money';
+import { DataPanel } from '../../components/ds';
 
 /**
  * Version de nomenclature (M4-01) : version active et sa date d'effet, modifications de
@@ -21,12 +22,12 @@ const fr = (d: string | null) => (d ? new Date(`${d}T12:00`).toLocaleDateString(
 function DiffTable({ rows }: { rows: Diff[] }) {
   if (!rows.length) return <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Aucune différence.</div>;
   return (
-    <table className="odoo-table" style={{ fontSize: '0.8125rem' }}>
+    <DataPanel><table className="odoo-table ds-dense">
       <thead><tr><th>Partie</th><th>Ligne</th><th>Avant</th><th>Après</th><th>Changement</th></tr></thead>
       <tbody>{rows.map((r, i) => (
         <tr key={i}><td>{r.section}</td><td>{r.name}</td><td>{r.before ?? '—'}</td><td>{r.after ?? '—'}</td><td>{CHANGE[r.change]}</td></tr>
       ))}</tbody>
-    </table>
+    </table></DataPanel>
   );
 }
 
@@ -78,7 +79,7 @@ export default function BomVersionBanner({ recipeId }: { recipeId: string }) {
 
       {showList && (
         <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 10, display: 'grid', gap: 8 }}>
-          <table className="odoo-table" style={{ fontSize: '0.8125rem' }}>
+          <DataPanel><table className="odoo-table ds-dense">
             <thead><tr><th>Version</th><th>Statut</th><th>Valide du</th><th>au</th><th>Motif</th><th className="ds-num">Coût unitaire</th><th /></tr></thead>
             <tbody>{data.versions.map(v => (
               <tr key={v.id}>
@@ -89,7 +90,7 @@ export default function BomVersionBanner({ recipeId }: { recipeId: string }) {
                 <td>{v.version_no > 1 && <button type="button" className="odoo-btn-secondary" onClick={() => setCmp({ a: v.version_no - 1, b: v.version_no })}>Comparer à {v.version_no - 1}</button>}</td>
               </tr>
             ))}</tbody>
-          </table>
+          </table></DataPanel>
           {cmp && <><strong style={{ fontSize: '0.8125rem' }}>Version {cmp.a} → {cmp.b}</strong>{diff ? <DiffTable rows={diff} /> : <Loader2 size={14} className="animate-spin" />}</>}
         </div>
       )}

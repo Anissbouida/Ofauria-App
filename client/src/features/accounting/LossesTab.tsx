@@ -8,14 +8,12 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, X, Search, Loader2, Flame, Package, Clock, Trash2, TrendingDown, Factory, ShoppingBag, Recycle, Download, Camera, CalendarRange,
+  Plus, X, Search, Flame, Package, Clock, Trash2, TrendingDown, Factory, ShoppingBag, Recycle, Download, Camera,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StagePipeline, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 import { money, currencySymbol } from '../../utils/money';
-import { AccHeaderActions } from './AccHeaderActions';
-import { DataPanel, TableFooter, Toolbar, SearchBar, LoadingState, EmptyState, NoResultState } from '../../components/ds';
+import { DataPanel, TableFooter, Toolbar, SearchBar, LoadingState, EmptyState, ErrorState, NoResultState, HeaderActions, MonthYearField, Modal, FormSection, FormField, FormFooter } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
@@ -80,7 +78,7 @@ export default function LossesTab() {
 
   const { LOSS_TYPE_CONFIG, REASON_LABELS, REASONS_BY_TYPE } = useLossReferentials();
 
-  const { data: losses = [], isLoading } = useQuery({
+  const { data: losses = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['product-losses', month, year, typeFilter],
     queryFn: () => {
       const params: Record<string, string> = { month: String(month), year: String(year) };
@@ -159,14 +157,14 @@ export default function LossesTab() {
   return (
     <>
       {/* Search panel : period + actions */}
-      <AccHeaderActions>
-        <button onClick={handleExport} className="odoo-btn-secondary">
+      <HeaderActions>
+        <button type="button" onClick={handleExport} className="odoo-btn-secondary">
           <Download size={13} /> Exporter
         </button>
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
+        <button type="button" onClick={() => setShowForm(true)} className="odoo-btn-primary">
           <Plus size={14} /> Déclarer une perte
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
       {/* Répartition par type : une carte par type (clic = filtre) */}
       <StagePipeline
@@ -186,19 +184,14 @@ export default function LossesTab() {
 
       <Toolbar>
         <SearchBar value={search} onChange={setSearch} placeholder="Rechercher un produit, une note, un déclarant…" label="Rechercher une perte" />
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ds-muted)' }}>
-          <CalendarRange size={14} aria-hidden="true" /> Mois
-          <select value={month} onChange={e => setMonth(parseInt(e.target.value, 10))} className="ds-input sm" style={{ width: 'auto' }} aria-label="Mois">
-            {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-          </select>
-          <input type="number" value={year} onChange={e => setYear(+e.target.value)} aria-label="Année"
-            className="ds-input sm" style={{ width: 90 }} />
-        </label>
+        <MonthYearField month={month} year={year} onMonth={setMonth} onYear={setYear} />
       </Toolbar>
 
       {/* Losses table */}
       {isLoading ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : lossList.length === 0 ? (
         search || typeFilter !== 'all'
           ? <NoResultState text="Aucune perte ne correspond aux filtres." onReset={() => { setSearch(''); setTypeFilter('all'); }} />
@@ -285,23 +278,11 @@ export default function LossesTab() {
 
       {/* Photo viewer overlay */}
       {viewPhoto && (
-        <ModalBackdrop onClose={() => setViewPhoto(null)} className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50">
-              <div>
-                <h3 className="font-bold text-gray-900">{viewPhoto.productName}</h3>
-                <p className="text-xs text-gray-500">Photo prise le {viewPhoto.date}</p>
-              </div>
-              <button onClick={() => setViewPhoto(null)} className="p-2 hover:bg-gray-200 rounded-lg text-gray-400" aria-label="Fermer">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="flex-1 flex items-center justify-center p-4 bg-gray-100">
-              <img src={viewPhoto.url} alt={`Photo de ${viewPhoto.productName}`}
-                className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg" />
-            </div>
+        <Modal title={viewPhoto.productName} subtitle={`Photo prise le ${viewPhoto.date}`} onClose={() => setViewPhoto(null)} width={720}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--ds-bg)', borderRadius: 8, padding: 16 }}>
+            <img src={viewPhoto.url} alt={`Photo de ${viewPhoto.productName}`} style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 8 }} />
           </div>
-        </ModalBackdrop>
+        </Modal>
       )}
 
       {/* Add loss modal */}
@@ -376,12 +357,14 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
     onError: () => notify.error('Erreur lors de la declaration'),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!productId) { notify.error('Selectionnez un produit'); return; }
-    if (!lossType) { notify.error('Selectionnez un type de perte'); return; }
-    if (!reason) { notify.error('Selectionnez un motif'); return; }
-    if (!quantity || parseFloat(quantity) <= 0) { notify.error('La quantite doit etre superieure a 0'); return; }
+  // Mêmes contrôles qu'avant, dans le même ordre ; le message s'affiche sous le champ concerné.
+  const [errors, setErrors] = useState<Partial<Record<'product' | 'type' | 'reason' | 'quantity', string>>>({});
+  const handleSubmit = () => {
+    if (!productId) { setErrors({ product: 'Sélectionnez un produit.' }); return; }
+    if (!lossType) { setErrors({ type: 'Sélectionnez un type de perte.' }); return; }
+    if (!reason) { setErrors({ reason: 'Sélectionnez un motif.' }); return; }
+    if (!quantity || parseFloat(quantity) <= 0) { setErrors({ quantity: 'La quantité doit être supérieure à 0.' }); return; }
+    setErrors({});
     createMutation.mutate({
       productId, quantity: parseFloat(quantity), lossType, reason,
       reasonNote: reasonNote || undefined,
@@ -391,87 +374,71 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
   const availableReasons = lossType ? REASONS_BY_TYPE[lossType] || [] : [];
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" aria-label="Déclarer une perte"
-        style={{ width: '100%', maxWidth: 512, maxHeight: '92vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <TrendingDown size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span className="odoo-breadcrumb-current">Déclarer une perte</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span>production, casse ou périmé</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Loss type selection */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Type de perte *</label>
-            <div className="grid grid-cols-2 gap-2">
+    <Modal title="Déclarer une perte" subtitle="Production, casse ou périmé" label="Déclarer une perte" onClose={onClose} width={560} locked={createMutation.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={handleSubmit} busy={createMutation.isPending} submitLabel="Déclarer la perte" />}>
+      <form onSubmit={e => { e.preventDefault(); handleSubmit(); }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <FormSection title="Perte">
+          <FormField label="Type de perte" required error={errors.type}>
+            <div role="group" aria-label="Type de perte" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
               {Object.entries(LOSS_TYPE_CONFIG).map(([key, cfg]) => {
                 const Icon = cfg.icon;
                 const isSelected = lossType === key;
                 return (
                   <button type="button" key={key} onClick={() => { setLossType(key); setReason(''); }} aria-pressed={isSelected}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', textAlign: 'left', borderRadius: 4,
-                      border: isSelected ? '1px solid var(--odoo-purple)' : '1px solid var(--odoo-border)',
-                      background: isSelected ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
-                      boxShadow: isSelected ? 'inset 0 -2px 0 var(--odoo-purple)' : 'none',
-                      color: isSelected ? 'var(--odoo-purple)' : 'var(--odoo-text)', fontWeight: isSelected ? 600 : 500, fontSize: '0.8125rem',
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', textAlign: 'left', borderRadius: 8, minHeight: 40,
+                      border: `1px solid ${isSelected ? 'var(--ds-accent)' : 'var(--ds-line)'}`,
+                      background: isSelected ? 'var(--ds-tint)' : 'var(--ds-card)',
+                      color: isSelected ? 'var(--ds-accent-ink)' : 'var(--ds-ink)', fontWeight: isSelected ? 600 : 500, fontSize: 13,
                     }}>
-                    <Icon size={16} />
+                    <Icon size={16} aria-hidden="true" />
                     {cfg.label}
                   </button>
                 );
               })}
             </div>
-          </div>
+          </FormField>
 
-          {/* Product search */}
-          <div ref={dropdownRef} className="relative">
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Produit *</label>
-            <div className="relative">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input ref={searchRef} type="text"
-                className={`w-full pl-10 pr-10 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors ${
-                  selectedProduct ? 'bg-red-50 border-red-300 font-semibold text-red-800' : 'bg-gray-50 border-gray-200'
-                }`}
-                placeholder="Rechercher un produit..."
-                value={dropdownOpen ? productSearch : (selectedProduct ? selectedProduct.name as string : productSearch)}
-                onChange={(e) => { setProductSearch(e.target.value); setDropdownOpen(true); if (productId) setProductId(''); }}
-                onFocus={() => { setDropdownOpen(true); if (selectedProduct) setProductSearch(''); }}
-                autoComplete="off" />
-              {(selectedProduct || productSearch) && (
-                <button type="button" onClick={() => { setProductId(''); setProductSearch(''); searchRef.current?.focus(); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-lg" aria-label="Effacer">
-                  <X size={14} className="text-gray-400" />
-                </button>
-              )}
-            </div>
+          <div ref={dropdownRef} style={{ position: 'relative' }}>
+            <FormField label="Produit" htmlFor="loss-product" required error={errors.product}>
+              <div style={{ position: 'relative' }}>
+                <Search size={15} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--ds-muted)' }} />
+                <input id="loss-product" ref={searchRef} type="text" className="ds-input"
+                  style={{ paddingLeft: 34, paddingRight: 34, fontWeight: selectedProduct ? 600 : undefined }}
+                  placeholder="Rechercher un produit..."
+                  value={dropdownOpen ? productSearch : (selectedProduct ? selectedProduct.name as string : productSearch)}
+                  onChange={(e) => { setProductSearch(e.target.value); setDropdownOpen(true); if (productId) setProductId(''); }}
+                  onFocus={() => { setDropdownOpen(true); if (selectedProduct) setProductSearch(''); }}
+                  autoComplete="off" />
+                {(selectedProduct || productSearch) && (
+                  <button type="button" onClick={() => { setProductId(''); setProductSearch(''); searchRef.current?.focus(); }}
+                    className="ds-icon-btn" style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }} aria-label="Effacer le produit">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </FormField>
             {dropdownOpen && (
-              <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+              <div role="listbox" aria-label="Produits" style={{ position: 'absolute', zIndex: 50, left: 0, right: 0, marginTop: 4, background: 'var(--ds-card)', border: '1px solid var(--ds-line)', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.12)', maxHeight: 192, overflowY: 'auto' }}>
                 {filteredProducts.length === 0 ? (
-                  <div className="px-4 py-4 text-center text-sm text-gray-400">Aucun produit trouve</div>
+                  <div style={{ padding: 16, textAlign: 'center', fontSize: 13, color: 'var(--ds-muted)' }}>Aucun produit trouvé</div>
                 ) : (
                   filteredProducts.slice(0, 15).map(p => (
-                    <button type="button" key={p.id as string}
-                      className="w-full text-left px-3 py-2.5 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                    <button type="button" key={p.id as string} role="option" aria-selected={productId === p.id}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 0, cursor: 'pointer' }}
                       onClick={() => { setProductId(p.id as string); setProductSearch(''); setDropdownOpen(false); }}>
                       {p.image_url ? (
-                        <img src={serverUrl(p.image_url as string)} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                        <img src={serverUrl(p.image_url as string)} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover' }} />
                       ) : (
-                        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                          <ShoppingBag size={12} className="text-gray-400" />
-                        </div>
+                        <span style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--ds-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <ShoppingBag size={12} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
+                        </span>
                       )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-700 truncate">{p.name as string}</p>
-                        <p className="text-xs text-gray-400">{p.category_name as string || ''}</p>
-                      </div>
-                      <span className="text-xs text-gray-400">{parseFloat(p.price as string || '0').toFixed(2)} {currencySymbol()}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--ds-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name as string}</span>
+                        <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)' }}>{p.category_name as string || ''}</span>
+                      </span>
+                      <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{parseFloat(p.price as string || '0').toFixed(2)} {currencySymbol()}</span>
                     </button>
                   ))
                 )}
@@ -479,61 +446,36 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
             )}
           </div>
 
-          {/* Reason */}
           {lossType && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Motif *</label>
-              <select value={reason} onChange={e => setReason(e.target.value)} required
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+            <FormField label="Motif" htmlFor="loss-reason" required error={errors.reason}>
+              <select id="loss-reason" className="ds-input" value={reason} onChange={e => setReason(e.target.value)} required>
                 <option value="">-- Choisir un motif --</option>
                 {availableReasons.map(r => (
                   <option key={r} value={r}>{REASON_LABELS[r]}</option>
                 ))}
               </select>
-            </div>
+            </FormField>
           )}
 
-          {/* Quantity */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Quantite perdue *</label>
-            <input type="number" min="0.01" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)} required
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-              placeholder="Ex: 5" />
-          </div>
+          <FormField label="Quantité perdue" htmlFor="loss-qty" required error={errors.quantity}>
+            <input id="loss-qty" className="ds-input" type="number" min="0.01" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)} required placeholder="Ex: 5" />
+          </FormField>
 
-          {/* Note */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Note (optionnel)</label>
-            <textarea value={reasonNote} onChange={e => setReasonNote(e.target.value)} rows={2}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
-              placeholder="Details supplementaires..." />
-          </div>
+          <FormField label="Note" htmlFor="loss-note">
+            <textarea id="loss-note" className="ds-input" value={reasonNote} onChange={e => setReasonNote(e.target.value)} rows={2} placeholder="Détails supplémentaires..." />
+          </FormField>
+        </FormSection>
 
-          {/* Cost preview */}
-          {selectedProduct && quantity && parseFloat(quantity) > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center justify-between">
-              <span className="text-sm text-red-700">Cout estime de la perte</span>
-              <span className="text-lg font-bold text-red-700">
-                {money((parseFloat(selectedProduct.cost_price as string) || parseFloat(selectedProduct.price as string) || 0) * parseFloat(quantity))}
-              </span>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-3 justify-end pt-2">
-            <button type="button" onClick={onClose}
-              className="odoo-btn-secondary">
-              Annuler
-            </button>
-            <button type="submit" disabled={createMutation.isPending}
-              className="odoo-btn-primary">
-              {createMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-              Declarer la perte
-            </button>
+        {selectedProduct && quantity && parseFloat(quantity) > 0 && (
+          <div className="ds-alert danger" role="status" style={{ justifyContent: 'space-between' }}>
+            <span>Coût estimé de la perte</span>
+            <strong style={{ fontSize: 16 }}>
+              {money((parseFloat(selectedProduct.cost_price as string) || parseFloat(selectedProduct.price as string) || 0) * parseFloat(quantity))}
+            </strong>
           </div>
-        </form>
-      </div>
-    </div>
+        )}
+      </form>
+    </Modal>
   );
 }
 

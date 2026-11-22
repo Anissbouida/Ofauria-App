@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Hash, Loader2, Pencil } from 'lucide-react';
+import { Hash } from 'lucide-react';
 import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type DocumentSequence, type DocumentSequenceInput } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
+import { DataPanel, FormField, FormFooter, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Séries de numéros des pièces (mig 329) : modèle, nombre de chiffres et
@@ -39,36 +40,34 @@ export default function NumberingTab() {
       </PageNote>
 
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--ds-muted)' }}>
-          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto' }} />
-        </div>
+        <LoadingState />
       ) : !rows.length ? (
         <StatusBanner tone="warning" icon={Hash} title="Aucune série">
           Les séries de numéros n'existent pas encore : la migration 329 n'est pas appliquée sur cette base.
         </StatusBanner>
       ) : (
-        <div className="prj-panel prj-scroll">
+        <DataPanel label="Séries de numéros">
           <table className="odoo-table">
             <thead>
-              <tr><th>Pièce</th><th>Modèle</th><th>Remise à zéro</th><th>Prochain numéro</th><th>Modifié</th><th style={{ width: 40 }}></th></tr>
+              <tr><th>Pièce</th><th>Modèle</th><th>Remise à zéro</th><th>Prochain numéro</th><th>Modifié</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr>
             </thead>
             <tbody>
               {rows.map(s => (
                 <tr key={s.doc_type} id={`seq-row-${s.doc_type}`}>
-                  <td>
+                  <td className="ds-strong">
                     {s.label}
                     {s.gapless && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Continue</span>}
                   </td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>{s.pattern} <span style={{ color: 'var(--ds-muted)' }}>· {s.padding} chiffres</span></td>
+                  <td className="ds-ref">{s.pattern} <span style={{ color: 'var(--ds-muted)' }}>· {s.padding} chiffres</span></td>
                   <td>{RESET_LABELS[s.reset_period]}</td>
                   <td className="ds-ref">{s.next_number}</td>
                   <td style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>
                     {s.updated_by_name ? `${s.updated_by_name}, ${new Date(s.updated_at).toLocaleDateString('fr-FR')}` : 'Format d\'origine'}
                   </td>
-                  <td>
+                  <td className="ds-actions">
                     {canEdit('settings') && (
-                      <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(s)} aria-label={`Modifier la série ${s.label}`} style={{ padding: '2px 8px' }}>
-                        <Pencil size={13} />
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setEditing(s)} aria-label={`Modifier la série ${s.label}`}>
+                        Modifier
                       </button>
                     )}
                   </td>
@@ -76,7 +75,7 @@ export default function NumberingTab() {
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {editing && <SequenceEditor seq={editing} onClose={() => setEditing(null)} />}
@@ -117,30 +116,26 @@ function SequenceEditor({ seq, onClose }: { seq: DocumentSequence; onClose: () =
     save.mutate();
   };
 
-  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)' };
-  const label: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
+  const id = (k: string) => `seq-${k}-${seq.doc_type}`;
 
   return (
-    <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
-      <div style={{ fontWeight: 600 }}>Série « {seq.label} »</div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <label style={{ ...label, flex: '1 1 220px' }}>
-          Modèle
-          <input id={`seq-pattern-${seq.doc_type}`} style={{ ...field, fontFamily: 'ui-monospace, monospace' }} value={form.pattern}
+    <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-labelledby={id('title')}>
+      <SectionHeader title={<span id={id('title')}>Série « {seq.label} »</span>} />
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(220px, 1fr) 110px 170px' }}>
+        <FormField label="Modèle" htmlFor={id('pattern')} required hint="Ajoutez les éléments ci-dessous ; {SEQ} est le compteur.">
+          <input id={id('pattern')} className="ds-input" style={{ fontFamily: 'ui-monospace, monospace' }} value={form.pattern}
             onChange={e => setForm({ ...form, pattern: e.target.value })} maxLength={60} />
-        </label>
-        <label style={{ ...label, width: 110 }}>
-          Chiffres
-          <input id={`seq-padding-${seq.doc_type}`} type="number" min={1} max={10} style={field} value={form.padding}
+        </FormField>
+        <FormField label="Chiffres" htmlFor={id('padding')} required>
+          <input id={id('padding')} type="number" min={1} max={10} className="ds-input" value={form.padding}
             onChange={e => setForm({ ...form, padding: parseInt(e.target.value, 10) || 0 })} />
-        </label>
-        <label style={{ ...label, width: 170 }}>
-          Remise à zéro
-          <select id={`seq-reset-${seq.doc_type}`} style={field} value={form.resetPeriod}
+        </FormField>
+        <FormField label="Remise à zéro" htmlFor={id('reset')}>
+          <select id={id('reset')} className="ds-input" value={form.resetPeriod}
             onChange={e => setForm({ ...form, resetPeriod: e.target.value as DocumentSequenceInput['resetPeriod'] })}>
             {Object.entries(RESET_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
-        </label>
+        </FormField>
       </div>
       <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {TOKENS.map(([t, l]) => (
@@ -152,12 +147,7 @@ function SequenceEditor({ seq, onClose }: { seq: DocumentSequence; onClose: () =
       {preview && (preview.valid
         ? <div style={{ fontSize: '0.875rem' }}>Exemple : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{preview.sample}</strong> <span style={{ color: 'var(--ds-muted)' }}>(le compteur reprend après le dernier numéro existant)</span></div>
         : <StatusBanner tone="warning" icon={Hash} title="Modèle invalide">{preview.error}</StatusBanner>)}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-        <button type="button" className="odoo-btn-primary" onClick={submit} disabled={!changed || !preview?.valid || save.isPending}>
-          {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
-      </div>
-    </div>
+      <FormFooter dirty={changed} onCancel={onClose} busy={save.isPending} disabled={!changed || !preview?.valid} onSubmit={() => { void submit(); }} />
+    </section>
   );
 }

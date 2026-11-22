@@ -1,5 +1,8 @@
-import { Fragment, type CSSProperties, type ReactNode } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Search, SearchX, type LucideIcon } from 'lucide-react';
+import { Fragment, createContext, useContext, useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { AlertTriangle, Calendar, ChevronLeft, ChevronRight, Loader2, Lock, Search, SearchX, X, type LucideIcon } from 'lucide-react';
+import ModalBackdrop from '../ui/ModalBackdrop';
+import { useConfirm } from '../ui/ConfirmDialog';
 import '../../styles/design-system.css';
 
 /**
@@ -231,9 +234,31 @@ export function LoadingState({ label = 'Chargement…', bare }: { label?: string
   );
 }
 
-export function ErrorState({ title = 'La liste n\'a pas pu être chargée', text = 'Vérifiez la connexion, puis réessayez.', onRetry, bare }: {
-  title?: ReactNode; text?: ReactNode; onRetry?: () => void; bare?: boolean;
+/** Code HTTP d'une erreur axios (ou undefined). */
+export function httpStatus(err: unknown): number | undefined {
+  const s = (err as { response?: { status?: number } } | null)?.response?.status;
+  return typeof s === 'number' ? s : undefined;
+}
+
+/**
+ * Erreur de chargement. Avec `error`, un refus d'accès (401/403) s'affiche comme tel
+ * (« Accès refusé », sans bouton Réessayer) au lieu d'un faux problème de connexion.
+ */
+export function ErrorState({ title, text, onRetry, bare, error }: {
+  title?: ReactNode; text?: ReactNode; onRetry?: () => void; bare?: boolean; error?: unknown;
 }) {
+  const status = httpStatus(error);
+  if (status === 401 || status === 403) {
+    return (
+      <div className={`ds-state${bare ? ' bare' : ''}`} role="status">
+        <Lock size={28} aria-hidden="true" />
+        <strong>{title ?? 'Accès refusé'}</strong>
+        <p>{status === 401 ? 'Votre session a expiré : reconnectez-vous.' : 'Votre rôle ne permet pas d\'afficher ces informations. Demandez l\'accès à un administrateur.'}</p>
+      </div>
+    );
+  }
+  title = title ?? 'La liste n\'a pas pu être chargée';
+  text = text ?? (status && status >= 500 ? 'Le serveur a rencontré une erreur. Réessayez dans un instant.' : 'Vérifiez la connexion, puis réessayez.');
   return (
     <div className={`ds-state error${bare ? ' bare' : ''}`} role="alert">
       <AlertTriangle size={28} aria-hidden="true" />
@@ -275,13 +300,27 @@ export function FormField({ label, htmlFor, required, hint, error, children }: {
 }
 
 /** Section d'un formulaire (regroupement logique de champs). */
-export function FormSection({ title, children }: { title: ReactNode; children: ReactNode }) {
+export function FormSection({ title, children, collapsible, defaultOpen = true }: {
+  title: ReactNode; children: ReactNode;
+  /** Section repliable (informations complémentaires d'une fiche longue). */
+  collapsible?: boolean; defaultOpen?: boolean;
+}) {
+  if (collapsible) {
+    return (
+      <details className="ds-fieldset ds-collapsible" open={defaultOpen}>
+        <summary>{title}</summary>
+        <div className="ds-collapsible-body">{children}</div>
+      </details>
+    );
+  }
   return <fieldset className="ds-fieldset"><legend>{title}</legend>{children}</fieldset>;
 }
 
 /** Pied de formulaire : note à gauche (modifications non enregistrées), Annuler puis Enregistrer à droite. */
-export function FormFooter({ dirty, onCancel, submitLabel = 'Enregistrer', cancelLabel = 'Annuler', busy, disabled, onSubmit, children }: {
+export function FormFooter({ dirty, onCancel, submitLabel = 'Enregistrer', cancelLabel = 'Annuler', busy, disabled, onSubmit, children, danger }: {
   dirty?: boolean; onCancel: () => void; submitLabel?: string; cancelLabel?: string; busy?: boolean; disabled?: boolean; onSubmit?: () => void;
+  /** Action destructrice (annuler une pièce, extourner) : bouton principal en style danger. */
+  danger?: boolean;
   /** Note ou action complémentaire, à gauche du pied. */
   children?: ReactNode;
 }) {
@@ -290,9 +329,168 @@ export function FormFooter({ dirty, onCancel, submitLabel = 'Enregistrer', cance
       {children}
       <span className="ds-grow">{dirty ? 'Modifications non enregistrées' : ''}</span>
       <button type="button" className="odoo-btn-secondary" onClick={onCancel} disabled={busy}>{cancelLabel}</button>
-      <button type={onSubmit ? 'button' : 'submit'} className="odoo-btn-primary" onClick={onSubmit} disabled={busy || disabled} aria-busy={busy || undefined}>
+      <button type={onSubmit ? 'button' : 'submit'} className={danger ? 'ds-btn-danger solid' : 'odoo-btn-primary'} onClick={onSubmit} disabled={busy || disabled} aria-busy={busy || undefined}>
         {busy && <Loader2 size={13} className="animate-spin" aria-hidden="true" />} {submitLabel}
       </button>
     </div>
+  );
+}
+
+
+/* ── Actions d'en-tête de page ── */
+/**
+ * Emplacement des actions de l'écran actif à droite du fil d'Ariane (exports en secondaire puis
+ * une seule action principale). La barre du module fournit l'élément via `HeaderSlotContext` ;
+ * hors barre, les boutons restent là où l'écran les écrit.
+ */
+export const HeaderSlotContext = createContext<HTMLElement | null>(null);
+
+export function HeaderActions({ children }: { children: ReactNode }) {
+  const slot = useContext(HeaderSlotContext);
+  return slot ? createPortal(children, slot) : <>{children}</>;
+}
+
+/* ── Fenêtre et tiroir ── */
+type SheetProps = {
+  title: ReactNode;
+  /** Icône devant le titre. */
+  icon?: LucideIcon;
+  /** Ligne sous le titre (numéro de pièce, contexte). */
+  subtitle?: ReactNode;
+  /** Étiquette de statut ou actions à droite du titre. */
+  aside?: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+  /** Pied collé en bas (FormFooter ou boutons). */
+  footer?: ReactNode;
+  /** Largeur maximale en px. */
+  width?: number;
+  /** Empêche la fermeture par Échap et clic extérieur (envoi en cours, saisie non enregistrée). */
+  locked?: boolean;
+  label?: string;
+};
+
+/**
+ * Fermeture protégée d'une fenêtre ou d'un tiroir : dès qu'un champ a été modifié à l'intérieur,
+ * Échap, le clic extérieur et la croix demandent confirmation avant de perdre la saisie.
+ * Les boutons de l'écran (Annuler, Enregistrer) appellent onClose directement.
+ */
+function useGuardedClose(onClose: () => void, locked?: boolean) {
+  const dirty = useRef(false);
+  const confirm = useConfirm();
+  const request = async () => {
+    if (locked) return;
+    if (dirty.current && !(await confirm('Les informations saisies dans cette fenêtre seront perdues.', {
+      title: 'Fermer sans enregistrer ?', confirmLabel: 'Fermer sans enregistrer', cancelLabel: 'Continuer la saisie', danger: true,
+    }))) return;
+    onClose();
+  };
+  const markDirty = () => { dirty.current = true; };
+  return { request, markDirty };
+}
+
+/** Pile des fenêtres ouvertes : Échap ne ferme que celle du dessus. */
+const sheetStack: symbol[] = [];
+
+function useEscape(onClose: () => void, locked?: boolean) {
+  const ref = useRef(onClose);
+  ref.current = onClose;
+  useEffect(() => {
+    const me = Symbol('sheet');
+    sheetStack.push(me);
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || locked) return;
+      // Une boîte de confirmation ouverte au-dessus garde la main.
+      if (document.querySelector('[role="alertdialog"]')) return;
+      if (sheetStack[sheetStack.length - 1] !== me) return;
+      e.stopPropagation();
+      ref.current();
+    };
+    window.addEventListener('keydown', h);
+    return () => {
+      window.removeEventListener('keydown', h);
+      const i = sheetStack.indexOf(me);
+      if (i >= 0) sheetStack.splice(i, 1);
+    };
+  }, [locked]);
+}
+
+function SheetHead({ title, subtitle, aside, onClose, id, locked, icon: Icon }: Pick<SheetProps, 'title' | 'subtitle' | 'aside' | 'onClose' | 'locked' | 'icon'> & { id: string }) {
+  return (
+    <header className="ds-sheet-head">
+      {Icon && <Icon size={18} aria-hidden="true" style={{ color: 'var(--ds-accent)', marginTop: 3, flex: 'none' }} />}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <h2 id={id} className="ds-sheet-title">{title}</h2>
+        {subtitle && <p className="ds-sheet-sub">{subtitle}</p>}
+      </div>
+      {aside}
+      <button type="button" className="ds-icon-btn" onClick={onClose} disabled={locked} aria-label="Fermer"><X size={18} /></button>
+    </header>
+  );
+}
+
+/** Fenêtre modale commune : en-tête (titre, sous-titre, fermer), corps qui défile, pied collé. */
+export function Modal({ icon, title, subtitle, aside, onClose, children, footer, width = 640, locked, label }: SheetProps) {
+  const id = useId();
+  const guard = useGuardedClose(onClose, locked);
+  useEscape(guard.request, locked);
+  return (
+    <ModalBackdrop onClose={() => void guard.request()} className="fixed inset-0 z-[70] flex items-center justify-center p-4 ds-scrim">
+      <div className="kl-ds ds-sheet ds-modal" role="dialog" aria-modal="true" aria-labelledby={id} aria-label={label} style={{ width: `min(${width}px, 100%)` }}
+        onInput={guard.markDirty} onChange={guard.markDirty}>
+        <SheetHead icon={icon} title={title} subtitle={subtitle} aside={aside} onClose={() => void guard.request()} id={id} locked={locked} />
+        <div className="ds-sheet-body">{children}</div>
+        {footer && <div className="ds-sheet-foot">{footer}</div>}
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/** Tiroir latéral commun (fiche consultée sans quitter la liste). */
+export function Drawer({ icon, title, subtitle, aside, onClose, children, footer, width = 720, locked, label }: SheetProps) {
+  const id = useId();
+  const guard = useGuardedClose(onClose, locked);
+  useEscape(guard.request, locked);
+  return (
+    <ModalBackdrop onClose={() => void guard.request()} className="fixed inset-0 z-[70] flex justify-end ds-scrim">
+      <div className="kl-ds ds-sheet ds-drawer" role="dialog" aria-modal="true" aria-labelledby={id} aria-label={label} style={{ width: `min(${width}px, 100%)` }}
+        onInput={guard.markDirty} onChange={guard.markDirty}>
+        <SheetHead icon={icon} title={title} subtitle={subtitle} aside={aside} onClose={() => void guard.request()} id={id} locked={locked} />
+        <div className="ds-sheet-body">{children}</div>
+        {footer && <div className="ds-sheet-foot">{footer}</div>}
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/* ── Champs de période ── */
+/** Période à dates libres « du … au … » (barres d'outils des états et rapports). */
+export function DateRangeField({ from, to, onFrom, onTo, label = 'Période' }: {
+  from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void; label?: string;
+}) {
+  return (
+    <span role="group" aria-label={label} className="ds-period">
+      <Calendar size={14} aria-hidden="true" /> {label}
+      <input type="date" aria-label={`${label} : début`} value={from} max={to || undefined} onChange={e => onFrom(e.target.value)} className="ds-input sm" style={{ width: 150 }} />
+      <span aria-hidden="true">→</span>
+      <input type="date" aria-label={`${label} : fin`} value={to} min={from || undefined} onChange={e => onTo(e.target.value)} className="ds-input sm" style={{ width: 150 }} />
+    </span>
+  );
+}
+
+const DS_MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+/** Période « mois + année ». */
+export function MonthYearField({ month, year, onMonth, onYear, label = 'Mois' }: {
+  month: number; year: number; onMonth: (m: number) => void; onYear: (y: number) => void; label?: string;
+}) {
+  return (
+    <span role="group" aria-label="Période" className="ds-period">
+      <Calendar size={14} aria-hidden="true" /> {label}
+      <select value={month} onChange={e => onMonth(parseInt(e.target.value, 10))} className="ds-input sm" style={{ width: 'auto' }} aria-label="Mois">
+        {DS_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+      </select>
+      <input type="number" value={year} onChange={e => onYear(+e.target.value)} className="ds-input sm" style={{ width: 90 }} aria-label="Année" />
+    </span>
   );
 }

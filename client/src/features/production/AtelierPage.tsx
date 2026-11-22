@@ -47,7 +47,7 @@ export default function AtelierPage() {
   // Horloge locale : rafraîchit les durées affichées sans retaper le serveur.
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(t); }, []);
 
-  const { data: etapes = [], isLoading, isError, refetch } = useQuery<LiveEtape[]>({
+  const { data: etapes = [], isLoading, isError, error, refetch } = useQuery<LiveEtape[]>({
     queryKey: ['atelier-live'],
     queryFn: () => productionEtapesApi.atelierLive(),
     refetchInterval: 15000,
@@ -88,7 +88,7 @@ export default function AtelierPage() {
 
       {isLoading && <LoadingState />}
 
-      {isError && <ErrorState title="L'atelier n'a pas pu être chargé" onRetry={() => refetch()} />}
+      {isError && <ErrorState error={error} title="L'atelier n'a pas pu être chargé" onRetry={() => refetch()} />}
 
       {!isLoading && !isError && etapes.length === 0 && (
         <EmptyState icon={Factory} title="Aucune étape en cours" text="Démarrez une étape depuis un plan de production en cours." />

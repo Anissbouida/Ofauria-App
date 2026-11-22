@@ -1,7 +1,7 @@
 import { money } from '../../utils/money';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Camera, Loader2, MessageSquareWarning, Search, X } from 'lucide-react';
+import { Camera, Loader2, Search, X } from 'lucide-react';
 import { complaintsApi, CHANNEL_LABELS, PRIORITY_LABELS, type ComplaintChannel, type ComplaintPriority } from '../../api/complaints.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
@@ -10,7 +10,7 @@ import { serverUrl } from '../../api/client';
 import { apiErrorMessage } from '../../api/errors';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { Modal, FormSection, FormField, FormFooter } from '../ds';
 import SearchSelect from '../../components/ui/SearchSelect';
 
 /**
@@ -115,30 +115,24 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
 
   const canSubmit = !!categoryCode && subject.trim().length > 0 && (!!customerId || customerName.trim().length > 0) && !create.isPending;
   const isSafety = categoryCode === 'safety';
-  const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4, display: 'block' };
-
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: mode === 'full' ? 720 : 560, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb">
-            <MessageSquareWarning size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span className="odoo-breadcrumb-current">Nouvelle réclamation</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-btn-secondary" aria-label="Fermer"><X size={14} /></button>
-        </div>
-
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
+    <Modal
+      title="Nouvelle réclamation"
+      onClose={onClose}
+      locked={create.isPending}
+      width={mode === 'full' ? 720 : 560}
+      footer={<FormFooter onCancel={onClose} submitLabel="Enregistrer la réclamation" busy={create.isPending} disabled={!canSubmit} onSubmit={() => create.mutate()} />}
+    >
+      <div style={{ display: 'grid', gap: 14 }}>
+        <FormSection title="Réclamation">
           {/* Motif : une pastille par catégorie, lisible d'un coup d'œil au comptoir. */}
-          <div>
-            <span style={label}>Motif</span>
+          <div className="ds-field" role="group" aria-labelledby="complaint-motif-label">
+            <label id="complaint-motif-label">Motif<span className="ds-req" aria-hidden="true"> *</span></label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {categories.map(c => {
                 const active = c.code === categoryCode;
                 return (
-                  <button key={c.code} type="button" onClick={() => setCategoryCode(c.code)}
+                  <button key={c.code} type="button" onClick={() => setCategoryCode(c.code)} aria-pressed={active}
                     style={{
                       padding: '6px 12px', borderRadius: 999, fontSize: '0.8125rem', cursor: 'pointer',
                       border: `1px solid ${active ? (c.color || 'var(--odoo-purple)') : 'var(--odoo-border)'}`,
@@ -151,47 +145,47 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
               })}
             </div>
             {isSafety && (
-              <p style={{ margin: '6px 0 0', fontSize: '0.75rem', color: '#dc3545' }}>
+              <span className="ds-field-hint" style={{ color: 'var(--ds-danger)' }}>
                 Sécurité / allergène : la réclamation sera créée en priorité critique et l'administrateur prévenu.
-              </p>
+              </span>
             )}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: mode === 'full' ? '1fr 1fr' : '1fr', gap: 12 }}>
-            <div>
-              <span style={label}>Article concerné</span>
+          <div className={mode === 'full' ? 'ds-form-grid' : undefined} style={mode === 'full' ? { marginTop: 12 } : { marginTop: 12, display: 'grid', gap: 12 }}>
+            <FormField label="Article concerné">
               <SearchSelect options={productOptions} value={productId} onChange={id => { setProductId(id); setProductLotId(''); }}
                 placeholder="Aucun article en particulier" width={mode === 'full' ? 320 : 500} />
-            </div>
+            </FormField>
             {productId && lots.length > 0 && (
-              <div>
-                <span style={label}>Lot</span>
-                <select className="ds-input" value={productLotId} onChange={e => setProductLotId(e.target.value)} style={{ width: '100%' }}>
+              <FormField label="Lot" htmlFor="complaint-lot">
+                <select id="complaint-lot" className="ds-input" value={productLotId} onChange={e => setProductLotId(e.target.value)}>
                   <option value="">Lot inconnu</option>
                   {lots.map(l => <option key={l.id} value={l.id}>{l.lot_number} · {new Date(l.produced_at).toLocaleDateString('fr-FR')}</option>)}
                 </select>
-              </div>
+              </FormField>
             )}
           </div>
 
-          <div>
-            <span style={label}>En un mot</span>
-            <input className="ds-input" value={subject} maxLength={200}
-              onChange={e => { setSubject(e.target.value); setSubjectTouched(true); }} placeholder="Ex. : pain brûlé, retard de commande…" />
+          <div style={{ marginTop: 12 }}>
+            <FormField label="En un mot" htmlFor="complaint-subject" required>
+              <input id="complaint-subject" className="ds-input" value={subject} maxLength={200}
+                onChange={e => { setSubject(e.target.value); setSubjectTouched(true); }} placeholder="Ex. : pain brûlé, retard de commande…" />
+            </FormField>
           </div>
+        </FormSection>
 
-          {/* Client : fiche connue ou nom au comptoir. */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <span style={label}>Client</span>
+        {/* Client : fiche connue ou nom au comptoir. */}
+        <FormSection title="Client">
+          <div className="ds-form-grid">
+            <FormField label="Client" htmlFor="complaint-customer" required>
               {customerId ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className="odoo-tag odoo-tag-blue">{customerLabel(customers.find(c => c.id === customerId)) || 'Fiche client'}</span>
-                  <button type="button" className="odoo-btn-secondary" onClick={() => setCustomerId('')}>Changer</button>
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setCustomerId('')}>Changer</button>
                 </div>
               ) : (
                 <>
-                  <input className="ds-input" value={customerName} maxLength={160}
+                  <input id="complaint-customer" className="ds-input" value={customerName} maxLength={160}
                     onChange={e => { setCustomerName(e.target.value); setCustomerQuery(e.target.value); }} placeholder="Nom du client (ou rechercher une fiche)" />
                   {customers.length > 0 && customerQuery.trim().length >= 2 && (
                     <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 4, maxHeight: 140, overflowY: 'auto' }}>
@@ -206,39 +200,36 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
                   )}
                 </>
               )}
-            </div>
-            <div>
-              <span style={label}>Téléphone</span>
-              <input className="ds-input" value={customerPhone} maxLength={40} onChange={e => setCustomerPhone(e.target.value)} placeholder="Pour rappeler le client" />
-            </div>
+            </FormField>
+            <FormField label="Téléphone" htmlFor="complaint-phone">
+              <input id="complaint-phone" className="ds-input" value={customerPhone} maxLength={40} onChange={e => setCustomerPhone(e.target.value)} placeholder="Pour rappeler le client" />
+            </FormField>
           </div>
+        </FormSection>
 
-          {mode === 'full' && (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                <div>
-                  <span style={label}>Canal</span>
-                  <select className="ds-input" value={channel} onChange={e => setChannel(e.target.value as ComplaintChannel)}>
-                    {Object.entries(CHANNEL_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <span style={label}>Priorité</span>
-                  <select className="ds-input" value={isSafety ? 'critical' : priority} disabled={isSafety}
-                    onChange={e => setPriority(e.target.value as ComplaintPriority)}>
-                    {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <span style={label}>Quantité</span>
-                  <input className="ds-input" type="number" min="0" step="any" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="—" />
-                </div>
-              </div>
-              <div>
-                <span style={label}>Ticket de caisse</span>
+        {mode === 'full' && (
+          <FormSection title="Détails">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+              <FormField label="Canal" htmlFor="complaint-channel">
+                <select id="complaint-channel" className="ds-input" value={channel} onChange={e => setChannel(e.target.value as ComplaintChannel)}>
+                  {Object.entries(CHANNEL_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Priorité" htmlFor="complaint-priority">
+                <select id="complaint-priority" className="ds-input" value={isSafety ? 'critical' : priority} disabled={isSafety}
+                  onChange={e => setPriority(e.target.value as ComplaintPriority)}>
+                  {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Quantité" htmlFor="complaint-qty">
+                <input id="complaint-qty" className="ds-input" type="number" min="0" step="any" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="—" />
+              </FormField>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <FormField label="Ticket de caisse" htmlFor="complaint-sale">
                 <div style={{ position: 'relative' }}>
-                  <Search size={13} style={{ position: 'absolute', left: 8, top: 9, color: 'var(--ds-muted)' }} />
-                  <input className="ds-input" style={{ paddingLeft: 26 }} value={saleQuery} onChange={e => { setSaleQuery(e.target.value); setSaleId(''); }}
+                  <Search size={13} style={{ position: 'absolute', left: 8, top: 13, color: 'var(--ds-muted)' }} aria-hidden="true" />
+                  <input id="complaint-sale" className="ds-input" style={{ paddingLeft: 26 }} value={saleQuery} onChange={e => { setSaleQuery(e.target.value); setSaleId(''); }}
                     placeholder="N° de ticket (VNT-…)" />
                 </div>
                 {sales.length > 0 && !saleId && (
@@ -252,32 +243,26 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
                     ))}
                   </div>
                 )}
-              </div>
-              <div>
-                <span style={label}>Description</span>
-                <textarea className="ds-input" style={{ minHeight: 80 }} value={description} maxLength={4000}
+              </FormField>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <FormField label="Description" htmlFor="complaint-description">
+                <textarea id="complaint-description" className="ds-input" style={{ minHeight: 80 }} value={description} maxLength={4000}
                   onChange={e => setDescription(e.target.value)} placeholder="Ce que dit le client, ce qui a été constaté…" />
-              </div>
-            </>
-          )}
+              </FormField>
+            </div>
+          </FormSection>
+        )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => onPhoto(e.target.files?.[0])} />
-            <button type="button" className="odoo-btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              {uploading ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />} {photoUrl ? 'Changer la photo' : 'Photo'}
-            </button>
-            {photoUrl && <img src={serverUrl(photoUrl)} alt="" style={{ height: 44, borderRadius: 4, border: '1px solid var(--odoo-border)' }} />}
-            {photoUrl && <button type="button" className="odoo-btn-secondary" onClick={() => setPhotoUrl(null)}><X size={12} /></button>}
-          </div>
-        </div>
-
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={!canSubmit} onClick={() => create.mutate()}>
-            {create.isPending ? <Loader2 size={13} className="animate-spin" /> : null} Enregistrer la réclamation
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => onPhoto(e.target.files?.[0])} />
+          <button type="button" className="odoo-btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />} {photoUrl ? 'Changer la photo' : 'Photo'}
           </button>
+          {photoUrl && <img src={serverUrl(photoUrl)} alt="" style={{ height: 44, borderRadius: 4, border: '1px solid var(--odoo-border)' }} />}
+          {photoUrl && <button type="button" className="odoo-btn-secondary" onClick={() => setPhotoUrl(null)} aria-label="Retirer la photo"><X size={12} /></button>}
         </div>
       </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }

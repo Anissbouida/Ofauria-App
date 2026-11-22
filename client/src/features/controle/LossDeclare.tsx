@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Search, X, Trash2, Croissant, Wheat, AlertTriangle } from 'lucide-react';
+import { Loader2, Search, Trash2, Croissant, Wheat, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { ingredientLotsApi } from '../../api/inventory.api';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { Modal, DataPanel, LoadingState, NoResultState } from '../../components/ds';
 import { ProductLossDeclareModal } from '../accounting/LossesTab';
 import { LotMovementModal, type LotMovementLot } from '../stock/LotMovementModal';
 
@@ -39,31 +39,30 @@ export default function LossDeclare({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" aria-label="Déclarer une perte" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Trash2 size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Pertes</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">{kind === 'matiere' ? 'Matière première' : 'Déclarer une perte'}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+    <Modal
+      title={kind === 'matiere' ? 'Perte de matière première' : 'Déclarer une perte'}
+      subtitle={kind === 'matiere' ? 'Pertes › Matière première' : 'Pertes'}
+      onClose={onClose}
+      width={kind === 'matiere' ? 720 : 560}
+      footer={
+        <div className="ds-form-foot">
+          {kind === 'matiere' && <button type="button" className="odoo-btn-secondary" onClick={() => setKind(null)}>Retour</button>}
+          <span className="ds-grow" />
+          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
         </div>
-        {kind === 'matiere'
-          ? <LotPicker onBack={() => setKind(null)} onPick={setLot} />
-          : (
-            <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-              <KindCard icon={Croissant} title="Produit fini" onClick={() => setKind('produit')}
-                text="Raté ou brûlé en production, abîmé en vitrine, périmé, recyclé. Valorisé au coût de la fiche technique." />
-              <KindCard icon={Wheat} title="Matière première" onClick={() => setKind('matiere')}
-                text="Casse, contamination, fond de contenant, DLC dépassée, lot non conforme. Valorisé au prix d'achat du lot." />
-            </div>
-          )}
-      </div>
-    </ModalBackdrop>
+      }
+    >
+      {kind === 'matiere'
+        ? <LotPicker onPick={setLot} />
+        : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            <KindCard icon={Croissant} title="Produit fini" onClick={() => setKind('produit')}
+              text="Raté ou brûlé en production, abîmé en vitrine, périmé, recyclé. Valorisé au coût de la fiche technique." />
+            <KindCard icon={Wheat} title="Matière première" onClick={() => setKind('matiere')}
+              text="Casse, contamination, fond de contenant, DLC dépassée, lot non conforme. Valorisé au prix d'achat du lot." />
+          </div>
+        )}
+    </Modal>
   );
 }
 
@@ -82,7 +81,7 @@ function KindCard({ icon: Icon, title, text, onClick }: { icon: typeof Trash2; t
 }
 
 /** Choix du lot concerné : seuls les lots actifs avec du stock (réserve ou pesage). */
-function LotPicker({ onBack, onPick }: { onBack: () => void; onPick: (lot: LotMovementLot) => void }) {
+function LotPicker({ onPick }: { onPick: (lot: LotMovementLot) => void }) {
   const [input, setInput] = useState('');
   const [search, setSearch] = useState('');
   useEffect(() => {
@@ -100,7 +99,7 @@ function LotPicker({ onBack, onPick }: { onBack: () => void; onPick: (lot: LotMo
   const fmt = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: 3 });
 
   return (
-    <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div className="odoo-search-panel" style={{ margin: 0 }}>
         <Search size={14} style={{ color: 'var(--ds-muted)', flexShrink: 0 }} />
         <input type="text" value={input} onChange={e => setInput(e.target.value)} autoFocus aria-label="Rechercher un ingrédient"
@@ -108,13 +107,14 @@ function LotPicker({ onBack, onPick }: { onBack: () => void; onPick: (lot: LotMo
         {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--ds-muted)' }} />}
       </div>
       {isLoading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>
+        <LoadingState bare />
       ) : lots.length === 0 ? (
-        <p style={{ padding: '1.5rem', textAlign: 'center', fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucun lot en stock pour cette recherche.</p>
+        <NoResultState bare text="Aucun lot en stock pour cette recherche." />
       ) : (
-        <table className="odoo-table">
+        <DataPanel label="Lots en stock">
+        <table className="odoo-table ds-dense">
           <thead>
-            <tr><th>Ingrédient · lot</th><th>DLC</th><th className="ds-num">Réserve</th><th className="ds-num">Pesage</th><th /></tr>
+            <tr><th>Ingrédient · lot</th><th>DLC</th><th className="ds-num">Réserve</th><th className="ds-num">Pesage</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr>
           </thead>
           <tbody>
             {lots.map(l => {
@@ -122,17 +122,17 @@ function LotPicker({ onBack, onPick }: { onBack: () => void; onPick: (lot: LotMo
               return (
                 <tr key={l.id}>
                   <td>
-                    <span style={{ fontWeight: 500 }}>{l.ingredient_name}</span>
-                    {(l.lot_number || l.supplier_lot_number) && <div style={{ fontSize: 12, color: 'var(--ds-muted)', fontFamily: 'ui-monospace, monospace' }}>{l.lot_number ?? l.supplier_lot_number}</div>}
+                    <span className="ds-strong">{l.ingredient_name}</span>
+                    {(l.lot_number || l.supplier_lot_number) && <div className="ds-ref" style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{l.lot_number ?? l.supplier_lot_number}</div>}
                   </td>
                   <td style={{ fontSize: '0.75rem', color: expired ? 'var(--ds-danger)' : 'var(--ds-muted)', fontWeight: expired ? 600 : 400, whiteSpace: 'nowrap' }}>
                     {expired && <AlertTriangle size={11} style={{ verticalAlign: -1, marginRight: 3 }} />}
                     {l.expiration_date ? format(new Date(l.expiration_date), 'dd/MM/yyyy') : '—'}
                   </td>
-                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{fmt(n(l.economat_quantity))} {l.ingredient_unit}</td>
-                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{fmt(n(l.pesage_quantity))} {l.ingredient_unit}</td>
-                  <td className="ds-num">
-                    <button type="button" className="odoo-btn-secondary" onClick={() => onPick({
+                  <td className="ds-num">{fmt(n(l.economat_quantity))} {l.ingredient_unit}</td>
+                  <td className="ds-num">{fmt(n(l.pesage_quantity))} {l.ingredient_unit}</td>
+                  <td className="ds-actions">
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => onPick({
                       id: l.id, lot_number: l.lot_number ?? l.supplier_lot_number, ingredient_name: l.ingredient_name, unit: l.ingredient_unit,
                       economat_quantity: n(l.economat_quantity), pesage_quantity: n(l.pesage_quantity),
                       unit_cost: l.unit_cost != null ? n(l.unit_cost) : null, is_expired: expired,
@@ -143,13 +143,11 @@ function LotPicker({ onBack, onPick }: { onBack: () => void; onPick: (lot: LotMo
             })}
           </tbody>
         </table>
+        </DataPanel>
       )}
       <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: 0 }}>
         Une perte partielle se prend sur la quantité au pesage (contenant ouvert) ; un contenant encore scellé part en entier aux pertes.
       </p>
-      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-        <button type="button" className="odoo-btn-secondary" onClick={onBack}>Retour</button>
-      </div>
     </div>
   );
 }

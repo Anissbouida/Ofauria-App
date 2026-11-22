@@ -9,7 +9,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import '../sales/ListTemplate';
 import './stock.css';
-import { DataPanel, EmptyState, FormField, LoadingState, TableFooter } from '../../components/ds';
+import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, Modal, TableFooter } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { HeaderActions } from './StockUi';
 
@@ -156,13 +156,9 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
   const [tried, setTried] = useState(false);
   const inp = 'ds-input';
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2"><MapPin size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} /> {initial ? 'Modifier l\'emplacement' : 'Nouvel emplacement'}</h3>
-          <button type="button" onClick={onCancel} className="ds-icon-btn" aria-label="Fermer"><X size={18} /></button>
-        </div>
-        <div className="px-5 py-4 grid grid-cols-2 gap-3">
+    <Modal title={initial ? 'Modifier l\'emplacement' : 'Nouvel emplacement'} onClose={onCancel} locked={saving} width={512}
+      footer={<FormFooter onCancel={onCancel} busy={saving} submitLabel={saving ? 'Enregistrement…' : 'Enregistrer'} onSubmit={submit} />}>
+        <div className="grid grid-cols-2 gap-3">
           <FormField label="Code" htmlFor="loc-code" required error={tried && !f.code.trim() ? 'Saisissez le code de l\'emplacement.' : undefined}>
             <input id="loc-code" value={f.code} onChange={e => set({ code: e.target.value })} className={inp} placeholder="CF-02" aria-invalid={tried && !f.code.trim() || undefined} /></FormField>
           <FormField label="Nom" htmlFor="loc-name" required error={tried && !f.name.trim() ? 'Saisissez le nom de l\'emplacement.' : undefined}>
@@ -192,11 +188,6 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
               <option value="">—</option><option value="bac">bac</option><option value="plaque">plaque</option><option value="kg">kg</option>
             </select></FormField>
         </div>
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100">
-          <button type="button" onClick={onCancel} className="odoo-btn-secondary" disabled={saving}>Annuler</button>
-          <button type="button" onClick={submit} disabled={saving} aria-busy={saving || undefined} className="odoo-btn-primary">{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

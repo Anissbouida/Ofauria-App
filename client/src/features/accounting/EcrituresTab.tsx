@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  X, Download, Loader2, Notebook, Lock, FileText, Eye, Wand2, CheckCircle2, AlertTriangle, Filter, Plus, PenLine, Trash2, RotateCcw,
+  Download, Loader2, Notebook, Lock, Eye, Wand2, CheckCircle2, AlertTriangle, Filter, Plus, PenLine, Trash2, RotateCcw,
 } from 'lucide-react';
 import { journalEntriesApi, journalsApi, reconciliationApi, ledgerBackfillApi, manualEntriesApi, type JournalEntryDetailEx } from '../../api/ledger.api';
 import ManualEntryEditor from './ManualEntryEditor';
@@ -10,14 +10,12 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PeriodFilter, SelectFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import type { JournalEntryStatus, JournalEntrySummary } from '@ofauria/shared';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
-import { EmptyState, KpiCard, KpiGrid, LoadingState, DataPanel, TableFooter, NoResultState, SearchBar, Toolbar } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { EmptyState, ErrorState, KpiCard, KpiGrid, LoadingState, DataPanel, TableFooter, NoResultState, SearchBar, Toolbar, HeaderActions, Modal, FormField, SectionHeader } from '../../components/ds';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
@@ -104,7 +102,7 @@ export default function EcrituresTab() {
     offset: (page - 1) * PAGE_SIZE,
   }), [startDate, endDate, journalId, status, search, page]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger-entries', filters],
     queryFn: () => journalEntriesApi.list(filters),
     enabled: isAdmin,
@@ -193,44 +191,47 @@ export default function EcrituresTab() {
 
       {/* Detail des factures divergentes / sans ecriture */}
       {reconciliation && !reconciliationOk && showDivergent && reconciliation.divergent.length > 0 && (
-        <div style={{ marginBottom: 12, border: '1px solid #F09595', borderRadius: 6, overflow: 'hidden' }}>
+        <>
+        <SectionHeader title="Factures à rapprocher" note={`${reconciliation.divergent.length} facture${reconciliation.divergent.length > 1 ? 's' : ''}`} />
+        <DataPanel label="Factures divergentes ou sans écriture">
           <table className="odoo-table ds-dense">
             <thead>
-              <tr style={{ background: 'var(--ds-danger-bg)', color: 'var(--ds-danger)', textAlign: 'left' }}>
-                <th style={{ padding: '6px 10px' }}>Facture</th>
-                <th style={{ padding: '6px 10px' }}>Type</th>
-                <th style={{ padding: '6px 10px' }}>Date</th>
-                <th className="ds-num" style={{ padding: '6px 10px' }}>Total</th>
-                <th className="ds-num" style={{ padding: '6px 10px' }}>Reste legacy</th>
-                <th className="ds-num" style={{ padding: '6px 10px' }}>Reste ledger</th>
-                <th className="ds-num" style={{ padding: '6px 10px' }}>Delta</th>
-                <th style={{ padding: '6px 10px' }}>Statut</th>
+              <tr>
+                <th>Facture</th>
+                <th>Type</th>
+                <th>Date</th>
+                <th className="ds-num">Total ({currencySymbol()})</th>
+                <th className="ds-num">Reste legacy ({currencySymbol()})</th>
+                <th className="ds-num">Reste ledger ({currencySymbol()})</th>
+                <th className="ds-num">Delta ({currencySymbol()})</th>
+                <th>Statut</th>
               </tr>
             </thead>
             <tbody>
               {reconciliation.divergent.map(d => (
-                <tr key={d.invoice_id} style={{ borderTop: '1px solid var(--ds-danger-bg)' }}>
-                  <td style={{ padding: '6px 10px', fontWeight: 600 }}>{d.invoice_number}</td>
-                  <td style={{ padding: '6px 10px' }}>{d.invoice_type === 'emitted' ? 'Émise' : 'Reçue'}</td>
-                  <td style={{ padding: '6px 10px' }}>{fmtDate(d.invoice_date)}</td>
-                  <td className="ds-num" style={{ padding: '6px 10px' }}>{n(d.total_amount)}</td>
-                  <td className="ds-num" style={{ padding: '6px 10px' }}>{n(d.legacy_remaining)}</td>
-                  <td className="ds-num" style={{ padding: '6px 10px' }}>{n(d.ledger_remaining)}</td>
-                  <td className="ds-num" style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--ds-danger)' }}>{n(d.delta)}</td>
-                  <td style={{ padding: '6px 10px' }}>
+                <tr key={d.invoice_id}>
+                  <td className="ds-ref">{d.invoice_number}</td>
+                  <td>{d.invoice_type === 'emitted' ? 'Émise' : 'Reçue'}</td>
+                  <td>{fmtDate(d.invoice_date)}</td>
+                  <td className="ds-num">{n(d.total_amount)}</td>
+                  <td className="ds-num">{n(d.legacy_remaining)}</td>
+                  <td className="ds-num">{n(d.ledger_remaining)}</td>
+                  <td className="ds-num ds-strong" style={{ color: 'var(--ds-danger)' }}>{n(d.delta)}</td>
+                  <td>
                     {!d.has_ledger_entries
-                      ? <span style={{ color: 'var(--ds-warning)', background: 'var(--ds-warning-bg)', padding: '1px 6px', borderRadius: 4 }}>Sans écriture</span>
-                      : <span style={{ color: 'var(--ds-danger)', background: 'var(--ds-danger-bg)', padding: '1px 6px', borderRadius: 4 }}>Divergente</span>}
+                      ? <StatusTag tone="late" label="Sans écriture" />
+                      : <StatusTag tone="blocked" label="Divergente" />}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
+        </>
       )}
 
       {/* Filtres */}
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={rows.length === 0}>
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
@@ -238,7 +239,7 @@ export default function EcrituresTab() {
         <button type="button" onClick={() => setEditor({ draft: null })} className="odoo-btn-primary">
           <Plus size={13} aria-hidden="true" /> Nouvelle écriture
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
       {/* Indicateurs de la page courante */}
       <KpiGrid>
@@ -266,6 +267,8 @@ export default function EcrituresTab() {
       {/* Liste */}
       {isLoading ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
         (search || journalId !== 'all' || status !== 'all') ? (
           <NoResultState text="Aucune écriture ne correspond aux filtres." onReset={() => { setSearch(''); setJournalId('all'); setStatus('all'); setPage(1); }} />
@@ -342,7 +345,7 @@ export default function EcrituresTab() {
 function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () => void; onEdit: (draft: JournalEntryDetailEx) => void }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const { data: rawEntry, isLoading } = useQuery({
+  const { data: rawEntry, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger-entry', id],
     queryFn: () => journalEntriesApi.getById(id),
   });
@@ -381,56 +384,83 @@ function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () =
     return entry.lines.reduce((s, l) => s + (parseFloat(l.credit) || 0), 0);
   }, [entry]);
 
-  return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" aria-label="Écriture comptable" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 800, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <FileText size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Écriture</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{entry ? entry.entry_number : 'Chargement...'}</span>
-          </div>
-          {entry && <StatusDot status={entry.status} />}
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+  const actions = (isDraft || canReverse) && entry ? (
+    reversing ? (
+      <form className="ds-form-foot" onSubmit={(e) => { e.preventDefault(); reverseM.mutate(reversing); }} style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <FormField label="Date de l'extourne" htmlFor="rev-date">
+          <input id="rev-date" type="date" value={reversing.date} onChange={e => setReversing({ ...reversing, date: e.target.value })}
+            className="ds-input" style={{ width: 160 }} />
+        </FormField>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <FormField label="Motif" htmlFor="rev-reason" required>
+            <input id="rev-reason" value={reversing.reason} onChange={e => setReversing({ ...reversing, reason: e.target.value })} autoFocus required
+              className="ds-input" placeholder="Ex. Erreur d'imputation" maxLength={500} />
+          </FormField>
         </div>
-
-        {isLoading || !entry ? (
-          <LoadingState />
-        ) : (
+        <button type="button" className="odoo-btn-secondary" onClick={() => setReversing(null)} disabled={busy}>Retour</button>
+        <button type="submit" className="ds-btn-danger solid" disabled={busy || reversing.reason.trim().length < 3} aria-busy={reverseM.isPending || undefined}>
+          {reverseM.isPending ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={12} aria-hidden="true" />} Extourner
+        </button>
+      </form>
+    ) : (
+      <>
+        {isDraft && (
           <>
-            {/* Meta */}
-            <div style={{ padding: '12px 16px', fontSize: '0.8125rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
-              <div><span style={{ color: 'var(--theme-text-muted)' }}>Date :</span> {fmtDate(entry.entry_date)}</div>
-              <div><span style={{ color: 'var(--theme-text-muted)' }}>Journal :</span> {entry.journal_code} - {entry.journal_label}</div>
-              <div><span style={{ color: 'var(--theme-text-muted)' }}>Periode :</span> {String(entry.fiscal_month).padStart(2, '0')}/{entry.fiscal_year}</div>
-              <div><span style={{ color: 'var(--theme-text-muted)' }}>Source :</span> {entry.source_kind === 'manual' && entry.source_detail === 'saisie' ? 'saisie libre' : entry.source_kind}</div>
-              {(entry.piece_ref || entry.piece_date) && (
-                <div><span style={{ color: 'var(--theme-text-muted)' }}>Pièce :</span> {entry.piece_ref || '—'}{entry.piece_date ? ` du ${fmtDate(entry.piece_date)}` : ''}</div>
-              )}
-              {entry.reversed_by_number && (
-                <div><span style={{ color: 'var(--theme-text-muted)' }}>Extournée par :</span> <span style={{ fontFamily: 'ui-monospace, monospace' }}>{entry.reversed_by_number}</span></div>
-              )}
-              {entry.reversal_of_number && (
-                <div><span style={{ color: 'var(--theme-text-muted)' }}>Extourne de :</span> <span style={{ fontFamily: 'ui-monospace, monospace' }}>{entry.reversal_of_number}</span></div>
-              )}
-              {entry.description && (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <span style={{ color: 'var(--theme-text-muted)' }}>Libelle :</span> {entry.description}
-                </div>
-              )}
-            </div>
+            <button type="button" className="ds-btn-danger" disabled={busy}
+              onClick={async () => { if (await confirm('Supprimer ce brouillon ? Il n\'a pas encore de numéro : aucun trou ne restera dans la numérotation.', { title: 'Supprimer le brouillon', danger: true, confirmLabel: 'Supprimer' })) deleteM.mutate(); }}>
+              <Trash2 size={12} aria-hidden="true" /> Supprimer
+            </button>
+            <button type="button" className="odoo-btn-secondary" disabled={busy} onClick={() => onEdit(entry)}>
+              <PenLine size={12} /> Modifier
+            </button>
+            <button type="button" className="odoo-btn-primary" disabled={busy || Math.abs(totalD - totalC) > 0.005}
+              onClick={async () => { if (await confirm('Comptabiliser ce brouillon ? Il recevra son numéro de journal et ne pourra plus être modifié (correction par extourne).', { title: 'Comptabiliser l\'écriture', confirmLabel: 'Comptabiliser' })) postM.mutate(); }}>
+              {postM.isPending ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Comptabiliser
+            </button>
+          </>
+        )}
+        {canReverse && (
+          <button type="button" className="ds-btn-danger" disabled={busy}
+            onClick={() => setReversing({ date: new Date().toISOString().slice(0, 10), reason: '' })}>
+            <RotateCcw size={12} aria-hidden="true" /> Extourner
+          </button>
+        )}
+      </>
+    )
+  ) : undefined;
 
-            {/* Lignes */}
-            <table className="odoo-table ds-dense" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
+  const meta = (label: string, value: React.ReactNode, wide?: boolean) => (
+    <div style={wide ? { gridColumn: '1 / -1' } : undefined}><span style={{ color: 'var(--ds-muted)' }}>{label} :</span> {value}</div>
+  );
+
+  return (
+    <Modal title={entry ? <span className="ds-ref">{entry.entry_number}</span> : 'Écriture'} subtitle="Écriture comptable" label="Écriture comptable"
+      aside={entry ? <StatusDot status={entry.status} /> : undefined} onClose={onClose} width={820} locked={busy} footer={actions}>
+      {isError ? (
+        <ErrorState bare error={error} title="L'écriture n'a pas pu être chargée" onRetry={() => refetch()} />
+      ) : isLoading || !entry ? (
+        <LoadingState bare />
+      ) : (
+        <>
+          <div style={{ fontSize: 13, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+            {meta('Date', fmtDate(entry.entry_date))}
+            {meta('Journal', `${entry.journal_code} - ${entry.journal_label}`)}
+            {meta('Période', `${String(entry.fiscal_month).padStart(2, '0')}/${entry.fiscal_year}`)}
+            {meta('Source', entry.source_kind === 'manual' && entry.source_detail === 'saisie' ? 'saisie libre' : entry.source_kind)}
+            {(entry.piece_ref || entry.piece_date) && meta('Pièce', `${entry.piece_ref || '—'}${entry.piece_date ? ` du ${fmtDate(entry.piece_date)}` : ''}`)}
+            {entry.reversed_by_number && meta('Extournée par', <span className="ds-ref">{entry.reversed_by_number}</span>)}
+            {entry.reversal_of_number && meta('Extourne de', <span className="ds-ref">{entry.reversal_of_number}</span>)}
+            {entry.description && meta('Libellé', entry.description, true)}
+          </div>
+
+          <DataPanel label="Lignes de l'écriture">
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th style={{ width: 90 }}>Compte</th>
-                  <th>Libelle / Tiers</th>
-                  <th className="ds-num" style={{ width: 110 }}>Debit</th>
-                  <th className="ds-num" style={{ width: 110 }}>Credit</th>
+                  <th>Libellé / Tiers</th>
+                  <th className="ds-num" style={{ width: 120 }}>Débit ({currencySymbol()})</th>
+                  <th className="ds-num" style={{ width: 120 }}>Crédit ({currencySymbol()})</th>
                 </tr>
               </thead>
               <tbody>
@@ -439,94 +469,30 @@ function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () =
                     <td className="ds-ref">{l.account_code}</td>
                     <td>
                       <div>{l.account_label}</div>
-                      {l.auxiliary_label && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
-                          {l.auxiliary_code} — {l.auxiliary_label}
-                        </div>
-                      )}
-                      {l.label && (
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
-                          {l.label}
-                        </div>
-                      )}
+                      {l.auxiliary_label && <div style={{ fontSize: 11, color: 'var(--ds-muted)' }}>{l.auxiliary_code} — {l.auxiliary_label}</div>}
+                      {l.label && <div style={{ fontSize: 11, color: 'var(--ds-muted)' }}>{l.label}</div>}
                     </td>
-                    <td className="ds-num" style={{ color: 'var(--ds-info)' }}>
-                      {n(l.debit)}
-                    </td>
-                    <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>
-                      {n(l.credit)}
-                    </td>
+                    <td className="ds-num">{n(l.debit)}</td>
+                    <td className="ds-num">{n(l.credit)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td className="ds-num" colSpan={2}>Totaux :</td>
-                  <td className="ds-num">
-                    {n(totalD)}
-                  </td>
-                  <td className="ds-num">
-                    {n(totalC)}
-                  </td>
+                  <td colSpan={2}>Totaux</td>
+                  <td className="ds-num">{n(totalD)}</td>
+                  <td className="ds-num">{n(totalC)}</td>
                 </tr>
-                {Math.abs(totalD - totalC) > 0.01 && (
-                  <tr style={{ background: 'var(--ds-danger-bg)' }}>
-                    <td colSpan={4} style={{ padding: '8px 14px', fontSize: '0.75rem', color: 'var(--ds-danger)' }}>
-                      ⚠ Ecriture desequilibree : delta = {n(Math.abs(totalD - totalC))} {currencySymbol()}
-                    </td>
-                  </tr>
-                )}
               </tfoot>
             </table>
-
-            {(isDraft || canReverse) && (
-              <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--theme-bg-separator)' }}>
-                {reversing ? (
-                  <form onSubmit={(e) => { e.preventDefault(); reverseM.mutate(reversing); }}
-                    style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Date de l'extourne
-                      <input type="date" value={reversing.date} onChange={e => setReversing({ ...reversing, date: e.target.value })}
-                        className="ds-input sm" style={{ width: 150, display: 'block' }} />
-                    </label>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', flex: 1, minWidth: 240 }}>Motif <span className="ds-req" aria-hidden="true">*</span>
-                      <input value={reversing.reason} onChange={e => setReversing({ ...reversing, reason: e.target.value })} autoFocus required
-                        className="ds-input sm" style={{ width: '100%', display: 'block' }} placeholder="Ex. Erreur d'imputation" maxLength={500} />
-                    </label>
-                    <button type="button" className="odoo-btn-secondary" onClick={() => setReversing(null)} disabled={busy}>Retour</button>
-                    <button type="submit" className="ds-btn-danger solid" disabled={busy || reversing.reason.trim().length < 3} aria-busy={reverseM.isPending || undefined}>
-                      {reverseM.isPending ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={12} aria-hidden="true" />} Extourner
-                    </button>
-                  </form>
-                ) : (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    {isDraft && (
-                      <>
-                        <button type="button" className="ds-btn-danger" disabled={busy}
-                          onClick={async () => { if (await confirm('Supprimer ce brouillon ? Il n\'a pas encore de numéro : aucun trou ne restera dans la numérotation.', { title: 'Supprimer le brouillon', danger: true, confirmLabel: 'Supprimer' })) deleteM.mutate(); }}>
-                          <Trash2 size={12} aria-hidden="true" /> Supprimer
-                        </button>
-                        <button type="button" className="odoo-btn-secondary" disabled={busy} onClick={() => onEdit(entry)}>
-                          <PenLine size={12} /> Modifier
-                        </button>
-                        <button type="button" className="odoo-btn-primary" disabled={busy || Math.abs(totalD - totalC) > 0.005}
-                          onClick={async () => { if (await confirm('Comptabiliser ce brouillon ? Il recevra son numéro de journal et ne pourra plus être modifié (correction par extourne).', { title: 'Comptabiliser l\'écriture', confirmLabel: 'Comptabiliser' })) postM.mutate(); }}>
-                          {postM.isPending ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Comptabiliser
-                        </button>
-                      </>
-                    )}
-                    {canReverse && (
-                      <button type="button" className="ds-btn-danger" disabled={busy}
-                        onClick={() => setReversing({ date: new Date().toISOString().slice(0, 10), reason: '' })}>
-                        <RotateCcw size={12} aria-hidden="true" /> Extourner
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </ModalBackdrop>
+          </DataPanel>
+          {Math.abs(totalD - totalC) > 0.01 && (
+            <div className="ds-field error"><span className="ds-field-hint" role="alert">
+              Écriture déséquilibrée : écart de {n(Math.abs(totalD - totalC))} {currencySymbol()} entre le débit et le crédit.
+            </span></div>
+          )}
+        </>
+      )}
+    </Modal>
   );
 }

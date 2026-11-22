@@ -1,10 +1,10 @@
 import { money } from '../../utils/money';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, History, Search, RotateCcw, SlidersHorizontal, HelpCircle, Lock } from 'lucide-react';
+import { History, RotateCcw, SlidersHorizontal, HelpCircle, Lock } from 'lucide-react';
 import { settingsApi, type BusinessParameter, type ParamField } from '../../api/settings.api';
 import { useSettings } from '../../context/SettingsContext';
-import { StatusBanner } from '../../components/ui/StatusBanner';
+import { DataPanel, EmptyState, ErrorState, LoadingState, SearchBar, Toolbar } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useDirtyForm, useDraft } from './DirtyForms';
 import { OdooToggle, settingAnchor } from './SettingsPrimitives';
@@ -114,7 +114,7 @@ export default function ParametersPanel({ keys, domains, searchable = !keys && !
   extras?: Record<string, ReactNode>;
 }) {
   const [q, setQ] = useState('');
-  const { data = [], isLoading, isError } = useQuery({ queryKey: ['business-parameters'], queryFn: settingsApi.parameters });
+  const { data = [], isLoading, isError, error } = useQuery({ queryKey: ['business-parameters'], queryFn: settingsApi.parameters });
 
   const shown = useMemo(() => {
     let list = keys ? data.filter(p => keys.includes(p.key)) : data;
@@ -133,23 +133,17 @@ export default function ParametersPanel({ keys, domains, searchable = !keys && !
     return [...m.entries()].sort(([a], [b]) => (THEME_RANK.get(a) ?? 99) - (THEME_RANK.get(b) ?? 99));
   }, [shown, extras]);
 
-  if (isLoading) return <Loader2 className="animate-spin" size={18} />;
-  if (isError) {
-    return <StatusBanner tone="danger" icon={SlidersHorizontal} title="Paramètres indisponibles">Le serveur n'a pas pu charger les paramètres.</StatusBanner>;
-  }
+  if (isLoading) return <LoadingState bare />;
+  if (isError) return <ErrorState error={error} title="Paramètres indisponibles" />;
 
   return (
     <div className="odoo-scope odoo-params">
       {searchable && (
-        <div className="prj-toolbar">
-          <label className="prj-search" style={{ maxWidth: 420 }}>
-            <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
-            <input id="parameters-search" type="search"
-              placeholder="Rechercher un paramètre…" value={q} onChange={e => setQ(e.target.value)} aria-label="Rechercher un paramètre" />
-          </label>
-        </div>
+        <Toolbar>
+          <SearchBar value={q} onChange={setQ} placeholder="Rechercher un paramètre…" />
+        </Toolbar>
       )}
-      {!shown.length && !extras && <p style={{ color: 'var(--ds-muted)', fontSize: '0.875rem' }}>Aucun paramètre {q ? 'ne correspond à la recherche' : 'accessible'}.</p>}
+      {!shown.length && !extras && <EmptyState icon={SlidersHorizontal} title={`Aucun paramètre ${q ? 'ne correspond à la recherche' : 'accessible'}`} />}
       {groups.map(([theme, params], i) => (
         <section key={theme} id={settingAnchor(theme)} data-toc={theme} className="odoo-company-card odoo-params-group">
           <h3>
@@ -277,20 +271,22 @@ function ParameterRow({ param }: { param: BusinessParameter }) {
       {hint && <div className="odoo-params-hint">{hint}</div>}
 
       {showHistory && param.history.length > 0 && (
-        <table className="odoo-table odoo-params-history">
+        <DataPanel className="odoo-params-history" label={`Historique : ${param.label}`}>
+        <table className="odoo-table ds-dense">
           <thead><tr><th>Date</th><th>Par</th><th>Changement</th></tr></thead>
           <tbody>
             {param.history.map((h, i) => (
               <tr key={i}>
                 <td style={{ whiteSpace: 'nowrap' }}>{new Date(h.changed_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
                 <td>{h.by_name || 'Système'}</td>
-                <td style={{ fontSize: '0.8125rem' }}>
+                <td>
                   {Object.entries(h.diff ?? {}).map(([k, d]) => `${param.fields.find(f => f.name === k)?.label ?? k} : ${JSON.stringify(d.old)} → ${JSON.stringify(d.new)}`).join(' ; ')}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </DataPanel>
       )}
     </div>
   );
@@ -304,7 +300,7 @@ function ChoiceField({ id, field, value, disabled, onChange }: {
   const segmented = opts.length <= 3 && opts.every(o => shortLabel(o.label).length <= SEGMENT_MAX);
   if (!segmented) {
     return (
-      <select id={id} className="odoo-input odoo-params-select" value={String(value ?? '')} disabled={disabled}
+      <select id={id} className="ds-input sm odoo-params-select" style={{ width: 'auto', maxWidth: 340 }} value={String(value ?? '')} disabled={disabled}
         onChange={e => onChange(e.target.value)} aria-label={field.label}>
         {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -332,7 +328,7 @@ function NumberField({ id, field, value, disabled, onChange, showLabel = true }:
   return (
     <label htmlFor={id} className="odoo-params-num">
       {showLabel && <span>{field.label}</span>}
-      <input id={id} type="number" className="odoo-input" value={value === undefined || value === null ? '' : String(value)}
+      <input id={id} type="number" className="ds-input sm" style={{ width: 96, textAlign: 'right' }} value={value === undefined || value === null ? '' : String(value)}
         disabled={disabled} min={field.min} max={field.max} step={field.type === 'integer' ? 1 : 'any'} aria-label={field.label}
         onChange={e => onChange(e.target.value === '' ? '' : Number(e.target.value))} />
       {unit && <span>{unit}</span>}
@@ -365,7 +361,7 @@ function FieldInput({ id, field, value, disabled, onChange }: {
     return (
       <label htmlFor={id} className="odoo-params-num">
         <span>{field.label}</span>
-        <input id={id} type="date" className="odoo-input" style={{ width: 160 }} value={typeof value === 'string' ? value : ''} disabled={disabled}
+        <input id={id} type="date" className="ds-input sm" style={{ width: 160 }} value={typeof value === 'string' ? value : ''} disabled={disabled}
           aria-label={field.label} onChange={e => onChange(e.target.value || null)} />
       </label>
     );
@@ -374,7 +370,7 @@ function FieldInput({ id, field, value, disabled, onChange }: {
     return (
       <label htmlFor={id} className="odoo-params-num">
         <span>{field.label}</span>
-        <input id={id} type="time" className="odoo-input" style={{ width: 120 }} value={typeof value === 'string' ? value : ''} disabled={disabled}
+        <input id={id} type="time" className="ds-input sm" style={{ width: 120 }} value={typeof value === 'string' ? value : ''} disabled={disabled}
           aria-label={field.label} onChange={e => onChange(e.target.value)} />
       </label>
     );
@@ -391,8 +387,8 @@ function SupplierScore({ param, draft, disabled, onChange }: {
   const weights = ['on_time', 'fill_rate', 'quality', 'price', 'disputes'].filter(has);
   const total = weights.reduce((s, n) => s + (Number(draft[n]) || 0), 0);
   const shades = [100, 75, 52, 32, 16].map(p => `color-mix(in srgb, var(--theme-accent) ${p}%, var(--theme-bg-card))`);
-  const num = (n: string) => (
-    <input id={`param-${param.key}-${n}`} type="number" className="odoo-input" min={0} max={100} step={1} disabled={disabled}
+  const num = (n: string, cls?: string) => (
+    <input id={`param-${param.key}-${n}`} type="number" className="ds-input sm" style={{ textAlign: 'right', fontWeight: 600, width: cls ? 64 : undefined }} min={0} max={100} step={1} disabled={disabled}
       value={draft[n] === undefined || draft[n] === null ? '' : String(draft[n])}
       onChange={e => onChange(n, e.target.value === '' ? '' : Number(e.target.value))} />
   );
@@ -418,7 +414,7 @@ function SupplierScore({ param, draft, disabled, onChange }: {
         ))}
         {([['a_min', 'A', 'ok'], ['b_min', 'B', 'info'], ['c_min', 'C', 'warn']] as const).filter(([n]) => has(n)).map(([n, cls, t]) => (
           <label key={n} htmlFor={`param-${param.key}-${n}`} className={`odoo-params-class ${t}`}>
-            Classe {cls} ≥ {num(n)}
+            Classe {cls} ≥ {num(n, cls)}
           </label>
         ))}
       </div>
@@ -442,7 +438,7 @@ function ListField({ id, field, value, disabled, onChange }: {
   return (
     <label htmlFor={id} className="odoo-params-num">
       <span>{field.label}</span>
-      <input id={id} type="text" className="odoo-input" style={{ width: 240 }} value={text} disabled={disabled}
+      <input id={id} type="text" className="ds-input sm" style={{ width: 240 }} value={text} disabled={disabled}
         placeholder="4, 6, 8, 10, 12, 16" inputMode="numeric"
         onChange={e => { setText(e.target.value); onChange(parse(e.target.value)); }} />
       {field.unit && <span>{field.unit}</span>}

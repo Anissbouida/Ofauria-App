@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Loader2, CalendarRange, Check, AlertTriangle } from 'lucide-react';
 import { productionApi, type MrpPhasedProposal } from '../../api/production.api';
-import { Alert, DataPanel, EmptyState, ErrorState, LoadingState, SectionHeader, TableFooter } from '../../components/ds';
+import { Alert, DataPanel, EmptyState, ErrorState, HeaderActions, LoadingState, SectionHeader, TableFooter } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -47,7 +47,7 @@ export default function MrpPhasedView({ from }: { from: string }) {
   });
 
   if (isLoading) return <LoadingState label="Calcul des besoins…" />;
-  if (isError || !data) return <ErrorState title="Calcul impossible" text={apiErrorMessage(error)} onRetry={() => refetch()} />;
+  if (isError || !data) return <ErrorState error={error} title="Calcul impossible" text={apiErrorMessage(error)} onRetry={() => refetch()} />;
   const item = data.items.find(i => i.key === itemKey);
   const late = data.proposals.filter(p => p.late).length;
 
@@ -72,12 +72,13 @@ export default function MrpPhasedView({ from }: { from: string }) {
             </button>
           ))}
         </div>
-        <div style={{ flex: 1 }} />
+      </div>
+      <HeaderActions>
         <button type="button" className="odoo-btn-primary" disabled={!picked.size || validate.isPending} aria-busy={validate.isPending || undefined}
           onClick={async () => { if (await confirm(`Créer les ordres de fabrication et demandes d'achat des ${picked.size} proposition(s) choisie(s) ?`, { confirmLabel: 'Créer' })) validate.mutate(); }}>
           {validate.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />} Valider ({picked.size})
         </button>
-      </div>
+      </HeaderActions>
       {proposals.length === 0 ? <EmptyState icon={CalendarRange} title="Aucune proposition" text="La demande de l'horizon est couverte par le stock et les ordres en cours." /> : (
       <DataPanel label="Propositions" footer={<TableFooter note={`${proposals.length} proposition(s)${picked.size ? ` · ${picked.size} choisie(s)` : ''}`} />}>
         <div style={{ maxHeight: 360, overflowY: 'auto' }}>

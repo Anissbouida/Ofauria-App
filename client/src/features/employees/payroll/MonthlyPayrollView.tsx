@@ -45,7 +45,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
     return paySortDir === 'asc' ? <ArrowUp size={13} style={{ display: "inline", marginLeft: 4, color: "var(--theme-accent)" }} /> : <ArrowDown size={13} style={{ display: "inline", marginLeft: 4, color: "var(--theme-accent)" }} />;
   };
 
-  const { data: payrolls = [], isLoading, isError, refetch } = useQuery({
+  const { data: payrolls = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['payroll', month, year],
     queryFn: () => payrollApi.list({ month: String(month), year: String(year) }),
   });
@@ -328,7 +328,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
       {isLoading ? (
         <LoadingPanel />
       ) : isError ? (
-        <ErrorState onRetry={() => void refetch()} />
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : sortedPayrolls.length === 0 ? (
         <EmptyState icon={Banknote} title="Aucun bulletin pour cette période" text="Générez les bulletins du mois depuis le pointage avec « Générer les bulletins »." />
       ) : visiblePayrolls.length === 0 ? (
@@ -496,13 +496,15 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
         ];
         const num = (v: number | null, neg = false) => v == null ? '' : `${neg ? '− ' : ''}${v.toFixed(2)}`;
         const twoCol = (lines: Array<[string, string] | false>) => (
-          <table className="odoo-table">
+          <DataPanel>
+          <table className="odoo-table ds-dense">
             <tbody>
               {lines.filter((l): l is [string, string] => !!l).map(([k, v]) => (
                 <tr key={k}><td>{k}</td><td className="ds-num" style={{ whiteSpace: 'nowrap' }}>{v} {currencySymbol()}</td></tr>
               ))}
             </tbody>
           </table>
+          </DataPanel>
         );
         return (
           <HrModal icon={Wallet} crumb="Bulletin" width={760} onClose={() => setDetailPayroll(null)}
@@ -537,7 +539,8 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             </ol>
 
             <SectionTitle icon={Clock}>Présence</SectionTitle>
-            <table className="odoo-table">
+            <DataPanel label="Présence">
+            <table className="odoo-table ds-dense">
               <thead><tr><th className="ds-num">Jours payés</th><th className="ds-num">Absences (j)</th><th className="ds-num">Heures sup (h)</th></tr></thead>
               <tbody>
                 <tr>
@@ -551,10 +554,12 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                 </tr>
               </tbody>
             </table>
+            </DataPanel>
 
             <SectionTitle icon={Receipt}>Éléments de paie</SectionTitle>
             {notDeclared && <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Salarié non déclaré : ni cotisations ni IR.</span>}
-            <table className="odoo-table">
+            <DataPanel label="Éléments de paie">
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr><th>Désignation</th><th className="ds-num" style={{ width: 150 }}>Gains ({currencySymbol()})</th><th className="ds-num" style={{ width: 150 }}>Retenues ({currencySymbol()})</th></tr>
               </thead>
@@ -596,6 +601,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                 </>)}
               </tfoot>
             </table>
+            </DataPanel>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

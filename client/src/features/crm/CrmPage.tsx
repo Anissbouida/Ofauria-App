@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Target, Plus, Loader2, X, Phone, CalendarClock, Mail, CheckSquare, StickyNote, Trophy, XCircle, FileSignature, UserPlus, Check, Trash2, AlertTriangle, Megaphone,
+  Target, Plus, Phone, CalendarClock, Mail, CheckSquare, StickyNote, Trophy, XCircle, FileSignature, UserPlus, Check, Trash2, AlertTriangle, Megaphone,
   Send, Handshake, Archive, List, SquareKanban, type LucideIcon } from 'lucide-react';
 
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
@@ -16,12 +16,11 @@ import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListToolbar, ListKpi } from '../sales/ListTemplate';
-import { Segmented, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { Segmented, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 
 /**
  * CRM (mig 371) : opportunités suivies avant le devis, du premier contact à la commande.
@@ -30,8 +29,7 @@ import { Segmented, DataPanel, TableFooter, EmptyState, NoResultState, LoadingSt
 const n0 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 const fr = (v: string | null | undefined) => (v ? format(new Date(`${String(v).slice(0, 10)}T00:00:00`), 'dd/MM/yyyy') : '—');
 const frt = (v: string | null | undefined) => (v ? format(new Date(v), 'dd/MM HH:mm') : '');
-const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
-const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+const lab: React.CSSProperties = { fontSize: '0.8125rem', color: 'var(--ds-muted)' };
 const STAGE_COLOR: Record<Stage, string> = { new: 'var(--ds-muted)', qualified: 'var(--ds-info)', proposal: '#6f42c1', negotiation: 'var(--ds-warning)', won: 'var(--ds-success)', lost: 'var(--ds-danger)' };
 /** Étape d'une opportunité en étiquette commune (gagné = terminé, perdu = clos sans suite). */
 const STAGE_TONE: Record<Stage, { tone: StatusTone; icon?: LucideIcon }> = {
@@ -60,7 +58,7 @@ export default function CrmPage() {
   if (mine) listParams.mine = 'true';
   if (search) listParams.search = search;
   const { data: ov } = useQuery({ queryKey: ['crm', 'overview', mine], queryFn: () => crmApi.overview(mine) });
-  const { data: list, isLoading } = useQuery({ queryKey: ['crm', 'list', listParams], queryFn: () => crmApi.list(listParams) });
+  const { data: list, isLoading, isError, error, refetch } = useQuery({ queryKey: ['crm', 'list', listParams], queryFn: () => crmApi.list(listParams) });
   const refresh = () => qc.invalidateQueries({ queryKey: ['crm'] });
   const move = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: Stage }) => crmApi.stage(id, stage),
@@ -109,7 +107,7 @@ export default function CrmPage() {
         ]} />
       </ListToolbar>
 
-      {isLoading ? <LoadingState label="Chargement du pipeline…" /> : view === 'activities' ? <ActivitiesView mine={mine} onOpen={setOpenId} /> : view === 'list' ? (
+      {isLoading ? <LoadingState label="Chargement du pipeline…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : view === 'activities' ? <ActivitiesView mine={mine} onOpen={setOpenId} /> : view === 'list' ? (
         opps.length === 0 ? <Empty filtered={!!search || mine} onReset={() => { setSearchInput(''); setMine(false); }} onNew={() => setEditing('new')} /> : (
           <DataPanel label="Opportunités" footer={<TableFooter note={`${opps.length} affaire${opps.length > 1 ? 's' : ''} · ${moneyFmt(opps.reduce((a, o) => a + Number(o.expected_amount ?? 0), 0), { decimals: 0 })} espérés`} />}>
             <table className="odoo-table">
@@ -187,9 +185,10 @@ function Empty({ filtered, onReset, onNew }: { filtered: boolean; onReset: () =>
 /* ─── Activités à faire ───────────────────────────────────────────────────── */
 function ActivitiesView({ mine, onOpen }: { mine: boolean; onOpen: (id: string) => void }) {
   const qc = useQueryClient();
-  const { data = [], isLoading } = useQuery({ queryKey: ['crm', 'todo', mine], queryFn: () => crmApi.todo(!mine) });
+  const { data = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['crm', 'todo', mine], queryFn: () => crmApi.todo(!mine) });
   const done = useMutation({ mutationFn: (id: string) => crmApi.doneActivity(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }), onError: e => notify.error(apiErrorMessage(e)) });
   if (isLoading) return <LoadingState label="Chargement des activités…" />;
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
   if (!data.length) return <StatusBanner tone="success" icon={Check} title="Rien à faire">Aucun appel, rendez-vous ni tâche en attente{mine ? ' pour vous' : ''}.</StatusBanner>;
   return (
     <DataPanel label="Activités à faire" footer={<TableFooter note={`${data.length} activité${data.length > 1 ? 's' : ''} à faire`} />}>
@@ -248,49 +247,77 @@ function OpportunityForm({ opp, onClose, onSaved }: { opp: Opportunity | null; o
     onError: e => notify.error(apiErrorMessage(e)),
   });
   const ok = f.title.trim().length >= 2 && (mode === 'customer' ? !!f.customerId : !!(f.prospectName.trim() || f.prospectCompany.trim()));
+  const [initialSnapshot] = useState(() => JSON.stringify({ mode, f }));
+  const dirty = JSON.stringify({ mode, f }) !== initialSnapshot;
+  const titleError = f.title !== '' && f.title.trim().length < 2 ? 'Au moins 2 caractères.' : undefined;
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 760, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10 }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{opp ? `Modifier ${opp.number}` : 'Nouvelle opportunité'}</span></div>
-          <div style={{ flex: 1 }} /><button className="odoo-btn-secondary" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
+    <Modal title={opp ? `Modifier ${opp.number}` : 'Nouvelle opportunité'} onClose={onClose} width={760} locked={save.isPending}
+      footer={<FormFooter dirty={dirty} onCancel={onClose} disabled={!ok} busy={save.isPending} onSubmit={() => {
+        const missing = cf.missing(); if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
+        save.mutate();
+      }} />}>
+      <FormSection title="Affaire">
+        <FormField label="Affaire" htmlFor="op-title" required error={titleError}>
+          <input id="op-title" className="ds-input" maxLength={200} value={f.title} onChange={e => set('title', e.target.value)} placeholder="Ex. : buffet d'inauguration 200 personnes" autoFocus />
+        </FormField>
+      </FormSection>
+      <FormSection title="Client ou prospect">
+        <div style={{ display: 'flex', gap: 8 }} role="group" aria-label="Type d'interlocuteur">
+          {(['prospect', 'customer'] as const).map(m => <button key={m} type="button" aria-pressed={mode === m} className={mode === m ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode(m)}>{m === 'customer' ? 'Client existant' : 'Prospect'}</button>)}
         </div>
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 12 }}>
-          <label style={lab}>Affaire *<input style={field} maxLength={200} value={f.title} onChange={e => set('title', e.target.value)} placeholder="Ex. : buffet d'inauguration 200 personnes" autoFocus /></label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {(['prospect', 'customer'] as const).map(m => <button key={m} type="button" className={mode === m ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode(m)}>{m === 'customer' ? 'Client existant' : 'Prospect'}</button>)}
+        {mode === 'customer' ? (
+          <FormField label="Client" required>
+            <SearchSelect options={customerOptions} value={f.customerId} onChange={v => set('customerId', v)} placeholder="Rechercher un client…" ariaLabel="Client" width="100%" size="md" />
+          </FormField>
+        ) : (
+          <div className="ds-form-grid">
+            <FormField label="Contact" htmlFor="op-p-name" hint="Contact ou société obligatoire.">
+              <input id="op-p-name" className="ds-input" maxLength={160} value={f.prospectName} onChange={e => set('prospectName', e.target.value)} />
+            </FormField>
+            <FormField label="Société" htmlFor="op-p-company">
+              <input id="op-p-company" className="ds-input" maxLength={200} value={f.prospectCompany} onChange={e => set('prospectCompany', e.target.value)} />
+            </FormField>
+            <FormField label="Téléphone" htmlFor="op-p-phone">
+              <input id="op-p-phone" className="ds-input" maxLength={30} value={f.prospectPhone} onChange={e => set('prospectPhone', e.target.value)} />
+            </FormField>
+            <FormField label="E-mail" htmlFor="op-p-email">
+              <input id="op-p-email" className="ds-input" type="email" maxLength={255} value={f.prospectEmail} onChange={e => set('prospectEmail', e.target.value)} />
+            </FormField>
+            <FormField label="Ville" htmlFor="op-p-city">
+              <input id="op-p-city" className="ds-input" maxLength={100} value={f.prospectCity} onChange={e => set('prospectCity', e.target.value)} />
+            </FormField>
           </div>
-          {mode === 'customer' ? (
-            <label style={lab}>Client *<SearchSelect options={customerOptions} value={f.customerId} onChange={v => set('customerId', v)} placeholder="Rechercher un client…" width="100%" size="md" /></label>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-              <label style={lab}>Contact<input style={field} maxLength={160} value={f.prospectName} onChange={e => set('prospectName', e.target.value)} /></label>
-              <label style={lab}>Société<input style={field} maxLength={200} value={f.prospectCompany} onChange={e => set('prospectCompany', e.target.value)} /></label>
-              <label style={lab}>Téléphone<input style={field} maxLength={30} value={f.prospectPhone} onChange={e => set('prospectPhone', e.target.value)} /></label>
-              <label style={lab}>E-mail<input style={field} type="email" maxLength={255} value={f.prospectEmail} onChange={e => set('prospectEmail', e.target.value)} /></label>
-              <label style={lab}>Ville<input style={field} maxLength={100} value={f.prospectCity} onChange={e => set('prospectCity', e.target.value)} /></label>
-            </div>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-            <label style={lab}>Montant espéré ({currencySymbol()})<input style={field} type="number" min={0} step="1" value={f.expectedAmount} onChange={e => set('expectedAmount', e.target.value)} /></label>
-            <label style={lab}>Probabilité (%)<input style={field} type="number" min={0} max={100} value={f.probability} onChange={e => set('probability', e.target.value)} placeholder="selon l'étape" /></label>
-            <label style={lab}>Conclusion prévue<input style={field} type="date" value={f.expectedCloseDate} onChange={e => set('expectedCloseDate', e.target.value)} /></label>
-            <label style={lab}>Source<select style={field} value={f.sourceCode} onChange={e => set('sourceCode', e.target.value)}><option value="">—</option>{sources.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}</select></label>
-            <label style={lab}>Responsable<SearchSelect value={f.ownerId} onChange={v => set('ownerId', v)} placeholder="Responsable" width={180} size="md" ariaLabel="Responsable" options={owners.map(o => ({ id: String(o.id), label: o.name as string }))} /></label>
-            <label style={lab}>Campagne<SearchSelect value={f.campaignId} onChange={v => set('campaignId', v)} placeholder="—" width={180} size="md" ariaLabel="Campagne" options={campaignOpts.map(c => ({ id: String(c.id), label: c.name as string }))} /></label>
-          </div>
-          <label style={lab}>Description<textarea style={{ ...field, minHeight: 70 }} maxLength={4000} value={f.description} onChange={e => set('description', e.target.value)} placeholder="Besoin du client, contexte, interlocuteurs…" /></label>
-          <CustomFieldsEditor entity="opportunity" values={cf.values} onChange={cf.setValues} />
+        )}
+      </FormSection>
+      <FormSection title="Prévision">
+        <div className="ds-form-grid">
+          <FormField label={`Montant espéré (${currencySymbol()})`} htmlFor="op-amount">
+            <input id="op-amount" className="ds-input" type="number" min={0} step="1" value={f.expectedAmount} onChange={e => set('expectedAmount', e.target.value)} />
+          </FormField>
+          <FormField label="Probabilité (%)" htmlFor="op-proba">
+            <input id="op-proba" className="ds-input" type="number" min={0} max={100} value={f.probability} onChange={e => set('probability', e.target.value)} placeholder="selon l'étape" />
+          </FormField>
+          <FormField label="Conclusion prévue" htmlFor="op-close">
+            <input id="op-close" className="ds-input" type="date" value={f.expectedCloseDate} onChange={e => set('expectedCloseDate', e.target.value)} />
+          </FormField>
+          <FormField label="Source" htmlFor="op-source">
+            <select id="op-source" className="ds-input" value={f.sourceCode} onChange={e => set('sourceCode', e.target.value)}><option value="">—</option>{sources.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}</select>
+          </FormField>
+          <FormField label="Responsable">
+            <SearchSelect value={f.ownerId} onChange={v => set('ownerId', v)} placeholder="Responsable" width="100%" size="md" ariaLabel="Responsable" options={owners.map(o => ({ id: String(o.id), label: o.name as string }))} />
+          </FormField>
+          <FormField label="Campagne">
+            <SearchSelect value={f.campaignId} onChange={v => set('campaignId', v)} placeholder="—" width="100%" size="md" ariaLabel="Campagne" options={campaignOpts.map(c => ({ id: String(c.id), label: c.name as string }))} />
+          </FormField>
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
-          <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="odoo-btn-primary" disabled={!ok || save.isPending} onClick={() => {
-            const missing = cf.missing(); if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
-            save.mutate();
-          }}>Enregistrer</button>
-        </div>
-      </div>
-    </ModalBackdrop>
+      </FormSection>
+      <FormSection title="Description">
+        <FormField label="Description" htmlFor="op-desc">
+          <textarea id="op-desc" className="ds-input" style={{ minHeight: 70 }} maxLength={4000} value={f.description} onChange={e => set('description', e.target.value)} placeholder="Besoin du client, contexte, interlocuteurs…" />
+        </FormField>
+        <CustomFieldsEditor entity="opportunity" values={cf.values} onChange={cf.setValues} />
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -299,7 +326,7 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data: o, isLoading } = useQuery({ queryKey: ['crm', 'opp', id], queryFn: () => crmApi.get(id) });
+  const { data: o, isLoading, isError, error, refetch } = useQuery({ queryKey: ['crm', 'opp', id], queryFn: () => crmApi.get(id) });
   const { data: owners = [] } = useQuery({ queryKey: ['crm', 'owners'], queryFn: crmApi.owners, staleTime: 300_000 });
   const [act, setAct] = useState({ kind: 'call' as ActivityKind, subject: '', dueAt: '', assignedTo: user?.id ?? '' });
   const refresh = () => qc.invalidateQueries({ queryKey: ['crm'] });
@@ -314,23 +341,21 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
   const toCustomer = useMutation({ mutationFn: () => crmApi.createCustomer(id), onSuccess: () => { refresh(); notify.success('Fiche client créée'); }, onError: e => notify.error(apiErrorMessage(e)) });
   const { defs: cfDefs } = useCustomFieldsForm('opportunity');
 
+  if (isError) return <Modal title="Opportunité" onClose={onClose} width={980}><ErrorState title="L'opportunité n'a pas pu être chargée" error={error} onRetry={() => refetch()} bare /></Modal>;
+  if (isLoading || !o) return <Modal title="Opportunité" onClose={onClose} width={980}><LoadingState bare /></Modal>;
+
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[55] flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 980, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10 }}>
-        {isLoading || !o ? <LoadingState bare /> : (<>
-          <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1, flexWrap: 'wrap', gap: 6 }}>
-            <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{o.number} · {o.title}</span></div>
-            <div style={{ flex: 1 }} />
-            {o.stage !== 'won' && o.stage !== 'lost' && <>
-              <button className="odoo-btn-secondary" onClick={() => navigate(`/quotes?opportunity=${o.id}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileSignature size={13} /> Créer un devis</button>
-              <button className="odoo-btn-primary" disabled={stage.isPending} onClick={() => stage.mutate('won')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Trophy size={13} /> Gagné</button>
-              <button className="odoo-btn-secondary" onClick={() => onLose(o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><XCircle size={13} /> Perdu</button>
-            </>}
-            {(o.stage === 'won' || o.stage === 'lost') && <button className="odoo-btn-secondary" onClick={() => stage.mutate('negotiation')}>Rouvrir</button>}
-            <button className="odoo-btn-secondary" onClick={() => onEdit(o)}>Modifier</button>
-            <button className="odoo-btn-secondary" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
-          </div>
-          <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
+    <Modal title={o.title} subtitle={<span className="ds-ref">{o.number}</span>} onClose={onClose} width={980}
+      aside={<StatusTag tone={STAGE_TONE[o.stage]?.tone ?? 'draft'} icon={STAGE_TONE[o.stage]?.icon} label={STAGE_LABEL[o.stage]} />}
+      footer={<>
+        <button type="button" className="odoo-btn-secondary" onClick={() => onEdit(o)}>Modifier</button>
+        {(o.stage === 'won' || o.stage === 'lost') && <button type="button" className="odoo-btn-secondary" onClick={() => stage.mutate('negotiation')}>Rouvrir</button>}
+        {o.stage !== 'won' && o.stage !== 'lost' && <>
+          <button type="button" className="odoo-btn-secondary" onClick={() => onLose(o)}><XCircle size={13} /> Perdu</button>
+          <button type="button" className="odoo-btn-secondary" onClick={() => navigate(`/quotes?opportunity=${o.id}`)}><FileSignature size={13} /> Créer un devis</button>
+          <button type="button" className="odoo-btn-primary" disabled={stage.isPending} onClick={() => stage.mutate('won')}><Trophy size={13} /> Gagné</button>
+        </>}
+      </>}>
             {/* Étapes */}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               {STAGES.filter(s => s.key !== 'lost' || o.stage === 'lost').map(s => {
@@ -362,11 +387,15 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
             {(o.quotes?.length ?? 0) > 0 && (
               <div>
                 <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Devis</div>
-                <table className="odoo-table"><tbody>{o.quotes!.map(q => (
+                <DataPanel label="Devis de l'affaire">
+                <table className="odoo-table ds-dense">
+                  <thead><tr><th>N°</th><th>Date</th><th>Statut</th><th className="ds-num">Total ({currencySymbol()})</th></tr></thead>
+                  <tbody>{o.quotes!.map(q => (
                   <tr key={q.id} onClick={() => navigate('/quotes')} style={{ cursor: 'pointer' }}>
-                    <td className="font-mono">{q.number}</td><td>{fr(q.quote_date)}</td><td>{q.status}</td><td className="ds-num">{moneyFmt(q.total, { decimals: 0 })}</td>
+                    <td className="ds-ref">{q.number}</td><td>{fr(q.quote_date)}</td><td>{q.status}</td><td className="ds-num">{n0(q.total)}</td>
                   </tr>
                 ))}</tbody></table>
+                </DataPanel>
               </div>
             )}
 
@@ -374,15 +403,23 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
               <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Activités</div>
               {o.stage !== 'won' && o.stage !== 'lost' && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
-                  <label style={{ ...lab, width: 130 }}>Type<select style={field} value={act.kind} onChange={e => setAct({ ...act, kind: e.target.value as ActivityKind })}>
-                    {(Object.keys(ACTIVITY_LABEL) as ActivityKind[]).map(k => <option key={k} value={k}>{ACTIVITY_LABEL[k]}</option>)}</select></label>
-                  <label style={{ ...lab, flex: '1 1 220px' }}>{act.kind === 'note' ? 'Note' : 'Objet'}<input style={field} maxLength={200} value={act.subject} onChange={e => setAct({ ...act, subject: e.target.value })}
-                    placeholder={act.kind === 'note' ? 'Ce qui s\'est dit…' : 'Ex. : rappeler pour confirmer le nombre de convives'} /></label>
+                  <div style={{ width: 130 }}><FormField label="Type" htmlFor="act-kind">
+                    <select id="act-kind" className="ds-input" value={act.kind} onChange={e => setAct({ ...act, kind: e.target.value as ActivityKind })}>
+                      {(Object.keys(ACTIVITY_LABEL) as ActivityKind[]).map(k => <option key={k} value={k}>{ACTIVITY_LABEL[k]}</option>)}</select>
+                  </FormField></div>
+                  <div style={{ flex: '1 1 220px' }}><FormField label={act.kind === 'note' ? 'Note' : 'Objet'} htmlFor="act-subject" required>
+                    <input id="act-subject" className="ds-input" maxLength={200} value={act.subject} onChange={e => setAct({ ...act, subject: e.target.value })}
+                      placeholder={act.kind === 'note' ? 'Ce qui s\'est dit…' : 'Ex. : rappeler pour confirmer le nombre de convives'} />
+                  </FormField></div>
                   {act.kind !== 'note' && <>
-                    <label style={{ ...lab, width: 190 }}>Échéance<input style={field} type="datetime-local" value={act.dueAt} onChange={e => setAct({ ...act, dueAt: e.target.value })} /></label>
-                    <label style={{ ...lab, width: 170 }}>Pour<SearchSelect value={act.assignedTo} onChange={v => setAct({ ...act, assignedTo: v })} placeholder="Pour" width={170} size="md" ariaLabel="Assigné à" options={owners.map(u => ({ id: String(u.id), label: u.name as string }))} /></label>
+                    <div style={{ width: 190 }}><FormField label="Échéance" htmlFor="act-due">
+                      <input id="act-due" className="ds-input" type="datetime-local" value={act.dueAt} onChange={e => setAct({ ...act, dueAt: e.target.value })} />
+                    </FormField></div>
+                    <div style={{ width: 170 }}><FormField label="Pour">
+                      <SearchSelect value={act.assignedTo} onChange={v => setAct({ ...act, assignedTo: v })} placeholder="Pour" width="100%" size="md" ariaLabel="Assigné à" options={owners.map(u => ({ id: String(u.id), label: u.name as string }))} />
+                    </FormField></div>
                   </>}
-                  <button className="odoo-btn-primary" disabled={act.subject.trim().length < 2 || add.isPending} onClick={() => add.mutate()}>Ajouter</button>
+                  <button type="button" className="odoo-btn-primary" disabled={act.subject.trim().length < 2 || add.isPending} onClick={() => add.mutate()}>Ajouter</button>
                 </div>
               )}
               {(o.activities ?? []).length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>Aucune activité.</p> : (
@@ -411,10 +448,7 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
                 </ul>
               )}
             </div>
-          </div>
-        </>)}
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -423,26 +457,24 @@ function LoseDialog({ opp, onClose, onDone }: { opp: Opportunity; onClose: () =>
   const [reason, setReason] = useState(''); const [note, setNote] = useState('');
   const lose = useMutation({ mutationFn: () => crmApi.stage(opp.id, 'lost', { lostReasonCode: reason, lostNote: note || null }), onSuccess: onDone, onError: e => notify.error(apiErrorMessage(e)) });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, background: 'var(--theme-bg-card)', borderRadius: 10, padding: 20, display: 'grid', gap: 12 }}>
-        <div style={{ fontWeight: 600 }}>Affaire perdue · {opp.title}</div>
-        <label style={lab}>Motif *<select style={field} value={reason} onChange={e => setReason(e.target.value)}><option value="">Choisir…</option>{reasons.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}</select></label>
-        <label style={lab}>Précision<input style={field} maxLength={1000} value={note} onChange={e => setNote(e.target.value)} placeholder="Ex. : concurrent 15 % moins cher" /></label>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="odoo-btn-primary" disabled={!reason || lose.isPending} onClick={() => lose.mutate()}>Classer perdue</button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    <Modal title="Affaire perdue" subtitle={opp.title} onClose={onClose} width={460} locked={lose.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => lose.mutate()} submitLabel="Classer perdue" disabled={!reason} busy={lose.isPending} />}>
+      <FormField label="Motif" htmlFor="lose-reason" required>
+        <select id="lose-reason" className="ds-input" value={reason} onChange={e => setReason(e.target.value)}><option value="">Choisir…</option>{reasons.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}</select>
+      </FormField>
+      <FormField label="Précision" htmlFor="lose-note">
+        <input id="lose-note" className="ds-input" maxLength={1000} value={note} onChange={e => setNote(e.target.value)} placeholder="Ex. : concurrent 15 % moins cher" />
+      </FormField>
+    </Modal>
   );
 }
 
 /* ─── Campagnes marketing (mig 383) ─────────────────────────────────────────── */
 function CampaignsModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
-  const { data: campaigns = [], isLoading } = useQuery({ queryKey: ['crm', 'campaigns'], queryFn: crmApi.campaigns });
+  const { data: campaigns = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['crm', 'campaigns'], queryFn: crmApi.campaigns });
   const [showForm, setShowForm] = useState(false);
-  const money = (v: number | null) => moneyFmt(v, { decimals: 0 });
+  const n0v = (v: number | null) => (v == null ? '—' : n0(v));
   const status = useMutation({
     mutationFn: ({ id, s }: { id: string; s: 'active' | 'closed' }) => crmApi.setCampaignStatus(id, s),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }),
@@ -456,54 +488,55 @@ function CampaignsModal({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10 }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb"><Megaphone size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">Campagnes marketing</span></div>
-          <div style={{ flex: 1 }} />
-          <button className="odoo-btn-primary" onClick={() => setShowForm(v => !v)} style={{ marginRight: 8 }}><Plus size={14} /> Nouvelle</button>
-          <button className="odoo-btn-secondary" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ padding: '14px 18px', display: 'grid', gap: 12 }}>
-          {showForm && (
-            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
-              <label style={lab}>Nom *<input style={field} maxLength={160} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex. Salon pro 2026" /></label>
-              <label style={lab}>Début<input style={field} type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} /></label>
-              <label style={lab}>Fin<input style={field} type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} /></label>
-              <label style={lab}>Budget ({currencySymbol()})<input style={field} type="number" min={0} value={form.budget} onChange={e => setForm(f => ({ ...f, budget: e.target.value }))} /></label>
-              <button className="odoo-btn-primary" disabled={form.name.trim().length < 2 || create.isPending} onClick={() => create.mutate()}>Créer</button>
-            </div>
-          )}
-          {isLoading ? <LoadingState bare /> : campaigns.length === 0 ? (
-            <p style={{ color: 'var(--theme-text-muted)', textAlign: 'center', padding: 24 }}>Aucune campagne. Créez-en une pour regrouper et mesurer vos opportunités.</p>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="odoo-table">
-                <thead><tr><th>Campagne</th><th>Période</th><th className="ds-num">Budget</th><th className="ds-num">Opport.</th><th className="ds-num">Gagnées</th><th className="ds-num">Chiffre gagné</th><th>État</th><th /></tr></thead>
-                <tbody>
-                  {(campaigns as Campaign[]).map(c => (
-                    <tr key={c.id}>
-                      <td className="ds-strong">{c.name}</td>
-                      <td style={{ fontSize: '0.82rem', color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{c.start_date ? format(new Date(c.start_date.slice(0, 10) + 'T00:00:00'), 'dd/MM/yy') : '—'}{c.end_date ? ` → ${format(new Date(c.end_date.slice(0, 10) + 'T00:00:00'), 'dd/MM/yy')}` : ''}</td>
-                      <td className="ds-num">{money(c.budget)}</td>
-                      <td className="ds-num">{c.opportunities}</td>
-                      <td className="ds-num">{c.won}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(c.won_amount)}</td>
-                      <td>{c.status === 'active' ? <StatusTag tone="done" label="Active" /> : <StatusTag tone="cancelled" icon={Archive} label="Clôturée" />}</td>
-                      <td className="ds-num">
-                        <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
-                          onClick={() => status.mutate({ id: c.id, s: c.status === 'active' ? 'closed' : 'active' })}>
-                          {c.status === 'active' ? 'Clôturer' : 'Rouvrir'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-    </ModalBackdrop>
+    <Modal title="Campagnes marketing" onClose={onClose} width={820}
+      aside={<button type="button" className="odoo-btn-primary ds-btn-sm" onClick={() => setShowForm(v => !v)}><Plus size={14} /> Nouvelle</button>}>
+      {showForm && (
+        <FormSection title="Nouvelle campagne">
+          <div className="ds-form-grid cols-4">
+            <FormField label="Nom" htmlFor="cp-name" required>
+              <input id="cp-name" className="ds-input" maxLength={160} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex. Salon pro 2026" />
+            </FormField>
+            <FormField label="Début" htmlFor="cp-start">
+              <input id="cp-start" className="ds-input" type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} />
+            </FormField>
+            <FormField label="Fin" htmlFor="cp-end">
+              <input id="cp-end" className="ds-input" type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
+            </FormField>
+            <FormField label={`Budget (${currencySymbol()})`} htmlFor="cp-budget">
+              <input id="cp-budget" className="ds-input" type="number" min={0} value={form.budget} onChange={e => setForm(f => ({ ...f, budget: e.target.value }))} />
+            </FormField>
+          </div>
+          <FormFooter onCancel={() => setShowForm(false)} onSubmit={() => create.mutate()} submitLabel="Créer" disabled={form.name.trim().length < 2} busy={create.isPending} />
+        </FormSection>
+      )}
+      {isLoading ? <LoadingState bare /> : isError ? <ErrorState error={error} onRetry={() => refetch()} bare /> : campaigns.length === 0 ? (
+        <EmptyState icon={Megaphone} title="Aucune campagne" text="Créez-en une pour regrouper et mesurer vos opportunités." bare />
+      ) : (
+        <DataPanel label="Campagnes">
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Campagne</th><th>Période</th><th className="ds-num">Budget ({currencySymbol()})</th><th className="ds-num">Opport.</th><th className="ds-num">Gagnées</th><th className="ds-num">Chiffre gagné ({currencySymbol()})</th><th>État</th><th className="ds-actions">Actions</th></tr></thead>
+            <tbody>
+              {(campaigns as Campaign[]).map(c => (
+                <tr key={c.id}>
+                  <td className="ds-strong">{c.name}</td>
+                  <td style={{ color: 'var(--ds-muted)', whiteSpace: 'nowrap' }}>{c.start_date ? format(new Date(c.start_date.slice(0, 10) + 'T00:00:00'), 'dd/MM/yy') : '—'}{c.end_date ? ` → ${format(new Date(c.end_date.slice(0, 10) + 'T00:00:00'), 'dd/MM/yy')}` : ''}</td>
+                  <td className="ds-num">{n0v(c.budget)}</td>
+                  <td className="ds-num">{c.opportunities}</td>
+                  <td className="ds-num">{c.won}</td>
+                  <td className="ds-num ds-strong">{n0v(c.won_amount)}</td>
+                  <td>{c.status === 'active' ? <StatusTag tone="done" label="Active" /> : <StatusTag tone="cancelled" icon={Archive} label="Clôturée" />}</td>
+                  <td className="ds-actions">
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm"
+                      onClick={() => status.mutate({ id: c.id, s: c.status === 'active' ? 'closed' : 'active' })}>
+                      {c.status === 'active' ? 'Clôturer' : 'Rouvrir'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </DataPanel>
+      )}
+    </Modal>
   );
 }

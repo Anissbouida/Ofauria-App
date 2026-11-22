@@ -42,7 +42,7 @@ function LeaveRequests({ queryClient, switcher }: { queryClient: ReturnType<type
   const confirm = useConfirm();
   const currentYear = new Date().getFullYear();
   const { getLabel: getLeaveLabel } = useReferentiel('leave_types');
-  const { data: leaves = [], isLoading, isError, refetch } = useQuery({
+  const { data: leaves = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['leaves', currentYear],
     queryFn: () => leavesApi.list({ year: String(currentYear) }),
   });
@@ -94,7 +94,7 @@ function LeaveRequests({ queryClient, switcher }: { queryClient: ReturnType<type
       {isLoading ? (
         <LoadingPanel />
       ) : isError ? (
-        <ErrorState onRetry={() => void refetch()} />
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : leavesList.length === 0 ? (
         <EmptyPanel icon={CalendarOff}>Aucun congé pour cette année</EmptyPanel>
       ) : visible.length === 0 ? (

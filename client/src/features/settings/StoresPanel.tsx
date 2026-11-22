@@ -10,6 +10,8 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { DataPanel, ErrorState, FormField, FormFooter } from '../../components/ds';
 import { OdooToggle } from './SettingsPrimitives';
 
 /**
@@ -78,7 +80,7 @@ export default function StoresPanel() {
     try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards'; } catch { return 'cards'; }
   });
   const editorRef = useRef<HTMLDivElement>(null);
-  const { data: stores = [], isLoading } = useQuery({ queryKey: ['stores'], queryFn: storesApi.list });
+  const { data: stores = [], isLoading, error, refetch } = useQuery({ queryKey: ['stores'], queryFn: storesApi.list });
   // Liste des comptes (administrateur) pour le responsable ; champ masqué si indisponible.
   const { data: users = [] } = useQuery<Record<string, any>[]>({ queryKey: ['users'], queryFn: usersApi.list, retry: false });
 
@@ -178,22 +180,18 @@ export default function StoresPanel() {
           <section className="odoo-company-card">
             <h3><span className="odoo-company-card-icon"><Building2 size={14} /></span>Identité</h3>
             <div className="odoo-company-grid" style={{ gridTemplateColumns: '2fr 0.8fr 1.4fr' }}>
-              <div className={`odoo-company-field${d.name.trim() ? '' : ' todo'}`}>
-                <label htmlFor="store-name">Nom</label>
-                <input id="store-name" className="odoo-input" value={d.name} onChange={e => set('name', e.target.value)} maxLength={100} placeholder="Boutique centre-ville" />
-                {!d.name.trim() && <span className="odoo-company-hint warn"><AlertTriangle size={12} /> Obligatoire</span>}
-              </div>
-              <div className="odoo-company-field">
-                <label htmlFor="store-code">Code <span className="odoo-company-help" title="Code court repris dans les rapports et les numéros de pièces">?</span></label>
-                <input id="store-code" className="odoo-input" style={{ textTransform: 'uppercase', fontFamily: 'ui-monospace, monospace' }}
+              <FormField label="Nom" htmlFor="store-name" required hint={!d.name.trim() ? 'Saisissez le nom de l\'établissement.' : undefined}>
+                <input id="store-name" className="ds-input" value={d.name} onChange={e => set('name', e.target.value)} maxLength={100} placeholder="Boutique centre-ville" />
+              </FormField>
+              <FormField label="Code" htmlFor="store-code" hint="Code court repris dans les rapports et les numéros de pièces">
+                <input id="store-code" className="ds-input" style={{ textTransform: 'uppercase', fontFamily: 'ui-monospace, monospace' }}
                   value={d.code} onChange={e => set('code', e.target.value.toUpperCase())} placeholder="MOH1" maxLength={10} />
-              </div>
-              <div className="odoo-company-field">
-                <label htmlFor="store-kind">Type</label>
-                <select id="store-kind" className="odoo-input" value={d.kind} onChange={e => set('kind', e.target.value)}>
+              </FormField>
+              <FormField label="Type" htmlFor="store-kind">
+                <select id="store-kind" className="ds-input" value={d.kind} onChange={e => set('kind', e.target.value)}>
                   {KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
-              </div>
+              </FormField>
             </div>
             <div className="odoo-stores-toggles">
               <label><OdooToggle checked={d.isActive} onChange={v => set('isActive', v)} /> <span>Établissement actif<small>Désactivé, il disparaît des listes sans perdre son historique</small></span></label>
@@ -204,42 +202,36 @@ export default function StoresPanel() {
           <section className="odoo-company-card">
             <h3><span className="odoo-company-card-icon"><MapPin size={14} /></span>Coordonnées</h3>
             <div className="odoo-company-grid" style={{ gridTemplateColumns: '2fr 1fr' }}>
-              <div className="odoo-company-field">
-                <label htmlFor="store-address">Adresse</label>
-                <input id="store-address" className="odoo-input" value={d.address} onChange={e => set('address', e.target.value)} maxLength={300} />
-              </div>
-              <div className="odoo-company-field">
-                <label htmlFor="store-city">Ville</label>
-                <input id="store-city" className="odoo-input" value={d.city} onChange={e => set('city', e.target.value)} maxLength={100} />
-              </div>
+              <FormField label="Adresse" htmlFor="store-address">
+                <input id="store-address" className="ds-input" value={d.address} onChange={e => set('address', e.target.value)} maxLength={300} />
+              </FormField>
+              <FormField label="Ville" htmlFor="store-city">
+                <input id="store-city" className="ds-input" value={d.city} onChange={e => set('city', e.target.value)} maxLength={100} />
+              </FormField>
             </div>
             <div className="odoo-company-grid" style={{ gridTemplateColumns: '1fr 1.4fr', paddingTop: 0 }}>
-              <div className="odoo-company-field">
-                <label htmlFor="store-phone">Téléphone</label>
-                <input id="store-phone" type="tel" className="odoo-input" value={d.phone} onChange={e => set('phone', e.target.value)} maxLength={40} />
-              </div>
-              <div className="odoo-company-field">
-                <label htmlFor="store-email">E-mail</label>
-                <input id="store-email" type="email" className="odoo-input" value={d.email} onChange={e => set('email', e.target.value)} maxLength={120} />
-              </div>
+              <FormField label="Téléphone" htmlFor="store-phone">
+                <input id="store-phone" type="tel" className="ds-input" value={d.phone} onChange={e => set('phone', e.target.value)} maxLength={40} />
+              </FormField>
+              <FormField label="E-mail" htmlFor="store-email">
+                <input id="store-email" type="email" className="ds-input" value={d.email} onChange={e => set('email', e.target.value)} maxLength={120} />
+              </FormField>
             </div>
           </section>
 
           <section className="odoo-company-card">
             <h3><span className="odoo-company-card-icon"><IdCard size={14} /></span>Gestion</h3>
             <div className="odoo-company-grid" style={{ gridTemplateColumns: '1fr 1.4fr' }}>
-              <div className="odoo-company-field">
-                <label htmlFor="store-patente">Patente de l'établissement <span className="odoo-company-help" title="Chaque établissement peut avoir sa propre patente">?</span></label>
-                <input id="store-patente" className="odoo-input" style={{ fontFamily: 'ui-monospace, monospace' }} value={d.patente}
+              <FormField label="Patente de l'établissement" htmlFor="store-patente" hint="Chaque établissement peut avoir sa propre patente">
+                <input id="store-patente" className="ds-input" style={{ fontFamily: 'ui-monospace, monospace' }} value={d.patente}
                   onChange={e => set('patente', e.target.value)} inputMode="numeric" maxLength={15} />
-              </div>
+              </FormField>
               {users.length > 0 && (
-                <div className="odoo-company-field">
-                  <label htmlFor="store-manager">Responsable</label>
+                <FormField label="Responsable" htmlFor="store-manager">
                   <SearchSelect value={d.managerUserId} onChange={v => set('managerUserId', v)}
                     placeholder="—" width="100%" size="md" ariaLabel="Responsable"
                     options={users.filter(u => u.isActive !== false).map(u => ({ id: String(u.id), label: `${u.firstName} ${u.lastName}` }))} />
-                </div>
+                </FormField>
               )}
             </div>
           </section>
@@ -274,9 +266,9 @@ export default function StoresPanel() {
                         </span>
                         {!day.closed && (
                           <span className="odoo-stores-day-times">
-                            <input id={`h-${k}-open`} type="time" className="odoo-input" value={day.open} onChange={e => setDay(k, { open: e.target.value })} aria-label={`Ouverture ${l}`} />
+                            <input id={`h-${k}-open`} type="time" className="ds-input sm" value={day.open} onChange={e => setDay(k, { open: e.target.value })} aria-label={`Ouverture ${l}`} />
                             –
-                            <input id={`h-${k}-close`} type="time" className="odoo-input" value={day.close} onChange={e => setDay(k, { close: e.target.value })} aria-label={`Fermeture ${l}`} />
+                            <input id={`h-${k}-close`} type="time" className="ds-input sm" value={day.close} onChange={e => setDay(k, { close: e.target.value })} aria-label={`Fermeture ${l}`} />
                           </span>
                         )}
                       </div>
@@ -298,15 +290,13 @@ export default function StoresPanel() {
           </section>
 
           <div className="odoo-stores-editor-actions">
-            <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
-            <button type="button" className="odoo-btn-primary" disabled={!d.name.trim() || badHours.length > 0 || save.isPending} onClick={() => save.mutate()}>
-              {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
+            <FormFooter onCancel={() => setEditing(null)} busy={save.isPending} disabled={!d.name.trim() || badHours.length > 0}
+              onSubmit={() => save.mutate()} />
           </div>
         </div>
       )}
 
-      {isLoading ? <Loader2 className="animate-spin" size={16} /> : !stores.length ? (
+      {error ? <ErrorState error={error} onRetry={() => void refetch()} /> : isLoading ? <Loader2 className="animate-spin" size={16} /> : !stores.length ? (
         <div className="odoo-stores-empty">
           <Building size={22} />
           <strong>Ajoutez votre premier établissement</strong>
@@ -376,35 +366,35 @@ export default function StoresPanel() {
           })}
         </div>
       ) : (
-        <div className="prj-panel prj-scroll">
+        <DataPanel label="Établissements">
           <table className="odoo-table">
-            <thead><tr><th>Établissement</th><th>Type</th><th>Adresse</th><th>Responsable</th><th>Horaires</th><th>Personnel</th><th>Statut</th><th style={{ width: 80 }}></th></tr></thead>
+            <thead><tr><th>Établissement</th><th>Type</th><th>Adresse</th><th>Responsable</th><th>Horaires</th><th className="ds-num">Personnel</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
             <tbody>
               {stores.map((s: Record<string, any>) => (
                 <tr key={s.id} style={{ opacity: s.is_active === false ? 0.6 : 1 }}>
                   <td>
-                    <strong>{s.name}</strong>{s.code && <span style={{ marginLeft: 6, fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{s.code}</span>}
+                    <span className="ds-strong">{s.name}</span>{s.code && <span className="ds-ref" style={{ marginLeft: 6 }}>{s.code}</span>}
                     {s.is_headquarters && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Siège</span>}
                   </td>
                   <td>{kindLabel(s.kind)}</td>
                   <td>{[s.address, s.city].filter(Boolean).join(', ') || '—'}</td>
                   <td>{s.manager_name || '—'}</td>
                   <td style={{ fontSize: '0.8125rem' }}>{hoursSummary(s.opening_hours)}</td>
-                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{s.user_count}</td>
+                  <td className="ds-num">{s.user_count}</td>
                   <td><StatusTag tone={s.is_active === false ? 'cancelled' : 'done'} label={s.is_active === false ? 'Désactivé' : 'Actif'} /></td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(s)} aria-label={`Modifier ${s.name}`}><Pencil size={13} /></button>
-                    {Number(s.user_count) === 0 && (
-                      <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', marginLeft: 4 }} aria-label={`Supprimer ${s.name}`} onClick={() => askRemove(s)}>
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                  <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => open(s)} aria-label={`Modifier ${s.name}`}>Modifier</button>
+                      {Number(s.user_count) === 0 && (
+                        <RowMenu label={`Plus d'actions pour ${s.name}`} items={[{ label: 'Supprimer', icon: Trash2, danger: true, onSelect: () => askRemove(s) }]} />
+                      )}
+                    </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
     </div>
   );

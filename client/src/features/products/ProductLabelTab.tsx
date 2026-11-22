@@ -6,6 +6,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import PrintOverlay from '../../components/PrintOverlay';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { DataPanel } from '../../components/ds';
 
 /**
  * Étiquette réglementaire d'un produit (G2-09) : dénomination, ingrédients par poids
@@ -137,7 +138,7 @@ export default function ProductLabelTab({ productId }: { productId: string }) {
       </div>
 
       {data.ingredients.length > 0 && (
-        <table className="odoo-table" style={{ width: '100%' }}>
+        <DataPanel><table className="odoo-table ds-dense">
           <thead><tr><th style={{ textAlign: 'left' }}>Ingrédient</th><th className="ds-num">Part du poids</th><th style={{ textAlign: 'left' }}>Allergènes</th></tr></thead>
           <tbody>
             {data.ingredients.map(i => (
@@ -152,7 +153,7 @@ export default function ProductLabelTab({ productId }: { productId: string }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></DataPanel>
       )}
 
       <div>

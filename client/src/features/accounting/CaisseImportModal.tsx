@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileSpreadsheet, Upload, X, AlertTriangle, Check, Loader2, ArrowRight } from 'lucide-react';
+import { FileSpreadsheet, Upload, AlertTriangle, Check, Loader2 } from 'lucide-react';
 import { caisseImportApi } from '../../api/accounting.api';
 import { notify } from '../../components/ui/InlineNotification';
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
+import { Modal, FormSection, FormField, FormFooter, KpiGrid, KpiCard, Alert, SectionHeader, DataPanel } from '../../components/ds';
 
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
@@ -89,204 +90,128 @@ export default function CaisseImportModal({ onClose }: { onClose: () => void }) 
 
   const busy = previewMut.isPending || commitMut.isPending;
 
+  const cur = currencySymbol();
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-            <h2 className="text-lg font-semibold">Importer un journal de caisse Excel</h2>
+    <Modal title={<><FileSpreadsheet size={16} aria-hidden="true" style={{ color: 'var(--ds-success)', verticalAlign: '-2px' }} /> Importer un journal de caisse Excel</>}
+      onClose={onClose} width={900} locked={busy}
+      footer={result
+        ? <button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>
+        : preview
+          ? <FormFooter onCancel={onClose} onSubmit={onConfirm} busy={commitMut.isPending} disabled={busy} submitLabel="Confirmer et importer" />
+          : <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={busy}>Annuler</button>}>
+      {!result && (
+        <FormSection title="Fichier">
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+            <FormField label="Journal de caisse (.xlsx)" htmlFor="ci-file" required
+              hint="Format attendu : 7 colonnes (DATE, TYPE, N°, FOURNISSEUR, DÉSIGNATION, ENTRÉE, SORTIE). Les lignes déjà importées (même fichier) seront ignorées automatiquement.">
+              <input id="ci-file" type="file" accept=".xlsx" onChange={onFileChange} style={{ fontSize: 14 }} />
+            </FormField>
+            {file && (
+              <button type="button" className="odoo-btn-primary" onClick={onAnalyze} disabled={busy} aria-busy={previewMut.isPending || undefined}>
+                {previewMut.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />} Analyser
+              </button>
+            )}
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700" aria-label="Fermer">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        </FormSection>
+      )}
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {!result && (
-            <>
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded border">
-                <input
-                  type="file"
-                  accept=".xlsx"
-                  onChange={onFileChange}
-                  className="text-sm"
-                />
-                {file && (
-                  <button
-                    onClick={onAnalyze}
-                    disabled={busy}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 text-sm"
-                  >
-                    {previewMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    Analyser
-                  </button>
-                )}
-              </div>
+      {/* Preview */}
+      {preview && !result && (
+        <>
+          <Alert tone="success">
+            <strong>Mois détecté : {MONTHS[preview.meta.month - 1]} {preview.meta.year}</strong>
+            <div style={{ fontSize: 12, marginTop: 2 }}>Source : <code>{preview.meta.importSource}</code></div>
+          </Alert>
 
-              <p className="text-xs text-gray-500">
-                Format attendu : 7 colonnes (DATE, TYPE, N°, FOURNISSEUR, DÉSIGNATION, ENTRÉE, SORTIE).
-                Les lignes déjà importées (même fichier) seront ignorées automatiquement.
-              </p>
-            </>
+          <KpiGrid>
+            <KpiCard label="Opérations" value={String(preview.summary.nbOperations)} />
+            <KpiCard label="Recettes (jours)" value={String(preview.summary.nbRecettes)} />
+            <KpiCard label="Total dépenses" value={money(preview.summary.totalExpenses)} />
+            <KpiCard label="Total recettes" value={money(preview.summary.totalRecettesCash + preview.summary.totalRecettesCard)}
+              sub={`Espèces ${money(preview.summary.totalRecettesCash)} · carte ${money(preview.summary.totalRecettesCard)}`} />
+          </KpiGrid>
+
+          {preview.alreadyImported > 0 && (
+            <Alert tone="warning">
+              {preview.alreadyImported} ligne(s) déjà importée(s) pour ce mois — elles seront ignorées à l'import.
+            </Alert>
           )}
 
-          {/* Preview */}
-          {preview && !result && (
-            <div className="space-y-4">
-              <div className="bg-emerald-50 border border-emerald-200 rounded p-3">
-                <div className="font-medium text-emerald-900">
-                  Mois détecté : {MONTHS[preview.meta.month - 1]} {preview.meta.year}
-                </div>
-                <div className="text-xs text-emerald-700 mt-1">
-                  Source : <code>{preview.meta.importSource}</code>
-                </div>
+          {preview.suppliers.toCreate.length > 0 && (
+            <div>
+              <SectionHeader title={`Fournisseurs à créer (${preview.suppliers.toCreate.length})`} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {preview.suppliers.toCreate.map(s => (
+                  <span key={s.key} style={{ fontSize: 12, padding: '2px 8px', borderRadius: 4,
+                    background: s.kind === 'personnel' ? 'var(--ds-info-bg)' : 'var(--ds-bg)', color: s.kind === 'personnel' ? 'var(--ds-info)' : 'var(--ds-ink)', border: '1px solid var(--ds-hair)' }}>
+                    {s.name}
+                  </span>
+                ))}
               </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Kpi label="Opérations" value={String(preview.summary.nbOperations)} />
-                <Kpi label="Recettes (jours)" value={String(preview.summary.nbRecettes)} />
-                <Kpi label="Total dépenses" value={money(preview.summary.totalExpenses)} />
-                <Kpi label="Total recettes" value={money(preview.summary.totalRecettesCash + preview.summary.totalRecettesCard)} />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="p-2 bg-gray-50 rounded">Recettes espèces : <b>{money(preview.summary.totalRecettesCash)}</b></div>
-                <div className="p-2 bg-gray-50 rounded">Recettes carte : <b>{money(preview.summary.totalRecettesCard)}</b></div>
-              </div>
-
-              {preview.alreadyImported > 0 && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-900">
-                  ℹ️ {preview.alreadyImported} ligne(s) déjà importée(s) pour ce mois — elles seront ignorées à l'import.
-                </div>
-              )}
-
-              {preview.suppliers.toCreate.length > 0 && (
-                <div className="border rounded p-3">
-                  <div className="font-medium mb-2 text-sm">Fournisseurs à créer ({preview.suppliers.toCreate.length})</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {preview.suppliers.toCreate.map(s => (
-                      <span
-                        key={s.key}
-                        className={`text-xs px-2 py-0.5 rounded ${s.kind === 'personnel' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}
-                      >
-                        {s.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {preview.warnings.length > 0 && (
-                <details className="border border-amber-200 rounded">
-                  <summary className="p-2 bg-amber-50 cursor-pointer text-sm flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                    {preview.warnings.length} avertissement(s)
-                  </summary>
-                  <ul className="p-2 text-xs space-y-1 max-h-40 overflow-y-auto">
-                    {preview.warnings.map((w, i) => <li key={i} className="text-amber-900">• {w}</li>)}
-                  </ul>
-                </details>
-              )}
-
-              <details className="border rounded">
-                <summary className="p-2 bg-gray-50 cursor-pointer text-sm">
-                  Aperçu (50 premières opérations)
-                </summary>
-                <div className="overflow-x-auto">
-                  <table className="odoo-table ds-dense">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="p-1.5 text-left">Date</th>
-                        <th className="p-1.5 text-left">Fournisseur</th>
-                        <th className="p-1.5 text-left">Désignation</th>
-                        <th className="p-1.5 text-right">Montant</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.sample.map(r => (
-                        <tr key={r.sourceRow} className="border-t">
-                          <td className="p-1.5">{r.date}</td>
-                          <td className="p-1.5">
-                            <span className={r.supplierKind === 'personnel' ? 'text-blue-700' : 'text-purple-700'}>
-                              {r.supplier}
-                            </span>
-                          </td>
-                          <td className="p-1.5">{r.designation}</td>
-                          <td className={`p-1.5 text-right ${r.type === 'expense' ? 'text-red-700' : 'text-green-700'}`}>
-                            {r.type === 'expense' ? '-' : '+'}{fmt(r.amount)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
             </div>
           )}
 
-          {/* Result */}
-          {result && (
-            <div className="space-y-3">
-              <div className="p-4 bg-green-50 border border-green-200 rounded flex items-start gap-3">
-                <Check className="w-6 h-6 text-green-600 flex-shrink-0" />
-                <div>
-                  <div className="font-semibold text-green-900">Import terminé</div>
-                  <div className="text-sm text-green-800 mt-1">
-                    {result.created} ligne(s) créée(s), {result.skipped} ignorée(s) (déjà importées)
-                  </div>
-                </div>
-              </div>
+          {preview.warnings.length > 0 && (
+            <details className="ds-panel">
+              <summary style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ds-warning)' }}>
+                <AlertTriangle size={14} aria-hidden="true" /> {preview.warnings.length} avertissement(s)
+              </summary>
+              <ul style={{ margin: 0, padding: '8px 12px 8px 28px', fontSize: 12, maxHeight: 160, overflowY: 'auto' }}>
+                {preview.warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            </details>
+          )}
 
-              {result.newSuppliers.length > 0 && (
-                <div className="p-3 border rounded text-sm">
-                  <div className="font-medium mb-1">Nouveaux fournisseurs créés</div>
-                  <div className="text-gray-700">{result.newSuppliers.join(', ')}</div>
-                </div>
-              )}
+          <details>
+            <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: '4px 0' }}>Aperçu (50 premières opérations)</summary>
+            <DataPanel label="Aperçu des opérations">
+              <table className="odoo-table ds-dense">
+                <thead>
+                  <tr><th>Date</th><th>Fournisseur</th><th>Désignation</th><th className="ds-num">Montant ({cur})</th></tr>
+                </thead>
+                <tbody>
+                  {preview.sample.map(r => (
+                    <tr key={r.sourceRow}>
+                      <td>{r.date}</td>
+                      <td className="ds-strong" style={{ color: r.supplierKind === 'personnel' ? 'var(--ds-info)' : undefined }}>{r.supplier}</td>
+                      <td>{r.designation}</td>
+                      <td className="ds-num" style={{ color: r.type === 'expense' ? 'var(--ds-danger)' : 'var(--ds-success)' }}>
+                        {r.type === 'expense' ? '-' : '+'}{fmt(r.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </DataPanel>
+          </details>
+        </>
+      )}
 
-              {result.errors.length > 0 && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded">
-                  <div className="font-medium text-red-900 mb-1">Erreurs ({result.errors.length})</div>
-                  <ul className="text-xs space-y-0.5 max-h-40 overflow-y-auto">
-                    {result.errors.map((e, i) => (
-                      <li key={i} className="text-red-800">Ligne {e.row} : {e.message}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+      {/* Result */}
+      {result && (
+        <>
+          <Alert tone="success" icon={Check}>
+            <strong>Import terminé</strong>
+            <div style={{ marginTop: 2 }}>{result.created} ligne(s) créée(s), {result.skipped} ignorée(s) (déjà importées)</div>
+          </Alert>
+
+          {result.newSuppliers.length > 0 && (
+            <div>
+              <SectionHeader title="Nouveaux fournisseurs créés" />
+              <p style={{ margin: 0, fontSize: 14 }}>{result.newSuppliers.join(', ')}</p>
             </div>
           )}
-        </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50">
-            {result ? 'Fermer' : 'Annuler'}
-          </button>
-          {preview && !result && (
-            <button
-              onClick={onConfirm}
-              disabled={busy}
-              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 text-sm"
-            >
-              {commitMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-              Confirmer et importer
-            </button>
+          {result.errors.length > 0 && (
+            <Alert tone="danger" icon={AlertTriangle}>
+              <strong>Erreurs ({result.errors.length})</strong>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12, maxHeight: 160, overflowY: 'auto' }}>
+                {result.errors.map((e, i) => <li key={i}>Ligne {e.row} : {e.message}</li>)}
+              </ul>
+            </Alert>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Kpi({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="p-3 bg-white border rounded">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="text-base font-semibold mt-0.5">{value}</div>
-    </div>
+        </>
+      )}
+    </Modal>
   );
 }

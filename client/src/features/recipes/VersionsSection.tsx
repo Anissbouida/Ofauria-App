@@ -7,6 +7,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
 import { EmptyState, ErrorState, LoadingState } from '../../components/ds';
+import '../production/production.css';
 type Version = {
   version_number: number;
   change_note?: string | null;
@@ -25,7 +26,7 @@ export default function VersionsSection({ recipeId }: { recipeId: string }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
 
-  const { data: versions = [], isLoading, isError } = useQuery<Version[]>({
+  const { data: versions = [], isLoading, isError, error } = useQuery<Version[]>({
     queryKey: ['recipe-versions', recipeId],
     queryFn: () => recipesApi.versions(recipeId),
     enabled: open,
@@ -57,10 +58,10 @@ export default function VersionsSection({ recipeId }: { recipeId: string }) {
   const fmtDate = (s?: string) => (s ? new Date(s).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
   return (
-    <div className="odoo-section" style={{ marginTop: 16 }}>
+    <div className="ds-panel pd-section" style={{ marginTop: 16 }}>
       <button type="button" aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="odoo-section-header"
+        className="pd-section-head"
         style={{ width: '100%', cursor: 'pointer', border: 'none', background: 'transparent', font: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -76,7 +77,7 @@ export default function VersionsSection({ recipeId }: { recipeId: string }) {
             <LoadingState bare />
           )}
           {isError && !isLoading && (
-            <ErrorState bare title="L'historique n'a pas pu être chargé" />
+            <ErrorState bare error={error} title="L'historique n'a pas pu être chargé" />
           )}
           {!isLoading && !isError && versions.length === 0 && (
             <EmptyState bare icon={History} title="Aucune version enregistrée" text="Une version est créée à chaque modification de la composition ou de la finance." />

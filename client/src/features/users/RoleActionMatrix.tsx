@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { LoadingPanel } from '../employees/ui';
-import { DataPanel, Toolbar, SearchBar, FormFooter } from '../../components/ds';
+import { DataPanel, Toolbar, SearchBar, FormFooter, ErrorState } from '../../components/ds';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, ShieldCheck, Eye } from 'lucide-react';
 import { MODULE_LABELS } from '@ofauria/shared';
@@ -22,7 +22,7 @@ const moduleLabel = (m: string) => (MODULE_LABELS as Record<string, string>)[m] 
 
 export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ['role-action-matrix'], queryFn: rolesApi.actionMatrix });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['role-action-matrix'], queryFn: rolesApi.actionMatrix });
   const [draft, setDraft] = useState<Record<string, Set<string>>>({});
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -65,6 +65,7 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
   });
   const previewSet = new Set(preview?.keys ?? []);
 
+  if (isError) return <ErrorState error={error} onRetry={() => void refetch()} />;
   if (isLoading || !data) return <LoadingPanel />;
 
   return (

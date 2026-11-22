@@ -480,7 +480,7 @@ export function BonSortiePanel({
       )}
 
       {/* ─── Tableau des lignes ─── */}
-      <div className="odoo-section bsi-lines">
+      <div className="ds-panel pd-section bsi-lines">
         {!isDelivered && isMagasinier && (
           <div className="bsi-lines-toolbar">
             <div className="bsi-lines-progress">
@@ -720,7 +720,7 @@ export function BonSortiePanel({
         {/* Emballages : informatifs, consommes a la remise du bon (pas de pesee). */}
         {packagingLines.length > 0 && (
           <div className="bsi-packaging">
-            <div className="odoo-section-header" style={{ border: 'none' }}>
+            <div className="pd-section-head" style={{ border: 'none' }}>
               <Package size={12} /> Emballages
               <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--theme-text-muted)' }}>— consommés automatiquement à la remise, rien à peser</span>
             </div>
@@ -746,8 +746,8 @@ export function BonSortiePanel({
       </div>
 
       {/* Historique du bon (repliable) */}
-      <div className="odoo-section">
-        <button onClick={() => setShowDetails(!showDetails)} className="odoo-section-header"
+      <div className="ds-panel pd-section">
+        <button onClick={() => setShowDetails(!showDetails)} className="pd-section-head"
           style={{ width: '100%', borderBottom: showDetails ? undefined : 'none', cursor: 'pointer' }}>
           {showDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
           Historique du bon

@@ -6,6 +6,7 @@ import { ingredientsApi } from '../../api/inventory.api';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import '../production/production.css';
 
 /**
  * Substituts d'article de la fiche (M4-05) : article d'origine → article de remplacement,
@@ -39,8 +40,8 @@ export default function SubstitutesPanel({ recipeId }: { recipeId: string }) {
   const ratioOk = Number(form.ratio.replace(',', '.')) > 0;
 
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header flex items-center gap-2"><Replace size={13} /> Substituts d'article
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head"><Replace size={13} /> Substituts d'article
         <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setAdding(a => !a)}>{adding ? 'Fermer' : 'Ajouter'}</button>
       </div>
       <div style={{ padding: '0.5rem 1rem', display: 'grid', gap: 8 }}>

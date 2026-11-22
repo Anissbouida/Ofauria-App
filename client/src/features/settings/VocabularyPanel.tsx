@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, PencilLine, RotateCcw, Save, Type } from 'lucide-react';
+import { Loader2, PencilLine, RotateCcw, Type } from 'lucide-react';
+import { DataPanel, ErrorState, FormFooter, SectionHeader } from '../../components/ds';
 import api from '../../api/client';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
@@ -28,7 +29,7 @@ const vocabApi = {
 export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const { reload } = usePermissions();
-  const { data, isLoading } = useQuery({ queryKey: ['settings-vocabulary'], queryFn: vocabApi.list });
+  const { data, isLoading, error, refetch } = useQuery({ queryKey: ['settings-vocabulary'], queryFn: vocabApi.list });
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   const done = (msg: string) => {
@@ -61,6 +62,7 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
     return !!it && !!v.trim() && v.trim() !== it.effective;
   });
 
+  if (error) return <ErrorState error={error} onRetry={() => void refetch()} />;
   if (isLoading || !data) return <Loader2 className="animate-spin" size={18} />;
 
   return (
@@ -70,7 +72,7 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
         pour toute la société, menus et écrans compris. « Rétablir » rend le terme du secteur.
       </StatusBanner>
 
-      <div className="prj-panel" style={{ padding: '14px 18px', fontSize: '0.875rem' }} aria-label="Aperçu">
+      <div className="ds-panel" style={{ padding: '14px 18px', fontSize: '0.875rem' }} aria-label="Aperçu">
         <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--ds-muted)', marginBottom: 4 }}>Aperçu</div>
         Menu « {term('production')} » › « {term('production_plans')} » › bouton « {term('new_plan')} ».
         Chaque {term('production_plan').toLowerCase()} suit une {term('recipe').toLowerCase()} :
@@ -79,26 +81,26 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
       </div>
 
       {groups.map(([group, items]) => (
-        <div key={group} className="prj-panel">
-          <div className="prj-panel-head">{group}</div>
-          <div className="prj-scroll">
+        <section key={group} style={{ display: 'grid', gap: 8 }}>
+          <SectionHeader title={group} />
+          <DataPanel label={group}>
           <table className="odoo-table">
             <thead>
-              <tr><th>Désigne</th><th>Terme du secteur</th><th>Terme affiché</th><th /></tr>
+              <tr><th>Désigne</th><th>Terme du secteur</th><th>Terme affiché</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr>
             </thead>
             <tbody>
               {items.map(it => (
                 <tr key={it.key}>
-                  <td>{it.designates}</td>
+                  <td className="ds-strong">{it.designates}</td>
                   <td style={{ color: 'var(--ds-muted)' }}>{it.sectorValue ?? it.fallback}</td>
                   <td>
-                    <input className="input" value={value(it)} maxLength={80} disabled={!canEdit} aria-label={`Terme pour ${it.designates}`}
+                    <input className="ds-input sm" value={value(it)} maxLength={80} disabled={!canEdit} aria-label={`Terme pour ${it.designates}`}
                       onChange={e => setDrafts(d => ({ ...d, [it.key]: e.target.value }))} />
                   </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
+                  <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
                     {it.override && <StatusTag tone="progress" icon={PencilLine} title={it.updatedBy ? `Modifié par ${it.updatedBy}` : undefined} label="Modifié" />}
                     {canEdit && it.override && (
-                      <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 6 }} disabled={reset.isPending}
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" style={{ marginLeft: 6 }} disabled={reset.isPending}
                         onClick={() => reset.mutate(it.key)} aria-label={`Rétablir ${it.designates}`}>
                         <RotateCcw size={13} /> Rétablir
                       </button>
@@ -108,17 +110,13 @@ export default function VocabularyPanel({ canEdit }: { canEdit: boolean }) {
               ))}
             </tbody>
           </table>
-          </div>
-        </div>
+          </DataPanel>
+        </section>
       ))}
 
       {canEdit && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          {dirty.length > 0 && <button type="button" className="odoo-btn-secondary" onClick={() => setDrafts({})}>Annuler</button>}
-          <button type="button" className="odoo-btn-primary" disabled={!dirty.length || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer{dirty.length ? ` (${dirty.length})` : ''}
-          </button>
-        </div>
+        <FormFooter dirty={dirty.length > 0} onCancel={() => setDrafts({})} busy={save.isPending} disabled={!dirty.length}
+          onSubmit={() => save.mutate()} submitLabel={`Enregistrer${dirty.length ? ` (${dirty.length})` : ''}`} />
       )}
     </div>
   );

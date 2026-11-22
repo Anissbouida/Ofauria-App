@@ -35,7 +35,7 @@ import './production.css';
 import '../projects/projects.css';
 import '../sales/sales.css';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { Breadcrumb, EmptyState, ErrorState, LoadingState } from '../../components/ds';
+import { Alert, Breadcrumb, EmptyState, ErrorState, FormField, FormFooter, LoadingState, Modal } from '../../components/ds';
 import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity, formatQty } from '../../utils/units';
 import ProductionLaunchModal from './ProductionLaunchModal';
@@ -67,7 +67,7 @@ export default function PlanDetailPage() {
   // Admin/manager ont aussi le privilege magasinier (peuvent prendre en charge la preparation BSI).
   const isMagasinier = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
 
-  const { data: plan, isLoading, isError, refetch } = useQuery({
+  const { data: plan, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['production', id],
     queryFn: () => productionApi.getById(id!),
     enabled: !!id,
@@ -534,7 +534,7 @@ export default function PlanDetailPage() {
   if (!plan) return (
     <div className="odoo-scope pd">{crumbs()}<div className="pd-page">
       {isError
-        ? <ErrorState title="Le plan n'a pas pu être chargé" onRetry={() => refetch()} />
+        ? <ErrorState error={error} title="Le plan n'a pas pu être chargé" onRetry={() => refetch()} />
         : <EmptyState icon={PackageOpen} title="Plan introuvable" text="Il a peut-être été supprimé."
             action={<button type="button" onClick={() => navigate('/production')} className="odoo-btn-secondary"><ArrowLeft size={14} aria-hidden="true" /> Retour aux plans</button>} />}
     </div></div>
@@ -605,8 +605,8 @@ export default function PlanDetailPage() {
   // il manque du stock (bouton « Demander »).
   const ingredientNeedsBlock = (showIngr && plan.status !== 'draft' && needs.length > 0
     && (!activeBon || (isMagasinier && insufficientNeeds.length > 0))) ? (
-    <div className="odoo-section">
-      <div className="odoo-section-header">
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head">
         <Beaker size={12} /> {isMagasinier ? 'Besoins en ingrédients' : 'Ingrédients nécessaires'}
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{needs.length} ingrédient(s)</span>
         {isMagasinier && (
@@ -727,8 +727,8 @@ export default function PlanDetailPage() {
     const totalDeps = deps.length;
     const allFulfilled = fulfilledCount === totalDeps;
     return (
-      <div className="odoo-section">
-        <div className="odoo-section-header">
+      <div className="ds-panel pd-section">
+        <div className="pd-section-head">
           <Beaker size={12} /> Semi-finis requis
           <span style={{ marginLeft: 4 }}>
             <StatusTag tone={allFulfilled ? 'done' : 'progress'} label={`${fulfilledCount} / ${totalDeps}`} />
@@ -815,8 +815,8 @@ export default function PlanDetailPage() {
   // Tableau des articles du plan — partage entre le cas "plan de reassort" et le cas
   // simple. Une ligne par article : quantites, lot, dates, cycle de vie, statut, action.
   const itemsTable = items.length > 0 ? (
-    <div className="odoo-section">
-      <div className="odoo-section-header">
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head">
         <Layers size={12} /> Articles du plan
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{items.length} article(s)</span>
         {plan.status === 'in_progress' && totalActive > 0 && (
@@ -1318,7 +1318,7 @@ export default function PlanDetailPage() {
           </div>
           {/* Action principale (etape suivante) + menu « Plus » : toutes les actions de
               la fiche vivent ici, quel que soit l'onglet ouvert. */}
-          {(primaryActions || moreMenu) && <div className="plan-header-actions">{primaryActions}{moreMenu}</div>}
+          {(primaryActions || moreMenu) && <div className="plan-header-actions">{moreMenu}{primaryActions}</div>}
         </div>
 
         {/* Processus du plan : une etape par statut, la courante en surbrillance.
@@ -1472,8 +1472,8 @@ export default function PlanDetailPage() {
         return (
           <>
             {/* ── Parent plan section ── */}
-            <div className="odoo-section">
-              <div className="odoo-section-header" style={{ justifyContent: 'space-between' }}>
+            <div className="ds-panel pd-section">
+              <div className="pd-section-head" style={{ justifyContent: 'space-between' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <Layers size={12} /> Plan parent · #{parentShortId.toUpperCase()} — {format(new Date(dep.parent_plan_date as string), 'dd MMM yyyy', { locale: fr })}
                 </span>
@@ -1491,8 +1491,8 @@ export default function PlanDetailPage() {
             </div>
 
             {/* ── Semi-fini production section ── */}
-            <div className="odoo-section">
-              <div className="odoo-section-header">
+            <div className="ds-panel pd-section">
+              <div className="pd-section-head">
                 <Beaker size={12} /> {recipeName} — Préparation de base
               </div>
               <div className="odoo-smart-button-row" style={{ borderBottom: '1px solid var(--theme-bg-separator)' }}>
@@ -1527,7 +1527,7 @@ export default function PlanDetailPage() {
               {/* Recipe ingredients */}
               {recipeIngredients.length > 0 && (
                 <>
-                  <div className="odoo-section-header" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
+                  <div className="pd-section-head" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
                     <Scale size={12} /> Ingrédients
                     <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
                       ×{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit}
@@ -1641,8 +1641,8 @@ export default function PlanDetailPage() {
             </StatusBanner>
           ))}
           <div className="plan-synth-grid">
-            <div className="odoo-section plan-phase">
-              <div className="odoo-section-header">
+            <div className="ds-panel pd-section plan-phase">
+              <div className="pd-section-head">
                 <Truck size={12} /> Ingrédients
                 {bsiTag && <span style={{ marginLeft: 'auto' }}><StatusTag tone={bsiCloture ? 'done' : bsiTag.tone} icon={bsiTag.icon} label={bsiTag.label} /></span>}
               </div>
@@ -1654,8 +1654,8 @@ export default function PlanDetailPage() {
               </ul>
               <button type="button" className="plan-phase-link" onClick={() => setPlanTab('ingredients')}>Voir les ingrédients →</button>
             </div>
-            <div className="odoo-section plan-phase">
-              <div className="odoo-section-header">
+            <div className="ds-panel pd-section plan-phase">
+              <div className="pd-section-head">
                 <Factory size={12} /> Production
                 {hasResults && <span style={{ marginLeft: 'auto' }}><StatusTag tone={progressPct >= 100 ? 'done' : 'progress'} label={`${producedCount} / ${totalActive}`} /></span>}
               </div>
@@ -1672,8 +1672,8 @@ export default function PlanDetailPage() {
                 : <span className="plan-phase-hint"><Lock size={11} /> Ouvert après la livraison des ingrédients</span>}
             </div>
             {costsTabVisible && (
-              <div className="odoo-section plan-phase">
-                <div className="odoo-section-header">
+              <div className="ds-panel pd-section plan-phase">
+                <div className="pd-section-head">
                   <Coins size={12} /> Coûts
                   <span style={{ marginLeft: 'auto' }}>
                     <StatusTag tone={coutTotal == null ? 'draft' : 'done'} label={coutTotal == null ? 'Non calculé' : 'Calculé'} />
@@ -1690,8 +1690,8 @@ export default function PlanDetailPage() {
                 <button type="button" className="plan-phase-link" onClick={() => setPlanTab('couts')}>Voir les coûts →</button>
               </div>
             )}
-            <div className="odoo-section plan-phase">
-              <div className="odoo-section-header">
+            <div className="ds-panel pd-section plan-phase">
+              <div className="pd-section-head">
                 <Info size={12} /> Origine
               </div>
               <ul className="plan-phase-list">
@@ -1775,8 +1775,8 @@ export default function PlanDetailPage() {
         });
         if (stockItems.length === 0) return null;
         return (
-          <div className="odoo-section">
-            <div className="odoo-section-header">
+          <div className="ds-panel pd-section">
+            <div className="pd-section-head">
               <Box size={12} /> Prélevés du stock
               <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{stockItems.length} article(s)</span>
               <span style={{ marginLeft: 'auto', color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -1815,8 +1815,8 @@ export default function PlanDetailPage() {
         const restoredItems = items.filter((it: Record<string, any>) => it.waiting_status === 'restored');
         if (waitingItems.length === 0 && restoredItems.length === 0) return null;
         return (
-          <div className="odoo-section">
-            <div className="odoo-section-header">
+          <div className="ds-panel pd-section">
+            <div className="pd-section-head">
               <Clock size={12} /> Liste d'attente
               {waitingItems.length > 0 && <span style={{ marginLeft: 4 }}><StatusTag tone="todo" label={`${waitingItems.length} en attente`} /></span>}
               {waitingItems.length > 1 && isChef && (
@@ -1905,8 +1905,8 @@ export default function PlanDetailPage() {
 
       {/* ══════════════ NOTES + JOURNAL (volet lateral, visible sur tous les onglets) ══════════════ */}
       <aside className="plan-side">
-      <div className="odoo-section">
-        <div className="odoo-section-header">
+      <div className="ds-panel pd-section">
+        <div className="pd-section-head">
           <MessageSquare size={12} /> Notes de production
           {(activities as Record<string, any>[]).length > 0 && (
             <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>
@@ -2055,22 +2055,11 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="px-5 py-4 border-b border-blue-100 bg-blue-50 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
-            <Send size={18} className="text-white" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-base font-bold text-blue-900">Demander au responsable stock</h3>
-            <p className="text-xs text-blue-700 mt-0.5">Une notification sera envoyee au magasinier/economat pour verifier la dispo.</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Fermer" className="p-1 hover:bg-blue-100 rounded-lg">
-            <XCircle size={18} className="text-blue-700" />
-          </button>
-        </div>
-
-        <form onSubmit={submit} className="p-5 space-y-4">
+    <Modal title="Demander au responsable stock" onClose={onClose} width={448} locked={isPending}
+      subtitle="Une notification sera envoyee au magasinier/economat pour verifier la dispo."
+      footer={<FormFooter onCancel={onClose} busy={isPending} onSubmit={() => onConfirm({ ingredientId: need.ingredient_id as string, note: note || undefined })}
+        submitLabel={isPending ? 'Envoi...' : 'Envoyer la demande'} />}>
+        <form onSubmit={submit} className="space-y-4">
           <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-gray-500">Ingredient</span>
@@ -2084,36 +2073,21 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
             </div>
             <div className="flex items-center justify-between pt-1 border-t border-gray-200">
               <span className="text-gray-500">Manque</span>
-              <span className="font-bold text-red-700">{formatQty(deficit, need.unit as string)}</span>
+              <span className="font-bold" style={{ color: 'var(--ds-danger)' }}>{formatQty(deficit, need.unit as string)}</span>
             </div>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
-            <Info size={14} className="inline mr-1.5 align-text-bottom" />
+          <Alert tone="info" icon={Info}>
             Le responsable stock va verifier physiquement l'ingredient et marquer "OK" s'il est disponible.
             Apres confirmation, vous pourrez restaurer l'article en attente.
-          </div>
+          </Alert>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Note (optionnel)</label>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
-              placeholder="Ex : verifier dans la reserve B..."
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500" />
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} disabled={isPending}
-              className="flex-1 py-2.5 px-4 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">
-              Annuler
-            </button>
-            <button type="submit" disabled={isPending}
-              className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
-              {isPending ? 'Envoi...' : <><Send size={14} /> Envoyer la demande</>}
-            </button>
-          </div>
+          <FormField label="Note" htmlFor="stock-verif-note" hint="Optionnel.">
+            <textarea id="stock-verif-note" value={note} onChange={e => setNote(e.target.value)} rows={2}
+              placeholder="Ex : verifier dans la reserve B..." className="ds-input" />
+          </FormField>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

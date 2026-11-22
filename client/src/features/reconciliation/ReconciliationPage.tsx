@@ -10,7 +10,8 @@ import { parseLoyverseFiles, parseLoyverseCatalogFiles, parseLoyverseReceiptFile
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { LoadingState } from '../../components/ds';
+import { LoadingState, EmptyState, Modal, FormField, DataPanel, SectionHeader, Toolbar, DateRangeField, KpiGrid, KpiCard } from '../../components/ds';
+import { RowMenu } from '../../components/ui/RowMenu';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { currencySymbol } from '../../utils/money';
 import { useAuth } from '../../context/AuthContext';
@@ -89,9 +90,9 @@ function ecartTone(v: number): EcartTone {
 }
 function ecartTheme(v: number, strong = false) {
   const tone = ecartTone(v);
-  if (tone === 'neg') return { fg: 'var(--ds-danger)', bg: strong ? '#fbd5d5' : 'var(--ds-danger-bg)', border: 'var(--ds-danger)' };
-  if (tone === 'pos') return { fg: 'var(--ds-warning)', bg: strong ? '#ffddb0' : 'var(--ds-warning-bg)', border: '#e69138' };
-  return { fg: 'var(--ds-success)', bg: 'var(--ds-success-bg)', border: '#66bb6a' };
+  if (tone === 'neg') return { fg: 'var(--ds-danger)', bg: strong ? 'color-mix(in srgb, var(--ds-danger) 18%, var(--ds-card))' : 'var(--ds-danger-bg)', border: 'var(--ds-danger)' };
+  if (tone === 'pos') return { fg: 'var(--ds-warning)', bg: strong ? 'color-mix(in srgb, var(--ds-warning) 18%, var(--ds-card))' : 'var(--ds-warning-bg)', border: 'var(--ds-warning)' };
+  return { fg: 'var(--ds-success)', bg: 'var(--ds-success-bg)', border: 'var(--ds-success)' };
 }
 
 /** Chip d'ecart : icone directionnelle + valeur signee, fond colore. */
@@ -825,7 +826,6 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
   // La fiche de besoin prépare la production du LENDEMAIN : date par défaut J+1.
   const [date, setDate] = useState(format(addDays(new Date(), 1), 'yyyy-MM-dd'));
   const [slotQty, setSlotQty] = useState<Record<string, string>>({});
-  const [showPrintMenu, setShowPrintMenu] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -1242,7 +1242,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <input type="date" value={date} onChange={e => { setDate(e.target.value); touchedRef.current.clear(); setRemoved(new Set()); }}
-            className="odoo-input" style={{ width: 160 }} />
+            className="ds-input sm" style={{ width: 160 }} aria-label="Date de la fiche" />
           {fiche?.savedAt && (
             <span className="odoo-tag odoo-tag-green" style={{ fontSize: 12, alignSelf: 'flex-start' }}
               title={fiche.savedBy ? `Enregistrée par ${fiche.savedBy}` : undefined}>
@@ -1251,7 +1251,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
             </span>
           )}
         </div>
-        <input className="odoo-input" placeholder="Rechercher un produit…" value={search}
+        <input type="search" className="ds-input sm" placeholder="Rechercher un produit…" value={search} aria-label="Rechercher un produit"
           onChange={e => setSearch(e.target.value)} style={{ width: 200 }} />
         {refLabel && (
           <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
@@ -1269,16 +1269,16 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
             Pas de référence J-7/J-14
           </span>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--theme-bg-sidebar, #f5f5f5)', borderRadius: 6, padding: '3px 8px', border: '1px solid var(--theme-bg-separator)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--ds-bg)', borderRadius: 6, padding: '3px 8px', border: '1px solid var(--ds-sep)' }}>
           <span style={{ fontSize: '0.75rem', fontWeight: 500, whiteSpace: 'nowrap' }}>Ajustement</span>
-          <button type="button" onClick={() => changeRisk(-5)}
-            style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--theme-bg-separator)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1 }}>−</button>
+          <button type="button" onClick={() => changeRisk(-5)} aria-label="Diminuer l'ajustement de 5 %"
+            style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1 }}>−</button>
           <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem', fontWeight: 600, minWidth: 40, textAlign: 'center',
-            color: riskPct > 0 ? 'var(--ds-success)' : riskPct < 0 ? 'var(--ds-danger)' : 'var(--theme-text-primary)' }}>
+            color: riskPct > 0 ? 'var(--ds-success)' : riskPct < 0 ? 'var(--ds-danger)' : 'var(--ds-ink)' }}>
             {riskPct > 0 ? '+' : ''}{riskPct}%
           </span>
-          <button type="button" onClick={() => changeRisk(5)}
-            style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--theme-bg-separator)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1 }}>+</button>
+          <button type="button" onClick={() => changeRisk(5)} aria-label="Augmenter l'ajustement de 5 %"
+            style={{ width: 24, height: 24, border: 'none', borderRadius: 4, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1 }}>+</button>
         </div>
         <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'nowrap' }}>
@@ -1301,44 +1301,15 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
             ? <><Loader2 size={14} className="animate-spin" /> Enregistrement…</>
             : <><Save size={14} /> Enregistrer</>}
         </button>
-        <div style={{ position: 'relative' }}>
-          <button className="odoo-btn-secondary"
-            disabled={!hasProducts || activeCount === 0}
-            onClick={() => setShowPrintMenu(v => !v)}>
-            <Printer size={14} /> Imprimer les bons ▾
-          </button>
-          {showPrintMenu && (
-            <div style={{
-              position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 50,
-              background: 'var(--theme-bg-primary, #fff)', border: '1px solid var(--theme-bg-separator)',
-              borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,.15)', minWidth: 200, overflow: 'hidden',
-            }}>
-              {SECTION_ORDER.map(s => (
-                <button key={s} style={{
-                  display: 'block', width: '100%', padding: '8px 14px', border: 'none',
-                  background: 'transparent', textAlign: 'left', cursor: 'pointer',
-                  fontSize: '0.8125rem', fontWeight: 500,
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--theme-bg-sidebar, #f5f5f5)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  onClick={() => { setShowPrintMenu(false); printBonSection(date, grouped, slotsByCategory, slotQty, darijaOf, s); }}>
-                  {s}
-                </button>
-              ))}
-              <div style={{ borderTop: '1px solid var(--theme-bg-separator)' }} />
-              <button style={{
-                display: 'block', width: '100%', padding: '8px 14px', border: 'none',
-                background: 'transparent', textAlign: 'left', cursor: 'pointer',
-                fontSize: '0.8125rem', fontWeight: 600,
-              }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--theme-bg-sidebar, #f5f5f5)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                onClick={() => { setShowPrintMenu(false); printBonSection(date, grouped, slotsByCategory, slotQty, darijaOf); }}>
-                Toutes les sections
-              </button>
-            </div>
-          )}
-        </div>
+        {!hasProducts || activeCount === 0 ? (
+          <button type="button" className="odoo-btn-secondary" disabled><Printer size={14} /> Imprimer les bons</button>
+        ) : (
+          <RowMenu label="Imprimer les bons" trigger={<><Printer size={14} aria-hidden="true" /> Imprimer les bons</>}
+            items={[
+              ...SECTION_ORDER.map(sec => ({ label: sec, onSelect: () => printBonSection(date, grouped, slotsByCategory, slotQty, darijaOf, sec) })),
+              { label: 'Toutes les sections', onSelect: () => printBonSection(date, grouped, slotsByCategory, slotQty, darijaOf) },
+            ]} />
+        )}
         <button className="odoo-btn-primary"
           disabled={activeCount === 0 || validateMut.isPending}
           onClick={() => validateMut.mutate()}>
@@ -1351,8 +1322,8 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
 
       {bouCuissons.length > 0 && (
         <div style={{
-          border: '1px solid var(--theme-bg-separator)', borderRadius: 6,
-          padding: '8px 12px', background: 'var(--theme-bg-sidebar, #f5f5f5)',
+          border: '1px solid var(--ds-sep)', borderRadius: 6,
+          padding: '8px 12px', background: 'var(--ds-bg)',
           fontSize: '0.75rem',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer', userSelect: 'none' }}
@@ -1372,8 +1343,8 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '3px 8px', borderRadius: 4, fontWeight: 600,
                   fontFamily: 'ui-monospace, monospace',
-                  background: 'var(--theme-bg-card, #fff)', color: 'var(--theme-text-primary)',
-                  border: '1px solid var(--theme-bg-separator)',
+                  background: 'var(--ds-card)', color: 'var(--ds-ink)',
+                  border: '1px solid var(--ds-sep)',
                 }}>
                 <span style={{ opacity: 0.7 }}>{c.label}{c.time ? ` · ${c.time.slice(0, 5)}` : ''}</span>
                 <span>{c.plaques} pl</span>
@@ -1397,8 +1368,8 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {c.chariots.map((ch, i) => (
                       <div key={i} style={{
-                        background: 'var(--theme-bg-card, #fff)',
-                        border: '1px solid var(--theme-bg-separator)', borderRadius: 4,
+                        background: 'var(--ds-card)',
+                        border: '1px solid var(--ds-sep)', borderRadius: 4,
                         padding: '5px 8px',
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginBottom: 2 }}>
@@ -1429,10 +1400,8 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
       {isLoading ? (
         <LoadingState bare />
       ) : !hasProducts ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
-          Aucun produit dans le catalogue. Importez un CSV Loyverse depuis l'onglet <strong>Catalogue</strong>,
-          ou utilisez l'onglet <strong>Journée</strong> pour saisir manuellement.
-        </div>
+        <EmptyState icon={Package} title="Aucun produit dans le catalogue"
+          text={<>Importez un CSV Loyverse depuis l'onglet <strong>Catalogue</strong>, ou utilisez l'onglet <strong>Journée</strong> pour saisir manuellement.</>} />
       ) : (
         Object.entries(grouped).map(([cat, products]) => {
           const catSlots = slotsByCategory[cat] || [];
@@ -1446,7 +1415,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
           // La recherche deplie tout ; sinon on respecte l'etat replie/deplie.
           const isCollapsed = !q && collapsed.has(cat);
           return (
-            <div key={cat} className="prj-panel" style={{ overflow: 'hidden' }}>
+            <div key={cat} className="ds-panel">
               <div
                 onClick={() => setCollapsed(prev => {
                   const next = new Set(prev);
@@ -1455,8 +1424,8 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                 })}
                 style={{
                   fontWeight: 700, padding: '12px 16px',
-                  color: 'var(--theme-text-strong)', fontSize: '0.9375rem',
-                  borderBottom: isCollapsed ? 0 : '1px solid var(--theme-bg-separator)',
+                  color: 'var(--ds-ink)', fontSize: '0.9375rem',
+                  borderBottom: isCollapsed ? 0 : '1px solid var(--ds-sep)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   cursor: 'pointer', userSelect: 'none',
                 }}>
@@ -1469,7 +1438,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4, textTransform: 'none',
                       fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
-                      border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card, #fff)',
+                      border: '1px solid var(--ds-sep)', background: 'var(--ds-card)',
                       color: 'var(--ds-muted)',
                       cursor: copyingJ1 !== null ? 'default' : 'pointer',
                       opacity: copyingJ1 !== null && copyingJ1 !== cat ? 0.5 : 1,
@@ -1485,18 +1454,18 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                       <span title="Ajustement % de la catégorie (prioritaire sur le global)"
                         style={{
                           display: 'flex', alignItems: 'center', gap: 3, textTransform: 'none',
-                          background: hasOverride ? 'var(--theme-bg-card, #fff)' : 'transparent',
-                          border: hasOverride ? '1px solid var(--theme-bg-separator)' : '1px solid transparent',
+                          background: hasOverride ? 'var(--ds-card)' : 'transparent',
+                          border: hasOverride ? '1px solid var(--ds-sep)' : '1px solid transparent',
                           borderRadius: 4, padding: '1px 4px',
                         }}>
-                        <button type="button" onClick={() => changeCatRisk(cat, -5)}
-                          style={{ width: 18, height: 18, border: 'none', borderRadius: 3, background: 'var(--theme-bg-separator)', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', lineHeight: 1, padding: 0 }}>−</button>
+                        <button type="button" onClick={() => changeCatRisk(cat, -5)} aria-label={`Diminuer l'ajustement de ${cat} de 5 %`}
+                          style={{ width: 18, height: 18, border: 'none', borderRadius: 3, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', lineHeight: 1, padding: 0 }}>−</button>
                         <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, fontWeight: 600, minWidth: 34, textAlign: 'center',
                           color: pct > 0 ? 'var(--ds-success)' : pct < 0 ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>
                           {pct > 0 ? '+' : ''}{pct}%
                         </span>
-                        <button type="button" onClick={() => changeCatRisk(cat, 5)}
-                          style={{ width: 18, height: 18, border: 'none', borderRadius: 3, background: 'var(--theme-bg-separator)', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', lineHeight: 1, padding: 0 }}>+</button>
+                        <button type="button" onClick={() => changeCatRisk(cat, 5)} aria-label={`Augmenter l'ajustement de ${cat} de 5 %`}
+                          style={{ width: 18, height: 18, border: 'none', borderRadius: 3, background: 'var(--ds-sep)', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem', lineHeight: 1, padding: 0 }}>+</button>
                       </span>
                     );
                   })()}
@@ -1509,7 +1478,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
               </div>
               {!isCollapsed && (
               <div style={{ overflowX: 'auto' }}>
-                <table className="odoo-table" style={{ borderTop: 'none', margin: 0 }}>
+                <table className="odoo-table ds-dense" style={{ borderTop: 'none', margin: 0 }}>
                   <thead>
                     <tr>
                       <th>Produit</th>
@@ -1544,7 +1513,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                           <td style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem', direction: 'rtl', textAlign: 'right' }}>
                             {darijaOf(p.product_name) || '—'}
                           </td>
-                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: p.method === 'prevision' ? 'var(--theme-accent)' : 'var(--ds-muted)' }}
+                          <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: p.method === 'prevision' ? 'var(--ds-accent)' : 'var(--ds-muted)' }}
                             title={p.method === 'prevision' ? p.explanation : 'Vendu J-7 (article non relié au catalogue ou historique insuffisant)'}>
                             {suggested > 0 ? qf(suggested) : '—'}
                           </td>
@@ -1558,10 +1527,11 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                                     value={slotQty[k] ?? ''}
                                     onChange={e => setSlotVal(k, e.target.value, p.product_key, cat)}
                                     placeholder="0"
+                                    className="ds-input sm"
+                                    aria-label={`${s.label} · ${p.product_name}`}
                                     style={{
-                                      width: 64, textAlign: 'right', padding: '3px 5px',
+                                      width: 64, textAlign: 'right',
                                       fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem',
-                                      border: '1px solid var(--theme-bg-separator)', borderRadius: 3,
                                     }}
                                   />
                                 </td>
@@ -1574,15 +1544,16 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                                 value={slotQty[`${p.product_key}__total`] ?? ''}
                                 onChange={e => setTotalVal(p.product_key, e.target.value)}
                                 placeholder="0"
+                                className="ds-input sm"
+                                aria-label={`Besoin · ${p.product_name}`}
                                 style={{
-                                  width: 74, textAlign: 'right', padding: '3px 6px',
+                                  width: 74, textAlign: 'right',
                                   fontFamily: 'ui-monospace, monospace',
-                                  border: '1px solid var(--theme-bg-separator)', borderRadius: 3,
                                 }}
                               />
                             </td>
                           )}
-                          <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: total > 0 ? 'var(--theme-accent)' : 'var(--ds-muted)' }}>
+                          <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: total > 0 ? 'var(--ds-accent)' : 'var(--ds-muted)' }}>
                             {total > 0 ? qf(total) : '—'}
                           </td>
                           <td style={{ textAlign: 'center' }}>
@@ -1597,7 +1568,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                     })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ background: 'var(--theme-bg-sidebar, #f5f5f5)', fontWeight: 700 }}>
+                    <tr>
                       <td>Total {cat}</td>
                       <td></td>
                       <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>
@@ -1614,7 +1585,7 @@ export function FicheBesoinsView({ onValidated }: { onValidated: () => void }) {
                           {qf(visible.reduce((s, p) => s + num(slotQty[`${p.product_key}__total`]), 0))}
                         </td>
                       )}
-                      <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-accent)' }}>
+                      <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--ds-accent)' }}>
                         {qf(visible.reduce((s, p) => s + num(slotQty[`${p.product_key}__total`]), 0))}
                       </td>
                       <td></td>
@@ -1670,12 +1641,12 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
   const isNew = q !== '' && !products.some(p => p.product_name.trim().toLowerCase() === q);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 460, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', background: '#f9fafb', fontWeight: 600 }}>
-          Ajouter un produit à la fiche
-        </div>
-        <form onSubmit={e => {
+    <Modal title="Ajouter un produit à la fiche" onClose={onClose} width={460}
+      footer={<>
+        <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+        <button type="submit" form="fiche-add-form" className="odoo-btn-primary">Ajouter</button>
+      </>}>
+        <form id="fiche-add-form" onSubmit={e => {
           e.preventDefault();
           const qty = parseFloat(f.qty.replace(',', '.'));
           if (!f.name.trim() || !(qty > 0)) return;
@@ -1684,10 +1655,9 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
             category: f.category.trim() || (catFilter !== 'Non classé' ? catFilter : '') || undefined,
             price: parseFloat(f.price) || undefined,
           });
-        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
-          <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie</label>
-            <select className="ds-input" value={catFilter}
+        }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <FormField label="Catégorie" htmlFor="fiche-add-cat">
+            <select id="fiche-add-cat" className="ds-input" value={catFilter}
               onChange={e => { setCatFilter(e.target.value); setF(prev => ({ ...prev, name: '' })); }}>
               <option value="">Toutes les catégories ({products.length})</option>
               {cats.map(c => (
@@ -1696,15 +1666,16 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
                 </option>
               ))}
             </select>
-          </div>
+          </FormField>
           <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Produit *</label>
-            <input className="ds-input" autoFocus required value={f.name}
+            <FormField label="Produit" htmlFor="fiche-add-name" required>
+            <input id="fiche-add-name" className="ds-input" autoFocus required value={f.name}
               placeholder="Tape pour chercher…"
               onChange={e => setF({ ...f, name: e.target.value })} />
+            </FormField>
             {/* Resultats de recherche cliquables (limites a 8) */}
             {q !== '' && !known && matches.length > 0 && (
-              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
+              <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
                 {matches.slice(0, 8).map(p => (
                   <button key={p.product_key} type="button"
                     onClick={() => setF(prev => ({ ...prev, name: p.product_name }))}
@@ -1712,9 +1683,9 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
                       display: 'flex', justifyContent: 'space-between', width: '100%',
                       padding: '6px 10px', border: 'none', background: 'transparent',
                       textAlign: 'left', cursor: 'pointer', fontSize: '0.8125rem',
-                      borderBottom: '1px solid var(--theme-bg-separator)',
+                      borderBottom: '1px solid var(--ds-sep)',
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--theme-bg-sidebar, #f5f5f5)')}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--ds-tint)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <span style={{ fontWeight: 500 }}>{p.product_name}</span>
                     <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{p.category || 'Non classé'}</span>
@@ -1740,37 +1711,26 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
           </div>
           {isNew && matches.length === 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie du produit</label>
-                <input className="ds-input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="fiche-add-categories"
+              <FormField label="Catégorie du produit" htmlFor="fiche-add-newcat">
+                <input id="fiche-add-newcat" className="ds-input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="fiche-add-categories"
                   onChange={e => setF({ ...f, category: e.target.value })} />
                 <datalist id="fiche-add-categories">
                   {categories.map(c => <option key={c} value={c} />)}
                 </datalist>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Prix unitaire ({currencySymbol()})</label>
-                <input type="number" step="0.01" min="0" className="ds-input" value={f.price}
+              </FormField>
+              <FormField label={`Prix unitaire (${currencySymbol()})`} htmlFor="fiche-add-price">
+                <input id="fiche-add-price" type="number" step="0.01" min="0" className="ds-input" value={f.price}
                   onChange={e => setF({ ...f, price: e.target.value })} />
-              </div>
+              </FormField>
             </div>
           )}
-          <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Quantité *</label>
-            <input type="text" inputMode="decimal" required className="ds-input" value={f.qty}
+          <FormField label="Quantité" htmlFor="fiche-add-qty" required hint="Répartie automatiquement sur les créneaux de la catégorie.">
+            <input id="fiche-add-qty" type="text" inputMode="decimal" required className="ds-input" value={f.qty}
               placeholder="0"
               onChange={e => setF({ ...f, qty: e.target.value })} />
-            <div style={{ fontSize: 12, color: 'var(--ds-muted)', marginTop: 3 }}>
-              Répartie automatiquement sur les créneaux de la catégorie.
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="submit" className="odoo-btn-primary">Ajouter</button>
-          </div>
+          </FormField>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1797,14 +1757,20 @@ const COL_TINTS = {
 
 type ColTint = { bg: string; input: string; text: string; border: string };
 
-function NumCell({ value, locked, onDraft, onCommit, tint }: {
-  value: string; locked: boolean;
+/** Libellé lu par le lecteur d'écran pour chaque cellule de saisie de la grille. */
+const NUM_FIELD_LABEL: Record<EditField, string> = {
+  approQty: 'Appro', recuQty: 'Reçu', venduQty: 'Vendu', invenduQty: 'Reste', unitPrice: 'Prix',
+};
+
+function NumCell({ value, locked, onDraft, onCommit, tint, label }: {
+  value: string; locked: boolean; label: string;
   onDraft: (v: string) => void; onCommit: (raw: string) => void;
   tint?: ColTint;
 }) {
   return (
     <input
-      type="text" inputMode="decimal" disabled={locked}
+      type="text" inputMode="decimal" disabled={locked} aria-label={label}
+      className="ds-input sm"
       value={value}
       onChange={e => onDraft(e.target.value)}
       onBlur={e => onCommit(e.target.value)}
@@ -1812,8 +1778,8 @@ function NumCell({ value, locked, onDraft, onCommit, tint }: {
       style={{
         width: 74, textAlign: 'right', padding: '3px 6px', fontFamily: 'ui-monospace, monospace',
         fontWeight: tint ? 600 : undefined,
-        border: `1px solid ${tint?.border || 'var(--theme-bg-separator)'}`, borderRadius: 3,
-        background: locked ? '#f5f5f5' : (tint?.input || '#fff'),
+        border: `1px solid ${tint?.border || 'var(--ds-sep)'}`, borderRadius: 3,
+        background: locked ? 'var(--ds-bg)' : (tint?.input || 'var(--ds-card)'),
         color: tint?.text,
       }}
     />
@@ -2115,6 +2081,7 @@ export function DayView() {
     const eid = l.id ?? l.product_key;
     return (
       <NumCell
+        label={`${NUM_FIELD_LABEL[field]} · ${l.product_name}`}
         value={edits[eid]?.[field] ?? String(l[serverField] ?? '')}
         locked={locked || extraLocked}
         tint={tint}
@@ -2146,9 +2113,9 @@ export function DayView() {
       {/* Barre d'action */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <input type="date" value={date} onChange={e => { setDate(e.target.value); setEdits({}); setShiftSel('auto'); }}
-          className="odoo-input" style={{ width: 160 }} />
+          className="ds-input sm" style={{ width: 160 }} aria-label="Date de la journée" />
         {day && multiShift && (
-          <div style={{ display: 'inline-flex', border: '1px solid var(--theme-bg-separator)', borderRadius: 6, overflow: 'hidden' }}>
+          <div style={{ display: 'inline-flex', border: '1px solid var(--ds-sep)', borderRadius: 6, overflow: 'hidden' }}>
             {shifts.map(s => {
               const active = !isTotalView && activeShift?.id === s.id;
               return (
@@ -2156,10 +2123,10 @@ export function DayView() {
                   title={s.status === 'closed' ? `${s.label} clôturé` : `Saisie du shift ${s.label}`}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px',
-                    border: 'none', borderRight: '1px solid var(--theme-bg-separator)', cursor: 'pointer',
+                    border: 'none', borderRight: '1px solid var(--ds-sep)', cursor: 'pointer',
                     fontSize: '0.8125rem', fontWeight: active ? 700 : 500,
-                    background: active ? 'var(--theme-accent)' : 'var(--theme-bg-card, #fff)',
-                    color: active ? '#fff' : 'var(--theme-text-primary)',
+                    background: active ? 'var(--ds-accent)' : 'var(--ds-card)',
+                    color: active ? 'var(--ds-card)' : 'var(--ds-ink)',
                   }}>
                   {s.status === 'closed' && <Lock size={11} />}
                   {s.label}
@@ -2172,8 +2139,8 @@ export function DayView() {
                 display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px',
                 border: 'none', cursor: 'pointer',
                 fontSize: '0.8125rem', fontWeight: isTotalView ? 700 : 500,
-                background: isTotalView ? 'var(--theme-accent)' : 'var(--theme-bg-card, #fff)',
-                color: isTotalView ? '#fff' : 'var(--theme-text-primary)',
+                background: isTotalView ? 'var(--ds-accent)' : 'var(--ds-card)',
+                color: isTotalView ? 'var(--ds-card)' : 'var(--ds-ink)',
               }}>
               Journée
             </button>
@@ -2248,7 +2215,7 @@ export function DayView() {
         )}
         {day && (dayLocked
           ? <button className="odoo-btn-secondary" onClick={() => statusMut.mutate({ action: 'open' })}><Unlock size={14} /> Rouvrir la journée</button>
-          : <button className="odoo-btn-secondary" onClick={() => statusMut.mutate({ action: 'closed' })}><Lock size={14} /> {multiShift ? 'Clôturer la journée' : 'Clôturer'}</button>
+          : <button className="odoo-btn-primary" onClick={() => statusMut.mutate({ action: 'closed' })}><Lock size={14} /> {multiShift ? 'Clôturer la journée' : 'Clôturer'}</button>
         )}
       </div>
 
@@ -2290,8 +2257,8 @@ export function DayView() {
       {isLoading ? (
         <LoadingState bare />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table">
+        <DataPanel label="Grille de rapprochement">
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th>Produit</th>
@@ -2346,7 +2313,7 @@ export function DayView() {
                 const catEcartQty = items.reduce((s, l) => s + num(l.ecart_qty), 0);
                 const catEcartVal = items.reduce((s, l) => s + num(l.ecart_value), 0);
                 const catTheme = ecartTheme(catEcartVal, Math.abs(catEcartVal) >= 50);
-                const catBg = ecartTone(catEcartVal) === 'ok' ? 'var(--theme-bg-sidebar, #f5f5f5)' : catTheme.bg;
+                const catBg = ecartTone(catEcartVal) === 'ok' ? 'var(--ds-bg)' : catTheme.bg;
                 const catCellBase = { background: catBg, fontWeight: 700, textAlign: 'right' as const, fontFamily: 'ui-monospace, monospace', padding: '4px 8px' };
                 return (
                 <Fragment key={cat}>
@@ -2359,7 +2326,7 @@ export function DayView() {
                     style={{ cursor: 'pointer', userSelect: 'none' }}>
                     <td style={{
                       background: catBg, fontWeight: 700,
-                      color: 'var(--theme-accent)', fontSize: '0.8125rem',
+                      color: 'var(--ds-accent)', fontSize: '0.8125rem',
                       borderLeft: `3px solid ${ecartTone(catEcartVal) === 'ok' ? 'transparent' : catTheme.border}`,
                     }}>
                       {isCollapsed ? '▸' : '▾'} {cat} ({items.length})
@@ -2430,7 +2397,7 @@ export function DayView() {
             </tbody>
             {lines.length > 0 && (
               <tfoot>
-                <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
+                <tr style={{ fontWeight: 700, borderTop: '2px solid var(--ds-sep)' }}>
                   <td>Total ({lines.length})</td>
                   <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}>{totals.report > 0 ? qf(totals.report) : '—'}</td>
                   <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{qf(totals.appro)}</td>
@@ -2448,7 +2415,7 @@ export function DayView() {
                   </td>
                   <td></td>
                 </tr>
-                <tr style={{ fontWeight: 600, color: 'var(--ds-muted)', background: 'var(--theme-bg-sidebar, #f5f5f5)' }}>
+                <tr style={{ fontWeight: 600, color: 'var(--ds-muted)', background: 'var(--ds-bg)' }}>
                   <td>Montants ({currencySymbol()})</td>
                   <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}>{totals.report > 0 ? nf(totals.reportVal) : '—'}</td>
                   <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{nf(totals.approVal)}</td>
@@ -2463,7 +2430,7 @@ export function DayView() {
               </tfoot>
             )}
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {showAdd && day && (
@@ -2540,7 +2507,7 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
   };
 
   const box = (label: string, s: { net: number; qty: number }, color: string) => (
-    <div style={{ flex: 1, border: '1px solid var(--theme-bg-separator)', borderRadius: 6, padding: '10px 14px' }}>
+    <div style={{ flex: 1, border: '1px solid var(--ds-sep)', borderRadius: 6, padding: '10px 14px' }}>
       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>{label}</div>
       <div style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace', color }}>{nf(s.net)} <span style={{ fontSize: '0.8rem' }}>{currencySymbol()}</span></div>
       <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{qf(s.qty)} article{s.qty > 1 ? 's' : ''}</div>
@@ -2548,12 +2515,14 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 540, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', background: '#f9fafb', fontWeight: 600 }}>
-          Importer les reçus — répartition Matin / Soir
-        </div>
-        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 14, background: '#fff' }}>
+    <Modal title="Importer les reçus — répartition Matin / Soir" onClose={onClose} width={540} locked={isLoading}
+      footer={<>
+        <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={isLoading}>Annuler</button>
+        <button type="button" onClick={confirm} className="odoo-btn-primary" disabled={isLoading}>
+          {isLoading ? <><Loader2 size={14} className="animate-spin" /> Import…</> : 'Importer'}
+        </button>
+      </>}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', display: 'flex', gap: 8 }}>
             <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
@@ -2565,10 +2534,10 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
 
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 2 }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Fuseau du magasin</label>
-              <input className="ds-input" value={storeTz} list="recon-tz-list"
-                onChange={e => setStoreTz(e.target.value.trim())}
-                style={{ borderColor: tzValid ? undefined : 'var(--ds-danger)' }} />
+              <FormField label="Fuseau du magasin" htmlFor="recon-store-tz"
+                error={!tzValid ? 'Fuseau invalide — heures du fichier utilisées telles quelles.' : undefined}>
+              <input id="recon-store-tz" className="ds-input" value={storeTz} list="recon-tz-list"
+                onChange={e => setStoreTz(e.target.value.trim())} aria-invalid={!tzValid || undefined} />
               <datalist id="recon-tz-list">
                 <option value="Africa/Casablanca" />
                 <option value="Europe/Paris" />
@@ -2576,35 +2545,25 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
                 <option value="America/Montreal" />
                 <option value="UTC" />
               </datalist>
-              {!tzValid && <div style={{ fontSize: 12, color: 'var(--ds-danger)', marginTop: 3 }}>Fuseau invalide — heures du fichier utilisées telles quelles.</div>}
+              </FormField>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Fermeture caisse matin</label>
-              <input type="time" className="ds-input" value={passation}
+              <FormField label="Fermeture caisse matin" htmlFor="recon-passation" hint="Heure du magasin. Tickets jusqu'à cette heure = Matin.">
+              <input id="recon-passation" type="time" className="ds-input" value={passation}
                 onChange={e => setPassation(e.target.value || '14:00')} />
-              <div style={{ fontSize: 12, color: 'var(--ds-muted)', marginTop: 3 }}>
-                Heure du magasin. Tickets jusqu'à cette heure = Matin.
-              </div>
+              </FormField>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 12 }}>
-            {box('Matin', stats.matin, '#1565c0')}
+            {box('Matin', stats.matin, 'var(--ds-accent-ink)')}
             {box('Soir', stats.soir, 'var(--ds-success)')}
           </div>
           <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
             Total : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{nf(total)} {currencySymbol()}</strong>
           </div>
-
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={isLoading}>Annuler</button>
-            <button type="button" onClick={confirm} className="odoo-btn-primary" disabled={isLoading}>
-              {isLoading ? <><Loader2 size={14} className="animate-spin" /> Import…</> : 'Importer'}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2639,34 +2598,29 @@ function PasteApproModal({ onClose, onSave, isLoading }: {
   const [text, setText] = useState('');
   const rows = useMemo(() => parseAppro(text), [text]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 560, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', background: '#f9fafb', fontWeight: 600 }}>
-          Coller l'approvisionnement depuis Excel
-        </div>
-        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 10, background: '#fff' }}>
+    <Modal title="Coller l'approvisionnement depuis Excel" onClose={onClose} width={560} locked={isLoading}
+      footer={<>
+        <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+        <button type="button" disabled={isLoading || rows.length === 0} onClick={() => onSave(rows)} className="odoo-btn-primary">
+          {isLoading ? 'Import…' : `Importer ${rows.length || ''}`.trim()}
+        </button>
+      </>}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
             Une ligne par produit — colonnes Excel dans l'ordre :{' '}
             <strong>Nom · Quantité · Prix(opt) · SKU(opt) · Catégorie(opt)</strong>. Le vendu et le reste déjà saisis
             sont préservés.
           </div>
           <textarea
-            value={text} onChange={e => setText(e.target.value)} rows={9} autoFocus
+            value={text} onChange={e => setText(e.target.value)} rows={9} autoFocus aria-label="Lignes collées depuis Excel"
             placeholder={'Tarte citron\t20\t12\tTARTE-CITRON\tPâtisserie\nPain complet\t35\t3.5'}
             className="ds-input" style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}
           />
           <div style={{ fontSize: '0.8125rem', color: rows.length ? 'var(--ds-success)' : 'var(--ds-muted)' }}>
             {rows.length} ligne{rows.length > 1 ? 's' : ''} détectée{rows.length > 1 ? 's' : ''}.
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="button" disabled={isLoading || rows.length === 0} onClick={() => onSave(rows)} className="odoo-btn-primary">
-              {isLoading ? 'Import…' : `Importer ${rows.length || ''}`.trim()}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2710,12 +2664,12 @@ function AddLineModal({ onClose, onSave, isLoading }: {
   }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 460, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', background: '#f9fafb', fontWeight: 600 }}>
-          Ajouter un produit à la journée
-        </div>
-        <form onSubmit={e => {
+    <Modal title="Ajouter un produit à la journée" onClose={onClose} width={460} locked={isLoading}
+      footer={<>
+        <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+        <button type="submit" form="day-add-form" disabled={isLoading} className="odoo-btn-primary">{isLoading ? 'Enregistrement…' : 'Ajouter'}</button>
+      </>}>
+        <form id="day-add-form" onSubmit={e => {
           e.preventDefault();
           if (!f.productName.trim()) return;
           onSave({
@@ -2724,10 +2678,9 @@ function AddLineModal({ onClose, onSave, isLoading }: {
             recuQty: parseFloat(f.recuQty.replace(',', '.')) || 0,
             unitPrice: parseFloat(f.unitPrice.replace(',', '.')) || 0,
           });
-        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
-          <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie</label>
-            <select className="ds-input" value={catFilter}
+        }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <FormField label="Catégorie" htmlFor="day-add-cat">
+            <select id="day-add-cat" className="ds-input" value={catFilter}
               onChange={e => { setCatFilter(e.target.value); setF(prev => ({ ...prev, productName: '' })); }}>
               <option value="">Toutes les catégories ({products.length})</option>
               {cats.map(c => (
@@ -2736,15 +2689,16 @@ function AddLineModal({ onClose, onSave, isLoading }: {
                 </option>
               ))}
             </select>
-          </div>
+          </FormField>
           <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Produit *</label>
-            <input className="ds-input" autoFocus required value={f.productName}
+            <FormField label="Produit" htmlFor="day-add-name" required>
+            <input id="day-add-name" className="ds-input" autoFocus required value={f.productName}
               placeholder="Tape pour chercher…"
               onChange={e => setF({ ...f, productName: e.target.value })} />
+            </FormField>
             {/* Resultats de recherche cliquables (limites a 8) */}
             {q !== '' && !known && matches.length > 0 && (
-              <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
+              <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 4, marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
                 {matches.slice(0, 8).map(p => (
                   <button key={p.product_key} type="button"
                     onClick={() => pickProduct(p)}
@@ -2752,9 +2706,9 @@ function AddLineModal({ onClose, onSave, isLoading }: {
                       display: 'flex', justifyContent: 'space-between', width: '100%',
                       padding: '6px 10px', border: 'none', background: 'transparent',
                       textAlign: 'left', cursor: 'pointer', fontSize: '0.8125rem',
-                      borderBottom: '1px solid var(--theme-bg-separator)',
+                      borderBottom: '1px solid var(--ds-sep)',
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--theme-bg-sidebar, #f5f5f5)')}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--ds-bg)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <span style={{ fontWeight: 500 }}>{p.product_name}</span>
                     <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{p.category || 'Non classé'}</span>
@@ -2780,47 +2734,37 @@ function AddLineModal({ onClose, onSave, isLoading }: {
           </div>
           {isNew && matches.length === 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>SKU</label>
-                <input className="ds-input" value={f.sku} onChange={e => setF({ ...f, sku: e.target.value })} />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie du produit</label>
-                <input className="ds-input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="day-add-categories"
+              <FormField label="SKU" htmlFor="day-add-sku">
+                <input id="day-add-sku" className="ds-input" value={f.sku} onChange={e => setF({ ...f, sku: e.target.value })} />
+              </FormField>
+              <FormField label="Catégorie du produit" htmlFor="day-add-newcat">
+                <input id="day-add-newcat" className="ds-input" value={f.category || (catFilter !== 'Non classé' ? catFilter : '')} list="day-add-categories"
                   onChange={e => setF({ ...f, category: e.target.value })} />
                 <datalist id="day-add-categories">
                   {cats.map(c => <option key={c} value={c} />)}
                 </datalist>
-              </div>
+              </FormField>
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Approvisionné</label>
-              <input type="text" inputMode="decimal" className="ds-input" value={f.approQty}
+            <FormField label="Approvisionné" htmlFor="day-add-appro">
+              <input id="day-add-appro" type="text" inputMode="decimal" className="ds-input" value={f.approQty}
                 placeholder="0"
                 onChange={e => setF({ ...f, approQty: e.target.value })} />
-            </div>
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Reçu</label>
-              <input type="text" inputMode="decimal" className="ds-input" value={f.recuQty}
+            </FormField>
+            <FormField label="Reçu" htmlFor="day-add-recu">
+              <input id="day-add-recu" type="text" inputMode="decimal" className="ds-input" value={f.recuQty}
                 placeholder="0"
                 onChange={e => setF({ ...f, recuQty: e.target.value })} />
-            </div>
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Prix ({currencySymbol()})</label>
-              <input type="text" inputMode="decimal" className="ds-input" value={f.unitPrice}
+            </FormField>
+            <FormField label={`Prix (${currencySymbol()})`} htmlFor="day-add-price">
+              <input id="day-add-price" type="text" inputMode="decimal" className="ds-input" value={f.unitPrice}
                 placeholder="0"
                 onChange={e => setF({ ...f, unitPrice: e.target.value })} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="submit" disabled={isLoading} className="odoo-btn-primary">{isLoading ? 'Enregistrement…' : 'Ajouter'}</button>
+            </FormField>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -2866,15 +2810,12 @@ export function CarryOverSettingsView() {
       {isLoading ? (
         <LoadingState bare />
       ) : cats.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
-          Aucune catégorie au catalogue. Importe d'abord le catalogue Loyverse.
-        </div>
+        <EmptyState icon={Package} title="Aucune catégorie au catalogue" text="Importe d'abord le catalogue Loyverse." />
       ) : (
-        <section className="prj-panel" style={{ overflow: 'hidden' }}>
-          <div className="prj-panel-head">
-            Report du reste <small>{enabledCount} catégorie{enabledCount > 1 ? 's' : ''} sur {cats.length}</small>
-          </div>
-          <table className="odoo-table" style={{ borderTop: 'none', margin: 0 }}>
+        <>
+          <SectionHeader title="Report du reste" note={`${enabledCount} catégorie${enabledCount > 1 ? 's' : ''} sur ${cats.length}`} />
+          <DataPanel label="Report du reste">
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th style={{ width: 70, textAlign: 'center' }}>Report</th>
@@ -2885,7 +2826,7 @@ export function CarryOverSettingsView() {
               {cats.map(c => (
                 <tr key={c.category}>
                   <td style={{ textAlign: 'center' }}>
-                    <input type="checkbox" checked={c.enabled}
+                    <input type="checkbox" checked={c.enabled} aria-label={`Reporter le reste de ${c.category}`}
                       disabled={toggleMut.isPending}
                       onChange={e => toggleMut.mutate({ category: c.category, enabled: e.target.checked })} />
                   </td>
@@ -2896,7 +2837,8 @@ export function CarryOverSettingsView() {
               ))}
             </tbody>
           </table>
-        </section>
+          </DataPanel>
+        </>
       )}
     </div>
   );
@@ -2949,123 +2891,114 @@ export function SlotsSettingsView() {
       {isLoading ? (
         <LoadingState bare />
       ) : categories.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
-          Aucun créneau configuré. Ajoutez un créneau pour découper la journée.
-        </div>
+        <EmptyState icon={Clock} title="Aucun créneau configuré" text="Ajoutez un créneau pour découper la journée." />
       ) : (
         categories.map(cat => (
-          <section key={cat} className="prj-panel" style={{ overflow: 'hidden' }}>
-            <div className="prj-panel-head">
-              {cat} ({byCategory[cat].length} créneau{byCategory[cat].length > 1 ? 'x' : ''})
-            </div>
-            <table className="odoo-table" style={{ borderTop: 'none', margin: 0 }}>
+          <Fragment key={cat}>
+            <SectionHeader title={cat} note={`${byCategory[cat].length} créneau${byCategory[cat].length > 1 ? 'x' : ''}`} />
+            <DataPanel label={`Créneaux ${cat}`}>
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
-                  <th style={{ width: 50 }}>N°</th>
+                  <th className="ds-num" style={{ width: 50 }}>N°</th>
                   <th>Libellé</th>
                   <th style={{ width: 90 }}>Heure</th>
-                  <th style={{ width: 70, textAlign: 'right' }}>%</th>
-                  <th style={{ width: 80 }}></th>
+                  <th className="ds-num" style={{ width: 90 }}>Part (%)</th>
+                  <th className="ds-actions" style={{ width: 130 }}><span className="ds-sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {byCategory[cat].map(s => (
                   <tr key={s.id}>
-                    <td style={{ textAlign: 'center', fontFamily: 'ui-monospace, monospace' }}>{s.slot_number}</td>
-                    <td style={{ fontWeight: 500 }}>
+                    <td className="ds-num">{s.slot_number}</td>
+                    <td className="ds-strong">
                       <Clock size={12} style={{ marginRight: 4, verticalAlign: -1, color: 'var(--ds-muted)' }} />
                       {s.label}
                     </td>
                     <td style={{ fontFamily: 'ui-monospace, monospace' }}>{s.target_time?.slice(0, 5) || '—'}</td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{s.default_pct}%</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button className="odoo-btn-secondary" style={{ padding: '2px 6px', marginRight: 4 }}
-                        onClick={() => setEditing({ ...s })}>
-                        Modifier
-                      </button>
-                      <button type="button" aria-label={`Supprimer ${s.label}`} title="Supprimer" style={{ color: 'var(--ds-danger)', padding: 2 }}
-                        onClick={async () => { if (await confirm(`Supprimer « ${s.label} » ?`, { title: 'Supprimer le créneau', confirmLabel: 'Supprimer', danger: true })) deleteMut.mutate(s.id); }}>
-                        <Trash2 size={13} />
-                      </button>
+                    <td className="ds-num">{s.default_pct}</td>
+                    <td className="ds-actions">
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm"
+                          onClick={() => setEditing({ ...s })}>
+                          Modifier
+                        </button>
+                        <RowMenu label={`Plus d'actions pour ${s.label}`} items={[{
+                          label: 'Supprimer', icon: Trash2, danger: true,
+                          onSelect: async () => { if (await confirm(`Supprimer « ${s.label} » ?`, { title: 'Supprimer le créneau', confirmLabel: 'Supprimer', danger: true })) deleteMut.mutate(s.id); },
+                        }]} />
+                      </span>
                     </td>
                   </tr>
                 ))}
-                <tr style={{ background: 'var(--theme-bg-sidebar, #f5f5f5)', fontWeight: 600 }}>
+              </tbody>
+              <tfoot>
+                <tr>
                   <td></td>
                   <td>Total</td>
                   <td></td>
-                  <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', color: byCategory[cat].reduce((s, x) => s + x.default_pct, 0) === 100 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
-                    {byCategory[cat].reduce((s, x) => s + x.default_pct, 0)}%
+                  <td className="ds-num" style={{ color: byCategory[cat].reduce((s, x) => s + x.default_pct, 0) === 100 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
+                    {byCategory[cat].reduce((s, x) => s + x.default_pct, 0)}
                   </td>
-                  <td></td>
+                  <td className="ds-actions"></td>
                 </tr>
-              </tbody>
+              </tfoot>
             </table>
-          </section>
+            </DataPanel>
+          </Fragment>
         ))
       )}
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-          <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 440, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', background: '#f9fafb', fontWeight: 600 }}>
-              {editing.id ? 'Modifier le créneau' : 'Nouveau créneau'}
-            </div>
-            <form onSubmit={e => {
+        <Modal title={editing.id ? 'Modifier le créneau' : 'Nouveau créneau'} onClose={() => setEditing(null)} width={440} locked={saveMut.isPending}
+          footer={<>
+            <button type="button" onClick={() => setEditing(null)} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" form="slot-form" disabled={saveMut.isPending} className="odoo-btn-primary">
+              {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </>}>
+            <form id="slot-form" onSubmit={e => {
               e.preventDefault();
               saveMut.mutate({
                 id: editing.id, category: editing.category, slotNumber: editing.slot_number,
                 label: editing.label, targetTime: editing.target_time || null,
                 defaultPct: editing.default_pct, sortOrder: editing.sort_order,
               });
-            }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie *</label>
-                <input className="ds-input" required value={editing.category || ''}
+            }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <FormField label="Catégorie" htmlFor="slot-cat" required>
+                <input id="slot-cat" className="ds-input" required value={editing.category || ''}
                   list="slot-categories"
                   onChange={e => setEditing(p => ({ ...p!, category: e.target.value }))} />
                 <datalist id="slot-categories">
                   {categories.map(c => <option key={c} value={c} />)}
                 </datalist>
-              </div>
+              </FormField>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Libellé *</label>
-                  <input className="ds-input" required value={editing.label || ''}
+                <FormField label="Libellé" htmlFor="slot-label" required>
+                  <input id="slot-label" className="ds-input" required value={editing.label || ''}
                     onChange={e => setEditing(p => ({ ...p!, label: e.target.value }))} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>N° créneau</label>
-                  <input type="number" min="1" className="ds-input" value={editing.slot_number || 1}
+                </FormField>
+                <FormField label="N° créneau" htmlFor="slot-num">
+                  <input id="slot-num" type="number" min="1" className="ds-input" value={editing.slot_number || 1}
                     onChange={e => setEditing(p => ({ ...p!, slot_number: parseInt(e.target.value) || 1 }))} />
-                </div>
+                </FormField>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Heure cible</label>
-                  <input type="time" className="ds-input" value={editing.target_time?.slice(0, 5) || ''}
+                <FormField label="Heure cible" htmlFor="slot-time">
+                  <input id="slot-time" type="time" className="ds-input" value={editing.target_time?.slice(0, 5) || ''}
                     onChange={e => setEditing(p => ({ ...p!, target_time: e.target.value || null }))} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>% par défaut</label>
-                  <input type="number" min="0" max="100" className="ds-input" value={editing.default_pct ?? 0}
+                </FormField>
+                <FormField label="% par défaut" htmlFor="slot-pct">
+                  <input id="slot-pct" type="number" min="0" max="100" className="ds-input" value={editing.default_pct ?? 0}
                     onChange={e => setEditing(p => ({ ...p!, default_pct: parseInt(e.target.value) || 0 }))} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Ordre</label>
-                  <input type="number" min="0" className="ds-input" value={editing.sort_order ?? 0}
+                </FormField>
+                <FormField label="Ordre" htmlFor="slot-order">
+                  <input id="slot-order" type="number" min="0" className="ds-input" value={editing.sort_order ?? 0}
                     onChange={e => setEditing(p => ({ ...p!, sort_order: parseInt(e.target.value) || 0 }))} />
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
-                <button type="button" onClick={() => setEditing(null)} className="odoo-btn-secondary">Annuler</button>
-                <button type="submit" disabled={saveMut.isPending} className="odoo-btn-primary">
-                  {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
-                </button>
+                </FormField>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -3126,20 +3059,22 @@ export function DarijaSettingsView() {
     const dirty = drafts[key] !== undefined && drafts[key] !== (isMissing ? '' : darijaOf(name));
     return (
       <tr key={key}>
-        <td style={{ fontWeight: 500 }}>{name}</td>
+        <td className="ds-strong">{name}</td>
         <td>
           <input
             value={current} dir="rtl"
             onChange={e => setDrafts(d => ({ ...d, [key]: e.target.value }))}
             placeholder="الترجمة بالدارجة"
+            className="ds-input sm"
+            aria-label={`Traduction darija de ${name}`}
             style={{
-              width: '100%', padding: '3px 8px', fontSize: '0.875rem', direction: 'rtl', textAlign: 'right',
-              border: `1px solid ${isMissing && !current ? '#e0a000' : 'var(--theme-bg-separator)'}`, borderRadius: 3,
+              direction: 'rtl', textAlign: 'right',
+              ...(isMissing && !current ? { borderColor: 'var(--ds-warning)' } : {}),
             }}
           />
         </td>
-        <td style={{ textAlign: 'center' }}>
-          <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} aria-label={`Enregistrer ${name}`} title="Enregistrer"
+        <td className="ds-actions">
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-label={`Enregistrer ${name}`} title="Enregistrer"
             disabled={!dirty || saveMut.isPending}
             onClick={() => saveMut.mutate({ name, darija: drafts[key] ?? '' })}>
             <Check size={12} />
@@ -3158,7 +3093,7 @@ export function DarijaSettingsView() {
       </StatusBanner>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input className="odoo-input" placeholder="Rechercher un produit…" value={filter}
+        <input type="search" className="ds-input sm" placeholder="Rechercher un produit…" value={filter} aria-label="Rechercher un produit"
           onChange={e => setFilter(e.target.value)} style={{ width: 240 }} />
         {missing.length > 0 && (
           <span className="odoo-tag odoo-tag-orange" style={{ fontSize: 12 }}>
@@ -3175,16 +3110,15 @@ export function DarijaSettingsView() {
       {isLoading ? (
         <LoadingState bare />
       ) : missing.length === 0 && !showTranslated ? (
-        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ds-success)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4, fontSize: '0.8125rem' }}>
-          <Check size={14} style={{ display: 'inline', verticalAlign: -2 }} /> Tous les produits du catalogue ont une traduction.
-        </div>
+        <EmptyState icon={Check} title="Tous les produits du catalogue ont une traduction" />
       ) : (
-        <table className="odoo-table">
+        <DataPanel label="Traductions darija">
+        <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th>Produit</th>
               <th style={{ width: '40%', textAlign: 'right' }}>Darija</th>
-              <th style={{ width: 60 }}></th>
+              <th className="ds-actions" style={{ width: 60 }}><span className="ds-sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -3192,6 +3126,7 @@ export function DarijaSettingsView() {
             {showTranslated && translated.filter(match).map(n => row(n, false))}
           </tbody>
         </table>
+        </DataPanel>
       )}
     </div>
   );
@@ -3293,7 +3228,7 @@ export function CatalogView() {
       </StatusBanner>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input className="odoo-input" placeholder="Rechercher (nom, SKU, catégorie)…" value={filter}
+        <input type="search" className="ds-input sm" placeholder="Rechercher (nom, SKU, catégorie)…" value={filter} aria-label="Rechercher un produit"
           onChange={e => setFilter(e.target.value)} style={{ width: 260 }} />
         <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
           {visible.length} / {products.length} produit{products.length > 1 ? 's' : ''}
@@ -3322,59 +3257,61 @@ export function CatalogView() {
       {isLoading ? (
         <LoadingState bare />
       ) : products.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
-          Catalogue vide. Importe un CSV Loyverse (Fiche de besoin ou Journée) ou ajoute un produit manuellement.
-        </div>
+        <EmptyState icon={Package} title="Catalogue vide" text="Importe un CSV Loyverse (Fiche de besoin ou Journée) ou ajoute un produit manuellement." />
       ) : (
         Object.entries(grouped).map(([cat, prods]) => (
-          <section key={cat} className="prj-panel" style={{ overflow: 'hidden' }}>
-            <div className="prj-panel-head">
-              {cat} ({prods.length})
-            </div>
-            <table className="odoo-table" style={{ borderTop: 'none', margin: 0 }}>
+          <Fragment key={cat}>
+            <SectionHeader title={cat} note={`${prods.length} produit${prods.length > 1 ? 's' : ''}`} />
+            <DataPanel label={`Catalogue ${cat}`}>
+            <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th>Produit</th>
                   <th style={{ width: 120 }}>SKU</th>
                   <th style={{ width: 200, textAlign: 'right' }}>Darija</th>
-                  <th style={{ width: 100, textAlign: 'right' }}>Prix ({currencySymbol()})</th>
-                  <th style={{ width: 130 }}></th>
+                  <th className="ds-num" style={{ width: 110 }}>Prix ({currencySymbol()})</th>
+                  <th className="ds-actions" style={{ width: 130 }}><span className="ds-sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {prods.map(p => (
                   <tr key={p.id}>
-                    <td style={{ fontWeight: 500 }}>{p.product_name}</td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{p.sku || '—'}</td>
+                    <td className="ds-strong">{p.product_name}</td>
+                    <td className="ds-ref">{p.sku || '—'}</td>
                     <td style={{ direction: 'rtl', textAlign: 'right', color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>
                       {darijaOf(p.product_name) || '—'}
                     </td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{nf(num(p.unit_price))}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button className="odoo-btn-secondary" style={{ padding: '2px 8px', marginRight: 4 }}
-                        onClick={() => setEditing({ ...p, darija: darijaOf(p.product_name) })}>
-                        Modifier
-                      </button>
-                      <button style={{ color: 'var(--ds-danger)', padding: 2 }} title="Supprimer du catalogue"
-                        onClick={async () => { if (await confirm(`Supprimer « ${p.product_name} » du catalogue ?\n\nL'historique des journées passées est conservé.`, { title: 'Supprimer du catalogue', confirmLabel: 'Supprimer', danger: true })) deleteMut.mutate(p.id); }} aria-label="Supprimer du catalogue">
-                        <Trash2 size={13} />
-                      </button>
+                    <td className="ds-num">{nf(num(p.unit_price))}</td>
+                    <td className="ds-actions">
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm"
+                          onClick={() => setEditing({ ...p, darija: darijaOf(p.product_name) })}>
+                          Modifier
+                        </button>
+                        <RowMenu label={`Plus d'actions pour ${p.product_name}`} items={[{
+                          label: 'Supprimer du catalogue', icon: Trash2, danger: true,
+                          onSelect: async () => { if (await confirm(`Supprimer « ${p.product_name} » du catalogue ?\n\nL'historique des journées passées est conservé.`, { title: 'Supprimer du catalogue', confirmLabel: 'Supprimer', danger: true })) deleteMut.mutate(p.id); },
+                        }]} />
+                      </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </section>
+            </DataPanel>
+          </Fragment>
         ))
       )}
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-          <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 440, borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', background: '#f9fafb', fontWeight: 600 }}>
-              {editing.id ? 'Modifier le produit' : 'Nouveau produit'}
-            </div>
-            <form onSubmit={e => {
+        <Modal title={editing.id ? 'Modifier le produit' : 'Nouveau produit'} onClose={() => setEditing(null)} width={440} locked={saveMut.isPending}
+          footer={<>
+            <button type="button" onClick={() => setEditing(null)} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" form="catalog-form" disabled={saveMut.isPending} className="odoo-btn-primary">
+              {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </>}>
+            <form id="catalog-form" onSubmit={e => {
               e.preventDefault();
               if (!editing.product_name?.trim()) return;
               saveMut.mutate({
@@ -3385,48 +3322,36 @@ export function CatalogView() {
                 unitPrice: num(editing.unit_price) || 0,
                 darija: editing.darija?.trim() ?? '',
               });
-            }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12, background: '#fff' }}>
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Produit *</label>
-                <input className="ds-input" autoFocus required value={editing.product_name || ''}
+            }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <FormField label="Produit" htmlFor="cat-name" required>
+                <input id="cat-name" className="ds-input" autoFocus required value={editing.product_name || ''}
                   onChange={e => setEditing(p => ({ ...p!, product_name: e.target.value }))} />
-              </div>
+              </FormField>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>SKU</label>
-                  <input className="ds-input" value={editing.sku || ''}
+                <FormField label="SKU" htmlFor="cat-sku">
+                  <input id="cat-sku" className="ds-input" value={editing.sku || ''}
                     onChange={e => setEditing(p => ({ ...p!, sku: e.target.value }))} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Prix unitaire ({currencySymbol()})</label>
-                  <input type="number" step="0.01" min="0" className="ds-input" value={editing.unit_price ?? ''}
+                </FormField>
+                <FormField label={`Prix unitaire (${currencySymbol()})`} htmlFor="cat-price">
+                  <input id="cat-price" type="number" step="0.01" min="0" className="ds-input" value={editing.unit_price ?? ''}
                     onChange={e => setEditing(p => ({ ...p!, unit_price: e.target.value }))} />
-                </div>
+                </FormField>
               </div>
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Catégorie</label>
-                <input className="ds-input" value={editing.category || ''} list="catalog-categories"
+              <FormField label="Catégorie" htmlFor="cat-cat">
+                <input id="cat-cat" className="ds-input" value={editing.category || ''} list="catalog-categories"
                   onChange={e => setEditing(p => ({ ...p!, category: e.target.value }))} />
                 <datalist id="catalog-categories">
                   {categories.map(c => <option key={c} value={c} />)}
                 </datalist>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-muted)' }}>Nom en darija</label>
-                <input className="ds-input" dir="rtl" value={editing.darija || ''}
+              </FormField>
+              <FormField label="Nom en darija" htmlFor="cat-darija">
+                <input id="cat-darija" className="ds-input" dir="rtl" value={editing.darija || ''}
                   placeholder="الترجمة بالدارجة"
                   style={{ direction: 'rtl', textAlign: 'right' }}
                   onChange={e => setEditing(p => ({ ...p!, darija: e.target.value }))} />
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
-                <button type="button" onClick={() => setEditing(null)} className="odoo-btn-secondary">Annuler</button>
-                <button type="submit" disabled={saveMut.isPending} className="odoo-btn-primary">
-                  {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
-                </button>
-              </div>
+              </FormField>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -3461,10 +3386,8 @@ export function ReportView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="prj-toolbar">
-        <input type="date" aria-label="Du" value={from} max={to} onChange={e => setFrom(e.target.value)} className="ds-input sm" style={{ width: 150 }} />
-        <span aria-hidden="true" style={{ color: 'var(--ds-muted)' }}>→</span>
-        <input type="date" aria-label="Au" value={to} min={from} onChange={e => setTo(e.target.value)} className="ds-input sm" style={{ width: 150 }} />
+      <Toolbar>
+        <DateRangeField from={from} to={to} onFrom={setFrom} onTo={setTo} />
         <div style={{ flex: 1 }} />
         <button type="button" className="odoo-btn-secondary" disabled={rows.length === 0} onClick={handleExport}>
           <Download size={13} aria-hidden="true" /> Exporter
@@ -3472,33 +3395,26 @@ export function ReportView() {
         <button type="button" className="odoo-btn-primary" disabled={isFetching} onClick={() => refetch()}>
           {isFetching ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <ScrollText size={14} aria-hidden="true" />} Générer
         </button>
-      </div>
+      </Toolbar>
 
       {rows.length > 0 && (
-        <div className="prj-kpis">
-          {([
-            ['Appro (u)', qf(totals.appro)], ['Vendu (u)', qf(totals.vendu)],
-            ['Reste (u)', qf(totals.invendu)], [`Écart total (${currencySymbol()})`, nf(totals.ecartVal)],
-          ] as [string, string][]).map(([lbl, val], i) => (
-            <div key={lbl} className="prj-kpi">
-              <div className="prj-kpi-head"><span>{lbl}</span></div>
-              <div className="prj-kpi-value" style={{ color: i === 3 ? ecartColor(totals.ecartVal) : undefined }}>{val}</div>
-            </div>
-          ))}
-        </div>
+        <KpiGrid>
+          <KpiCard label="Appro (u)" value={qf(totals.appro)} />
+          <KpiCard label="Vendu (u)" value={qf(totals.vendu)} />
+          <KpiCard label="Reste (u)" value={qf(totals.invendu)} />
+          <KpiCard label={`Écart total (${currencySymbol()})`} value={nf(totals.ecartVal)}
+            sub={ecartTone(totals.ecartVal) === 'neg' ? 'Manque à expliquer' : ecartTone(totals.ecartVal) === 'pos' ? 'Surplus' : 'Équilibré'}
+            tone={ecartTone(totals.ecartVal) === 'neg' ? 'red' : ecartTone(totals.ecartVal) === 'pos' ? 'orange' : 'green'} />
+        </KpiGrid>
       )}
 
       {isLoading || isFetching ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)' }}>
-          <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Calcul…
-        </div>
+        <LoadingState label="Calcul…" />
       ) : rows.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--ds-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4 }}>
-          Choisis une période et clique « Générer ».
-        </div>
+        <EmptyState icon={ScrollText} title="Aucun rapport" text="Choisis une période et clique « Générer »." />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table">
+        <DataPanel label="Rapport de rapprochement">
+          <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th>Produit</th>
@@ -3516,20 +3432,32 @@ export function ReportView() {
                 const eQty = num(r.ecart_qty), eVal = num(r.ecart_value);
                 return (
                   <tr key={r.product_key}>
-                    <td style={{ fontWeight: 500 }}>{r.product_name}</td>
+                    <td className="ds-strong">{r.product_name}</td>
                     <td className="hidden md:table-cell" style={{ color: 'var(--ds-muted)' }}>{r.category || '—'}</td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{qf(num(r.appro_qty))}</td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{qf(num(r.vendu_qty))}</td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace' }}>{qf(num(r.invendu_qty))}</td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: ecartColor(eQty) }}>{eQty > 0 ? '+' : ''}{qf(eQty)}</td>
-                    <td className="ds-num" style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: ecartColor(eVal) }}>{eVal > 0 ? '+' : ''}{nf(eVal)}</td>
+                    <td className="ds-num">{qf(num(r.appro_qty))}</td>
+                    <td className="ds-num">{qf(num(r.vendu_qty))}</td>
+                    <td className="ds-num">{qf(num(r.invendu_qty))}</td>
+                    <td className="ds-num" style={{ fontWeight: 600, color: ecartColor(eQty) }}>{eQty > 0 ? '+' : ''}{qf(eQty)}</td>
+                    <td className="ds-num" style={{ fontWeight: 700, color: ecartColor(eVal) }}>{eVal > 0 ? '+' : ''}{nf(eVal)}</td>
                     <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{r.days_count}</td>
                   </tr>
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr>
+                <td>Total ({rows.length})</td>
+                <td className="hidden md:table-cell"></td>
+                <td className="ds-num">{qf(totals.appro)}</td>
+                <td className="ds-num">{qf(totals.vendu)}</td>
+                <td className="ds-num">{qf(totals.invendu)}</td>
+                <td></td>
+                <td className="ds-num" style={{ color: ecartColor(totals.ecartVal) }}>{totals.ecartVal > 0 ? '+' : ''}{nf(totals.ecartVal)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
           </table>
-        </div>
+        </DataPanel>
       )}
     </div>
   );

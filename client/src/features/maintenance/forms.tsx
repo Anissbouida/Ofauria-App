@@ -9,7 +9,7 @@ import { customersApi } from '../../api/customers.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { FormField, FormFooter, Modal } from '../../components/ds';
 
 /** Formulaires du module Maintenance : intervention, plan d'entretien. */
 
@@ -22,18 +22,9 @@ const customerLabel = (c: Record<string, any>) => (c.company_name as string)?.tr
 
 function Shell({ title, onClose, children, footer, width = 680 }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode; width?: number }) {
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: width, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{title}</span></div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-        </div>
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 12 }}>{children}</div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>{footer}</div>
-      </div>
-    </ModalBackdrop>
+    <Modal title={title} onClose={onClose} width={width} footer={footer}>
+      <div style={{ display: 'grid', gap: 12 }}>{children}</div>
+    </Modal>
   );
 }
 
@@ -109,8 +100,8 @@ function EquipmentFields({ value, onChange, withProductionEquipment = false }: {
               </>
             )}
           </div>
-          <div><span style={label}>Équipement</span><input className="ds-input" value={value.equipmentLabel} maxLength={200} onChange={e => onChange({ equipmentLabel: e.target.value })} placeholder="Ex. : vitrine réfrigérée" /></div>
-          <div><span style={label}>N° de série</span><input className="ds-input" value={value.serialNo} maxLength={80} onChange={e => onChange({ serialNo: e.target.value })} /></div>
+          <FormField label="Équipement" htmlFor="mnt-f1"><input id="mnt-f1" className="ds-input" value={value.equipmentLabel} maxLength={200} onChange={e => onChange({ equipmentLabel: e.target.value })} placeholder="Ex. : vitrine réfrigérée" /></FormField>
+          <FormField label="N° de série" htmlFor="mnt-f2"><input id="mnt-f2" className="ds-input" value={value.serialNo} maxLength={80} onChange={e => onChange({ serialNo: e.target.value })} /></FormField>
         </div>
       )}
     </>
@@ -143,12 +134,9 @@ export function InterventionFormModal({ onClose, onCreated, defaults }: {
   const can = f.title.trim().length > 0 && (!!f.fixedAssetId || !!f.equipmentId || f.equipmentLabel.trim().length > 0) && !create.isPending;
   return (
     <Shell title="Nouvelle intervention" onClose={onClose}
-      footer={<>
-        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-        <button type="button" className="odoo-btn-primary" disabled={!can} aria-busy={create.isPending || undefined} onClick={() => create.mutate()}>{create.isPending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />} Créer l'intervention</button>
-      </>}>
+      footer={<FormFooter onCancel={onClose} submitLabel="Créer l'intervention" busy={create.isPending} disabled={!can} onSubmit={() => create.mutate()} />}>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-        <div><span style={label}>Objet{req}</span><input className="ds-input" value={f.title} maxLength={200} onChange={e => set({ title: e.target.value })} placeholder="Ex. : four ne chauffe plus, révision annuelle…" autoFocus /></div>
+        <FormField label="Objet" htmlFor="mnt-f3" required><input id="mnt-f3" className="ds-input" value={f.title} maxLength={200} onChange={e => set({ title: e.target.value })} placeholder="Ex. : four ne chauffe plus, révision annuelle…" autoFocus /></FormField>
         <div>
           <span style={label}>Type</span>
           <select className="ds-input" value={f.kind} onChange={e => set({ kind: e.target.value as InterventionKind })}>
@@ -170,10 +158,10 @@ export function InterventionFormModal({ onClose, onCreated, defaults }: {
             placeholder="À affecter" width="100%" size="md" ariaLabel="Intervenant"
             options={people.map(p => ({ id: String(p.id), label: p.name as string }))} />
         </div>
-        <div><span style={label}>Planifiée le</span><input className="ds-input" type="datetime-local" value={f.scheduledAt} onChange={e => set({ scheduledAt: e.target.value })} /></div>
-        <div><span style={label}>Lieu</span><input className="ds-input" value={f.location} maxLength={200} onChange={e => set({ location: e.target.value })} placeholder="Atelier, adresse…" /></div>
+        <FormField label="Planifiée le" htmlFor="mnt-f4"><input id="mnt-f4" className="ds-input" type="datetime-local" value={f.scheduledAt} onChange={e => set({ scheduledAt: e.target.value })} /></FormField>
+        <FormField label="Lieu" htmlFor="mnt-f5"><input id="mnt-f5" className="ds-input" value={f.location} maxLength={200} onChange={e => set({ location: e.target.value })} placeholder="Atelier, adresse…" /></FormField>
       </div>
-      <div><span style={label}>Problème signalé / travail demandé</span><textarea className="ds-input" style={{ minHeight: 70 }} value={f.reportedProblem} onChange={e => set({ reportedProblem: e.target.value })} /></div>
+      <FormField label="Problème signalé / travail demandé" htmlFor="mnt-f6"><textarea id="mnt-f6" className="ds-input" style={{ minHeight: 70 }} value={f.reportedProblem} onChange={e => set({ reportedProblem: e.target.value })} /></FormField>
       <div style={{ display: 'flex', gap: 16, fontSize: 14 }}>
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.underWarranty} onChange={e => set({ underWarranty: e.target.checked })} /> Sous garantie</label>
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={f.billable} onChange={e => set({ billable: e.target.checked })} /> Refacturable au client</label>
@@ -205,15 +193,12 @@ export function PlanFormModal({ plan, onClose }: { plan?: MaintenancePlan | null
   const can = f.label.trim().length > 0 && (!!f.fixedAssetId || f.equipmentLabel.trim().length > 0) && Number(f.frequencyDays) >= 1 && !!f.nextDueOn && !save.isPending;
   return (
     <Shell title={plan ? 'Modifier le plan d\'entretien' : 'Nouveau plan d\'entretien'} onClose={onClose}
-      footer={<>
-        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-        <button type="button" className="odoo-btn-primary" disabled={!can} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>Enregistrer</button>
-      </>}>
-      <div><span style={label}>Entretien{req}</span><input className="ds-input" value={f.label} maxLength={200} onChange={e => set({ label: e.target.value })} placeholder="Ex. : Détartrage four vapeur, Contrôle joints chambre froide" autoFocus /></div>
+      footer={<FormFooter onCancel={onClose} busy={save.isPending} disabled={!can} onSubmit={() => save.mutate()} />}>
+      <FormField label="Entretien" htmlFor="mnt-f7" required><input id="mnt-f7" className="ds-input" value={f.label} maxLength={200} onChange={e => set({ label: e.target.value })} placeholder="Ex. : Détartrage four vapeur, Contrôle joints chambre froide" autoFocus /></FormField>
       <EquipmentFields value={f} onChange={set} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <div><span style={label}>Tous les (jours){req}</span><input className="ds-input" type="number" min="1" max="3660" value={f.frequencyDays} onChange={e => set({ frequencyDays: Number(e.target.value) })} /></div>
-        <div><span style={label}>Prochaine échéance{req}</span><input className="ds-input" type="date" value={f.nextDueOn} onChange={e => set({ nextDueOn: e.target.value })} /></div>
+        <FormField label="Tous les (jours)" htmlFor="mnt-f8" required><input id="mnt-f8" className="ds-input" type="number" min="1" max="3660" value={f.frequencyDays} onChange={e => set({ frequencyDays: Number(e.target.value) })} /></FormField>
+        <FormField label="Prochaine échéance" htmlFor="mnt-f9" required><input id="mnt-f9" className="ds-input" type="date" value={f.nextDueOn} onChange={e => set({ nextDueOn: e.target.value })} /></FormField>
         <div>
           <span style={label}>Intervenant habituel</span>
           <SearchSelect value={f.assigneeId} onChange={v => set({ assigneeId: v })}
@@ -221,7 +206,7 @@ export function PlanFormModal({ plan, onClose }: { plan?: MaintenancePlan | null
             options={people.map(p => ({ id: String(p.id), label: p.name as string }))} />
         </div>
       </div>
-      <div><span style={label}>Points à vérifier</span><textarea className="ds-input" style={{ minHeight: 70 }} value={f.checklist} onChange={e => set({ checklist: e.target.value })} placeholder="Une ligne par point de contrôle" /></div>
+      <FormField label="Points à vérifier" htmlFor="mnt-f10"><textarea id="mnt-f10" className="ds-input" style={{ minHeight: 70 }} value={f.checklist} onChange={e => set({ checklist: e.target.value })} placeholder="Une ligne par point de contrôle" /></FormField>
       {plan && <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14 }}><input type="checkbox" checked={f.isActive} onChange={e => set({ isActive: e.target.checked })} /> Plan actif</label>}
     </Shell>
   );

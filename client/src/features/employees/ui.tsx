@@ -1,9 +1,8 @@
 import { createContext, useContext, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Loader2, type LucideIcon } from 'lucide-react';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { Loader2, type LucideIcon } from 'lucide-react';
 import {
-  EmptyState as DsEmptyState, LoadingState, Segmented as DsSegmented, FormField,
+  EmptyState as DsEmptyState, LoadingState, Segmented as DsSegmented, FormField, Modal,
 } from '../../components/ds';
 
 /**
@@ -29,11 +28,7 @@ export const smallBtn: CSSProperties = { display: 'inline-flex', alignItems: 'ce
  * exports en secondaire, puis une seule action principale). EmployeesPage fournit l'emplacement ;
  * hors du module (espace salarié seul), les boutons restent à leur place dans la page.
  */
-export const HrHeaderSlot = createContext<HTMLElement | null>(null);
-export function HrHeaderActions({ children }: { children: ReactNode }) {
-  const slot = useContext(HrHeaderSlot);
-  return slot ? createPortal(children, slot) : <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>{children}</div>;
-}
+export { HeaderSlotContext as HrHeaderSlot, HeaderActions as HrHeaderActions } from '../../components/ds';
 
 /** Titre de sous-section, avec icône et actions à droite. */
 export function SectionTitle({ icon: Icon, children, actions }: { icon?: LucideIcon; children: ReactNode; actions?: ReactNode }) {
@@ -71,27 +66,14 @@ export function HrModal({
   footer?: ReactNode;
   children: ReactNode;
 }) {
+  // Délègue à la fenêtre commune (Design System) : en-tête, corps défilant, pied collé.
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ background: 'rgba(15,23,42,0.32)' }}>
-      <div className="odoo-scope kl-sheet" onClick={e => e.stopPropagation()} role="dialog" aria-label={typeof title === 'string' ? title : crumb}
-        style={{ width: '100%', maxWidth: width, maxHeight: '92vh', minHeight: 0 }}>
-        <header className="kl-sheet-head" style={{ padding: '16px 20px 14px' }}>
-          <span className="kl-ic b" aria-hidden="true"><Icon size={16} /></span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, color: 'var(--kl-muted)' }}>{crumb}</div>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-.02em', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {title}{tag && <span style={{ fontSize: 13, fontWeight: 400, letterSpacing: 0 }}>{tag}</span>}
-            </h2>
-          </div>
-          {headerActions && <div style={{ display: 'inline-flex', gap: 4 }}>{headerActions}</div>}
-          <button type="button" onClick={onClose} className="kl-sheet-close" title="Fermer" aria-label="Fermer"><X size={16} /></button>
-        </header>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--kl-card)' }}>
-          {children}
-        </div>
-        {footer && <ModalFooter>{footer}</ModalFooter>}
-      </div>
-    </ModalBackdrop>
+    <Modal icon={Icon} title={title} subtitle={crumb} width={width} onClose={onClose}
+      label={typeof title === 'string' ? title : crumb}
+      aside={(tag || headerActions) ? <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>{tag}{headerActions}</div> : undefined}
+      footer={footer}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
+    </Modal>
   );
 }
 

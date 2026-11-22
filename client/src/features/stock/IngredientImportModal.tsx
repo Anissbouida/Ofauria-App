@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  FileSpreadsheet, Upload, X, AlertTriangle, Check, Loader2, ArrowRight, Download,
-} from 'lucide-react';
+import { Upload, AlertTriangle, Check, Loader2, Download } from 'lucide-react';
+import { Modal, FormSection, FormField, FormFooter, KpiGrid, KpiCard, Alert, DataPanel } from '../../components/ds';
 import { ingredientsApi } from '../../api/inventory.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { currencySymbol } from '../../utils/money';
@@ -96,210 +95,157 @@ export default function IngredientImportModal({ onClose }: { onClose: () => void
   const nothingToDo = preview && preview.summary.toCreate === 0 && preview.summary.toUpdate === 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="odoo-scope" role="dialog" aria-label="Importer des ingrédients"
-        style={{ width: '100%', maxWidth: 896, maxHeight: '90vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        {/* Header */}
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <FileSpreadsheet size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Ingrédients</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">Importer depuis Excel</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+    <Modal
+      title="Importer des ingrédients"
+      subtitle="Ingrédients › Importer depuis Excel"
+      onClose={onClose}
+      locked={busy}
+      width={896}
+      footer={result ? (
+        <div className="ds-form-foot">
+          <span className="ds-grow" />
+          <button type="button" className="odoo-btn-primary" onClick={onClose}>Fermer</button>
         </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {!result && (
-            <>
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded border">
-                <input
-                  type="file"
-                  accept=".xlsx"
-                  onChange={onFileChange}
-                  className="text-sm"
-                />
+      ) : (
+        <FormFooter
+          onCancel={onClose}
+          submitLabel="Confirmer et importer"
+          busy={commitMut.isPending}
+          disabled={!preview || busy || blockCommit || !!nothingToDo}
+          onSubmit={onConfirm}
+        />
+      )}
+    >
+      <div className="space-y-4">
+        {!result && (
+          <FormSection title="Fichier">
+            <FormField label="Fichier Excel (.xlsx)" htmlFor="ingredient-import-file" required
+              hint={<>Colonnes attendues : <code>Nom | Categorie | Unite | Cout ({currencySymbol()}) | Fournisseur | Allergenes</code>. Les ingredients existants (meme nom) seront mis a jour, les nouveaux crees. Toute modification du cout cascade automatiquement sur les recettes liees.</>}>
+              <div className="flex items-center gap-3 flex-wrap">
+                <input id="ingredient-import-file" type="file" accept=".xlsx" onChange={onFileChange} className="text-sm" />
                 {file && (
-                  <button
-                    onClick={onAnalyze}
-                    disabled={busy}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 text-sm"
-                  >
-                    {previewMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  <button type="button" onClick={onAnalyze} disabled={busy} className="odoo-btn-secondary ds-btn-sm">
+                    {previewMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                     Analyser
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => ingredientsApi.downloadTemplate()}
-                  className="ml-auto flex items-center gap-1 text-xs text-emerald-700 hover:underline"
-                  title="Telecharger un modele Excel vide"
-                >
-                  <Download className="w-3 h-3" /> Modele vide
+                <button type="button" onClick={() => ingredientsApi.downloadTemplate()} className="ds-btn-ghost ds-btn-sm" style={{ marginLeft: 'auto' }}
+                  title="Telecharger un modele Excel vide">
+                  <Download size={14} /> Modele vide
                 </button>
               </div>
+            </FormField>
+          </FormSection>
+        )}
 
-              <p className="text-xs text-gray-500">
-                Colonnes attendues : <code>Nom | Categorie | Unite | Cout ({currencySymbol()}) | Fournisseur | Allergenes</code>.
-                Les ingredients existants (meme nom) seront mis a jour, les nouveaux crees.
-                Toute modification du cout cascade automatiquement sur les recettes liees.
-              </p>
-            </>
-          )}
+        {/* Preview */}
+        {preview && !result && (
+          <div className="space-y-4">
+            <KpiGrid label="Analyse du fichier">
+              <KpiCard label="Total lignes" value={String(preview.summary.totalRows)} />
+              <KpiCard label="A creer" value={String(preview.summary.toCreate)} />
+              <KpiCard label="A mettre a jour" value={String(preview.summary.toUpdate)} />
+              <KpiCard label="Inchanges" value={String(preview.summary.unchanged)} />
+            </KpiGrid>
 
-          {/* Preview */}
-          {preview && !result && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Kpi label="Total lignes" value={String(preview.summary.totalRows)} />
-                <Kpi label="A creer" value={String(preview.summary.toCreate)} tone="emerald" />
-                <Kpi label="A mettre a jour" value={String(preview.summary.toUpdate)} tone="amber" />
-                <Kpi label="Inchanges" value={String(preview.summary.unchanged)} tone="gray" />
+            {preview.errors.length > 0 && (
+              <Alert tone="danger" icon={AlertTriangle}>
+                <strong>{preview.errors.length} erreur(s) bloquante(s) — corrigez le fichier</strong>
+                <ul className="text-xs space-y-1 max-h-40 overflow-y-auto mt-1">
+                  {preview.errors.map((e, i) => <li key={i}>Ligne {e.sourceRow} : {e.message}</li>)}
+                </ul>
+              </Alert>
+            )}
+
+            {preview.warnings.length > 0 && (
+              <Alert tone="warning" icon={AlertTriangle}>
+                <details>
+                  <summary className="cursor-pointer">{preview.warnings.length} avertissement(s)</summary>
+                  <ul className="text-xs space-y-1 max-h-40 overflow-y-auto mt-1">
+                    {preview.warnings.map((w, i) => <li key={i}>- {w}</li>)}
+                  </ul>
+                </details>
+              </Alert>
+            )}
+
+            {preview.toCreate.length > 0 && (
+              <details open>
+                <summary className="cursor-pointer ds-strong" style={{ marginBottom: 8 }}>A creer ({preview.toCreate.length})</summary>
+                <PreviewTable rows={preview.toCreate} kind="create" />
+              </details>
+            )}
+
+            {preview.toUpdate.length > 0 && (
+              <details>
+                <summary className="cursor-pointer ds-strong" style={{ marginBottom: 8 }}>A mettre a jour ({preview.toUpdate.length})</summary>
+                <PreviewTable rows={preview.toUpdate} kind="update" />
+              </details>
+            )}
+
+            {nothingToDo && (
+              <Alert tone="info">Rien a importer — toutes les lignes du fichier correspondent deja aux donnees actuelles.</Alert>
+            )}
+          </div>
+        )}
+
+        {/* Result */}
+        {result && (
+          <div className="space-y-3">
+            <Alert tone="success" icon={Check}>
+              <strong>Import termine</strong>
+              <div>
+                {result.created} cree(s), {result.updated} mis a jour, {result.unchanged} inchange(s)
+                {result.cascadedRecipes > 0 && ` — ${result.cascadedRecipes} recette(s) recalculee(s)`}
               </div>
+            </Alert>
 
-              {preview.errors.length > 0 && (
-                <div className="border border-red-200 rounded">
-                  <div className="p-2 bg-red-50 text-sm flex items-center gap-2 text-red-900 font-medium">
-                    <AlertTriangle className="w-4 h-4" /> {preview.errors.length} erreur(s) bloquante(s) — corrigez le fichier
-                  </div>
-                  <ul className="p-2 text-xs space-y-1 max-h-40 overflow-y-auto bg-white">
-                    {preview.errors.map((e, i) => (
-                      <li key={i} className="text-red-800">Ligne {e.sourceRow} : {e.message}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {preview.warnings.length > 0 && (
-                <details className="border border-amber-200 rounded">
-                  <summary className="p-2 bg-amber-50 cursor-pointer text-sm flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                    {preview.warnings.length} avertissement(s)
-                  </summary>
-                  <ul className="p-2 text-xs space-y-1 max-h-40 overflow-y-auto">
-                    {preview.warnings.map((w, i) => <li key={i} className="text-amber-900">- {w}</li>)}
-                  </ul>
-                </details>
-              )}
-
-              {preview.toCreate.length > 0 && (
-                <details className="border border-emerald-200 rounded" open>
-                  <summary className="p-2 bg-emerald-50 cursor-pointer text-sm font-medium text-emerald-900">
-                    A creer ({preview.toCreate.length})
-                  </summary>
-                  <PreviewTable rows={preview.toCreate} kind="create" />
-                </details>
-              )}
-
-              {preview.toUpdate.length > 0 && (
-                <details className="border border-amber-200 rounded">
-                  <summary className="p-2 bg-amber-50 cursor-pointer text-sm font-medium text-amber-900">
-                    A mettre a jour ({preview.toUpdate.length})
-                  </summary>
-                  <PreviewTable rows={preview.toUpdate} kind="update" />
-                </details>
-              )}
-
-              {nothingToDo && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-900">
-                  Rien a importer — toutes les lignes du fichier correspondent deja aux donnees actuelles.
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Result */}
-          {result && (
-            <div className="space-y-3">
-              <div className="p-4 bg-green-50 border border-green-200 rounded flex items-start gap-3">
-                <Check className="w-6 h-6 text-green-600 flex-shrink-0" />
-                <div>
-                  <div className="font-semibold text-green-900">Import termine</div>
-                  <div className="text-sm text-green-800 mt-1">
-                    {result.created} cree(s), {result.updated} mis a jour, {result.unchanged} inchange(s)
-                    {result.cascadedRecipes > 0 && ` — ${result.cascadedRecipes} recette(s) recalculee(s)`}
-                  </div>
-                </div>
-              </div>
-
-              {result.errors.length > 0 && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded">
-                  <div className="font-medium text-red-900 mb-1">Erreurs ({result.errors.length})</div>
-                  <ul className="text-xs space-y-0.5 max-h-40 overflow-y-auto">
-                    {result.errors.map((e, i) => (
-                      <li key={i} className="text-red-800">Ligne {e.row} : {e.message}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50">
-            {result ? 'Fermer' : 'Annuler'}
-          </button>
-          {preview && !result && (
-            <button
-              onClick={onConfirm}
-              disabled={busy || blockCommit || !!nothingToDo}
-              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 text-sm"
-            >
-              {commitMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-              Confirmer et importer
-            </button>
-          )}
-        </div>
+            {result.errors.length > 0 && (
+              <Alert tone="danger">
+                <strong>Erreurs ({result.errors.length})</strong>
+                <ul className="text-xs space-y-0.5 max-h-40 overflow-y-auto mt-1">
+                  {result.errors.map((e, i) => <li key={i}>Ligne {e.row} : {e.message}</li>)}
+                </ul>
+              </Alert>
+            )}
+          </div>
+        )}
       </div>
-    </div>
-  );
-}
-
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'emerald' | 'amber' | 'gray' }) {
-  const color =
-    tone === 'emerald' ? 'text-emerald-700' :
-    tone === 'amber' ? 'text-amber-700' :
-    tone === 'gray' ? 'text-gray-500' : 'text-gray-900';
-  return (
-    <div className="p-3 bg-white border rounded">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className={`text-base font-semibold mt-0.5 ${color}`}>{value}</div>
-    </div>
+    </Modal>
   );
 }
 
 function PreviewTable({ rows, kind }: { rows: PreviewRow[]; kind: 'create' | 'update' }) {
   const visible = rows.slice(0, 200);
   return (
-    <div className="overflow-x-auto">
-      <table className="odoo-table">
-        <thead className="bg-gray-50">
+    <DataPanel label={kind === 'create' ? 'Lignes à créer' : 'Lignes à mettre à jour'}
+      footer={rows.length > visible.length ? (
+        <div className="p-2 text-xs" style={{ color: 'var(--ds-muted)' }}>
+          ... et {rows.length - visible.length} autre(s) ligne(s) — toutes seront traitees a l'import.
+        </div>
+      ) : undefined}>
+      <table className="odoo-table ds-dense">
+        <thead>
           <tr>
-            <th className="p-1.5 text-left">Ligne</th>
-            <th className="p-1.5 text-left">Nom</th>
-            <th className="p-1.5 text-left">Categorie</th>
-            <th className="p-1.5 text-left">Unite</th>
-            <th className="p-1.5 text-right">Cout</th>
-            <th className="p-1.5 text-left">Fournisseur</th>
-            {kind === 'update' && <th className="p-1.5 text-left">Champs modifies</th>}
+            <th className="ds-num">Ligne</th>
+            <th>Nom</th>
+            <th>Categorie</th>
+            <th>Unite</th>
+            <th className="ds-num">Cout ({currencySymbol()})</th>
+            <th>Fournisseur</th>
+            {kind === 'update' && <th>Champs modifies</th>}
           </tr>
         </thead>
         <tbody>
           {visible.map(r => (
-            <tr key={r.sourceRow} className="border-t">
-              <td className="p-1.5 text-gray-500">{r.sourceRow}</td>
-              <td className="p-1.5 font-medium">{r.name}</td>
-              <td className="p-1.5">{r.category}</td>
-              <td className="p-1.5">{r.unit}</td>
-              <td className="p-1.5 text-right">{r.unitCost.toFixed(2)}</td>
-              <td className="p-1.5 text-gray-600">{r.supplier || '-'}</td>
+            <tr key={r.sourceRow}>
+              <td className="ds-num">{r.sourceRow}</td>
+              <td className="ds-strong">{r.name}</td>
+              <td>{r.category}</td>
+              <td>{r.unit}</td>
+              <td className="ds-num">{r.unitCost.toFixed(2)}</td>
+              <td>{r.supplier || '-'}</td>
               {kind === 'update' && (
-                <td className="p-1.5">
+                <td>
                   {r.changes && r.changes.length > 0
                     ? r.changes.map(c => (
                         <span key={c} className="inline-block mr-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px]">
@@ -313,11 +259,6 @@ function PreviewTable({ rows, kind }: { rows: PreviewRow[]; kind: 'create' | 'up
           ))}
         </tbody>
       </table>
-      {rows.length > visible.length && (
-        <div className="p-2 text-xs text-gray-500">
-          ... et {rows.length - visible.length} autre(s) ligne(s) — toutes seront traitees a l'import.
-        </div>
-      )}
-    </div>
+    </DataPanel>
   );
 }

@@ -6,6 +6,7 @@ import { ingredientsApi } from '../../api/inventory.api';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import './production.css';
 
 /**
  * Consommation de l'ordre (M6-01) : écart entre la nomenclature appliquée aux quantités
@@ -29,11 +30,11 @@ export default function ConsumptionPanel({ planId, mode, canEdit }: { planId: st
   const qty = Number(form.quantity.replace(',', '.'));
 
   return (
-    <div className="odoo-section" style={{ margin: '1rem' }}>
-      <div className="odoo-section-header flex items-center gap-2"><Scale size={13} /> Consommation des matières {manual && <span className="text-xs text-gray-500">— sorties manuelles</span>}</div>
+    <div className="ds-panel pd-section" style={{ margin: '1rem' }}>
+      <div className="pd-section-head"><Scale size={13} /> Consommation des matières {manual && <span className="text-xs text-gray-500">— sorties manuelles</span>}</div>
       <div style={{ padding: '0.5rem 1rem', display: 'grid', gap: 8 }}>
         {data.length > 0 && (
-          <table className="odoo-table">
+          <table className="odoo-table ds-dense">
             <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Matière</th><th className="text-right px-2">Théorique</th><th className="text-right px-2">Réel</th><th className="text-right px-2">Écart</th></tr></thead>
             <tbody>{data.map(r => (
               <tr key={r.ingredient_id} className="border-t border-gray-100">

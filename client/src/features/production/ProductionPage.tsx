@@ -15,11 +15,11 @@ import { forecastApi, type ForecastCell } from '../../api/forecast.api';
 import { useAuth } from '../../context/AuthContext';
 import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS } from '@ofauria/shared';
 import {
-  Plus, Trash2, Factory, ShoppingBag, Search,
+  Plus, Trash2, Factory, ShoppingBag,
   Clock, CheckCircle2, Play, Flag, AlertCircle,
-  FileText, X,
+  FileText,
   ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Layers,
-  TrendingUp, Loader2,
+  TrendingUp,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -27,7 +27,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import SalesPageShell from '../sales/SalesPageShell';
 import { FilterChips, type FilterChip } from '../sales/ListTemplate';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
-import { DataPanel, TableFooter, Toolbar, SearchBar, LoadingState, EmptyState, NoResultState, ErrorState, FormField } from '../../components/ds';
+import { DataPanel, TableFooter, Toolbar, SearchBar, LoadingState, EmptyState, NoResultState, ErrorState, FormField, FormFooter, FormSection, Modal, Alert } from '../../components/ds';
 
 
 const roleConfig: Record<string, { color: string; bg: string; gradient: string }> = {
@@ -85,7 +85,7 @@ function ProductionPlansView() {
   const isAdmin = ['admin', 'manager'].includes(user?.role || '');
 
   const effectiveRole = roleFilter;
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['production', { status: statusFilter, targetRole: effectiveRole }],
     queryFn: () => productionApi.list({
       status: statusFilter,
@@ -226,7 +226,7 @@ function ProductionPlansView() {
       {isLoading ? (
         <LoadingState label="Chargement des plans…" />
       ) : isError ? (
-        <ErrorState onRetry={() => refetch()} />
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : filteredPlans.length === 0 ? (
         hasFilters
           ? <NoResultState onReset={resetFilters} text="Aucun plan ne correspond aux filtres." />
@@ -354,19 +354,9 @@ function ProductionPlansView() {
 
       {/* Resume picker modal */}
       {showResumePicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-          <div className="odoo-scope" style={{ width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
-            <div className="odoo-control-bar">
-              <div className="odoo-breadcrumb">
-                <RotateCcw size={14} style={{ color: 'var(--theme-accent)' }} />
-                <span>Reprendre un plan</span>
-                <span className="odoo-breadcrumb-separator">›</span>
-                <span className="odoo-breadcrumb-current">{format(new Date(Date.now() - 86400000), 'dd MMM yyyy', { locale: fr })}</span>
-              </div>
-              <div style={{ flex: 1 }} />
-              <button type="button" onClick={() => setShowResumePicker(false)} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-            </div>
-            <div className="p-4 max-h-80 overflow-y-auto">
+        <Modal title="Reprendre un plan" subtitle={`Plans du ${format(new Date(Date.now() - 86400000), 'dd MMM yyyy', { locale: fr })}`}
+          onClose={() => setShowResumePicker(false)} width={460}>
+            <div>
               {(() => {
                 const yesterdayPlans = (yesterdayData?.data || []) as Record<string, any>[];
                 if (yesterdayPlans.length === 0) {
@@ -418,8 +408,7 @@ function ProductionPlansView() {
                 );
               })()}
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </SalesPageShell>
   );
@@ -662,27 +651,21 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        {/* Control bar */}
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Factory size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>{sectorLabel('production', 'Production')}</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span>{sectorLabel('production_plans', 'Plans de production')}</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">{sectorLabel('new_plan', 'Nouveau plan')}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-        </div>
-
+    <Modal title={sectorLabel('new_plan', 'Nouveau plan')}
+      subtitle={`${sectorLabel('production', 'Production')} › ${sectorLabel('production_plans', 'Plans de production')}`}
+      onClose={onClose} width={1400} locked={createMutation.isPending}
+      footer={
+        <FormFooter onCancel={onClose} onSubmit={handleSubmit} busy={createMutation.isPending} disabled={totalSelected === 0}
+          submitLabel={createMutation.isPending ? 'Création…' : `Créer le plan (${totalSelected})`}>
+          <span style={{ fontSize: 14, color: 'var(--ds-muted)' }}>
+            {totalSelected > 0 ? `${totalSelected} produit(s) sélectionné(s)` : 'Aucun produit sélectionné'}
+          </span>
+        </FormFooter>
+      }>
         {/* En-tête du plan : mêmes champs, présentation commune (FormField + ds-input). */}
-        <div className="px-5 py-3 border-b shrink-0" style={{ background: 'var(--ds-bg)' }}>
-          <div className="flex flex-wrap gap-3 items-start">
+        <FormSection title="En-tête du plan">
+          <div className="ds-form-grid cols-4">
             {(isAdminUser || ws.mine.length > 1) && (
-              <div className="w-48">
                 <FormField label="Atelier responsable" htmlFor="plan-atelier" required={isAdminUser}>
                   <select id="plan-atelier" value={selectedRole} onChange={(e) => { setSelectedRole(e.target.value); setSelected({}); setActiveCategory(''); }}
                     className="ds-input">
@@ -692,15 +675,11 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                     ))}
                   </select>
                 </FormField>
-              </div>
             )}
-            <div className="flex-1 min-w-[140px]">
               <FormField label="Date de production" htmlFor="plan-date" required>
                 <input id="plan-date" type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)}
                   className="ds-input" required />
               </FormField>
-            </div>
-            <div className="w-40">
               <FormField label="Type" htmlFor="plan-type">
                 <select id="plan-type" value={type} onChange={(e) => setType(e.target.value as 'daily' | 'weekly')}
                   className="ds-input">
@@ -708,9 +687,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                   <option value="weekly">Hebdomadaire</option>
                 </select>
               </FormField>
-            </div>
             {orderTypes.types.length > 1 && (
-              <div className="w-48">
                 <FormField label="Type d'ordre" htmlFor="plan-order-type">
                   <select id="plan-order-type" value={orderTypeId} onChange={(e) => setOrderTypeId(e.target.value)} className="ds-input">
                     {orderTypes.types.map(t => (
@@ -718,32 +695,23 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                     ))}
                   </select>
                 </FormField>
-              </div>
             )}
-            <div className="w-36">
               <FormField label="Priorité" htmlFor="plan-priority">
                 <select id="plan-priority" value={priority} onChange={(e) => setPriority(Number(e.target.value))} className="ds-input">
                   {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{PRIORITY_LABELS[n]}</option>)}
                 </select>
               </FormField>
-            </div>
-            <div className="flex-1 min-w-[140px]">
               <FormField label="Notes" htmlFor="plan-notes">
                 <input id="plan-notes" type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
                   className="ds-input" placeholder="Ex. : commande spéciale" />
               </FormField>
-            </div>
           </div>
-        </div>
+        </FormSection>
 
         {/* Pre-orders banner */}
         {orderCount > 0 && (
-          <div className="px-5 py-3 bg-blue-50 border-b border-blue-100 shrink-0">
-            <div className="flex items-center gap-2 text-blue-800">
-              <ShoppingBag size={18} className="text-blue-500" />
-              <span className="text-sm font-medium">{orderCount} commande(s) pour cette date</span>
-              <span className="text-xs text-blue-400 ml-1">— quantités ajoutées automatiquement</span>
-            </div>
+          <Alert tone="info" icon={ShoppingBag}>
+            <strong>{orderCount} commande(s) pour cette date</strong> — quantités ajoutées automatiquement
             <div className="flex flex-wrap gap-1.5 mt-2">
               {Object.entries(orderQtys).map(([pid, qty]) => {
                 const prod = products.find((p) => p.id === pid);
@@ -754,29 +722,23 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                 );
               })}
             </div>
-          </div>
+          </Alert>
         )}
-        {ordersLoading && (
-          <div className="px-5 py-2 bg-gray-50 border-b text-sm text-gray-400 shrink-0">Chargement des commandes...</div>
-        )}
+        {ordersLoading && <LoadingState bare label="Chargement des commandes…" />}
 
         {/* Prévision de la demande */}
         {forecastable.length > 0 && (
-          <div className="px-5 py-3 bg-violet-50 border-b border-violet-100 shrink-0 flex flex-wrap items-center gap-2">
-            <TrendingUp size={18} className="text-violet-500" />
-            <span className="text-sm font-medium text-violet-800">Prévision disponible pour {forecastable.length} produit(s)</span>
-            <span className="text-xs text-violet-500">
-              — historique de ventes, événements et majoration ; les commandes restent le minimum
-              {forecastWithFormats > 0 && ` · ${forecastWithFormats} produit(s) à formats à saisir à la main`}
-            </span>
-            {forecastSimple.length > 0 && (
-              <button type="button" onClick={applyForecast} className="odoo-btn-primary ml-auto">Pré-remplir avec la prévision</button>
-            )}
-          </div>
+          <Alert tone="info" icon={TrendingUp}
+            action={forecastSimple.length > 0 ? <button type="button" onClick={applyForecast} className="odoo-btn-secondary ds-btn-sm">Pré-remplir avec la prévision</button> : undefined}>
+            <strong>Prévision disponible pour {forecastable.length} produit(s)</strong>
+            {' '}— historique de ventes, événements et majoration ; les commandes restent le minimum
+            {forecastWithFormats > 0 && ` · ${forecastWithFormats} produit(s) à formats à saisir à la main`}
+          </Alert>
         )}
 
         {/* Category sidebar + Products grid */}
-        <div className="flex flex-1 min-h-0">
+        <FormSection title="Produits">
+        <div className="flex flex-1 min-h-0" style={{ minHeight: 360, border: '1px solid var(--ds-hair)', borderRadius: 12, overflow: 'hidden' }}>
           {/* Category sidebar */}
           <div className="w-44 shrink-0 border-r bg-gray-50 overflow-y-auto py-3 px-2 flex flex-col gap-1.5">
             <button type="button" onClick={() => setActiveCategory('')}
@@ -798,12 +760,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
           {/* Right content */}
           <div className="flex-1 flex flex-col min-w-0">
             <div className="px-5 py-2 shrink-0">
-              <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Rechercher un produit..."
-                  className="input text-base py-2.5 w-full pl-10" />
-              </div>
+              <SearchBar value={search} onChange={setSearch} placeholder="Rechercher un produit…" />
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-3">
@@ -919,10 +876,11 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="border-t bg-white px-5 py-4 shrink-0 sm:rounded-b-2xl">
+        </FormSection>
+
+        {/* Récapitulatif de la sélection */}
           {totalSelected > 0 && (
-            <div className="mb-3 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {Object.entries(selected).map(([pid, qty]) => {
                 const prod = products.find((p) => p.id === pid);
                 const fromOrder = orderQtys[pid] || 0;
@@ -942,24 +900,6 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
               })}
             </div>
           )}
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm text-gray-500">
-              {totalSelected > 0 ? `${totalSelected} produit(s) sélectionné(s)` : 'Aucun produit sélectionné'}
-            </span>
-            <div className="flex gap-2">
-              <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={createMutation.isPending}>Annuler</button>
-              <button type="button" onClick={handleSubmit} disabled={createMutation.isPending || totalSelected === 0}
-                aria-busy={createMutation.isPending || undefined} className="odoo-btn-primary">
-                {createMutation.isPending ? (
-                  <><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Création…</>
-                ) : (
-                  <><Factory size={14} aria-hidden="true" /> Créer le plan ({totalSelected})</>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

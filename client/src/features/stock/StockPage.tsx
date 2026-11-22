@@ -249,7 +249,7 @@ export default function StockPage() {
     queryFn: ingredientLotsApi.expiredActive,
     refetchInterval: 60_000,  // refresh chaque minute
   });
-  const { data: inventory = [], isLoading, isError, refetch } = useQuery({ queryKey: ['inventory'], queryFn: inventoryApi.list });
+  const { data: inventory = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['inventory'], queryFn: inventoryApi.list });
   const { data: alerts = [] } = useQuery({ queryKey: ['inventory-alerts'], queryFn: inventoryApi.alerts });
 
   // Phase pertes : dialog d'envoi aux pertes
@@ -663,7 +663,7 @@ export default function StockPage() {
       {viewMode === 'list' && (isLoading ? (
         <LoadingState label="Chargement de la réserve…" />
       ) : isError ? (
-        <ErrorState onRetry={() => refetch()} />
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : filteredInventory.length === 0 ? (
         hasActiveFilters
           ? <NoResultState text="Aucun ingrédient ne correspond aux filtres." onReset={resetFilters} />

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Plus, Trash2, Check, X } from 'lucide-react';
+import { ShieldCheck, Plus, Trash2 } from 'lucide-react';
+import { Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { customersApi, type CustomerTaxExemption } from '../../api/customers.api';
 import { notify } from '../../components/ui/InlineNotification';
@@ -37,9 +38,6 @@ export default function CustomerTaxExemptionsPanel({ customerId }: { customerId:
     return r.valid_from <= t && (!r.valid_to || r.valid_to >= t);
   };
 
-  const input: React.CSSProperties = { width: '100%', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', background: 'var(--odoo-bg)' };
-  const lab: React.CSSProperties = { fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'block', marginBottom: 2 };
-
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -71,21 +69,32 @@ export default function CustomerTaxExemptionsPanel({ customerId }: { customerId:
       </div>
 
       {form && (
-        <div style={{ border: '1px solid var(--odoo-purple)', borderRadius: 4, padding: 10, marginTop: 6, display: 'grid', gap: 8, background: 'var(--odoo-bg)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label><span style={lab}>N° d'attestation</span><input style={input} value={form.certificateNumber} onChange={e => setForm({ ...form, certificateNumber: e.target.value })} placeholder="EXO-2026-001" /></label>
-            <label><span style={lab}>Motif</span><input style={input} value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder="Export, ANP…" /></label>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label><span style={lab}>Valide du</span><input type="date" style={input} value={form.validFrom} onChange={e => setForm({ ...form, validFrom: e.target.value })} /></label>
-            <label><span style={lab}>au (optionnel)</span><input type="date" style={input} value={form.validTo} onChange={e => setForm({ ...form, validTo: e.target.value })} /></label>
-          </div>
-          <label><span style={lab}>Notes (optionnel)</span><input style={input} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></label>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-            <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setForm(null)}><X size={12} /> Annuler</button>
-            <button type="button" className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={!form.certificateNumber.trim() || !form.validFrom || save.isPending} onClick={() => save.mutate(form)}><Check size={12} /> Enregistrer</button>
-          </div>
-        </div>
+        <Modal title="Nouvelle attestation d'exonération" onClose={() => setForm(null)} width={560} locked={save.isPending}
+          footer={<FormFooter onCancel={() => setForm(null)} onSubmit={() => save.mutate(form)} disabled={!form.certificateNumber.trim() || !form.validFrom} busy={save.isPending} />}>
+          <FormSection title="Attestation">
+            <div className="ds-form-grid">
+              <FormField label="N° d'attestation" htmlFor="te-number" required>
+                <input id="te-number" className="ds-input" value={form.certificateNumber} onChange={e => setForm({ ...form, certificateNumber: e.target.value })} placeholder="EXO-2026-001" />
+              </FormField>
+              <FormField label="Motif" htmlFor="te-reason">
+                <input id="te-reason" className="ds-input" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} placeholder="Export, ANP…" />
+              </FormField>
+            </div>
+          </FormSection>
+          <FormSection title="Validité">
+            <div className="ds-form-grid">
+              <FormField label="Valide du" htmlFor="te-from" required>
+                <input id="te-from" type="date" className="ds-input" value={form.validFrom} onChange={e => setForm({ ...form, validFrom: e.target.value })} />
+              </FormField>
+              <FormField label="au (optionnel)" htmlFor="te-to">
+                <input id="te-to" type="date" className="ds-input" value={form.validTo} onChange={e => setForm({ ...form, validTo: e.target.value })} />
+              </FormField>
+            </div>
+            <FormField label="Notes (optionnel)" htmlFor="te-notes">
+              <input id="te-notes" className="ds-input" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
+            </FormField>
+          </FormSection>
+        </Modal>
       )}
     </div>
   );

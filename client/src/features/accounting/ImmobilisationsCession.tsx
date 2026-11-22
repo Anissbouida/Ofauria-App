@@ -1,16 +1,14 @@
 import { useState, Fragment } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { X, LogOut, Loader2, Undo2, AlertTriangle } from 'lucide-react';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { Undo2, AlertTriangle } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { fixedAssetsApi } from '../../api/fixed-assets.api';
 import type { FixedAsset, DisposalInput, AssetTableAmounts } from '../../api/fixed-assets.api';
 import EditionButtons from './EditionButtons';
-import { money } from '../../utils/money';
-import { DataPanel, LoadingState } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { currencySymbol } from '../../utils/money';
+import { DataPanel, LoadingState, ErrorState, EmptyState, SectionHeader, HeaderActions, Modal, FormSection, FormField, FormFooter, Segmented, Toolbar } from '../../components/ds';
 
 /**
  * Sortie d'une immobilisation (mig 427) — cession ou mise au rebut — et
@@ -20,26 +18,6 @@ import { AccHeaderActions } from './AccHeaderActions';
 const n = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (s: string) => s.slice(0, 10).split('-').reverse().join('/');
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' });
-const inputStyle = { width: '100%', padding: '6px 9px', border: '1px solid var(--theme-bg-separator)', borderRadius: 6, fontSize: '0.8125rem', background: 'var(--theme-bg-input)' };
-const labelStyle = { fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'block', marginBottom: 4 };
-
-function Shell({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
-  return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 620, maxHeight: '92vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{title}</span></div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>{footer}</div>
-      </div>
-    </ModalBackdrop>
-  );
-}
-
 export function DisposalModal({ asset, onClose, onDone }: { asset: FixedAsset; onClose: () => void; onDone: () => void }) {
   const [kind, setKind] = useState<'sale' | 'scrap'>('sale');
   const [date, setDate] = useState(today());
@@ -69,63 +47,71 @@ export function DisposalModal({ asset, onClose, onDone }: { asset: FixedAsset; o
   const vat = Math.round(priceNum * vatRate) / 100;
 
   return (
-    <Shell title={`Sortie de l'immobilisation — ${asset.label}`} onClose={onClose} footer={<>
-      <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-      <button type="button" onClick={() => save.mutate()} disabled={!valid || !d || save.isPending} className="odoo-btn-primary">
-        {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <LogOut size={13} />} Comptabiliser la sortie
-      </button>
-    </>}>
-      <div style={{ display: 'inline-flex', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'hidden', alignSelf: 'flex-start' }}>
-        {(['sale', 'scrap'] as const).map(k => (
-          <button key={k} type="button" onClick={() => setKind(k)} className={kind === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ borderRadius: 0, border: 'none', fontSize: '0.75rem' }}>
-            {k === 'sale' ? 'Cession (vente)' : 'Mise au rebut'}
-          </button>
-        ))}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
-        <div><label style={labelStyle}>Date de sortie *</label><input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} /></div>
-        {kind === 'sale' && <>
-          <div><label style={labelStyle}>Prix de cession HT *</label><input value={price} onChange={e => setPrice(e.target.value)} inputMode="decimal" placeholder="0,00" style={inputStyle} /></div>
-          <div><label style={labelStyle}>TVA</label>
-            <select value={vatRate} onChange={e => setVatRate(Number(e.target.value))} style={inputStyle}>
-              {[20, 14, 10, 7, 0].map(r => <option key={r} value={r}>{r ? `${r} %` : 'Sans TVA'}</option>)}
-            </select>
-          </div>
-          <div><label style={labelStyle}>Règlement</label>
-            <select value={counterpart} onChange={e => setCounterpart(e.target.value as typeof counterpart)} style={inputStyle}>
-              <option value="receivable">À encaisser (3481)</option>
-              <option value="bank">Banque (5141)</option>
-              <option value="cash">Caisse (5161)</option>
-            </select>
-          </div>
-          <div style={{ gridColumn: 'span 2' }}><label style={labelStyle}>Acquéreur</label><input value={buyer} onChange={e => setBuyer(e.target.value)} style={inputStyle} /></div>
-        </>}
-        <div style={{ gridColumn: '1 / -1' }}><label style={labelStyle}>Motif / observation</label><input value={reason} onChange={e => setReason(e.target.value)} placeholder={kind === 'scrap' ? 'Hors service, irréparable…' : ''} style={inputStyle} /></div>
-      </div>
+    <Modal title={`Sortie de l'immobilisation — ${asset.label}`} onClose={onClose} width={620} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => save.mutate()} busy={save.isPending} disabled={!valid || !d} submitLabel="Comptabiliser la sortie" />}>
+      <Segmented label="Nature de la sortie" value={kind} onChange={setKind}
+        options={[{ key: 'sale', label: 'Cession (vente)' }, { key: 'scrap', label: 'Mise au rebut' }]} />
+      <FormSection title="Sortie">
+        <div className="ds-form-grid">
+          <FormField label="Date de sortie" htmlFor="disp-date" required>
+            <input id="disp-date" type="date" className="ds-input" value={date} onChange={e => setDate(e.target.value)} />
+          </FormField>
+          {kind === 'sale' && <>
+            <FormField label={`Prix de cession HT (${currencySymbol()})`} htmlFor="disp-price" required>
+              <input id="disp-price" className="ds-input" value={price} onChange={e => setPrice(e.target.value)} inputMode="decimal" placeholder="0,00" />
+            </FormField>
+            <FormField label="TVA" htmlFor="disp-vat">
+              <select id="disp-vat" className="ds-input" value={vatRate} onChange={e => setVatRate(Number(e.target.value))}>
+                {[20, 14, 10, 7, 0].map(r => <option key={r} value={r}>{r ? `${r} %` : 'Sans TVA'}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Règlement" htmlFor="disp-counterpart">
+              <select id="disp-counterpart" className="ds-input" value={counterpart} onChange={e => setCounterpart(e.target.value as typeof counterpart)}>
+                <option value="receivable">À encaisser (3481)</option>
+                <option value="bank">Banque (5141)</option>
+                <option value="cash">Caisse (5161)</option>
+              </select>
+            </FormField>
+          </>}
+        </div>
+        {kind === 'sale' && (
+          <FormField label="Acquéreur" htmlFor="disp-buyer">
+            <input id="disp-buyer" className="ds-input" value={buyer} onChange={e => setBuyer(e.target.value)} />
+          </FormField>
+        )}
+        <FormField label="Motif / observation" htmlFor="disp-reason">
+          <input id="disp-reason" className="ds-input" value={reason} onChange={e => setReason(e.target.value)} placeholder={kind === 'scrap' ? 'Hors service, irréparable…' : ''} />
+        </FormField>
+      </FormSection>
 
       {pv.isError && <StatusBanner tone="danger" icon={AlertTriangle} title={apiErrorMessage(pv.error, 'Sortie impossible à cette date')} />}
       {d && (
-        <div className="odoo-section ds-panel" style={{ padding: 0 }}>
-          <table className="odoo-table ds-dense">
-            <tbody>
-              <tr><td>Valeur brute</td><td className="ds-num">{n(d.cost)}</td></tr>
-              <tr><td>Dotation complémentaire {d.months ? `(${d.months} mois jusqu'au mois de sortie)` : ''}</td><td className="ds-num">{n(d.complementary)}</td></tr>
-              <tr><td>Amortissements cumulés à la sortie</td><td className="ds-num">{n(d.cumulated)}</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>Valeur nette comptable (VNC)</td><td className="ds-num" style={{ fontWeight: 600 }}>{n(d.vnc)}</td></tr>
-              {kind === 'sale' && <tr><td>Prix de cession HT{vatRate ? ` (+ TVA ${n(vat)})` : ''}</td><td className="ds-num">{n(d.price)}</td></tr>}
-              <tr style={{ background: 'var(--theme-bg-secondary)' }}>
-                <td style={{ fontWeight: 600 }}>{d.gain >= 0 ? 'Plus-value' : 'Moins-value'}</td>
-                <td className="ds-num" style={{ fontWeight: 600, color: d.gain >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{n(d.gain)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', padding: '8px 12px', margin: 0 }}>
+        <FormSection title="Calcul de la sortie">
+          <DataPanel label="Calcul de la sortie">
+            <table className="odoo-table ds-dense">
+              <thead><tr><th>Élément</th><th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
+              <tbody>
+                <tr><td>Valeur brute</td><td className="ds-num">{n(d.cost)}</td></tr>
+                <tr><td>Dotation complémentaire {d.months ? `(${d.months} mois jusqu'au mois de sortie)` : ''}</td><td className="ds-num">{n(d.complementary)}</td></tr>
+                <tr><td>Amortissements cumulés à la sortie</td><td className="ds-num">{n(d.cumulated)}</td></tr>
+                <tr><td className="ds-strong">Valeur nette comptable (VNC)</td><td className="ds-num ds-strong">{n(d.vnc)}</td></tr>
+                {kind === 'sale' && <tr><td>Prix de cession HT{vatRate ? ` (+ TVA ${n(vat)})` : ''}</td><td className="ds-num">{n(d.price)}</td></tr>}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td>{d.gain >= 0 ? 'Plus-value' : 'Moins-value'}</td>
+                  <td className="ds-num" style={{ color: d.gain >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{n(d.gain)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </DataPanel>
+          <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: 0 }}>
             Écriture : amortissements cumulés et VNC (6513) au débit, valeur brute ({asset.asset_account_code}) au crédit
             {kind === 'sale' ? ' ; prix au débit du règlement, produit de cession (7513) et TVA au crédit.' : '.'}
           </p>
-        </div>
+        </FormSection>
       )}
-    </Shell>
+    </Modal>
   );
 }
 
@@ -136,17 +122,24 @@ export function CancelDisposalModal({ asset, onClose, onDone }: { asset: FixedAs
     onSuccess: () => { notify.success('Sortie annulée : écritures extournées'); onDone(); },
     onError: (e) => notify.error(apiErrorMessage(e, 'Annulation impossible')),
   });
+  const invalid = reason.trim().length < 3;
   return (
-    <Shell title={`Annuler la sortie — ${asset.label}`} onClose={onClose} footer={<>
-      <button type="button" onClick={onClose} className="odoo-btn-secondary">Fermer</button>
-      <button type="button" onClick={() => save.mutate()} disabled={reason.trim().length < 3 || save.isPending} className="odoo-btn-danger"><Undo2 size={13} /> Annuler la sortie</button>
-    </>}>
-      <p style={{ fontSize: '0.8125rem', margin: 0 }}>
+    <Modal title={`Annuler la sortie — ${asset.label}`} onClose={onClose} width={560} locked={save.isPending}
+      footer={
+        <div className="ds-form-foot">
+          <span className="ds-grow" />
+          <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={save.isPending}>Fermer</button>
+          <button type="button" onClick={() => save.mutate()} disabled={invalid || save.isPending} className="ds-btn-danger solid"><Undo2 size={13} /> Annuler la sortie</button>
+        </div>
+      }>
+      <p style={{ fontSize: 14, margin: 0 }}>
         L'écriture de sortie{asset.disposal_date ? ` du ${fmtDate(asset.disposal_date)}` : ''} et la dotation complémentaire seront extournées ;
         l'immobilisation reprend son amortissement.
       </p>
-      <div><label style={labelStyle}>Motif *</label><input value={reason} onChange={e => setReason(e.target.value)} style={inputStyle} autoFocus /></div>
-    </Shell>
+      <FormField label="Motif" htmlFor="cancel-disp-reason" required hint="3 caractères au moins.">
+        <input id="cancel-disp-reason" className="ds-input" value={reason} onChange={e => setReason(e.target.value)} autoFocus />
+      </FormField>
+    </Modal>
   );
 }
 
@@ -159,39 +152,40 @@ const amt = (v: number) => (Math.abs(v) < 0.005 ? '' : n(v));
 
 export function AssetsTableView() {
   const [year, setYear] = useState(new Date().getFullYear());
-  const { data, isLoading } = useQuery({ queryKey: ['fixed-assets-table', year], queryFn: () => fixedAssetsApi.table(year) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['fixed-assets-table', year], queryFn: () => fixedAssetsApi.table(year) });
+  const cur = currencySymbol();
   return (
     <>
-      <AccHeaderActions>
+      <HeaderActions>
         <EditionButtons kind="immobilisations" params={{ endDate: `${year}-12-31` }} />
         <EditionButtons kind="cessions" params={{ endDate: `${year}-12-31` }} />
-      </AccHeaderActions>
+      </HeaderActions>
 
-      <div className="prj-toolbar">
+      <Toolbar>
         <select value={year} onChange={e => setYear(Number(e.target.value))} className="ds-input sm" style={{ minWidth: 100, width: 'auto' }} aria-label="Exercice">
           {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => <option key={y} value={y}>Exercice {y}</option>)}
         </select>
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>Tableau</span>
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>Cessions</span>
-      </div>
-      {isLoading || !data ? (
+      </Toolbar>
+      {isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : isLoading || !data ? (
         <LoadingState />
       ) : (
         <>
-          <DataPanel>
+          <DataPanel label="Tableau des immobilisations">
             <table className="odoo-table ds-dense" style={{ minWidth: 980 }}>
-              <thead><tr><th>Immobilisation</th>{COLS.map(c => <th className="ds-num" key={c.key} style={{ width: 100 }}>{c.label}</th>)}</tr></thead>
+              <thead><tr><th>Immobilisation</th>{COLS.map(c => <th className="ds-num" key={c.key} style={{ width: 100 }}>{c.label} ({cur})</th>)}</tr></thead>
               <tbody>
                 {data.groups.map(g => (
                   <Fragment key={g.account_code}>
-                    <tr style={{ background: 'var(--theme-bg-secondary)' }}><td colSpan={COLS.length + 1} style={{ fontWeight: 600 }}>{g.account_code} {g.account_label}</td></tr>
+                    <tr className="ds-group"><td colSpan={COLS.length + 1}><span className="ds-ref">{g.account_code}</span> {g.account_label}</td></tr>
                     {g.items.map(i => (
                       <tr key={i.id}>
-                        <td style={{ fontSize: '0.8125rem' }}>{i.label} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>· {fmtDate(i.acquisition_date)}</span></td>
-                        {COLS.map(c => <td className="ds-num" key={c.key} style={{ fontSize: '0.8125rem' }}>{amt(i[c.key])}</td>)}
+                        <td>{i.label} <span style={{ color: 'var(--ds-muted)', fontSize: 11 }}>· {fmtDate(i.acquisition_date)}</span></td>
+                        {COLS.map(c => <td className="ds-num" key={c.key}>{amt(i[c.key])}</td>)}
                       </tr>
                     ))}
-                    <tr style={{ fontWeight: 600 }}><td>Total {g.account_code}</td>{COLS.map(c => <td className="ds-num" key={c.key}>{amt(g.totals[c.key])}</td>)}</tr>
+                    <tr><td className="ds-strong">Total {g.account_code}</td>{COLS.map(c => <td className="ds-num ds-strong" key={c.key}>{amt(g.totals[c.key])}</td>)}</tr>
                   </Fragment>
                 ))}
               </tbody>
@@ -200,28 +194,30 @@ export function AssetsTableView() {
               </tfoot>
             </table>
           </DataPanel>
-          <div className="odoo-section ds-panel" style={{ padding: 0 }}>
-            <div style={{ padding: '10px 14px', fontWeight: 600, fontSize: '0.8125rem', borderBottom: '1px solid var(--theme-bg-separator)' }}>
-              Sorties de l'exercice {data.disposals.length ? `· ${data.gain_total >= 0 ? 'plus-value nette' : 'moins-value nette'} ${money(data.gain_total)}` : ''}
-            </div>
+          <SectionHeader title="Sorties de l'exercice"
+            note={data.disposals.length ? `${data.gain_total >= 0 ? 'Plus-value nette' : 'Moins-value nette'} ${n(data.gain_total)} ${cur}` : undefined} />
+          <DataPanel label="Sorties de l'exercice">
             {data.disposals.length === 0 ? (
-              <p style={{ padding: '1rem', margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune cession ni mise au rebut sur l'exercice.</p>
+              <EmptyState bare icon={Undo2} title="Aucune sortie" text="Aucune cession ni mise au rebut sur l'exercice." />
             ) : (
               <table className="odoo-table ds-dense">
-                <thead><tr><th>Immobilisation</th><th style={{ width: 90 }}>Date</th><th style={{ width: 110 }}>Nature</th><th className="ds-num">Brut</th><th className="ds-num">Amort.</th><th className="ds-num">VNC</th><th className="ds-num">Prix HT</th><th className="ds-num">+/- value</th></tr></thead>
+                <thead><tr><th>Immobilisation</th><th style={{ width: 90 }}>Date</th><th style={{ width: 110 }}>Nature</th><th className="ds-num">Brut ({cur})</th><th className="ds-num">Amort. ({cur})</th><th className="ds-num">VNC ({cur})</th><th className="ds-num">Prix HT ({cur})</th><th className="ds-num">+/- value ({cur})</th></tr></thead>
                 <tbody>
                   {data.disposals.map(d => (
                     <tr key={d.id}>
-                      <td>{d.label}</td><td style={{ fontSize: '0.75rem' }}>{fmtDate(d.date)}</td><td>{d.kind === 'sale' ? 'Cession' : 'Mise au rebut'}</td>
+                      <td className="ds-strong">{d.label}</td><td>{fmtDate(d.date)}</td><td>{d.kind === 'sale' ? 'Cession' : 'Mise au rebut'}</td>
                       <td className="ds-num">{n(d.cost)}</td><td className="ds-num">{n(d.cumulated)}</td>
                       <td className="ds-num">{n(d.vnc)}</td><td className="ds-num">{amt(d.price)}</td>
-                      <td className="ds-num" style={{ fontWeight: 600, color: d.gain >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{n(d.gain)}</td>
+                      <td className="ds-num ds-strong" style={{ color: d.gain >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{n(d.gain)}</td>
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr><td colSpan={7}>Résultat net des sorties</td><td className="ds-num" style={{ color: data.gain_total >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{n(data.gain_total)}</td></tr>
+                </tfoot>
               </table>
             )}
-          </div>
+          </DataPanel>
         </>
       )}
     </>

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import api from '../../api/client';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { Drawer, FormSection, FormField } from '../../components/ds';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
@@ -41,41 +41,43 @@ export default function NcDetailPanel({ ncId, onClose }: { ncId: string; onClose
   const lotLabel = nc?.product_lot_number ? `lot produit ${nc.product_lot_number}` : nc?.ingredient_lot_number ? `lot matière ${nc.ingredient_lot_number}` : null;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(720px, 97vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600 }}>{nc?.title ?? 'Non-conformité'}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        {nc && (
-          <div style={{ overflowY: 'auto', padding: 16, display: 'grid', gap: 16, fontSize: '0.8125rem' }}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              <label>Cause{' '}
-                <select className="ds-input" style={{ width: 'auto' }} value={nc.cause_code ?? ''} onChange={e => details.mutate({ causeCode: e.target.value || null })}>
+    <Drawer title={nc?.title ?? 'Non-conformité'} subtitle="Fiche de non-conformité" onClose={onClose} width={720}>
+      {nc && (
+        <div style={{ display: 'grid', gap: 16, fontSize: '0.8125rem' }}>
+          <FormSection title="Analyse">
+            <div className="ds-form-grid">
+              <FormField label="Cause" htmlFor="nc-detail-cause">
+                <select id="nc-detail-cause" className="ds-input" value={nc.cause_code ?? ''} onChange={e => details.mutate({ causeCode: e.target.value || null })}>
                   <option value="">— Non renseignée —</option>
                   {causes.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
                 </select>
-              </label>
-              <SearchSelect options={suppliers.map(s => ({ id: s.id, label: s.name }))} value={nc.supplier_id ?? ''} onChange={v => details.mutate({ supplierId: v || null })} placeholder="Fournisseur…" width={240} ariaLabel="Fournisseur" />
+              </FormField>
+              <FormField label="Fournisseur">
+                <SearchSelect options={suppliers.map(s => ({ id: s.id, label: s.name }))} value={nc.supplier_id ?? ''} onChange={v => details.mutate({ supplierId: v || null })} placeholder="Fournisseur…" width="100%" size="md" ariaLabel="Fournisseur" />
+              </FormField>
             </div>
-            <div style={{ display: 'grid', gap: 6 }}>
-              <div style={{ fontWeight: 600 }}>Décision sur le lot {lotLabel ? `(${lotLabel})` : ''}</div>
-              {!lotLabel ? <span style={{ color: 'var(--ds-muted)' }}>Aucun lot rattaché.</span> : nc.lot_decision ? (
-                <span>Décision : <strong>{DECISIONS.find(d => d[0] === nc.lot_decision)?.[1] ?? nc.lot_decision}</strong></span>
-              ) : (
+          </FormSection>
+          <FormSection title={<>Décision sur le lot {lotLabel ? `(${lotLabel})` : ''}</>}>
+            {!lotLabel ? <span style={{ color: 'var(--ds-muted)' }}>Aucun lot rattaché.</span> : nc.lot_decision ? (
+              <span>Décision : <strong>{DECISIONS.find(d => d[0] === nc.lot_decision)?.[1] ?? nc.lot_decision}</strong></span>
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <FormField label="Commentaire (optionnel)" htmlFor="nc-detail-decision-note">
+                  <input id="nc-detail-decision-note" className="ds-input" value={decisionNote} onChange={e => setDecisionNote(e.target.value)} />
+                </FormField>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <input className="ds-input" style={{ width: 220 }} placeholder="Commentaire (optionnel)" value={decisionNote} onChange={e => setDecisionNote(e.target.value)} />
                   {DECISIONS.map(([k, l]) => (
-                    <button key={k} type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem' }} disabled={decide.isPending} onClick={() => decide.mutate(k)}>{l}</button>
+                    <button key={k} type="button" className="odoo-btn-secondary ds-btn-sm" disabled={decide.isPending} onClick={() => decide.mutate(k)}>{l}</button>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+          </FormSection>
+          <FormSection title="Actions">
             <div style={{ display: 'grid', gap: 6 }}>
-              <div style={{ fontWeight: 600 }}>Actions</div>
               {nc.actions.length === 0 && <span style={{ color: 'var(--ds-muted)' }}>Aucune action.</span>}
               {nc.actions.map(a => (
-                <div key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid var(--odoo-border)', paddingTop: 6 }}>
+                <div key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid var(--ds-hair)', paddingTop: 6 }}>
                   <StatusTag tone={a.status === 'faite' ? 'done' : a.overdue ? 'late' : 'todo'} label={a.status === 'faite' ? 'Faite' : a.overdue ? 'En retard' : a.status === 'en_cours' ? 'En cours' : 'À faire'} />
                   <span>{a.action_type === 'corrective' ? 'Corrective' : 'Préventive'} — {a.description}{a.due_date ? ` (échéance ${a.due_date.slice(0, 10).split('-').reverse().join('/')})` : ''}</span>
                   {a.status !== 'faite' && <button type="button" className="bsi-link-btn" onClick={() => updAction.mutate({ id: a.id, body: { status: 'faite' } })}>Marquer faite</button>}
@@ -86,18 +88,24 @@ export default function NcDetailPanel({ ncId, onClose }: { ncId: string; onClose
                   {a.effectiveness_result && <span style={{ color: 'var(--ds-muted)' }}>Efficacité : {a.effectiveness_result}</span>}
                 </div>
               ))}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <select className="ds-input" style={{ width: 'auto' }} value={act.actionType} aria-label="Type d'action" onChange={e => setAct({ ...act, actionType: e.target.value })}>
-                  <option value="corrective">Corrective</option><option value="preventive">Préventive</option>
-                </select>
-                <input className="ds-input" style={{ width: 280 }} placeholder="Description de l'action" value={act.description} onChange={e => setAct({ ...act, description: e.target.value })} />
-                <input type="date" className="ds-input" style={{ width: 'auto' }} value={act.dueDate} aria-label="Échéance" onChange={e => setAct({ ...act, dueDate: e.target.value })} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, auto) minmax(0, 1fr) minmax(140px, auto) auto', gap: 8, alignItems: 'end', marginTop: 8 }}>
+                <FormField label="Type" htmlFor="nc-detail-act-type">
+                  <select id="nc-detail-act-type" className="ds-input" value={act.actionType} onChange={e => setAct({ ...act, actionType: e.target.value })}>
+                    <option value="corrective">Corrective</option><option value="preventive">Préventive</option>
+                  </select>
+                </FormField>
+                <FormField label="Description de l'action" htmlFor="nc-detail-act-desc" required>
+                  <input id="nc-detail-act-desc" className="ds-input" value={act.description} onChange={e => setAct({ ...act, description: e.target.value })} />
+                </FormField>
+                <FormField label="Échéance" htmlFor="nc-detail-act-due">
+                  <input id="nc-detail-act-due" type="date" className="ds-input" value={act.dueDate} onChange={e => setAct({ ...act, dueDate: e.target.value })} />
+                </FormField>
                 <button type="button" className="odoo-btn-secondary" disabled={act.description.trim().length < 3 || addAction.isPending} onClick={() => addAction.mutate()}><Plus size={12} /> Ajouter</button>
               </div>
             </div>
-          </div>
-        )}
-      </div>
-    </ModalBackdrop>
+          </FormSection>
+        </div>
+      )}
+    </Drawer>
   );
 }

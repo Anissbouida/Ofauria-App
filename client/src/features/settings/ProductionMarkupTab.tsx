@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, History } from 'lucide-react';
+import { History } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { productionMarkupApi, type MarkupConfig } from '../../api/production-markup.api';
 import { SettingsSection, SettingItem, PageNote } from './SettingsPrimitives';
-import { LoadingState } from '../../components/ds';
+import { DataPanel, EmptyState, FormFooter, LoadingState } from '../../components/ds';
 
 type Draft = {
   globalPercent: string;
@@ -108,19 +108,21 @@ export default function ProductionMarkupTab() {
             step={0.5}
             value={draft.globalPercent}
             onChange={(e) => setDraft({ ...draft, globalPercent: e.target.value })}
-            className="input w-32"
+            className="ds-input"
+            style={{ width: 128 }}
+            aria-label="Taux de majoration par défaut (%)"
           />
         </SettingItem>
       </SettingsSection>
 
       <SettingsSection title="Majoration par catégorie" columns={1}>
-        <div className="overflow-x-auto">
+        <DataPanel label="Majoration par catégorie">
           <table className="odoo-table">
             <thead>
               <tr>
                 <th>Catégorie</th>
-                <th>Majoration personnalisée (%)</th>
-                <th>Taux effectif</th>
+                <th className="ds-num">Majoration personnalisée (%)</th>
+                <th className="ds-num">Taux effectif (%)</th>
               </tr>
             </thead>
             <tbody>
@@ -131,8 +133,8 @@ export default function ProductionMarkupTab() {
                   : (Number.isFinite(globalNum) ? globalNum : 0);
                 return (
                   <tr key={row.categoryId}>
-                    <td className="py-2 pr-4 text-gray-800">{row.categoryName}</td>
-                    <td className="py-2 pr-4">
+                    <td className="ds-strong">{row.categoryName}</td>
+                    <td className="ds-num">
                       <input
                         type="number"
                         min={0}
@@ -148,66 +150,62 @@ export default function ProductionMarkupTab() {
                             ),
                           })
                         }
-                        className="input w-40"
+                        className="ds-input sm"
+                        style={{ width: 160, textAlign: 'right' }}
+                        aria-label={`Majoration personnalisée : ${row.categoryName}`}
                       />
                     </td>
-                    <td className="py-2 pr-4 text-gray-500">
-                      {effective} %{custom == null ? ' (global)' : ''}
+                    <td className="ds-num">
+                      {effective}{custom == null ? <span style={{ color: 'var(--ds-muted)' }}> (global)</span> : ''}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       </SettingsSection>
 
-      <div className="flex justify-end mb-8">
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || saveMutation.isPending}
-          className="odoo-btn-primary flex items-center gap-2 disabled:opacity-40"
-        >
-          <Save size={16} />
-          {saveMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
-        </button>
+      <div style={{ marginBottom: 32 }}>
+        <FormFooter dirty={hasChanges} onCancel={() => setDraft(toDraft(config))} onSubmit={handleSave}
+          busy={saveMutation.isPending} disabled={!hasChanges} />
       </div>
 
       <SettingsSection title="Historique des modifications" columns={1}>
         {config.history.length === 0 ? (
-          <p className="text-sm text-gray-400">Aucune modification enregistrée.</p>
+          <EmptyState icon={History} title="Aucune modification enregistrée" bare />
         ) : (
-          <div className="overflow-x-auto">
+          <DataPanel label="Historique des modifications">
             <table className="odoo-table">
               <thead>
                 <tr>
                   <th>Date</th>
                   <th>Portée</th>
-                  <th>Ancien → Nouveau</th>
+                  <th>Ancien → nouveau</th>
                   <th>Par</th>
                 </tr>
               </thead>
               <tbody>
                 {config.history.map((h, i) => (
                   <tr key={i}>
-                    <td className="py-2 pr-4 text-gray-500">
+                    <td>
                       {new Date(h.changed_at).toLocaleString('fr-FR', {
                         day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
                       })}
                     </td>
-                    <td className="py-2 pr-4 text-gray-700">
+                    <td>
                       {h.scope === 'global' ? 'Global' : (h.category_name || 'Catégorie')}
                     </td>
-                    <td className="py-2 pr-4 text-gray-700">
-                      <History size={11} className="inline -mt-0.5 mr-1 text-gray-400" />
+                    <td>
+                      <History size={11} aria-hidden="true" style={{ display: 'inline', marginRight: 4, color: 'var(--ds-muted)' }} />
                       {fmtPct(h.old_percent)} → <strong>{fmtPct(h.new_percent)}</strong>
                     </td>
-                    <td className="py-2 pr-4 text-gray-500">{h.changed_by_name || '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{h.changed_by_name || '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
         )}
       </SettingsSection>
     </>

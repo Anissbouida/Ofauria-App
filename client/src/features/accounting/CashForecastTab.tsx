@@ -7,7 +7,10 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { money as fmtMoney, currencySymbol } from '../../utils/money';
-import { LoadingState, DataPanel, SectionHeader } from '../../components/ds';
+import { LoadingState, DataPanel, SectionHeader, FormField, FormSection } from '../../components/ds';
+
+/** Montant sans devise (devise dans l'en-tête de colonne). */
+const amt = (v: number) => (Number(v) || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 
 /**
  * Prévision de trésorerie sur 13 semaines (G4-03) : courbe du solde prévu, seuil d'alerte,
@@ -53,18 +56,20 @@ export default function CashForecastTab() {
         {' '}Salaires comptés en brut ; créances décalées du retard moyen de chaque client.
       </StatusBanner>
 
-      <div className="prj-toolbar" style={{ alignItems: 'flex-end', fontSize: 13 }}>
-        <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Scénario : retard supplémentaire des clients</span>
-          <select className="ds-input sm" style={{ width: 'auto' }} value={delay} onChange={e => setDelay(Number(e.target.value))} aria-label="Retard supplémentaire des clients">
+      <div className="prj-toolbar" style={{ alignItems: 'flex-end' }}>
+        <FormField label="Scénario : retard supplémentaire des clients" htmlFor="cf-delay">
+          <select id="cf-delay" className="ds-input sm" style={{ width: 'auto' }} value={delay} onChange={e => setDelay(Number(e.target.value))}>
             {[0, 7, 15, 30, 45, 60].map(d => <option key={d} value={d}>{d === 0 ? 'Aucun' : `${d} jours`}</option>)}
-          </select></label>
-        <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Seuil d'alerte ({currencySymbol()})</span>
+          </select>
+        </FormField>
+        <FormField label={`Seuil d'alerte (${currencySymbol()})`} htmlFor="cf-threshold">
           <span style={{ display: 'inline-flex', gap: 6 }}>
-            <input className="ds-input sm" style={{ width: 130, textAlign: 'right' }} inputMode="decimal" aria-label="Seuil d'alerte"
+            <input id="cf-threshold" className="ds-input sm" style={{ width: 130, textAlign: 'right' }} inputMode="decimal"
               value={thresholdInput ?? String(data.threshold)} onChange={e => setThresholdInput(e.target.value)} />
             {thresholdInput !== null && <button type="button" className="odoo-btn-primary" disabled={saveThreshold.isPending}
               onClick={() => saveThreshold.mutate(Number(thresholdInput.replace(',', '.')) || 0)}>Enregistrer</button>}
-          </span></label>
+          </span>
+        </FormField>
       </div>
 
       <div className="ds-panel" style={{ height: 280, padding: '12px 8px 4px' }}>
@@ -93,23 +98,25 @@ export default function CashForecastTab() {
                 <tr key={w.start} style={{ cursor: 'pointer' }} onClick={() => setOpen(isOpen ? null : i)}>
                   <td style={{ width: 28 }}>{isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</td>
                   <td>S{i + 1} · {dm(w.start)} → {dm(w.end)}</td>
-                  <td className="ds-num" style={{ color: 'var(--ds-success)' }}>{money(w.inflow)}</td>
-                  <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{money(-w.outflow)}</td>
-                  <td className="ds-num" style={{ fontWeight: 600, color: w.closing < data.threshold ? 'var(--ds-danger)' : undefined }}>{money(w.closing)}</td>
+                  <td className="ds-num" style={{ color: 'var(--ds-success)' }}>{amt(w.inflow)}</td>
+                  <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{amt(-w.outflow)}</td>
+                  <td className="ds-num ds-strong" style={{ color: w.closing < data.threshold ? 'var(--ds-danger)' : undefined }}>{amt(w.closing)}</td>
                 </tr>,
                 isOpen && (
                   <tr key={`${w.start}-d`}><td colSpan={5} style={{ padding: '4px 12px 10px' }}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '4px 0 8px', fontSize: '0.78rem' }}>
                       {Object.entries(w.byCategory).map(([k, v]) => (
-                        <span key={k} style={{ border: '1px solid var(--odoo-border)', borderRadius: 999, padding: '2px 8px' }}>{data.categories[k] ?? k} : <strong>{money(v)}</strong></span>
+                        <span key={k} style={{ border: '1px solid var(--ds-line)', borderRadius: 999, padding: '2px 8px' }}>{data.categories[k] ?? k} : <strong>{money(v)}</strong></span>
                       ))}
                     </div>
-                    {flows.length === 0 ? <span style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>Aucun flux.</span> : (
-                      <table className="odoo-table ds-dense"><tbody>
+                    {flows.length === 0 ? <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Aucun flux.</span> : (
+                      <table className="odoo-table ds-dense">
+                        <thead><tr><th style={{ width: 60 }}>Date</th><th style={{ width: 150 }}>Nature</th><th>Libellé</th><th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
+                        <tbody>
                         {flows.map((f, n) => (
-                          <tr key={n}><td style={{ width: 60 }}>{dm(f.date)}</td><td style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)', width: 150 }}>{data.categories[f.category] ?? f.category}</td>
-                            <td style={{ fontSize: '0.82rem' }}>{f.label}</td>
-                            <td className="ds-num" style={{ color: f.amount < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{money(f.amount)}</td></tr>
+                          <tr key={n}><td>{dm(f.date)}</td><td style={{ color: 'var(--ds-muted)' }}>{data.categories[f.category] ?? f.category}</td>
+                            <td>{f.label}</td>
+                            <td className="ds-num" style={{ color: f.amount < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{amt(f.amount)}</td></tr>
                         ))}
                       </tbody></table>
                     )}
@@ -123,28 +130,44 @@ export default function CashForecastTab() {
 
       <SectionHeader title="Lignes manuelles" />
       <section className="ds-panel" style={{ padding: 16, display: 'grid', gap: 12 }}>
-        <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Ce que l'application ne connaît pas encore : emprunt attendu, investissement, apport. Montant positif = encaissement, négatif = décaissement.</span>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={line.flowDate} onChange={e => setLine(l => ({ ...l, flowDate: e.target.value }))} aria-label="Date" />
-          <input className="ds-input sm" style={{ minWidth: 220 }} placeholder="Libellé" value={line.label} onChange={e => setLine(l => ({ ...l, label: e.target.value }))} aria-label="Libellé" />
-          <input className="ds-input sm" style={{ width: 120, textAlign: 'right' }} inputMode="decimal" placeholder="Montant" value={line.amount} onChange={e => setLine(l => ({ ...l, amount: e.target.value }))} aria-label="Montant" />
-          <select className="ds-input sm" style={{ width: 'auto' }} value={line.category} onChange={e => setLine(l => ({ ...l, category: e.target.value }))} aria-label="Nature">
-            <option value="emprunt">Emprunt</option><option value="investissement">Investissement</option><option value="apport">Apport</option>
-            <option value="subvention">Subvention</option><option value="autre">Autre</option>
-          </select>
-          <button type="button" className="odoo-btn-secondary" disabled={!line.flowDate || line.label.trim().length < 2 || !Number(line.amount.replace(',', '.')) || addLine.isPending}
-            onClick={() => addLine.mutate()}><Plus size={13} /> Ajouter</button>
-        </div>
-        {lines.length > 0 && (
-          <table className="odoo-table ds-dense"><tbody>
+        <FormSection title="Nouvelle ligne">
+          <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Ce que l'application ne connaît pas encore : emprunt attendu, investissement, apport. Montant positif = encaissement, négatif = décaissement.</span>
+          <div className="ds-form-grid cols-4" style={{ alignItems: 'end' }}>
+            <FormField label="Date" htmlFor="cf-line-date" required>
+              <input id="cf-line-date" type="date" className="ds-input" value={line.flowDate} onChange={e => setLine(l => ({ ...l, flowDate: e.target.value }))} />
+            </FormField>
+            <FormField label="Libellé" htmlFor="cf-line-label" required>
+              <input id="cf-line-label" className="ds-input" placeholder="Emprunt bancaire" value={line.label} onChange={e => setLine(l => ({ ...l, label: e.target.value }))} />
+            </FormField>
+            <FormField label={`Montant (${currencySymbol()})`} htmlFor="cf-line-amount" required>
+              <input id="cf-line-amount" className="ds-input" style={{ textAlign: 'right' }} inputMode="decimal" value={line.amount} onChange={e => setLine(l => ({ ...l, amount: e.target.value }))} />
+            </FormField>
+            <FormField label="Nature" htmlFor="cf-line-cat">
+              <select id="cf-line-cat" className="ds-input" value={line.category} onChange={e => setLine(l => ({ ...l, category: e.target.value }))}>
+                <option value="emprunt">Emprunt</option><option value="investissement">Investissement</option><option value="apport">Apport</option>
+                <option value="subvention">Subvention</option><option value="autre">Autre</option>
+              </select>
+            </FormField>
+          </div>
+          <div>
+            <button type="button" className="odoo-btn-secondary" disabled={!line.flowDate || line.label.trim().length < 2 || !Number(line.amount.replace(',', '.')) || addLine.isPending}
+              onClick={() => addLine.mutate()}><Plus size={13} /> Ajouter</button>
+          </div>
+        </FormSection>
+      </section>
+      {lines.length > 0 && (
+        <DataPanel label="Lignes manuelles">
+          <table className="odoo-table ds-dense">
+            <thead><tr><th style={{ width: 110 }}>Date</th><th>Libellé</th><th>Nature</th><th className="ds-num">Montant ({currencySymbol()})</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
+            <tbody>
             {lines.map(l => (
-              <tr key={l.id}><td style={{ width: 90 }}>{dmy(l.flow_date)}</td><td>{l.label}</td><td style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>{l.category}</td>
-                <td className="ds-num">{money(l.amount)}</td>
+              <tr key={l.id}><td>{dmy(l.flow_date)}</td><td className="ds-strong">{l.label}</td><td style={{ color: 'var(--ds-muted)' }}>{l.category}</td>
+                <td className="ds-num">{amt(Number(l.amount))}</td>
                 <td className="ds-actions" style={{ width: 40 }}><button type="button" className="ds-icon-btn" title="Supprimer" onClick={() => delLine.mutate(l.id)} aria-label="Supprimer"><Trash2 size={12} /></button></td></tr>
             ))}
           </tbody></table>
-        )}
-      </section>
+        </DataPanel>
+      )}
     </div>
   );
 }

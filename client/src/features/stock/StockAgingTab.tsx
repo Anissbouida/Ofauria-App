@@ -20,7 +20,7 @@ import { DataPanel, EmptyState, ErrorState, KpiGrid, LoadingState, NoResultState
 const qty = (n: number, unit: string) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}${unit ? ' ' + unit : ''}`;
 
 export default function StockAgingTab() {
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['stock-aging'], queryFn: inventoryApi.aging });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['stock-aging'], queryFn: inventoryApi.aging });
   const [search, setSearch] = useState('');
   const [oldOnly, setOldOnly] = useState(false);
 
@@ -35,7 +35,7 @@ export default function StockAgingTab() {
   if (isLoading) {
     return <LoadingState label="Chargement des lots…" />;
   }
-  if (isError) return <ErrorState onRetry={() => refetch()} />;
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
 
   const buckets = data?.buckets ?? [];
   const total = data?.totalValue ?? 0;

@@ -6,8 +6,8 @@ import { liasseApi } from '../../api/ledger.api';
 import type { Liasse, LiasseModel, LiasseTable, LiasseKind } from '../../api/ledger.api';
 import EditionButtons from './EditionButtons';
 import LiasseEdiPanel from './LiasseEdiPanel';
-import { DataPanel, KpiCard, KpiGrid, LoadingState, Tabs } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { DataPanel, ErrorState, HeaderActions, KpiCard, KpiGrid, LoadingState, TableFooter, Tabs } from '../../components/ds';
+import { currencySymbol } from '../../utils/money';
 
 /**
  * Liasse fiscale (lot Bonus 14) : tableaux du modèle comptable CGNC (bilan
@@ -18,7 +18,7 @@ import { AccHeaderActions } from './AccHeaderActions';
 
 const n = (v: number) => (Math.abs(v) < 0.005 ? '' : v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const mono = { fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } as const;
-const num: React.CSSProperties = { textAlign: 'right', width: 130, whiteSpace: 'nowrap' };
+const num: React.CSSProperties = { width: 130, whiteSpace: 'nowrap' };
 
 type View = LiasseTable | 'edi';
 const VIEWS: { key: View; label: string }[] = [
@@ -34,15 +34,15 @@ export default function LiasseTab() {
   const [year, setYear] = useState(new Date().getFullYear() - 1);
   const [model, setModel] = useState<LiasseModel>('normal');
   const [view, setView] = useState<View>('actif');
-  const { data: l, isLoading, isFetching } = useQuery({ queryKey: ['liasse', year, model], queryFn: () => liasseApi.get(year, model) });
+  const { data: l, isLoading, isFetching, isError, error, refetch } = useQuery({ queryKey: ['liasse', year, model], queryFn: () => liasseApi.get(year, model) });
   const errors = l?.controls.filter(c => c.level === 'error') ?? [];
   const warnings = l?.controls.filter(c => c.level === 'warning') ?? [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <AccHeaderActions>
+      <HeaderActions>
         {view !== 'edi' && <EditionButtons kind="liasse" params={{ endDate: `${year}-12-31`, table: view, model }} disabled={!l} />}
-      </AccHeaderActions>
+      </HeaderActions>
 
       {l && (
         <>
@@ -82,7 +82,7 @@ export default function LiasseTab() {
         </select>
         {isFetching && !isLoading && <Loader2 size={14} className="animate-spin" aria-label="Actualisation" />}
       </div>
-      {isLoading || !l ? <LoadingState /> : (
+      {isError ? <ErrorState error={error} title="La liasse n'a pas pu être calculée" onRetry={() => refetch()} /> : isLoading || !l ? <LoadingState /> : (
         <>
           <Tabs label="États de la liasse" value={view} onChange={setView} tabs={VIEWS.map(v => ({ key: v.key, label: v.label }))} />
           {view === 'actif' && <ActifTable l={l} />}
@@ -108,14 +108,13 @@ function Stat({ label, value, sub, tone }: { label: string; value: number; sub: 
   );
 }
 
-const rowStyle = (k: LiasseKind): React.CSSProperties =>
-  k === 'total' ? { fontWeight: 700, background: 'var(--theme-bg-secondary)' }
-    : k === 'subtotal' ? { fontWeight: 600, background: 'var(--theme-bg-secondary)' }
-    : k === 'group' ? { fontWeight: 600 } : {};
+/** Totaux et sous-totaux en ligne de regroupement (ds-group), titres de rubrique en gras. */
+const rowClass = (k: LiasseKind): string | undefined =>
+  k === 'total' || k === 'subtotal' ? 'ds-group' : k === 'group' ? 'ds-strong' : undefined;
 
 function Accounts({ codes }: { codes: string[] }) {
   if (!codes.length) return null;
-  return <span style={{ marginLeft: 6, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', ...mono }}>{codes.join(' · ')}</span>;
+  return <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--ds-muted)', ...mono }}>{codes.join(' · ')}</span>;
 }
 
 function ActifTable({ l }: { l: Liasse }) {
@@ -124,18 +123,18 @@ function ActifTable({ l }: { l: Liasse }) {
       <table className="odoo-table ds-dense">
         <thead>
           <tr>
-            <th style={{ minWidth: 300 }}>Actif</th><th style={num}>Brut</th><th style={num}>Amort. et provisions</th>
-            <th style={num}>Net {l.year}</th><th style={num}>Net {l.year - 1}</th>
+            <th style={{ minWidth: 300 }}>Actif</th><th className="ds-num" style={num}>Brut ({currencySymbol()})</th><th className="ds-num" style={num}>Amort. et provisions ({currencySymbol()})</th>
+            <th className="ds-num" style={num}>Net {l.year} ({currencySymbol()})</th><th className="ds-num" style={num}>Net {l.year - 1} ({currencySymbol()})</th>
           </tr>
         </thead>
         <tbody>
           {l.actif.map(x => (
-            <tr key={x.id} style={rowStyle(x.kind)}>
+            <tr key={x.id} className={rowClass(x.kind)}>
               <td style={{ paddingLeft: x.kind === 'line' && l.model === 'normal' && /\d/.test(x.id) ? 22 : undefined }}>{x.label}<Accounts codes={x.accounts} /></td>
               <td className="ds-num">{n(x.gross)}</td>
               <td className="ds-num">{n(x.amort)}</td>
               <td className="ds-num">{n(x.net)}</td>
-              <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{n(x.previous_net)}</td>
+              <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(x.previous_net)}</td>
             </tr>
           ))}
         </tbody>
@@ -149,14 +148,14 @@ function AmountTable({ title, year, lines }: { title: string; year: number; line
     <DataPanel>
       <table className="odoo-table ds-dense">
         <thead>
-          <tr><th>{title}</th><th className="ds-num" style={{ width: 160 }}>Exercice {year}</th><th className="ds-num" style={{ width: 160 }}>Exercice {year - 1}</th></tr>
+          <tr><th>{title}</th><th className="ds-num" style={{ width: 160 }}>Exercice {year} ({currencySymbol()})</th><th className="ds-num" style={{ width: 160 }}>Exercice {year - 1} ({currencySymbol()})</th></tr>
         </thead>
         <tbody>
           {lines.map(x => (
-            <tr key={x.id} style={rowStyle(x.kind)}>
+            <tr key={x.id} className={rowClass(x.kind)}>
               <td style={{ paddingLeft: x.kind === 'line' ? 22 : undefined }}>{x.label}<Accounts codes={x.accounts} /></td>
               <td className="ds-num" style={{ color: x.amount < 0 ? 'var(--ds-danger)' : undefined }}>{n(x.amount)}</td>
-              <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{n(x.previous)}</td>
+              <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(x.previous)}</td>
             </tr>
           ))}
         </tbody>
@@ -169,15 +168,15 @@ function Passage({ l }: { l: Liasse }) {
   const p = l.passage;
   const sum = (xs: { amount: number }[]) => xs.reduce((s, x) => s + x.amount, 0);
   const row = (label: string, v: number | null, k: LiasseKind = 'line') => (
-    <tr key={label} style={rowStyle(k)}>
+    <tr key={label} className={rowClass(k)}>
       <td style={{ paddingLeft: k === 'line' ? 22 : undefined }}>{label}</td>
       <td className="ds-num" style={{ width: 180, color: v != null && v < 0 ? 'var(--ds-danger)' : undefined }}>{v == null ? '' : n(v) || '0,00'}</td>
     </tr>
   );
   return (
-    <div className="odoo-section ds-panel" style={{ padding: 0 }}>
+    <DataPanel label="Passage au résultat fiscal" footer={<TableFooter note="Les réintégrations et déductions se saisissent dans Comptabilité › Impôt sur les sociétés ; l'IS comptabilisé (6701) est réintégré d'office." />}>
       <table className="odoo-table ds-dense">
-        <thead><tr><th>Passage du résultat net comptable au résultat net fiscal</th><th className="ds-num">Montant</th></tr></thead>
+        <thead><tr><th>Passage du résultat net comptable au résultat net fiscal</th><th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
         <tbody>
           {row(p.net_result >= 0 ? 'I. Résultat net comptable — bénéfice' : 'I. Résultat net comptable — perte', p.net_result, 'subtotal')}
           {row('II. Réintégrations fiscales', null, 'group')}
@@ -189,12 +188,9 @@ function Passage({ l }: { l: Liasse }) {
           {row(p.taxable_result >= 0 ? 'Résultat net fiscal — bénéfice (I + II − III)' : 'Résultat net fiscal — déficit (I + II − III)', p.taxable_result, 'total')}
           {row(`IS au taux de ${p.rate} %`, p.is_amount)}
           {row('Cotisation minimale', p.cm_amount)}
-          {row('Impôt dû', p.tax_due, 'total')}
         </tbody>
+        <tfoot>{row('Impôt dû', p.tax_due, 'total')}</tfoot>
       </table>
-      <div style={{ padding: '8px 14px', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-        Les réintégrations et déductions se saisissent dans Comptabilité › Impôt sur les sociétés ; l'IS comptabilisé (6701) est réintégré d'office.
-      </div>
-    </div>
+    </DataPanel>
   );
 }

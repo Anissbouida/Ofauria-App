@@ -1,11 +1,11 @@
 import { useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Factory, Pencil, Plus, X } from 'lucide-react';
+import { Factory, Plus } from 'lucide-react';
 import { productionApi, type Workshop } from '../../api/production.api';
 import { categoriesApi } from '../../api/categories.api';
 import { recipesApi, type RecipeCategory } from '../../api/recipes.api';
 import { rolesApi, usersApi } from '../../api/users.api';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { DataPanel, FormField, FormFooter, FormSection, Modal } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { SettingsSection } from './SettingsPrimitives';
@@ -66,7 +66,6 @@ export default function WorkshopsCard() {
 
   const box: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' };
   const grid: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 6, maxHeight: 200, overflowY: 'auto' };
-  const field: CSSProperties = { width: '100%', padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, fontSize: 14 };
   const codeValid = !draft || /^[a-z][a-z0-9_]{1,29}$/.test(draft.code);
 
   return (
@@ -78,55 +77,54 @@ export default function WorkshopsCard() {
             <Plus size={13} /> Nouvel atelier
           </button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <DataPanel label="Ateliers">
           <table className="odoo-table">
-            <thead><tr><th>Atelier</th><th>Catégories fabriquées</th><th>Membres</th><th>Statut</th><th style={{ width: 40 }}></th></tr></thead>
+            <thead><tr><th>Atelier</th><th>Catégories fabriquées</th><th>Membres</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
             <tbody>
               {workshops.map(w => (
                 <tr key={w.code} style={{ opacity: w.isActive ? 1 : 0.6 }}>
                   <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}><Factory size={13} /> {w.label}</span>
+                    <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Factory size={13} aria-hidden="true" /> {w.label}</span>
                     {w.isDefault && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Par défaut</span>}
                   </td>
                   <td>{w.categoryIds.length ? `${w.categoryIds.length} catégorie(s)` : '—'}</td>
                   <td>{[...w.memberRoles.map(roleLabel), ...(w.memberUsers.length ? [`${w.memberUsers.length} utilisateur(s)`] : [])].join(', ') || '—'}</td>
                   <td><StatusTag tone={w.isActive ? 'done' : 'cancelled'} label={w.isActive ? 'Actif' : 'Inactif'} /></td>
-                  <td><button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(w)} aria-label={`Modifier ${w.label}`}><Pencil size={13} /></button></td>
+                  <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => open(w)} aria-label={`Modifier ${w.label}`}>Modifier</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       </div>
 
       {draft && (
-        <ModalBackdrop onClose={() => setDraft(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="odoo-scope" onClick={e => e.stopPropagation()}
-            style={{ background: 'var(--odoo-bg)', borderRadius: 6, border: '1px solid var(--odoo-border)', width: '100%', maxWidth: 680, margin: '0 16px', display: 'grid', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-              <div style={{ fontWeight: 600 }}>{draft.isNew ? 'Nouvel atelier' : `Atelier — ${draft.label}`}</div>
-              <button type="button" onClick={() => setDraft(null)} aria-label="Fermer" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ds-muted)' }}><X size={16} /></button>
-            </div>
-            <div style={{ padding: 16, display: 'grid', gap: 14 }}>
+        <Modal title={draft.isNew ? 'Nouvel atelier' : `Atelier — ${draft.label}`} onClose={() => setDraft(null)} width={680} locked={save.isPending}
+          footer={<FormFooter onCancel={() => setDraft(null)} busy={save.isPending} disabled={!draft.label.trim() || !codeValid} onSubmit={() => save.mutate(draft)} />}>
+            <div style={{ display: 'grid', gap: 14 }}>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <label style={{ flex: '2 1 220px', display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Libellé
-                  <input style={field} value={draft.label} autoFocus
-                    onChange={e => setDraft({ ...draft, label: e.target.value, code: draft.isNew ? slugify(e.target.value) : draft.code })} />
-                </label>
-                <label style={{ flex: '1 1 160px', display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Code
-                  <input style={{ ...field, fontFamily: 'ui-monospace, monospace' }} value={draft.code} disabled={!draft.isNew}
-                    onChange={e => setDraft({ ...draft, code: e.target.value })} />
-                </label>
+                <div style={{ flex: '2 1 220px' }}>
+                  <FormField label="Libellé" htmlFor="workshop-label" required>
+                    <input id="workshop-label" className="ds-input" value={draft.label} autoFocus
+                      onChange={e => setDraft({ ...draft, label: e.target.value, code: draft.isNew ? slugify(e.target.value) : draft.code })} />
+                  </FormField>
+                </div>
+                <div style={{ flex: '1 1 160px' }}>
+                  <FormField label="Code" htmlFor="workshop-code" required
+                    error={!codeValid ? 'Code : minuscules, chiffres et « _ », 2 à 30 caractères, commence par une lettre.' : undefined}>
+                    <input id="workshop-code" className="ds-input" style={{ fontFamily: 'ui-monospace, monospace' }} value={draft.code} disabled={!draft.isNew}
+                      aria-invalid={!codeValid || undefined} onChange={e => setDraft({ ...draft, code: e.target.value })} />
+                  </FormField>
+                </div>
               </div>
-              {!codeValid && <p className="odoo-setting-help" style={{ color: 'var(--ds-danger)' }}>Code : minuscules, chiffres et « _ », 2 à 30 caractères, commence par une lettre.</p>}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <label style={box}><input type="checkbox" checked={draft.isActive} onChange={e => setDraft({ ...draft, isActive: e.target.checked })} /> Actif</label>
                 <label style={box}><input type="checkbox" checked={draft.isDefault} onChange={e => setDraft({ ...draft, isDefault: e.target.checked })} />
                   Atelier par défaut (reçoit les commandes des catégories sans atelier)</label>
               </div>
 
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div className="odoo-setting-label">Catégories fabriquées</div>
+              <FormSection title="Catégories fabriquées">
+                <div style={{ display: 'grid', gap: 6 }}>
                 <p className="odoo-setting-help">Une catégorie relève d'un seul atelier : la cocher ici la retire de l'atelier qui la portait.</p>
                 <div style={grid}>
                   {cats.map(c => {
@@ -140,10 +138,11 @@ export default function WorkshopsCard() {
                     );
                   })}
                 </div>
-              </div>
+                </div>
+              </FormSection>
 
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div className="odoo-setting-label">Catégories de fiches techniques</div>
+              <FormSection title="Catégories de fiches techniques">
+                <div style={{ display: 'grid', gap: 6 }}>
                 <p className="odoo-setting-help">Atelier des fiches sans produit lié (sinon, c'est la catégorie du produit qui compte). Un chef ne modifie que les fiches de ses ateliers ; une fiche d'une catégorie sans atelier (préparations de base) reste commune.</p>
                 <div style={grid}>
                   {recipeCats.map(c => {
@@ -157,33 +156,30 @@ export default function WorkshopsCard() {
                     );
                   })}
                 </div>
-              </div>
+                </div>
+              </FormSection>
 
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div className="odoo-setting-label">Membres — rôles</div>
+              <FormSection title="Membres — rôles">
+                <div style={{ display: 'grid', gap: 6 }}>
                 <div style={grid}>
                   {roleRows.filter(r => r.is_active && r.code !== 'admin').map(r => (
                     <label key={r.code} style={box}><input type="checkbox" checked={draft.memberRoles.includes(r.code)} onChange={() => toggle('memberRoles', r.code)} /> {r.label}</label>
                   ))}
                 </div>
-              </div>
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div className="odoo-setting-label">Membres — utilisateurs</div>
+                </div>
+              </FormSection>
+              <FormSection title="Membres — utilisateurs">
+                <div style={{ display: 'grid', gap: 6 }}>
                 <div style={grid}>
                   {users.map(u => (
                     <label key={u.id} style={box}><input type="checkbox" checked={draft.memberUsers.includes(u.id)} onChange={() => toggle('memberUsers', u.id)} /> {u.firstName} {u.lastName}</label>
                   ))}
                 </div>
                 <p className="odoo-setting-help">Un membre doit aussi avoir le droit d'accès au module Production (Utilisateurs › Rôles).</p>
-              </div>
+                </div>
+              </FormSection>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-              <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)} disabled={save.isPending}>Annuler</button>
-              <button type="button" className="odoo-btn-primary" disabled={save.isPending || !draft.label.trim() || !codeValid}
-                onClick={() => save.mutate(draft)}>Enregistrer</button>
-            </div>
-          </div>
-        </ModalBackdrop>
+        </Modal>
       )}
     </SettingsSection>
   );

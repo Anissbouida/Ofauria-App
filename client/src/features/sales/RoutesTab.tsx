@@ -2,18 +2,16 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Truck, Plus, X, Loader2, ChevronUp, ChevronDown, Trash2, MapPin, Phone, CheckCircle2, type LucideIcon } from 'lucide-react';
+import { Truck, Plus, ChevronUp, ChevronDown, Trash2, MapPin, Phone, CheckCircle2, type LucideIcon } from 'lucide-react';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { deliveryRoutesApi, type DeliveryRoute, type RouteStatus, type RouteStop } from '../../api/delivery-routes.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
-import { ListKpi, ListPanel } from './ListTemplate';
+import { ListKpi } from './ListTemplate';
 import { createPortal } from 'react-dom';
-import { TableFooter, EmptyState, LoadingState } from '../../components/ds';
+import { TableFooter, EmptyState, LoadingState, ErrorState, DataPanel, Modal, FormField, FormFooter } from '../../components/ds';
 
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
-const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
 /** Tournée planifiée = à lancer (action attendue), en cours = bleu, terminée = vert. */
 const STATUS: Record<RouteStatus, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
   planned: { label: 'Planifiée', tone: 'todo' }, in_progress: { label: 'En cours', tone: 'progress', icon: Truck }, done: { label: 'Terminée', tone: 'done' },
@@ -22,7 +20,7 @@ const STATUS: Record<RouteStatus, { label: string; tone: StatusTone; icon?: Luci
 /** `actionsSlot` : emplacement de la barre du haut où poser l'action principale de la page. */
 export default function RoutesTab({ actionsSlot }: { actionsSlot?: HTMLElement | null } = {}) {
   const qc = useQueryClient();
-  const { data: rows = [], isLoading } = useQuery({ queryKey: ['delivery-routes'], queryFn: () => deliveryRoutesApi.list() });
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['delivery-routes'], queryFn: () => deliveryRoutesApi.list() });
   const [showForm, setShowForm] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
@@ -42,10 +40,10 @@ export default function RoutesTab({ actionsSlot }: { actionsSlot?: HTMLElement |
       {actionsSlot
         ? createPortal(newBtn, actionsSlot)
         : <div className="prj-toolbar"><span style={{ flex: 1 }} />{newBtn}</div>}
-      {isLoading ? <LoadingState label="Chargement des tournées…" /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState label="Chargement des tournées…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
         <EmptyState icon={Truck} title="Aucune tournée" text="Créez une tournée puis ajoutez-y les bons de livraison à remettre." />
       ) : (
-        <ListPanel footer={<TableFooter note={<>{rows.length} tournée{rows.length > 1 ? 's' : ''}</>} />}>
+        <DataPanel label="Tournées" footer={<TableFooter note={<>{rows.length} tournée{rows.length > 1 ? 's' : ''}</>} />}>
           <table className="odoo-table">
             <thead><tr><th>Date</th><th>Tournée</th><th>Chauffeur</th><th className="ds-num">Arrêts livrés</th><th>Statut</th></tr></thead>
             <tbody>
@@ -60,7 +58,7 @@ export default function RoutesTab({ actionsSlot }: { actionsSlot?: HTMLElement |
               ))}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
       {showForm && <RouteForm onClose={() => setShowForm(false)} onSaved={r => { qc.invalidateQueries({ queryKey: ['delivery-routes'] }); setShowForm(false); setOpenId(r.id); }} />}
       {openId && <RouteDetail id={openId} onClose={() => { setOpenId(null); qc.invalidateQueries({ queryKey: ['delivery-routes'] }); }} />}
@@ -78,25 +76,20 @@ function RouteForm({ onClose, onSaved }: { onClose: () => void; onSaved: (r: Del
     onError: e => notify.error(apiErrorMessage(e)),
   });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(440px, 96vw)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Truck size={16} /> Nouvelle tournée</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <label style={lab}>Libellé<input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Tournée centre-ville" style={inp} /></label>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <label style={lab}>Date<input type="date" value={routeDate} onChange={e => setRouteDate(e.target.value)} style={inp} /></label>
-            <label style={lab}>Chauffeur<input type="text" value={driver} onChange={e => setDriver(e.target.value)} style={inp} /></label>
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={label.trim().length < 2 || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Créer</button>
-        </div>
+    <Modal title="Nouvelle tournée" onClose={onClose} width={440} locked={save.isPending}
+      footer={<FormFooter dirty={!!(label || driver)} onCancel={onClose} onSubmit={() => save.mutate()} submitLabel="Créer" disabled={label.trim().length < 2} busy={save.isPending} />}>
+      <FormField label="Libellé" htmlFor="rt-label" required>
+        <input id="rt-label" type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Tournée centre-ville" className="ds-input" />
+      </FormField>
+      <div className="ds-form-grid">
+        <FormField label="Date" htmlFor="rt-date" required>
+          <input id="rt-date" type="date" value={routeDate} onChange={e => setRouteDate(e.target.value)} className="ds-input" />
+        </FormField>
+        <FormField label="Chauffeur" htmlFor="rt-driver">
+          <input id="rt-driver" type="text" value={driver} onChange={e => setDriver(e.target.value)} className="ds-input" />
+        </FormField>
       </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -117,38 +110,36 @@ function RouteDetail({ id, onClose }: { id: string; onClose: () => void }) {
   };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(720px, 96vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Truck size={16} /> {data?.label ?? 'Tournée'}{data && <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}> · {day(data.route_date)}{data.driver_name ? ` · ${data.driver_name}` : ''}</span>}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {isLoading || !data ? <div style={{ textAlign: 'center', padding: 24 }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /></div> : (
-            <>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button className="odoo-btn-primary" onClick={() => setAdding(true)}><Plus size={13} /> Ajouter des BL</button>
-                <div style={{ flex: 1 }} />
-                <span style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>Statut</span>
-                <select value={data.status} onChange={e => mut(() => deliveryRoutesApi.setStatus(id, e.target.value as RouteStatus))} style={{ ...inp, width: 150 }}>
+    <>
+    <Modal title={data?.label ?? 'Tournée'} subtitle={data ? `${day(data.route_date)}${data.driver_name ? ` · ${data.driver_name}` : ''}` : undefined} onClose={onClose} width={720}
+      aside={data && <StatusTag tone={STATUS[data.status].tone} icon={STATUS[data.status].icon} label={STATUS[data.status].label} />}>
+      {isLoading || !data ? <LoadingState bare /> : (
+        <>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <button type="button" className="odoo-btn-primary" onClick={() => setAdding(true)}><Plus size={13} /> Ajouter des BL</button>
+            <div style={{ flex: 1 }} />
+            <div style={{ width: 170 }}>
+              <FormField label="Statut" htmlFor="rt-status">
+                <select id="rt-status" value={data.status} onChange={e => mut(() => deliveryRoutesApi.setStatus(id, e.target.value as RouteStatus))} className="ds-input">
                   <option value="planned">Planifiée</option><option value="in_progress">En cours</option><option value="done">Terminée</option>
                 </select>
-              </div>
-              {stops.length === 0 ? (
-                <p style={{ textAlign: 'center', padding: 20, color: 'var(--theme-text-muted)' }}>Aucun arrêt. Ajoutez des bons de livraison.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {stops.map((s, i) => <StopRow key={s.id} s={s} i={i} count={stops.length} onMove={move}
-                    onToggle={() => mut(() => deliveryRoutesApi.markStop(s.id, !s.delivered_at))}
-                    onRemove={() => mut(() => deliveryRoutesApi.removeStop(s.id))} />)}
-                </div>
-              )}
-            </>
+              </FormField>
+            </div>
+          </div>
+          {stops.length === 0 ? (
+            <EmptyState bare icon={Truck} title="Aucun arrêt" text="Ajoutez des bons de livraison." />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {stops.map((s, i) => <StopRow key={s.id} s={s} i={i} count={stops.length} onMove={move}
+                onToggle={() => mut(() => deliveryRoutesApi.markStop(s.id, !s.delivered_at))}
+                onRemove={() => mut(() => deliveryRoutesApi.removeStop(s.id))} />)}
+            </div>
           )}
-        </div>
-      </div>
-      {adding && <AddStops routeId={id} onClose={() => setAdding(false)} onAdded={r => { refresh(r); setAdding(false); }} />}
-    </ModalBackdrop>
+        </>
+      )}
+    </Modal>
+    {adding && <AddStops routeId={id} onClose={() => setAdding(false)} onAdded={r => { refresh(r); setAdding(false); }} />}
+    </>
   );
 }
 
@@ -186,30 +177,29 @@ function AddStops({ routeId, onClose, onAdded }: { routeId: string; onClose: () 
   });
   const toggle = (id: string) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(560px, 96vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600 }}>Ajouter des bons de livraison</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ overflowY: 'auto', padding: 12 }}>
-          {isLoading ? <div style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div>
-            : notes.length === 0 ? <p style={{ textAlign: 'center', padding: 20, color: 'var(--theme-text-muted)' }}>Aucun bon de livraison disponible (tous déjà en tournée).</p>
-            : notes.map(n => (
-              <label key={n.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 6px', borderBottom: '1px solid var(--odoo-border)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={sel.has(n.id)} onChange={() => toggle(n.id)} style={{ accentColor: 'var(--theme-accent)' }} />
-                <span style={{ flex: 1 }}><span style={{ fontWeight: 500 }}>{n.customer_name}</span> <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>{n.number}</span>{n.customer_city && <span style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}> · {n.customer_city}</span>}</span>
-                <span style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>{day(n.delivery_date)}</span>
-              </label>
-            ))}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={sel.size === 0 || add.isPending} onClick={() => add.mutate()}>{add.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Ajouter ({sel.size})</button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    <Modal title="Ajouter des bons de livraison" onClose={onClose} width={560} locked={add.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => add.mutate()} submitLabel={`Ajouter (${sel.size})`} disabled={sel.size === 0} busy={add.isPending} />}>
+      {isLoading ? <LoadingState bare />
+        : notes.length === 0 ? <EmptyState bare icon={Truck} title="Aucun bon de livraison disponible" text="Tous les bons sont déjà en tournée." />
+        : (
+          <DataPanel label="Bons de livraison disponibles">
+            <table className="odoo-table ds-dense">
+              <thead><tr><th style={{ width: 36 }}><span className="sr-only">Sélection</span></th><th>Client</th><th>N° BL</th><th>Ville</th><th>Livraison</th></tr></thead>
+              <tbody>
+                {notes.map(n => (
+                  <tr key={n.id} className={sel.has(n.id) ? 'ds-selected' : undefined} onClick={() => toggle(n.id)} style={{ cursor: 'pointer' }}>
+                    <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.has(n.id)} onChange={() => toggle(n.id)} aria-label={`Sélectionner ${n.number}`} /></td>
+                    <td className="ds-strong">{n.customer_name}</td>
+                    <td><span className="ds-ref">{n.number}</span></td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{n.customer_city || '—'}</td>
+                    <td>{day(n.delivery_date)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </DataPanel>
+        )}
+    </Modal>
   );
 }
 
-const lab: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1 };

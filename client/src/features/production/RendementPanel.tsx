@@ -14,6 +14,7 @@ import {
   TrendingUp, TrendingDown, Package, Flame, AlertTriangle, Loader2,
   ChevronDown, ChevronRight, Scale, PieChart
 } from 'lucide-react';
+import './production.css';
 
 interface RendementPanelProps {
   planId: string;
@@ -188,8 +189,8 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
   const totalVersFrigo = summary?.yield.toFridgeTotal ?? 0;
 
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header">
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head">
         <Scale size={12} /> Rendement de production
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{rendements.length}/{producedItems.length} enregistrés</span>
       </div>

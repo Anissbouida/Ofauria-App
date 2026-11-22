@@ -188,3 +188,50 @@ suivants changent :
 | Écrans adaptés au métier | écrans d'atelier et de caisse conservés |
 | Aucune fonctionnalité perdue | aucune suppression volontaire ; à confirmer par les scénarios |
 | Scénarios des agents fonctionnels | non rejoués |
+
+## 8. Deuxième passe — correction des anomalies (2026-11-22)
+
+### 8.1 Corrigé
+
+| # (§ 6) | Anomalie | Correction |
+|---|---|---|
+| 1 | Formulaires non convertis | Ventes (commande, devis, client, facture manuelle, opportunité, promotion, contrat-cadre, ristourne, pipeline et ~20 autres), Comptabilité (toutes les fenêtres de saisie), Production (produit, plan, gammes, import, remplacement, lancement), Stock, Contrôle, Personnel, Paramètres, Contrôle des ventes : `Modal` + `FormSection` + `FormField` + `FormFooter`, erreurs sous le champ, anti double envoi |
+| 2 | Tableaux hors panneau standard | 412 tableaux sur 499 dans `DataPanel` (contre 199). Les 87 restants sont pour l'essentiel dans des cartes `ds-panel` qui reçoivent le même style (fiche plan, panneaux d'exécution, fiches commande et client) ou des grilles de saisie (Contrôle des ventes) |
+| 3 | Réception et comparatif hors page | Réception d'un BC en page dédiée (`?tab=reception&po=…`), demande de prix et comparatif en page dédiée (`?tab=rfq&rfq=…`), conformes aux maquettes ; tous les boutons « Réceptionner » y mènent |
+| 4 | Emplacements d'actions dupliqués | Un seul composant `HeaderActions` / `HeaderSlotContext` ; les quatre anciens noms sont des alias |
+| 5 | Composants manquants | `Modal`, `Drawer` (fermeture protégée si saisie en cours, Échap sur la fenêtre du dessus seulement), `DateRangeField`, `MonthYearField`, `usePrompt` (saisie de motif), `RowMenu trigger` (bouton à menu), `FormSection collapsible`, `FormFooter danger`, `id` sur `SearchSelect` et `CategoryCascadeSelector` |
+| — | Boîtes natives du navigateur | Aucune hors caisse (10 remplacées : renvoi HACCP, budget, annulation de pipeline, ouverture et clôture d'un rappel, type et abandon de BC, conversion en consommable, sortie de nomenclature, détachement de format) |
+| 8 | « Vérifiez la connexion » sur un refus d'accès | `ErrorState error={error}` : « Accès refusé » (401/403), « Le serveur a rencontré une erreur » (5xx), sinon problème de connexion ; branché sur toutes les listes principales |
+| 9 | Fiches de la vue Colonnes | Une action visible + menu (factures reçues, BC) |
+| 11 | Paramètres en surface | Tous les onglets : `DataPanel`, `FormField`, `Modal`, jetons ; structure (groupes, tuiles, onglets, Modifié/Rétablir, ⌘K) conservée |
+
+### 8.2 Mesures (hors caisse)
+
+| Indicateur | Avant mission | Après 1ʳᵉ passe | Après 2ᵉ passe |
+|---|---|---|---|
+| Tableaux dans le panneau standard | 0 | 199 | 412 sur 499 |
+| Fenêtres faites à la main | ~180 | ~170 | 3 (palette ⌘K, caméra photo plein écran, verrou de session) |
+| Boîtes natives du navigateur | 178 | 10 | 0 |
+| Couleurs écrites en dur | 1 053 | 201 | 146 |
+| Styles en ligne | 11 182 | 7 289 | 6 030 |
+
+### 8.3 Changements de comportement visibles (2ᵉ passe)
+
+- Réception et demande de prix : pages, avec bouton Précédent et adresse propre.
+- Fenêtres : Échap et clic extérieur ferment ; si un champ a été modifié, une confirmation est demandée ; bloqué pendant un envoi.
+- Plusieurs créations auparavant en bloc dans la page s'ouvrent en fenêtre (adresse et exonération client, contrat-cadre, retour pro, transfert, niveau de relance, ristourne) ; demande boutique et assistant de lancement de production passent du plein écran à une grande fenêtre.
+- Réclamation, intervention et non-conformité s'ouvrent en tiroir latéral.
+- Créances : tableau par client au lieu de cartes.
+- Nouvelles confirmations : révoquer une clé d'API, supprimer un webhook, supprimer une gamme, une pièce jointe, une saisie de temps.
+- « Ajuster le stock » : la liste « Motif de la perte » n'apparaît plus en double.
+
+### 8.4 Restant
+
+| Point | Raison |
+|---|---|
+| 87 tableaux hors `DataPanel` | dans des cartes `ds-panel` déjà stylées ou grilles de saisie ; conversion au cas par cas sans gain visible |
+| Palette ⌘K, caméra photo, verrou de session | écrans plein écran spécifiques, volontairement hors `Modal` |
+| 146 couleurs en dur | palettes catégorielles (shifts, types de commande, colonnes Report/Appro/Reçu), documents imprimés, couleurs venues du référentiel |
+| En-têtes de colonne triables au clavier | non traité |
+| Scénarios des agents métier | non rejoués sur cette version |
+| Caisse | exclue de la mission |

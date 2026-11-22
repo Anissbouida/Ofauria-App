@@ -19,7 +19,7 @@ const d2 = (v: number) => (Math.round(v * 100) / 100).toLocaleString('fr-FR', { 
  * 31/12. Détail par année et ajustements (admin) par employé.
  */
 export default function LeaveBalancesView({ switcher }: { switcher?: ReactNode } = {}) {
-  const { data: rows = [], isLoading, isError, refetch } = useQuery<Record<string, any>[]>({
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery<Record<string, any>[]>({
     queryKey: ['leave-balances'],
     queryFn: () => leavesApi.balances(),
   });
@@ -48,7 +48,7 @@ export default function LeaveBalancesView({ switcher }: { switcher?: ReactNode }
       {isLoading ? (
         <LoadingPanel />
       ) : isError ? (
-        <ErrorState onRetry={() => void refetch()} />
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : rows.length === 0 ? (
         <EmptyPanel icon={CalendarCheck}>Aucun solde de congés à afficher</EmptyPanel>
       ) : (
@@ -119,7 +119,8 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
           Embauché le {employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('fr-FR') : '—'} · disponible {balance ? d2(balance.available) : '…'} j
         </p>
         <SectionTitle icon={History}>Détail par année</SectionTitle>
-        <table className="odoo-table">
+        <DataPanel label="Détail par année">
+        <table className="odoo-table ds-dense">
           <thead><tr>
             <th>Année</th><th className="ds-num">Mois</th><th className="ds-num">Droit annuel (j)</th>
             <th className="ds-num">Acquis (j)</th><th className="ds-num">Ajustements (j)</th><th className="ds-num">Pris (j)</th>
@@ -137,6 +138,7 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
             ))}
           </tbody>
         </table>
+        </DataPanel>
 
         <SectionTitle icon={SlidersHorizontal} actions={isAdmin && !adj ? (
           <button type="button" className="odoo-btn-secondary ds-btn-sm"
@@ -152,7 +154,8 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
           </div>
         )}
         {adjustments.length === 0 ? <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>Aucun ajustement.</p> : (
-          <table className="odoo-table">
+          <DataPanel label="Ajustements">
+          <table className="odoo-table ds-dense">
             <thead><tr><th>Année</th><th className="ds-num">Jours</th><th>Motif</th><th>Par</th>{isAdmin && <th className="ds-actions"><span className="sr-only">Actions</span></th>}</tr></thead>
             <tbody>
               {adjustments.map(a => (
@@ -164,6 +167,7 @@ function BalanceDetail({ employee, onClose }: { employee: Record<string, any>; o
               ))}
             </tbody>
           </table>
+          </DataPanel>
         )}
     </HrModal>
   );

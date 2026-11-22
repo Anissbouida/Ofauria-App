@@ -18,7 +18,6 @@ import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusTag } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -27,7 +26,7 @@ import { OdooToggle } from '../settings/SettingsPrimitives';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi, ListToolbar, FilterChips } from '../sales/ListTemplate';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { Tabs, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, KpiGrid, KpiCard } from '../../components/ds';
+import { Tabs, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, KpiGrid, KpiCard, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 
 /**
  * Promotions et fidélité (mig 372). Les promotions s'appliquent seules en caisse (et, si
@@ -37,7 +36,6 @@ const n2 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleStr
 const n0 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 const fr = (v: string | null | undefined) => (v ? format(new Date(`${String(v).slice(0, 10)}T00:00:00`), 'dd/MM/yyyy') : '');
 const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
-const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
 const muted: React.CSSProperties = { color: 'var(--odoo-text-muted)', fontSize: '0.75rem' };
 const chip = (on: boolean): React.CSSProperties => ({
   padding: '3px 10px', borderRadius: 999, fontSize: '0.75rem', cursor: 'pointer',
@@ -98,7 +96,7 @@ const KIND_TAG: Record<PromoKind, string> = { buy_x_get_y: 'odoo-tag-green', per
 function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; creating: boolean; onCreated: () => void }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data = [], isLoading } = useQuery({ queryKey: ['promotions'], queryFn: promotionsApi.list });
+  const { data = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['promotions'], queryFn: promotionsApi.list });
   const { data: productsResp } = useQuery({ queryKey: ['products-promotions'], queryFn: () => productsApi.list({ limit: '2000' }), staleTime: 300_000 });
   const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list, staleTime: 300_000 });
   const productName = useMemo(() => Object.fromEntries((((productsResp as { data?: Record<string, any>[] } | undefined)?.data ?? []) as Record<string, any>[]).map(p => [String(p.id), String(p.name)])), [productsResp]);
@@ -161,7 +159,7 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
           options={[{ key: 'pos', label: 'Caisse' }, { key: 'orders', label: 'Commandes' }, { key: 'quotes', label: 'Devis' }]} />
       </ListToolbar>
 
-      {isLoading ? <LoadingState label="Chargement des promotions…" /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState label="Chargement des promotions…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
         data.length
           ? <NoResultState onReset={() => { setFilter('all'); setSearch(''); setChannel(''); }} text="Aucune promotion ne correspond aux filtres." />
           : <EmptyState icon={BadgePercent} title="Aucune promotion"
@@ -358,37 +356,48 @@ function PromotionForm({ promo, copyOf, onClose, onSaved, onGone }: { promo: Pro
   });
   const valueLabel = f.kind === 'percent' ? 'Remise (%)' : f.kind === 'amount' ? (isCart ? `Remise (${currencySymbol()})` : `Remise par article (${currencySymbol()}, par kg au poids)`) : `Prix spécial (${currencySymbol()}, par kg au poids)`;
 
+  const [initialSnapshot] = useState(() => JSON.stringify(f));
+  const dirty = JSON.stringify(f) !== initialSnapshot;
+  const nameError = f.name !== '' && f.name.trim().length < 2 ? 'Au moins 2 caractères.' : undefined;
+
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10 }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{promo ? promo.name : copyOf ? `Copie de ${copyOf.name}` : 'Nouvelle promotion'}</span></div>
-          <div style={{ flex: 1 }} /><button className="odoo-btn-secondary" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
+    <Modal title={promo ? promo.name : copyOf ? `Copie de ${copyOf.name}` : 'Nouvelle promotion'} onClose={onClose} width={820} locked={save.isPending}
+      footer={<FormFooter dirty={dirty} onCancel={onClose} onSubmit={() => save.mutate()} disabled={f.name.trim().length < 2} busy={save.isPending} />}>
+      <FormField label="Nom" htmlFor="pr-name" required error={nameError}>
+        <input id="pr-name" className="ds-input" maxLength={120} value={f.name} onChange={e => set('name', e.target.value)} placeholder="Ex. : Happy hour viennoiseries" autoFocus />
+      </FormField>
+
+      <FormSection title="Règle">
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} role="group" aria-label="Portée de la promotion">
+          {([['items', 'Sur des articles'], ['cart', 'Sur le panier entier']] as const).map(([k, l]) => (
+            <button key={k} type="button" aria-pressed={f.target === k} className={f.target === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => set('target', k)}>{l}</button>
+          ))}
         </div>
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
-          <label style={lab}>Nom *<input style={field} maxLength={120} value={f.name} onChange={e => set('name', e.target.value)} placeholder="Ex. : Happy hour viennoiseries" autoFocus /></label>
-
-          <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Règle</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {([['items', 'Sur des articles'], ['cart', 'Sur le panier entier']] as const).map(([k, l]) => (
-              <button key={k} type="button" className={f.target === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => set('target', k)}>{l}</button>
-            ))}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-            <label style={lab}>Type<select style={field} value={f.kind} onChange={e => set('kind', e.target.value as PromoKind)}>
+        <div className="ds-form-grid">
+          <FormField label="Type" htmlFor="pr-kind">
+            <select id="pr-kind" className="ds-input" value={f.kind} onChange={e => set('kind', e.target.value as PromoKind)}>
               {(Object.keys(PROMO_KIND_LABEL) as PromoKind[]).filter(k => !isCart || k === 'percent' || k === 'amount').map(k => <option key={k} value={k}>{PROMO_KIND_LABEL[k]}</option>)}
-            </select></label>
-            {f.kind === 'buy_x_get_y' ? <>
-              <label style={lab}>Achetés<input style={field} type="number" min={1} value={f.buyQty} onChange={e => set('buyQty', e.target.value)} /></label>
-              <label style={lab}>Offerts<input style={field} type="number" min={1} value={f.getQty} onChange={e => set('getQty', e.target.value)} /></label>
-            </> : <label style={lab}>{valueLabel}<input style={field} type="number" min={0} step="0.01" value={f.value} onChange={e => set('value', e.target.value)} /></label>}
-          </div>
-          {f.kind === 'buy_x_get_y' && <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Pour {Number(f.buyQty) || 0} achetés, {Number(f.getQty) || 0} offert(s) : les articles offerts sont les moins chers des articles concernés. Produits à l'unité seulement.</p>}
+            </select>
+          </FormField>
+          {f.kind === 'buy_x_get_y' ? <>
+            <FormField label="Achetés" htmlFor="pr-buy">
+              <input id="pr-buy" className="ds-input" type="number" min={1} value={f.buyQty} onChange={e => set('buyQty', e.target.value)} />
+            </FormField>
+            <FormField label="Offerts" htmlFor="pr-get">
+              <input id="pr-get" className="ds-input" type="number" min={1} value={f.getQty} onChange={e => set('getQty', e.target.value)} />
+            </FormField>
+          </> : (
+            <FormField label={valueLabel} htmlFor="pr-value">
+              <input id="pr-value" className="ds-input" type="number" min={0} step="0.01" value={f.value} onChange={e => set('value', e.target.value)} />
+            </FormField>
+          )}
+        </div>
+        {f.kind === 'buy_x_get_y' && <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>Pour {Number(f.buyQty) || 0} achetés, {Number(f.getQty) || 0} offert(s) : les articles offerts sont les moins chers des articles concernés. Produits à l'unité seulement.</p>}
 
-          {!isCart && (<>
-            <div style={lab}>Articles concernés <span style={{ fontSize: '0.75rem' }}>(rien de choisi = tout le catalogue)</span></div>
+        {!isCart && (
+          <FormField label="Articles concernés" hint="Rien de choisi = tout le catalogue.">
             <SearchSelect options={products.filter(p => !f.productIds.includes(String(p.id))).map(p => ({ id: String(p.id), label: String(p.name) }))}
-              value="" onChange={v => v && set('productIds', [...f.productIds, v])} placeholder="Ajouter un produit…" width="100%" size="md" />
+              value="" onChange={v => v && set('productIds', [...f.productIds, v])} placeholder="Ajouter un produit…" ariaLabel="Ajouter un produit" width="100%" size="md" />
             {f.productIds.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{f.productIds.map(id => (
               <span key={id} style={{ ...chip(true), display: 'inline-flex', alignItems: 'center', gap: 4 }}>{productName[id] ?? 'Produit'}
                 <X size={11} onClick={() => set('productIds', f.productIds.filter(x => x !== id))} /></span>))}</div>}
@@ -398,50 +407,75 @@ function PromotionForm({ promo, copyOf, onClose, onSaved, onGone }: { promo: Pro
                 return <span key={c.id} style={chip(on)} onClick={() => set('categoryIds', on ? f.categoryIds.filter(x => x !== Number(c.id)) : [...f.categoryIds, Number(c.id)])}>{c.name}</span>;
               })}
             </div>
-          </>)}
+          </FormField>
+        )}
+      </FormSection>
 
-          <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Conditions</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-            <label style={lab}>{isCart ? 'Panier minimum' : 'Montant minimum des articles'} ({currencySymbol()})<input style={field} type="number" min={0} step="0.01" value={f.minAmount} onChange={e => set('minAmount', e.target.value)} /></label>
-            <label style={lab}>Quantité minimum<input style={field} type="number" min={0} step="1" value={f.minQuantity} onChange={e => set('minQuantity', e.target.value)} /></label>
-            <label style={lab}>Clients<select style={field} value={f.customerScope} onChange={e => set('customerScope', e.target.value as CustomerScope)}>
+      <FormSection title="Conditions">
+        <div className="ds-form-grid">
+          <FormField label={`${isCart ? 'Panier minimum' : 'Montant minimum des articles'} (${currencySymbol()})`} htmlFor="pr-minamount">
+            <input id="pr-minamount" className="ds-input" type="number" min={0} step="0.01" value={f.minAmount} onChange={e => set('minAmount', e.target.value)} />
+          </FormField>
+          <FormField label="Quantité minimum" htmlFor="pr-minqty">
+            <input id="pr-minqty" className="ds-input" type="number" min={0} step="1" value={f.minQuantity} onChange={e => set('minQuantity', e.target.value)} />
+          </FormField>
+          <FormField label="Clients" htmlFor="pr-scope">
+            <select id="pr-scope" className="ds-input" value={f.customerScope} onChange={e => set('customerScope', e.target.value as CustomerScope)}>
               <option value="all">Tous, même sans fiche</option><option value="identified">Client identifié (fiche choisie)</option>
               <option value="particulier">Particuliers</option><option value="professionnel">Professionnels</option><option value="tier">Niveau de fidélité minimum</option>
-            </select></label>
-            {f.customerScope === 'tier' && <label style={lab}>Niveau minimum<select style={field} value={f.minTierCode} onChange={e => set('minTierCode', e.target.value)}>
-              <option value="">Choisir…</option>{tiers.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}</select></label>}
-            <label style={lab}>Code promo<input style={{ ...field, textTransform: 'uppercase' }} maxLength={40} value={f.couponCode} onChange={e => set('couponCode', e.target.value.replace(/[^A-Za-z0-9_-]/g, ''))} placeholder="facultatif" /></label>
-            <label style={lab}>Utilisations maximum<input style={field} type="number" min={1} value={f.maxUses} onChange={e => set('maxUses', e.target.value)} placeholder="illimité" /></label>
-          </div>
+            </select>
+          </FormField>
+          {f.customerScope === 'tier' && (
+            <FormField label="Niveau minimum" htmlFor="pr-tier">
+              <select id="pr-tier" className="ds-input" value={f.minTierCode} onChange={e => set('minTierCode', e.target.value)}>
+                <option value="">Choisir…</option>{tiers.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}</select>
+            </FormField>
+          )}
+          <FormField label="Code promo" htmlFor="pr-coupon">
+            <input id="pr-coupon" className="ds-input" style={{ textTransform: 'uppercase' }} maxLength={40} value={f.couponCode} onChange={e => set('couponCode', e.target.value.replace(/[^A-Za-z0-9_-]/g, ''))} placeholder="facultatif" />
+          </FormField>
+          <FormField label="Utilisations maximum" htmlFor="pr-maxuses">
+            <input id="pr-maxuses" className="ds-input" type="number" min={1} value={f.maxUses} onChange={e => set('maxUses', e.target.value)} placeholder="illimité" />
+          </FormField>
+        </div>
+      </FormSection>
 
-          <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Quand et où</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-            <label style={lab}>Du<input style={field} type="date" value={f.startsOn} onChange={e => set('startsOn', e.target.value)} /></label>
-            <label style={lab}>Au<input style={field} type="date" value={f.endsOn} onChange={e => set('endsOn', e.target.value)} /></label>
-            <label style={lab}>De (heure)<input style={field} type="time" value={f.timeFrom} onChange={e => set('timeFrom', e.target.value)} /></label>
-            <label style={lab}>À (heure)<input style={field} type="time" value={f.timeTo} onChange={e => set('timeTo', e.target.value)} /></label>
-            <label style={lab}>Magasin<select style={field} value={f.storeId} onChange={e => set('storeId', e.target.value)}>
-              <option value="">Tous</option>{(stores as { id: string; name: string }[]).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', marginRight: 4 }}>Jours (aucun = tous) :</span>
-            {DAYS.map((d, i) => { const on = f.daysOfWeek.includes(i + 1); return <span key={d} style={chip(on)} onClick={() => set('daysOfWeek', on ? f.daysOfWeek.filter(x => x !== i + 1) : [...f.daysOfWeek, i + 1].sort())}>{d}</span>; })}
-          </div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.875rem' }}>
-            {([['onPos', 'Caisse'], ['onOrders', 'Commandes'], ['onQuotes', 'Devis']] as const).map(([k, l]) => (
-              <label key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={f[k]} onChange={e => set(k, e.target.checked)} /> {l}</label>
-            ))}
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={f.isActive} onChange={e => set('isActive', e.target.checked)} /> Active</label>
-          </div>
-          {(f.onOrders || f.onQuotes) && f.couponCode && <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Les commandes et devis n'utilisent pas de code promo : une promotion à code ne s'applique qu'en caisse.</p>}
-          <label style={lab}>Note interne<textarea style={{ ...field, minHeight: 50 }} maxLength={2000} value={f.description} onChange={e => set('description', e.target.value)} /></label>
+      <FormSection title="Quand et où">
+        <div className="ds-form-grid cols-4">
+          <FormField label="Du" htmlFor="pr-from">
+            <input id="pr-from" className="ds-input" type="date" value={f.startsOn} onChange={e => set('startsOn', e.target.value)} />
+          </FormField>
+          <FormField label="Au" htmlFor="pr-to">
+            <input id="pr-to" className="ds-input" type="date" value={f.endsOn} onChange={e => set('endsOn', e.target.value)} />
+          </FormField>
+          <FormField label="De (heure)" htmlFor="pr-tfrom">
+            <input id="pr-tfrom" className="ds-input" type="time" value={f.timeFrom} onChange={e => set('timeFrom', e.target.value)} />
+          </FormField>
+          <FormField label="À (heure)" htmlFor="pr-tto">
+            <input id="pr-tto" className="ds-input" type="time" value={f.timeTo} onChange={e => set('timeTo', e.target.value)} />
+          </FormField>
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
-          <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="odoo-btn-primary" disabled={f.name.trim().length < 2 || save.isPending} onClick={() => save.mutate()}>Enregistrer</button>
+        <FormField label="Magasin" htmlFor="pr-store">
+          <select id="pr-store" className="ds-input" value={f.storeId} onChange={e => set('storeId', e.target.value)}>
+            <option value="">Tous</option>{(stores as { id: string; name: string }[]).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+        </FormField>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', marginRight: 4 }}>Jours (aucun = tous) :</span>
+          {DAYS.map((d, i) => { const on = f.daysOfWeek.includes(i + 1); return <span key={d} style={chip(on)} onClick={() => set('daysOfWeek', on ? f.daysOfWeek.filter(x => x !== i + 1) : [...f.daysOfWeek, i + 1].sort())}>{d}</span>; })}
         </div>
-      </div>
-    </ModalBackdrop>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.875rem' }}>
+          {([['onPos', 'Caisse'], ['onOrders', 'Commandes'], ['onQuotes', 'Devis']] as const).map(([k, l]) => (
+            <label key={k} htmlFor={`pr-${k}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input id={`pr-${k}`} type="checkbox" checked={f[k]} onChange={e => set(k, e.target.checked)} /> {l}</label>
+          ))}
+          <label htmlFor="pr-active" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input id="pr-active" type="checkbox" checked={f.isActive} onChange={e => set('isActive', e.target.checked)} /> Active</label>
+        </div>
+        {(f.onOrders || f.onQuotes) && f.couponCode && <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>Les commandes et devis n'utilisent pas de code promo : une promotion à code ne s'applique qu'en caisse.</p>}
+      </FormSection>
+
+      <FormField label="Note interne" htmlFor="pr-desc">
+        <textarea id="pr-desc" className="ds-input" style={{ minHeight: 50 }} maxLength={2000} value={f.description} onChange={e => set('description', e.target.value)} />
+      </FormField>
+    </Modal>
   );
 }
 
@@ -501,7 +535,7 @@ function SliderControl({ value, min, max, step, onChange, display, label }: {
 
 function LoyaltyTab() {
   const qc = useQueryClient();
-  const { data: ov, isLoading } = useQuery({ queryKey: ['loyalty', 'overview'], queryFn: loyaltyApi.overview });
+  const { data: ov, isLoading, isError, error, refetch } = useQuery({ queryKey: ['loyalty', 'overview'], queryFn: loyaltyApi.overview });
   const [s, setS] = useState<SettingsForm | null>(null);
   const [tiers, setTiers] = useState<TierForm[] | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -533,6 +567,7 @@ function LoyaltyTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['loyalty'] }); qc.invalidateQueries({ queryKey: ['loyalty-tiers'] }); notify.success('Programme de fidélité enregistré'); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
   if (isLoading || !ov || !s || !tiers || !initial) return <LoadingState />;
 
   const set = <K extends keyof SettingsForm>(k: K, v: SettingsForm[K]) => setS(x => ({ ...x!, [k]: v }));
@@ -714,7 +749,7 @@ const KIND_DOT: Record<LoyaltyKind, keyof typeof DOT> = { earn: 'green', redeem:
 function HistoryTab() {
   const [kind, setKind] = useState<LoyaltyKind | ''>('');
   const [search, setSearch] = useState('');
-  const { data = [], isLoading } = useQuery({ queryKey: ['loyalty', 'transactions', kind], queryFn: () => loyaltyApi.transactions(kind) });
+  const { data = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['loyalty', 'transactions', kind], queryFn: () => loyaltyApi.transactions(kind) });
   const q = search.trim().toLowerCase();
   const rows = data.filter(t => !q || (t.customer_name ?? '').toLowerCase().includes(q) || (t.sale_number ?? '').toLowerCase().includes(q));
   return (
@@ -723,7 +758,7 @@ function HistoryTab() {
         <SelectFilter label="Mouvement" icon={Filter} value={kind} onChange={v => setKind(v as LoyaltyKind | '')} allLabel="Tous"
           options={(Object.keys(LOYALTY_KIND_LABEL) as LoyaltyKind[]).map(k => ({ key: k, label: LOYALTY_KIND_LABEL[k] }))} />
       </ListToolbar>
-      {isLoading ? <LoadingState label="Chargement des mouvements…" /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState label="Chargement des mouvements…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
         data.length
           ? <NoResultState onReset={() => setSearch('')} text="Aucun mouvement ne correspond à la recherche." />
           : <EmptyState icon={History} title="Aucun mouvement" text="Les points apparaissent ici dès la première vente encaissée à un client identifié." />

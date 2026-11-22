@@ -199,7 +199,7 @@ export function ToOrderBoard() {
   ];
 
   if (isLoading) return <LoadingState label="Chargement des besoins…" />;
-  if (isError) return <ErrorState title="Les besoins n'ont pas pu être chargés" text={apiErrorMessage(error, 'Erreur inconnue')} />;
+  if (isError) return <ErrorState error={error} title="Les besoins n'ont pas pu être chargés" text={apiErrorMessage(error, 'Erreur inconnue')} />;
 
   const clearSelection = () => setLines(prev => Object.fromEntries(Object.entries(prev).map(([id, l]) => [id, { ...l, selected: false }])));
   const muted: React.CSSProperties = { color: 'var(--ds-muted)', fontSize: 12, fontWeight: 400 };

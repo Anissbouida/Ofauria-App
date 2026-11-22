@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, Fragment } from 'react';
 import { PesageLotActions } from './PesageLotActions';
 import { LotMovementModal } from './LotMovementModal';
 import { TransferToPesage } from './TransferToPesage';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar, FilterChips } from '../sales/ListTemplate';
@@ -14,7 +13,7 @@ import {
 import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { fmtQty, type InventoryItem } from './types';
-import { DataPanel, EmptyState, LoadingState, NoResultState } from '../../components/ds';
+import { DataPanel, EmptyState, LoadingState, Modal, NoResultState } from '../../components/ds';
 
 /**
  * Poste de pesée : contenants ouverts (ex-« stock entamé »), regroupés par ingrédient.
@@ -308,22 +307,9 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
 
       {/* Ouvrir un contenant de la réserve (à l'avance, ou pour recharger un ingrédient bientôt vide) */}
       {openFor && (
-        <ModalBackdrop onClose={() => setOpenFor(null)} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="odoo-scope" role="dialog" aria-label="Ouvrir un contenant" onClick={e => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 760, maxHeight: '90vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-            <div className="odoo-control-bar">
-              <div className="odoo-breadcrumb">
-                <PackageOpen size={14} style={{ color: 'var(--theme-accent)' }} aria-hidden="true" />
-                <span className="odoo-breadcrumb-current">Ouvrir un contenant de la réserve</span>
-              </div>
-              <div style={{ flex: 1 }} />
-              <button type="button" onClick={() => setOpenFor(null)} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-            </div>
-            <div style={{ padding: 16, overflowY: 'auto' }}>
-              <TransferToPesage initialIngredientId={openFor.ingredientId} onDone={() => setOpenFor(null)} />
-            </div>
-          </div>
-        </ModalBackdrop>
+        <Modal title="Ouvrir un contenant de la réserve" onClose={() => setOpenFor(null)} width={760}>
+          <TransferToPesage initialIngredientId={openFor.ingredientId} onDone={() => setOpenFor(null)} onCancel={() => setOpenFor(null)} />
+        </Modal>
       )}
 
       {lotAction && (

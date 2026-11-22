@@ -1,5 +1,5 @@
 import { useReferentiel } from '../../hooks/useReferentiel';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi, ingredientsApi, ingredientLotsApi } from '../../api/inventory.api';
@@ -12,7 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   ArrowLeft, Package, AlertTriangle, Boxes, ShieldCheck, CalendarClock,
   ChevronDown, ChevronRight, ChevronLeft, Factory, TrendingDown, Trash2, Edit3,
-  X, Save, Truck, FileText, Clock, Beaker, Ban, Shield, Hash, ShoppingCart,
+  Truck, FileText, Clock, Beaker, Ban, Shield, Hash, ShoppingCart,
   Warehouse, PackageOpen, MapPin, Printer,
 } from 'lucide-react';
 import { stockLocationsApi, type StockLocation } from '../../api/stock-locations.api';
@@ -30,7 +30,7 @@ import { money, currencySymbol } from '../../utils/money';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ModulePage } from '../../components/layout/ModuleShell';
 import { SubViews } from './StockUi';
-import { Breadcrumb, EmptyState, KpiCard, KpiGrid } from '../../components/ds';
+import { Alert, Breadcrumb, EmptyState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, Modal } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -624,70 +624,46 @@ export default function IngredientDetailPage() {
       )}
 
       {showDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-          <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--ds-danger-bg)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Trash2 size={16} style={{ color: 'var(--ds-danger)' }} />
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--ds-danger)' }}>Supprimer l'ingrédient</h2>
-            </div>
-            <div style={{ padding: '1rem', backgroundColor: 'var(--ds-card)' }}>
-              <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', marginBottom: '0.75rem' }}>
-                Voulez-vous vraiment supprimer <strong>{ingredientName}</strong> ? Cette action est irréversible et supprimera toutes les données associées.
-              </p>
-              {qty > 0 && (
-                <div style={{
-                  fontSize: '0.75rem', color: 'var(--ds-warning)', backgroundColor: 'var(--ds-warning-bg)',
-                  border: '1px solid var(--ds-warning)', borderRadius: 4, padding: '0.5rem 0.625rem',
-                  marginBottom: '0.75rem',
-                }}>
-                  <strong>⚠ Stock actif : {qty.toFixed(2)} {unit}.</strong>{' '}
-                  Utilisez « Forcer la suppression » pour jeter le stock et supprimer quand même.
-                </div>
+        <Modal title="Supprimer l'ingrédient" subtitle={ingredientName} onClose={() => setShowDelete(false)} locked={deleteIngredientMutation.isPending} width={480}
+          footer={
+            <div className="ds-form-foot">
+              <span className="ds-grow" />
+              <button type="button" onClick={() => setShowDelete(false)} className="odoo-btn-secondary" disabled={deleteIngredientMutation.isPending}>Annuler</button>
+              {qty > 0 ? (
+                <button type="button" onClick={() => deleteIngredientMutation.mutate({ force: true })} disabled={deleteIngredientMutation.isPending}
+                  className="ds-btn-danger solid" title="Jette le stock restant et supprime l'ingrédient">
+                  <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Forcer la suppression'}
+                </button>
+              ) : (
+                <button type="button" onClick={() => deleteIngredientMutation.mutate({})} disabled={deleteIngredientMutation.isPending} className="ds-btn-danger solid">
+                  <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Supprimer'}
+                </button>
               )}
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: '0.75rem' }}>
-                <button type="button" onClick={() => setShowDelete(false)} className="odoo-btn-secondary" disabled={deleteIngredientMutation.isPending}>Annuler</button>
-                {qty > 0 ? (
-                  <button
-                    onClick={() => deleteIngredientMutation.mutate({ force: true })}
-                    disabled={deleteIngredientMutation.isPending}
-                    className="ds-btn-danger solid"
-                    title="Jette le stock restant et supprime l'ingrédient"
-                  >
-                    <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Forcer la suppression'}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => deleteIngredientMutation.mutate({})}
-                    disabled={deleteIngredientMutation.isPending}
-                    className="ds-btn-danger solid"
-                  >
-                    <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Supprimer'}
-                  </button>
-                )}
-              </div>
             </div>
-          </div>
-        </div>
+          }>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--ds-ink)', marginBottom: '0.75rem' }}>
+            Voulez-vous vraiment supprimer <strong>{ingredientName}</strong> ? Cette action est irréversible et supprimera toutes les données associées.
+          </p>
+          {qty > 0 && (
+            <Alert tone="warning">
+              <strong>Stock actif : {qty.toFixed(2)} {unit}.</strong>{' '}
+              Utilisez « Forcer la suppression » pour jeter le stock et supprimer quand même.
+            </Alert>
+          )}
+        </Modal>
       )}
 
       {showConvert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-          <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--theme-bg-page)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Boxes size={16} style={{ color: 'var(--theme-accent)' }} />
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600 }}>Convertir en consommable</h2>
-              <div style={{ flex: 1 }} />
-              <button type="button" onClick={() => setShowConvert(false)} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
-            </div>
-            <div style={{ padding: '1rem', backgroundColor: 'var(--ds-card)' }}>
-              <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-strong)', marginBottom: '0.75rem' }}>
-                <strong>{ingredientName}</strong> sera déplacé vers l'onglet <strong>Consommables</strong> avec la catégorie choisie.
-                {qty > 0 && <> Son stock (<strong>{qty.toFixed(2)} {unit}</strong>) est transféré.</>} La ligne ingrédient est ensuite supprimée.
-                {' '}Bloqué si l'article est utilisé dans une recette.
-              </p>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: '0.375rem' }}>
-                Catégorie du consommable *
-              </label>
+        <Modal title="Convertir en consommable" subtitle={ingredientName} onClose={() => setShowConvert(false)} locked={convertMutation.isPending} width={480}
+          footer={<FormFooter onCancel={() => setShowConvert(false)} submitLabel={convertMutation.isPending ? 'Conversion…' : 'Convertir'} busy={convertMutation.isPending} disabled={!convertCategoryId}
+            onSubmit={() => { if (!convertCategoryId) { notify.error('Choisissez une catégorie'); return; } convertMutation.mutate(); }} />}>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--ds-ink)', marginBottom: '0.75rem' }}>
+            <strong>{ingredientName}</strong> sera déplacé vers l'onglet <strong>Consommables</strong> avec la catégorie choisie.
+            {qty > 0 && <> Son stock (<strong>{qty.toFixed(2)} {unit}</strong>) est transféré.</>} La ligne ingrédient est ensuite supprimée.
+            {' '}Bloqué si l'article est utilisé dans une recette.
+          </p>
+          <FormSection title="Consommable">
+            <FormField label="Catégorie du consommable" required>
               <CategoryCascadeSelector
                 value={convertCategoryId}
                 onChange={setConvertCategoryId}
@@ -695,19 +671,9 @@ export default function IngredientDetailPage() {
                 type="expense"
                 required
               />
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: '0.75rem', marginTop: '1rem' }}>
-                <button onClick={() => setShowConvert(false)} className="odoo-btn-secondary">Annuler</button>
-                <button
-                  onClick={() => { if (!convertCategoryId) { notify.error('Choisissez une catégorie'); return; } convertMutation.mutate(); }}
-                  disabled={convertMutation.isPending || !convertCategoryId}
-                  className="odoo-btn-primary"
-                >
-                  <Boxes size={13} /> {convertMutation.isPending ? 'Conversion…' : 'Convertir'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+            </FormField>
+          </FormSection>
+        </Modal>
       )}
 
       {showOrderRequest && (
@@ -756,14 +722,15 @@ function LotLabelModal({ lot, ingredientName, onClose }: { lot: Lot; ingredientN
   const dateStr = lot.expiration_date ? new Date(lot.expiration_date).toLocaleDateString('fr-FR') : '—';
   const allergens = (lot.ingredient_allergens || []).filter(Boolean);
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText size={16} className="text-blue-600" /> Étiquette de lot</h3>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={18} /></button>
-        </div>
+    <Modal title="Étiquette de lot" onClose={onClose} width={384}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="odoo-btn-secondary">Fermer</button>
+          <button type="button" onClick={() => window.print()} className="odoo-btn-primary"><Printer size={14} /> Imprimer</button>
+        </>
+      }>
         {/* Zone imprimable */}
-        <div id="lot-label-print" style={{ padding: '1rem 1.25rem' }}>
+        <div id="lot-label-print">
           <div style={{ border: '2px solid var(--ds-ink)', borderRadius: 8, padding: '0.875rem 1rem' }}>
             <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--ds-ink)' }}>{ingredientName}</div>
             <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.9rem', marginTop: 4 }}>
@@ -785,12 +752,7 @@ function LotLabelModal({ lot, ingredientName, onClose }: { lot: Lot; ingredientN
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100">
-          <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
-          <button onClick={() => window.print()} className="odoo-btn-primary"><Printer size={14} /> Imprimer</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -829,85 +791,65 @@ function OrderRequestModal({ ingredientName, unit, container, isLow, supplierHin
     setDidAutoMatch(true);
   }
 
+  const formRef = useRef<HTMLFormElement>(null);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--ds-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ShoppingCart size={16} style={{ color: 'var(--theme-accent)' }} />
-            <div>
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>Demande d'achat</h2>
-              <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ingredientName}</p>
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
-        </div>
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          const qty = parseFloat(form.quantity);
-          if (isNaN(qty) || qty <= 0) return;
-          onSave({ quantity: qty, reason: form.reason, note: form.note || undefined, supplierId: form.supplierId || null });
-        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: 'var(--ds-card)' }}>
-          <div style={{ border: '1px solid var(--ds-info-bg)', borderRadius: 4, backgroundColor: 'var(--ds-info-bg)', padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: 'var(--ds-info)' }}>
-            La demande apparaîtra dans Stock › À commander, où le gérant crée directement le bon de commande auprès du fournisseur.
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
-            <SearchSelect value={form.supplierId} onChange={v => setForm({ ...form, supplierId: v })}
-              placeholder="— Aucun fournisseur —" width="100%" size="md" ariaLabel="Fournisseur"
-              options={(suppliers as Record<string, any>[]).filter(s => s.is_active !== false).map(s => ({ id: s.id as string, label: s.name as string }))} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
-              {container ? 'Nombre de contenants à commander' : `Quantité à commander (${unit})`}
-            </label>
+    <Modal title="Demande d'achat" subtitle={ingredientName} onClose={onClose} locked={isLoading} width={460}
+      footer={<FormFooter onCancel={onClose} submitLabel={isLoading ? 'Ajout…' : 'Ajouter à la liste'} busy={isLoading} onSubmit={() => formRef.current?.requestSubmit()} />}>
+      <form ref={formRef} onSubmit={(e) => {
+        e.preventDefault();
+        const qty = parseFloat(form.quantity);
+        if (isNaN(qty) || qty <= 0) return;
+        onSave({ quantity: qty, reason: form.reason, note: form.note || undefined, supplierId: form.supplierId || null });
+      }} style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+        <Alert tone="info">
+          La demande apparaîtra dans Stock › À commander, où le gérant crée directement le bon de commande auprès du fournisseur.
+        </Alert>
+        <FormSection title="Demande">
+          <div style={{ display: 'grid', gap: 12 }}>
+            <FormField label="Fournisseur">
+              <SearchSelect value={form.supplierId} onChange={v => setForm({ ...form, supplierId: v })}
+                placeholder="— Aucun fournisseur —" width="100%" size="md" ariaLabel="Fournisseur"
+                options={(suppliers as Record<string, any>[]).filter(s => s.is_active !== false).map(s => ({ id: s.id as string, label: s.name as string }))} />
+            </FormField>
             {container ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="number" step="1" min="1" className="input" style={{ width: 96 }} value={containerCount}
-                  onChange={e => {
-                    const raw = e.target.value.replace(/[^0-9]/g, '');
-                    const c = Math.max(1, parseInt(raw || '1', 10));
-                    setContainerCount(raw);
-                    setForm({ ...form, quantity: String(c * container.size) });
-                  }}
-                  required autoFocus />
-                <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-                  × {containerLabel(container, unit)} = <strong style={{ color: 'var(--theme-text-strong)' }}>{form.quantity || container.size} {unit}</strong>
-                </span>
-              </div>
+              <FormField label="Nombre de contenants à commander" htmlFor="order-req-count" required>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input id="order-req-count" type="number" step="1" min="1" className="ds-input" style={{ width: 96 }} value={containerCount}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/[^0-9]/g, '');
+                      const c = Math.max(1, parseInt(raw || '1', 10));
+                      setContainerCount(raw);
+                      setForm({ ...form, quantity: String(c * container.size) });
+                    }}
+                    required autoFocus />
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+                    × {containerLabel(container, unit)} = <strong style={{ color: 'var(--ds-ink)' }}>{form.quantity || container.size} {unit}</strong>
+                  </span>
+                </div>
+              </FormField>
             ) : (
-              <>
-                <input type="number" step="0.1" min="0.1" className="input" value={form.quantity}
+              <FormField label={`Quantité à commander (${unit})`} htmlFor="order-req-qty" required
+                hint="Aucun contenant défini sur la fiche (Modifier → type et quantité par contenant) : la commande minimum d'un contenant ne peut pas être proposée.">
+                <input id="order-req-qty" type="number" step="0.1" min="0.1" className="ds-input" value={form.quantity}
                   onChange={e => setForm({ ...form, quantity: e.target.value })} required placeholder="0.0" autoFocus />
-                <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 4 }}>
-                  Aucun contenant défini sur la fiche (Modifier → type et quantité par contenant) : la commande minimum d'un contenant ne peut pas être proposée.
-                </p>
-              </>
+              </FormField>
             )}
+            <FormField label="Motif" htmlFor="order-req-reason">
+              <select id="order-req-reason" className="ds-input" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>
+                <option value="stock_bas">Stock bas</option>
+                <option value="production">Besoin production</option>
+                <option value="manual">Demande manuelle</option>
+                <option value="replenishment">Approvisionnement</option>
+              </select>
+            </FormField>
+            <FormField label="Note (optionnel)" htmlFor="order-req-note">
+              <input id="order-req-note" className="ds-input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
+                placeholder="Contexte de la demande..." />
+            </FormField>
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Motif</label>
-            <select className="input" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>
-              <option value="stock_bas">Stock bas</option>
-              <option value="production">Besoin production</option>
-              <option value="manual">Demande manuelle</option>
-              <option value="replenishment">Approvisionnement</option>
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Note (optionnel)</label>
-            <input className="input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
-              placeholder="Contexte de la demande..." />
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
-              <ShoppingCart size={13} /> {isLoading ? 'Ajout…' : 'Ajouter à la liste'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </FormSection>
+      </form>
+    </Modal>
   );
 }
 
@@ -1171,68 +1113,44 @@ function AdjustStockModal({ ingredientName, unit, onClose, onSave, isLoading }: 
   // 'restock' = reapprovisionnement manuel (incremente).
   const [form, setForm] = useState({ quantity: '', type: 'waste', note: '', reasonCode: 'autre' });
 
+  const formRef = useRef<HTMLFormElement>(null);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 420, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--ds-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingDown size={16} style={{ color: 'var(--theme-accent)' }} />
-            <div>
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>Ajuster le stock</h2>
-              <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ingredientName}</p>
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
-        </div>
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          const qty = parseFloat(form.quantity);
-          if (isNaN(qty) || qty <= 0) return;
-          const signedQty = form.type === 'restock' ? qty : -qty;
-          onSave({ quantity: signedQty, type: form.type, note: form.note || undefined, reasonCode: form.type === 'waste' ? form.reasonCode : undefined });
-        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: 'var(--ds-card)' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Type d'ajustement</label>
-            <select className="input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-              <option value="waste">Perte / Casse</option>
-              <option value="adjustment">Correction d'inventaire</option>
-              <option value="restock">Réapprovisionnement manuel</option>
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Quantité ({unit})</label>
-            <input type="number" step="0.1" min="0.1" className="input" value={form.quantity}
-              onChange={e => setForm({ ...form, quantity: e.target.value })} required placeholder="0.0" autoFocus />
-          </div>
-          {form.type === 'waste' && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Motif de la perte</label>
-              <select className="input" value={form.reasonCode} onChange={e => setForm({ ...form, reasonCode: e.target.value })}>
-                {lossReasons.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+    <Modal title="Ajuster le stock" subtitle={ingredientName} onClose={onClose} locked={isLoading} width={420}
+      footer={<FormFooter onCancel={onClose} submitLabel={isLoading ? 'Ajustement…' : 'Enregistrer l\'ajustement'} busy={isLoading} onSubmit={() => formRef.current?.requestSubmit()} />}>
+      <form ref={formRef} onSubmit={(e) => {
+        e.preventDefault();
+        const qty = parseFloat(form.quantity);
+        if (isNaN(qty) || qty <= 0) return;
+        const signedQty = form.type === 'restock' ? qty : -qty;
+        onSave({ quantity: signedQty, type: form.type, note: form.note || undefined, reasonCode: form.type === 'waste' ? form.reasonCode : undefined });
+      }}>
+        <FormSection title="Ajustement">
+          <div style={{ display: 'grid', gap: 12 }}>
+            <FormField label="Type d'ajustement" htmlFor="adjust-type">
+              <select id="adjust-type" className="ds-input" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+                <option value="waste">Perte / Casse</option>
+                <option value="adjustment">Correction d'inventaire</option>
+                <option value="restock">Réapprovisionnement manuel</option>
               </select>
-            </div>
-          )}
-          {form.type === 'waste' && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Motif de la perte</label>
-              <select className="input" value={form.reasonCode} onChange={e => setForm({ ...form, reasonCode: e.target.value })}>
-                {lossReasons.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
-              </select>
-            </div>
-          )}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Note (optionnel)</label>
-            <input className="input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
-              placeholder="Raison de l'ajustement..." />
+            </FormField>
+            <FormField label={`Quantité (${unit})`} htmlFor="adjust-qty" required>
+              <input id="adjust-qty" type="number" step="0.1" min="0.1" className="ds-input" value={form.quantity}
+                onChange={e => setForm({ ...form, quantity: e.target.value })} required placeholder="0.0" autoFocus />
+            </FormField>
+            {form.type === 'waste' && (
+              <FormField label="Motif de la perte" htmlFor="adjust-reason">
+                <select id="adjust-reason" className="ds-input" value={form.reasonCode} onChange={e => setForm({ ...form, reasonCode: e.target.value })}>
+                  {lossReasons.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+                </select>
+              </FormField>
+            )}
+            <FormField label="Note (optionnel)" htmlFor="adjust-note">
+              <input id="adjust-note" className="ds-input" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}
+                placeholder="Raison de l'ajustement..." />
+            </FormField>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
-              <Save size={13} /> {isLoading ? 'Ajustement…' : 'Enregistrer l\'ajustement'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </FormSection>
+      </form>
+    </Modal>
   );
 }

@@ -14,7 +14,7 @@ type TopLoss = { id: string; name: string; total_lost: string; total_cost: strin
  * alertes, indicateurs (4 par ligne au plus), puis sections en tableau standard.
  */
 export default function DashboardPage() {
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['dashboard'], queryFn: reportsApi.dashboard });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['dashboard'], queryFn: reportsApi.dashboard });
 
   const d = data || { todaySales: 0, todayRevenue: 0, avgSaleValue: 0, todayItemsSold: 0, topProducts: [], pendingOrders: 0, lowStockCount: 0, todayLossCount: 0, todayLossCost: 0, todayLossQuantity: 0, monthlyLossCost: 0, monthlyLossQuantity: 0, topLossProducts: [] };
   const topProducts = (d.topProducts || []) as TopProduct[];
@@ -29,7 +29,7 @@ export default function DashboardPage() {
         <PageHeader title="Tableau de bord" description="Ventes, commandes, pertes et stock de la journée." />
 
         {isLoading ? <LoadingState label="Chargement du tableau de bord…" />
-          : isError ? <ErrorState title="Le tableau de bord n'a pas pu être chargé" onRetry={() => refetch()} />
+          : isError ? <ErrorState error={error} title="Le tableau de bord n'a pas pu être chargé" onRetry={() => refetch()} />
           : (
           <>
             {d.lowStockCount > 0 && (

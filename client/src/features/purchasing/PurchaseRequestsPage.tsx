@@ -9,7 +9,6 @@ import {
   X, Trash2, FileQuestion, AlertTriangle, Check, History,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -20,7 +19,7 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { currencySymbol } from '../../utils/money';
 import { RowMenu } from '../../components/ui/RowMenu';
 import {
-  Alert, BulkBar, DataPanel, EmptyState, FormField, KpiCard, KpiGrid, LoadingState, NoResultState,
+  Alert, BulkBar, DataPanel, EmptyState, ErrorState, FormField, KpiCard, KpiGrid, LoadingState, Modal, NoResultState,
   SearchBar, Segmented, TableFooter, Toolbar,
 } from '../../components/ds';
 
@@ -111,7 +110,7 @@ export default function PurchaseRequestsPage() {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
 
-  const { data: groups = [], isLoading: groupsLoading } = useQuery({
+  const { data: groups = [], isLoading: groupsLoading, error: groupsError, refetch: refetchGroups } = useQuery({
     queryKey: ['purchase-requests-grouped'],
     queryFn: purchaseRequestsApi.grouped,
   });
@@ -132,7 +131,7 @@ export default function PurchaseRequestsPage() {
     onError: () => notify.error('Erreur lors de l\'attribution du fournisseur'),
   });
 
-  const { data: allRequests = [], isLoading: allLoading } = useQuery({
+  const { data: allRequests = [], isLoading: allLoading, error: allError, refetch: refetchAll } = useQuery({
     queryKey: ['purchase-requests', statusFilter],
     queryFn: () => purchaseRequestsApi.list(statusFilter ? { status: statusFilter } : undefined),
     enabled: viewMode === 'all',
@@ -290,6 +289,7 @@ export default function PurchaseRequestsPage() {
   const historyFiltered = !!search.trim() || !!statusFilter || period !== 'all';
   const resetHistory = () => { setSearch(''); setStatusFilter(''); setPeriod('all'); setCustomFrom(''); setCustomTo(''); };
   const loading = pendingView ? groupsLoading : allLoading;
+  const loadError = pendingView ? groupsError : allError;
 
   return (
     <>
@@ -350,6 +350,7 @@ export default function PurchaseRequestsPage() {
       )}
 
       {loading ? <LoadingState />
+        : loadError ? <ErrorState error={loadError} onRetry={() => { void (pendingView ? refetchGroups() : refetchAll()); }} />
         : pendingView && (groups as SupplierGroup[]).length === 0 ? (
           <EmptyState icon={ShoppingCart} title="Aucune demande en attente"
             text="Les demandes apparaîtront ici lorsqu'un utilisateur demandera un article."
@@ -539,18 +540,18 @@ function ReasonModal({ action, pending, onClose, onSubmit }: {
   const isCancel = action.kind === 'cancel';
   const valid = reason.trim().length >= 3;
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <span className="odoo-breadcrumb-current">{isCancel ? 'Annuler la demande' : 'Clôturer le reliquat'} · {action.label}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
+    <Modal title={isCancel ? 'Annuler la demande' : 'Clôturer le reliquat'} subtitle={action.label} width={460} onClose={onClose} locked={pending}
+      footer={
+        <div className="ds-form-foot">
+          <span className="ds-grow" />
+          <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={pending}>Retour</button>
+          <button type="submit" form="pr-reason-form" disabled={!valid || pending} aria-busy={pending || undefined} className={isCancel ? 'ds-btn-danger solid' : 'odoo-btn-primary'}>
+            {isCancel ? 'Annuler la demande' : 'Clôturer le reliquat'}
+          </button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); setTouched(true); if (valid && !pending) onSubmit(reason.trim()); }}>
-          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      }>
+        <form id="pr-reason-form" onSubmit={(e) => { e.preventDefault(); setTouched(true); if (valid && !pending) onSubmit(reason.trim()); }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p style={{ margin: 0, fontSize: 14, color: 'var(--ds-muted)' }}>
               {isCancel
                 ? 'La demande ne sera plus proposée à la commande. Cette action est définitive et journalisée.'
@@ -562,16 +563,7 @@ function ReasonModal({ action, pending, onClose, onSubmit }: {
                 onChange={(e) => setReason(e.target.value)} onBlur={() => setTouched(true)}
                 placeholder={isCancel ? 'Ex. besoin couvert par un transfert, erreur de saisie' : 'Ex. fournisseur en rupture, reliquat abandonné'} />
             </FormField>
-          </div>
-          <div className="ds-form-foot">
-            <span className="ds-grow" />
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={pending}>Retour</button>
-            <button type="submit" disabled={!valid || pending} aria-busy={pending || undefined} className={isCancel ? 'ds-btn-danger solid' : 'odoo-btn-primary'}>
-              {isCancel ? 'Annuler la demande' : 'Clôturer le reliquat'}
-            </button>
-          </div>
         </form>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }

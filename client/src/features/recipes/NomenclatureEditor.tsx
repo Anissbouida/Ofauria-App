@@ -16,6 +16,7 @@ import { useExtraUnits } from '../../hooks/useReferentiel';
 import SearchSelect from '../../components/ui/SearchSelect';
 
 import { LoadingState } from '../../components/ds';
+import '../production/production.css';
 interface SourceOpt { type: 'recipe' | 'ingredient'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
 interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; sourceId: string; quantite: string; unite: string; pertePct?: string }
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
@@ -349,8 +350,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     if (!isDirty) return;
     const url = window.location.href;
     window.history.pushState({ kalumUnsavedGuard: true }, '', url);
-    const onPop = () => {
-      if (window.confirm('Des modifications ne sont pas enregistrées. Quitter la fiche quand même ?')) {
+    const onPop = async () => {
+      if (await confirm('Des modifications ne sont pas enregistrées.', { title: 'Quitter la fiche ?', confirmLabel: 'Quitter sans enregistrer', cancelLabel: 'Rester', danger: true })) {
         window.removeEventListener('popstate', onPop);
         window.history.back();
       } else {
@@ -753,7 +754,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           <div>
             <input type="number" step="any" min="0"
               aria-label={compoParPiece ? 'Quantité par pièce' : `Quantité par ${bLc}`}
-              className={`h-8 w-full px-2 rounded-md text-sm text-right tabular-nums border focus:outline-none focus:ring-2 ${aberrant || badQty ? 'border-red-300 bg-red-50 text-red-700 focus:ring-red-100' : 'border-gray-200 bg-white focus:ring-primary-200 focus:border-primary-400'}`}
+              aria-invalid={aberrant || badQty || undefined}
+              className="ds-input sm" style={{ textAlign: 'right', ...(aberrant || badQty ? { background: 'var(--ds-danger-bg)', color: 'var(--ds-danger)' } : {}) }}
               value={r.quantite} onChange={(e) => setRow(r.key, { quantite: e.target.value })} placeholder="0" />
             {pp != null ? (
               <div className={`text-[10px] mt-0.5 text-right ${pp >= 1 ? 'text-red-500' : 'text-gray-400'}`} title="Fournées de la recette de base consommées par pièce">
@@ -764,7 +766,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="text-[10px] mt-0.5 text-right text-gray-400">≈ {eqLabel}</div>
             ) : null}
           </div>
-          <select className="h-8 px-1.5 bg-white border border-gray-200 rounded-md text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
+          <select className="ds-input sm" style={{ width: 'auto' }}
             value={r.unite} onChange={(e) => setRow(r.key, { unite: e.target.value })} aria-label="Unité de la quantité">
             {UNITES.map((u) => <option key={u} value={u}>{u}</option>)}
             {extraUnits.map((u) => <option key={u.code} value={u.code} title={u.label}>{u.code}</option>)}
@@ -774,7 +776,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             <input type="number" step="any" min="0" max="99"
               aria-label="Perte de la ligne en pourcentage"
               title="Perte sur cette ligne (%) : majore la matière consommée et le coût (mig 265)"
-              className="h-8 w-full px-1.5 rounded-md text-sm text-right tabular-nums border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+              className="ds-input sm" style={{ textAlign: 'right' }}
               value={r.pertePct ?? ''} onChange={(e) => setRow(r.key, { pertePct: e.target.value })} placeholder="0" />
           </div>
           <div className="pt-1.5" title={src ? (src.type === 'recipe' ? 'Recette de base' : 'Matière première') : undefined}>
@@ -815,8 +817,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   return (
     <div className="space-y-4">
       {/* ======================= FORMAT ======================= */}
-      <div className="odoo-section" style={{ margin: 0, overflow: 'visible' }}>
-      <div className="odoo-section-header"><Box size={13} /> Format du produit</div>
+      <div className="ds-panel pd-section" style={{ margin: 0, overflow: 'visible' }}>
+      <div className="pd-section-head"><Box size={13} /> Format du produit</div>
 
       {/* Onglets de format : chaque contenant = un cadre de cuisson distinct */}
       <div className="flex items-center gap-1.5 flex-wrap px-3 pt-3">
@@ -875,7 +877,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         const [cv, cu] = splitW(poidsCuitG);
         // Hauteur de libellé FIXE (h-4) + nowrap : quelle que soit la présence d'une
         // icône d'aide ou la longueur du texte, toutes les cases démarrent au même Y.
-        const lbl = 'flex items-center h-4 mb-1 text-xs font-medium text-gray-600 whitespace-nowrap';
+        const lbl = 'ds-field-label flex items-center h-4 mb-1 whitespace-nowrap';
         const box = 'flex items-center gap-1 rounded-md border border-gray-200 bg-white pr-2 focus-within:ring-2 focus-within:ring-primary-200 focus-within:border-primary-400';
         const inp = 'h-9 w-full px-2 bg-transparent rounded-md text-sm text-right tabular-nums focus:outline-none';
         const sfx = 'text-[11px] text-gray-400 shrink-0';
@@ -979,8 +981,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       {formats.length > 0 && !isLoading && f && (
         <>
           {/* ===================== COMPOSITION ===================== */}
-          <div className="odoo-section" style={{ margin: 0, overflow: 'visible' }}>
-            <div className="odoo-section-header"><Layers size={13} /> Composition</div>
+          <div className="ds-panel pd-section" style={{ margin: 0, overflow: 'visible' }}>
+            <div className="pd-section-head"><Layers size={13} /> Composition</div>
             <div className="p-3">
             {aberrantCount > 0 && (
               <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-[13px] text-red-700">
@@ -1092,8 +1094,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           </div>
 
           {/* ===================== COÛT & PRIX ===================== */}
-          <div className="odoo-section" style={{ margin: 0 }}>
-            <div className="odoo-section-header"><SlidersHorizontal size={13} /> Coût &amp; prix de vente</div>
+          <div className="ds-panel pd-section" style={{ margin: 0 }}>
+            <div className="pd-section-head"><SlidersHorizontal size={13} /> Coût &amp; prix de vente</div>
             <div className="p-3">
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[
@@ -1106,7 +1108,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   { id: 'fin-mult', lbl: 'Multiplicateur', sfx: '×', val: mult, set: setMult, ph: 'ex 3', step: 'any' },
                 ].map((fld) => (
                   <label key={fld.lbl} className="block" htmlFor={fld.id} title={(fld as { title?: string }).title}>
-                    <span className="text-[11px] text-gray-500">{fld.lbl}</span>
+                    <span className="ds-field-label">{fld.lbl}</span>
                     <span className="mt-1 flex items-center gap-1 rounded-md border border-gray-200 bg-white pr-2 focus-within:ring-2 focus-within:ring-primary-200 focus-within:border-primary-400">
                       <input id={fld.id} type="number" step={fld.step} min="0" value={fld.val} onChange={(e) => fld.set(e.target.value)}
                         className="h-9 w-full px-2 bg-transparent rounded-md text-sm text-right tabular-nums focus:outline-none" placeholder={fld.ph} />
@@ -1153,8 +1155,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           {/* ===================== VENTE AU POS ===================== */}
           {/* Mig 263, audit A1 : lien vers le produit vendu au POS + écart de prix. */}
           {data?.format && (
-            <div className="odoo-section" style={{ margin: 0 }}>
-              <div className="odoo-section-header"><Tag size={13} /> Vente au point de vente</div>
+            <div className="ds-panel pd-section" style={{ margin: 0 }}>
+              <div className="pd-section-head"><Tag size={13} /> Vente au point de vente</div>
               <PosLinkPanel recipeId={recipeId} formatId={data.format.id}
                 format={data.format} priceCalc={fin.prix} />
             </div>

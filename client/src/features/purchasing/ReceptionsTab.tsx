@@ -4,8 +4,9 @@ import { PackageCheck, Truck, X, PackageSearch, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { receptionVouchersApi, purchaseOrdersApi } from '../../api/purchase-orders.api';
-import { PODetailModal, DeliveryModal } from '../accounting/PurchaseOrdersTab';
-import { KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { PODetailModal } from '../accounting/PurchaseOrdersTab';
+import { useOpenReception } from './purchasingNav';
+import { KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { ViewSwitch, PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { usePurLayout, LayoutSwitch, SplitView, KanbanView, POPane, pdate, pmoney } from './PurLayouts';
@@ -46,7 +47,7 @@ type PendingPO = Record<string, any>;
  * Étape 6 du cycle d'achat — Réception. Deux vues (ViewSwitch) :
  *  • « À réceptionner » : les bons de commande envoyés au fournisseur et en attente de
  *    livraison (ou partiellement livrés). C'EST ICI qu'on saisit la réception. Le bouton
- *    ouvre le même formulaire (DeliveryModal) que le détail du BC.
+ *    ouvre la page de réception du BC (?tab=reception&po=<id>), comme le détail du BC.
  *  • « Historique » : les bons de réception déjà enregistrés, classés par mois et
  *    filtrables par période.
  */
@@ -54,8 +55,8 @@ export default function ReceptionsTab() {
   const [view, setView] = useState<'open' | 'history'>('open');
   const [searchInput, setSearchInput] = useState('');
   const [poDetail, setPoDetail] = useState<string | null>(null);
-  // BC en cours de réception (ouvre le formulaire de saisie).
-  const [receivePoId, setReceivePoId] = useState<string | null>(null);
+  // Saisie d'une réception : page dédiée « Réception · n° du BC ».
+  const openReception = useOpenReception();
   // Filtre de période de l'historique (sur la date de réception).
   const [period, setPeriod] = useState<PeriodKey>('all');
   const [customFrom, setCustomFrom] = useState('');
@@ -65,17 +66,17 @@ export default function ReceptionsTab() {
   const [activeId, setActiveId] = useState<string | null>(null);
 
   // Historique des bons de réception.
-  const { data: vouchers = [], isLoading: loadingVouchers } = useQuery<ReceptionRow[]>({
+  const { data: vouchers = [], isLoading: loadingVouchers, error: vouchersError, refetch: refetchVouchers } = useQuery<ReceptionRow[]>({
     queryKey: ['reception-vouchers', 'all'],
     queryFn: () => receptionVouchersApi.list(),
   });
 
   // BC à réceptionner : étapes « sent » (envoyé, attente de livraison) et « partial » (reliquat attendu).
-  const { data: sentBoard, isLoading: loadingSent } = useQuery({
+  const { data: sentBoard, isLoading: loadingSent, error: sentError, refetch: refetchSent } = useQuery({
     queryKey: ['purchase-orders', 'board', 'reception-sent'],
     queryFn: () => purchaseOrdersApi.board({ view: 'open', stage: 'sent', page: '1', pageSize: '500' }),
   });
-  const { data: partialBoard, isLoading: loadingPartial } = useQuery({
+  const { data: partialBoard, isLoading: loadingPartial, error: partialError, refetch: refetchPartial } = useQuery({
     queryKey: ['purchase-orders', 'board', 'reception-partial'],
     queryFn: () => purchaseOrdersApi.board({ view: 'open', stage: 'partial', page: '1', pageSize: '500' }),
   });
@@ -159,7 +160,7 @@ export default function ReceptionsTab() {
 
       {/* ───────── À réceptionner ───────── */}
       {view === 'open' && (
-        loadingPending ? <LoadingState /> : pendingRows.length === 0 ? (
+        loadingPending ? <LoadingState /> : (sentError || partialError) ? <ErrorState error={sentError || partialError} onRetry={() => { void refetchSent(); void refetchPartial(); }} /> : pendingRows.length === 0 ? (
           term
             ? <NoResultState onReset={resetFilters} text="Aucun bon de commande à réceptionner ne correspond à la recherche." />
             : <EmptyState icon={PackageSearch} title="Aucun bon de commande en attente de livraison"
@@ -174,7 +175,7 @@ export default function ReceptionsTab() {
             })}
             pane={po => (
               <POPane poId={po.id as string} onFull={() => setPoDetail(po.id as string)}
-                actions={<button type="button" className={po.is_late ? 'odoo-btn-danger' : 'odoo-btn-primary'} onClick={() => setReceivePoId(po.id as string)}>
+                actions={<button type="button" className={po.is_late ? 'odoo-btn-danger' : 'odoo-btn-primary'} onClick={() => openReception(po.id as string)}>
                   <PackageCheck size={14} /> {po.stage === 'partial' ? 'Réceptionner le reliquat' : 'Réceptionner'}</button>} />
             )} />
         ) : layout === 'kanban' ? (
@@ -213,7 +214,7 @@ export default function ReceptionsTab() {
                     <td><PendingTag po={po} /></td>
                     <td className="ds-num">{fmt(po.total_amount)}</td>
                     <td className="ds-actions" onClick={e => e.stopPropagation()}>
-                      <button type="button" onClick={() => setReceivePoId(id)} className="odoo-btn-secondary ds-btn-sm">
+                      <button type="button" onClick={() => openReception(id)} className="odoo-btn-secondary ds-btn-sm">
                         {isPartial ? 'Réceptionner le reliquat' : 'Réceptionner'}
                       </button>
                       <RowMenu label={`Plus d'actions pour ${po.order_number ?? 'ce bon'}`} items={[
@@ -230,7 +231,7 @@ export default function ReceptionsTab() {
 
       {/* ───────── Historique des bons de réception (par mois) ───────── */}
       {view === 'history' && (
-        loadingVouchers ? <LoadingState /> : vouchersRows.length === 0 ? (
+        loadingVouchers ? <LoadingState /> : vouchersError ? <ErrorState error={vouchersError} onRetry={() => { void refetchVouchers(); }} /> : vouchersRows.length === 0 ? (
           term || hasPeriodFilter
             ? <NoResultState onReset={resetFilters} text="Aucune réception ne correspond aux filtres." />
             : <EmptyState icon={PackageCheck} title="Aucune réception enregistrée"
@@ -316,8 +317,7 @@ export default function ReceptionsTab() {
         )
       )}
 
-      {receivePoId && <DeliveryModal poId={receivePoId} onClose={() => setReceivePoId(null)} />}
-      {poDetail && <PODetailModal poId={poDetail} onClose={() => setPoDetail(null)} />}
+      {poDetail && <PODetailModal poId={poDetail} onClose={() => setPoDetail(null)} onDelivery={() => openReception(poDetail)} />}
     </>
   );
 }

@@ -66,7 +66,7 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
   const weekEndDate = endOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const weekStartStr = format(weekStartDate, 'yyyy-MM-dd');
 
-  const { data: weekData, isLoading, isError, refetch } = useQuery<WeeklyPayrollData>({
+  const { data: weekData, isLoading, isError, error, refetch } = useQuery<WeeklyPayrollData>({
     queryKey: ['weekly-payroll', weekStartStr],
     queryFn: () => weeklyPayrollApi.list(weekStartStr) as Promise<WeeklyPayrollData>,
   });
@@ -230,7 +230,7 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
       {isLoading ? (
         <LoadingPanel />
       ) : isError ? (
-        <ErrorState onRetry={() => void refetch()} />
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : rows.length === 0 ? (
         <EmptyState icon={Banknote} title="Aucun employé payé à la semaine" text="Passez un employé en « Fréquence de paie : Hebdomadaire » dans l'écran Employés pour le voir ici." />
       ) : visibleRows.length === 0 ? (

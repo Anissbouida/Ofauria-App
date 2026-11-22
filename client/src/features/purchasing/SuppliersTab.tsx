@@ -1,5 +1,5 @@
 import PersonalDataExportButton from '../../components/PersonalDataExportButton';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Truck, X, CheckCircle2, RotateCcw, Trash2,
@@ -16,7 +16,6 @@ import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import CustomFieldsEditor, { useCustomListColumns } from '../../components/custom-fields/CustomFieldsEditor';
 import { useCustomFieldsForm, formatCfValue, type CfValues } from '../../api/custom-fields.api';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useAuth } from '../../context/AuthContext';
@@ -24,7 +23,7 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import {
   KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState,
-  Tabs, Alert, FormSection, FormField, FormFooter,
+  Tabs, Alert, FormSection, FormField, FormFooter, Modal, ErrorState,
 } from '../../components/ds';
 import {
   StagePipeline, ViewSwitch, PeriodFilter, SelectFilter,
@@ -175,7 +174,7 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
     return { ...p, ...periodParams(period, customFrom, customTo) };
   }, [view, stage, flag, city, searchTerm, period, customFrom, customTo, page, sortBy, sortDir]);
 
-  const { data: board, isLoading, isFetching } = useQuery({
+  const { data: board, isLoading, isFetching, error: boardError, refetch: refetchBoard } = useQuery({
     queryKey: ['suppliers', 'board', boardParams],
     queryFn: () => suppliersApi.board(boardParams),
     placeholderData: (prev) => prev,
@@ -350,7 +349,7 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
           openLabel={`Actifs · ${openCount}`} historyLabel={`Inactifs · ${inactiveCount}`} ariaLabel="Fournisseurs actifs ou inactifs" />
       </Toolbar>
 
-      {isLoading ? <LoadingState label="Chargement des fournisseurs…" /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState label="Chargement des fournisseurs…" /> : boardError && !board ? <ErrorState error={boardError} onRetry={() => { void refetchBoard(); }} /> : rows.length === 0 ? (
         hasFilters
           ? <NoResultState onReset={resetFilters} text="Aucun fournisseur ne correspond aux filtres." />
           : <EmptyState icon={Truck}
@@ -538,11 +537,8 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
       return { ...f, identifiers: { ...f.identifiers, [code]: { ...current, ...patch } } };
     });
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // Échap ferme la fenêtre : géré par le Modal commun.
+  const formRef = useRef<HTMLFormElement>(null);
 
   const isGroupBrand = !!form.parentSupplierId;
   const [brandMode, setBrandMode] = useState(isGroupBrand);
@@ -593,35 +589,29 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
   };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 760, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 16, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0, background: 'var(--ds-card)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Truck size={14} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} />
-            <span className="odoo-breadcrumb-current">{supplier ? supplier.name : 'Nouveau fournisseur'}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          {supplier?.id && tab === 'fiche' && <PersonalDataExportButton kind="supplier" id={supplier.id as string} label="Exporter les données" />}
-          <button type="button" onClick={onClose} className="ds-icon-btn" title="Fermer (Échap)" aria-label="Fermer"><X size={16} /></button>
-        </div>
+    <Modal title={supplier ? supplier.name : 'Nouveau fournisseur'} subtitle={supplier ? 'Fiche du fournisseur' : undefined} width={760}
+      onClose={onClose} locked={saveMutation.isPending}
+      aside={supplier?.id && tab === 'fiche' ? <PersonalDataExportButton kind="supplier" id={supplier.id as string} label="Exporter les données" /> : undefined}
+      footer={tab === 'historique' && supplier ? undefined : (
+        <FormFooter dirty={dirty} onCancel={onClose} busy={saveMutation.isPending}
+          disabled={brandMode && !form.parentSupplierId}
+          onSubmit={() => formRef.current?.requestSubmit()}
+          submitLabel={supplier ? 'Enregistrer' : 'Créer le fournisseur'} />
+      )}>
         {supplier && (
-          <div style={{ padding: '0 24px' }}>
-            <Tabs label="Fiche du fournisseur" value={tab} onChange={setTab}
-              tabs={[{ key: 'fiche', label: 'Fiche' }, { key: 'historique', label: 'Historique' }]} />
-          </div>
+          <Tabs label="Fiche du fournisseur" value={tab} onChange={setTab}
+            tabs={[{ key: 'fiche', label: 'Fiche' }, { key: 'historique', label: 'Historique' }]} />
         )}
 
         {tab === 'historique' && supplier ? (
           <SupplierHistory rows={history as HistoryRow[]} loading={historyLoading} />
         ) : (
-          <form onSubmit={e => {
-            e.preventDefault(); setFieldErrors({});
+          <form ref={formRef} onSubmit={e => {
+            e.preventDefault(); if (saveMutation.isPending) return; setFieldErrors({});
             const missing = cf.missing();
             if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
             saveMutation.mutate();
-          }} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 24, flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          }} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               {duplicates.length > 0 && (
                 <StatusBanner tone="danger" icon={AlertTriangle} title="Doublon probable">
                   {duplicates.map(d => <div key={d.id + d.reason}>« {d.name} » porte déjà {d.reason === 'name' ? 'ce nom' : `cet identifiant ${d.reason}`}.</div>)}
@@ -771,14 +761,9 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                   {' · '}dernière modification {format(new Date(supplier.updated_at), 'd MMM yyyy HH:mm', { locale: fr })}
                 </p>
               )}
-            </div>
-            <FormFooter dirty={dirty} onCancel={onClose} busy={saveMutation.isPending}
-              disabled={brandMode && !form.parentSupplierId}
-              submitLabel={supplier ? 'Enregistrer' : 'Créer le fournisseur'} />
           </form>
         )}
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -832,6 +817,7 @@ function SupplierHistory({ rows, loading }: { rows: HistoryRow[]; loading: boole
   }
   return (
     <div className="flex-1 overflow-y-auto" style={{ padding: '16px 24px' }}>
+      <DataPanel label="Historique des modifications">
       <table className="odoo-table ds-dense">
         <thead><tr><th>Quand</th><th>Qui</th><th>Objet</th><th>Changement</th></tr></thead>
         <tbody>
@@ -859,6 +845,7 @@ function SupplierHistory({ rows, loading }: { rows: HistoryRow[]; loading: boole
           })}
         </tbody>
       </table>
+      </DataPanel>
     </div>
   );
 }

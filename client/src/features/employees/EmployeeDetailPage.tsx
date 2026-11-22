@@ -94,7 +94,7 @@ export default function EmployeeDetailPage() {
   const { data: shifts = [] } = useQuery<Record<string, any>[]>({ queryKey: ['shifts'], queryFn: shiftsApi.list as () => Promise<Record<string, any>[]> });
 
   // Clé sous ['employees'] : les invalidations des sous-blocs (contrat, départ) rafraîchissent aussi la fiche.
-  const { data: emp, isLoading, isError } = useQuery<Record<string, any>>({
+  const { data: emp, isLoading, isError, error } = useQuery<Record<string, any>>({
     queryKey: ['employees', 'detail', id],
     queryFn: () => employeesApi.getById(id!),
     enabled: !isNew,
@@ -207,7 +207,7 @@ export default function EmployeeDetailPage() {
   if (!isNew && (isError || !emp)) {
     return (
       <div className="odoo-scope prj prj-detail">
-        <ErrorState title="Employé introuvable" text="Cette fiche n'existe pas ou a été supprimée." />
+        <ErrorState error={error} title="Employé introuvable" text="Cette fiche n'existe pas ou a été supprimée." />
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
           <button type="button" className="odoo-btn-secondary" onClick={() => navigate('/employees?tab=employees')}>Retour à la liste</button>
         </div>

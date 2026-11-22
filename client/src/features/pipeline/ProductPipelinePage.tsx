@@ -1,4 +1,5 @@
 import { money, currencySymbol } from '../../utils/money';
+import { usePrompt } from '../../components/ui/ConfirmDialog';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,7 +18,7 @@ import { StagePipeline, StageProgress, type StageDef } from '../../components/pu
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import { KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 
 /* ═══ Constants ═══ */
 const STAGES = [
@@ -51,8 +52,6 @@ const STAGE_STAT_KEY: Record<string, string> = {
 };
 const STAGE_DEFS: StageDef[] = STAGES.map(s => ({ key: s.key, label: s.label, hint: STAGE_HINTS[s.key], icon: s.icon }));
 
-const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
-const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '8px 10px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
 const odooTile: React.CSSProperties = { background: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 12 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
@@ -98,7 +97,7 @@ export default function ProductPipelinePage() {
     queryFn: () => productPipelineApi.stats(),
   });
 
-  const { data: listData, isLoading } = useQuery({
+  const { data: listData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['pipelines', statusFilter, search],
     queryFn: () => productPipelineApi.list({
       ...(statusFilter ? { status: statusFilter } : {}),
@@ -174,6 +173,8 @@ export default function ProductPipelinePage() {
       {/* ══════ Tableau ══════ */}
       {isLoading ? (
         <LoadingState label="Chargement des pipelines…" />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : visiblePipelines.length === 0 ? (
         search || stageFilter || statusFilter
           ? <NoResultState onReset={() => { setSearch(''); setStageFilter(null); setStatusFilter(''); }} text="Aucun pipeline ne correspond aux filtres." />
@@ -252,10 +253,11 @@ export default function ProductPipelinePage() {
 
 /* ═══ Pipeline Detail View ═══ */
 function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
+  const askReason = usePrompt();
   const queryClient = useQueryClient();
   const [showHistory, setShowHistory] = useState(false);
 
-  const { data: pipeline, isLoading } = useQuery({
+  const { data: pipeline, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['pipeline', id],
     queryFn: () => productPipelineApi.getById(id),
   });
@@ -300,8 +302,9 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
     onError: (err: unknown) => setActionMsg({ type: 'error', text: getErrorMsg(err) }),
   });
 
+  if (isError) return <ErrorState title="Le pipeline n'a pas pu être chargé" error={error} onRetry={() => refetch()} />;
   if (isLoading || !pipeline) {
-    return <div className="p-6 text-center text-gray-400">Chargement...</div>;
+    return <LoadingState label="Chargement du pipeline…" />;
   }
 
   const p = pipeline as Pipeline;
@@ -322,7 +325,10 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowHistory(!showHistory)} className="odoo-btn-secondary"><History size={14} /> Historique</button>
         {isActive && (
-          <button onClick={() => { const reason = prompt('Raison de l\'annulation:'); if (reason !== null) cancelMutation.mutate(reason); }} className="ds-btn-danger"><Ban size={14} /> Annuler</button>
+          <button type="button" onClick={async () => {
+            const reason = await askReason('Le pipeline sera arrêté à son étape actuelle.', { title: 'Annuler le pipeline', label: 'Raison de l\'annulation', required: true, multiline: true, danger: true, confirmLabel: 'Annuler le pipeline', cancelLabel: 'Garder' });
+            if (reason !== null) cancelMutation.mutate(reason.trim());
+          }} className="ds-btn-danger"><Ban size={14} /> Annuler</button>
         )}
       </div>
 
@@ -536,26 +542,14 @@ function PropositionStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipe
 
   return (
     <div className="space-y-3">
-      <div>
-        <label style={fieldLabel}>Nom du produit *</label>
-        <input value={name} onChange={e => setName(e.target.value)}
-          style={fieldInput} />
-      </div>
-      <div>
-        <label style={fieldLabel}>Description</label>
-        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
-          style={fieldInput} />
-      </div>
-      <div className="flex gap-2">
-        <button onClick={() => updateMutation.mutate({ name, description })}
-          className="odoo-btn-primary">
-          Sauvegarder
-        </button>
-        <button onClick={() => setEditing(false)}
-          className="odoo-btn-secondary">
-          Annuler
-        </button>
-      </div>
+      <FormField label="Nom du produit" htmlFor="pp-prop-name" required>
+        <input id="pp-prop-name" value={name} onChange={e => setName(e.target.value)} className="ds-input" />
+      </FormField>
+      <FormField label="Description" htmlFor="pp-prop-desc">
+        <textarea id="pp-prop-desc" value={description} onChange={e => setDescription(e.target.value)} rows={2} className="ds-input" />
+      </FormField>
+      <FormFooter onCancel={() => setEditing(false)} onSubmit={() => updateMutation.mutate({ name, description })}
+        submitLabel="Sauvegarder" busy={updateMutation.isPending} />
       <InlineMsg msg={msg} />
     </div>
   );
@@ -599,8 +593,7 @@ function RecipeStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline;
 
       {editable && (
         <div className="border-t border-gray-100 pt-3 space-y-3">
-          <div>
-            <label style={fieldLabel}>Assigner une recette</label>
+          <FormField label="Assigner une recette">
             <SearchSelect
               ariaLabel="Assigner une recette"
               placeholder="Choisir une recette..."
@@ -610,13 +603,11 @@ function RecipeStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline;
               onChange={setRecipeId}
               options={recipes.map(r => ({ id: String(r.id), label: String(r.name) }))}
             />
-          </div>
-          <div>
-            <label style={fieldLabel}>Notes de développement</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-              style={fieldInput} />
-          </div>
-          <button
+          </FormField>
+          <FormField label="Notes de développement" htmlFor="pp-recipe-notes">
+            <textarea id="pp-recipe-notes" value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="ds-input" />
+          </FormField>
+          <button type="button"
             onClick={() => updateMutation.mutate({ recipeId: recipeId || undefined, recipeNotes: notes || undefined })}
             disabled={updateMutation.isPending}
             className="odoo-btn-primary">
@@ -682,29 +673,21 @@ function CostStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
 
       {editable && (
         <div className="border-t border-gray-100 pt-3 space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label style={fieldLabel}>Coût estimé ({currencySymbol()}) *</label>
-              <input type="number" step="0.01" value={estimatedCost} onChange={e => setEstimatedCost(e.target.value)}
-                style={fieldInput} />
-            </div>
-            <div>
-              <label style={fieldLabel}>Prix cible ({currencySymbol()}) *</label>
-              <input type="number" step="0.01" value={targetPrice} onChange={e => setTargetPrice(e.target.value)}
-                style={fieldInput} />
-            </div>
-            <div>
-              <label style={fieldLabel}>Marge cible (%)</label>
-              <input type="number" step="0.1" value={targetMargin} onChange={e => setTargetMargin(e.target.value)}
-                style={fieldInput} />
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+            <FormField label={`Coût estimé (${currencySymbol()})`} htmlFor="pp-cost" required>
+              <input id="pp-cost" type="number" step="0.01" value={estimatedCost} onChange={e => setEstimatedCost(e.target.value)} className="ds-input" />
+            </FormField>
+            <FormField label={`Prix cible (${currencySymbol()})`} htmlFor="pp-price" required>
+              <input id="pp-price" type="number" step="0.01" value={targetPrice} onChange={e => setTargetPrice(e.target.value)} className="ds-input" />
+            </FormField>
+            <FormField label="Marge cible (%)" htmlFor="pp-margin">
+              <input id="pp-margin" type="number" step="0.1" value={targetMargin} onChange={e => setTargetMargin(e.target.value)} className="ds-input" />
+            </FormField>
           </div>
-          <div>
-            <label style={fieldLabel}>Notes</label>
-            <textarea value={costNotes} onChange={e => setCostNotes(e.target.value)} rows={2}
-              style={fieldInput} />
-          </div>
-          <button
+          <FormField label="Notes" htmlFor="pp-cost-notes">
+            <textarea id="pp-cost-notes" value={costNotes} onChange={e => setCostNotes(e.target.value)} rows={2} className="ds-input" />
+          </FormField>
+          <button type="button"
             onClick={() => updateMutation.mutate({
               estimatedCost: parseFloat(estimatedCost) || undefined,
               targetPrice: parseFloat(targetPrice) || undefined,
@@ -758,34 +741,25 @@ function TestStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label style={fieldLabel}>Date de test *</label>
-          <input type="date" value={testDate} onChange={e => setTestDate(e.target.value)}
-            style={fieldInput} />
-        </div>
-        <div>
-          <label style={fieldLabel}>Quantité testée *</label>
-          <input type="number" step="0.01" value={testQuantity} onChange={e => setTestQuantity(e.target.value)}
-            style={fieldInput} />
-        </div>
-        <div>
-          <label style={fieldLabel}>Rendement obtenu</label>
-          <input type="number" step="0.01" value={testYield} onChange={e => setTestYield(e.target.value)}
-            style={fieldInput} />
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+        <FormField label="Date de test" htmlFor="pp-test-date" required>
+          <input id="pp-test-date" type="date" value={testDate} onChange={e => setTestDate(e.target.value)} className="ds-input" />
+        </FormField>
+        <FormField label="Quantité testée" htmlFor="pp-test-qty" required>
+          <input id="pp-test-qty" type="number" step="0.01" value={testQuantity} onChange={e => setTestQuantity(e.target.value)} className="ds-input" />
+        </FormField>
+        <FormField label="Rendement obtenu" htmlFor="pp-test-yield">
+          <input id="pp-test-yield" type="number" step="0.01" value={testYield} onChange={e => setTestYield(e.target.value)} className="ds-input" />
+        </FormField>
       </div>
-      <div>
-        <label style={fieldLabel}>Observations *</label>
-        <textarea value={testObservations} onChange={e => setTestObservations(e.target.value)} rows={3}
-          style={fieldInput} />
-      </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={recipeRevised} onChange={e => setRecipeRevised(e.target.checked)}
-          className="rounded border-gray-300" />
+      <FormField label="Observations" htmlFor="pp-test-obs" required>
+        <textarea id="pp-test-obs" value={testObservations} onChange={e => setTestObservations(e.target.value)} rows={3} className="ds-input" />
+      </FormField>
+      <label htmlFor="pp-test-revised" className="flex items-center gap-2 text-sm">
+        <input id="pp-test-revised" type="checkbox" checked={recipeRevised} onChange={e => setRecipeRevised(e.target.checked)} />
         Recette révisée suite au test
       </label>
-      <button
+      <button type="button"
         onClick={() => updateMutation.mutate({
           testDate: testDate || undefined,
           testQuantity: parseFloat(testQuantity) || undefined,
@@ -841,9 +815,9 @@ function TastingStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline
             <p className="text-xs text-gray-500 font-medium">{c.label}</p>
             {editable ? (
               <input
-                type="number" min="0" max="10" step="0.5"
+                type="number" min="0" max="10" step="0.5" aria-label={`Note ${c.label} sur 10`}
                 value={c.value || ''} onChange={e => c.setter(parseFloat(e.target.value) || 0)}
-                style={{ ...fieldInput, width: 64, margin: '4px auto 0', textAlign: 'center', fontSize: '1.125rem', fontWeight: 700 }}
+                className="ds-input" style={{ width: 72, margin: '4px auto 0', textAlign: 'center', fontSize: '1.125rem', fontWeight: 700 }}
               />
             ) : (
               <p className="text-xl font-bold text-gray-900 mt-1">{c.value || '—'}</p>
@@ -867,17 +841,13 @@ function TastingStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline
 
       {editable && (
         <>
-          <div>
-            <label style={fieldLabel}>Date de dégustation</label>
-            <input type="date" value={tastingDate} onChange={e => setTastingDate(e.target.value)}
-              style={fieldInput} />
-          </div>
-          <div>
-            <label style={fieldLabel}>Commentaires</label>
-            <textarea value={comments} onChange={e => setComments(e.target.value)} rows={2}
-              style={fieldInput} />
-          </div>
-          <button
+          <FormField label="Date de dégustation" htmlFor="pp-tasting-date">
+            <input id="pp-tasting-date" type="date" value={tastingDate} onChange={e => setTastingDate(e.target.value)} className="ds-input" />
+          </FormField>
+          <FormField label="Commentaires" htmlFor="pp-tasting-comments">
+            <textarea id="pp-tasting-comments" value={comments} onChange={e => setComments(e.target.value)} rows={2} className="ds-input" />
+          </FormField>
+          <button type="button"
             onClick={() => updateMutation.mutate({
               tastingDate: tastingDate || undefined,
               tastingScores: { visual, taste, texture, originality, overall },
@@ -985,12 +955,11 @@ function AdminDecisionPanel({ pipelineId, onDecided }: { pipelineId: string; onD
 
   return (
     <div className="space-y-3">
-      <div>
-        <label style={fieldLabel}>Commentaires de décision</label>
-        <textarea value={comments} onChange={e => setComments(e.target.value)} rows={2}
-          style={fieldInput}
+      <FormField label="Commentaires de décision" htmlFor="pp-decision-comments">
+        <textarea id="pp-decision-comments" value={comments} onChange={e => setComments(e.target.value)} rows={2}
+          className="ds-input"
           placeholder="Motif de la décision..." />
-      </div>
+      </FormField>
       <div className="grid grid-cols-3 gap-2">
         <button
           onClick={() => decisionMutation.mutate({ decision: 'approved', comments })}
@@ -1054,89 +1023,58 @@ function CreatePipelineModal({ onClose, onCreated }: { onClose: () => void; onCr
     onError: (err: unknown) => setMsg({ type: 'error', text: getErrorMsg(err) }),
   });
 
+  const dirty = !!(name || description || categoryId || responsibleUserId || targetDate);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }}>
-      <div className="odoo-scope" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <GitBranch size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Pipeline</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">Nouveau</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
-        </div>
-
-        <div style={{ padding: 16, display: 'grid', gap: 12 }}>
-          <div>
-            <label style={fieldLabel}>Nom du produit *</label>
-            <input value={name} onChange={e => setName(e.target.value)}
-              style={fieldInput}
-              placeholder="Ex: Croissant aux amandes" />
-          </div>
-
-          <div>
-            <label style={fieldLabel}>Description</label>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
-              style={fieldInput}
-              placeholder="Description du nouveau produit..." />
-          </div>
-
-          <div>
-            <label style={fieldLabel}>Catégorie *</label>
-            <SearchSelect
-              ariaLabel="Catégorie"
-              placeholder="Choisir une catégorie..."
-              width="100%"
-              size="md"
-              value={categoryId}
-              onChange={setCategoryId}
-              options={(categories as Pipeline[]).map(c => ({ id: String(c.id), label: String(c.name) }))}
-            />
-          </div>
-
-          <div>
-            <label style={fieldLabel}>Responsable *</label>
-            <SearchSelect
-              ariaLabel="Responsable"
-              placeholder="Choisir un responsable..."
-              width="100%"
-              size="md"
-              value={responsibleUserId}
-              onChange={setResponsibleUserId}
-              options={users.filter(u => ['baker', 'pastry_chef', 'viennoiserie'].includes(String(u.role))).map(u => ({
-                id: String(u.id),
-                label: `${String(u.firstName || u.first_name)} ${String(u.lastName || u.last_name)}`.trim(),
-              }))}
-            />
-          </div>
-
-          <div>
-            <label style={fieldLabel}>Date cible</label>
-            <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)}
-              style={fieldInput} />
-          </div>
-        </div>
-
-        <div style={{ padding: '0 16px' }}><InlineMsg msg={msg} /></div>
-        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button
-            onClick={() => createMutation.mutate({
-              name,
-              description: description || undefined,
-              categoryId: categoryId ? parseInt(categoryId) : undefined,
-              responsibleUserId: responsibleUserId || undefined,
-              targetDate: targetDate || undefined,
-            })}
-            disabled={!name || !categoryId || !responsibleUserId || createMutation.isPending}
-            className="odoo-btn-primary"
-          >
-            Créer le pipeline
-          </button>
-        </div>
-      </div>
-    </div>
+    <Modal title="Nouveau pipeline" subtitle="Pipeline produit" onClose={onClose} width={512} locked={createMutation.isPending}
+      footer={<FormFooter dirty={dirty} onCancel={onClose} submitLabel="Créer le pipeline" busy={createMutation.isPending}
+        disabled={!name || !categoryId || !responsibleUserId}
+        onSubmit={() => createMutation.mutate({
+          name,
+          description: description || undefined,
+          categoryId: categoryId ? parseInt(categoryId) : undefined,
+          responsibleUserId: responsibleUserId || undefined,
+          targetDate: targetDate || undefined,
+        })} />}>
+      <FormSection title="Produit">
+        <FormField label="Nom du produit" htmlFor="pp-new-name" required>
+          <input id="pp-new-name" value={name} onChange={e => setName(e.target.value)} className="ds-input" placeholder="Ex: Croissant aux amandes" />
+        </FormField>
+        <FormField label="Description" htmlFor="pp-new-desc">
+          <textarea id="pp-new-desc" value={description} onChange={e => setDescription(e.target.value)} rows={2} className="ds-input" placeholder="Description du nouveau produit..." />
+        </FormField>
+        <FormField label="Catégorie" required>
+          <SearchSelect
+            ariaLabel="Catégorie"
+            placeholder="Choisir une catégorie..."
+            width="100%"
+            size="md"
+            value={categoryId}
+            onChange={setCategoryId}
+            options={(categories as Pipeline[]).map(c => ({ id: String(c.id), label: String(c.name) }))}
+          />
+        </FormField>
+      </FormSection>
+      <FormSection title="Suivi">
+        <FormField label="Responsable" required>
+          <SearchSelect
+            ariaLabel="Responsable"
+            placeholder="Choisir un responsable..."
+            width="100%"
+            size="md"
+            value={responsibleUserId}
+            onChange={setResponsibleUserId}
+            options={users.filter(u => ['baker', 'pastry_chef', 'viennoiserie'].includes(String(u.role))).map(u => ({
+              id: String(u.id),
+              label: `${String(u.firstName || u.first_name)} ${String(u.lastName || u.last_name)}`.trim(),
+            }))}
+          />
+        </FormField>
+        <FormField label="Date cible" htmlFor="pp-new-target">
+          <input id="pp-new-target" type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} className="ds-input" />
+        </FormField>
+      </FormSection>
+      <InlineMsg msg={msg} />
+    </Modal>
   );
 }

@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, PackageOpen, Undo2, Trash2, X, AlertTriangle } from 'lucide-react';
+import { Loader2, PackageOpen, Undo2, Trash2, AlertTriangle } from 'lucide-react';
 import { ingredientLotsApi, type LotMovementType } from '../../api/inventory.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { money } from '../../utils/money';
-import { Alert } from '../../components/ds';
+import { Alert, FormField, Modal } from '../../components/ds';
 
 /** Ce que la modale a besoin de connaitre d'un lot, quel que soit l'ecran d'origine. */
 export interface LotMovementLot {
@@ -118,21 +118,19 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
   const lostValue = type === 'losses' && lot.unit_cost ? (scelle + entame) * lot.unit_cost : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
-      onClick={(e) => e.stopPropagation()}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: meta.danger ? 'var(--ds-danger-bg)' : 'var(--ds-bg)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Icon size={16} aria-hidden="true" style={{ color: meta.danger ? 'var(--ds-danger)' : 'var(--theme-accent)' }} />
-          <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: meta.danger ? 'var(--ds-danger)' : 'var(--theme-text-strong)' }}>{meta.title}</h2>
-            <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
-              {lot.ingredient_name}{lot.lot_number ? ` · lot ${lot.lot_number}` : ''}
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} /></button>
+    <Modal title={meta.title} subtitle={<>{lot.ingredient_name}{lot.lot_number ? ` · lot ${lot.lot_number}` : ''}</>}
+      onClose={onClose} locked={mutation.isPending} width={500}
+      footer={
+        <div className="ds-form-foot">
+          <span className="ds-grow" />
+          <button type="button" onClick={onClose} disabled={mutation.isPending} className="odoo-btn-secondary">Annuler</button>
+          <button type="button" onClick={() => mutation.mutate()} disabled={!canSubmit || mutation.isPending} aria-busy={mutation.isPending || undefined}
+            className={meta.danger ? 'ds-btn-danger solid' : 'odoo-btn-primary'}>
+            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />} {meta.label}
+          </button>
         </div>
-
-        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: 'var(--ds-card)' }}>
+      }>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
           {!lockType && available.length > 1 && (
             <div className="odoo-view-switcher" style={{ display: 'flex', width: '100%' }}>
               {available.map(t => (
@@ -151,27 +149,20 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
           </div>
 
           {type !== 'losses' && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 4 }}>
-                {type === 'open' ? 'Quantité à ouvrir' : type === 'return' ? 'Quantité remise en réserve' : 'Quantité perdue'}
-                <span style={{ fontWeight: 400 }}> (max {fmt(zoneQty)} {lot.unit})</span>
-              </label>
+            <FormField htmlFor="lot-move-qty" required
+              label={<>{type === 'open' ? 'Quantité à ouvrir' : type === 'return' ? 'Quantité remise en réserve' : 'Quantité perdue'}<span style={{ fontWeight: 400 }}> (max {fmt(zoneQty)} {lot.unit})</span></>}
+              error={!qtyOk && quantity ? `Quantité invalide ou supérieure au disponible (${fmt(zoneQty)} ${lot.unit}).` : undefined}
+              hint={containerSize > 0 && Number.isFinite(qty) && qty > 0
+                ? `Contenant entier : ${containerCount} × ${fmt(containerSize)} ${lot.unit}${lot.container_type_label ? ` (${lot.container_type_label})` : ''}, la quantité sera arrondie au contenant.`
+                : undefined}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input type="text" inputMode="decimal" value={quantity} autoFocus
+                <input id="lot-move-qty" type="text" inputMode="decimal" value={quantity} autoFocus
                   onChange={(e) => setQuantity(e.target.value.replace(/[^0-9.,]/g, ''))}
                   className="ds-input ds-num" style={{ flex: 1 }} aria-invalid={!qtyOk && !!quantity || undefined} />
                 <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{lot.unit}</span>
                 <button type="button" className="odoo-btn-secondary" onClick={() => setQuantity(fmt(zoneQty))}>Tout</button>
               </div>
-              {containerSize > 0 && Number.isFinite(qty) && qty > 0 && (
-                <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 4 }}>
-                  Contenant entier : {containerCount} × {fmt(containerSize)} {lot.unit}{lot.container_type_label ? ` (${lot.container_type_label})` : ''}, la quantité sera arrondie au contenant.
-                </p>
-              )}
-              {!qtyOk && quantity && (
-                <p role="alert" style={{ fontSize: 12, fontWeight: 600, color: 'var(--ds-danger)', marginTop: 4 }}>Quantité invalide ou supérieure au disponible ({fmt(zoneQty)} {lot.unit}).</p>
-              )}
-            </div>
+            </FormField>
           )}
 
           {type === 'losses' ? (
@@ -193,9 +184,9 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
                   ))}
                 </div>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 4 }}>Note (facultatif)</label>
-                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="ds-input" placeholder="Détails additionnels…" />
+              <div className="ds-field">
+                <label htmlFor="lot-move-note">Note (facultatif)</label>
+                <textarea id="lot-move-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="ds-input" placeholder="Détails additionnels…" />
               </div>
               <Alert tone="danger" icon={AlertTriangle}>
                 Action irréversible — {fmt(scelle + entame)} {lot.unit} retirés du stock
@@ -222,23 +213,15 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
                   </div>
                 </>
               )}
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 4 }}>
+              <label htmlFor="lot-move-reason" className="ds-field-label" style={{ display: 'block', marginBottom: 6 }}>
                 {type === 'waste' ? (wasteCode === 'autre' ? 'Précision (obligatoire)' : 'Précision (facultatif)') : 'Note (facultatif)'}
               </label>
-              <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} className="ds-input" style={{ borderColor: type === 'waste' && !reasonOk ? 'var(--ds-warning)' : undefined }}
+              <input id="lot-move-reason" type="text" value={reason} onChange={(e) => setReason(e.target.value)} className="ds-input" style={{ borderColor: type === 'waste' && !reasonOk ? 'var(--ds-warning)' : undefined }}
                 placeholder={type === 'waste' ? 'Ex : sac percé à la livraison' : type === 'open' ? 'Ex : pré-ouverture du matin' : 'Ex : reliquat refermé'} />
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
-            <button type="button" onClick={onClose} disabled={mutation.isPending} className="odoo-btn-secondary">Annuler</button>
-            <button type="button" onClick={() => mutation.mutate()} disabled={!canSubmit || mutation.isPending} aria-busy={mutation.isPending || undefined}
-              className={meta.danger ? 'ds-btn-danger' : 'odoo-btn-primary'}>
-              {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />} {meta.label}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

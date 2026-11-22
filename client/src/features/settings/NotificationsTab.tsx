@@ -1,7 +1,7 @@
 import { FilterChips } from '../sales/ListTemplate';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Loader2, Mail, HelpCircle, Plus, X } from 'lucide-react';
+import { Bell, Mail, HelpCircle, Plus, X } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import { settingsApi, type NotificationRule } from '../../api/settings.api';
 import { rolesApi } from '../../api/users.api';
@@ -9,6 +9,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { OdooToggle, settingAnchor } from './SettingsPrimitives';
+import { LoadingState } from '../../components/ds';
 
 /**
  * Règles de notification (audit Paramètres, lot 6, mig 332) : par événement,
@@ -59,7 +60,7 @@ export default function NotificationsTab() {
     return [...m.entries()];
   }, [rules]);
 
-  if (isLoading) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading) return <LoadingState />;
   if (!rules.length) return <StatusBanner tone="warning" icon={Bell} title="Règles indisponibles">La migration 332 n'est pas appliquée sur cette base.</StatusBanner>;
 
   const active = rules.filter(r => r.enabled).length;

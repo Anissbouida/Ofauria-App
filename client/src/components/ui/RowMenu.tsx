@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { ChevronDown, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import './row-menu.css';
 
 export interface RowMenuItem {
@@ -17,7 +17,11 @@ export interface RowMenuItem {
  * La liste est en position fixe (calculée à l'ouverture) pour ne pas être rognée par un
  * tableau qui défile, et s'ouvre vers le haut près du bas de l'écran.
  */
-export function RowMenu({ items, label = 'Plus d\'actions' }: { items: RowMenuItem[]; label?: string }) {
+export function RowMenu({ items, label = 'Plus d\'actions', trigger }: {
+  items: RowMenuItem[]; label?: string;
+  /** Bouton à menu libellé (« Imprimer les bons ▾ ») au lieu de l'icône « ⋯ ». */
+  trigger?: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
   const ref = useRef<HTMLDivElement>(null);
@@ -41,14 +45,15 @@ export function RowMenu({ items, label = 'Plus d\'actions' }: { items: RowMenuIt
   if (!visible.length) return null;
   return (
     <div className="row-menu" ref={ref} onClick={e => e.stopPropagation()}>
-      <button type="button" className="row-menu-trigger" aria-label={label} aria-haspopup="menu" aria-expanded={open}
+      <button type="button" className={trigger ? 'odoo-btn-secondary' : 'row-menu-trigger'} aria-label={trigger ? undefined : label}
+        style={trigger ? { display: 'inline-flex', alignItems: 'center', gap: 6 } : undefined} aria-haspopup="menu" aria-expanded={open}
         onClick={e => {
           const r = e.currentTarget.getBoundingClientRect();
           const right = window.innerWidth - r.right;
           setPos(r.bottom + 260 > window.innerHeight ? { bottom: window.innerHeight - r.top + 4, right } : { top: r.bottom + 4, right });
           setOpen(o => !o);
         }}>
-        <MoreHorizontal size={16} />
+        {trigger ? <>{trigger}<ChevronDown size={14} aria-hidden="true" /></> : <MoreHorizontal size={16} />}
       </button>
       {open && (
         <div className="row-menu-list" role="menu" style={pos}>

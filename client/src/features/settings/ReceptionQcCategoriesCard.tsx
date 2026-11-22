@@ -5,7 +5,7 @@ import { PageNote } from './SettingsPrimitives';
 import { expenseCategoriesApi } from '../../api/accounting.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
-import { LoadingState } from '../../components/ds';
+import { DataPanel, EmptyState, LoadingState, SectionHeader } from '../../components/ds';
 
 type Cat = {
   id: string; name: string; parent_name?: string | null;
@@ -20,6 +20,8 @@ type Cat = {
  * On n'affiche que les catégories stockables déjà configurées (au moins une
  * exigence), là où ces drapeaux ont un sens.
  */
+const FIELD_LABEL = { requires_qc: 'Contrôle qualité', requires_dlc: 'DLC', requires_lot: 'Lot' } as const;
+
 export default function ReceptionQcCategoriesCard() {
   const qc = useQueryClient();
   const { data: all = [], isLoading } = useQuery<Cat[]>({
@@ -43,15 +45,12 @@ export default function ReceptionQcCategoriesCard() {
   const Toggle = ({ c, field }: { c: Cat; field: 'requires_qc' | 'requires_dlc' | 'requires_lot' }) => (
     <input type="checkbox" checked={!!c[field]} disabled={update.isPending}
       onChange={e => update.mutate({ id: c.id, patch: { [field]: e.target.checked } })}
-      aria-label={`${field} ${c.name}`} />
+      aria-label={`${FIELD_LABEL[field]} : ${c.name}`} />
   );
 
   return (
-    <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <ShieldCheck size={16} style={{ color: 'var(--theme-accent)' }} />
-        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Exigences de réception par catégorie</div>
-      </div>
+    <section style={{ display: 'grid', gap: 10 }}>
+      <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><ShieldCheck size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} /> Exigences de réception par catégorie</span>} />
       <PageNote help="Contrôle qualité : les lots entrent en quarantaine, indisponibles tant qu'un contrôle réception n'est pas conforme, et le n° de lot fournisseur devient obligatoire. DLC et Lot : exigés à la saisie de la réception.">
         Ce qui est exigé à la réception, par catégorie.
       </PageNote>
@@ -59,9 +58,10 @@ export default function ReceptionQcCategoriesCard() {
       {isLoading ? (
         <LoadingState bare />
       ) : rows.length === 0 ? (
-        <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucune catégorie stockable configurée.</div>
+        <EmptyState icon={ShieldCheck} title="Aucune catégorie stockable configurée" />
       ) : (
-        <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label="Exigences de réception">
+        <table className="odoo-table">
           <thead><tr>
             <th>Catégorie</th>
             <th style={{ textAlign: 'center', width: 110 }}>Contrôle qualité</th>
@@ -71,7 +71,7 @@ export default function ReceptionQcCategoriesCard() {
           <tbody>
             {rows.map(c => (
               <tr key={c.id}>
-                <td>{c.name}{c.parent_name ? <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}> · {c.parent_name}</span> : null}</td>
+                <td><span className="ds-strong">{c.name}</span>{c.parent_name ? <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}> · {c.parent_name}</span> : null}</td>
                 <td style={{ textAlign: 'center' }}><Toggle c={c} field="requires_qc" /></td>
                 <td style={{ textAlign: 'center' }}><Toggle c={c} field="requires_dlc" /></td>
                 <td style={{ textAlign: 'center' }}><Toggle c={c} field="requires_lot" /></td>
@@ -79,7 +79,8 @@ export default function ReceptionQcCategoriesCard() {
             ))}
           </tbody>
         </table>
+        </DataPanel>
       )}
-    </div>
+    </section>
   );
 }

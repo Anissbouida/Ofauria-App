@@ -5,7 +5,8 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { ediApi } from '../../api/ledger.api';
 import type { Liasse, LiasseModel, EdiIssue } from '../../api/ledger.api';
-import { LoadingState } from '../../components/ds';
+import { DataPanel, ErrorState, LoadingState, SectionHeader } from '../../components/ds';
+import { currencySymbol } from '../../utils/money';
 
 /**
  * Télédéclarations EDI (lot Bonus 14) : fichiers à téléverser sur le portail
@@ -20,16 +21,17 @@ const mono = { fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabul
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const MP: Record<number, string> = { 1: 'Espèces', 2: 'Chèque', 3: 'Prélèvement', 4: 'Virement', 5: 'Effet', 6: 'Compensation', 7: 'Autres' };
 
+/** Bloc d'un fichier EDI : SectionHeader (actions à droite), puis notice, anomalies et tableau en DataPanel. */
 function Section({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
-    <div className="odoo-section ds-panel" style={{ padding: 0 }}>
-      <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--ds-hair)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <strong style={{ fontSize: '0.8125rem', flex: 1 }}>{title}</strong>{aside}
-      </div>
-      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>{children}</div>
-    </div>
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }} aria-label={title}>
+      <SectionHeader title={title}>{aside}</SectionHeader>
+      {children}
+    </section>
   );
 }
+const intro = { margin: 0, fontSize: 12, color: 'var(--ds-muted)' } as const;
+const sub = { fontSize: 11, color: 'var(--ds-muted)' } as const;
 
 function Issues({ issues }: { issues: EdiIssue[] }) {
   const errors = issues.filter(i => i.level === 'error'), warnings = issues.filter(i => i.level === 'warning');
@@ -84,16 +86,16 @@ export default function LiasseEdiPanel({ year, model }: { year: number; model: L
 }
 
 function LiasseIs({ year, model }: { year: number; model: LiasseModel }) {
-  const { data: s, isLoading } = useQuery({ queryKey: ['edi-liasse', year, model], queryFn: () => ediApi.liasse(year, model) });
+  const { data: s, isLoading, isError, error, refetch } = useQuery({ queryKey: ['edi-liasse', year, model], queryFn: () => ediApi.liasse(year, model) });
   return (
     <Section title={`Liasse fiscale IS ${year} — modèle ${model === 'simplifie' ? 'simplifié' : 'normal'} (Simpl-IS)`} aside={<Download run={f => ediApi.downloadLiasse(year, model, f)} />}>
-      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p style={intro}>
         Cellules codées selon la codification officielle de la DGI (annexes EDI Simpl-IS 2026). Le modèle suit le sélecteur en haut de la liasse. À déposer avec la déclaration du résultat fiscal, dans les trois mois suivant la clôture.
-      </div>
-      {isLoading || !s ? <LoadingState /> : (
+      </p>
+      {isError ? <ErrorState error={error} title="Le fichier n'a pas pu être préparé" onRetry={() => refetch()} /> : isLoading || !s ? <LoadingState /> : (
         <>
           <Issues issues={s.issues} />
-          <div style={{ overflowX: 'auto' }}>
+          <DataPanel label="Tableaux de la liasse">
             <table className="odoo-table ds-dense">
               <thead>
                 <tr><th style={{ width: 90 }}>Tableau DGI</th><th>Intitulé</th><th className="ds-num">Cellules</th></tr>
@@ -101,16 +103,18 @@ function LiasseIs({ year, model }: { year: number; model: LiasseModel }) {
               <tbody>
                 {s.tables.map(t => (
                   <tr key={t.id}>
-                    <td style={mono}>{t.id}</td><td>{t.label}</td><td className="ds-num">{t.cells}</td>
+                    <td className="ds-ref">{t.id}</td><td>{t.label}</td><td className="ds-num">{t.cells}</td>
                   </tr>
                 ))}
-                <tr style={{ fontWeight: 700, background: 'var(--theme-bg-secondary)' }}>
-                  <td colSpan={2}>Total actif {n(s.totals.actif)} · passif {n(s.totals.passif)} · résultat net {n(s.totals.result)} · résultat fiscal {n(s.totals.taxable_result)}</td>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={2}>Total ({currencySymbol()}) : actif {n(s.totals.actif)} · passif {n(s.totals.passif)} · résultat net {n(s.totals.result)} · résultat fiscal {n(s.totals.taxable_result)}</td>
                   <td className="ds-num">{s.tables.reduce((a, t) => a + t.cells, 0)}</td>
                 </tr>
-              </tbody>
+              </tfoot>
             </table>
-          </div>
+          </DataPanel>
         </>
       )}
     </Section>
@@ -120,7 +124,7 @@ function LiasseIs({ year, model }: { year: number; model: LiasseModel }) {
 function VatDeductions({ year }: { year: number }) {
   const [regime, setRegime] = useState<1 | 2>(1);
   const [period, setPeriod] = useState(1);
-  const { data: s, isLoading } = useQuery({ queryKey: ['edi-tva', year, regime, period], queryFn: () => ediApi.vatDeductions(year, period, regime) });
+  const { data: s, isLoading, isError, error, refetch } = useQuery({ queryKey: ['edi-tva', year, regime, period], queryFn: () => ediApi.vatDeductions(year, period, regime) });
   return (
     <Section title="Relevé des déductions de TVA (Simpl-TVA)" aside={
       <>
@@ -133,19 +137,19 @@ function VatDeductions({ year }: { year: number }) {
         <Download disabled={!s?.lines.length} run={f => ediApi.downloadVatDeductions(year, period, regime, f)} />
       </>
     }>
-      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p style={intro}>
         Factures fournisseurs dont le droit à déduction est né sur la période (date du règlement qui les solde). Créez d'abord le brouillon de la déclaration de la période sur Simpl-TVA : sans lui, le fichier est rejeté.
-      </div>
-      {isLoading || !s ? <LoadingState /> : (
+      </p>
+      {isError ? <ErrorState error={error} title="Le fichier n'a pas pu être préparé" onRetry={() => refetch()} /> : isLoading || !s ? <LoadingState /> : (
         <>
           <Issues issues={s.issues} />
           {s.lines.length > 0 && (
-            <div style={{ overflowX: 'auto' }}>
+            <DataPanel label="Relevé des déductions">
               <table className="odoo-table ds-dense">
                 <thead>
                   <tr>
                     <th>N°</th><th>Facture</th><th>Fournisseur</th><th className="ds-num">Taux</th>
-                    <th className="ds-num">HT</th><th className="ds-num">TVA</th><th className="ds-num">TTC</th>
+                    <th className="ds-num">HT ({currencySymbol()})</th><th className="ds-num">TVA ({currencySymbol()})</th><th className="ds-num">TTC ({currencySymbol()})</th>
                     <th>Paiement</th>
                   </tr>
                 </thead>
@@ -153,27 +157,29 @@ function VatDeductions({ year }: { year: number }) {
                   {s.lines.map(l => (
                     <tr key={`${l.ord}`}>
                       <td style={mono}>{l.ord}</td>
-                      <td><span style={mono}>{l.num}</span><div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>du {fmtDate(l.dfac)}</div></td>
-                      <td>{l.supplier}<div style={{ fontSize: '0.6875rem', color: l.if || l.ice ? 'var(--theme-text-muted)' : 'var(--ds-danger)', ...mono }}>
+                      <td><span className="ds-ref">{l.num}</span><div style={sub}>du {fmtDate(l.dfac)}</div></td>
+                      <td><span className="ds-strong">{l.supplier}</span><div style={{ fontSize: 11, color: l.if || l.ice ? 'var(--ds-muted)' : 'var(--ds-danger)', ...mono }}>
                         {l.if || l.ice ? [l.if && `IF ${l.if}`, l.ice && `ICE ${l.ice}`].filter(Boolean).join(' · ') : 'ni IF ni ICE'}
                       </div></td>
                       <td className="ds-num">{l.tx} %</td>
                       <td className="ds-num">{n(l.mht)}</td>
                       <td className="ds-num">{n(l.tva)}</td>
                       <td className="ds-num">{n(l.ttc)}</td>
-                      <td>{MP[l.mp]}<div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>le {fmtDate(l.dpai)}</div></td>
+                      <td>{MP[l.mp]}<div style={sub}>le {fmtDate(l.dpai)}</div></td>
                     </tr>
                   ))}
-                  <tr style={{ fontWeight: 700, background: 'var(--theme-bg-secondary)' }}>
+                </tbody>
+                <tfoot>
+                  <tr>
                     <td colSpan={4}>Total ({s.lines.length} ligne{s.lines.length > 1 ? 's' : ''})</td>
                     <td className="ds-num">{n(s.totals.ht)}</td>
                     <td className="ds-num">{n(s.totals.tva)}</td>
                     <td className="ds-num">{n(s.totals.ttc)}</td>
                     <td />
                   </tr>
-                </tbody>
+                </tfoot>
               </table>
-            </div>
+            </DataPanel>
           )}
         </>
       )}
@@ -182,50 +188,52 @@ function VatDeductions({ year }: { year: number }) {
 }
 
 function Ir9421({ year }: { year: number }) {
-  const { data: s, isLoading } = useQuery({ queryKey: ['edi-9421', year], queryFn: () => ediApi.ir9421(year) });
+  const { data: s, isLoading, isError, error, refetch } = useQuery({ queryKey: ['edi-9421', year], queryFn: () => ediApi.ir9421(year) });
   return (
     <Section title={`État 9421 — traitements et salaires ${year} (Simpl-IR)`} aside={<Download disabled={!s?.staff.length} run={f => ediApi.download9421(year, f)} />}>
-      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p style={intro}>
         Déclaration annuelle des salaires versés et de l'IR retenu, à déposer avant fin février {year + 1}. Montants repris des bulletins déclarés de l'exercice.
-      </div>
-      {isLoading || !s ? <LoadingState /> : (
+      </p>
+      {isError ? <ErrorState error={error} title="Le fichier n'a pas pu être préparé" onRetry={() => refetch()} /> : isLoading || !s ? <LoadingState /> : (
         <>
           <Issues issues={s.issues} />
           {s.staff.length > 0 && (
-            <div style={{ overflowX: 'auto' }}>
+            <DataPanel label="État 9421">
               <table className="odoo-table ds-dense">
                 <thead>
                   <tr>
-                    <th>Salarié</th><th className="ds-num">Jours</th><th className="ds-num">Brut</th>
-                    <th className="ds-num">Brut imposable</th><th className="ds-num">Déductions</th>
-                    <th className="ds-num">Net imposable</th><th className="ds-num">IR retenu</th><th>Situation</th>
+                    <th>Salarié</th><th className="ds-num">Jours</th><th className="ds-num">Brut ({currencySymbol()})</th>
+                    <th className="ds-num">Brut imposable ({currencySymbol()})</th><th className="ds-num">Déductions ({currencySymbol()})</th>
+                    <th className="ds-num">Net imposable ({currencySymbol()})</th><th className="ds-num">IR retenu ({currencySymbol()})</th><th>Situation</th>
                   </tr>
                 </thead>
                 <tbody>
                   {s.staff.map(e => (
                     <tr key={e.name + (e.cin ?? '')}>
-                      <td>{e.name}<div style={{ fontSize: '0.6875rem', color: e.cin ? 'var(--theme-text-muted)' : 'var(--ds-danger)', ...mono }}>{e.cin ? `CIN ${e.cin}` : 'CIN manquant'}</div></td>
+                      <td><span className="ds-strong">{e.name}</span><div style={{ fontSize: 11, color: e.cin ? 'var(--ds-muted)' : 'var(--ds-danger)', ...mono }}>{e.cin ? `CIN ${e.cin}` : 'CIN manquant'}</div></td>
                       <td className="ds-num">{e.days}</td>
                       <td className="ds-num">{n(e.brut)}</td>
                       <td className="ds-num">{n(e.brutImposable)}</td>
                       <td className="ds-num">{n(e.fraisPro + e.cotisations)}</td>
                       <td className="ds-num">{n(e.netImposable)}</td>
                       <td className="ds-num">{n(e.ir)}</td>
-                      <td style={{ fontSize: '0.75rem' }}>{e.situation === 'M' ? 'Marié(e)' : 'Célibataire'}, {e.dependents} à charge<div style={{ color: 'var(--theme-text-muted)', ...mono }}>{e.rate}</div></td>
+                      <td>{e.situation === 'M' ? 'Marié(e)' : 'Célibataire'}, {e.dependents} à charge<div style={{ ...sub, ...mono }}>{e.rate}</div></td>
                     </tr>
                   ))}
-                  <tr style={{ fontWeight: 700, background: 'var(--theme-bg-secondary)' }}>
+                </tbody>
+                <tfoot>
+                  <tr>
                     <td colSpan={2}>Total ({s.staff.length} salarié{s.staff.length > 1 ? 's' : ''})</td>
                     <td className="ds-num">{n(s.totals.brut)}</td>
                     <td className="ds-num">{n(s.totals.brutImposable)}</td>
                     <td className="ds-num">{n(s.totals.deductions)}</td>
                     <td className="ds-num">{n(s.totals.netImposable)}</td>
                     <td className="ds-num">{n(s.totals.ir)}</td>
-                    <td style={{ fontSize: '0.75rem' }}>versé {n(s.totals.versements)}</td>
+                    <td>versé {n(s.totals.versements)}</td>
                   </tr>
-                </tbody>
+                </tfoot>
               </table>
-            </div>
+            </DataPanel>
           )}
         </>
       )}

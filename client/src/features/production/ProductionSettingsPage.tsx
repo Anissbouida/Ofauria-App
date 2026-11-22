@@ -38,7 +38,7 @@ function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: bool
 
 export default function ProductionSettingsPage() {
   const qc = useQueryClient();
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['production-settings'], queryFn: productionApi.getSettings });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['production-settings'], queryFn: productionApi.getSettings });
 
   const [form, setForm] = useState<{ chargesFixesPct: string; overproductionPct: string; markupPercent: string; stepsEnabled: boolean; stepsBlocking: boolean; yieldEnabled: boolean; costEnabled: boolean } | null>(null);
   useEffect(() => {
@@ -75,7 +75,7 @@ export default function ProductionSettingsPage() {
 
   const general = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {isError ? <ErrorState title="Les réglages n'ont pas pu être chargés" onRetry={() => refetch()} /> : (isLoading || !form) && <LoadingState />}
+      {isError ? <ErrorState error={error} title="Les réglages n'ont pas pu être chargés" onRetry={() => refetch()} /> : (isLoading || !form) && <LoadingState />}
 
       {form && (
         <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 20 }}>

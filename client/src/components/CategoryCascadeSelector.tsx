@@ -56,6 +56,8 @@ interface CascadeSelectorProps {
   disabled?: boolean;
   /** Restreint les categories de niveau 1 a ces IDs (ex: branches stockables de l'economat) */
   rootIds?: string[];
+  /** Identifiant du premier niveau, pour le relier à son libellé (FormField htmlFor). */
+  id?: string;
 }
 
 /**
@@ -70,6 +72,7 @@ export default function CategoryCascadeSelector({
   className = '',
   disabled = false,
   rootIds,
+  id,
 }: CascadeSelectorProps) {
   const { data: allCategories = [] } = useQuery({
     queryKey: [type === 'expense' ? 'expense-categories' : 'revenue-categories'],
@@ -150,7 +153,8 @@ export default function CategoryCascadeSelector({
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Categorie *</label>
         <SearchSelect
-          ariaLabel="Categorie"
+          ariaLabel="Catégorie"
+          id={id}
           placeholder="Choisir une categorie..."
           width="100%"
           size="md"
@@ -173,7 +177,7 @@ export default function CategoryCascadeSelector({
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Sous-categorie</label>
           <SearchSelect
-            ariaLabel="Sous-categorie"
+            ariaLabel="Sous-catégorie"
             placeholder="Toutes les sous-categories"
             width="100%"
             size="md"

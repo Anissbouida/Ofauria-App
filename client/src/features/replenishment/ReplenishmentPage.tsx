@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { DataPanel, EmptyState, LoadingState, NoResultState, TableFooter } from '../../components/ds';
+import { Alert, DataPanel, EmptyState, FormField, FormFooter, FormSection, LoadingState, Modal, NoResultState, SearchBar, Segmented, TableFooter } from '../../components/ds';
 
 const STORE_ROLES = ['cashier', 'saleswoman'];
 
@@ -434,78 +434,62 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        {/* Control bar */}
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Package size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Demandes boutique</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">Nouvelle demande</span>
-          </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-            {hasHistory ? `Suggestions pour ${getTargetDayName()} basées sur l'historique du même jour (+10%)` : 'Aucun historique — saisie manuelle'}
+    <Modal
+      title="Nouvelle demande"
+      subtitle={<>Demandes boutique · {hasHistory ? `Suggestions pour ${getTargetDayName()} basées sur l'historique du même jour (+10%)` : 'Aucun historique — saisie manuelle'}</>}
+      onClose={onClose}
+      locked={createMutation.isPending || submitting}
+      width={1280}
+      footer={
+        <FormFooter onCancel={onClose} onSubmit={handleSubmit} busy={createMutation.isPending || submitting} disabled={!totalSelected}
+          submitLabel={createMutation.isPending || submitting ? 'Vérification...' : validationDone ? 'Confirmer l\'envoi' : 'Envoyer la demande'}>
+          <span style={{ fontSize: 14, color: 'var(--ds-ink)' }}>
+            {totalSelected > 0 ? (
+              <><strong>{totalSelected}</strong> produit{totalSelected > 1 ? 's' : ''} — <strong>{totalQty}</strong> unités</>
+            ) : 'Aucun produit sélectionné'}
           </span>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer">&times;</button>
-        </div>
-
-        {/* Per-item warnings are shown inline below each product */}
-
+          {totalSelected > 0 && (
+            <button type="button" onClick={() => setSelected({})} className="ds-btn-ghost ds-btn-sm">Tout vider</button>
+          )}
+        </FormFooter>
+      }
+    >
         {/* Blocked items warning */}
         {blockedItems.length > 0 && (
-          <div className="px-6 py-4 bg-amber-50 border-b border-amber-200 shrink-0">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-                <AlertTriangle size={18} className="text-amber-600" />
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-amber-800 text-sm">Attention : {blockedItems.length} article(s) avec du stock non vendu</p>
-                <p className="text-xs text-amber-600 mt-1">Ces articles ont encore du stock depuis le dernier approvisionnement. Vous pouvez quand même les envoyer si nécessaire.</p>
-                <div className="mt-2 space-y-1 max-h-24 overflow-y-auto">
-                  {blockedItems.map(bi => (
-                    <p key={bi.productId} className="text-xs text-amber-700 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                      {bi.productName} — {bi.unsoldQty} unité(s) restante(s)
-                    </p>
-                  ))}
-                </div>
-                <p className="text-xs text-amber-700 font-medium mt-2">Cliquez sur « Confirmer l'envoi » pour continuer malgré tout.</p>
-              </div>
-            </div>
+          <div style={{ marginBottom: 12 }}>
+            <Alert tone="warning" icon={AlertTriangle}>
+              <strong>Attention : {blockedItems.length} article(s) avec du stock non vendu</strong>
+              <div style={{ fontSize: 12, marginTop: 4 }}>Ces articles ont encore du stock depuis le dernier approvisionnement. Vous pouvez quand même les envoyer si nécessaire.</div>
+              <ul style={{ marginTop: 6, maxHeight: 96, overflowY: 'auto', fontSize: 12 }}>
+                {blockedItems.map(bi => (
+                  <li key={bi.productId}>{bi.productName} — {bi.unsoldQty} unité(s) restante(s)</li>
+                ))}
+              </ul>
+              <div style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>Cliquez sur « Confirmer l'envoi » pour continuer malgré tout.</div>
+            </Alert>
           </div>
         )}
 
-        {/* Toolbar */}
-        <div className="px-6 py-3 border-b bg-white shrink-0">
-          <div className="flex items-center gap-3">
-            <select value={priority} onChange={e => setPriority(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-36">
-              <option value="normal">Normale</option>
-              <option value="high">Haute</option>
-              <option value="urgent">Urgente</option>
-            </select>
-            <div className="relative flex-1">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Rechercher un produit..." className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              {search && <button type="button" aria-label="Effacer la recherche" onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
-            </div>
-            <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
-              placeholder="Notes (optionnel)" className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-56" />
-            {/* Mode tabs */}
-            <div className="flex bg-gray-100 rounded-xl p-1">
-              <button onClick={() => setMode('suggestions')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${mode === 'suggestions' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500'}`}>
-                <Lightbulb size={13} /> Suggestions
-              </button>
-              <button onClick={() => setMode('catalog')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${mode === 'catalog' ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500'}`}>
-                <ShoppingBag size={13} /> Catalogue
-              </button>
-            </div>
+        <FormSection title="Demande">
+          <div style={{ display: 'grid', gridTemplateColumns: '160px minmax(0, 1fr)', gap: 12 }}>
+            <FormField label="Priorité" htmlFor="repl-priority">
+              <select id="repl-priority" className="ds-input" value={priority} onChange={e => setPriority(e.target.value)}>
+                <option value="normal">Normale</option>
+                <option value="high">Haute</option>
+                <option value="urgent">Urgente</option>
+              </select>
+            </FormField>
+            <FormField label="Notes (optionnel)" htmlFor="repl-notes">
+              <input id="repl-notes" type="text" className="ds-input" value={notes} onChange={e => setNotes(e.target.value)} />
+            </FormField>
           </div>
+        </FormSection>
+
+        <div className="prj-toolbar" style={{ marginTop: 12 }}>
+          <SearchBar value={search} onChange={setSearch} placeholder="Rechercher un produit..." />
+          <span className="ds-grow" />
+          <Segmented label="Mode de saisie" value={mode} onChange={setMode}
+            options={[{ key: 'suggestions', label: 'Suggestions', icon: Lightbulb }, { key: 'catalog', label: 'Catalogue', icon: ShoppingBag }]} />
         </div>
 
         {/* ══════ SUGGESTIONS ══════ */}
@@ -704,32 +688,6 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
           </div>
         )}
 
-        {/* Footer */}
-        <div className="border-t bg-white px-6 py-3.5 shrink-0 sm:rounded-b-2xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium text-gray-700">
-                {totalSelected > 0 ? (
-                  <><strong className="text-indigo-600">{totalSelected}</strong> produit{totalSelected > 1 ? 's' : ''} — <strong className="text-indigo-600">{totalQty}</strong> unités</>
-                ) : 'Aucun produit sélectionné'}
-              </span>
-              {totalSelected > 0 && (
-                <button onClick={() => setSelected({})} className="text-xs text-red-500 hover:text-red-700 font-medium hover:bg-red-50 px-2 py-1 rounded-lg transition-colors">
-                  Tout vider
-                </button>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={onClose} className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors text-sm">Annuler</button>
-              <button onClick={handleSubmit} disabled={createMutation.isPending || submitting || !totalSelected}
-                className="odoo-btn-primary">
-                {(createMutation.isPending || submitting) && <Loader2 size={14} className="animate-spin" />}
-                {createMutation.isPending || submitting ? 'Vérification...' : validationDone ? 'Confirmer l\'envoi' : 'Envoyer la demande'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

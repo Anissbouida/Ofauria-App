@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { History } from 'lucide-react';
+import { DataPanel } from '../ds';
 
 /**
  * Historique des actions d'un document d'achat (journal document_actions, mig 306) :
@@ -42,6 +43,7 @@ export default function DocumentActionsTimeline({ queryKey, fetcher }: {
       <h3 className="ds-subhead" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
         <History size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /> Historique
       </h3>
+      <DataPanel label="Historique des actions">
       <table className="odoo-table ds-dense">
         <tbody>
           {rows.map(r => (
@@ -60,6 +62,7 @@ export default function DocumentActionsTimeline({ queryKey, fetcher }: {
           ))}
         </tbody>
       </table>
+      </DataPanel>
     </div>
   );
 }

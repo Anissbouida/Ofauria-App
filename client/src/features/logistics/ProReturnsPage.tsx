@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Undo2, Plus, Trash2, Check } from 'lucide-react';
+import { Undo2, Plus, Trash2 } from 'lucide-react';
 import { StatusTag } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { proReturnsApi, type ProReturn } from '../../api/pro-returns.api';
@@ -9,13 +9,14 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListKpi, ListPanel, ListToolbar, FilterChips } from '../sales/ListTemplate';
-import { TableFooter, EmptyState, NoResultState } from '../../components/ds';
+import { ListKpi, ListToolbar, FilterChips } from '../sales/ListTemplate';
+import { TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, DataPanel, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
+import { currencySymbol } from '../../utils/money';
 
 // Retours clients professionnels (phase 7.5) : décision remise en stock / rebut par ligne.
 export default function ProReturnsPage() {
   const qc = useQueryClient();
-  const { data: returns = [] } = useQuery({ queryKey: ['pro-returns'], queryFn: () => proReturnsApi.list() });
+  const { data: returns = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['pro-returns'], queryFn: () => proReturnsApi.list() });
   const { data: customersResp } = useQuery({ queryKey: ['customers', 'pro'], queryFn: () => customersApi.list({ limit: '500' }) });
   const customers: Record<string, any>[] = customersResp?.data ?? customersResp ?? [];
   const { data: productsResp } = useQuery({ queryKey: ['products', 'all'], queryFn: () => productsApi.list({ limit: '1000' }) });
@@ -46,8 +47,6 @@ export default function ProReturnsPage() {
     onError: (e) => notify.error(getApiErrorMessage(e, 'Échec du retour')),
   });
 
-  const field: React.CSSProperties = { padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', background: 'var(--odoo-bg)', width: '100%' };
-  const lab: React.CSSProperties = { fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'block', marginBottom: 2 };
   const newForm = () => setForm({ customerId: '', notes: '', lines: [{ productId: '', quantity: '', unitPrice: '', decision: 'restock' }] });
 
   return (
@@ -63,38 +62,44 @@ export default function ProReturnsPage() {
       </section>
 
       {form && (
-        <section className="prj-panel" style={{ padding: 14, display: 'grid', gap: 10 }}>
-          <label><span style={lab}>Client<span className="ds-req" aria-hidden="true"> *</span></span>
+        <Modal title="Nouveau retour client" onClose={() => setForm(null)} width={760} locked={create.isPending}
+          footer={<FormFooter onCancel={() => setForm(null)} onSubmit={() => create.mutate()} submitLabel="Enregistrer le retour"
+            disabled={!form.customerId || !form.lines.some(l => l.productId && Number(l.quantity) > 0)} busy={create.isPending} />}>
+          <FormField label="Client" required>
             <SearchSelect value={form.customerId} onChange={(v) => setForm({ ...form, customerId: v })}
               placeholder="— Choisir —" width="100%" size="md" ariaLabel="Client"
-              options={customers.map(c => ({ id: String(c.id), label: `${c.first_name} ${c.last_name}${c.company_name ? ` (${c.company_name})` : ''}` }))} /></label>
-          {form.lines.map((l, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-              <label style={{ flex: 2 }}><span style={lab}>Article</span>
-                <SearchSelect value={l.productId} onChange={(id) => { const lines = [...form.lines]; lines[i] = { ...l, productId: id }; setForm({ ...form, lines }); }}
-                  placeholder="— Choisir —" width="100%" size="md" ariaLabel="Article"
-                  options={products.map(pr => ({ id: String(pr.id), label: pr.name as string }))} /></label>
-              <label style={{ width: 90 }}><span style={lab}>Qté</span>
-                <input type="number" style={field} value={l.quantity} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, quantity: e.target.value }; setForm({ ...form, lines }); }} /></label>
-              <label style={{ width: 100 }}><span style={lab}>PU</span>
-                <input type="number" style={field} value={l.unitPrice} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, unitPrice: e.target.value }; setForm({ ...form, lines }); }} /></label>
-              <label style={{ width: 150 }}><span style={lab}>Décision</span>
-                <select style={field} value={l.decision} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, decision: e.target.value as 'restock' | 'scrap' }; setForm({ ...form, lines }); }}>
-                  <option value="restock">Remise en stock</option>
-                  <option value="scrap">Rebut</option>
-                </select></label>
-              <button type="button" className="odoo-btn-secondary" aria-label="Retirer la ligne" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 size={12} /></button>
-            </div>
-          ))}
-          <button className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setForm({ ...form, lines: [...form.lines, { productId: '', quantity: '', unitPrice: '', decision: 'restock' }] })}><Plus size={12} /> Ligne</button>
-          <label><span style={lab}>Notes</span><input style={field} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="odoo-btn-secondary" onClick={() => setForm(null)}>Annuler</button>
-            <button className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-              disabled={!form.customerId || !form.lines.some(l => l.productId && Number(l.quantity) > 0) || create.isPending}
-              onClick={() => create.mutate()}><Check size={13} /> Enregistrer le retour</button>
-          </div>
-        </section>
+              options={customers.map(c => ({ id: String(c.id), label: `${c.first_name} ${c.last_name}${c.company_name ? ` (${c.company_name})` : ''}` }))} />
+          </FormField>
+          <FormSection title="Lignes retournées">
+            <DataPanel label="Lignes retournées">
+              <table className="odoo-table ds-dense">
+                <thead><tr><th>Article</th><th className="ds-num" style={{ width: 90 }}>Qté</th><th className="ds-num" style={{ width: 110 }}>PU ({currencySymbol()})</th><th style={{ width: 160 }}>Décision</th><th style={{ width: 40 }} /></tr></thead>
+                <tbody>
+                  {form.lines.map((l, i) => (
+                    <tr key={i} style={{ cursor: 'default' }}>
+                      <td><SearchSelect value={l.productId} onChange={(id) => { const lines = [...form.lines]; lines[i] = { ...l, productId: id }; setForm({ ...form, lines }); }}
+                        placeholder="— Choisir —" width="100%" ariaLabel="Article"
+                        options={products.map(pr => ({ id: String(pr.id), label: pr.name as string }))} /></td>
+                      <td><input type="number" aria-label="Quantité" className="ds-input sm" style={{ textAlign: 'right' }} value={l.quantity} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, quantity: e.target.value }; setForm({ ...form, lines }); }} /></td>
+                      <td><input type="number" aria-label="Prix unitaire" className="ds-input sm" style={{ textAlign: 'right' }} value={l.unitPrice} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, unitPrice: e.target.value }; setForm({ ...form, lines }); }} /></td>
+                      <td>
+                        <select aria-label="Décision" className="ds-input sm" value={l.decision} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, decision: e.target.value as 'restock' | 'scrap' }; setForm({ ...form, lines }); }}>
+                          <option value="restock">Remise en stock</option>
+                          <option value="scrap">Rebut</option>
+                        </select>
+                      </td>
+                      <td><button type="button" className="odoo-pager-btn" aria-label="Retirer la ligne" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 size={12} /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </DataPanel>
+            <button type="button" className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setForm({ ...form, lines: [...form.lines, { productId: '', quantity: '', unitPrice: '', decision: 'restock' }] })}><Plus size={12} /> Ligne</button>
+          </FormSection>
+          <FormField label="Notes" htmlFor="ret-notes">
+            <input id="ret-notes" className="ds-input" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          </FormField>
+        </Modal>
       )}
 
       <FilterChips label="Filtrer les retours" value={view} onChange={k => setView(k as '' | 'credited' | 'open')} chips={[
@@ -103,12 +108,12 @@ export default function ProReturnsPage() {
         { key: 'credited', label: 'Avoir émis', count: kpis.credited },
       ]} />
       <ListToolbar search={search} onSearch={setSearch} placeholder="N° de retour, client…" />
-      {!shown.length ? (
+      {isLoading ? <LoadingState label="Chargement des retours…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : !shown.length ? (
         returns.length
           ? <NoResultState onReset={() => { setView(''); setSearch(''); }} text="Aucun retour ne correspond aux filtres." />
           : <EmptyState icon={Undo2} title="Aucun retour client" text="« Nouveau retour » pour enregistrer une marchandise reprise à un client pro." />
       ) : (
-        <ListPanel footer={<TableFooter note={<>{shown.length} retour{shown.length > 1 ? 's' : ''}</>} />}>
+        <DataPanel label="Retours clients" footer={<TableFooter note={<>{shown.length} retour{shown.length > 1 ? 's' : ''}</>} />}>
           <table className="odoo-table">
             <thead><tr><th>N°</th><th>Date</th><th>Client</th><th className="ds-num">Lignes</th><th>Avoir</th></tr></thead>
             <tbody>
@@ -123,7 +128,7 @@ export default function ProReturnsPage() {
               ))}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
     </SalesPageShell>
   );

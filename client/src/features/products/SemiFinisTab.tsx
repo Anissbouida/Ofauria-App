@@ -421,7 +421,7 @@ function SemiFiniRow({
                      ((fullRecipe as Record<string, any>).sub_recipes as Record<string, any>[] ?? []).length === 0) ? (
                   <p style={emptyTxt}>Aucun ingrédient défini</p>
                 ) : (
-                  <table className="odoo-table" style={{ margin: 0 }}>
+                  <DataPanel><table className="odoo-table ds-dense">
                     <tbody>
                       {((fullRecipe as Record<string, any>).ingredients as Record<string, any>[] ?? []).map((ing, i) => (
                         <tr key={`ing-${i}`}>
@@ -442,7 +442,7 @@ function SemiFiniRow({
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></DataPanel>
                 )}
                 {recipe.instructions && (
                   <div style={{ marginTop: 12 }}>
@@ -484,7 +484,7 @@ function SemiFiniRow({
                   ) : lineage.reservations.length === 0 ? (
                     <p style={emptyTxt}>Aucune réservation en cours</p>
                   ) : (
-                    <table className="odoo-table" style={{ margin: 0 }}>
+                    <DataPanel><table className="odoo-table ds-dense">
                       <tbody>
                         {lineage.reservations.map(r => (
                           <tr key={r.id} onClick={() => navigate(`/production/${r.parent_plan_id}`)} style={{ cursor: 'pointer' }} title="Voir la fiche du plan">
@@ -499,7 +499,7 @@ function SemiFiniRow({
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </table></DataPanel>
                   )}
                 </CollapsibleSection>
 
@@ -508,7 +508,7 @@ function SemiFiniRow({
                   {!lineage ? null : lineage.productions.length === 0 ? (
                     <p style={emptyTxt}>Aucune production enregistrée</p>
                   ) : (
-                    <table className="odoo-table" style={{ margin: 0 }}>
+                    <DataPanel><table className="odoo-table ds-dense">
                       <tbody>
                         {lineage.productions.slice(0, 5).map(p => (
                           <tr key={p.id} onClick={() => navigate(`/production/${p.id}`)} style={{ cursor: 'pointer' }} title="Voir la fiche du plan">
@@ -523,14 +523,14 @@ function SemiFiniRow({
                           </tr>
                         ))}
                       </tbody>
-                    </table>
+                    </table></DataPanel>
                   )}
                 </CollapsibleSection>
 
                 {/* Derniers mouvements */}
                 {lineage && lineage.transactions.length > 0 && (
                   <CollapsibleSection title="Derniers mouvements" defaultOpen={false}>
-                    <table className="odoo-table" style={{ margin: 0 }}>
+                    <DataPanel><table className="odoo-table ds-dense">
                       <tbody>
                         {lineage.transactions.slice(0, 6).map((tx, i) => {
                           const qty = parseFloat(tx.quantity_change);
@@ -556,14 +556,14 @@ function SemiFiniRow({
                           );
                         })}
                       </tbody>
-                    </table>
+                    </table></DataPanel>
                   </CollapsibleSection>
                 )}
 
                 {/* Lots frigo */}
                 {lots.length > 0 && (
                   <CollapsibleSection title="Lots frigo" defaultOpen={false}>
-                    <table className="odoo-table" style={{ margin: 0 }}>
+                    <DataPanel><table className="odoo-table ds-dense">
                       <tbody>
                         {lots.map(lot => {
                           const expires = lot.expires_at ? new Date(lot.expires_at) : null;
@@ -593,7 +593,7 @@ function SemiFiniRow({
                           );
                         })}
                       </tbody>
-                    </table>
+                    </table></DataPanel>
                   </CollapsibleSection>
                 )}
               </div>

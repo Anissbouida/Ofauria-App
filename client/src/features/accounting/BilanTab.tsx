@@ -6,8 +6,7 @@ import type { BilanLine } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
 import { money, currencySymbol } from '../../utils/money';
-import { EmptyState, LoadingState, Alert, DataPanel, SectionHeader, Toolbar } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { EmptyState, LoadingState, Alert, DataPanel, SectionHeader, Toolbar, HeaderActions } from '../../components/ds';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -91,22 +90,22 @@ export default function BilanTab() {
 
   return (
     <>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={!data}>
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <EditionButtons kind="bilan" params={{ endDate }} />
-      </AccHeaderActions>
+      </HeaderActions>
 
       {data && (
         <Alert tone={Math.abs(data.ecart) < 0.01 ? 'success' : 'danger'} icon={Scale}>
-          {Math.abs(data.ecart) < 0.01 ? 'Bilan équilibré' : 'Bilan déséquilibré'} · total actif {n(data.actif.total)} · total passif {money(data.passif.total)}
+          {Math.abs(data.ecart) < 0.01 ? 'Bilan équilibré' : 'Bilan déséquilibré'} · total actif {money(data.actif.total)} · total passif {money(data.passif.total)}
           {Math.abs(data.ecart) >= 0.01 && <> · écart {money(data.ecart)}</>}
         </Alert>
       )}
 
       <Toolbar>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ds-muted)' }}>
+        <label className="ds-period">
           <Calendar size={14} aria-hidden="true" /> Arrêté au
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ds-input sm" style={{ width: 150 }} aria-label="Date d'arrêté" />
         </label>

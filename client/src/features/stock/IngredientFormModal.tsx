@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ItemConversionsPanel from '../../components/ItemConversionsPanel';
 import { useQuery } from '@tanstack/react-query';
 import { Package, Edit3, X, Save, Tag, Boxes, ShieldAlert, Info } from 'lucide-react';
@@ -12,7 +12,7 @@ import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEdito
 import { useCustomFieldsForm } from '../../api/custom-fields.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { currencySymbol } from '../../utils/money';
-import { FormField, FormSection } from '../../components/ds';
+import { FormField, FormFooter, FormSection, Modal } from '../../components/ds';
 
 /*
  * Formulaire unique de creation / modification d'un ingredient.
@@ -77,11 +77,8 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
   const [submitted, setSubmitted] = useState(false);
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm(f => ({ ...f, [k]: v }));
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // Échap et clic extérieur : gérés par la fenêtre commune (Modal).
+  const formRef = useRef<HTMLFormElement>(null);
 
   const { data: containerTypes = [] } = useQuery<Record<string, any>[]>({
     queryKey: ['ref-entries', 'container_types'],
@@ -152,33 +149,25 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
-      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="odoo-scope" style={{
-        margin: 0, minHeight: 0, width: '100%', maxWidth: 640, maxHeight: 'calc(100vh - 2rem)',
-        display: 'flex', flexDirection: 'column', borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-      }}>
-        {/* En-tete */}
-        <div style={{ padding: '0.875rem 1.125rem', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--ds-bg)', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {mode === 'create' ? <Package size={16} style={{ color: 'var(--theme-accent)' }} /> : <Edit3 size={16} style={{ color: 'var(--theme-accent)' }} />}
-            <div>
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>
-                {title || (mode === 'create' ? 'Nouvel ingrédient' : "Modifier l'ingrédient")}
-                {isConsumable && form.categoryId && (
-                  <span className={`odoo-tag ${consumable ? 'odoo-tag-purple' : 'odoo-tag-green'}`} style={{ marginLeft: 8, fontSize: '0.625rem', verticalAlign: 'middle' }}>
-                    {consumable ? 'Consommable' : 'Ingrédient'}
-                  </span>
-                )}
-              </h2>
-              {mode === 'edit' && <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ing.name as string}</p>}
-            </div>
-          </div>
-          <button type="button" onClick={onClose} title="Fermer (Échap)" aria-label="Fermer" className="ds-icon-btn"><X size={16} /></button>
-        </div>
-
-        <form onSubmit={submit} noValidate style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, backgroundColor: 'var(--ds-card)' }}>
-          <div style={{ padding: '1rem 1.125rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+    <Modal
+      title={title || (mode === 'create' ? 'Nouvel ingrédient' : "Modifier l'ingrédient")}
+      subtitle={mode === 'edit' ? (ing.name as string) : undefined}
+      aside={isConsumable && form.categoryId ? (
+        <span className={`odoo-tag ${consumable ? 'odoo-tag-purple' : 'odoo-tag-green'}`} style={{ fontSize: '0.625rem' }}>
+          {consumable ? 'Consommable' : 'Ingrédient'}
+        </span>
+      ) : undefined}
+      onClose={onClose} locked={isLoading} width={640}
+      footer={
+        <FormFooter onCancel={onClose} busy={isLoading} onSubmit={() => formRef.current?.requestSubmit()}
+          submitLabel={isLoading ? 'Enregistrement…' : mode === 'create' ? (title ? 'Créer et ajouter' : "Créer l'ingrédient") : 'Enregistrer'}>
+          {submitted && hasErrors && (
+            <span role="alert" style={{ fontSize: 12, fontWeight: 600, color: 'var(--ds-danger)' }}>Complétez les champs signalés.</span>
+          )}
+        </FormFooter>
+      }>
+        <form ref={formRef} onSubmit={submit} noValidate>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
             {/* ── Identification ── */}
             <Section icon={<Package size={13} />} title="Identification">
@@ -330,19 +319,8 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
             <CustomFieldsEditor entity={cfEntity} values={cf.values} onChange={cf.setValues} />
           </div>
 
-          {/* Pied fixe : toujours visible, meme si le contenu defile */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1.125rem', borderTop: '1px solid var(--theme-bg-separator)', backgroundColor: 'var(--ds-bg)', flexShrink: 0 }}>
-            {submitted && hasErrors && (
-              <span role="alert" style={{ marginRight: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--ds-danger)' }}>Complétez les champs signalés.</span>
-            )}
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={isLoading}>Annuler</button>
-            <button type="submit" disabled={isLoading} aria-busy={isLoading || undefined} className="odoo-btn-primary">
-              <Save size={13} aria-hidden="true" /> {isLoading ? 'Enregistrement…' : mode === 'create' ? (title ? 'Créer et ajouter' : "Créer l'ingrédient") : 'Enregistrer'}
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

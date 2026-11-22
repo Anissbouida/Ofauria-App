@@ -7,6 +7,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { money } from '../../utils/money';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { DataPanel, Modal } from '../../components/ds';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { productsApi } from '../../api/products.api';
 import { apiErrorMessage } from '../../api/errors';
@@ -726,22 +727,21 @@ export default function ProductionLaunchModal({
       <div className="space-y-4">
         {/* DateTime + Shift */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1">
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+          <div className="flex-1 ds-field">
+            <label htmlFor="plm-produced-at">
               Date & heure de production
             </label>
             <input
+              id="plm-produced-at"
               type="datetime-local"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              className="ds-input"
               value={producedAt}
               onChange={(e) => setProducedAt(e.target.value)}
             />
           </div>
-          <div className="sm:w-40">
-            <label className="block text-xs font-medium text-gray-500 mb-1">
-              Equipe detectee
-            </label>
-            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+          <div className="sm:w-40 ds-field">
+            <span className="ds-field-label">Equipe detectee</span>
+            <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>
               <Clock size={16} className="text-gray-400" />
               <span className="text-sm font-medium text-gray-700">{shift}</span>
             </div>
@@ -884,12 +884,10 @@ export default function ProductionLaunchModal({
       )}
 
       {/* Global observations */}
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">
-          Observations generales
-        </label>
-        <textarea
-          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+      <div className="ds-field">
+        <label htmlFor="plm-obs-7">Observations generales</label>
+        <textarea id="plm-obs-7"
+          className="ds-input"
           rows={3}
           placeholder="Notes, commentaires sur la production..."
           value={observations}
@@ -1050,25 +1048,13 @@ export default function ProductionLaunchModal({
     const instructions = ((recipeData?.instructions as string) || '');
 
     return (
-      <div className="fixed inset-0 z-[60] bg-white overflow-auto flex flex-col">
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-sm px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <ChefHat size={22} className="text-blue-600" />
-            <div>
-              <h2 className="font-bold text-gray-900 text-lg">Recette : {productName}</h2>
-              {recipeData && (
-                <p className="text-sm text-gray-500">
-                  Rendement : {recipeData.yield_quantity} {recipeData.yield_unit || 'unite(s)'}
-                  {recipeData.total_cost && parseFloat(recipeData.total_cost) > 0 && ` | Cout : ${money(parseFloat(recipeData.total_cost))}`}
-                </p>
-              )}
-            </div>
-          </div>
-          <button type="button" onClick={() => setRecipeFullscreen(false)} aria-label="Fermer la recette" className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors">
-            <X size={20} className="text-gray-500" />
-          </button>
-        </div>
-        <div className="flex-1 px-4 py-6 max-w-3xl mx-auto w-full space-y-6">
+      <Modal onClose={() => setRecipeFullscreen(false)} width={860}
+        title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><ChefHat size={20} aria-hidden="true" /> Recette : {productName}</span>}
+        subtitle={recipeData ? <>
+          Rendement : {recipeData.yield_quantity} {recipeData.yield_unit || 'unite(s)'}
+          {recipeData.total_cost && parseFloat(recipeData.total_cost) > 0 && ` | Cout : ${money(parseFloat(recipeData.total_cost))}`}
+        </> : undefined}>
+        <div className="w-full space-y-6">
           {loadingRecipe ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
@@ -1171,7 +1157,7 @@ export default function ProductionLaunchModal({
             </>
           )}
         </div>
-      </div>
+      </Modal>
     );
   };
 
@@ -1421,20 +1407,20 @@ export default function ProductionLaunchModal({
 
         {stepIngredients ? (
           stepIngredients.length > 0 ? (
-            <table className="odoo-table">
+            <DataPanel><table className="odoo-table ds-dense">
               <tbody className="divide-y divide-gray-100">
                 {stepIngredients.map((ing) => <Row key={refOf(ing)} ing={ing} />)}
               </tbody>
-            </table>
+            </table></DataPanel>
           ) : (
             <div className="px-3 py-3 text-sm text-gray-500 italic">Aucune pesée à cette étape.</div>
           )
         ) : ingredients.length > 0 && (
-          <table className="odoo-table">
+          <DataPanel><table className="odoo-table ds-dense">
             <tbody className="divide-y divide-gray-100">
               {ingredients.map((ing) => <Row key={refOf(ing)} ing={ing} />)}
             </tbody>
-          </table>
+          </table></DataPanel>
         )}
 
         {/* Reste de la recette (replie) quand l'etape est affectee */}
@@ -1445,7 +1431,7 @@ export default function ProductionLaunchModal({
               <span className="ml-auto text-gray-400 group-open:hidden">afficher</span>
               <span className="ml-auto text-gray-400 hidden group-open:inline">masquer</span>
             </summary>
-            <table className="odoo-table">
+            <DataPanel><table className="odoo-table ds-dense">
               <tbody className="divide-y divide-gray-100">
                 {ingredients.map((ing) => <Row key={refOf(ing)} ing={ing} muted={!matches(ing, refs!)} />)}
                 {subRecipesData.map((sr, idx) => (
@@ -1457,7 +1443,7 @@ export default function ProductionLaunchModal({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></DataPanel>
           </details>
         )}
 
@@ -1679,14 +1665,14 @@ export default function ProductionLaunchModal({
         </div>
         {active ? (
           <div className="p-3 space-y-2">
-            <table className="odoo-table">
+            <DataPanel><table className="odoo-table ds-dense">
               <thead>
-                <tr className="text-[11px] text-gray-500">
-                  <th className="text-left font-medium pb-1">Sortie</th>
-                  <th className="text-right font-medium pb-1 w-24">Quantité</th>
-                  <th className="text-right font-medium pb-1 w-28">Vaut (pièces)</th>
-                  <th className="text-right font-medium pb-1 w-20">= pièces</th>
-                  <th className="w-7" />
+                <tr>
+                  <th>Sortie</th>
+                  <th className="ds-num w-24">Quantité</th>
+                  <th className="ds-num w-28">Vaut (pièces)</th>
+                  <th className="ds-num w-20">= pièces</th>
+                  <th className="ds-actions w-7"><span className="ds-sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1710,8 +1696,8 @@ export default function ProductionLaunchModal({
                     <td className="py-1.5 text-right">
                       <input type="number" min={0} step={1} inputMode="numeric"
                         value={l.qty} placeholder="0"
-                        onChange={(e) => edit(l.key, { qty: e.target.value })}
-                        className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-right font-semibold tabular-nums focus:ring-2 focus:ring-indigo-400" />
+                        onChange={(e) => edit(l.key, { qty: e.target.value })} aria-label="Quantité de la sortie"
+                        className="ds-input sm" style={{ width: 80, textAlign: 'right', fontWeight: 600 }} />
                     </td>
                     <td className="py-1.5 text-right">
                       {l.base ? (
@@ -1722,13 +1708,14 @@ export default function ProductionLaunchModal({
                           aria-label="Valeur unitaire du sous-produit"
                           title={`${l.kind === 'sous_produit' ? 'Sous-produit' : 'Déchet valorisé'} : valeur unitaire déduite du coût des autres sorties`}
                           onChange={(e) => edit(l.key, { value: e.target.value })}
-                          className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-right tabular-nums focus:ring-2 focus:ring-indigo-400" />
+                          className="ds-input sm" style={{ width: 80, textAlign: 'right' }} />
                       ) : (
                         <input type="number" min={0} step={0.5} inputMode="decimal"
                           value={l.equiv} placeholder="8"
                           title="Combien de pièces cette sortie prend dans le cadre"
-                          onChange={(e) => edit(l.key, { equiv: e.target.value })}
-                          className={`w-20 border rounded-lg px-2 py-1.5 text-right tabular-nums focus:ring-2 focus:ring-indigo-400 ${num(l.qty) > 0 && !(num(l.equiv) > 0) ? 'border-amber-400' : 'border-gray-300'}`} />
+                          onChange={(e) => edit(l.key, { equiv: e.target.value })} aria-label="Pièces équivalentes"
+                          aria-invalid={num(l.qty) > 0 && !(num(l.equiv) > 0)}
+                          className="ds-input sm" style={{ width: 80, textAlign: 'right' }} />
                       )}
                     </td>
                     <td className="py-1.5 text-right font-semibold tabular-nums">
@@ -1746,7 +1733,7 @@ export default function ProductionLaunchModal({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></DataPanel>
 
             <div className="flex items-center gap-1.5 flex-wrap">
               <button type="button" onClick={() => addLine()}
@@ -1849,26 +1836,61 @@ export default function ProductionLaunchModal({
     if (blockedByQc) blockReasons.push(`${qcItems.length - qcDone} point(s) de contrôle à cocher sur ${qcItems.length}`);
 
     return (
-      <div className="fixed inset-0 z-50 bg-white overflow-auto flex flex-col">
-        {/* Top bar */}
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-sm">
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-3">
-              <button type="button" onClick={onClose} aria-label="Fermer" className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors">
-                <X size={20} className="text-gray-500" />
-              </button>
-              <div>
-                <h1 className="font-bold text-gray-900 text-lg">{item.product_name as string}</h1>
-                <p className="text-xs text-gray-500">
-                  {format(new Date(plan.plan_date as string), 'EEEE d MMMM yyyy', { locale: fr })}
-                  {lotNumber && <span className="ml-2 font-mono">• {lotNumber}</span>}
-                </p>
-              </div>
+      <Modal onClose={onClose} width={1100} locked={submitting || starting}
+        title={item.product_name as string}
+        subtitle={<>
+          {format(new Date(plan.plan_date as string), 'EEEE d MMMM yyyy', { locale: fr })}
+          {lotNumber && <span className="ml-2 font-mono">• {lotNumber}</span>}
+        </>}
+        aside={<span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-50 text-blue-700" style={{ alignSelf: 'center' }}>Etape {singleStep}/{totalSteps}</span>}
+        footer={
+          <div className="flex items-center justify-between w-full gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              {singleStep === 1 ? (
+                <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">Annuler</button>
+              ) : (
+                <button onClick={() => setSingleStep((s) => s - 1)} className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition-colors">
+                  <ChevronLeft size={16} /> Precedent
+                </button>
+              )}
             </div>
-            <span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-50 text-blue-700">
-              Etape {singleStep}/{totalSteps}
-            </span>
+            <div className="flex items-center gap-2">
+              {!isLastStep && blockReasons.length > 0 && (
+                <span className="hidden sm:block max-w-[260px] text-xs text-amber-700 text-right leading-tight">
+                  Pour continuer : {blockReasons.join(' ; ')}.
+                </span>
+              )}
+              <button onClick={handleSaveAndQuit} disabled={starting}
+                className="flex items-center gap-1 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50">
+                Sauvegarder et quitter
+              </button>
+
+              {!isLastStep ? (
+                <button onClick={async () => {
+                  if (singleStep === 1 && !isAlreadyStarted) {
+                    await handleAutoStart();
+                  }
+                  setSingleStep((s) => s + 1);
+                }} disabled={starting || !canAdvance}
+                  title={
+                    stepTimerNotStarted ? 'Demarre le chronometre de cette etape avant de passer a la suivante'
+                    : stepTimerRunning ? 'Attends la fin du chronometre pour passer a l\'etape suivante'
+                    : blockedByQc ? `Valide les ${qcItems.length - qcDone} point(s) de controle restants pour passer a la suite`
+                    : ''
+                  }
+                  className="flex items-center gap-1 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {starting ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Lancement...</>) : (<>Suivant <ChevronRight size={16} /></>)}
+                </button>
+              ) : (
+                <button onClick={handleSubmit} disabled={submitting || actual <= 0 || (hasLoss && !lossReasons[id])}
+                  className="flex items-center gap-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {submitting ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Finalisation...</>) : (<><CheckCircle size={16} /> Terminer la production</>)}
+                </button>
+              )}
+            </div>
           </div>
+        }>
+        <div>
           {/* Step indicator */}
           <div className="flex items-center justify-center gap-1 py-3 px-4 overflow-x-auto">
             {SINGLE_STEPS.map((s, idx) => {
@@ -1896,7 +1918,7 @@ export default function ProductionLaunchModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 px-4 py-5 max-w-2xl mx-auto w-full">
+        <div className="w-full" style={{ maxWidth: 760, margin: '0 auto' }}>
 
           {/* ─── Dynamic steps from profile OR generic flow ─── */}
           {hasProfileSteps ? (
@@ -1962,14 +1984,14 @@ export default function ProductionLaunchModal({
                         </div>
                         <div className="p-3 space-y-3">
                           <div className="flex gap-3">
-                            <div className="flex-1">
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de lancement</label>
-                              <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            <div className="flex-1 ds-field">
+                              <label htmlFor="plm-f-1">Date & heure de lancement</label>
+                              <input id="plm-f-1" type="datetime-local" className="ds-input"
                                 value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
                             </div>
-                            <div className="w-28">
-                              <label className="block text-xs font-medium text-gray-500 mb-1">Equipe</label>
-                              <div className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-center font-medium text-gray-700 flex items-center gap-1 justify-center">
+                            <div className="w-28 ds-field">
+                              <span className="ds-field-label">Equipe</span>
+                              <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>
                                 <Clock size={12} className="text-gray-400" /> {detectShift(producedAt)}
                               </div>
                             </div>
@@ -2180,19 +2202,19 @@ export default function ProductionLaunchModal({
 
                   <div className="border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
                     <div className="flex gap-3 items-end">
-                      <div className="flex-1">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de fin</label>
-                        <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      <div className="flex-1 ds-field">
+                        <label htmlFor="plm-f-2">Date & heure de fin</label>
+                        <input id="plm-f-2" type="datetime-local" className="ds-input"
                           value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
                       </div>
-                      <div className="w-28">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Planifie</label>
-                        <div className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-center font-bold text-gray-700">{planned}</div>
+                      <div className="w-28 ds-field">
+                        <span className="ds-field-label">Planifie</span>
+                        <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>{planned}</div>
                       </div>
-                      <div className="w-28">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Quantite produite</label>
-                        <input type="number" min={0} step="any" inputMode="decimal"
-                          className="w-full border border-emerald-300 rounded-xl px-3 py-2 text-sm text-center font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-emerald-50"
+                      <div className="w-28 ds-field">
+                        <label htmlFor="plm-f-3">Quantite produite</label>
+                        <input id="plm-f-3" type="number" min={0} step="any" inputMode="decimal"
+                          className="ds-input" style={{ textAlign: 'center', fontWeight: 700 }}
                           value={actual} disabled={!!cutMode[id]} title={cutMode[id] ? 'Calculée depuis la coupe' : undefined}
                           onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
                       </div>
@@ -2208,13 +2230,13 @@ export default function ProductionLaunchModal({
                           <AlertTriangle size={14} className="text-amber-600" />
                           <span className="text-sm font-semibold text-amber-800">Perte detectee : {planned - actual} unite(s)</span>
                         </div>
-                        <select className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500"
+                        <select className="ds-input" aria-label="Motif de perte"
                           value={lossReasons[id] || ''} onChange={(e) => setLossReasons((prev) => ({ ...prev, [id]: e.target.value }))}>
                           <option value="">-- Motif de perte --</option>
                           {LOSS_REASONS.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
                         </select>
                         {lossReasons[id] === 'autre' && (
-                          <input type="text" className="w-full mt-2 border border-amber-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500"
+                          <input type="text" className="ds-input mt-2" aria-label="Précisez le motif de perte"
                             placeholder="Precisez..." value={lossNotes[id] || ''} onChange={(e) => setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))} />
                         )}
                       </div>
@@ -2258,14 +2280,14 @@ export default function ProductionLaunchModal({
                     </div>
                     <div className="p-4 space-y-3">
                       <div className="flex gap-3">
-                        <div className="flex-1">
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de lancement</label>
-                          <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        <div className="flex-1 ds-field">
+                          <label htmlFor="plm-f-4">Date & heure de lancement</label>
+                          <input id="plm-f-4" type="datetime-local" className="ds-input"
                             value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
                         </div>
-                        <div className="w-32">
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Equipe</label>
-                          <div className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-center font-medium text-gray-700 flex items-center gap-1.5 justify-center">
+                        <div className="w-32 ds-field">
+                          <span className="ds-field-label">Equipe</span>
+                          <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>
                             <Clock size={13} className="text-gray-400" /> {detectShift(producedAt)}
                           </div>
                         </div>
@@ -2305,19 +2327,19 @@ export default function ProductionLaunchModal({
 
                   <div className="border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
                     <div className="flex gap-3 items-end">
-                      <div className="flex-1">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Date & heure de fin</label>
-                        <input type="datetime-local" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      <div className="flex-1 ds-field">
+                        <label htmlFor="plm-f-5">Date & heure de fin</label>
+                        <input id="plm-f-5" type="datetime-local" className="ds-input"
                           value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
                       </div>
-                      <div className="w-28">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Planifie</label>
-                        <div className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 text-center font-bold text-gray-700">{planned}</div>
+                      <div className="w-28 ds-field">
+                        <span className="ds-field-label">Planifie</span>
+                        <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>{planned}</div>
                       </div>
-                      <div className="w-28">
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Quantite produite</label>
-                        <input type="number" min={0} step="any" inputMode="decimal"
-                          className="w-full border border-emerald-300 rounded-xl px-3 py-2 text-sm text-center font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-emerald-50"
+                      <div className="w-28 ds-field">
+                        <label htmlFor="plm-f-6">Quantite produite</label>
+                        <input id="plm-f-6" type="number" min={0} step="any" inputMode="decimal"
+                          className="ds-input" style={{ textAlign: 'center', fontWeight: 700 }}
                           value={actual} disabled={!!cutMode[id]} title={cutMode[id] ? 'Calculée depuis la coupe' : undefined}
                           onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
                       </div>
@@ -2333,13 +2355,13 @@ export default function ProductionLaunchModal({
                           <AlertTriangle size={14} className="text-amber-600" />
                           <span className="text-sm font-semibold text-amber-800">Perte detectee : {planned - actual} unite(s)</span>
                         </div>
-                        <select className="w-full border border-amber-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500"
+                        <select className="ds-input" aria-label="Motif de perte"
                           value={lossReasons[id] || ''} onChange={(e) => setLossReasons((prev) => ({ ...prev, [id]: e.target.value }))}>
                           <option value="">-- Motif de perte --</option>
                           {LOSS_REASONS.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
                         </select>
                         {lossReasons[id] === 'autre' && (
-                          <input type="text" className="w-full mt-2 border border-amber-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500"
+                          <input type="text" className="ds-input mt-2" aria-label="Précisez le motif de perte"
                             placeholder="Precisez..." value={lossNotes[id] || ''} onChange={(e) => setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))} />
                         )}
                       </div>
@@ -2360,55 +2382,8 @@ export default function ProductionLaunchModal({
         {/* Fullscreen recipe overlay */}
         {renderRecipeFullscreen()}
 
-        {/* Bottom bar */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
-          <div className="flex items-center justify-between px-4 py-3 max-w-2xl mx-auto w-full">
-            <div className="flex items-center gap-2">
-              {singleStep === 1 ? (
-                <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">Annuler</button>
-              ) : (
-                <button onClick={() => setSingleStep((s) => s - 1)} className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition-colors">
-                  <ChevronLeft size={16} /> Precedent
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {!isLastStep && blockReasons.length > 0 && (
-                <span className="hidden sm:block max-w-[260px] text-xs text-amber-700 text-right leading-tight">
-                  Pour continuer : {blockReasons.join(' ; ')}.
-                </span>
-              )}
-              <button onClick={handleSaveAndQuit} disabled={starting}
-                className="flex items-center gap-1 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50">
-                Sauvegarder et quitter
-              </button>
 
-              {!isLastStep ? (
-                <button onClick={async () => {
-                  if (singleStep === 1 && !isAlreadyStarted) {
-                    await handleAutoStart();
-                  }
-                  setSingleStep((s) => s + 1);
-                }} disabled={starting || !canAdvance}
-                  title={
-                    stepTimerNotStarted ? 'Demarre le chronometre de cette etape avant de passer a la suivante'
-                    : stepTimerRunning ? 'Attends la fin du chronometre pour passer a l\'etape suivante'
-                    : blockedByQc ? `Valide les ${qcItems.length - qcDone} point(s) de controle restants pour passer a la suite`
-                    : ''
-                  }
-                  className="flex items-center gap-1 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  {starting ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Lancement...</>) : (<>Suivant <ChevronRight size={16} /></>)}
-                </button>
-              ) : (
-                <button onClick={handleSubmit} disabled={submitting || actual <= 0 || (hasLoss && !lossReasons[id])}
-                  className="flex items-center gap-2 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  {submitting ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Finalisation...</>) : (<><CheckCircle size={16} /> Terminer la production</>)}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      </Modal>
     );
   };
 
@@ -2421,63 +2396,12 @@ export default function ProductionLaunchModal({
 
   // Multi-item → 4-step wizard
   return (
-    <div className="fixed inset-0 z-50 bg-white overflow-auto flex flex-col">
-      {/* Top bar */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-sm">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Fermer"
-              className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-gray-100 transition-colors"
-            >
-              <X size={20} className="text-gray-500" />
-            </button>
-            <div>
-              <h1 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                <Play size={18} className={colors.text} />
-                Lancer la production
-              </h1>
-              <p className="text-xs text-gray-500">
-                {format(new Date(plan.plan_date as string), 'EEEE d MMMM yyyy', { locale: fr })}
-              </p>
-            </div>
-          </div>
-          <span
-            className={`text-xs font-medium px-3 py-1 rounded-full ${colors.light} ${colors.text}`}
-          >
-            Etape {step}/4
-          </span>
-        </div>
-        {renderStepIndicator()}
-      </div>
-
-      {/* Step content */}
-      <div className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full">
-        <h2 className={`text-lg font-bold ${colors.text} mb-1 flex items-center gap-2`}>
-          {currentStepDef.icon}
-          {currentStepDef.label}
-        </h2>
-        <p className="text-sm text-gray-500 mb-4">
-          {step === 1 && 'Verifiez les bases partagees avant de lancer la production.'}
-          {step === 2 && 'Renseignez les quantites reelles pour chaque produit fini.'}
-          {step === 3 && 'Declarez les pertes et ajoutez des observations si necessaire.'}
-          {step === 4 && 'Verifiez le recapitulatif et confirmez la production.'}
-        </p>
-
-        {step === 1 && renderStep1()}
-        {step === 2 && renderStep2()}
-        {step === 3 && renderStep3()}
-        {step === 4 && renderStep4()}
-      </div>
-
-      {/* Fullscreen recipe overlay */}
-      {renderRecipeFullscreen()}
-
-      {/* Bottom navigation */}
-      <div className="sticky bottom-0 bg-white border-t border-gray-100 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
-        <div className="flex items-center justify-between px-4 py-3 max-w-2xl mx-auto w-full">
+    <Modal onClose={onClose} width={1100} locked={submitting}
+      title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Play size={18} aria-hidden="true" className={colors.text} /> Lancer la production</span>}
+      subtitle={format(new Date(plan.plan_date as string), 'EEEE d MMMM yyyy', { locale: fr })}
+      aside={<span className={`text-xs font-medium px-3 py-1 rounded-full ${colors.light} ${colors.text}`} style={{ alignSelf: 'center' }}>Etape {step}/4</span>}
+      footer={
+        <div className="flex items-center justify-between w-full gap-2 flex-wrap">
           <div>
             {step === visibleSteps[0] ? (
               <button
@@ -2525,7 +2449,33 @@ export default function ProductionLaunchModal({
             </button>
           )}
         </div>
+      }>
+      <div>
+        {renderStepIndicator()}
       </div>
-    </div>
+
+      {/* Step content */}
+      <div className="w-full" style={{ maxWidth: 760, margin: '0 auto' }}>
+        <h2 className={`text-lg font-bold ${colors.text} mb-1 flex items-center gap-2`}>
+          {currentStepDef.icon}
+          {currentStepDef.label}
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">
+          {step === 1 && 'Verifiez les bases partagees avant de lancer la production.'}
+          {step === 2 && 'Renseignez les quantites reelles pour chaque produit fini.'}
+          {step === 3 && 'Declarez les pertes et ajoutez des observations si necessaire.'}
+          {step === 4 && 'Verifiez le recapitulatif et confirmez la production.'}
+        </p>
+
+        {step === 1 && renderStep1()}
+        {step === 2 && renderStep2()}
+        {step === 3 && renderStep3()}
+        {step === 4 && renderStep4()}
+      </div>
+
+      {/* Fullscreen recipe overlay */}
+      {renderRecipeFullscreen()}
+
+    </Modal>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DataPanel } from '../../components/ds';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, Loader2 } from 'lucide-react';
 import { purchasingSettingsApi } from '../../api/purchasing-settings.api';
@@ -20,7 +21,25 @@ export default function SodMonitor({ compact = false }: { compact?: boolean }) {
   if (isLoading) return <Loader2 className="animate-spin" size={18} />;
   if (!rules.length) return null; // migration non appliquée : rien à montrer
 
-  const fmt = (d: string) => new Date(d).toLocaleDateString('fr-FR');
+  const fmt = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  const table = (
+    <DataPanel label="Manquements journalisés">
+      <table className="odoo-table ds-dense">
+        <thead><tr><th>Règle</th><th>Acteur</th><th className="ds-num">Occurrences</th><th className="ds-num">Documents</th><th>Dernier</th></tr></thead>
+        <tbody>
+          {violations.map((v, i) => (
+            <tr key={i}>
+              <td className="ds-strong">{rules.find(r => r.code === v.rule_code)?.label ?? v.rule_code}</td>
+              <td>{v.actor}</td>
+              <td className="ds-num">{v.occurrences}</td>
+              <td className="ds-num">{v.documents}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>{fmt(v.last_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DataPanel>
+  );
 
   if (compact) {
     const countOf = (code: string) => violations.filter(v => v.rule_code === code).reduce((n, v) => n + Number(v.occurrences), 0);
@@ -41,37 +60,22 @@ export default function SodMonitor({ compact = false }: { compact?: boolean }) {
             {detail ? 'Masquer le détail' : 'Voir le détail des 90 derniers jours'}
           </button>
         )}
-        {detail && (
-          <table className="odoo-table">
-            <thead><tr><th>Règle</th><th>Acteur</th><th className="ds-num">Occurrences</th><th className="ds-num">Documents</th><th>Dernier</th></tr></thead>
-            <tbody>
-              {violations.map((v, i) => (
-                <tr key={i}>
-                  <td>{rules.find(r => r.code === v.rule_code)?.label ?? v.rule_code}</td>
-                  <td>{v.actor}</td>
-                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.occurrences}</td>
-                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.documents}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{fmt(v.last_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {detail && table}
       </div>
     );
   }
 
   return (
-    <section className="odoo-scope" style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '12px 16px', display: 'grid', gap: 12, background: 'var(--odoo-bg)' }}>
+    <section className="ds-panel" style={{ padding: '12px 16px', display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <ShieldCheck size={16} style={{ color: 'var(--theme-accent)' }} />
+        <ShieldCheck size={16} style={{ color: 'var(--ds-accent)' }} />
         <div style={{ fontWeight: 600 }}>Séparation des tâches — suivi</div>
       </div>
 
       <div style={{ display: 'grid', gap: 6 }}>
         {rules.map(r => (
           <div key={r.code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: '0.8125rem' }}>
-            <span style={{ color: 'var(--odoo-text)' }}>{r.label}</span>
+            <span style={{ color: 'var(--ds-ink)' }}>{r.label}</span>
             <StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Active' : 'Inactive'} />
           </div>
         ))}
@@ -85,22 +89,7 @@ export default function SodMonitor({ compact = false }: { compact?: boolean }) {
           <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', margin: 0 }}>
             Aucun manquement journalisé. En mode « Observer », une action enfreignant une règle apparaîtra ici (sans être bloquée).
           </p>
-        ) : (
-          <table className="odoo-table">
-            <thead><tr><th>Règle</th><th>Acteur</th><th className="ds-num">Occurrences</th><th className="ds-num">Documents</th><th>Dernier</th></tr></thead>
-            <tbody>
-              {violations.map((v, i) => (
-                <tr key={i}>
-                  <td>{rules.find(r => r.code === v.rule_code)?.label ?? v.rule_code}</td>
-                  <td>{v.actor}</td>
-                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.occurrences}</td>
-                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{v.documents}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{fmt(v.last_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        ) : table}
       </div>
     </section>
   );

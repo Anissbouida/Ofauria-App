@@ -5,8 +5,8 @@ import { customersApi } from '../../api/customers.api';
 import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
 import { usersApi } from '../../api/users.api';
 import {
-  Plus, Pencil, Users, ShoppingCart, X, Loader2, Phone, ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, CreditCard, User,
-  FileBadge2, UserPlus, CheckCircle2, Moon, AlertTriangle, Filter, Award, MessageSquare, Contact,
+  Plus, Pencil, Users, ShoppingCart, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, User,
+  FileBadge2, UserPlus, CheckCircle2, Moon, AlertTriangle, Filter, Award, Contact,
   Archive, RotateCcw } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -15,7 +15,6 @@ import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import CustomFieldsEditor, { useCustomListColumns } from '../../components/custom-fields/CustomFieldsEditor';
 import { customFieldsApi, useCustomFieldsForm, formatCfValue, type CfValues } from '../../api/custom-fields.api';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useAuth } from '../../context/AuthContext';
@@ -24,7 +23,7 @@ import { SelectFilter, PAGE_SIZE, type StageDef } from '../../components/purchas
 import { RowMenu } from '../../components/ui/RowMenu';
 import SalesPageShell from '../sales/SalesPageShell';
 import { FilterChips } from '../sales/ListTemplate';
-import { KpiGrid, KpiCard, Toolbar, SearchBar, Segmented, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { KpiGrid, KpiCard, Toolbar, SearchBar, Segmented, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 
 /**
  * Fichier clients (aligné sur le standard des listes ERP, cf. Achats › Fournisseurs) :
@@ -109,11 +108,7 @@ type SortKey = 'name' | 'city' | 'last_purchase' | 'purchases' | 'loyalty_points
 
 export const PAYMENT_LABELS: Record<string, string> = { cash: 'Espèces', card: 'Carte', mixed: 'Mixte', transfer: 'Virement', check: 'Chèque' };
 
-const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
-const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400';
-const sectionTitle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)', margin: '6px 0 2px' };
 const muted: React.CSSProperties = { color: 'var(--theme-text-muted)' };
-const panelStyle: React.CSSProperties = { width: '100%', maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 };
 const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd MMM yyyy', { locale: fr }) : null);
 
 export default function CustomersPage() {
@@ -141,7 +136,7 @@ export default function CustomersPage() {
   }, [searchInput]);
   useEffect(() => { setPage(1); }, [searchTerm, typeFilter, tierFilter, cityFilter, stage, sortKey, sortDir, archivedView]);
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['customers', searchTerm, archivedView],
     queryFn: () => customersApi.list({ search: searchTerm, limit: '1000', ...(archivedView ? { archived: 'true' } : {}) }),
     placeholderData: (prev) => prev,
@@ -337,6 +332,8 @@ export default function CustomersPage() {
 
         {isLoading ? (
           <LoadingState label="Chargement des clients…" />
+        ) : isError ? (
+          <ErrorState error={error} onRetry={() => refetch()} />
         ) : sorted.length === 0 ? (
           hasFilters || stage
             ? <NoResultState onReset={() => { resetFilters(); setStage(''); }} text="Aucun client ne correspond aux filtres." />
@@ -497,223 +494,235 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
     } catch { setIceDup(null); }
   };
 
+  const [dirty, setDirty] = useState(false);
+  const mono: React.CSSProperties = { fontFamily: 'ui-monospace, monospace' };
+
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ ...panelStyle, maxWidth: 680 }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Users size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Client</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">{title}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+    <form onChange={() => setDirty(true)} onSubmit={(e) => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      const payload: Customer = Object.fromEntries(fd);
+      payload.tvaExonere = tvaExonere;
+      payload.salespersonId = salespersonId || '';
+      payload.parentCustomerId = parentCustomerId || '';
+      payload.payerCustomerId = payerCustomerId || '';
+      const missing = cf.missing();
+      if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
+      onSubmit(payload, cf.defs.length ? cf.values : null);
+    }}>
+    <Modal title={editing ? title : 'Nouveau client'} subtitle={editing ? 'Client' : undefined} onClose={onClose} width={680} locked={isPending}
+      footer={<FormFooter dirty={dirty} onCancel={onClose} busy={isPending} submitLabel={editing ? 'Enregistrer' : 'Créer le client'} />}>
+      <FormSection title="Type de client">
+        <div className="odoo-view-switcher" role="radiogroup" aria-label="Type de client" style={{ alignSelf: 'flex-start' }}>
+          {(Object.keys(TYPE_META) as CustomerType[]).map(t => {
+            const Icon = TYPE_META[t].icon;
+            const selected = customerType === t;
+            return (
+              <button type="button" key={t} role="radio" aria-checked={selected}
+                disabled={!direction && !selected}
+                title={!direction && !selected ? 'Type de client : réservé à la direction' : undefined}
+                onClick={() => {
+                  setDirty(true);
+                  setCustomerType(t);
+                  if (t === 'association') setTvaExonere(true);
+                  else if (t === 'particulier') setTvaExonere(false);
+                }}
+                style={{
+                  padding: '0.35rem 0.85rem', fontSize: '0.8125rem', display: 'inline-flex', alignItems: 'center', gap: 5,
+                  background: selected ? 'var(--odoo-purple-light)' : 'transparent',
+                  color: selected ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
+                  fontWeight: selected ? 600 : 400,
+                }}>
+                <Icon size={13} /> {TYPE_META[t].label}
+              </button>
+            );
+          })}
         </div>
+        <input type="hidden" name="customerType" value={customerType} />
+      </FormSection>
 
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          const fd = new FormData(e.currentTarget);
-          const payload: Customer = Object.fromEntries(fd);
-          payload.tvaExonere = tvaExonere;
-          payload.salespersonId = salespersonId || '';
-          payload.parentCustomerId = parentCustomerId || '';
-          payload.payerCustomerId = payerCustomerId || '';
-          const missing = cf.missing();
-          if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
-          onSubmit(payload, cf.defs.length ? cf.values : null);
-        }} className="flex-1 overflow-y-auto">
-          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={sectionTitle}><Users size={12} /> Type de client</div>
-            <div className="odoo-view-switcher" role="radiogroup" aria-label="Type de client" style={{ alignSelf: 'flex-start' }}>
-              {(Object.keys(TYPE_META) as CustomerType[]).map(t => {
-                const Icon = TYPE_META[t].icon;
-                const selected = customerType === t;
-                return (
-                  <button type="button" key={t} role="radio" aria-checked={selected}
-                    disabled={!direction && !selected}
-                    title={!direction && !selected ? 'Type de client : réservé à la direction' : undefined}
-                    onClick={() => {
-                      setCustomerType(t);
-                      if (t === 'association') setTvaExonere(true);
-                      else if (t === 'particulier') setTvaExonere(false);
-                    }}
-                    style={{
-                      padding: '0.35rem 0.85rem', fontSize: '0.8125rem', display: 'inline-flex', alignItems: 'center', gap: 5,
-                      background: selected ? 'var(--odoo-purple-light)' : 'transparent',
-                      color: selected ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
-                      fontWeight: selected ? 600 : 400,
-                    }}>
-                    <Icon size={13} /> {TYPE_META[t].label}
-                  </button>
-                );
-              })}
+      {isMoralEntity && (
+        <FormSection title={customerType === 'association' ? 'Identité de l\'association' : 'Identité de l\'entreprise'}>
+          <FormField label="Raison sociale" htmlFor="cf-company" required>
+            <input id="cf-company" name="companyName" defaultValue={editing?.company_name} className="ds-input" required autoFocus
+              placeholder={customerType === 'association' ? 'Association X' : 'Pâtisserie du Coin SARL'} />
+          </FormField>
+          {customerType !== 'association' && (
+            <div className="ds-form-grid">
+              <FormField label="Forme juridique" htmlFor="cf-forme">
+                <select id="cf-forme" name="formeJuridique" defaultValue={editing?.forme_juridique || ''} className="ds-input">
+                  <option value="">—</option>
+                  <option value="SARL">SARL</option>
+                  <option value="SARL AU">SARL AU (associé unique)</option>
+                  <option value="SA">SA</option>
+                  <option value="SAS">SAS</option>
+                  <option value="SNC">SNC</option>
+                  <option value="AE">Auto-entrepreneur</option>
+                  <option value="Coop">Coopérative</option>
+                  <option value="GIE">GIE</option>
+                  <option value="Autre">Autre</option>
+                </select>
+              </FormField>
+              <FormField label="Ville RC" htmlFor="cf-rcville">
+                <input id="cf-rcville" name="rcVille" defaultValue={editing?.rc_ville} className="ds-input" placeholder="Casablanca" />
+              </FormField>
             </div>
-            <input type="hidden" name="customerType" value={customerType} />
+          )}
+        </FormSection>
+      )}
 
-            {isMoralEntity && (
-              <>
-                <div style={sectionTitle}><Building2 size={12} /> {customerType === 'association' ? 'Identité de l\'association' : 'Identité de l\'entreprise'}</div>
-                <div>
-                  <label style={fieldLabel}>Raison sociale *</label>
-                  <input name="companyName" defaultValue={editing?.company_name} className={inputCls} required autoFocus
-                    placeholder={customerType === 'association' ? 'Association X' : 'Pâtisserie du Coin SARL'} />
-                </div>
-                {customerType !== 'association' && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><label style={fieldLabel}>Forme juridique</label>
-                      <select name="formeJuridique" defaultValue={editing?.forme_juridique || ''} className={inputCls}>
-                        <option value="">—</option>
-                        <option value="SARL">SARL</option>
-                        <option value="SARL AU">SARL AU (associé unique)</option>
-                        <option value="SA">SA</option>
-                        <option value="SAS">SAS</option>
-                        <option value="SNC">SNC</option>
-                        <option value="AE">Auto-entrepreneur</option>
-                        <option value="Coop">Coopérative</option>
-                        <option value="GIE">GIE</option>
-                        <option value="Autre">Autre</option>
-                      </select></div>
-                    <div><label style={fieldLabel}>Ville RC</label>
-                      <input name="rcVille" defaultValue={editing?.rc_ville} className={inputCls} placeholder="Casablanca" /></div>
-                  </div>
-                )}
-
-                <div style={sectionTitle}><FileBadge2 size={12} /> Identifiants légaux</div>
-                {customerType !== 'association' ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><label style={fieldLabel}>ICE{customerType === 'professionnel' || customerType === 'revendeur' ? ' (requis pour facturer)' : ''}</label>
-                      <input name="ice" defaultValue={editing?.ice} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }}
-                        maxLength={15} pattern="[0-9]{15}" title="15 chiffres" placeholder="000000000000000"
-                        onBlur={e => checkIce(e.target.value)} /></div>
-                    <div><label style={fieldLabel}>IF (identifiant fiscal)</label>
-                      <input name="ifFiscal" defaultValue={editing?.if_fiscal} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="12345678" /></div>
-                    {iceDup && <div style={{ gridColumn: '1 / -1' }}><StatusBanner tone="warning" icon={AlertTriangle} title="Doublon d'ICE possible">{iceDup}</StatusBanner></div>}
-                    <div><label style={fieldLabel}>RC (n°)</label>
-                      <input name="rc" defaultValue={editing?.rc} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="123456" /></div>
-                    <div><label style={fieldLabel}>TP (taxe professionnelle)</label>
-                      <input name="tp" defaultValue={editing?.tp} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="30123456" /></div>
-                    <div><label style={fieldLabel}>CNSS (employeur)</label>
-                      <input name="cnss" defaultValue={editing?.cnss} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="1234567" /></div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><label style={fieldLabel}>N° récépissé</label>
-                      <input name="associationRecepisse" defaultValue={editing?.association_recepisse} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="Récépissé de déclaration" /></div>
-                    <div><label style={fieldLabel}>IF (si assujettie)</label>
-                      <input name="ifFiscal" defaultValue={editing?.if_fiscal} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="Optionnel" /></div>
-                    <div><label style={fieldLabel}>Président</label>
-                      <input name="president" defaultValue={editing?.president} className={inputCls} placeholder="Nom du président" /></div>
-                  </div>
-                )}
-                {/* Rôles partenaires (phase 4.2) : entité mère + payeur */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label style={fieldLabel}>Entité mère</label>
-                    <SearchSelect value={parentCustomerId} onChange={setParentCustomerId}
-                      placeholder="— Aucune" width="100%" size="md" ariaLabel="Entité mère"
-                      options={partnerOptions.map(c => ({ id: c.id as string, label: displayName(c).primary }))} /></div>
-                  <div><label style={fieldLabel}>Payeur (si différent)</label>
-                    <SearchSelect value={payerCustomerId} onChange={setPayerCustomerId}
-                      placeholder="— Le client paie lui-même" width="100%" size="md" ariaLabel="Payeur"
-                      options={partnerOptions.map(c => ({ id: c.id as string, label: displayName(c).primary }))} />
-                    <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 2 }}>La facture part au payeur ; le BL reste au nom du client.</p>
-                  </div>
-                </div>
-                {/* Commercial attitré (phase 4.5) : repris sur devis, commande, BL, facture */}
-                <div><label style={fieldLabel}>Commercial attitré</label>
-                  <SearchSelect value={salespersonId} onChange={setSalespersonId}
-                    placeholder="— Aucun" width="100%" size="md" ariaLabel="Commercial attitré"
-                    options={salespeople.map(u => ({ id: u.id as string, label: `${u.firstName as string} ${u.lastName as string}` }))} /></div>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={tvaExonere} disabled={!direction} onChange={(e) => setTvaExonere(e.target.checked)} />
-                  Client exonéré de TVA
-                </label>
-              </>
-            )}
-
-            <div style={sectionTitle}><User size={12} /> {isMoralEntity ? 'Contact principal (optionnel)' : 'Identité'}</div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label style={fieldLabel}>Prénom{isMoralEntity ? '' : ' *'}</label>
-                <input name="firstName" defaultValue={editing?.first_name} className={inputCls} required={!isMoralEntity} autoFocus={!isMoralEntity} placeholder="Mohamed" /></div>
-              <div><label style={fieldLabel}>Nom{isMoralEntity ? '' : ' *'}</label>
-                <input name="lastName" defaultValue={editing?.last_name} className={inputCls} required={!isMoralEntity} placeholder="Alami" /></div>
-              {isMoralEntity ? (
-                <div><label style={fieldLabel}>Fonction / rôle</label>
-                  <input name="contactRole" defaultValue={editing?.contact_role} className={inputCls}
-                    placeholder={customerType === 'association' ? 'Trésorier, secrétaire…' : 'Gérant, acheteur, comptable…'} /></div>
-              ) : (
-                <div><label style={fieldLabel}>Date de naissance</label>
-                  <input name="birthday" type="date" defaultValue={editing?.birthday ? (editing.birthday as string).slice(0, 10) : ''} className={inputCls} /></div>
-              )}
+      {isMoralEntity && (
+        <FormSection title="Identifiants légaux">
+          {customerType !== 'association' ? (
+            <div className="ds-form-grid">
+              <FormField label={`ICE${customerType === 'professionnel' || customerType === 'revendeur' ? ' (requis pour facturer)' : ''}`} htmlFor="cf-ice" hint="15 chiffres">
+                <input id="cf-ice" name="ice" defaultValue={editing?.ice} className="ds-input" style={mono}
+                  maxLength={15} pattern="[0-9]{15}" title="15 chiffres" placeholder="000000000000000"
+                  onBlur={e => checkIce(e.target.value)} />
+              </FormField>
+              <FormField label="IF (identifiant fiscal)" htmlFor="cf-if">
+                <input id="cf-if" name="ifFiscal" defaultValue={editing?.if_fiscal} className="ds-input" style={mono} placeholder="12345678" />
+              </FormField>
+              {iceDup && <div style={{ gridColumn: '1 / -1' }}><StatusBanner tone="warning" icon={AlertTriangle} title="Doublon d'ICE possible">{iceDup}</StatusBanner></div>}
+              <FormField label="RC (n°)" htmlFor="cf-rc">
+                <input id="cf-rc" name="rc" defaultValue={editing?.rc} className="ds-input" style={mono} placeholder="123456" />
+              </FormField>
+              <FormField label="TP (taxe professionnelle)" htmlFor="cf-tp">
+                <input id="cf-tp" name="tp" defaultValue={editing?.tp} className="ds-input" style={mono} placeholder="30123456" />
+              </FormField>
+              <FormField label="CNSS (employeur)" htmlFor="cf-cnss">
+                <input id="cf-cnss" name="cnss" defaultValue={editing?.cnss} className="ds-input" style={mono} placeholder="1234567" />
+              </FormField>
             </div>
-
-            <div style={sectionTitle}><Phone size={12} /> Contact</div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label style={fieldLabel}>Téléphone</label>
-                <input name="phone" defaultValue={editing?.phone} className={inputCls} placeholder="06 XX XX XX XX" /></div>
-              <div><label style={fieldLabel}>Email</label>
-                <input name="email" type="email" defaultValue={editing?.email} className={inputCls} placeholder="client@exemple.com" /></div>
+          ) : (
+            <div className="ds-form-grid">
+              <FormField label="N° récépissé" htmlFor="cf-recepisse">
+                <input id="cf-recepisse" name="associationRecepisse" defaultValue={editing?.association_recepisse} className="ds-input" style={mono} placeholder="Récépissé de déclaration" />
+              </FormField>
+              <FormField label="IF (si assujettie)" htmlFor="cf-if-asso">
+                <input id="cf-if-asso" name="ifFiscal" defaultValue={editing?.if_fiscal} className="ds-input" style={mono} placeholder="Optionnel" />
+              </FormField>
+              <FormField label="Président" htmlFor="cf-president">
+                <input id="cf-president" name="president" defaultValue={editing?.president} className="ds-input" placeholder="Nom du président" />
+              </FormField>
             </div>
-            <div>
-              <label style={fieldLabel}>Contact préféré</label>
-              <div style={{ display: 'flex', gap: 16, fontSize: '0.8125rem' }}>
-                {(['phone', 'email', 'whatsapp'] as const).map(m => (
-                  <label key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input type="radio" name="preferredContact" value={m}
-                      defaultChecked={(editing?.preferred_contact || 'phone') === m} />
-                    {m === 'phone' ? 'Téléphone' : m === 'email' ? 'Email' : 'WhatsApp'}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div style={sectionTitle}><MapPin size={12} /> {isMoralEntity ? 'Adresse du siège' : 'Adresse'}</div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2"><label style={fieldLabel}>Adresse</label>
-                <input name="address" defaultValue={editing?.address} className={inputCls} placeholder="123 rue Mohammed V" /></div>
-              <div><label style={fieldLabel}>Ville</label>
-                <input name="city" defaultValue={editing?.city} className={inputCls} placeholder="Casablanca" /></div>
-            </div>
-
-            {customerType !== 'particulier' && (
-              <>
-                <div style={sectionTitle}><CreditCard size={12} /> Conditions commerciales{!direction && ' (fixées par la direction)'}</div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div><label style={fieldLabel}>Plafond de crédit ({currencySymbol()})</label>
-                    <input name="creditLimit" disabled={!direction} type="number" step="0.01" min="0" defaultValue={editing?.credit_limit} className={inputCls} placeholder="10000" /></div>
-                  <div><label style={fieldLabel}>Remise (%)</label>
-                    <input name="remisePct" disabled={!direction} type="number" step="0.01" min="0" max="100" defaultValue={editing?.remise_pct} className={inputCls} placeholder="5" /></div>
-                  <div><label style={fieldLabel}>Délai de paiement (jours)</label>
-                    <input name="delaiPaiementJours" disabled={!direction} type="number" step="1" min="0" defaultValue={editing?.delai_paiement_jours} className={inputCls} placeholder="30" /></div>
-                  <div><label style={fieldLabel}>Facturation</label>
-                    <select name="billingFrequency" disabled={!direction} defaultValue={editing?.billing_frequency || 'monthly'} className={inputCls}
-                      title="À chaque livraison : la facture suit le bon de livraison. Mensuelle : les BL sont regroupés sur une facture.">
-                      <option value="monthly">Mensuelle (BL regroupés)</option>
-                      <option value="per_delivery">À chaque livraison</option>
-                    </select></div>
-                </div>
-              </>
-            )}
-
-            <div style={sectionTitle}><MessageSquare size={12} /> Préférences et notes</div>
-            {customerType === 'particulier' && (
-              <div><label style={fieldLabel}>Allergies / restrictions</label>
-                <input name="allergies" defaultValue={editing?.allergies} className={inputCls} placeholder="Gluten, lactose, fruits à coque…" /></div>
-            )}
-            <div><label style={fieldLabel}>Notes internes</label>
-              <textarea name="notes" defaultValue={editing?.notes} rows={2} className={inputCls} placeholder="Préférences, habitudes, informations utiles…" /></div>
-            <CustomFieldsEditor entity="customer" values={cf.values} onChange={cf.setValues} />
+          )}
+          {/* Rôles partenaires (phase 4.2) : entité mère + payeur */}
+          <div className="ds-form-grid">
+            <FormField label="Entité mère">
+              <SearchSelect value={parentCustomerId} onChange={v => { setDirty(true); setParentCustomerId(v); }}
+                placeholder="— Aucune" width="100%" size="md" ariaLabel="Entité mère"
+                options={partnerOptions.map(c => ({ id: c.id as string, label: displayName(c).primary }))} />
+            </FormField>
+            <FormField label="Payeur (si différent)" hint="La facture part au payeur ; le BL reste au nom du client.">
+              <SearchSelect value={payerCustomerId} onChange={v => { setDirty(true); setPayerCustomerId(v); }}
+                placeholder="— Le client paie lui-même" width="100%" size="md" ariaLabel="Payeur"
+                options={partnerOptions.map(c => ({ id: c.id as string, label: displayName(c).primary }))} />
+            </FormField>
           </div>
+          {/* Commercial attitré (phase 4.5) : repris sur devis, commande, BL, facture */}
+          <FormField label="Commercial attitré">
+            <SearchSelect value={salespersonId} onChange={v => { setDirty(true); setSalespersonId(v); }}
+              placeholder="— Aucun" width="100%" size="md" ariaLabel="Commercial attitré"
+              options={salespeople.map(u => ({ id: u.id as string, label: `${u.firstName as string} ${u.lastName as string}` }))} />
+          </FormField>
+          <label htmlFor="cf-tva-exo" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' }}>
+            <input id="cf-tva-exo" type="checkbox" checked={tvaExonere} disabled={!direction} onChange={(e) => setTvaExonere(e.target.checked)} />
+            Client exonéré de TVA
+          </label>
+        </FormSection>
+      )}
 
-          <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="submit" disabled={isPending} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              {isPending && <Loader2 size={12} className="animate-spin" />}
-              {editing ? 'Enregistrer' : 'Créer le client'}
-            </button>
+      <FormSection title={isMoralEntity ? 'Contact principal (optionnel)' : 'Identité'}>
+        <div className="ds-form-grid">
+          <FormField label="Prénom" htmlFor="cf-first" required={!isMoralEntity}>
+            <input id="cf-first" name="firstName" defaultValue={editing?.first_name} className="ds-input" required={!isMoralEntity} autoFocus={!isMoralEntity} placeholder="Mohamed" />
+          </FormField>
+          <FormField label="Nom" htmlFor="cf-last" required={!isMoralEntity}>
+            <input id="cf-last" name="lastName" defaultValue={editing?.last_name} className="ds-input" required={!isMoralEntity} placeholder="Alami" />
+          </FormField>
+          {isMoralEntity ? (
+            <FormField label="Fonction / rôle" htmlFor="cf-role">
+              <input id="cf-role" name="contactRole" defaultValue={editing?.contact_role} className="ds-input"
+                placeholder={customerType === 'association' ? 'Trésorier, secrétaire…' : 'Gérant, acheteur, comptable…'} />
+            </FormField>
+          ) : (
+            <FormField label="Date de naissance" htmlFor="cf-birthday">
+              <input id="cf-birthday" name="birthday" type="date" defaultValue={editing?.birthday ? (editing.birthday as string).slice(0, 10) : ''} className="ds-input" />
+            </FormField>
+          )}
+        </div>
+      </FormSection>
+
+      <FormSection title="Contact">
+        <div className="ds-form-grid">
+          <FormField label="Téléphone" htmlFor="cf-phone">
+            <input id="cf-phone" name="phone" defaultValue={editing?.phone} className="ds-input" placeholder="06 XX XX XX XX" />
+          </FormField>
+          <FormField label="Email" htmlFor="cf-email">
+            <input id="cf-email" name="email" type="email" defaultValue={editing?.email} className="ds-input" placeholder="client@exemple.com" />
+          </FormField>
+        </div>
+        <div className="ds-field" role="radiogroup" aria-labelledby="cf-pref-label">
+          <span id="cf-pref-label" className="ds-field-label">Contact préféré</span>
+          <div style={{ display: 'flex', gap: 16, fontSize: '0.8125rem' }}>
+            {(['phone', 'email', 'whatsapp'] as const).map(m => (
+              <label key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="radio" name="preferredContact" value={m}
+                  defaultChecked={(editing?.preferred_contact || 'phone') === m} />
+                {m === 'phone' ? 'Téléphone' : m === 'email' ? 'Email' : 'WhatsApp'}
+              </label>
+            ))}
           </div>
-        </form>
-      </div>
-    </ModalBackdrop>
+        </div>
+      </FormSection>
+
+      <FormSection title={isMoralEntity ? 'Adresse du siège' : 'Adresse'}>
+        <div className="ds-form-grid">
+          <FormField label="Adresse" htmlFor="cf-address">
+            <input id="cf-address" name="address" defaultValue={editing?.address} className="ds-input" placeholder="123 rue Mohammed V" />
+          </FormField>
+          <FormField label="Ville" htmlFor="cf-city">
+            <input id="cf-city" name="city" defaultValue={editing?.city} className="ds-input" placeholder="Casablanca" />
+          </FormField>
+        </div>
+      </FormSection>
+
+      {customerType !== 'particulier' && (
+        <FormSection title={`Conditions commerciales${!direction ? ' (fixées par la direction)' : ''}`}>
+          <div className="ds-form-grid cols-4">
+            <FormField label={`Plafond de crédit (${currencySymbol()})`} htmlFor="cf-credit">
+              <input id="cf-credit" name="creditLimit" disabled={!direction} type="number" step="0.01" min="0" defaultValue={editing?.credit_limit} className="ds-input" placeholder="10000" />
+            </FormField>
+            <FormField label="Remise (%)" htmlFor="cf-remise">
+              <input id="cf-remise" name="remisePct" disabled={!direction} type="number" step="0.01" min="0" max="100" defaultValue={editing?.remise_pct} className="ds-input" placeholder="5" />
+            </FormField>
+            <FormField label="Délai de paiement (jours)" htmlFor="cf-delai">
+              <input id="cf-delai" name="delaiPaiementJours" disabled={!direction} type="number" step="1" min="0" defaultValue={editing?.delai_paiement_jours} className="ds-input" placeholder="30" />
+            </FormField>
+            <FormField label="Facturation" htmlFor="cf-billing">
+              <select id="cf-billing" name="billingFrequency" disabled={!direction} defaultValue={editing?.billing_frequency || 'monthly'} className="ds-input"
+                title="À chaque livraison : la facture suit le bon de livraison. Mensuelle : les BL sont regroupés sur une facture.">
+                <option value="monthly">Mensuelle (BL regroupés)</option>
+                <option value="per_delivery">À chaque livraison</option>
+              </select>
+            </FormField>
+          </div>
+        </FormSection>
+      )}
+
+      <FormSection title="Préférences et notes">
+        {customerType === 'particulier' && (
+          <FormField label="Allergies / restrictions" htmlFor="cf-allergies">
+            <input id="cf-allergies" name="allergies" defaultValue={editing?.allergies} className="ds-input" placeholder="Gluten, lactose, fruits à coque…" />
+          </FormField>
+        )}
+        <FormField label="Notes internes" htmlFor="cf-notes">
+          <textarea id="cf-notes" name="notes" defaultValue={editing?.notes} rows={2} className="ds-input" placeholder="Préférences, habitudes, informations utiles…" />
+        </FormField>
+        <CustomFieldsEditor entity="customer" values={cf.values} onChange={v => { setDirty(true); cf.setValues(v); }} />
+      </FormSection>
+    </Modal>
+    </form>
   );
 }

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { CalendarClock, Plus, Play, X, Loader2 } from 'lucide-react';
+import { CalendarClock, Plus, Play, Loader2 } from 'lucide-react';
 import { prepaidChargesApi } from '../../api/prepaid-charges.api';
 import { planComptableApi } from '../../api/ledger.api';
 import { notify } from '../../components/ui/InlineNotification';
@@ -10,10 +10,8 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { money as fmtMoney, currencySymbol } from '../../utils/money';
-import { LoadingState, DataPanel, KpiGrid, KpiCard, EmptyState, TableFooter } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { LoadingState, DataPanel, KpiGrid, KpiCard, EmptyState, ErrorState, TableFooter, HeaderActions, Modal, FormSection, FormField, FormFooter } from '../../components/ds';
 
 /**
  * Charges constatées d'avance (compte 486). On enregistre une dépense qui couvre
@@ -29,7 +27,7 @@ const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM
 
 export default function PrepaidChargesTab() {
   const qc = useQueryClient();
-  const { data: rows = [], isLoading } = useQuery({ queryKey: ['prepaid-charges'], queryFn: prepaidChargesApi.list });
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['prepaid-charges'], queryFn: prepaidChargesApi.list });
   const [showForm, setShowForm] = useState(false);
 
   const recognizeAll = useMutation({
@@ -54,16 +52,16 @@ export default function PrepaidChargesTab() {
         <KpiCard label="Reste à constater" value={money(totalRemaining)} sub={<>{active.length} charge{active.length > 1 ? 's' : ''} en cours</>} />
       </KpiGrid>
 
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" className="odoo-btn-secondary" disabled={recognizeAll.isPending} onClick={() => recognizeAll.mutate()} aria-busy={recognizeAll.isPending || undefined}>
           {recognizeAll.isPending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Play size={13} aria-hidden="true" />} Constater les mois échus
         </button>
         <button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}>
           <Plus size={14} aria-hidden="true" /> Nouvelle charge
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
-      {isLoading ? <LoadingState /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
         <EmptyState icon={CalendarClock} title="Aucune charge constatée d'avance" text="Créez une charge payée d'avance pour l'étaler sur les mois qu'elle couvre."
           action={<button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} aria-hidden="true" /> Nouvelle charge</button>} />
       ) : (
@@ -87,12 +85,12 @@ export default function PrepaidChargesTab() {
                   <td>
                     <span className="ds-ref">{r.charge_account_code}</span> <span style={{ color: 'var(--ds-muted)' }}>{r.charge_account_label}</span>
                   </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{day(r.start_date)} → {day(r.end_date)} <span style={{ color: 'var(--theme-text-muted)' }}>({r.months} mois)</span></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{day(r.start_date)} → {day(r.end_date)} <span style={{ color: 'var(--ds-muted)' }}>({r.months} mois)</span></td>
                   <td className="ds-num">{amt(r.total_amount)}</td>
                   <td className="ds-num">
                     {amt(r.recognized)}
-                    <div style={{ height: 4, borderRadius: 2, background: 'var(--theme-bg-secondary)', marginTop: 3, overflow: 'hidden' }}>
-                      <div style={{ width: `${pct}%`, height: '100%', background: 'var(--theme-accent)' }} />
+                    <div style={{ height: 4, borderRadius: 2, background: 'var(--ds-hair)', marginTop: 3, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: 'var(--ds-accent)' }} />
                     </div>
                   </td>
                   <td className="ds-num ds-strong">{amt(r.remaining)}</td>
@@ -138,49 +136,35 @@ function PrepaidForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
   const invalid = !label.trim() || !account || !(Number(amount) > 0) || endDate < startDate;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(520px, 96vw)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><CalendarClock size={16} /> Nouvelle charge constatée d'avance</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+    <Modal title="Nouvelle charge constatée d'avance" onClose={onClose} width={560} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => save.mutate()} busy={save.isPending} disabled={invalid} submitLabel="Créer" />}>
+      <FormSection title="Charge">
+        <FormField label="Libellé" htmlFor="cca-label" required>
+          <input id="cca-label" type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Assurance locaux 2026" className="ds-input" />
+        </FormField>
+        <FormField label="Compte de charge (classe 6)" required>
+          <SearchSelect value={account} onChange={setAccount}
+            placeholder="— Choisir —" width="100%" size="md" ariaLabel="Compte de charge"
+            options={chargeAccounts.map(a => ({ id: String(a.code), label: `${a.code} — ${a.label}` }))} />
+        </FormField>
+        <FormField label={`Montant total (${currencySymbol()})`} htmlFor="cca-amount" required>
+          <input id="cca-amount" type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="ds-input" />
+        </FormField>
+      </FormSection>
+      <FormSection title="Période couverte">
+        <div className="ds-form-grid">
+          <FormField label="Début de période" htmlFor="cca-start" required>
+            <input id="cca-start" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ds-input" />
+          </FormField>
+          <FormField label="Fin de période" htmlFor="cca-end" required
+            error={endDate < startDate ? 'La fin doit suivre le début de période.' : undefined}>
+            <input id="cca-end" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ds-input" />
+          </FormField>
         </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Libellé">
-            <input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Assurance locaux 2026" className="ds-input sm" />
-          </Field>
-          <Field label="Compte de charge (classe 6)">
-            <SearchSelect value={account} onChange={setAccount}
-              placeholder="— Choisir —" width="100%" size="md" ariaLabel="Compte de charge"
-              options={chargeAccounts.map(a => ({ id: String(a.code), label: `${a.code} — ${a.label}` }))} />
-          </Field>
-          <Field label={`Montant total (${currencySymbol()})`}>
-            <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="ds-input sm" />
-          </Field>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Field label="Début de période"><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ds-input sm" /></Field>
-            <Field label="Fin de période"><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ds-input sm" /></Field>
-          </div>
-          <p style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)', margin: 0 }}>
-            Le montant sera étalé linéairement sur les mois couverts. La création passe l'écriture de reclassement (débit 486 / crédit {account || '6x'}).
-          </p>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={invalid || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Créer
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
-  );
-}
-
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1 }}>
-      <span style={{ color: 'var(--theme-text-muted)' }}>{label}</span>
-      {children}
-    </label>
+        <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: 0 }}>
+          Le montant sera étalé linéairement sur les mois couverts. La création passe l'écriture de reclassement (débit 486 / crédit {account || '6x'}).
+        </p>
+      </FormSection>
+    </Modal>
   );
 }

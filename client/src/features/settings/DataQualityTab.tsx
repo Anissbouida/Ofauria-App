@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Activity, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { Activity, ChevronDown, ChevronRight } from 'lucide-react';
 import { settingsApi, type DataQualityIndicator } from '../../api/settings.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
@@ -9,6 +9,7 @@ import IngredientMergeCard from './IngredientMergeCard';
 import FormatWeightsGrid from './FormatWeightsGrid';
 import AllergenGrid from './AllergenGrid';
 import { SettingsTabs } from './SettingsPrimitives';
+import { DataPanel, LoadingState } from '../../components/ds';
 
 /**
  * Paramètres › Qualité des données (G2-02) : complétude des fiches (formats, ingrédients,
@@ -23,21 +24,21 @@ function Items({ indicator }: { indicator: DataQualityIndicator }) {
   const { data, isLoading } = useQuery({
     queryKey: ['data-quality', indicator.key], queryFn: () => settingsApi.dataQualityItems(indicator.key),
   });
-  if (isLoading || !data) return <div style={{ padding: 12 }}><Loader2 className="animate-spin" size={16} /></div>;
+  if (isLoading || !data) return <LoadingState bare />;
   if (!data.length) return <div style={{ padding: 12, color: 'var(--ds-muted)' }}>Rien à corriger.</div>;
   return (
-    <div style={{ maxHeight: 360, overflowY: 'auto', borderTop: '1px solid var(--odoo-border)' }}>
+    <div style={{ maxHeight: 360, overflowY: 'auto', borderTop: '1px solid var(--ds-sep)' }}>
       <table className="odoo-table" style={{ width: '100%' }}>
         <thead>
-          <tr><th style={{ textAlign: 'left' }}>Fiche</th><th style={{ textAlign: 'left' }}>{indicator.detailLabel}</th><th /></tr>
+          <tr><th style={{ textAlign: 'left' }}>Fiche</th><th style={{ textAlign: 'left' }}>{indicator.detailLabel}</th><th className="ds-actions"><span className="sr-only">Action</span></th></tr>
         </thead>
         <tbody>
           {data.map((it, n) => (
             <tr key={`${it.id}-${n}`}>
-              <td>{it.label}</td>
+              <td className="ds-strong">{it.label}</td>
               <td style={{ color: 'var(--ds-muted)' }}>{it.detail}</td>
-              <td className="ds-num">
-                <Link className="odoo-btn-secondary" to={it.kind === 'recipe' ? `/recipes/${it.id}/nomenclature` : `/stock/${it.id}`}>Ouvrir la fiche</Link>
+              <td className="ds-actions">
+                <Link className="odoo-btn-secondary ds-btn-sm" to={it.kind === 'recipe' ? `/recipes/${it.id}/nomenclature` : `/stock/${it.id}`}>Ouvrir la fiche</Link>
               </td>
             </tr>
           ))}
@@ -54,7 +55,7 @@ export default function DataQualityTab() {
   const { data, isLoading } = useQuery({ queryKey: ['data-quality'], queryFn: settingsApi.dataQuality });
   const [open, setOpen] = useState<string | null>(null);
 
-  if (isLoading || !data) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading || !data) return <LoadingState />;
   const remaining = data.filter(i => i.toFix > 0).length;
 
   const controls = (
@@ -65,7 +66,7 @@ export default function DataQualityTab() {
           : `${remaining} contrôle${remaining > 1 ? 's' : ''} sur ${data.length} ont encore des fiches à compléter. Les compteurs sont calculés en direct.`}
       </StatusBanner>
 
-      <div className="prj-panel" style={{ overflowX: 'auto' }}>
+      <DataPanel label="Contrôles de qualité">
         <table className="odoo-table" style={{ width: '100%' }}>
           <thead>
             <tr>
@@ -74,7 +75,7 @@ export default function DataQualityTab() {
               <th className="ds-num">Sur</th>
               <th style={{ textAlign: 'left', minWidth: 130 }}>Complétude</th>
               <th style={{ textAlign: 'left' }}>État</th>
-              <th />
+              <th className="ds-actions"><span className="sr-only">Action</span></th>
             </tr>
           </thead>
           <tbody>
@@ -84,24 +85,24 @@ export default function DataQualityTab() {
               return [
                 <tr key={i.key}>
                   <td style={{ minWidth: 260, maxWidth: 420 }}>
-                    <div style={{ fontWeight: 500 }}>{i.label}</div>
+                    <div className="ds-strong">{i.label}</div>
                     <div style={{ fontSize: '0.76rem', color: 'var(--ds-muted)' }}>{i.help}</div>
                   </td>
-                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{i.toFix.toLocaleString('fr-FR')}</td>
-                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--ds-muted)' }}>{i.total.toLocaleString('fr-FR')}</td>
+                  <td className="ds-num ds-strong">{i.toFix.toLocaleString('fr-FR')}</td>
+                  <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{i.total.toLocaleString('fr-FR')}</td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Complétude : ${pct} %`}
-                        style={{ flex: 1, height: 6, borderRadius: 999, background: 'var(--odoo-border)', overflow: 'hidden' }}>
+                        style={{ flex: 1, height: 6, borderRadius: 999, background: 'var(--ds-sep)', overflow: 'hidden' }}>
                         <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? 'var(--ds-success)' : pct >= 70 ? 'var(--ds-warning)' : 'var(--ds-danger)' }} />
                       </div>
                       <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem', minWidth: 38, textAlign: 'right' }}>{pct} %</span>
                     </div>
                   </td>
                   <td><StatusTag tone={i.toFix === 0 ? 'done' : pct >= 70 ? 'todo' : 'late'} label={i.toFix === 0 ? 'Complet' : pct >= 70 ? 'À compléter' : 'Prioritaire'} /></td>
-                  <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
+                  <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
                     {i.toFix > 0 && (
-                      <button type="button" className="odoo-btn-secondary" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : i.key)}
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : i.key)}
                         style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {isOpen ? 'Masquer' : 'Voir la liste'}
                       </button>
@@ -113,7 +114,7 @@ export default function DataQualityTab() {
             })}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
     </div>
   );
 

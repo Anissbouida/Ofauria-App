@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Loader2, Lock, Plus, Trash2, X, Download, Building2, Play, CalendarClock, Eye, LogOut, Undo2,
+  Loader2, Lock, Plus, Trash2, Download, Building2, Play, CalendarClock, Eye, LogOut, Undo2,
 } from 'lucide-react';
 import { DisposalModal, CancelDisposalModal, AssetsTableView } from './ImmobilisationsCession';
 import { apiErrorMessage } from '../../api/errors';
@@ -12,10 +12,8 @@ import type { Account } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { money, currencySymbol } from '../../utils/money';
-import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, Tabs, Toolbar, TableFooter } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { DataPanel, EmptyState, ErrorState, KpiCard, KpiGrid, LoadingState, Tabs, Toolbar, TableFooter, HeaderActions, Modal, FormSection, FormField, FormFooter } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
@@ -70,7 +68,7 @@ export default function ImmobilisationsTab() {
     queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
   };
 
-  const { data: assets = [], isLoading } = useQuery({
+  const { data: assets = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['fixed-assets'],
     queryFn: () => fixedAssetsApi.list(),
     enabled: isAdmin,
@@ -139,14 +137,14 @@ export default function ImmobilisationsTab() {
 
       {view === 'tableau' ? <AssetsTableView /> : <>
       {/* Barre d'actions */}
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={assets.length === 0}>
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <button type="button" onClick={() => setShowForm(true)} className="odoo-btn-primary">
           <Plus size={13} aria-hidden="true" /> Nouvelle immobilisation
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
       <Toolbar>
         <span role="group" aria-label="Dotation aux amortissements" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ds-muted)' }}>
@@ -165,6 +163,8 @@ export default function ImmobilisationsTab() {
 
       {isLoading ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : assets.length === 0 ? (
         <EmptyState icon={Building2} title="Aucune immobilisation" text="Ajoutez votre matériel : four, frigo, caisse…"
           action={<button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={13} aria-hidden="true" /> Nouvelle immobilisation</button>} />
@@ -197,7 +197,7 @@ export default function ImmobilisationsTab() {
                     <td className="ds-strong">{a.label}
                       {a.supplier_name && <span style={{ color: 'var(--ds-muted)', fontWeight: 400, fontSize: 12 }}> · {a.supplier_name}</span>}
                       {out && a.disposal_date && (
-                        <div style={{ fontSize: '0.6875rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>
+                        <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--ds-muted)' }}>
                           {a.disposal_kind === 'sale' ? `Cédée le ${fmtDate(a.disposal_date)} · ${n(a.disposal_price ?? 0)} HT${a.disposal_buyer ? ` · ${a.disposal_buyer}` : ''}` : `Mise au rebut le ${fmtDate(a.disposal_date)}`}
                           {' · '}<span style={{ color: gain >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{gain >= 0 ? 'plus-value' : 'moins-value'} {n(Math.abs(gain))}</span>
                         </div>
@@ -269,126 +269,94 @@ function AssetForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
   const valid = form.label && form.assetAccountId && form.depreciationAccountId && form.expenseAccountId
     && form.acquisitionCost && parseFloat(form.acquisitionCost) > 0 && parseInt(form.durationYears, 10) > 0;
 
-  const inputStyle = { width: '100%', padding: '7px 10px', border: '1px solid var(--theme-bg-separator)', borderRadius: 6, fontSize: '0.8125rem', background: 'var(--theme-bg-input)' };
-  const labelStyle = { fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'block', marginBottom: 4 };
+  const acc = (list: Account[]) => list.map(a => ({ id: String(a.id), label: `${a.code} — ${a.label}` }));
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Building2 size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span className="odoo-breadcrumb-current">Nouvelle immobilisation</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+    <Modal title="Nouvelle immobilisation" onClose={onClose} width={600} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => save.mutate()} busy={save.isPending} disabled={!valid} submitLabel="Créer" />}>
+      <FormSection title="Bien">
+        <FormField label="Libellé" htmlFor="fa-label" required>
+          <input id="fa-label" className="ds-input" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} placeholder="Four à pain, frigo vitrine..." />
+        </FormField>
+        <div className="ds-form-grid">
+          <FormField label="Date d'acquisition" htmlFor="fa-date" required>
+            <input id="fa-date" className="ds-input" type="date" value={form.acquisitionDate} onChange={e => setForm({ ...form, acquisitionDate: e.target.value })} />
+          </FormField>
+          <FormField label={`Coût d'acquisition (${currencySymbol()})`} htmlFor="fa-cost" required>
+            <input id="fa-cost" className="ds-input" type="number" step="0.01" value={form.acquisitionCost} onChange={e => setForm({ ...form, acquisitionCost: e.target.value })} />
+          </FormField>
         </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <label style={labelStyle}>Libellé *</label>
-            <input value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} placeholder="Four à pain, frigo vitrine..." style={inputStyle} />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Compte immobilisation (23xx) *</label>
-              <SearchSelect value={form.assetAccountId} onChange={v => setForm({ ...form, assetAccountId: v })}
-                placeholder="—" width="100%" size="md" ariaLabel="Compte immobilisation"
-                options={assetAccounts.map(a => ({ id: String(a.id), label: `${a.code} — ${a.label}` }))} />
-            </div>
-            <div>
-              <label style={labelStyle}>Compte amortissement (28xx) *</label>
-              <SearchSelect value={form.depreciationAccountId} onChange={v => setForm({ ...form, depreciationAccountId: v })}
-                placeholder="—" width="100%" size="md" ariaLabel="Compte amortissement"
-                options={deprAccounts.map(a => ({ id: String(a.id), label: `${a.code} — ${a.label}` }))} />
-            </div>
-          </div>
-          <div>
-            <label style={labelStyle}>Compte dotation (619x) *</label>
+      </FormSection>
+      <FormSection title="Comptes">
+        <div className="ds-form-grid">
+          <FormField label="Compte immobilisation (23xx)" required>
+            <SearchSelect value={form.assetAccountId} onChange={v => setForm({ ...form, assetAccountId: v })}
+              placeholder="—" width="100%" size="md" ariaLabel="Compte immobilisation" options={acc(assetAccounts)} />
+          </FormField>
+          <FormField label="Compte amortissement (28xx)" required>
+            <SearchSelect value={form.depreciationAccountId} onChange={v => setForm({ ...form, depreciationAccountId: v })}
+              placeholder="—" width="100%" size="md" ariaLabel="Compte amortissement" options={acc(deprAccounts)} />
+          </FormField>
+          <FormField label="Compte dotation (619x)" required>
             <SearchSelect value={form.expenseAccountId} onChange={v => setForm({ ...form, expenseAccountId: v })}
-              placeholder="—" width="100%" size="md" ariaLabel="Compte dotation"
-              options={expenseAccounts.map(a => ({ id: String(a.id), label: `${a.code} — ${a.label}` }))} />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Date d'acquisition *</label>
-              <input type="date" value={form.acquisitionDate} onChange={e => setForm({ ...form, acquisitionDate: e.target.value })} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Coût d'acquisition ({currencySymbol()}) *</label>
-              <input type="number" step="0.01" value={form.acquisitionCost} onChange={e => setForm({ ...form, acquisitionCost: e.target.value })} style={inputStyle} />
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Valeur résiduelle</label>
-              <input type="number" step="0.01" value={form.residualValue} onChange={e => setForm({ ...form, residualValue: e.target.value })} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Durée (ans) *</label>
-              <input type="number" value={form.durationYears} onChange={e => setForm({ ...form, durationYears: e.target.value })} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Méthode</label>
-              <select value={form.method} onChange={e => setForm({ ...form, method: e.target.value as 'linear' | 'degressive' })} style={inputStyle}>
-                <option value="linear">Linéaire</option>
-                <option value="degressive">Dégressif</option>
-              </select>
-            </div>
-          </div>
+              placeholder="—" width="100%" size="md" ariaLabel="Compte dotation" options={acc(expenseAccounts)} />
+          </FormField>
         </div>
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={() => save.mutate()} disabled={!valid || save.isPending} className="odoo-btn-primary">
-            {save.isPending ? 'Création...' : 'Créer'}
-          </button>
+      </FormSection>
+      <FormSection title="Amortissement">
+        <div className="ds-form-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+          <FormField label={`Valeur résiduelle (${currencySymbol()})`} htmlFor="fa-residual">
+            <input id="fa-residual" className="ds-input" type="number" step="0.01" value={form.residualValue} onChange={e => setForm({ ...form, residualValue: e.target.value })} />
+          </FormField>
+          <FormField label="Durée (ans)" htmlFor="fa-duration" required>
+            <input id="fa-duration" className="ds-input" type="number" value={form.durationYears} onChange={e => setForm({ ...form, durationYears: e.target.value })} />
+          </FormField>
+          <FormField label="Méthode" htmlFor="fa-method">
+            <select id="fa-method" className="ds-input" value={form.method} onChange={e => setForm({ ...form, method: e.target.value as 'linear' | 'degressive' })}>
+              <option value="linear">Linéaire</option>
+              <option value="degressive">Dégressif</option>
+            </select>
+          </FormField>
         </div>
-      </div>
-    </ModalBackdrop>
+      </FormSection>
+    </Modal>
   );
 }
 
 function ScheduleModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data, isLoading } = useQuery({ queryKey: ['fixed-asset-schedule', id], queryFn: () => fixedAssetsApi.schedule(id) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['fixed-asset-schedule', id], queryFn: () => fixedAssetsApi.schedule(id) });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <CalendarClock size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span className="odoo-breadcrumb-current">{data ? `Plan d'amortissement — ${data.asset.label}` : 'Chargement...'}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        {isLoading || !data ? (
-          <LoadingState />
-        ) : (
+    <Modal title={data ? `Plan d'amortissement — ${data.asset.label}` : 'Plan d\'amortissement'} onClose={onClose} width={680}>
+      {isError ? (
+        <ErrorState bare error={error} title="Le plan n'a pas pu être chargé" onRetry={() => refetch()} />
+      ) : isLoading || !data ? (
+        <LoadingState bare />
+      ) : (
+        <DataPanel label="Plan d'amortissement">
           <table className="odoo-table ds-dense">
             <thead>
               <tr>
                 <th style={{ width: 90 }}>Période</th>
-                <th className="ds-num">Dotation</th>
-                <th className="ds-num">Cumul</th>
-                <th className="ds-num">VNC</th>
-                <th style={{ width: 90, textAlign: 'center' }}>Comptabilisé</th>
+                <th className="ds-num">Dotation ({currencySymbol()})</th>
+                <th className="ds-num">Cumul ({currencySymbol()})</th>
+                <th className="ds-num">VNC ({currencySymbol()})</th>
+                <th style={{ width: 110, textAlign: 'center' }}>Comptabilisé</th>
               </tr>
             </thead>
             <tbody>
               {data.schedule.map((l, i) => (
-                <tr key={i} style={l.posted ? { background: 'var(--theme-bg-secondary)' } : undefined}>
-                  <td style={{ fontSize: '0.75rem' }}>{String(l.month).padStart(2, '0')}/{l.year}</td>
+                <tr key={i} style={l.posted ? { background: 'var(--ds-bg)' } : undefined}>
+                  <td>{String(l.month).padStart(2, '0')}/{l.year}</td>
                   <td className="ds-num">{n(l.amount)}</td>
-                  <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{n(l.cumulated)}</td>
-                  <td className="ds-num" style={{ color: 'var(--ds-info)' }}>{n(l.vnc)}</td>
-                  <td style={{ textAlign: 'center' }}>{l.posted ? <span style={{ color: 'var(--ds-success)' }}>✓</span> : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}</td>
+                  <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(l.cumulated)}</td>
+                  <td className="ds-num ds-strong">{n(l.vnc)}</td>
+                  <td style={{ textAlign: 'center' }}>{l.posted ? <span style={{ color: 'var(--ds-success)' }} aria-label="Oui">✓</span> : <span style={{ color: 'var(--ds-muted)' }} aria-label="Non">—</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
-      </div>
-    </ModalBackdrop>
+        </DataPanel>
+      )}
+    </Modal>
   );
 }

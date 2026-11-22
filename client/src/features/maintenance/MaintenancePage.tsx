@@ -14,7 +14,6 @@ import { apiErrorMessage } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
@@ -22,7 +21,7 @@ import { PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, typ
 import { ListToolbar } from '../sales/ListTemplate';
 import { StageChips, Panel, PagerFoot, PageLoading } from '../controle/KlUi';
 import { InterventionFormModal, PlanFormModal, n2, PRIORITY_TAG } from './forms';
-import { DataPanel, EmptyState, FormField, KpiCard, KpiGrid, NoResultState, SectionHeader } from '../../components/ds';
+import { DataPanel, Drawer, EmptyState, FormField, FormFooter, KpiCard, KpiGrid, NoResultState, SectionHeader } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 
 /** Description d'une ligne sous le titre de chaque écran (gabarit de page du Design System). */
@@ -329,21 +328,16 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
   const assigneeRate = people.find(p => p.id === i?.assignee_id)?.cost_rate;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.32)' }}>
-      {/* Fiche au design Ventes : feuille .kl-sheet (en-tête au thème, corps en cartes). */}
-      <div className="odoo-scope kl-sheet w-full" role="dialog" aria-label={i ? `Intervention ${i.number}` : 'Intervention'} onClick={e => e.stopPropagation()} style={{ maxWidth: 780, maxHeight: '92vh' }}>
+    <Drawer
+      title={i ? <span className="ds-ref" style={{ fontSize: 'inherit' }}>{i.number}</span> : 'Intervention'}
+      subtitle={i?.title}
+      aside={i ? <InterventionStatusTag status={i.status} /> : undefined}
+      label={i ? `Intervention ${i.number}` : 'Intervention'}
+      onClose={onClose} width={780}>
         {isLoading || !i ? <Loading /> : (
           <>
-            <header className="kl-sheet-head">
-              <div className="ord-who">
-                <h2><span className="ds-ref" style={{ fontSize: 'inherit' }}>{i.number}</span></h2>
-                <p>{i.title}</p>
-              </div>
-              <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-            </header>
-            <div className="kl-sheet-body" style={{ gap: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                <InterventionStatusTag status={i.status} />
                 <span className={`odoo-tag ${PRIORITY_TAG[i.priority]}`}>{PRIORITY_LABELS[i.priority]}</span>
                 <span className="odoo-tag odoo-tag-grey">{KIND_LABELS[i.kind]}</span>
               </div>
@@ -351,10 +345,12 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
 
               {editable && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                  {['requested', 'scheduled'].includes(i.status) && <button type="button" className="odoo-btn-secondary" onClick={() => { setWhen(i.scheduled_at ? format(new Date(i.scheduled_at), "yyyy-MM-dd'T'HH:mm") : ''); setScheduling(true); }}><CalendarClock size={13} /> {i.status === 'scheduled' ? 'Replanifier' : 'Planifier'}</button>}
                   {['requested', 'scheduled'].includes(i.status) && <button type="button" className="odoo-btn-primary" onClick={() => setStatus.mutate({ status: 'in_progress' })}><PlayCircle size={13} /> Démarrer</button>}
+                  {['requested', 'scheduled'].includes(i.status) && <button type="button" className="odoo-btn-secondary" onClick={() => { setWhen(i.scheduled_at ? format(new Date(i.scheduled_at), "yyyy-MM-dd'T'HH:mm") : ''); setScheduling(true); }}><CalendarClock size={13} /> {i.status === 'scheduled' ? 'Replanifier' : 'Planifier'}</button>}
                   {i.status === 'in_progress' && <button type="button" className="odoo-btn-primary" onClick={() => { setDone(d => ({ ...d, laborRate: d.laborRate || (assigneeRate ?? '') })); setFinishing(true); }}><CheckCircle2 size={13} /> Terminer</button>}
-                  {['requested', 'scheduled', 'in_progress'].includes(i.status) && <button type="button" className="odoo-btn-secondary" onClick={() => setStatus.mutate({ status: 'cancelled' })}><XCircle size={13} /> Annuler</button>}
+                  {['requested', 'scheduled', 'in_progress'].includes(i.status) && (
+                    <RowMenu label="Autres actions" items={[{ label: 'Annuler l\'intervention', icon: XCircle, danger: true, onSelect: () => setStatus.mutate({ status: 'cancelled' }) }]} />
+                  )}
                   {['done', 'cancelled'].includes(i.status) && <button type="button" className="odoo-btn-secondary" onClick={() => setStatus.mutate({ status: i.status === 'done' ? 'in_progress' : 'requested' })}><RotateCcw size={13} /> Rouvrir</button>}
                   {!['done', 'cancelled'].includes(i.status) && (
                     <SearchSelect value={i.assignee_id != null ? String(i.assignee_id) : ''} onChange={id => update.mutate({ assigneeId: id || null })}
@@ -368,7 +364,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
                 <div className="kl-widget" style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
                   <div style={{ flex: 1 }}><FormField label="Date et heure" htmlFor="mnt-when" required><input id="mnt-when" className="ds-input" type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></FormField></div>
                   <button type="button" className="odoo-btn-secondary" onClick={() => setScheduling(false)}>Annuler</button>
-                  <button type="button" className="odoo-btn-primary" disabled={!when} onClick={() => setStatus.mutate({ status: 'scheduled', scheduledAt: new Date(when).toISOString() })}>Planifier</button>
+                  <button type="button" className="odoo-btn-primary" disabled={!when || setStatus.isPending} onClick={() => setStatus.mutate({ status: 'scheduled', scheduledAt: new Date(when).toISOString() })}>Planifier</button>
                 </div>
               )}
 
@@ -382,13 +378,10 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
                       <FormField key={k} label={l} htmlFor={`mnt-${k}`}><input id={`mnt-${k}`} className="ds-input" type="number" min="0" step="0.25" value={done[k]} onChange={e => setDone({ ...done, [k]: e.target.value })} /></FormField>
                     ))}
                   </div>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button type="button" className="odoo-btn-secondary" onClick={() => setFinishing(false)}>Annuler</button>
-                    <button type="button" className="odoo-btn-primary" disabled={!done.workDone.trim() || setStatus.isPending}
-                      onClick={() => setStatus.mutate({ status: 'done', workDone: done.workDone.trim(),
-                        laborHours: done.laborHours ? Number(done.laborHours) : null, laborRate: done.laborRate ? Number(done.laborRate) : null,
-                        partsCost: done.partsCost ? Number(done.partsCost) : null, downtimeHours: done.downtimeHours ? Number(done.downtimeHours) : null })}>Terminer</button>
-                  </div>
+                  <FormFooter onCancel={() => setFinishing(false)} submitLabel="Terminer" busy={setStatus.isPending} disabled={!done.workDone.trim()}
+                    onSubmit={() => setStatus.mutate({ status: 'done', workDone: done.workDone.trim(),
+                      laborHours: done.laborHours ? Number(done.laborHours) : null, laborRate: done.laborRate ? Number(done.laborRate) : null,
+                      partsCost: done.partsCost ? Number(done.partsCost) : null, downtimeHours: done.downtimeHours ? Number(done.downtimeHours) : null })} />
                 </div>
               )}
 
@@ -438,8 +431,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
             </div>
           </>
         )}
-      </div>
-    </ModalBackdrop>
+    </Drawer>
   );
 }
 

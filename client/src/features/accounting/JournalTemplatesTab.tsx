@@ -1,20 +1,19 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { NotebookPen, Plus, X, Loader2, Power, Trash2, Play, Pencil } from 'lucide-react';
+import { NotebookPen, Plus, Power, Trash2, Play, Pencil } from 'lucide-react';
 import { entryTemplatesApi, planComptableApi, journalsApi, type EntryTemplate, type EntryTemplateLine } from '../../api/ledger.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { money as fmtMoney } from '../../utils/money';
-import { LoadingState, DataPanel, EmptyState, TableFooter } from '../../components/ds';
+import { currencySymbol } from '../../utils/money';
+import { LoadingState, DataPanel, EmptyState, ErrorState, TableFooter, HeaderActions, Modal, FormSection, FormField, FormFooter } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
-import { AccHeaderActions } from './AccHeaderActions';
 import { RowMenu } from '../../components/ui/RowMenu';
 
-const money = (v: number) => fmtMoney(v);
+/** Montant sans devise (la devise est dans l'en-tête de colonne). */
+const money = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 type EditLine = { account_id: string; side: 'debit' | 'credit'; amount: number; label: string };
@@ -23,7 +22,7 @@ type EditLine = { account_id: string; side: 'debit' | 'credit'; amount: number; 
 export default function JournalTemplatesTab() {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: rows = [], isLoading } = useQuery({ queryKey: ['entry-templates'], queryFn: entryTemplatesApi.list });
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['entry-templates'], queryFn: entryTemplatesApi.list });
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [using, setUsing] = useState<EntryTemplate | null>(null);
   const invalidate = () => qc.invalidateQueries({ queryKey: ['entry-templates'] });
@@ -35,16 +34,16 @@ export default function JournalTemplatesTab() {
       <StatusBanner tone="info" icon={NotebookPen} title="Modèles d'écritures">
         Figez la structure d'une écriture récurrente (provision, abonnement, OD mensuelle) : journal, comptes, sens et montants par défaut. À l'usage, choisissez une date, ajustez les montants si besoin — l'écriture équilibrée est passée au journal.
       </StatusBanner>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} aria-hidden="true" /> Nouveau modèle</button>
-      </AccHeaderActions>
-      {isLoading ? <LoadingState /> : rows.length === 0 ? (
+      </HeaderActions>
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
         <EmptyState icon={NotebookPen} title="Aucun modèle d'écriture" text="Créez un modèle pour vos écritures récurrentes : provision, abonnement, OD mensuelle."
           action={<button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} aria-hidden="true" /> Nouveau modèle</button>} />
       ) : (
       <DataPanel label="Modèles d'écritures" footer={<TableFooter note={`${rows.length} modèle${rows.length > 1 ? 's' : ''}`} />}>
         <table className="odoo-table ds-dense">
-          <thead><tr><th>Modèle</th><th>Journal</th><th>Périodicité</th><th className="ds-num">Lignes</th><th className="ds-num">Montant</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th>Modèle</th><th>Journal</th><th>Périodicité</th><th className="ds-num">Lignes</th><th className="ds-num">Montant ({currencySymbol()})</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
           <tbody>
             {rows.map(t => (
               <tr key={t.id}>
@@ -58,7 +57,7 @@ export default function JournalTemplatesTab() {
                         {t.next_run_on && (!t.end_on || day(t.next_run_on) <= day(t.end_on)) ? `Prochaine : ${frDate(t.next_run_on)}` : 'Terminée'}
                       </div>
                     </>
-                  ) : <span style={{ color: 'var(--theme-text-muted)' }}>Manuel</span>}
+                  ) : <span style={{ color: 'var(--ds-muted)' }}>Manuel</span>}
                 </td>
                 <td className="ds-num">{t.line_count ?? 0}</td>
                 <td className="ds-num">{money(Number(t.total_debit || 0))}</td>
@@ -130,78 +129,95 @@ function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: 
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
+  const diff = round2(totalDebit - totalCredit);
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(760px, 97vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><NotebookPen size={16} /> {id ? 'Modifier le modèle' : 'Nouveau modèle d’écriture'}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+    <Modal title={id ? 'Modifier le modèle' : 'Nouveau modèle d’écriture'} onClose={onClose} width={820} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => save.mutate()} busy={save.isPending} submitLabel={id ? 'Enregistrer' : 'Créer'}
+        disabled={name.trim().length < 2 || !balanced || !complete || (recurrence !== '' && !firstRunOn)} />}>
+      <FormSection title="Modèle">
+        <div className="ds-form-grid" style={{ gridTemplateColumns: '2fr 1fr' }}>
+          <FormField label="Nom" htmlFor="tpl-name" required hint="2 caractères au moins.">
+            <input id="tpl-name" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. Provision loyer mensuel" className="ds-input" />
+          </FormField>
+          <FormField label="Journal" htmlFor="tpl-journal" required>
+            <select id="tpl-journal" value={journalCode} onChange={e => setJournalCode(e.target.value)} className="ds-input">
+              {journals.map(j => <option key={j.code} value={j.code}>{j.code} — {j.label}</option>)}
+              {!journals.some(j => j.code === journalCode) && <option value={journalCode}>{journalCode}</option>}
+            </select>
+          </FormField>
         </div>
-        <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 2, minWidth: 220 }}><span style={{ color: 'var(--theme-text-muted)' }}>Nom</span><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. Provision loyer mensuel" className="ds-input sm" style={{ width: '100%' }} /></label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1, minWidth: 140 }}><span style={{ color: 'var(--theme-text-muted)' }}>Journal</span>
-              <select value={journalCode} onChange={e => setJournalCode(e.target.value)} className="ds-input sm" style={{ width: '100%' }}>
-                {journals.map(j => <option key={j.code} value={j.code}>{j.code} — {j.label}</option>)}
-                {!journals.some(j => j.code === journalCode) && <option value={journalCode}>{journalCode}</option>}
-              </select>
-            </label>
-          </div>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Note (optionnel)</span><input type="text" value={description} onChange={e => setDescription(e.target.value)} className="ds-input sm" style={{ width: '100%' }} /></label>
+        <FormField label="Note" htmlFor="tpl-desc">
+          <input id="tpl-desc" type="text" value={description} onChange={e => setDescription(e.target.value)} className="ds-input" />
+        </FormField>
+      </FormSection>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1, minWidth: 170 }}><span style={{ color: 'var(--theme-text-muted)' }}>Périodicité</span>
-              <select value={recurrence} onChange={e => setRecurrence(e.target.value as typeof recurrence)} className="ds-input sm" style={{ width: '100%' }}>
-                <option value="">Manuel (à utiliser à la demande)</option>
-                <option value="monthly">Mensuelle</option>
-                <option value="quarterly">Trimestrielle</option>
-                <option value="yearly">Annuelle</option>
-              </select>
-            </label>
-            {recurrence && (
-              <>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', minWidth: 160 }}><span style={{ color: 'var(--theme-text-muted)' }}>{existing?.run_count ? 'Prochaine échéance' : 'Première échéance'}</span>
-                  <input type="date" value={firstRunOn} onChange={e => setFirstRunOn(e.target.value)} className="ds-input sm" style={{ width: '100%' }} /></label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', minWidth: 160 }}><span style={{ color: 'var(--theme-text-muted)' }}>Dernière échéance (optionnel)</span>
-                  <input type="date" value={endOn} onChange={e => setEndOn(e.target.value)} className="ds-input sm" style={{ width: '100%' }} /></label>
-              </>
-            )}
-          </div>
+      <FormSection title="Périodicité">
+        <div className="ds-form-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+          <FormField label="Périodicité" htmlFor="tpl-rec">
+            <select id="tpl-rec" value={recurrence} onChange={e => setRecurrence(e.target.value as typeof recurrence)} className="ds-input">
+              <option value="">Manuel (à utiliser à la demande)</option>
+              <option value="monthly">Mensuelle</option>
+              <option value="quarterly">Trimestrielle</option>
+              <option value="yearly">Annuelle</option>
+            </select>
+          </FormField>
           {recurrence && (
-            <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', margin: 0 }}>
-              L'écriture est passée automatiquement à chaque échéance, datée de l'échéance, avec les montants du modèle. Une échéance sur une période comptable fermée n'est pas passée : elle est signalée dans Paramètres › Tâches planifiées.
-            </p>
+            <>
+              <FormField label={existing?.run_count ? 'Prochaine échéance' : 'Première échéance'} htmlFor="tpl-first" required
+                error={!firstRunOn ? 'Indiquez la date de l\'échéance.' : undefined}>
+                <input id="tpl-first" type="date" value={firstRunOn} onChange={e => setFirstRunOn(e.target.value)} className="ds-input" />
+              </FormField>
+              <FormField label="Dernière échéance" htmlFor="tpl-end">
+                <input id="tpl-end" type="date" value={endOn} onChange={e => setEndOn(e.target.value)} className="ds-input" />
+              </FormField>
+            </>
           )}
-
-          <div style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>Lignes</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {lines.map((l, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 200 }}><SearchSelect options={accountOptions} value={l.account_id} onChange={v => setLine(i, { account_id: v })} placeholder="Compte…" width="100%" /></div>
-                <select value={l.side} onChange={e => setLine(i, { side: e.target.value as 'debit' | 'credit' })} className="ds-input sm" style={{ width: 100 }}>
-                  <option value="debit">Débit</option>
-                  <option value="credit">Crédit</option>
-                </select>
-                <input type="number" step="0.01" min="0" value={l.amount || ''} onChange={e => setLine(i, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="ds-input sm" style={{ width: 110, textAlign: 'right' }} />
-                <input type="text" value={l.label} onChange={e => setLine(i, { label: e.target.value })} placeholder="Libellé" className="ds-input sm" style={{ flex: 1, minWidth: 120 }} />
-                <button className="odoo-btn-secondary" style={{ padding: '0.3rem 0.4rem' }} disabled={lines.length <= 2} onClick={() => setLines(a => a.filter((_, j) => j !== i))} aria-label="Supprimer"><Trash2 size={13} /></button>
-              </div>
-            ))}
-            <button className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setLines(a => [...a, { account_id: '', side: 'debit', amount: 0, label: '' }])}><Plus size={13} /> Ajouter une ligne</button>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: '0.85rem', borderTop: '1px solid var(--odoo-border)', paddingTop: 10 }}>
-            <span style={{ color: 'var(--theme-text-muted)' }}>Débit {money(totalDebit)}</span>
-            <span style={{ color: 'var(--theme-text-muted)' }}>Crédit {money(totalCredit)}</span>
-            <span style={{ fontWeight: 600, color: balanced ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{balanced ? 'Équilibré' : 'Déséquilibré'}</span>
-          </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={name.trim().length < 2 || !balanced || !complete || (recurrence !== '' && !firstRunOn) || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {id ? 'Enregistrer' : 'Créer'}</button>
-        </div>
-      </div>
-    </ModalBackdrop>
+        {recurrence && (
+          <p style={{ fontSize: 12, color: 'var(--ds-muted)', margin: 0 }}>
+            L'écriture est passée automatiquement à chaque échéance, datée de l'échéance, avec les montants du modèle. Une échéance sur une période comptable fermée n'est pas passée : elle est signalée dans Paramètres › Tâches planifiées.
+          </p>
+        )}
+      </FormSection>
+
+      <FormSection title="Lignes">
+        <DataPanel label="Lignes du modèle">
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Compte</th><th style={{ width: 110 }}>Sens</th><th className="ds-num" style={{ width: 130 }}>Montant ({currencySymbol()})</th><th>Libellé</th><th className="ds-actions" style={{ width: 44 }}><span className="ds-sr-only">Actions</span></th></tr></thead>
+            <tbody>
+              {lines.map((l, i) => (
+                <tr key={i}>
+                  <td style={{ minWidth: 200 }}><SearchSelect options={accountOptions} value={l.account_id} onChange={v => setLine(i, { account_id: v })} placeholder="Compte…" width="100%" ariaLabel={`Compte ligne ${i + 1}`} /></td>
+                  <td>
+                    <select value={l.side} onChange={e => setLine(i, { side: e.target.value as 'debit' | 'credit' })} className="ds-input sm" aria-label={`Sens ligne ${i + 1}`}>
+                      <option value="debit">Débit</option>
+                      <option value="credit">Crédit</option>
+                    </select>
+                  </td>
+                  <td><input type="number" step="0.01" min="0" value={l.amount || ''} onChange={e => setLine(i, { amount: Number(e.target.value) || 0 })} placeholder="0.00" className="ds-input sm" style={{ textAlign: 'right' }} aria-label={`Montant ligne ${i + 1}`} /></td>
+                  <td><input type="text" value={l.label} onChange={e => setLine(i, { label: e.target.value })} placeholder="Libellé" className="ds-input sm" aria-label={`Libellé ligne ${i + 1}`} /></td>
+                  <td className="ds-actions"><button type="button" className="ds-icon-btn" disabled={lines.length <= 2} onClick={() => setLines(a => a.filter((_, j) => j !== i))} aria-label={`Supprimer la ligne ${i + 1}`}><Trash2 size={13} /></button></td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={2}>
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setLines(a => [...a, { account_id: '', side: 'debit', amount: 0, label: '' }])}><Plus size={13} /> Ajouter une ligne</button>
+                </td>
+                <td className="ds-num">D {money(totalDebit)}<br />C {money(totalCredit)}</td>
+                <td colSpan={2} style={{ color: balanced ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{balanced ? 'Équilibré' : 'Déséquilibré'}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </DataPanel>
+        {!balanced && (
+          <div className="ds-field error"><span className="ds-field-hint" role="alert">
+            {totalDebit === 0 && totalCredit === 0 ? 'Saisissez les montants des lignes.' : `Écart de ${money(Math.abs(diff))} ${currencySymbol()} entre le débit et le crédit : le modèle doit être équilibré.`}
+          </span></div>
+        )}
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -222,41 +238,47 @@ function UseTemplateModal({ template, onClose }: { template: EntryTemplate; onCl
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
+  const diff = round2(totalDebit - totalCredit);
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(680px, 97vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Play size={16} /> Utiliser « {template.name} »</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
+    <Modal title={`Utiliser « ${template.name} »`} onClose={onClose} width={700} locked={post.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => post.mutate()} busy={post.isPending} disabled={!balanced} submitLabel="Passer l'écriture" />}>
+      <FormSection title="Écriture">
+        <div className="ds-form-grid" style={{ gridTemplateColumns: '180px minmax(0, 1fr)' }}>
+          <FormField label="Date" htmlFor="use-tpl-date" required>
+            <input id="use-tpl-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input" />
+          </FormField>
+          <FormField label="Libellé" htmlFor="use-tpl-label">
+            <input id="use-tpl-label" type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder={template.name} className="ds-input" />
+          </FormField>
         </div>
-        <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Date</span><input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1, minWidth: 200 }}><span style={{ color: 'var(--theme-text-muted)' }}>Libellé (optionnel)</span><input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder={template.name} className="ds-input sm" style={{ width: '100%' }} /></label>
-          </div>
+      </FormSection>
+      <FormSection title="Montants">
+        <DataPanel label="Lignes de l'écriture">
           <table className="odoo-table ds-dense">
-            <thead><tr><th>Compte</th><th>Sens</th><th className="ds-num">Montant</th></tr></thead>
+            <thead><tr><th>Compte</th><th>Sens</th><th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
             <tbody>{lines.map(l => (
               <tr key={l.id}>
-                <td>{l.account_code} — {l.account_name}</td>
+                <td><span className="ds-ref">{l.account_code}</span> — {l.account_name}</td>
                 <td>{l.side === 'debit' ? 'Débit' : 'Crédit'}</td>
                 <td className="ds-num">
-                  <input type="number" step="0.01" min="0" value={amt(l)} onChange={e => l.id && setAmounts(a => ({ ...a, [l.id!]: Number(e.target.value) || 0 }))} className="ds-input sm" style={{ width: 120, textAlign: 'right' }} />
+                  <input type="number" step="0.01" min="0" value={amt(l)} onChange={e => l.id && setAmounts(a => ({ ...a, [l.id!]: Number(e.target.value) || 0 }))} className="ds-input sm" style={{ width: 120, textAlign: 'right' }} aria-label={`Montant ${l.account_code}`} />
                 </td>
               </tr>
             ))}</tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={2} style={{ color: balanced ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{balanced ? 'Équilibré' : 'Déséquilibré'}</td>
+                <td className="ds-num">D {money(totalDebit)} · C {money(totalCredit)}</td>
+              </tr>
+            </tfoot>
           </table>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: '0.85rem' }}>
-            <span style={{ color: 'var(--theme-text-muted)' }}>Débit {money(totalDebit)}</span>
-            <span style={{ color: 'var(--theme-text-muted)' }}>Crédit {money(totalCredit)}</span>
-            <span style={{ fontWeight: 600, color: balanced ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{balanced ? 'Équilibré' : 'Déséquilibré'}</span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={!balanced || post.isPending} onClick={() => post.mutate()}>{post.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Passer l'écriture</button>
-        </div>
-      </div>
-    </ModalBackdrop>
+        </DataPanel>
+        {!balanced && lines.length > 0 && (
+          <div className="ds-field error"><span className="ds-field-hint" role="alert">
+            {totalDebit === 0 ? 'Saisissez les montants des lignes.' : `Écart de ${money(Math.abs(diff))} ${currencySymbol()} entre le débit et le crédit : ajustez les montants.`}
+          </span></div>
+        )}
+      </FormSection>
+    </Modal>
   );
 }

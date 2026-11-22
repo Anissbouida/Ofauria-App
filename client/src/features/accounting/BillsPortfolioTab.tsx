@@ -7,8 +7,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
-import { LoadingState, DataPanel, KpiGrid, KpiCard, EmptyState, TableFooter, BulkBar, SectionHeader } from '../../components/ds';
+import { LoadingState, ErrorState, DataPanel, KpiGrid, KpiCard, EmptyState, TableFooter, BulkBar, SectionHeader, Modal, FormSection, FormField, FormFooter } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { currencySymbol } from '../../utils/money';
 
@@ -35,22 +34,6 @@ const STATUS: Record<BillStatus, { label: string; tone: StatusTone; icon?: Lucid
   unpaid: { label: 'Impayé', tone: 'blocked' },
 };
 
-function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
-  return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="odoo-scope" role="dialog" aria-modal="true" aria-label={title}
-        style={{ width: 'min(480px, 94vw)', borderRadius: 6, border: '1px solid var(--theme-bg-separator)', overflow: 'hidden', background: 'var(--theme-bg-primary, #fff)' }}>
-        <div className="odoo-section-header">{title}</div>
-        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.8125rem' }}>{children}</div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-page)' }}>{footer}</div>
-      </div>
-    </ModalBackdrop>
-  );
-}
-const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{label}{children}</label>
-);
-
 export default function BillsPortfolioTab() {
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -61,7 +44,7 @@ export default function BillsPortfolioTab() {
   const [cashFor, setCashFor] = useState<BillEffect | null>(null);
   const [settleFor, setSettleFor] = useState<BillRemittance | null>(null);
 
-  const { data, isLoading } = useQuery({ queryKey: ['bills', status], queryFn: () => billsApi.list(status) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['bills', status], queryFn: () => billsApi.list(status) });
   const { data: remittances = [] } = useQuery({ queryKey: ['bill-remittances'], queryFn: billsApi.remittances });
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['bills'] });
@@ -111,7 +94,7 @@ export default function BillsPortfolioTab() {
         </select>
       </div>
 
-      {isLoading ? <LoadingState /> : effects.length === 0 ? (
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : effects.length === 0 ? (
         <EmptyState icon={CheckCircle2} title="Aucun effet dans cette vue" text="Les chèques et traites reçus en règlement de factures clients apparaissent ici." />
       ) : (
         <DataPanel label="Effets" footer={<TableFooter note={`${effects.length} effet${effects.length > 1 ? 's' : ''} · montants en ${currencySymbol()}`} />}
@@ -147,7 +130,7 @@ export default function BillsPortfolioTab() {
                     <td className="ds-num">{n(e.amount)}</td>
                     <td>
                       <StatusTag tone={STATUS[e.status].tone} icon={STATUS[e.status].icon} label={STATUS[e.status].label} />
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+                      <div style={{ fontSize: 11, color: 'var(--ds-muted)' }}>
                         {e.remittance_number && <span style={mono}>{e.remittance_number}</span>}
                         {e.status === 'cashed' && ` le ${fmtDate(e.cashed_at)}`}
                         {e.status === 'unpaid' && ` le ${fmtDate(e.unpaid_at)}${e.unpaid_fees ? ` · frais ${n(e.unpaid_fees)}` : ''}`}
@@ -183,8 +166,8 @@ export default function BillsPortfolioTab() {
                   <td className="ds-ref">{r.remittance_number}{r.status === 'cancelled' && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="Annulé" /></span>}</td>
                   <td>{r.kind === 'discount' ? 'Escompte' : 'Encaissement'}</td>
                   <td>{fmtDate(r.remittance_date)}</td>
-                  <td>{r.bank_label} <span style={{ ...mono, color: 'var(--theme-text-muted)' }}>{r.bank_code}</span></td>
-                  <td className="ds-num">{r.effects}{r.pending > 0 && r.status === 'posted' && <span style={{ color: 'var(--theme-text-muted)' }}> ({r.pending} à dénouer)</span>}</td>
+                  <td>{r.bank_label} <span style={{ ...mono, color: 'var(--ds-muted)' }}>{r.bank_code}</span></td>
+                  <td className="ds-num">{r.effects}{r.pending > 0 && r.status === 'posted' && <span style={{ color: 'var(--ds-muted)' }}> ({r.pending} à dénouer)</span>}</td>
                   <td className="ds-num">{n(r.gross_amount)}</td>
                   <td className="ds-num">{r.kind === 'discount' ? n(r.interest + r.commission + r.commission_vat) : '—'}</td>
                   <td className="ds-num">{n(r.net_amount)}</td>
@@ -244,31 +227,31 @@ function RemittanceModal({ kind, effects, onClose, onDone }: { kind: 'collection
     onError: (e) => notify.error(errMsg(e)),
   });
   return (
-    <Modal title={kind === 'discount' ? 'Remise à l\'escompte' : 'Remise à l\'encaissement'} onClose={onClose} footer={
-      <>
-        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-        <button type="button" className="odoo-btn-primary" disabled={!bankId || save.isPending || gross - fees <= 0} onClick={() => save.mutate()}>Établir le bordereau</button>
-      </>
-    }>
-      <div>{effects.length} effet{effects.length > 1 ? 's' : ''} · nominal <strong style={mono}>{n(gross)}</strong></div>
-      <Field label="Banque">
-        <select value={bankId} onChange={e => setBank(e.target.value)} className="ds-input sm" style={{ width: 'auto' }}>
-          {banks.map(b => <option key={b.id} value={b.id}>{b.label} ({b.account_code})</option>)}
-        </select>
-      </Field>
-      <Field label="Date de remise"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></Field>
+    <Modal title={kind === 'discount' ? 'Remise à l\'escompte' : 'Remise à l\'encaissement'} onClose={onClose} width={520} locked={save.isPending}
+      subtitle={<>{effects.length} effet{effects.length > 1 ? 's' : ''} · nominal <strong className="ds-num">{n(gross)} {currencySymbol()}</strong></>}
+      footer={<FormFooter onCancel={onClose} submitLabel="Établir le bordereau" onSubmit={() => save.mutate()} busy={save.isPending} disabled={!bankId || gross - fees <= 0} />}>
+      <FormSection title="Remise">
+        <div className="ds-form-grid">
+          <FormField label="Banque" htmlFor="rem-bank" required>
+            <select id="rem-bank" value={bankId} onChange={e => setBank(e.target.value)} className="ds-input">
+              {banks.map(b => <option key={b.id} value={b.id}>{b.label} ({b.account_code})</option>)}
+            </select>
+          </FormField>
+          <FormField label="Date de remise" htmlFor="rem-date" required><input id="rem-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input" /></FormField>
+        </div>
+      </FormSection>
       {kind === 'discount' && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            <Field label="Agios (intérêts)"><input inputMode="decimal" value={interest} onChange={e => setInterest(e.target.value)} className="odoo-search-input" /></Field>
-            <Field label="Commissions HT"><input inputMode="decimal" value={commission} onChange={e => setCommission(e.target.value)} className="odoo-search-input" /></Field>
-            <Field label="TVA sur commissions"><input inputMode="decimal" value={vat} onChange={e => setVat(e.target.value)} className="odoo-search-input" /></Field>
+        <FormSection title={`Frais du bordereau (${currencySymbol()})`}>
+          <div className="ds-form-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+            <FormField label="Agios (intérêts)" htmlFor="rem-int"><input id="rem-int" inputMode="decimal" value={interest} onChange={e => setInterest(e.target.value)} className="ds-input" /></FormField>
+            <FormField label="Commissions HT" htmlFor="rem-com"><input id="rem-com" inputMode="decimal" value={commission} onChange={e => setCommission(e.target.value)} className="ds-input" /></FormField>
+            <FormField label="TVA sur commissions" htmlFor="rem-vat"><input id="rem-vat" inputMode="decimal" value={vat} onChange={e => setVat(e.target.value)} className="ds-input" /></FormField>
           </div>
-          <div>Net crédité par la banque : <strong style={mono}>{n(gross - fees)}</strong></div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Écriture : banque (net) + 6311 agios + 6147 commissions + 34552 TVA au débit, 5520 crédits d'escompte au crédit. Montants du bordereau de la banque.</div>
-        </>
+          <div>Net crédité par la banque : <strong className="ds-num">{n(gross - fees)} {currencySymbol()}</strong></div>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--ds-muted)' }}>Écriture : banque (net) + 6311 agios + 6147 commissions + 34552 TVA au débit, 5520 crédits d'escompte au crédit. Montants du bordereau de la banque.</p>
+        </FormSection>
       )}
-      <Field label="Note"><input value={note} onChange={e => setNote(e.target.value)} className="odoo-search-input" maxLength={500} /></Field>
+      <FormField label="Note" htmlFor="rem-note"><input id="rem-note" value={note} onChange={e => setNote(e.target.value)} className="ds-input" maxLength={500} /></FormField>
     </Modal>
   );
 }
@@ -284,19 +267,25 @@ function UnpaidModal({ effect, onClose, onDone }: { effect: BillEffect; onClose:
     onError: (e) => notify.error(errMsg(e)),
   });
   return (
-    <Modal title={`Impayé — ${effect.payment_method === 'traite' ? 'traite' : 'chèque'} ${effect.check_number ?? effect.reference ?? ''}`} onClose={onClose} footer={
-      <>
-        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-        <button type="button" className="odoo-btn-danger" disabled={save.isPending} onClick={() => save.mutate()}>Enregistrer l'impayé</button>
-      </>
-    }>
-      <div>{effect.customer_name ?? 'Client'} · <strong style={mono}>{n(effect.amount)}</strong>{effect.invoice_number && <> · facture <span style={mono}>{effect.invoice_number}</span></>}</div>
+    <Modal title={`Impayé — ${effect.payment_method === 'traite' ? 'traite' : 'chèque'} ${effect.check_number ?? effect.reference ?? ''}`} onClose={onClose} width={520} locked={save.isPending}
+      subtitle={<>{effect.customer_name ?? 'Client'} · <strong className="ds-num">{n(effect.amount)} {currencySymbol()}</strong>{effect.invoice_number && <> · facture <span className="ds-ref">{effect.invoice_number}</span></>}</>}
+      footer={
+        <div className="ds-form-foot">
+          <span className="ds-grow" />
+          <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={save.isPending}>Annuler</button>
+          <button type="button" className="ds-btn-danger solid" disabled={save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>Enregistrer l'impayé</button>
+        </div>
+      }>
       <StatusBanner tone="warning" icon={Ban} title="Le règlement sera annulé">
         La créance du client est rouverte (3421) et la facture redevient due.{effect.status === 'discounted' && ' La banque reprend le nominal escompté (5520 / banque).'}
       </StatusBanner>
-      <Field label="Date de l'impayé"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></Field>
-      {remitted && <Field label="Frais d'impayé prélevés par la banque"><input inputMode="decimal" value={fees} onChange={e => setFees(e.target.value)} className="odoo-search-input" /></Field>}
-      <Field label="Précision"><input value={note} onChange={e => setNote(e.target.value)} className="odoo-search-input" maxLength={500} /></Field>
+      <FormSection title="Impayé">
+        <div className="ds-form-grid">
+          <FormField label="Date de l'impayé" htmlFor="unp-date" required><input id="unp-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input" /></FormField>
+          {remitted && <FormField label={`Frais prélevés par la banque (${currencySymbol()})`} htmlFor="unp-fees"><input id="unp-fees" inputMode="decimal" value={fees} onChange={e => setFees(e.target.value)} className="ds-input" /></FormField>}
+        </div>
+        <FormField label="Précision" htmlFor="unp-note"><input id="unp-note" value={note} onChange={e => setNote(e.target.value)} className="ds-input" maxLength={500} /></FormField>
+      </FormSection>
     </Modal>
   );
 }
@@ -305,14 +294,10 @@ function DateModal({ title, hint, initial, run, onClose, onDone }: { title: stri
   const [date, setDate] = useState(initial);
   const save = useMutation({ mutationFn: () => run(date), onSuccess: onDone, onError: (e) => notify.error(errMsg(e)) });
   return (
-    <Modal title={title} onClose={onClose} footer={
-      <>
-        <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-        <button type="button" className="odoo-btn-primary" disabled={save.isPending || !date} onClick={() => save.mutate()}>Valider</button>
-      </>
-    }>
-      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{hint}</div>
-      <Field label="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: 'auto' }} /></Field>
+    <Modal title={title} onClose={onClose} width={480} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} submitLabel="Valider" onSubmit={() => save.mutate()} busy={save.isPending} disabled={!date} />}>
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)' }}>{hint}</p>
+      <FormField label="Date" htmlFor="bill-date" required><input id="bill-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input" /></FormField>
     </Modal>
   );
 }

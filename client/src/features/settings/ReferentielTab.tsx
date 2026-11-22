@@ -4,16 +4,15 @@ import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  ChevronDown, ChevronRight, ChevronLeft, Search, Plus, Pencil, Trash2, RotateCw, History, Download,
-  Database, Wallet, Package, Factory, Users, Loader2, X,
+  ChevronDown, ChevronRight, ChevronLeft, Plus, Pencil, Trash2, RotateCw, History, Download,
+  Database, Wallet, Package, Factory, Users,
 } from 'lucide-react';
 import { referentielApi } from '../../api/referentiel.api';
 import { usePermissions } from '../../context/PermissionsContext';
-import { StatusBanner } from '../../components/ui/StatusBanner';
+import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, Modal, NoResultState, SearchBar, SectionHeader, Toolbar } from '../../components/ds';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { RowMenu } from '../../components/ui/RowMenu';
 
 /**
@@ -70,7 +69,7 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const { data, isLoading } = useQuery({ queryKey: ['ref-dashboard'], queryFn: referentielApi.dashboard });
-  if (isLoading) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading) return <LoadingState bare />;
 
   const tables = (data?.tables || []) as Row[];
   const recent = (data?.recentChanges || []) as Row[];
@@ -85,75 +84,72 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div className="prj-toolbar">
-        <label className="prj-search" style={{ maxWidth: 420 }}>
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
-          <input id="ref-search" type="search" placeholder="Rechercher une table…"
-            value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une table" />
-        </label>
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} placeholder="Rechercher une table…" />
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
+        <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>
           {tables.length} tables · {totalActive} valeurs actives{totalInactive > 0 ? ` · ${totalInactive} inactives` : ''}
         </span>
-      </div>
+      </Toolbar>
 
       {sections.map(s => {
         const Icon = s.icon;
         const isCollapsed = !search && collapsed[s.key];
         return (
           <section key={s.key} style={{ display: 'grid', gap: 6 }}>
-            <button type="button" onClick={() => setCollapsed(c => ({ ...c, [s.key]: !c[s.key] }))}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 0, padding: '0 4px', cursor: 'pointer', color: 'var(--theme-text-strong)' }}>
-              {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-              <Icon size={14} />
-              <span style={{ fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em' }}>{s.label}</span>
-              <span style={{ fontSize: '0.8125rem' }}>({s.tables.length})</span>
-            </button>
+            <SectionHeader title={
+              <button type="button" onClick={() => setCollapsed(c => ({ ...c, [s.key]: !c[s.key] }))} aria-expanded={!isCollapsed}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit' }}>
+                {isCollapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                <Icon size={14} aria-hidden="true" />
+                {s.label}
+              </button>
+            } note={`${s.tables.length} table${s.tables.length > 1 ? 's' : ''}`} />
             {!isCollapsed && (
-              <div className="prj-panel prj-scroll">
+              <DataPanel label={s.label}>
                 {/* Largeurs fixes : les colonnes restent alignees d'un domaine a l'autre. */}
                 <table className="odoo-table" style={{ tableLayout: 'fixed', width: '100%' }}>
-                  <thead><tr><th style={{ width: '30%' }}>Table</th><th>Description</th><th className="ds-num" style={{ width: 90 }}>Actives</th><th style={{ width: 120 }}></th><th style={{ width: 36 }}></th></tr></thead>
+                  <thead><tr><th style={{ width: '30%' }}>Table</th><th>Description</th><th className="ds-num" style={{ width: 90 }}>Actives</th><th style={{ width: 130 }}>État</th><th style={{ width: 44 }} aria-label="Ouvrir"></th></tr></thead>
                   <tbody>
                     {s.tables.map(t => (
-                      <tr key={String(t.id)} onClick={() => onOpenTable(String(t.id))} style={{ cursor: 'pointer' }}>
-                        <td style={{ fontWeight: 500 }}>{String(t.label)}</td>
-                        <td style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>{String(t.description || '')}</td>
-                        <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(t.active_count) || 0}</td>
+                      <tr key={String(t.id)} className="ds-clickable" onClick={() => onOpenTable(String(t.id))}>
+                        <td className="ds-strong">
+                          <button type="button" onClick={ev => { ev.stopPropagation(); onOpenTable(String(t.id)); }}
+                            style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}>{String(t.label)}</button>
+                        </td>
+                        <td style={{ color: 'var(--ds-muted)' }}>{String(t.description || '')}</td>
+                        <td className="ds-num">{Number(t.active_count) || 0}</td>
                         <td>{Number(t.inactive_count) > 0 && <StatusTag tone="cancelled" label={`${Number(t.inactive_count)} inactive(s)`} />}</td>
-                        <td><ChevronRight size={14} style={{ color: 'var(--ds-muted)' }} /></td>
+                        <td><ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </DataPanel>
             )}
           </section>
         );
       })}
-      {!sections.length && <p style={{ color: 'var(--ds-muted)', fontSize: '0.875rem' }}>Aucune table ne correspond à la recherche.</p>}
+      {!sections.length && <NoResultState text="Aucune table ne correspond à la recherche." onReset={() => setSearch('')} />}
 
       {recent.length > 0 && (
         <section style={{ display: 'grid', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px', color: 'var(--theme-text-strong)' }}>
-            <History size={14} />
-            <span style={{ fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em' }}>Dernières modifications</span>
-          </div>
-          <div className="prj-panel prj-scroll">
+          <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><History size={14} aria-hidden="true" /> Dernières modifications</span>} />
+          <DataPanel label="Dernières modifications">
             <table className="odoo-table">
               <thead><tr><th style={{ width: 130 }}>Date</th><th style={{ width: 130 }}>Action</th><th>Table</th><th>Par</th></tr></thead>
               <tbody>
                 {recent.slice(0, 10).map(l => (
                   <tr key={String(l.id)}>
-                    <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt(l.created_at, 'dd/MM/yyyy HH:mm')}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmt(l.created_at, 'dd/MM/yyyy HH:mm')}</td>
                     <td><StatusTag tone={ACTIONS[String(l.action)]?.tone ?? 'draft'} label={ACTIONS[String(l.action)]?.label ?? String(l.action)} /></td>
-                    <td>{String(l.table_label || l.table_id)}</td>
+                    <td className="ds-strong">{String(l.table_label || l.table_id)}</td>
                     <td>{who(l)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
         </section>
       )}
     </div>
@@ -231,7 +227,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
     return out;
   }, [entries, search, isHierarchical, collapsed]);
 
-  if (isLoading) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading) return <LoadingState bare />;
 
   const activeCount = entries.filter(e => e.is_active !== false).length;
   const inactiveCount = entries.filter(e => e.is_active === false).length;
@@ -249,73 +245,65 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
     if (await confirm(msg, { danger: true, confirmLabel: isNative ? 'Supprimer' : 'Désactiver' })) remove.mutate(String(e.id));
   };
   const parentLabel = form?.metadata.parent_id ? String(entries.find(e => String(e.id) === String(form.metadata.parent_id))?.label || '') : '';
-  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)', width: '100%' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
-  const iconBtn: React.CSSProperties = { padding: '2px 6px', display: 'inline-flex', alignItems: 'center' };
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" className="odoo-btn-secondary" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <ChevronLeft size={13} /> Référentiel
+          <ChevronLeft size={13} aria-hidden="true" /> Référentiel
         </button>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>{String(table?.label || tableId)}</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
-            {activeCount} active(s){inactiveCount > 0 ? ` · ${inactiveCount} inactive(s)` : ''}
-          </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <SectionHeader title={String(table?.label || tableId)}
+            note={`${activeCount} active(s)${inactiveCount > 0 ? ` · ${inactiveCount} inactive(s)` : ''}`} />
         </div>
       </div>
 
-      <div className="prj-toolbar">
-        <label className="prj-search" style={{ maxWidth: 420 }}>
-          <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
-          <input id="ref-entry-search" type="search" placeholder="Rechercher par libellé, code…"
-            value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une valeur" />
-        </label>
+      <Toolbar>
+        <SearchBar value={search} onChange={setSearch} placeholder="Rechercher par libellé, code…" label="Rechercher une valeur" />
         {!isNative && (
-          <label htmlFor="ref-show-inactive" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+          <label htmlFor="ref-show-inactive" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
             <input id="ref-show-inactive" type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Afficher les inactives
           </label>
         )}
         <div style={{ flex: 1 }} />
-        <button className={showAudit ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setShowAudit(!showAudit)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <History size={13} /> Historique
+        <button type="button" className="odoo-btn-secondary" aria-pressed={showAudit} onClick={() => setShowAudit(!showAudit)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, ...(showAudit ? { background: 'var(--ds-tint)', color: 'var(--ds-accent-ink)' } : {}) }}>
+          <History size={13} aria-hidden="true" /> Historique
         </button>
         <button type="button" className="odoo-btn-secondary" onClick={() => referentielApi.exportCsv(tableId, entries, String(table?.label || tableId))} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Download size={13} /> Exporter
+          <Download size={13} aria-hidden="true" /> Exporter
         </button>
         {canCreate('settings') && (
           <button type="button" className="odoo-btn-primary" onClick={() => openNew()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Plus size={13} /> {isHierarchical ? 'Nouvelle catégorie' : 'Ajouter'}
+            <Plus size={13} aria-hidden="true" /> {isHierarchical ? 'Nouvelle catégorie' : 'Ajouter'}
           </button>
         )}
-      </div>
+      </Toolbar>
 
       {showAudit && (
-        <div className="prj-panel" style={{ overflowX: 'auto', maxHeight: 260, overflowY: 'auto' }}>
-          <table className="odoo-table">
+        <DataPanel label="Historique de la table" style={{ maxHeight: 260, overflowY: 'auto' }}>
+          <table className="odoo-table ds-dense">
             <thead><tr><th style={{ width: 140 }}>Date</th><th style={{ width: 130 }}>Action</th><th>Par</th></tr></thead>
             <tbody>
               {((audit as Row[]) || []).slice(0, 30).map(l => (
                 <tr key={String(l.id)}>
-                  <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt(l.created_at, 'dd/MM/yyyy HH:mm')}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{fmt(l.created_at, 'dd/MM/yyyy HH:mm')}</td>
                   <td><StatusTag tone={ACTIONS[String(l.action)]?.tone ?? 'draft'} label={ACTIONS[String(l.action)]?.label ?? String(l.action)} /></td>
                   <td>{who(l)}</td>
                 </tr>
               ))}
-              {!(audit as Row[] | undefined)?.length && <tr><td colSpan={3} style={{ color: 'var(--ds-muted)', textAlign: 'center' }}>Aucune modification enregistrée</td></tr>}
+              {!(audit as Row[] | undefined)?.length && <tr><td colSpan={3}><EmptyState icon={History} title="Aucune modification enregistrée" bare /></td></tr>}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {rows.length === 0 ? (
-        <StatusBanner tone="neutral" icon={Database} title={search ? 'Aucun résultat' : 'Table vide'}>
-          {search ? 'Aucune valeur ne correspond à la recherche.' : 'Ajoutez la première valeur avec le bouton « Ajouter ».'}
-        </StatusBanner>
+        search
+          ? <NoResultState text="Aucune valeur ne correspond à la recherche." onReset={() => setSearch('')} />
+          : <EmptyState icon={Database} title="Table vide" text="Ajoutez la première valeur avec le bouton « Ajouter »." />
       ) : (
-        <div className="prj-panel prj-scroll">
+        <DataPanel label={String(table?.label || tableId)}>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -323,8 +311,8 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                 {isHierarchical && <th style={{ width: 130 }}>Niveau</th>}
                 {hasCode && <th style={{ width: 120 }}>Code</th>}
                 <th>Description</th>
-                <th style={{ width: 150 }}></th>
-                <th style={{ width: 110 }}></th>
+                <th style={{ width: 150 }}>État</th>
+                <th className="ds-actions" style={{ width: 110 }} aria-label="Actions"></th>
               </tr>
             </thead>
             <tbody>
@@ -341,17 +329,17 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                           <button type="button" onClick={() => setCollapsed(c => ({ ...c, [id]: !c[id] }))}
                             aria-label={collapsed[id] ? 'Déplier' : 'Replier'}
                             style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--ds-muted)', display: 'inline-flex' }}>
-                            {collapsed[id] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                            {collapsed[id] ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
                           </button>
                         ) : <span style={{ width: 14, display: 'inline-block' }} />}
                         {e.color ? <span style={{ width: 10, height: 10, borderRadius: 2, background: String(e.color), display: 'inline-block' }} /> : null}
-                        <span style={{ fontWeight: isHierarchical && depth === 0 ? 600 : 400 }}>{String(e.label)}</span>
-                        {canHaveChildren && childCount > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>({childCount})</span>}
+                        <span className={isHierarchical && depth === 0 ? 'ds-strong' : undefined}>{String(e.label)}</span>
+                        {canHaveChildren && childCount > 0 && <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>({childCount})</span>}
                       </span>
                     </td>
-                    {isHierarchical && <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{LEVEL_LABELS[level - 1] ?? ''}</td>}
-                    {hasCode && <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }}>{String(e.code || '')}</td>}
-                    <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{String(e.description || '')}</td>
+                    {isHierarchical && <td style={{ color: 'var(--ds-muted)' }}>{LEVEL_LABELS[level - 1] ?? ''}</td>}
+                    {hasCode && <td className="ds-ref">{String(e.code || '')}</td>}
+                    <td style={{ color: 'var(--ds-muted)' }}>{String(e.description || '')}</td>
                     <td>
                       <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
                         {Boolean(e._requires_po) && <span className="odoo-tag odoo-tag-purple">BC requis</span>}
@@ -368,15 +356,15 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                     <td className="ds-actions">
                       {inactive ? (
                         canEdit('settings') && (
-                          <button type="button" className="odoo-btn-secondary" style={iconBtn} title="Réactiver" aria-label={`Réactiver ${e.label}`} onClick={() => reactivate.mutate(id)}>
-                            <RotateCw size={13} />
+                          <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-label={`Réactiver ${e.label}`} disabled={reactivate.isPending} onClick={() => reactivate.mutate(id)}>
+                            <RotateCw size={13} aria-hidden="true" /> Réactiver
                           </button>
                         )
                       ) : (
                         <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
                           {canEdit('settings') && (
-                            <button type="button" className="ds-icon-btn" title="Modifier" aria-label={`Modifier ${e.label}`} onClick={() => openEdit(e)}>
-                              <Pencil size={15} aria-hidden="true" />
+                            <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-label={`Modifier ${e.label}`} onClick={() => openEdit(e)}>
+                              <Pencil size={13} aria-hidden="true" /> Modifier
                             </button>
                           )}
                           <RowMenu label={`Plus d'actions pour ${e.label}`} items={[
@@ -391,88 +379,84 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {form && (
-        <ModalBackdrop onClose={() => setForm(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="odoo-scope" onClick={e => e.stopPropagation()}
-            style={{ background: 'var(--odoo-bg)', borderRadius: 6, border: '1px solid var(--odoo-border)', width: '100%', maxWidth: 520, margin: '0 16px', display: 'grid' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-              <div style={{ fontWeight: 600 }}>
-                {form.id ? 'Modifier la valeur' : isHierarchical && !form.metadata.parent_id ? 'Nouvelle catégorie' : 'Nouvelle valeur'}
-                {parentLabel && <span style={{ fontWeight: 400, color: 'var(--ds-muted)', marginLeft: 6 }}>sous « {parentLabel} »</span>}
-              </div>
-              <button type="button" onClick={() => setForm(null)} aria-label="Fermer" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ds-muted)' }}><X size={16} /></button>
-            </div>
-            <div style={{ padding: 16, display: 'grid', gap: 12 }}>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <label style={{ ...lab, flex: '2 1 200px' }}>Libellé
-                  <input id="ref-form-label" style={field} value={form.label} autoFocus onChange={e => setForm({ ...form, label: e.target.value })}
+        <Modal width={520} onClose={() => setForm(null)} locked={save.isPending}
+          title={form.id ? 'Modifier la valeur' : isHierarchical && !form.metadata.parent_id ? 'Nouvelle catégorie' : 'Nouvelle valeur'}
+          subtitle={parentLabel ? `sous « ${parentLabel} »` : undefined}
+          footer={<FormFooter onCancel={() => setForm(null)} onSubmit={() => save.mutate(form)} busy={save.isPending}
+            disabled={!form.label.trim()} submitLabel={form.id ? 'Enregistrer' : 'Ajouter'} />}>
+          <div style={{ display: 'grid', gap: 14 }}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: '2 1 200px' }}>
+                <FormField label="Libellé" htmlFor="ref-form-label" required>
+                  <input id="ref-form-label" className="ds-input" value={form.label} autoFocus onChange={e => setForm({ ...form, label: e.target.value })}
                     placeholder={isHierarchical ? 'Charges sociales' : 'Kilogramme'} />
-                </label>
-                {!isHierarchical && (
-                  <label style={{ ...lab, flex: '1 1 120px' }}>Code
-                    <input id="ref-form-code" style={{ ...field, fontFamily: 'ui-monospace, monospace' }} value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} placeholder="kg" />
-                  </label>
-                )}
+                </FormField>
               </div>
-              <label style={lab}>Description
-                <input id="ref-form-description" style={field} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
-              </label>
               {!isHierarchical && (
-                <label style={lab}>Couleur
-                  <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-                    <input id="ref-form-color" type="color" value={form.color || '#6b7280'} onChange={e => setForm({ ...form, color: e.target.value })}
-                      style={{ width: 36, height: 30, border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 0, background: 'none' }} />
-                    <input style={{ ...field, fontFamily: 'ui-monospace, monospace', width: 120 }} value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} placeholder="Aucune" aria-label="Code couleur" />
-                  </span>
-                </label>
+                <div style={{ flex: '1 1 120px' }}>
+                  <FormField label="Code" htmlFor="ref-form-code">
+                    <input id="ref-form-code" className="ds-input" style={{ fontFamily: 'ui-monospace, monospace' }} value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} placeholder="kg" />
+                  </FormField>
+                </div>
               )}
-              {tableId === 'expense_categories' && (
-                <label htmlFor="ref-form-po" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
-                  <input id="ref-form-po" type="checkbox" checked={Boolean(form.metadata.requires_po)}
-                    onChange={e => setForm({ ...form, metadata: { ...form.metadata, requires_po: e.target.checked } })} />
-                  Bon de commande requis pour les dépenses de cette catégorie
-                </label>
-              )}
-              {tableId === 'units' && (
-                <>
-                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                    <label style={{ ...lab, flex: '2 1 200px' }}>Famille de mesure
-                      <select id="ref-form-category" style={field} value={String(form.metadata.category || '')}
+            </div>
+            <FormField label="Description" htmlFor="ref-form-description">
+              <input id="ref-form-description" className="ds-input" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+            </FormField>
+            {!isHierarchical && (
+              <FormField label="Couleur" htmlFor="ref-form-color">
+                <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                  <input id="ref-form-color" type="color" value={form.color || '#6b7280'} onChange={e => setForm({ ...form, color: e.target.value })}
+                    style={{ width: 40, height: 36, border: '1px solid var(--ds-line)', borderRadius: 'var(--ds-r-field)', padding: 0, background: 'none' }} />
+                  <input className="ds-input" style={{ fontFamily: 'ui-monospace, monospace', width: 120 }} value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} placeholder="Aucune" aria-label="Code couleur" />
+                </span>
+              </FormField>
+            )}
+            {tableId === 'expense_categories' && (
+              <label htmlFor="ref-form-po" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+                <input id="ref-form-po" type="checkbox" checked={Boolean(form.metadata.requires_po)}
+                  onChange={e => setForm({ ...form, metadata: { ...form.metadata, requires_po: e.target.checked } })} />
+                Bon de commande requis pour les dépenses de cette catégorie
+              </label>
+            )}
+            {tableId === 'units' && (
+              <>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '2 1 200px' }}>
+                    <FormField label="Famille de mesure" htmlFor="ref-form-category">
+                      <select id="ref-form-category" className="ds-input" value={String(form.metadata.category || '')}
                         onChange={e => setForm({ ...form, metadata: { ...form.metadata, category: e.target.value || undefined } })}>
                         <option value="">— (non convertible)</option>
                         {UNIT_CATEGORIES.map(c => <option key={c.v} value={c.v}>{c.label}</option>)}
                       </select>
-                    </label>
-                    <label style={{ ...lab, flex: '1 1 140px' }}>Facteur vers la base
-                      <input id="ref-form-tobase" type="number" min="0" step="any" style={field}
+                    </FormField>
+                  </div>
+                  <div style={{ flex: '1 1 140px' }}>
+                    <FormField label="Facteur vers la base" htmlFor="ref-form-tobase">
+                      <input id="ref-form-tobase" type="number" min="0" step="any" className="ds-input"
                         value={form.metadata.to_base != null ? String(form.metadata.to_base) : ''}
                         disabled={Boolean(form.metadata.is_base)}
                         onChange={e => setForm({ ...form, metadata: { ...form.metadata, to_base: e.target.value === '' ? undefined : Number(e.target.value) } })}
                         placeholder="1000" />
-                    </label>
+                    </FormField>
                   </div>
-                  <label htmlFor="ref-form-isbase" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
-                    <input id="ref-form-isbase" type="checkbox" checked={Boolean(form.metadata.is_base)}
-                      onChange={e => setForm({ ...form, metadata: { ...form.metadata, is_base: e.target.checked, ...(e.target.checked ? { to_base: 1 } : {}) } })} />
-                    Unité de base de sa famille (facteur 1)
-                  </label>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', margin: 0 }}>
-                    Le facteur exprime 1 unité dans l'unité de base (ex. 1 kg = 1000 g → facteur 1000). La conversion n'opère qu'entre unités d'une même famille.
-                  </p>
-                </>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-              <button type="button" className="odoo-btn-secondary" onClick={() => setForm(null)}>Annuler</button>
-              <button type="button" className="odoo-btn-primary" disabled={!form.label.trim() || save.isPending} onClick={() => save.mutate(form)}>
-                {form.id ? 'Enregistrer' : 'Ajouter'}
-              </button>
-            </div>
+                </div>
+                <label htmlFor="ref-form-isbase" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+                  <input id="ref-form-isbase" type="checkbox" checked={Boolean(form.metadata.is_base)}
+                    onChange={e => setForm({ ...form, metadata: { ...form.metadata, is_base: e.target.checked, ...(e.target.checked ? { to_base: 1 } : {}) } })} />
+                  Unité de base de sa famille (facteur 1)
+                </label>
+                <p className="ds-field-hint" style={{ margin: 0 }}>
+                  Le facteur exprime 1 unité dans l'unité de base (ex. 1 kg = 1000 g → facteur 1000). La conversion n'opère qu'entre unités d'une même famille.
+                </p>
+              </>
+            )}
           </div>
-        </ModalBackdrop>
+        </Modal>
       )}
     </div>
   );

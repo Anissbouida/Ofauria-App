@@ -12,10 +12,11 @@ import { fr } from 'date-fns/locale';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ScatterChart, Scatter, ZAxis, ReferenceLine,
 } from 'recharts';
-import { AlertTriangle, ArrowUpRight, ArrowDownRight, Search, X } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import { Alert, DataPanel, KpiCard, KpiGrid, LoadingState, SearchBar, SectionHeader, Toolbar } from '../../components/ds';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListKpi, ListToolbar, ListPanel, FilterChips } from '../sales/ListTemplate';
+import { ListKpi, ListToolbar, FilterChips } from '../sales/ListTemplate';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
 type Tab = 'overview' | 'menu' | 'cost' | 'margins' | 'builder';
@@ -33,21 +34,21 @@ const tabs: { key: Tab; label: string; subtitle: string }[] = [
   { key: 'builder', label: 'Rapports personnalisés', subtitle: 'Construisez vos propres analyses' },
 ];
 
-const CLASS_META: Record<MenuEngineeringClass, { label: string; color: string; bg: string; border: string; dot: string; advice: string }> = {
-  STAR:   { label: 'Étoiles',     color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', dot: 'var(--ds-success)', advice: 'Mettre en avant, ne pas changer le prix' },
-  PUZZLE: { label: 'Énigmes',     color: 'text-rose-700',    bg: 'bg-rose-50',    border: 'border-rose-200',    dot: 'var(--theme-accent)', advice: 'Repositionner : visibilité, photo, suggestion en caisse' },
-  HORSE:  { label: 'Chevaux',     color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   dot: 'var(--ds-warning)', advice: 'Réduire le coût matière ou augmenter le prix' },
-  DOG:    { label: 'Poids morts', color: 'text-gray-700',    bg: 'bg-gray-50',    border: 'border-gray-200',    dot: 'var(--ds-muted)', advice: 'Refondre ou retirer de la carte' },
+const CLASS_META: Record<MenuEngineeringClass, { label: string; dot: string; advice: string }> = {
+  STAR:   { label: 'Étoiles',     dot: 'var(--ds-success)', advice: 'Mettre en avant, ne pas changer le prix' },
+  PUZZLE: { label: 'Énigmes',     dot: 'var(--theme-accent)', advice: 'Repositionner : visibilité, photo, suggestion en caisse' },
+  HORSE:  { label: 'Chevaux',     dot: 'var(--ds-warning)', advice: 'Réduire le coût matière ou augmenter le prix' },
+  DOG:    { label: 'Poids morts', dot: 'var(--ds-muted)', advice: 'Refondre ou retirer de la carte' },
 };
 
-function getZoneColor(value: number, opts: { greenMax?: number; greenMin?: number; orangeMax: number }): { text: string; bg: string; ring: string; label: string } {
+function getZone(value: number, opts: { greenMax?: number; greenMin?: number; orangeMax: number }): { tone: 'green' | 'orange' | 'red'; label: string } {
   if (opts.greenMin !== undefined && opts.greenMax !== undefined) {
-    if (value >= opts.greenMin && value <= opts.greenMax) return { text: 'text-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-200', label: 'Optimal' };
+    if (value >= opts.greenMin && value <= opts.greenMax) return { tone: 'green', label: 'Optimal' };
   } else if (opts.greenMax !== undefined && value <= opts.greenMax) {
-    return { text: 'text-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-200', label: 'Optimal' };
+    return { tone: 'green', label: 'Optimal' };
   }
-  if (value <= opts.orangeMax) return { text: 'text-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-200', label: 'Acceptable' };
-  return { text: 'text-rose-600', bg: 'bg-rose-50', ring: 'ring-rose-200', label: 'Critique' };
+  if (value <= opts.orangeMax) return { tone: 'orange', label: 'Acceptable' };
+  return { tone: 'red', label: 'Critique' };
 }
 
 const presets: { key: DatePreset; label: string }[] = [
@@ -71,17 +72,6 @@ function getPresetDates(preset: DatePreset): { start: string; end: string } {
 
 function formatCurrency(value: number) {
   return money(value);
-}
-
-function ChangeIndicator({ value, suffix = '' }: { value: number; suffix?: string }) {
-  if (value === 0) return null;
-  const isPositive = value > 0;
-  return (
-    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
-      {isPositive ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-      {Math.abs(value).toFixed(1)}{suffix}
-    </span>
-  );
 }
 
 export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
@@ -200,7 +190,7 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
 
   return (
     <SalesPageShell parent="Ventes" title={current.label} summary={current.subtitle}>
-      <div className={activeTab === 'cost' ? 'space-y-6 max-w-7xl mx-auto' : 'prj kl-rep'}>
+      <div className={activeTab === 'cost' ? undefined : 'prj kl-rep'} style={activeTab === 'cost' ? { display: 'flex', flexDirection: 'column', gap: 'var(--ds-s6)' } : undefined}>
 
       {activeTab !== 'cost' && activeTab !== 'builder' && periodBar}
 
@@ -397,17 +387,17 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
             { key: 'ALL', label: 'Tous', count: items.length },
             ...classes.map(c => ({ key: c, label: CLASS_META[c].label, count: counts[c] || 0 })),
           ]} />
-          <ListPanel>
+          <DataPanel label="Détail par produit">
             <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th onClick={() => toggleMenuSort('name')} style={{ cursor: 'pointer' }}>Produit<MenuSortIcon col="name" /></th>
                   <th onClick={() => toggleMenuSort('class')} style={{ cursor: 'pointer' }}>Classification<MenuSortIcon col="class" /></th>
                   <th className="ds-num" onClick={() => toggleMenuSort('qty')} style={{ cursor: 'pointer' }}>Vendus<MenuSortIcon col="qty" /></th>
-                  <th className="ds-num" onClick={() => toggleMenuSort('revenue')} style={{ cursor: 'pointer' }}>CA<MenuSortIcon col="revenue" /></th>
-                  <th className="ds-num" onClick={() => toggleMenuSort('cost')} style={{ cursor: 'pointer' }}>Coût matière<MenuSortIcon col="cost" /></th>
+                  <th className="ds-num" onClick={() => toggleMenuSort('revenue')} style={{ cursor: 'pointer' }}>CA ({currencySymbol()})<MenuSortIcon col="revenue" /></th>
+                  <th className="ds-num" onClick={() => toggleMenuSort('cost')} style={{ cursor: 'pointer' }}>Coût matière ({currencySymbol()})<MenuSortIcon col="cost" /></th>
                   <th className="ds-num" onClick={() => toggleMenuSort('pct')} style={{ cursor: 'pointer' }}>% matière<MenuSortIcon col="pct" /></th>
-                  <th className="ds-num" onClick={() => toggleMenuSort('contribution')} style={{ cursor: 'pointer' }}>Contribution<MenuSortIcon col="contribution" /></th>
+                  <th className="ds-num" onClick={() => toggleMenuSort('contribution')} style={{ cursor: 'pointer' }}>Contribution ({currencySymbol()})<MenuSortIcon col="contribution" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -424,16 +414,16 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                           {!it.has_cost_data && <span title="Aucun coût défini (ni recette ni coût d'achat)"><AlertTriangle size={14} style={{ color: 'var(--prj-orange)' }} /></span>}
                           <span>
-                            <b style={{ fontWeight: 500, display: 'block' }}>{it.name}</b>
+                            <span className="ds-strong" style={{ display: 'block' }}>{it.name}</span>
                             {it.category && <small style={{ color: 'var(--theme-text-muted)' }}>{it.category}</small>}
                           </span>
                         </span>
                       </td>
                       <td><span className="kl-pill x" style={{ gap: 6 }}><i style={{ width: 7, height: 7, borderRadius: '50%', background: meta.dot, display: 'inline-block' }} />{meta.label}</span></td>
                       <td className="ds-num">{parseFloat(it.qty_sold).toFixed(0)}</td>
-                      <td className="ds-num">{formatCurrency(parseFloat(it.revenue) || 0)}</td>
+                      <td className="ds-num">{amount(parseFloat(it.revenue) || 0)}</td>
                       <td className="ds-num">
-                        {formatCurrency(parseFloat(it.total_food_cost) || 0)}
+                        {amount(parseFloat(it.total_food_cost) || 0)}
                         {it.has_cost_data && <small style={{ display: 'block', color: 'var(--theme-text-muted)' }}>{it.cost_from_production ? 'production réelle' : it.cost_from_recipe ? 'recette théorique' : 'coût manuel'}</small>}
                       </td>
                       <td className="ds-num">
@@ -441,13 +431,13 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
                           ? <span className={foodPct > 35 ? 'kl-rep-tone-r' : foodPct > 30 ? 'kl-rep-tone-o' : 'kl-rep-tone-g'} style={{ fontWeight: 600 }}>{foodPct.toFixed(1)} %</span>
                           : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                       </td>
-                      <td className="ds-num" style={{ fontWeight: 600 }}>{formatCurrency(parseFloat(it.total_contribution) || 0)}</td>
+                      <td className="ds-num ds-strong">{amount(parseFloat(it.total_contribution) || 0)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </ListPanel>
+          </DataPanel>
         </div>
       </section>
     </>
@@ -457,6 +447,10 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
 // ============================================================================
 // Couts Tab
 // ============================================================================
+/** Montant sans devise (la devise est dans l'en-tête de colonne). */
+const amount = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pctTone = (pct: number) => pct > 35 ? 'var(--ds-danger)' : pct > 30 ? 'var(--ds-warning)' : 'var(--ds-success)';
+
 function CostTab({ costData, costLoading, lossStats }: {
   costData: Awaited<ReturnType<typeof reportsApi.costSummary>> | undefined;
   costLoading: boolean;
@@ -497,126 +491,105 @@ function CostTab({ costData, costLoading, lossStats }: {
     });
   }, [costData, cbSearch, cbSource, cbSort, cbSortDir]);
 
+  const cur = currencySymbol();
+  const totRev = displayedBreakdown.reduce((s, r) => s + (parseFloat(r.revenue) || 0), 0);
+  const totFc = displayedBreakdown.reduce((s, r) => s + (parseFloat(r.food_cost) || 0), 0);
+  const totPct = totRev > 0 ? totFc / totRev * 100 : 0;
+  const sortTh = (col: string, label: string, num = true) => (
+    <th className={num ? 'ds-num' : undefined} onClick={() => toggleCbSort(col)} style={{ cursor: 'pointer', userSelect: 'none' }}
+      aria-sort={cbSort === col ? (cbSortDir === 'asc' ? 'ascending' : 'descending') : undefined}>{label}<CbSortIcon col={col} /></th>
+  );
+
   return (
     <>
       <CostKpisRow costData={costData} loading={costLoading} detailed />
 
       {/* Couverture plans : signaler les plans completes sans cout calcule */}
       {costData && costData.coverage.plansCompleted === 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-3 flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <AlertTriangle size={18} className="text-blue-600" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-blue-800">Aucun plan de production termine sur la periode</p>
-            <p className="text-xs text-blue-600">
-              Les couts proviennent de production_cout_reel (plans completes). Sans plan complete sur la periode, les couts sont a 0.
-            </p>
-          </div>
-        </div>
+        <Alert tone="info" icon={AlertTriangle}>
+          <strong>Aucun plan de production terminé sur la période.</strong>{' '}
+          Les coûts proviennent de production_cout_reel (plans complétés). Sans plan complété sur la période, les coûts sont à 0.
+        </Alert>
       )}
       {costData && noCostPlans > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 flex items-center gap-3">
-          <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <AlertTriangle size={18} className="text-amber-600" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-amber-800">
-              {noCostPlans} plan(s) sans cout reel calcule
-            </p>
-            <p className="text-xs text-amber-600">
-              {costData.coverage.plansWithCost}/{costData.coverage.plansCompleted} plans completes ont leur cout enregistre. Lancer "Calculer cout reel" sur les autres pour fiabiliser le rapport.
-            </p>
-          </div>
-        </div>
+        <Alert tone="warning" icon={AlertTriangle}>
+          <strong>{noCostPlans} plan(s) sans coût réel calculé.</strong>{' '}
+          {costData.coverage.plansWithCost}/{costData.coverage.plansCompleted} plans complétés ont leur coût enregistré. Lancer « Calculer coût réel » sur les autres pour fiabiliser le rapport.
+        </Alert>
       )}
 
-      {/* Breakdown card */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Decomposition du Cout primaire</h2>
-        {costLoading || !costData ? (
-          <p className="text-sm text-gray-400">Chargement...</p>
-        ) : (
-          <div className="space-y-4">
-            <CostBar label="Cout matiere" value={costData.foodCost} pct={costData.foodCostPct} sales={costData.netSales} color="bg-blue-500" />
-            <CostBar label="Cout main d'oeuvre" value={costData.laborCost} pct={costData.laborCostPct} sales={costData.netSales} color="bg-rose-500" />
-            <div className="border-t border-gray-100 pt-4">
-              <CostBar label="Cout primaire (Matiere + Main d'oeuvre)" value={costData.primeCost} pct={costData.primeCostPct} sales={costData.netSales} color="bg-emerald-500" bold />
-            </div>
-            {(costData.energyCost > 0 || costData.packagingCost > 0 || costData.chargesCost > 0 || costData.subcontractingCost > 0 || costData.lossesCost > 0) && (
-              <div className="border-t border-gray-100 pt-4 space-y-3">
-                <p className="text-xs font-semibold text-gray-500">Composantes supplementaires (cout de revient complet)</p>
-                <CostBar label="Cout energie" value={costData.energyCost} pct={costData.energyCostPct} sales={costData.netSales} color="bg-purple-500" />
-                {costData.packagingCost > 0 && <CostBar label="Cout emballages" value={costData.packagingCost} pct={costData.packagingCostPct} sales={costData.netSales} color="bg-amber-500" />}
-                {costData.chargesCost > 0 && <CostBar label="Charges indirectes" value={costData.chargesCost} pct={costData.chargesCostPct} sales={costData.netSales} color="bg-slate-500" />}
-                {costData.subcontractingCost > 0 && <CostBar label="Sous-traitance (facon)" value={costData.subcontractingCost} pct={costData.subcontractingCostPct} sales={costData.netSales} color="bg-cyan-600" />}
-                <CostBar label="Cout total (cout de revient : matiere + emballages + main d'oeuvre + energie + charges + facon)" value={costData.totalCost} pct={costData.totalCostPct} sales={costData.netSales} color="bg-gray-700" bold />
-                {costData.lossesCost > 0 && <CostBar label="dont pertes (deja comptees dans la matiere)" value={costData.lossesCost} pct={costData.lossesCostPct} sales={costData.netSales} color="bg-orange-500" />}
+      {/* Décomposition */}
+      <section>
+        <SectionHeader title="Décomposition du coût primaire" note={`Montants en ${cur} · % des ventes nettes`} />
+        <DataPanel>
+          {costLoading || !costData ? (
+            <LoadingState bare />
+          ) : (
+            <div style={{ padding: 'var(--ds-s5)', display: 'flex', flexDirection: 'column', gap: 'var(--ds-s4)' }}>
+              <CostBar label="Coût matière" value={costData.foodCost} pct={costData.foodCostPct} sales={costData.netSales} color="var(--ds-info)" />
+              <CostBar label="Coût main-d'œuvre" value={costData.laborCost} pct={costData.laborCostPct} sales={costData.netSales} color="var(--ds-accent)" />
+              <div style={{ borderTop: '1px solid var(--ds-hair)', paddingTop: 'var(--ds-s4)' }}>
+                <CostBar label="Coût primaire (matière + main-d'œuvre)" value={costData.primeCost} pct={costData.primeCostPct} sales={costData.netSales} color="var(--ds-success)" bold />
               </div>
-            )}
-            <div className="text-xs text-gray-500 leading-relaxed bg-gray-50 rounded-lg p-3">
-              <p><span className="font-semibold">Source des couts :</span> cout de revient unifie des plans de production de la periode (le meme que la fiche du plan). Le cout matiere par produit suit la repartition du plan entre ses articles.</p>
-              <p className="mt-1"><span className="font-semibold">Formules :</span> % = composante / Ventes nettes. Cout primaire = Matiere + Main d'oeuvre.</p>
-              <p className="mt-1"><span className="font-semibold">Cibles :</span> Matiere 25-30%, Main d'oeuvre &lt;30%, Primaire &lt;60%.</p>
-              <p className="mt-1">
-                <span className="font-semibold">Couverture :</span>{' '}
-                {costData.coverage.plansWithCost}/{costData.coverage.plansCompleted} plan(s) complete(s) ont leur cout reel calcule sur la periode.
-              </p>
+              {(costData.energyCost > 0 || costData.packagingCost > 0 || costData.chargesCost > 0 || costData.subcontractingCost > 0 || costData.lossesCost > 0) && (
+                <div style={{ borderTop: '1px solid var(--ds-hair)', paddingTop: 'var(--ds-s4)', display: 'flex', flexDirection: 'column', gap: 'var(--ds-s3)' }}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--ds-muted)' }}>Composantes supplémentaires (coût de revient complet)</p>
+                  <CostBar label="Coût énergie" value={costData.energyCost} pct={costData.energyCostPct} sales={costData.netSales} color="var(--ds-info)" />
+                  {costData.packagingCost > 0 && <CostBar label="Coût emballages" value={costData.packagingCost} pct={costData.packagingCostPct} sales={costData.netSales} color="var(--ds-warning)" />}
+                  {costData.chargesCost > 0 && <CostBar label="Charges indirectes" value={costData.chargesCost} pct={costData.chargesCostPct} sales={costData.netSales} color="var(--ds-muted)" />}
+                  {costData.subcontractingCost > 0 && <CostBar label="Sous-traitance (façon)" value={costData.subcontractingCost} pct={costData.subcontractingCostPct} sales={costData.netSales} color="var(--ds-info)" />}
+                  <CostBar label="Coût total (coût de revient : matière + emballages + main-d'œuvre + énergie + charges + façon)" value={costData.totalCost} pct={costData.totalCostPct} sales={costData.netSales} color="var(--ds-ink)" bold />
+                  {costData.lossesCost > 0 && <CostBar label="dont pertes (déjà comptées dans la matière)" value={costData.lossesCost} pct={costData.lossesCostPct} sales={costData.netSales} color="var(--ds-danger)" />}
+                </div>
+              )}
+              <div style={{ fontSize: 12, color: 'var(--ds-muted)', lineHeight: 1.6, background: 'var(--ds-bg)', borderRadius: 'var(--ds-r-field)', padding: 'var(--ds-s3)' }}>
+                <p style={{ margin: 0 }}><strong>Source des coûts :</strong> coût de revient unifié des plans de production de la période (le même que la fiche du plan). Le coût matière par produit suit la répartition du plan entre ses articles.</p>
+                <p style={{ margin: '4px 0 0' }}><strong>Formules :</strong> % = composante / ventes nettes. Coût primaire = matière + main-d'œuvre.</p>
+                <p style={{ margin: '4px 0 0' }}><strong>Cibles :</strong> matière 25-30 %, main-d'œuvre &lt; 30 %, primaire &lt; 60 %.</p>
+                <p style={{ margin: '4px 0 0' }}>
+                  <strong>Couverture :</strong>{' '}
+                  {costData.coverage.plansWithCost}/{costData.coverage.plansCompleted} plan(s) complété(s) ont leur coût réel calculé sur la période.
+                </p>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </DataPanel>
+      </section>
 
-      {/* Per-product breakdown — cost matched to actual sales */}
+      {/* Coût matière par produit vendu */}
       {costData && costData.breakdown.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-700">Cout matiere par produit vendu</h2>
-                <p className="text-xs text-gray-400">Chaque ligne : qty_vendue x cout_unitaire (source production reelle si dispo)</p>
-              </div>
-              <span className="text-xs text-gray-400 ml-4 whitespace-nowrap">
-                {displayedBreakdown.length !== costData.breakdown.length ? `${displayedBreakdown.length} / ${costData.breakdown.length}` : `${costData.breakdown.length}`} produit(s)
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 min-w-[180px] max-w-xs">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Rechercher produit..." value={cbSearch} onChange={e => setCbSearch(e.target.value)}
-                  className="w-full pl-7 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200" />
-                {cbSearch && (
-                  <button onClick={() => setCbSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" aria-label="Effacer"><X size={13} /></button>
-                )}
-              </div>
-              <SearchSelect
-                options={[
-                  { id: 'production', label: 'Production reelle' },
-                  { id: 'recipe', label: 'Recette theorique' },
-                  { id: 'manual', label: 'Cout manuel' },
-                  { id: 'none', label: 'Sans cout' },
-                ]}
-                value={cbSource === 'all' ? '' : cbSource}
-                onChange={id => setCbSource((id || 'all') as any)}
-                placeholder="Toutes sources"
-                width={190}
-              />
-            </div>
-          </div>
-          <div className="overflow-x-auto">
+        <section>
+          <SectionHeader title="Coût matière par produit vendu"
+            note={`${displayedBreakdown.length !== costData.breakdown.length ? `${displayedBreakdown.length} / ${costData.breakdown.length}` : `${costData.breakdown.length}`} produit(s) · quantité vendue × coût unitaire`} />
+          <Toolbar>
+            <SearchBar value={cbSearch} onChange={setCbSearch} placeholder="Rechercher un produit…" />
+            <SearchSelect
+              options={[
+                { id: 'production', label: 'Production réelle' },
+                { id: 'recipe', label: 'Recette théorique' },
+                { id: 'manual', label: 'Coût manuel' },
+                { id: 'none', label: 'Sans coût' },
+              ]}
+              value={cbSource === 'all' ? '' : cbSource}
+              onChange={id => setCbSource((id || 'all') as any)}
+              placeholder="Toutes sources"
+              width={190}
+            />
+          </Toolbar>
+          <DataPanel label="Coût matière par produit">
             <table className="odoo-table ds-dense">
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th onClick={() => toggleCbSort('name')} className="text-left py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Produit<CbSortIcon col="name" /></th>
-                  <th onClick={() => toggleCbSort('qty')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Vendus<CbSortIcon col="qty" /></th>
-                  <th onClick={() => toggleCbSort('revenue')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Revenus<CbSortIcon col="revenue" /></th>
-                  <th onClick={() => toggleCbSort('unit_cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Cout unitaire<CbSortIcon col="unit_cost" /></th>
-                  <th onClick={() => toggleCbSort('food_cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Cout matiere<CbSortIcon col="food_cost" /></th>
-                  <th onClick={() => toggleCbSort('pct')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">% matiere<CbSortIcon col="pct" /></th>
-                  <th onClick={() => toggleCbSort('margin')} className="text-right py-2.5 text-xs font-semibold text-gray-400 cursor-pointer select-none">Marge<CbSortIcon col="margin" /></th>
+                <tr>
+                  {sortTh('name', 'Produit', false)}
+                  {sortTh('qty', 'Vendus')}
+                  {sortTh('revenue', `Revenus (${cur})`)}
+                  {sortTh('unit_cost', `Coût unitaire (${cur})`)}
+                  {sortTh('food_cost', `Coût matière (${cur})`)}
+                  {sortTh('pct', '% matière')}
+                  {sortTh('margin', `Marge (${cur})`)}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody>
                 {displayedBreakdown.map((it) => {
                   const revenue = parseFloat(it.revenue) || 0;
                   const foodCost = parseFloat(it.food_cost) || 0;
@@ -624,109 +597,88 @@ function CostTab({ costData, costLoading, lossStats }: {
                   const pct = revenue > 0 ? (foodCost / revenue) * 100 : 0;
                   const margin = revenue - foodCost;
                   return (
-                    <tr key={it.product_id} className={`hover:bg-gray-50/50 ${!it.has_cost_data ? 'bg-amber-50/30' : ''}`}>
-                      <td className="py-3">
-                        <div className="flex items-center gap-2">
-                          {!it.has_cost_data && <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />}
-                          <div>
-                            <p className="text-sm font-medium text-gray-800">{it.name}</p>
-                            {it.category && <p className="text-xs text-gray-400">{it.category}</p>}
-                          </div>
-                        </div>
+                    <tr key={it.product_id}>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          {!it.has_cost_data && <span title="Aucun coût défini"><AlertTriangle size={14} style={{ color: 'var(--ds-warning)', flex: 'none' }} aria-label="Sans coût" /></span>}
+                          <span>
+                            <span className="ds-strong" style={{ display: 'block' }}>{it.name}</span>
+                            {it.category && <small style={{ color: 'var(--ds-muted)' }}>{it.category}</small>}
+                          </span>
+                        </span>
                       </td>
-                      <td className="py-3 text-right text-sm text-gray-700">{parseFloat(it.qty_sold).toFixed(0)}</td>
-                      <td className="py-3 text-right text-sm font-medium text-gray-800">{formatCurrency(revenue)}</td>
-                      <td className="py-3 text-right">
-                        <span className="text-sm text-gray-700">{formatCurrency(unitCost)}</span>
+                      <td className="ds-num">{parseFloat(it.qty_sold).toFixed(0)}</td>
+                      <td className="ds-num">{amount(revenue)}</td>
+                      <td className="ds-num">
+                        {amount(unitCost)}
                         {it.has_cost_data && (
-                          <span className="block text-[10px] text-gray-400">
-                            {it.cost_from_production ? 'production reelle' : it.cost_from_recipe ? 'recette theorique' : 'cout manuel'}
-                          </span>
+                          <small style={{ display: 'block', color: 'var(--ds-muted)' }}>
+                            {it.cost_from_production ? 'production réelle' : it.cost_from_recipe ? 'recette théorique' : 'coût manuel'}
+                          </small>
                         )}
                       </td>
-                      <td className="py-3 text-right text-sm text-gray-600">{formatCurrency(foodCost)}</td>
-                      <td className="py-3 text-right">
-                        {it.has_cost_data ? (
-                          <span className={`text-xs font-semibold ${pct > 35 ? 'text-rose-600' : pct > 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                            {pct.toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
+                      <td className="ds-num">{amount(foodCost)}</td>
+                      <td className="ds-num">
+                        {it.has_cost_data
+                          ? <span style={{ fontWeight: 600, color: pctTone(pct) }}>{pct.toFixed(1)} %</span>
+                          : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                       </td>
-                      <td className="py-3 text-right text-sm font-bold text-gray-800">{formatCurrency(margin)}</td>
+                      <td className="ds-num ds-strong">{amount(margin)}</td>
                     </tr>
                   );
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-gray-200 font-bold">
-                  <td className="py-3 text-sm text-gray-800">
+                <tr>
+                  <td className="ds-strong">
                     Total{displayedBreakdown.length !== costData.breakdown.length ? ` (${displayedBreakdown.length}/${costData.breakdown.length})` : ''}
                   </td>
-                  <td className="py-3 text-right text-sm text-gray-700">
-                    {displayedBreakdown.reduce((s, r) => s + (parseFloat(r.qty_sold) || 0), 0).toFixed(0)}
-                  </td>
-                  <td className="py-3 text-right text-sm text-gray-800">
-                    {formatCurrency(displayedBreakdown.reduce((s, r) => s + (parseFloat(r.revenue) || 0), 0))}
-                  </td>
-                  <td className="py-3"></td>
-                  <td className="py-3 text-right text-sm text-gray-700">
-                    {formatCurrency(displayedBreakdown.reduce((s, r) => s + (parseFloat(r.food_cost) || 0), 0))}
-                  </td>
-                  <td className="py-3 text-right">
-                    {(() => {
-                      const rev = displayedBreakdown.reduce((s, r) => s + (parseFloat(r.revenue) || 0), 0);
-                      const fc = displayedBreakdown.reduce((s, r) => s + (parseFloat(r.food_cost) || 0), 0);
-                      const pct = rev > 0 ? fc / rev * 100 : 0;
-                      return <span className={`text-xs font-bold ${pct > 35 ? 'text-rose-600' : pct > 30 ? 'text-amber-600' : 'text-emerald-600'}`}>{pct.toFixed(1)}%</span>;
-                    })()}
-                  </td>
-                  <td className="py-3 text-right text-sm text-gray-800">
-                    {formatCurrency(displayedBreakdown.reduce((s, r) => s + ((parseFloat(r.revenue) || 0) - (parseFloat(r.food_cost) || 0)), 0))}
-                  </td>
+                  <td className="ds-num">{displayedBreakdown.reduce((s, r) => s + (parseFloat(r.qty_sold) || 0), 0).toFixed(0)}</td>
+                  <td className="ds-num ds-strong">{amount(totRev)}</td>
+                  <td />
+                  <td className="ds-num ds-strong">{amount(totFc)}</td>
+                  <td className="ds-num"><span style={{ fontWeight: 700, color: pctTone(totPct) }}>{totPct.toFixed(1)} %</span></td>
+                  <td className="ds-num ds-strong">{amount(totRev - totFc)}</td>
                 </tr>
               </tfoot>
             </table>
-          </div>
-        </div>
+          </DataPanel>
+        </section>
       )}
 
-      {/* Losses surface in Couts tab too (read-only summary from monthly stats) */}
+      {/* Pertes du mois (lecture seule) */}
       {lossStats && (lossStats.topProducts as Record<string, any>[])?.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center">
-              <AlertTriangle size={14} className="text-white" />
-            </div>
-            <h2 className="text-sm font-semibold text-gray-700">Pertes du mois</h2>
-            <span className="text-xs text-gray-400 ml-auto">Impact sur food cost reel</span>
+        <section>
+          <SectionHeader title="Pertes du mois" note="Impact sur le coût matière réel" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--ds-s4)' }}>
+            <DataPanel label="Top produits perdus">
+              <table className="odoo-table ds-dense">
+                <thead><tr><th>Top produits perdus</th><th className="ds-num">Coût ({cur})</th></tr></thead>
+                <tbody>
+                  {(lossStats.topProducts as Record<string, any>[]).slice(0, 5).map((p: Record<string, any>, i: number) => (
+                    <tr key={p.id as string}>
+                      <td><span style={{ color: 'var(--ds-muted)', marginRight: 8 }}>{i + 1}.</span>{p.name as string}</td>
+                      <td className="ds-num ds-strong" style={{ color: 'var(--ds-danger)' }}>{amount(parseFloat(p.total_cost as string) || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </DataPanel>
+            <DataPanel label="Motifs fréquents">
+              <table className="odoo-table ds-dense">
+                <thead><tr><th>Motifs fréquents</th><th className="ds-num">Occurrences</th></tr></thead>
+                <tbody>
+                  {(lossStats.topReasons as Record<string, any>[]).slice(0, 5).map((r: Record<string, any>, i: number) => (
+                    <tr key={i}>
+                      <td>{String(r.reason)}</td>
+                      <td className="ds-num">{r.count as number}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </DataPanel>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 mb-2">Top produits perdus</p>
-              <div className="space-y-2">
-                {(lossStats.topProducts as Record<string, any>[]).slice(0, 5).map((p: Record<string, any>, i: number) => (
-                  <div key={p.id as string} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-700 truncate"><span className="text-gray-400 mr-2">{i + 1}.</span>{p.name as string}</span>
-                    <span className="font-bold text-red-600 ml-2">{formatCurrency(parseFloat(p.total_cost as string) || 0)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 mb-2">Motifs frequents</p>
-              <div className="space-y-2">
-                {(lossStats.topReasons as Record<string, any>[]).slice(0, 5).map((r: Record<string, any>, i: number) => (
-                  <div key={i} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-700 truncate">{String(r.reason)}</span>
-                    <span className="text-gray-500 ml-2">{r.count as number}x</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+        </section>
       )}
     </>
   );
@@ -744,35 +696,29 @@ function CostKpisRow({ costData, loading, detailed = false }: {
   const labor = costData?.laborCostPct ?? 0;
   const prime = costData?.primeCostPct ?? 0;
 
-  const foodZone = getZoneColor(food, { greenMin: 25, greenMax: 30, orangeMax: 35 });
-  const laborZone = getZoneColor(labor, { greenMax: 30, orangeMax: 35 });
-  const primeZone = getZoneColor(prime, { greenMax: 60, orangeMax: 65 });
+  const foodZone = getZone(food, { greenMin: 25, greenMax: 30, orangeMax: 35 });
+  const laborZone = getZone(labor, { greenMax: 30, orangeMax: 35 });
+  const primeZone = getZone(prime, { greenMax: 60, orangeMax: 65 });
 
   const cards = [
-    { title: 'Cout matiere', pct: food, value: costData?.foodCost ?? 0, zone: foodZone, target: 'Cible 25-30%', formula: 'Consommation / Ventes' },
-    { title: "Cout main d'oeuvre", pct: labor, value: costData?.laborCost ?? 0, zone: laborZone, target: 'Cible <30%', formula: "Main d'oeuvre / Ventes" },
-    { title: 'Cout primaire', pct: prime, value: costData?.primeCost ?? 0, zone: primeZone, target: 'Cible <60%', formula: "Matiere + Main d'oeuvre" },
+    { title: 'Coût matière', pct: food, value: costData?.foodCost ?? 0, zone: foodZone, target: 'cible 25-30 %', formula: 'Consommation / ventes' },
+    { title: "Coût main-d'œuvre", pct: labor, value: costData?.laborCost ?? 0, zone: laborZone, target: 'cible < 30 %', formula: "Main-d'œuvre / ventes" },
+    { title: 'Coût primaire', pct: prime, value: costData?.primeCost ?? 0, zone: primeZone, target: 'cible < 60 %', formula: "Matière + main-d'œuvre" },
   ];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <KpiGrid label="Coûts">
       {cards.map((c) => (
-        <div key={c.title} className={`bg-white rounded-xl border border-gray-100 p-5 ring-1 ${c.zone.ring}`}>
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-500">{c.title}</p>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${c.zone.bg} ${c.zone.text}`}>{c.zone.label}</span>
-          </div>
-          <p className={`text-3xl font-bold mt-2 ${c.zone.text}`}>{loading ? '…' : c.pct.toFixed(1) + '%'}</p>
-          <p className="text-xs text-gray-400 mt-1">{c.target}</p>
+        <KpiCard key={c.title} label={c.title} value={loading ? '…' : `${c.pct.toFixed(1)} %`}
+          sub={`${c.zone.label} · ${c.target}`} tone={loading ? undefined : c.zone.tone}>
           {detailed && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <p className="text-xs text-gray-500">{c.formula}</p>
-              <p className="text-sm font-semibold text-gray-700 mt-0.5">{formatCurrency(c.value)}</p>
-            </div>
+            <span style={{ display: 'block', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--ds-hair)', fontSize: 12, color: 'var(--ds-muted)' }}>
+              {c.formula} · <strong style={{ color: 'var(--ds-ink)' }}>{formatCurrency(c.value)}</strong>
+            </span>
           )}
-        </div>
+        </KpiCard>
       ))}
-    </div>
+    </KpiGrid>
   );
 }
 
@@ -781,15 +727,16 @@ function CostBar({ label, value, pct, sales, color, bold = false }: {
 }) {
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className={`text-sm ${bold ? 'font-bold text-gray-800' : 'font-medium text-gray-700'}`}>{label}</span>
-        <span className="text-sm text-gray-500">
-          {formatCurrency(value)} <span className="text-gray-400">/ {formatCurrency(sales)}</span>
-          <span className={`ml-3 ${bold ? 'font-bold text-gray-800' : 'font-semibold text-gray-700'}`}>{pct.toFixed(1)}%</span>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4, fontSize: 14 }}>
+        <span style={{ fontWeight: bold ? 700 : 500, color: 'var(--ds-ink)' }}>{label}</span>
+        <span style={{ color: 'var(--ds-muted)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+          {amount(value)} / {amount(sales)}
+          <span style={{ marginLeft: 12, fontWeight: bold ? 700 : 600, color: 'var(--ds-ink)' }}>{pct.toFixed(1)} %</span>
         </span>
       </div>
-      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
+      <div style={{ height: 8, background: 'var(--ds-hair)', borderRadius: 999, overflow: 'hidden' }}
+        role="progressbar" aria-label={label} aria-valuenow={Math.round(Math.min(pct, 100))} aria-valuemin={0} aria-valuemax={100}>
+        <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: color, borderRadius: 999, transition: 'width .2s' }} />
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LoadingPanel, Segmented, HrHeaderActions } from '../employees/ui';
-import { DataPanel, TableFooter, Toolbar, SectionHeader } from '../../components/ds';
+import { DataPanel, TableFooter, Toolbar, SectionHeader, FormField, FormFooter, ErrorState } from '../../components/ds';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, ShieldCheck, ShieldAlert, Eye, Lock, Trash2, Check } from 'lucide-react';
 import * as shared from '@ofauria/shared';
@@ -44,7 +44,7 @@ export default function RolesPanel() {
   // Duplication (M2-07) : le formulaire de création, prérempli depuis le rôle choisi.
   const [duplicateOf, setDuplicateOf] = useState<RoleRow | null>(null);
   const [view, setView] = useState<'modules' | 'actions'>('modules');
-  const { data: roles = [], isLoading } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list });
+  const { data: roles = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list });
   const current = roles.find(r => r.code === selected) ?? null;
 
   return (
@@ -64,7 +64,7 @@ export default function RolesPanel() {
       <SectionHeader title="Rôles" note="Cliquer sur un rôle pour régler ses droits" />
       {(creating || duplicateOf) && <CreateRoleForm key={duplicateOf?.code ?? 'new'} roles={roles} from={duplicateOf}
         onDone={(code) => { setCreating(false); setDuplicateOf(null); if (code) setSelected(code); }} />}
-      {isLoading ? <LoadingPanel /> : (
+      {isLoading ? <LoadingPanel /> : isError ? <DataPanel label="Rôles"><ErrorState bare error={error} onRetry={() => void refetch()} /></DataPanel> : (
         <DataPanel label="Rôles" footer={<TableFooter note={`${roles.length} rôle${roles.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
             <thead><tr><th>Rôle</th><th>Rôle de base</th><th className="ds-num">Modules</th><th className="ds-num">Utilisateurs</th><th>Statut</th></tr></thead>
@@ -165,41 +165,44 @@ function CreateRoleForm({ roles, onDone, from }: { roles: RoleRow[]; onDone: (co
     onSuccess: (r) => { queryClient.invalidateQueries({ queryKey: ['roles'] }); notify.success(`Rôle « ${r.label} » créé`); onDone(r.code); },
     onError: (err) => notify.error(errorMessage(err, 'Création refusée')),
   });
-  const lab: React.CSSProperties = { display: 'grid', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)' };
   return (
-    <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 12, padding: 16, display: 'grid', gap: 12, background: 'var(--ds-card)' }}>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <label style={{ ...lab, flex: '1 1 220px' }}><span>Libellé<span className="ds-req" aria-hidden="true"> *</span></span>
-          <input id="role-label" className="ds-input" value={label} onChange={e => setLabel(e.target.value)} placeholder="Responsable boutique" maxLength={60} />
-        </label>
-        <label style={{ ...lab, width: 190 }}>Rôle de base
-          <select id="role-base" className="ds-input" value={baseRole} onChange={e => setBaseRole(e.target.value)}>
-            {BASE_ROLES.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
-          </select>
-        </label>
-        <label style={{ ...lab, width: 210 }}>Copier les droits de
-          <select id="role-copy" className="ds-input" value={copyFrom} onChange={e => setCopyFrom(e.target.value)}>
-            <option value="">Son rôle de base</option>
-            {roles.filter(r => r.code !== 'admin').map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
-          </select>
-        </label>
+    <section className="ds-panel" aria-label="Nouveau rôle" style={{ padding: 16, display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div style={{ flex: '1 1 220px' }}>
+          <FormField label="Libellé" htmlFor="role-label" required hint="2 caractères au moins.">
+            <input id="role-label" className="ds-input" value={label} onChange={e => setLabel(e.target.value)} placeholder="Responsable boutique" maxLength={60} />
+          </FormField>
+        </div>
+        <div style={{ width: 190 }}>
+          <FormField label="Rôle de base" htmlFor="role-base" required>
+            <select id="role-base" className="ds-input" value={baseRole} onChange={e => setBaseRole(e.target.value)}>
+              {BASE_ROLES.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
+            </select>
+          </FormField>
+        </div>
+        <div style={{ width: 210 }}>
+          <FormField label="Copier les droits de" htmlFor="role-copy">
+            <select id="role-copy" className="ds-input" value={copyFrom} onChange={e => setCopyFrom(e.target.value)}>
+              <option value="">Son rôle de base</option>
+              {roles.filter(r => r.code !== 'admin').map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
+            </select>
+          </FormField>
+        </div>
       </div>
       <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)' }}>
         Le rôle de base fixe ce que l'application montre et filtre (écrans de caisse, catégories des chefs, magasin).
         Les droits par module se règlent ensuite dans le tableau du rôle.
       </p>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button type="button" className="odoo-btn-secondary" onClick={() => onDone()} disabled={create.isPending}>Annuler</button>
-        <button type="button" className="odoo-btn-primary" disabled={label.trim().length < 2 || create.isPending} aria-busy={create.isPending || undefined} onClick={() => create.mutate()}>Créer le rôle</button>
-      </div>
-    </div>
+      <FormFooter onCancel={() => onDone()} submitLabel="Créer le rôle" busy={create.isPending}
+        disabled={label.trim().length < 2} onSubmit={() => create.mutate()} />
+    </section>
   );
 }
 
 function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted: () => void; onDuplicate: () => void }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const { data: saved, isLoading } = useQuery({
+  const { data: saved, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['role-permissions', role.code], queryFn: () => rolesApi.permissions(role.code), enabled: role.code !== 'admin',
   });
   const [perms, setPerms] = useState<Record<string, RolePermission>>({});
@@ -269,7 +272,7 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
     return <StatusBanner tone="neutral" icon={Lock} title="Administrateur">L'administrateur a tous les droits ; son rôle ne se modifie pas.</StatusBanner>;
   }
   return (
-    <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
+    <section className="ds-panel" aria-label={`Droits du rôle ${role.label}`} style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div>
           <h3 className="ds-subhead">Droits du rôle « {role.label} »</h3>
@@ -291,7 +294,7 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
           </div>
         )}
       </div>
-      {isLoading || !Object.keys(perms).length ? <LoadingPanel /> : (
+      {isError ? <ErrorState error={error} onRetry={() => void refetch()} /> : isLoading || !Object.keys(perms).length ? <LoadingPanel /> : (
         <DataPanel>
           <table className="odoo-table">
             <thead><tr><th>Module</th>{ACTIONS.map(([, l]) => <th key={l} style={{ textAlign: 'center', width: 90 }}>{l}</th>)}</tr></thead>
@@ -349,6 +352,6 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
           {save.isPending ? 'Enregistrement…' : 'Enregistrer les droits'}
         </button>
       </div>
-    </div>
+    </section>
   );
 }

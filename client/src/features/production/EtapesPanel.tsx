@@ -12,6 +12,7 @@ import {
   ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2, Save, Lock, Thermometer, Droplets, Scale,
   Plus, Trash2, ShieldCheck
 } from 'lucide-react';
+import './production.css';
 
 /** Relevé de procédé mesuré sur une étape (mig 422, épic labo L2). */
 interface Reading {
@@ -295,7 +296,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
 
   if (etapes.length === 0 && !isLoading) return null;
   if (isLoading) return (
-    <div className="odoo-section" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+    <div className="ds-panel pd-section" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
       <Loader2 size={16} className="animate-spin" /> Chargement des étapes…
     </div>
   );
@@ -324,14 +325,14 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
   };
 
   return (
-    <div className="odoo-section">
+    <div className="ds-panel pd-section">
       {controlFor && (
         <InspectionForm defaultTitle={`Contrôle — ${controlFor.nom}`}
           links={{ planId, planItemId: controlFor.plan_item_id, etapeId: controlFor.id }}
           onClose={() => setControlFor(null)}
           onSaved={() => { setControlFor(null); queryClient.invalidateQueries({ queryKey: ['quality'] }); }} />
       )}
-      <div className="odoo-section-header">
+      <div className="pd-section-head">
         <ListChecks size={12} />
         <span>Étapes de production</span>
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>

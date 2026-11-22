@@ -1,4 +1,4 @@
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -8,10 +8,12 @@ import {
 import { AlertTriangle, Wallet, FileWarning, Package } from 'lucide-react';
 import { reportsApi } from '../../api/reports.api';
 import { ListKpi } from '../sales/ListTemplate';
+import { DataPanel } from '../../components/ds';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
 const dh = (v: number) => money(v || 0, { decimals: 0 });
 const dh2 = (v: number) => money(v || 0);
+const num0 = (v: number) => (v || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 const int = (v: number) => new Intl.NumberFormat('fr-FR').format(Math.round(v || 0));
 const pct = (v: number) => `${(v || 0).toFixed(1)} %`;
 const addDays = (d: string, n: number) => new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
@@ -243,12 +245,12 @@ export default function ReportsOverview(p: Props) {
       <section>
         <div className="kl-sec"><h2>Produits</h2><small>{productData.length} produits · {cost ? 'marge réelle' : 'CA'}</small></div>
         <div className="kl-rep-grid">
-          <div className="kl-widget wide" style={{ padding: '8px 8px 4px' }}>
-            <table className="odoo-table ds-dense" style={{ border: 0 }}>
+          <DataPanel label="Produits" className="kl-widget wide" style={{ padding: 0 }}>
+            <table className="odoo-table ds-dense">
               <thead><tr>
                 <th>Produit</th><th>Catégorie</th>
-                <th className="ds-num">CA</th>
-                <th className="ds-num">Marge</th>
+                <th className="ds-num">CA ({currencySymbol()})</th>
+                <th className="ds-num">Marge ({currencySymbol()})</th>
                 <th className="ds-num">Marge %</th>
               </tr></thead>
               <tbody>
@@ -257,18 +259,18 @@ export default function ReportsOverview(p: Props) {
                     <tr key={r.id}>
                       <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
                         <span className={`kl-rep-rank${i < 3 ? ' top' : ''}`}>{i + 1}</span>
-                        <span style={{ fontWeight: 500 }}>{r.name}</span></span></td>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>{r.category || '—'}</td>
-                      <td className="ds-num" style={{ fontWeight: 600 }}>{dh(r.rev)}</td>
-                      <td style={{ textAlign: 'right' }} className={r.hasCost ? (r.margin >= 0 ? '' : 'kl-rep-tone-r') : ''}>{r.hasCost ? dh(r.margin) : '—'}</td>
+                        <span className="ds-strong">{r.name}</span></span></td>
+                      <td style={{ color: 'var(--ds-muted)' }}>{r.category || '—'}</td>
+                      <td className="ds-num ds-strong">{num0(r.rev)}</td>
+                      <td className="ds-num" style={r.hasCost && r.margin < 0 ? { color: 'var(--ds-danger)' } : undefined}>{r.hasCost ? num0(r.margin) : '—'}</td>
                       <td className="ds-num">{r.hasCost
                         ? <span className={`kl-pill ${r.marginPct >= 60 ? 'g' : r.marginPct >= 40 ? 'o' : 'r'}`}>{r.marginPct.toFixed(0)} %</span>
-                        : <span style={{ color: 'var(--theme-text-muted)' }}>n/d</span>}</td>
+                        : <span style={{ color: 'var(--ds-muted)' }}>n/d</span>}</td>
                     </tr>
                   ))}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
 
           <div className="kl-widget" style={{ padding: 0, overflow: 'hidden' }}>
             <div className="kl-rep-head" style={{ padding: '18px 20px 0' }}><h3>Pertes et invendus</h3><small>ce mois</small></div>

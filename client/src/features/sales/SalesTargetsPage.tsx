@@ -10,8 +10,8 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { ListPanel, ListKpi } from './ListTemplate';
-import { TableFooter, EmptyState, LoadingState } from '../../components/ds';
+import { ListKpi } from './ListTemplate';
+import { TableFooter, EmptyState, LoadingState, ErrorState, DataPanel } from '../../components/ds';
 
 /**
  * Ventes › Objectifs (phase 11, D3-13). Objectif de CA par commercial et par
@@ -35,7 +35,7 @@ export default function SalesTargetsPage() {
   const [amount, setAmount] = useState('');
 
   const key = ['sales-targets', start, end];
-  const { data: rows = [], isLoading } = useQuery({ queryKey: key, queryFn: () => salesTargetsApi.report(start, end), enabled: hasModule('sales') });
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery({ queryKey: key, queryFn: () => salesTargetsApi.report(start, end), enabled: hasModule('sales') });
   const { data: sellers = [] } = useQuery({ queryKey: ['salespeople'], queryFn: () => salesTargetsApi.salespeople(), enabled: isDirection });
 
   const save = useMutation({
@@ -97,10 +97,10 @@ export default function SalesTargetsPage() {
         </section>
       )}
 
-      {isLoading ? <LoadingState label="Chargement des objectifs…" /> : !rows.length ? (
+      {isLoading ? <LoadingState label="Chargement des objectifs…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : !rows.length ? (
         <EmptyState icon={Target} title="Aucun objectif ni réalisé sur la période" text={isDirection ? 'Fixez un objectif par vendeur ci-dessus.' : undefined} />
       ) : (
-        <ListPanel footer={<TableFooter note={`${rows.length} vendeur${rows.length > 1 ? 's' : ''} · réalisé ${money(totalRealized)} sur ${money(totalTarget)}`} />}>
+        <DataPanel label="Objectifs par vendeur" footer={<TableFooter note={`${rows.length} vendeur${rows.length > 1 ? 's' : ''} · réalisé ${money(totalRealized)} sur ${money(totalTarget)}`} />}>
           <table className="odoo-table">
             <thead><tr><th>Vendeur</th><th className="ds-num">Objectif ({currencySymbol()})</th><th className="ds-num">Réalisé ({currencySymbol()})</th><th className="ds-num">Écart ({currencySymbol()})</th><th>Atteinte</th><th className="ds-actions">Actions</th></tr></thead>
             <tbody>
@@ -128,7 +128,7 @@ export default function SalesTargetsPage() {
               })}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
     </SalesPageShell>
   );

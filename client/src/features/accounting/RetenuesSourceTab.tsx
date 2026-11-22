@@ -6,8 +6,7 @@ import type { WithholdingType, ToRemitLine } from '../../api/withholding.api';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { currencySymbol } from '../../utils/money';
-import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, Tabs, Toolbar } from '../../components/ds';
-import { DateRangeField } from './AccToolbarFields';
+import { DataPanel, DateRangeField, EmptyState, ErrorState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, LoadingState, Modal, Tabs, Toolbar } from '../../components/ds';
 
 function n(v: string | number | null): string {
   const num = typeof v === 'string' ? parseFloat(v) : v;
@@ -43,7 +42,7 @@ function AReverserView() {
   const [endDate, setEndDate] = useState(now.toISOString().slice(0, 10));
   const [reversing, setReversing] = useState<ToRemitLine | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['withholding-to-remit', startDate, endDate],
     queryFn: () => withholdingApi.toRemit(startDate, endDate),
   });
@@ -60,7 +59,9 @@ function AReverserView() {
         <DateRangeField from={startDate} to={endDate} onFrom={setStartDate} onTo={setEndDate} />
       </Toolbar>
 
-      {isLoading || !data ? (
+      {isError ? (
+        <ErrorState error={error} title="Les retenues n'ont pas pu être chargées" onRetry={() => refetch()} />
+      ) : isLoading || !data ? (
         <LoadingState />
       ) : (
         <DataPanel>
@@ -82,11 +83,11 @@ function AReverserView() {
                   <tr key={l.code}>
                     <td>
                       <div className="ds-strong">{l.label}</div>
-                      {l.legal_ref && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{l.legal_ref}</div>}
+                      {l.legal_ref && <div style={{ fontSize: 11, color: 'var(--ds-muted)' }}>{l.legal_ref}</div>}
                     </td>
                     <td className="ds-ref">{l.account_code}</td>
                     <td className="ds-num">{n(l.total_retenu)}</td>
-                    <td className="ds-num" style={{ color: 'var(--theme-text-muted)' }}>{n(l.total_reverse)}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(l.total_reverse)}</td>
                     <td className="ds-num ds-strong" style={{ color: aReverser > 0 ? undefined : 'var(--ds-muted)' }}>{n(aReverser)}</td>
                     <td className="ds-actions">
                       {aReverser > 0.01 && (
@@ -99,7 +100,7 @@ function AReverserView() {
                 );
               })}
               {data.lines.every((l: ToRemitLine) => Math.abs(parseFloat(l.a_reverser) || 0) < 0.01) && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--theme-text-muted)', padding: '1.5rem' }}>Aucune retenue à reverser sur la période</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--ds-muted)', padding: '1.5rem' }}>Aucune retenue à reverser sur la période</td></tr>
               )}
             </tbody>
           </table>
@@ -135,39 +136,33 @@ function ReversementModal({ line, onClose, onDone }: { line: ToRemitLine; onClos
     },
   });
 
-  const inputStyle = { width: '100%', padding: '7px 10px', border: '1px solid var(--theme-bg-separator)', borderRadius: 6, fontSize: '0.8125rem', background: 'var(--theme-bg-input)' };
-  const labelStyle = { fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'block', marginBottom: 4 };
-
   return (
-    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--theme-bg-card)', borderRadius: 8, width: 420, maxWidth: '95vw' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: '0.9375rem' }}>Reverser à la DGI — {line.label}</div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div><label style={labelStyle}>Montant ({currencySymbol()})</label><input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div><label style={labelStyle}>Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} /></div>
-            <div><label style={labelStyle}>Moyen</label>
-              <select value={method} onChange={e => setMethod(e.target.value as 'bank' | 'cash')} style={inputStyle}>
-                <option value="bank">Banque (5141)</option>
-                <option value="cash">Caisse (5161)</option>
-              </select>
-            </div>
-          </div>
+    <Modal title="Reverser à la DGI" subtitle={line.label} onClose={onClose} width={460} locked={reverse.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => reverse.mutate()} busy={reverse.isPending}
+        disabled={!(parseFloat(amount) > 0)} submitLabel="Confirmer le reversement" />}>
+      <FormSection title="Reversement">
+        <FormField label={`Montant (${currencySymbol()})`} htmlFor="ras-amount" required>
+          <input id="ras-amount" className="ds-input" type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} />
+        </FormField>
+        <div className="ds-form-grid">
+          <FormField label="Date" htmlFor="ras-date" required>
+            <input id="ras-date" className="ds-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </FormField>
+          <FormField label="Moyen" htmlFor="ras-method" required>
+            <select id="ras-method" className="ds-input" value={method} onChange={e => setMethod(e.target.value as 'bank' | 'cash')}>
+              <option value="bank">Banque (5141)</option>
+              <option value="cash">Caisse (5161)</option>
+            </select>
+          </FormField>
         </div>
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={() => reverse.mutate()} disabled={reverse.isPending || !(parseFloat(amount) > 0)} className="odoo-btn-primary">
-            {reverse.isPending ? 'Enregistrement...' : 'Confirmer le reversement'}
-          </button>
-        </div>
-      </div>
-    </div>
+      </FormSection>
+    </Modal>
   );
 }
 
 function ConfigView() {
   const queryClient = useQueryClient();
-  const { data: types = [], isLoading } = useQuery({
+  const { data: types = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['withholding-types'],
     queryFn: () => withholdingApi.listTypes(),
   });
@@ -179,6 +174,7 @@ function ConfigView() {
   });
 
   if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState error={error} title="Les taux n'ont pas pu être chargés" onRetry={() => refetch()} />;
 
   return (
     <>
@@ -198,32 +194,32 @@ function ConfigView() {
             {(types as WithholdingType[]).map(t => (
               <tr key={t.id}>
                 <td>
-                  <div style={{ fontWeight: 500 }}>{t.label}</div>
-                  {t.legal_ref && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{t.legal_ref}</div>}
+                  <div className="ds-strong">{t.label}</div>
+                  {t.legal_ref && <div style={{ fontSize: 11, color: 'var(--ds-muted)' }}>{t.legal_ref}</div>}
                 </td>
                 <td className="ds-ref">{t.account_code}</td>
                 <td className="ds-num">
                   {t.code === 'ir_salaires' ? (
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>barème (paie)</span>
+                    <span style={{ fontSize: 11, color: 'var(--ds-muted)' }}>barème (paie)</span>
                   ) : (
                     <input type="number" step="0.01" defaultValue={t.rate ?? ''} onBlur={e => { const v = e.target.value === '' ? null : Number(e.target.value); if (String(v) !== String(t.rate)) update.mutate({ id: t.id, data: { rate: v } }); }}
-                      style={{ width: 64, padding: '4px 6px', textAlign: 'right', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, background: 'var(--theme-bg-input)', fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }} />
+                      aria-label={`${t.label} : taux %`} className="ds-input sm" style={{ width: 72, textAlign: 'right' }} />
                   )}
                 </td>
                 <td className="ds-num">
                   {t.code === 'ir_salaires' ? '—' : (
                     <input type="number" step="1" defaultValue={t.threshold ?? ''} onBlur={e => { const v = e.target.value === '' ? null : Number(e.target.value); if (String(v) !== String(t.threshold)) update.mutate({ id: t.id, data: { threshold: v } }); }}
-                      style={{ width: 90, padding: '4px 6px', textAlign: 'right', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, background: 'var(--theme-bg-input)', fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }} />
+                      aria-label={`${t.label} : seuil (${currencySymbol()})`} className="ds-input sm" style={{ width: 96, textAlign: 'right' }} />
                   )}
                 </td>
                 <td className="ds-num">
                   {t.code === 'ir_salaires' ? '—' : (
                     <input type="number" step="0.01" defaultValue={t.rate_above ?? ''} onBlur={e => { const v = e.target.value === '' ? null : Number(e.target.value); if (String(v) !== String(t.rate_above)) update.mutate({ id: t.id, data: { rateAbove: v } }); }}
-                      style={{ width: 64, padding: '4px 6px', textAlign: 'right', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, background: 'var(--theme-bg-input)', fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem' }} />
+                      aria-label={`${t.label} : taux au-delà du seuil`} className="ds-input sm" style={{ width: 72, textAlign: 'right' }} />
                   )}
                 </td>
                 <td>
-                  <input type="checkbox" checked={t.is_active} onChange={e => update.mutate({ id: t.id, data: { isActive: e.target.checked } })} />
+                  <input type="checkbox" aria-label={`${t.label} : actif`} checked={t.is_active} onChange={e => update.mutate({ id: t.id, data: { isActive: e.target.checked } })} />
                 </td>
               </tr>
             ))}

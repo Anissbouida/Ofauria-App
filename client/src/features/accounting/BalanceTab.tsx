@@ -6,9 +6,7 @@ import type { BalanceRow } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
-import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, TableFooter, Toolbar } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
-import { DateRangeField } from './AccToolbarFields';
+import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, TableFooter, Toolbar, HeaderActions, DateRangeField } from '../../components/ds';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -84,12 +82,12 @@ export default function BalanceTab() {
         <KpiCard label="Équilibre" value={Math.abs(totals.ecart) < 0.01 ? '✓ OK' : n(totals.ecart)} sub="débit − crédit" tone={Math.abs(totals.ecart) < 0.01 ? 'green' : 'red'} />
       </KpiGrid>
 
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={rows.length === 0}>
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <EditionButtons kind="balance" params={{ startDate, endDate }} />
-      </AccHeaderActions>
+      </HeaderActions>
 
       <Toolbar>
         <DateRangeField from={startDate} to={endDate} onFrom={setStartDate} onTo={setEndDate} />

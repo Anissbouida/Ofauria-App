@@ -90,6 +90,23 @@ utilisent le tableau standard.
 - Action destructrice : bouton `ds-btn-danger`, toujours confirmée par `ConfirmDialog` (motif si la
   règle métier l'exige).
 
+## 5 bis. Fenêtres, tiroirs, messages et en-tête
+
+- Fenêtre : `Modal` (titre, sous-titre, étiquette à droite, corps qui défile, pied collé ; Échap et
+  clic extérieur ferment, sauf `locked` pendant un envoi ; si un champ a été modifié, la fermeture
+  demande confirmation). Tiroir : `Drawer` (fiche consultée sans
+  quitter la liste). Plus de fenêtre construite à la main (`fixed inset-0`).
+- Confirmation : `useConfirm()` ; saisie d'un motif ou d'une valeur : `usePrompt()`
+  (`components/ui/ConfirmDialog`). Jamais `window.confirm` ni `window.prompt`.
+- Bouton à menu libellé : `RowMenu trigger={…}` (« Imprimer les bons ▾ »). Section repliable :
+  `FormSection collapsible`. Pied d'une action destructrice : `FormFooter danger`.
+- Période : `DateRangeField` (du … au …) et `MonthYearField` (mois + année), dans la barre d'outils.
+- Actions de l'écran : `HeaderActions`, posées à droite du fil d'Ariane par la barre du module
+  (`HeaderSlotContext`). Les alias `PurHeaderActions`, `AccHeaderActions`, `HrHeaderActions` et
+  `HeaderActions` du Stock pointent sur ce composant.
+- Erreur de chargement : `ErrorState error={error}` — un refus d'accès s'affiche « Accès refusé »,
+  une erreur serveur « Le serveur a rencontré une erreur », sinon « Vérifiez la connexion ».
+
 ## 6. Accessibilité
 
 Focus clavier visible partout (`:focus-visible`), boutons et liens réels, `aria-label` sur les

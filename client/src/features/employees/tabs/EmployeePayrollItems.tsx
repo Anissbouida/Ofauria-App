@@ -10,6 +10,7 @@ import { StatusTag } from '../../../components/ui/StatusTag';
 import { RowMenu } from '../../../components/ui/RowMenu';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { SectionTitle, inputCls } from '../ui';
+import { DataPanel } from '../../../components/ds';
 
 /**
  * Éléments fixes de paie d'un employé (indemnité de transport, prime de
@@ -64,6 +65,7 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
       {isLoading ? <p style={muted}>Chargement…</p> : items.length === 0 && !draft ? (
         <p style={muted}>Aucun élément fixe (transport, prime mensuelle, prêt…).</p>
       ) : (
+        <DataPanel label="Éléments fixes de paie">
         <table className="odoo-table">
           <thead><tr><th>Rubrique</th><th className="ds-num">Montant ({currencySymbol()})</th><th>Période</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
@@ -110,6 +112,7 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
             )}
           </tbody>
         </table>
+        </DataPanel>
       )}
     </section>
   );

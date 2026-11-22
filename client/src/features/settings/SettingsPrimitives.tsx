@@ -53,8 +53,10 @@ export function SettingsSection({ title, description, columns = 2, children }: {
 
 // Reglage unique facon Odoo : interrupteur optionnel a gauche, puis
 // libelle + aide + controle.
-export function SettingItem({ title, description, toggle, children, fullWidth, changed, onRevert }: {
+export function SettingItem({ title, description, toggle, children, fullWidth, changed, onRevert, htmlFor }: {
   title: string;
+  /** Identifiant du contrôle : le titre devient son libellé (`<label htmlFor>`). */
+  htmlFor?: string;
   description?: string;
   toggle?: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean };
   children?: ReactNode;
@@ -73,7 +75,7 @@ export function SettingItem({ title, description, toggle, children, fullWidth, c
       )}
       <div className="odoo-setting-block-body">
         <div className="odoo-setting-label">
-          {title}
+          {htmlFor ? <label htmlFor={htmlFor}>{title}</label> : title}
           {changed && <span className="odoo-setting-changed">Modifié</span>}
           {changed && onRevert && (
             <button type="button" className="odoo-setting-revert" onClick={onRevert} title="Remettre la valeur enregistrée">Rétablir</button>

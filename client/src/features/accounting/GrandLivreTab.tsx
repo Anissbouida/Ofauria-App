@@ -7,9 +7,7 @@ import type { LedgerAccountBlock, LedgerMovement } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
-import { EmptyState, KpiCard, KpiGrid, LoadingState, SearchBar, DataPanel, NoResultState, Toolbar } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
-import { DateRangeField } from './AccToolbarFields';
+import { EmptyState, KpiCard, KpiGrid, LoadingState, SearchBar, DataPanel, NoResultState, Toolbar, HeaderActions, DateRangeField } from '../../components/ds';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -104,12 +102,12 @@ export default function GrandLivreTab() {
 
   return (
     <>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={accounts.length === 0}>
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <EditionButtons kind="grand-livre" params={{ startDate, endDate, class: classFilter === 'all' ? undefined : classFilter }} />
-      </AccHeaderActions>
+      </HeaderActions>
 
       {data && (
         <KpiGrid>

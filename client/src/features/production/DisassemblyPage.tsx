@@ -26,7 +26,7 @@ export default function DisassemblyPage() {
   const { data: candidates = [] } = useQuery({
     queryKey: ['disassembly-candidates'], queryFn: () => api.get('/production/disassembly/candidates').then(r => r.data.data as Candidate[]),
   });
-  const { data: history = [], isLoading, isError, refetch } = useQuery({
+  const { data: history = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['disassembly'], queryFn: () => api.get('/production/disassembly').then(r => r.data.data as Disassembly[]),
   });
   const [lotId, setLotId] = useState('');
@@ -103,7 +103,7 @@ export default function DisassemblyPage() {
 
       <section aria-label="Historique" style={{ display: 'grid', gap: 12 }}>
         <SectionHeader title="Historique" />
-        {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : history.length === 0 ? (
+        {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : history.length === 0 ? (
           <EmptyState icon={Recycle} title="Aucun désassemblage" text="Les désassemblages enregistrés apparaîtront ici, avec les matières remises en stock." />
         ) : (
           <DataPanel label="Historique des désassemblages" footer={<TableFooter note={`${history.length} désassemblage${history.length > 1 ? 's' : ''}`} />}>

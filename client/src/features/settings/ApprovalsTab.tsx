@@ -13,6 +13,8 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { DataPanel, FormField, FormFooter, SectionHeader } from '../../components/ds';
 
 /**
  * Paramètres › Circuits d'approbation (lot 8, mig 350). Une règle = type de
@@ -21,11 +23,6 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
  */
 
 const DOC_TYPES = APPROVAL_DOC_TYPES as Record<string, ApprovalDocTypeDef>;
-
-const inputStyle: React.CSSProperties = {
-  fontSize: '0.8125rem', padding: '3px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4,
-  background: 'var(--odoo-bg)', color: 'var(--odoo-text)',
-};
 
 function ConditionEditor({ docType, value, disabled, onChange }: {
   docType: string; value: ApprovalCondition; disabled: boolean; onChange: (c: ApprovalCondition | null) => void;
@@ -55,28 +52,28 @@ function ConditionEditor({ docType, value, disabled, onChange }: {
   };
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-      <select aria-label="Champ de la condition" value={value.field ?? ''} disabled={disabled} style={inputStyle}
+      <select aria-label="Champ de la condition" value={value.field ?? ''} disabled={disabled} className="ds-input sm" style={{ width: 'auto' }}
         onChange={e => commit({ field: e.target.value || undefined })}>
         <option value="">Toujours</option>
         {Object.entries(fields).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}
       </select>
       {field && (
         <>
-          <select aria-label="Opérateur" value={value.op ?? 'gte'} disabled={disabled} style={inputStyle}
+          <select aria-label="Opérateur" value={value.op ?? 'gte'} disabled={disabled} className="ds-input sm" style={{ width: 'auto' }}
             onChange={e => commit({ op: e.target.value as ApprovalOp })}>
             {(Object.keys(APPROVAL_OPS) as ApprovalOp[])
               .filter(op => field.kind !== 'enum' || op === 'eq' || op === 'neq')
               .map(op => <option key={op} value={op}>{APPROVAL_OPS[op]}</option>)}
           </select>
           {field.kind === 'enum' ? (
-            <select aria-label="Valeur" value={String(value.value ?? '')} disabled={disabled} style={inputStyle}
+            <select aria-label="Valeur" value={String(value.value ?? '')} disabled={disabled} className="ds-input sm" style={{ width: 'auto' }}
               onChange={e => commit({ value: e.target.value })}>
               {field.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               <input aria-label="Valeur" type="number" min={0} step="any" value={draft} disabled={disabled}
-                style={{ ...inputStyle, width: 90, textAlign: 'right' }}
+                className="ds-input sm" style={{ width: 90, textAlign: 'right' }}
                 onChange={e => setDraft(e.target.value)}
                 onBlur={() => { if (draft !== '' && Number(draft) !== Number(value.value)) commit({ value: Number(draft) }); }}
                 onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
@@ -139,21 +136,21 @@ export default function ApprovalsTab() {
       {!rules.length && <StatusBanner tone="warning" icon={ClipboardCheck} title="Circuits indisponibles">La migration 350 n'est pas appliquée sur cette base.</StatusBanner>}
 
       {draft && (
-        <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
-          <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em' }}>Nouvelle règle</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-            <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Libellé
-              <input id="approval-new-label" value={draft.label} style={inputStyle} placeholder="Ex. BC fournisseur farine" onChange={e => setDraft({ ...draft, label: e.target.value })} />
-            </label>
-            <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Type de pièce
-              <select id="approval-new-doctype" value={draft.docType} style={inputStyle} onChange={e => setDraft({ ...draft, docType: e.target.value as ApprovalDocType, condition: null })}>
+        <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-labelledby="approval-new-title">
+          <SectionHeader title={<span id="approval-new-title">Nouvelle règle</span>} />
+          <div className="ds-form-grid">
+            <FormField label="Libellé" htmlFor="approval-new-label" required>
+              <input id="approval-new-label" className="ds-input" value={draft.label} placeholder="Ex. BC fournisseur farine" onChange={e => setDraft({ ...draft, label: e.target.value })} />
+            </FormField>
+            <FormField label="Type de pièce" htmlFor="approval-new-doctype" required>
+              <select id="approval-new-doctype" className="ds-input" value={draft.docType} onChange={e => setDraft({ ...draft, docType: e.target.value as ApprovalDocType, condition: null })}>
                 {Object.entries(DOC_TYPES).map(([k, d]) => <option key={k} value={k}>{d.label}</option>)}
               </select>
-            </label>
-            <div style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Condition
+            </FormField>
+            <FormField label="Condition" hint="« Toujours » : chaque pièce de ce type passe par le circuit.">
               <ConditionEditor docType={draft.docType} value={draft.condition ?? {}} disabled={false} onChange={c => setDraft({ ...draft, condition: c })} />
-            </div>
-            <div style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Approbateurs (dans l'ordre)
+            </FormField>
+            <FormField label="Approbateurs (dans l'ordre)" required>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                 {draft.roles.map((c, i) => (
                   <span key={`${c}-${i}`} className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -162,28 +159,23 @@ export default function ApprovalsTab() {
                       onClick={() => setDraft({ ...draft, roles: draft.roles.filter((_, j) => j !== i) })}>×</button>
                   </span>
                 ))}
-                <select aria-label="Ajouter un approbateur" value="" style={inputStyle} onChange={e => e.target.value && setDraft({ ...draft, roles: [...draft.roles, e.target.value] })}>
+                <select aria-label="Ajouter un approbateur" value="" className="ds-input sm" style={{ width: 'auto' }} onChange={e => e.target.value && setDraft({ ...draft, roles: [...draft.roles, e.target.value] })}>
                   <option value="">+ Ajouter</option>
                   {roleOptions.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
                 </select>
               </div>
-            </div>
+            </FormField>
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
-            <button type="button" className="odoo-btn-primary" disabled={create.isPending || !draft.label.trim() || !draft.roles.length}
-              onClick={() => create.mutate({ code: slug(draft.label), label: draft.label.trim(), docType: draft.docType, condition: draft.condition, mode: draft.mode, steps: draft.roles.map(r => ({ approverRole: r })) })}>
-              Créer la règle
-            </button>
-          </div>
+          <FormFooter onCancel={() => setDraft(null)} submitLabel="Créer la règle" busy={create.isPending} disabled={!draft.label.trim() || !draft.roles.length}
+            onSubmit={() => create.mutate({ code: slug(draft.label), label: draft.label.trim(), docType: draft.docType, condition: draft.condition, mode: draft.mode, steps: draft.roles.map(r => ({ approverRole: r })) })} />
         </section>
       )}
 
-      <div className="prj-panel prj-scroll">
+      <DataPanel label="Circuits d'approbation">
         <table className="odoo-table">
           <thead>
             <tr>
-              <th style={{ width: 60 }}>Active</th><th>Règle</th><th>Condition</th><th>Circuit</th><th style={{ width: 110 }}>Escalade</th><th className="ds-num">30 jours</th>{editable && <th />}
+              <th style={{ width: 60 }}>Active</th><th>Règle</th><th>Condition</th><th>Circuit</th><th style={{ width: 110 }}>Escalade (h)</th><th className="ds-num">Demandes (30 j)</th>{editable && <th className="ds-actions"><span className="sr-only">Actions</span></th>}
             </tr>
           </thead>
           <tbody>
@@ -194,7 +186,7 @@ export default function ApprovalsTab() {
                     aria-label={`Activer « ${r.label} »`} onChange={e => save.mutate({ code: r.code, data: { enabled: e.target.checked } })} />
                 </td>
                 <td>
-                  <div style={{ fontWeight: 600 }}>{r.label}</div>
+                  <div className="ds-strong">{r.label}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{DOC_TYPES[r.doc_type]?.label ?? r.doc_type} · <code>{r.code}</code></div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)', marginTop: 2 }}>{DOC_TYPES[r.doc_type]?.effect}</div>
                 </td>
@@ -219,7 +211,7 @@ export default function ApprovalsTab() {
                       </span>
                     ))}
                     {editable && (
-                      <select aria-label={`Ajouter une étape à « ${r.label} »`} value="" style={inputStyle}
+                      <select aria-label={`Ajouter une étape à « ${r.label} »`} value="" className="ds-input sm" style={{ width: 'auto' }}
                         onChange={e => e.target.value && save.mutate({ code: r.code, data: { steps: [...stepsOf(r), { approverRole: e.target.value }] } })}>
                         <option value="">+ Étape</option>
                         {roleOptions.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
@@ -227,36 +219,33 @@ export default function ApprovalsTab() {
                     )}
                   </div>
                   {r.steps.length > 1 && (
-                    <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem', color: 'var(--ds-muted)', marginTop: 6 }}>
-                      <select aria-label="Mode du circuit" value={r.mode} disabled={!editable} style={inputStyle}
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.75rem', color: 'var(--ds-muted)', marginTop: 6 }}>
+                      <select aria-label="Mode du circuit" value={r.mode} disabled={!editable} className="ds-input sm" style={{ width: 'auto' }}
                         onChange={e => save.mutate({ code: r.code, data: { mode: e.target.value as 'serial' | 'parallel' } })}>
                         <option value="serial">L'un après l'autre</option>
                         <option value="parallel">Tous en parallèle</option>
                       </select>
-                    </label>
+                    </span>
                   )}
                 </td>
                 <td>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     <Clock size={12} style={{ color: 'var(--ds-muted)' }} />
                     <input aria-label="Alerte après (heures)" type="number" min={1} max={720} defaultValue={r.escalate_after_hours ?? ''} disabled={!editable}
-                      key={`${r.code}-${r.escalate_after_hours}`} placeholder="—" style={{ ...inputStyle, width: 56, textAlign: 'right' }}
+                      key={`${r.code}-${r.escalate_after_hours}`} placeholder="—" className="ds-input sm" style={{ width: 64, textAlign: 'right' }}
                       onBlur={e => { const v = e.target.value === '' ? null : Number(e.target.value); if (v !== r.escalate_after_hours) save.mutate({ code: r.code, data: { escalateAfterHours: v } }); }} />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>h</span>
                   </span>
                 </td>
-                <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.8125rem' }}>
+                <td className="ds-num">
                   <div>{r.requests_30d} demande{r.requests_30d > 1 ? 's' : ''}</div>
                   {r.rejected_30d > 0 && <div style={{ color: 'var(--ds-danger)' }}>{r.rejected_30d} refus</div>}
                   {r.pending_count > 0 && <div style={{ marginTop: 2 }}><StatusTag tone="todo" label={`${r.pending_count} en attente`} /></div>}
                 </td>
                 {editable && (
-                  <td className="ds-num">
+                  <td className="ds-actions">
                     {canDelete('settings') && (
-                      <button type="button" className="odoo-pager-btn" title="Supprimer la règle" aria-label={`Supprimer « ${r.label} »`} style={{ color: 'var(--ds-danger)' }}
-                        onClick={async () => { if (await confirm(`Supprimer la règle « ${r.label} » ? Les pièces de ce type ne demanderont plus d'approbation.`, { danger: true, confirmLabel: 'Supprimer' })) remove.mutate(r.code); }}>
-                        <Trash2 size={13} />
-                      </button>
+                      <RowMenu label={`Actions sur « ${r.label} »`} items={[{ label: 'Supprimer la règle', icon: Trash2, danger: true,
+                        onSelect: async () => { if (await confirm(`Supprimer la règle « ${r.label} » ? Les pièces de ce type ne demanderont plus d'approbation.`, { danger: true, confirmLabel: 'Supprimer' })) remove.mutate(r.code); } }]} />
                     )}
                   </td>
                 )}
@@ -264,7 +253,7 @@ export default function ApprovalsTab() {
             ))}
           </tbody>
         </table>
-      </div>
+      </DataPanel>
     </div>
   );
 }

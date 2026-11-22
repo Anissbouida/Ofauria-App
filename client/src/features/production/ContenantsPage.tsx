@@ -21,6 +21,7 @@ import {
   getModeCalcul, MODE_LABELS, TYPE_PRODUCTION_LABELS, UNITE_LANCEMENT_OPTIONS,
   type ModeCalcul,
 } from '@ofauria/shared';
+import './production.css';
 
 // ─── Types ───
 
@@ -569,9 +570,9 @@ function ContenantForm({ contenant, onClose, onSaved }: {
   };
 
   return (
-    <div className="odoo-section">
+    <div className="ds-panel pd-section">
       <form onSubmit={handleSubmit}>
-        <div className="odoo-section-header" style={{ justifyContent: 'space-between' }}>
+        <div className="pd-section-head" style={{ justifyContent: 'space-between' }}>
           <span className="inline-flex items-center gap-2">
             <Layers size={13} /> {isEdit ? `Modifier le format : ${contenant!.nom}` : 'Nouveau format de production'}
           </span>

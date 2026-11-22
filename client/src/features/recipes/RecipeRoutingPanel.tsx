@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Route } from 'lucide-react';
 import { routingsApi, OP_TYPE_LABELS } from '../../api/routings.api';
 import { RoutingEditor } from '../production/WorkCentersPage';
+import '../production/production.css';
 
 /**
  * Gamme de la fiche technique (M5-01) : opérations, postes et temps prévus ; édition dans
@@ -15,8 +16,8 @@ export default function RecipeRoutingPanel({ recipeId, recipeName }: { recipeId:
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   if (isLoading) return null;
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header flex items-center gap-2"><Route size={13} /> Gamme opératoire
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head"><Route size={13} /> Gamme opératoire
         <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setEditing(routing ? routing.id : 'new')}>{routing ? 'Modifier la gamme' : 'Créer la gamme'}</button>
       </div>
       <div style={{ padding: '0.5rem 1rem' }}>

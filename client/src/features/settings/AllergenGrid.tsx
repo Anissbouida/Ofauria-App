@@ -7,6 +7,7 @@ import { ALLERGENS } from '../../constants/allergens';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
+import { DataPanel, EmptyState } from '../../components/ds';
 import { apiErrorMessage } from '../../api/errors';
 
 /**
@@ -22,8 +23,8 @@ type Draft = Record<string, CellState>;
 const NEXT: Record<CellState, CellState> = { absent: 'contains', contains: 'traces', traces: 'absent' };
 const CELL: Record<CellState, { text: string; title: string; style: React.CSSProperties }> = {
   absent: { text: '', title: 'Absent', style: { background: 'transparent', color: 'var(--ds-muted)' } },
-  contains: { text: 'C', title: 'Contient', style: { background: '#c62828', color: '#fff', fontWeight: 700 } },
-  traces: { text: 'T', title: 'Traces', style: { background: '#fde68a', color: '#78350f', fontWeight: 700 } },
+  contains: { text: 'C', title: 'Contient', style: { background: 'var(--ds-danger)', color: 'var(--ds-card)', fontWeight: 700 } },
+  traces: { text: 'T', title: 'Traces', style: { background: 'var(--ds-warning-bg)', color: 'var(--ds-warning)', fontWeight: 700 } },
 };
 const PAGE = 40;
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -98,18 +99,18 @@ export default function AllergenGrid() {
         <span className="prj-note" style={{ marginLeft: 'auto' }}>{filtered.length} fiche{filtered.length > 1 ? 's' : ''}</span>
       </div>
 
-      {shown.length === 0 && <div style={{ padding: 16, color: 'var(--ds-muted)' }}>Aucune fiche à afficher.</div>}
+      {shown.length === 0 && <EmptyState icon={ShieldAlert} title="Aucune fiche à afficher" text="Changez le filtre ou la recherche." />}
 
       {shown.length > 0 && (
-        <div className="prj-panel" style={{ overflowX: 'auto' }}>
-          <table className="odoo-table" style={{ width: '100%' }}>
+        <DataPanel label="Allergènes par ingrédient">
+          <table className="odoo-table ds-dense" style={{ width: '100%' }}>
             <thead><tr>
-              <th style={{ textAlign: 'left', minWidth: 200, position: 'sticky', left: 0, background: 'var(--odoo-bg)', zIndex: 1 }}>Ingrédient</th>
+              <th style={{ textAlign: 'left', minWidth: 200, position: 'sticky', left: 0, background: 'var(--ds-card)', zIndex: 1 }}>Ingrédient</th>
               {ALLERGENS.map(a => (
                 <th key={a.code} title={a.label} style={{ textAlign: 'center', fontSize: '0.68rem', padding: '6px 2px', minWidth: 46, whiteSpace: 'normal', lineHeight: 1.1 }}>{a.short}</th>
               ))}
               <th style={{ textAlign: 'left' }}>État</th>
-              <th />
+              <th className="ds-actions"><span className="sr-only">Action</span></th>
             </tr></thead>
             <tbody>
               {shown.map(r => {
@@ -118,8 +119,8 @@ export default function AllergenGrid() {
                 const proposed = !r.reviewed && !dirty && r.proposal.length > 0;
                 return (
                   <tr key={r.id}>
-                    <td style={{ position: 'sticky', left: 0, background: 'var(--odoo-bg)', zIndex: 1 }}>
-                      <div style={{ fontWeight: 500 }}>{r.name}</div>
+                    <td style={{ position: 'sticky', left: 0, background: 'var(--ds-card)', zIndex: 1 }}>
+                      <div className="ds-strong">{r.name}</div>
                       <div style={{ fontSize: '0.74rem', color: 'var(--ds-muted)' }}>
                         {r.category ?? 'Sans catégorie'}{r.usedInRecipes > 0 ? ` · ${r.usedInRecipes} fiche${r.usedInRecipes > 1 ? 's' : ''}` : ''}
                       </div>
@@ -131,7 +132,7 @@ export default function AllergenGrid() {
                         <td key={a.code} style={{ textAlign: 'center', padding: 2 }}>
                           <button type="button" onClick={() => toggle(r, a.code)} aria-label={`${r.name}, ${a.short} : ${cell.title}`} title={`${a.short} : ${cell.title}`}
                             style={{ width: 28, height: 26, borderRadius: 4, cursor: 'pointer', fontSize: '0.75rem',
-                              border: `1px ${proposed && state !== 'absent' ? 'dashed' : 'solid'} var(--odoo-border)`, ...cell.style }}>
+                              border: `1px ${proposed && state !== 'absent' ? 'dashed' : 'solid'} var(--ds-line)`, ...cell.style }}>
                             {cell.text}
                           </button>
                         </td>
@@ -145,9 +146,9 @@ export default function AllergenGrid() {
                         : <StatusTag tone="done" label={r.contains.length + r.traces.length === 0 ? 'Aucun allergène' : 'Renseigné'}
                             title={r.reviewedAt ? `Vérifié le ${new Date(r.reviewedAt).toLocaleDateString('fr-FR')}${r.reviewedByName ? ` par ${r.reviewedByName}` : ''}` : undefined} />}
                     </td>
-                    <td className="ds-num" style={{ whiteSpace: 'nowrap' }}>
+                    <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
                       {(dirty || !r.reviewed) && (
-                        <button type="button" className={dirty || proposed ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={save.isPending}
+                        <button type="button" className={`${dirty || proposed ? 'odoo-btn-primary' : 'odoo-btn-secondary'} ds-btn-sm`} disabled={save.isPending}
                           title={Object.values(d).every(s => s === 'absent') ? 'Déclare que cet ingrédient ne contient aucun allergène' : 'Enregistre cette ligne'}
                           onClick={() => save.mutate({ id: r.id, draft: d })}>
                           {Object.values(d).every(s => s === 'absent') ? 'Aucun allergène' : 'Valider'}
@@ -159,7 +160,7 @@ export default function AllergenGrid() {
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {filtered.length > shown.length && (

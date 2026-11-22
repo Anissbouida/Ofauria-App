@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Layers, Loader2 } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 
 import { EmptyState, LoadingState } from '../../components/ds';
+import '../production/production.css';
 /**
  * Explosion à plat (mig 400) : déplie la nomenclature sur tous les niveaux
  * (sous-recettes incluses) et cumule chaque ingrédient élémentaire avec sa
@@ -21,10 +22,10 @@ export default function ExplosionSection({ recipeId }: { recipeId: string }) {
   const total = data?.total_cost ?? 0;
 
   return (
-    <div className="odoo-section" style={{ marginTop: 16 }}>
+    <div className="ds-panel pd-section" style={{ marginTop: 16 }}>
       <button type="button" aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        className="odoo-section-header"
+        className="pd-section-head"
         style={{ width: '100%', cursor: 'pointer', border: 'none', background: 'transparent', font: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}

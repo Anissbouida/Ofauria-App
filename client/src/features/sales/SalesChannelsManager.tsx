@@ -4,7 +4,7 @@ import { salesChannelsApi, type SalesChannel } from '../../api/sales-channels.ap
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { LoadingState } from '../../components/ds';
+import { LoadingState, ErrorState } from '../../components/ds';
 
 /**
  * Gestion des canaux de vente (mig 172) : liste, création, défaut, (dés)activation.
@@ -14,7 +14,7 @@ import { LoadingState } from '../../components/ds';
 export default function SalesChannelsManager() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
-  const { data: channels = [], isLoading } = useQuery({
+  const { data: channels = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['sales-channels'],
     queryFn: salesChannelsApi.list,
   });
@@ -62,6 +62,7 @@ export default function SalesChannelsManager() {
   };
 
   if (isLoading) return <LoadingState bare label="Chargement des canaux…" />;
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} bare />;
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>

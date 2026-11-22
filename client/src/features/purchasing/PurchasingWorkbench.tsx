@@ -13,6 +13,7 @@ import { replenishmentApi } from '../../api/replenishment.api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PODetailModal } from '../accounting/PurchaseOrdersTab';
+import { useOpenReception } from './purchasingNav';
 import { Kpi } from '../projects/shared';
 import { PurHeaderActions } from './PurHeaderActions';
 import './purchasing.css';
@@ -40,6 +41,7 @@ export default function PurchasingWorkbench({ onOpenTab, onOpenInvoice }: {
   const { user } = useAuth();
   const [filter, setFilter] = useState<Filter>('all');
   const [poDetail, setPoDetail] = useState<string | null>(null);
+  const openReception = useOpenReception();
 
   const { data: reco } = useQuery({ queryKey: ['p2p-flow', 'reco'], queryFn: replenishmentApi.recommendations, ...quiet });
   const { data: pr } = useQuery({ queryKey: ['p2p-flow', 'pr-count'], queryFn: purchaseRequestsApi.count, ...quiet });
@@ -192,7 +194,7 @@ export default function PurchasingWorkbench({ onOpenTab, onOpenInvoice }: {
         </button>
       </section>
 
-      {poDetail && <PODetailModal poId={poDetail} onClose={() => setPoDetail(null)} />}
+      {poDetail && <PODetailModal poId={poDetail} onClose={() => setPoDetail(null)} onDelivery={() => openReception(poDetail)} />}
     </div>
   );
 }

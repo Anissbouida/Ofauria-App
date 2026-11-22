@@ -7,8 +7,8 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { fiscalYearsApi, type CloseCheck, type FiscalYear } from '../../api/ledger.api';
-import { money } from '../../utils/money';
-import { DataPanel, LoadingState, SectionHeader } from '../../components/ds';
+import { money, currencySymbol } from '../../utils/money';
+import { DataPanel, ErrorState, LoadingState, SectionHeader } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 
 const fmt = (v: number | string | null | undefined) =>
@@ -35,7 +35,7 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
   const confirm = useConfirm();
   const [openYear, setOpenYear] = useState<number | null>(null);
 
-  const { data: years = [], isLoading } = useQuery({ queryKey: ['ledger-fiscal-years'], queryFn: fiscalYearsApi.list });
+  const { data: years = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['ledger-fiscal-years'], queryFn: fiscalYearsApi.list });
 
   const close = useMutation({
     mutationFn: (year: number) => fiscalYearsApi.close(year),
@@ -69,6 +69,7 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
   };
 
   if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState error={error} title="Les exercices n'ont pas pu être chargés" onRetry={() => refetch()} />;
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
@@ -80,7 +81,7 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
               <th style={{ width: 110 }}>Exercice</th>
               <th style={{ width: 200 }}>Dates</th>
               <th style={{ width: 170 }}>Statut</th>
-              <th className="ds-num" style={{ width: 170 }}>Résultat</th>
+              <th className="ds-num" style={{ width: 170 }}>Résultat ({currencySymbol()})</th>
               <th>À-nouveaux</th>
               <th className="ds-actions" style={{ width: 200 }}>Actions</th>
             </tr>
@@ -159,10 +160,11 @@ function ClosedYear({ fy }: { fy: FiscalYear }) {
 
 /** Contrôles de clôture d'un exercice ouvert (fn_fiscal_year_checklist). */
 function YearChecks({ year }: { year: number }) {
-  const { data: checks = [], isLoading } = useQuery({
+  const { data: checks = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger-fiscal-year-checklist', year], queryFn: () => fiscalYearsApi.checklist(year),
   });
   if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState error={error} title="Les contrôles n'ont pas pu être chargés" onRetry={() => refetch()} />;
   const rows = (checks as CloseCheck[]).filter(c => c.code !== 'result');
   const result = (checks as CloseCheck[]).find(c => c.code === 'result');
   const blocking = rows.filter(c => c.blocking && c.item_count > 0);
@@ -173,8 +175,9 @@ function YearChecks({ year }: { year: number }) {
         : <StatusBanner tone="success" icon={CheckCircle2} title="Aucun point bloquant">
             Les mois sans écriture encore ouverts seront fermés d'office ; les à-nouveaux reprendront le résultat de {money(result?.amount)}.
           </StatusBanner>}
+      <DataPanel label={`Contrôles de clôture ${year}`}>
       <table className="odoo-table ds-dense">
-        <thead><tr><th>Contrôle</th><th className="ds-num" style={{ width: 90 }}>Nombre</th><th className="ds-num" style={{ width: 130 }}>Montant</th><th style={{ width: 120 }}>Effet</th></tr></thead>
+        <thead><tr><th>Contrôle</th><th className="ds-num" style={{ width: 90 }}>Nombre</th><th className="ds-num" style={{ width: 130 }}>Montant ({currencySymbol()})</th><th style={{ width: 120 }}>Effet</th></tr></thead>
         <tbody>
           {rows.map(c => (
             <tr key={c.code}>
@@ -186,16 +189,19 @@ function YearChecks({ year }: { year: number }) {
                 : c.blocking ? <StatusTag tone="blocked" label="Bloquant" /> : <StatusTag tone="todo" label="À examiner" />}</td>
             </tr>
           ))}
-          {result && (
+        </tbody>
+        {result && (
+          <tfoot>
             <tr>
-              <td style={{ fontWeight: 600 }}>{result.label}</td>
+              <td className="ds-strong">{result.label}</td>
               <td />
-              <td className="ds-num" style={{ fontWeight: 600, color: Number(result.amount) < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{fmt(result.amount)}</td>
+              <td className="ds-num ds-strong" style={{ color: Number(result.amount) < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{fmt(result.amount)}</td>
               <td><StatusTag tone="draft" label="Information" /></td>
             </tr>
-          )}
-        </tbody>
+          </tfoot>
+        )}
       </table>
+      </DataPanel>
     </div>
   );
 }

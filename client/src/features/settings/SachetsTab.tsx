@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, BarChart3, Settings as SettingsIcon } from 'lucide-react';
+import { BarChart3, Package, Settings as SettingsIcon } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { sachetConfigApi, type SachetConfig } from '../../api/sachet-config.api';
 import { SettingsSection, SettingItem, OdooToggle, PageNote } from './SettingsPrimitives';
-import { LoadingState } from '../../components/ds';
+import { DataPanel, EmptyState, FormFooter, KpiCard, KpiGrid, LoadingState, Segmented } from '../../components/ds';
 
 const REASON_LABELS: Record<string, string> = {
   client_demande: 'Client a demandé',
@@ -55,13 +55,11 @@ export default function SachetsTab() {
   const [sub, setSub] = useState<SubTab>('config');
   return (
     <div>
-      <div className="prj-views" role="group" aria-label="Sachets" style={{ display: 'inline-flex', marginBottom: 16 }}>
-        <button type="button" onClick={() => setSub('config')} className={sub === 'config' ? 'active' : ''} aria-pressed={sub === 'config'}>
-          <SettingsIcon size={14} /> Configuration
-        </button>
-        <button type="button" onClick={() => setSub('stats')} className={sub === 'stats' ? 'active' : ''} aria-pressed={sub === 'stats'}>
-          <BarChart3 size={14} /> Statistiques
-        </button>
+      <div style={{ display: 'inline-flex', marginBottom: 16 }}>
+        <Segmented<SubTab> label="Sachets" value={sub} onChange={setSub} options={[
+          { key: 'config', label: 'Configuration', icon: SettingsIcon },
+          { key: 'stats', label: 'Statistiques', icon: BarChart3 },
+        ]} />
       </div>
       {sub === 'config' ? <ConfigPanel /> : <StatsPanel />}
     </div>
@@ -172,26 +170,28 @@ function ConfigPanel() {
             step={1}
             value={draft.defaultArticlesPerSachet}
             onChange={(e) => handleDefaultChange(e.target.value)}
-            className="input w-32"
+            className="ds-input"
+            style={{ width: 128 }}
+            aria-label="Défaut global (articles par sachet)"
           />
         </SettingItem>
       </SettingsSection>
 
       <SettingsSection title="Ratio par catégorie" columns={1}>
-        <div className="overflow-x-auto">
+        <DataPanel label="Ratio par catégorie">
           <table className="odoo-table">
             <thead>
               <tr>
                 <th>Catégorie</th>
-                <th>Articles / sachet</th>
+                <th className="ds-num">Articles / sachet</th>
                 <th>Nécessite un sachet</th>
               </tr>
             </thead>
             <tbody>
               {draft.categories.map((row) => (
                 <tr key={row.id}>
-                  <td className="py-2.5 pr-4 text-gray-800 font-medium">{row.name}</td>
-                  <td className="py-2.5 pr-4">
+                  <td className="ds-strong">{row.name}</td>
+                  <td className="ds-num">
                     <input
                       type="number"
                       min={1}
@@ -200,42 +200,34 @@ function ConfigPanel() {
                       value={row.articlesPerSachet}
                       onChange={(e) => handleRowChange(row.id, { articlesPerSachet: e.target.value })}
                       disabled={!row.needsSachet}
-                      className="input w-36 disabled:bg-gray-100 disabled:text-gray-400"
+                      className="ds-input sm"
+                      style={{ width: 144, textAlign: 'right' }}
+                      aria-label={`Articles par sachet : ${row.name}`}
                     />
                   </td>
-                  <td className="py-2.5 pr-4">
-                    <div className="flex items-center gap-2">
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <OdooToggle
                         checked={row.needsSachet}
                         onChange={(v) => handleRowChange(row.id, { needsSachet: v })}
                       />
-                      <span className="text-sm text-gray-500">{row.needsSachet ? 'Oui' : 'Non'}</span>
+                      <span style={{ color: 'var(--ds-muted)' }}>{row.needsSachet ? 'Oui' : 'Non'}</span>
                     </div>
                   </td>
                 </tr>
               ))}
               {draft.categories.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="py-4 text-center text-gray-400 text-sm">
-                    Aucune catégorie.
-                  </td>
+                  <td colSpan={3}><EmptyState icon={Package} title="Aucune catégorie" bare /></td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       </SettingsSection>
 
-      <div className="pt-2">
-        <button
-          onClick={handleSave}
-          disabled={!hasChanges || saveMutation.isPending}
-          className="odoo-btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60"
-        >
-          <Save size={16} />
-          {saveMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
-        </button>
-      </div>
+      <FormFooter dirty={hasChanges} onCancel={() => setDraft(toDraft(config))} onSubmit={handleSave}
+        busy={saveMutation.isPending} disabled={!hasChanges} />
     </>
   );
 }
@@ -269,20 +261,8 @@ function StatsPanel() {
 
   return (
     <>
-      <div className="flex items-center justify-end mb-4">
-        <div className="prj-views" role="group" aria-label="Période">
-          {periodOptions.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              onClick={() => setPeriod(p.key)}
-              aria-pressed={period === p.key}
-              className={period === p.key ? 'active' : ''}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <Segmented<PeriodKey> label="Période" value={period} onChange={setPeriod} options={periodOptions} />
       </div>
 
       {isLoading || !report ? (
@@ -290,20 +270,21 @@ function StatsPanel() {
       ) : (
         <>
           <SettingsSection title="Vue d'ensemble" columns={1}>
-            <div className="prj-kpis">
-              <KPI label="Ventes" value={report.totals.salesCount} />
-              <KPI label="Sachets remis" value={report.totals.sachetsGiven} />
-              <KPI label="Sachets suggérés" value={report.totals.sachetsSuggested} />
-              <KPI
+            <KpiGrid>
+              <KpiCard label="Ventes" value={report.totals.salesCount} />
+              <KpiCard label="Sachets remis" value={report.totals.sachetsGiven} />
+              <KpiCard label="Sachets suggérés" value={report.totals.sachetsSuggested} />
+              <KpiCard
                 label="Sur-distribution"
                 value={report.totals.overshoot}
-                tone={report.totals.overshoot > 0 ? 'warning' : 'ok'}
+                sub={report.totals.overshoot > 0 ? 'Plus de sachets que suggéré' : 'Conforme'}
+                tone={report.totals.overshoot > 0 ? 'orange' : 'green'}
               />
-            </div>
+            </KpiGrid>
           </SettingsSection>
 
           <SettingsSection title="Par vendeuse" columns={1}>
-            <div className="overflow-x-auto">
+            <DataPanel label="Sachets par vendeuse">
               <table className="odoo-table">
                 <thead>
                   <tr>
@@ -313,36 +294,34 @@ function StatsPanel() {
                     <th className="ds-num">Remis</th>
                     <th className="ds-num">Suggérés</th>
                     <th className="ds-num">Sur-distrib.</th>
-                    <th className="ds-num">Ratio</th>
+                    <th className="ds-num">Ratio (%)</th>
                     <th>Motif principal</th>
                   </tr>
                 </thead>
                 <tbody>
                   {report.perSaleswoman.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="py-6 text-center text-gray-400 text-sm">
-                        Aucune donnée sur cette période.
-                      </td>
+                      <td colSpan={8}><EmptyState icon={BarChart3} title="Aucune donnée sur cette période" bare /></td>
                     </tr>
                   )}
                   {report.perSaleswoman.map((row) => {
                     const ratioPct = row.overshootRatio > 0 ? row.overshootRatio * 100 : 0;
-                    const tone =
-                      row.overshoot === 0 ? 'text-gray-700' :
-                      ratioPct > 130 ? 'sach-red font-semibold' :
-                      'sach-orange font-semibold';
+                    const tone: CSSProperties | undefined =
+                      row.overshoot === 0 ? undefined :
+                      ratioPct > 130 ? { color: 'var(--ds-danger)', fontWeight: 600 } :
+                      { color: 'var(--ds-warning)', fontWeight: 600 };
                     return (
                       <tr key={row.userId}>
-                        <td className="py-2.5 pr-4 text-gray-800 font-medium">{row.userName}</td>
-                        <td className="py-2.5 pr-4 text-gray-500">{row.storeName ?? '—'}</td>
-                        <td className="py-2.5 pr-4 text-right">{row.salesCount}</td>
-                        <td className="py-2.5 pr-4 text-right">{row.sachetsGiven}</td>
-                        <td className="py-2.5 pr-4 text-right text-gray-500">{row.sachetsSuggested}</td>
-                        <td className={`py-2.5 pr-4 text-right ${tone}`}>{row.overshoot}</td>
-                        <td className={`py-2.5 pr-4 text-right ${tone}`}>
-                          {row.sachetsSuggested > 0 ? `${ratioPct.toFixed(0)}%` : '—'}
+                        <td className="ds-strong">{row.userName}</td>
+                        <td style={{ color: 'var(--ds-muted)' }}>{row.storeName ?? '—'}</td>
+                        <td className="ds-num">{row.salesCount}</td>
+                        <td className="ds-num">{row.sachetsGiven}</td>
+                        <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{row.sachetsSuggested}</td>
+                        <td className="ds-num" style={tone}>{row.overshoot}</td>
+                        <td className="ds-num" style={tone}>
+                          {row.sachetsSuggested > 0 ? ratioPct.toFixed(0) : '—'}
                         </td>
-                        <td className="py-2.5 pr-4 text-gray-600">
+                        <td>
                           {row.topReason ? REASON_LABELS[row.topReason] ?? row.topReason : '—'}
                         </td>
                       </tr>
@@ -350,12 +329,12 @@ function StatsPanel() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </DataPanel>
           </SettingsSection>
 
           {report.reasons.length > 0 && (
             <SettingsSection title="Motifs invoqués" columns={1}>
-              <div className="flex flex-wrap gap-2">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {report.reasons.map((r) => (
                   <span
                     key={r.reason}
@@ -371,15 +350,5 @@ function StatsPanel() {
         </>
       )}
     </>
-  );
-}
-
-function KPI({ label, value, tone }: { label: string; value: number; tone?: 'ok' | 'warning' }) {
-  const color = tone === 'warning' ? 'var(--ds-warning)' : tone === 'ok' ? 'var(--ds-success)' : undefined;
-  return (
-    <div className="prj-kpi">
-      <div className="prj-kpi-head"><span>{label}</span></div>
-      <div className="prj-kpi-value" style={{ color }}>{value}</div>
-    </div>
   );
 }

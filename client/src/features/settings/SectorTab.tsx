@@ -17,7 +17,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { LoadingState } from '../../components/ds';
+import { DataPanel, EmptyState, LoadingState } from '../../components/ds';
 
 /**
  * Secteur et modules (mig 468 + 507).
@@ -349,8 +349,8 @@ export default function SectorTab() {
               <button type="button" onClick={() => chooseSector(s.code, s.label)} disabled={busy}
                 style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.7rem 0.9rem',
                   borderRadius: 12, textAlign: 'left', cursor: on ? 'default' : 'pointer',
-                  border: `1px solid ${on ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`,
-                  background: on ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)' }}>
+                  border: `1px solid ${on ? 'var(--ds-accent)' : 'var(--ds-sep)'}`,
+                  background: on ? 'var(--ds-tint)' : 'var(--ds-card)', color: 'var(--ds-ink)' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: on ? 600 : 400 }}>
                   <Layers size={15} /> {s.label}
                   {s.isCustom && <span className="odoo-tag" style={{ fontWeight: 400 }}>Personnalisé</span>}
@@ -358,9 +358,9 @@ export default function SectorTab() {
                 {on && <StatusTag tone="done" icon={Check} label="Actuel" />}
               </button>
               {s.isCustom && !on && (
-                <button type="button" className="odoo-btn-secondary" title="Supprimer ce secteur personnalisé" aria-label={`Supprimer ${s.label}`}
-                  disabled={busy || sectorDeleteMut.isPending} onClick={() => deleteSector(s.code, s.label)} style={{ padding: '0 10px' }}>
-                  <Trash2 size={14} />
+                <button type="button" className="ds-btn-danger" title="Supprimer ce secteur personnalisé" aria-label={`Supprimer ${s.label}`}
+                  disabled={busy || sectorDeleteMut.isPending} onClick={() => deleteSector(s.code, s.label)} style={{ padding: '0 12px' }}>
+                  <Trash2 size={14} aria-hidden="true" />
                 </button>
               )}
               </div>
@@ -401,21 +401,21 @@ export default function SectorTab() {
         >
           <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
             {onboarding.modules.map(m => (
-              <div key={m.module} style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: '0.75rem 0.95rem', background: 'var(--odoo-bg)' }}>
+              <div key={m.module} style={{ border: '1px solid var(--ds-sep)', borderRadius: 12, padding: '0.75rem 0.95rem', background: 'var(--ds-card)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontWeight: 600 }}>{m.label}</span>
                   <span className="odoo-setting-help" style={{ margin: 0 }}>{m.done} / {m.total}</span>
                 </div>
                 <div role="progressbar" aria-valuemin={0} aria-valuemax={m.total} aria-valuenow={m.done}
-                  style={{ height: 4, borderRadius: 2, background: 'var(--odoo-border)', margin: '6px 0 8px', overflow: 'hidden' }}>
-                  <div style={{ width: `${(m.done / m.total) * 100}%`, height: '100%', background: 'var(--odoo-purple)' }} />
+                  style={{ height: 4, borderRadius: 2, background: 'var(--ds-sep)', margin: '6px 0 8px', overflow: 'hidden' }}>
+                  <div style={{ width: `${(m.done / m.total) * 100}%`, height: '100%', background: 'var(--ds-accent)' }} />
                 </div>
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
                   {m.tasks.map(t => (
                     <li key={t.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                       {t.done
-                        ? <CheckCircle2 size={15} style={{ color: 'var(--odoo-success, #28a745)', flexShrink: 0, marginTop: 2 }} />
-                        : <Circle size={15} style={{ color: 'var(--odoo-text-muted, #999)', flexShrink: 0, marginTop: 2 }} />}
+                        ? <CheckCircle2 size={15} style={{ color: 'var(--ds-success)', flexShrink: 0, marginTop: 2 }} />
+                        : <Circle size={15} style={{ color: 'var(--ds-muted)', flexShrink: 0, marginTop: 2 }} />}
                       <span style={{ flex: 1, textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? 0.6 : 1 }}>{t.label}</span>
                       {!t.done && (t.to === 'starter'
                         ? <button type="button" className="odoo-btn-link" disabled={busy || starterMut.isPending} onClick={loadStarter}>Charger</button>
@@ -445,22 +445,22 @@ export default function SectorTab() {
         columns={1}
       >
         {versions.length === 0 ? (
-          <p className="odoo-setting-help">Aucune version pour l'instant : la première sera créée au prochain enregistrement.</p>
+          <EmptyState icon={History} bare title="Aucune version pour l'instant" text="La première sera créée au prochain enregistrement." />
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <DataPanel label="Historique des configurations">
             <table className="odoo-table">
-              <thead><tr><th style={{ width: 130 }}>Date</th><th style={{ width: 160 }}>Par</th><th>Changement</th><th style={{ width: 110 }}></th></tr></thead>
+              <thead><tr><th style={{ width: 130 }}>Date</th><th style={{ width: 160 }}>Par</th><th>Changement</th><th className="ds-actions" style={{ width: 130 }} aria-label="Actions"></th></tr></thead>
               <tbody>
                 {versions.map((v, i) => (
                   <tr key={v.id}>
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(v.created_at)}</td>
                     <td>{v.created_by_name ?? '—'}</td>
-                    <td>{v.label} {i === 0 && <span style={{ marginLeft: 4 }}><StatusTag tone="done" label="Actuelle" /></span>}</td>
-                    <td>
+                    <td className="ds-strong">{v.label} {i === 0 && <span style={{ marginLeft: 4 }}><StatusTag tone="done" label="Actuelle" /></span>}</td>
+                    <td className="ds-actions">
                       {i > 0 && (
-                        <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm"
                           disabled={busy} onClick={() => restore(v.id, fmtDate(v.created_at))}>
-                          <History size={13} /> Restaurer
+                          <History size={13} aria-hidden="true" /> Restaurer
                         </button>
                       )}
                     </td>
@@ -468,7 +468,7 @@ export default function SectorTab() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
         )}
       </SettingsSection>
           </>
@@ -486,10 +486,10 @@ export default function SectorTab() {
           <div style={{ display: 'grid', gap: 8 }}>
             {health.recommendations.map(r => (
               <div key={r.key} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12, padding: '0.75rem 0.95rem', borderRadius: 12,
-                border: `1px solid ${r.tone === 'warning' ? 'var(--odoo-warning, #f0ad4e)' : 'var(--odoo-border)'}`, background: 'var(--odoo-bg)' }}>
+                border: `1px solid ${r.tone === 'warning' ? 'var(--ds-warning)' : 'var(--ds-sep)'}`, background: 'var(--ds-card)' }}>
                 {r.tone === 'warning'
-                  ? <AlertTriangle size={16} style={{ color: 'var(--odoo-warning, #f0ad4e)', flexShrink: 0, marginTop: 2 }} />
-                  : <Lightbulb size={16} style={{ color: 'var(--odoo-purple)', flexShrink: 0, marginTop: 2 }} />}
+                  ? <AlertTriangle size={16} aria-hidden="true" style={{ color: 'var(--ds-warning)', flexShrink: 0, marginTop: 2 }} />
+                  : <Lightbulb size={16} aria-hidden="true" style={{ color: 'var(--ds-accent)', flexShrink: 0, marginTop: 2 }} />}
                 <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                   <div style={{ fontWeight: 600, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
                     {r.title}
@@ -588,7 +588,7 @@ export default function SectorTab() {
                   );
                 })()}
                 {features.length > 0 && (
-                  <div style={{ display: 'grid', gap: 6, marginTop: 10, paddingLeft: 10, borderLeft: '2px solid var(--odoo-border)' }}>
+                  <div style={{ display: 'grid', gap: 6, marginTop: 10, paddingLeft: 10, borderLeft: '2px solid var(--ds-sep)' }}>
                     {features.map(f => {
                       const fOn = view.featureOn(f.key);
                       const fAdjusted = view.featureOverrides[f.key] !== undefined;
@@ -654,7 +654,7 @@ export default function SectorTab() {
                 Modules, options, vocabulaire et données de départ actuels deviennent un secteur proposé dans la liste. Les pilotes et établissements ne sont pas repris.
               </p>
               <div style={{ display: 'flex', gap: 6 }}>
-                <input className="input" value={saveName} maxLength={120} aria-label="Nom du nouveau secteur"
+                <input id="sector-save-name" className="ds-input" value={saveName} maxLength={120} aria-label="Nom du nouveau secteur"
                   onChange={e => setSaveName(e.target.value)} style={{ flex: 1 }} />
                 <button type="button" className="odoo-btn-primary" disabled={!saveName.trim() || sectorCreateMut.isPending}
                   onClick={() => sectorCreateMut.mutate({ name: saveName.trim() })}>Enregistrer</button>
@@ -673,7 +673,7 @@ export default function SectorTab() {
                   <p className="odoo-setting-help" style={{ margin: 0 }}>
                     Décrivez votre activité en quelques phrases : ce que vous vendez, fabriquez ou achetez, et comment. L'assistant propose secteur, modules, options et vocabulaire ; rien n'est appliqué sans vous.
                   </p>
-                  <textarea className="input" rows={3} maxLength={2000} value={describe} aria-label="Description de l'activité"
+                  <textarea className="ds-input" rows={3} maxLength={2000} value={describe} aria-label="Description de l'activité"
                     placeholder="Ex. : Je fabrique des meubles sur commande et je vends en showroom, avec livraison et pose."
                     onChange={e => setDescribe(e.target.value)} />
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -686,7 +686,7 @@ export default function SectorTab() {
             </div>
           )}
           {suggestion && (
-            <div style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: '0.75rem 0.95rem', display: 'grid', gap: 6 }}>
+            <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 12, padding: '0.75rem 0.95rem', display: 'grid', gap: 6 }}>
               <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Sparkles size={14} /> Proposition « {suggestion.preview.name} »</div>
               {suggestion.rationale && <p style={{ margin: 0 }}>{suggestion.rationale}</p>}
               {suggestion.preview.addedModules.length > 0 && <p className="odoo-setting-help" style={{ margin: 0 }}>Modules en plus : {suggestion.preview.addedModules.join(', ')}</p>}
@@ -726,7 +726,7 @@ export default function SectorTab() {
             </div>
           )}
           {imported && (
-            <div style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: '0.75rem 0.95rem', display: 'grid', gap: 6 }}>
+            <div style={{ border: '1px solid var(--ds-sep)', borderRadius: 12, padding: '0.75rem 0.95rem', display: 'grid', gap: 6 }}>
               <div style={{ fontWeight: 600 }}>Modèle « {imported.preview.name} »</div>
               <p className="odoo-setting-help" style={{ margin: 0 }}>
                 {imported.preview.modules} module(s), {imported.preview.features} option(s), {imported.preview.labels} libellé(s),
@@ -770,8 +770,8 @@ export default function SectorTab() {
         <div role="region" aria-label="Impact de vos changements"
           style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '4.75rem', zIndex: 59,
             width: 'min(760px, calc(100vw - 2rem))', maxHeight: '40vh', overflowY: 'auto',
-            padding: '0.6rem 0.75rem', border: '1px solid var(--odoo-border)', borderRadius: 6,
-            background: 'var(--odoo-bg)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', fontSize: '0.8125rem', display: 'grid', gap: 4 }}>
+            padding: '0.6rem 0.75rem', border: '1px solid var(--ds-sep)', borderRadius: 6,
+            background: 'var(--ds-card)', boxShadow: 'var(--ds-shadow)', fontSize: '0.8125rem', display: 'grid', gap: 4 }}>
           <div className="odoo-setting-label">Impact de vos changements</div>
           {(impact.modulesOn.length > 0 || impact.featuresOn.length > 0) && (
             <div><strong style={{ color: 'var(--ds-success)' }}>Apparaît :</strong> {[...impact.modulesOn.map(moduleLabel), ...impact.featuresOn.map(featureLabel)].join(', ')}</div>

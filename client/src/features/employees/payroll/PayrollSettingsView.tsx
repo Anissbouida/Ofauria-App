@@ -9,7 +9,8 @@ import { apiErrorMessage, amount } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { HrModal, SubmitButton, Field, SectionTitle, LoadingPanel, inputCls, fieldLabel } from '../ui';
+import { HrModal, SubmitButton, Field, SectionTitle, LoadingPanel, inputCls } from '../ui';
+import { DataPanel, FormSection } from '../../../components/ds';
 
 type Bracket = { upTo: number | null; rate: number; deduction: number };
 
@@ -250,9 +251,9 @@ export default function PayrollSettingsView() {
             {field('smigMonthly', 'SMIG mensuel (vide = non contrôlé)', currencySymbol())}
             {field('smigHourly', 'SMIG horaire (vide = non contrôlé)', currencySymbol())}
           </div>
-          <div>
-            <span style={fieldLabel}>Barème IR annuel (IR = revenu net imposable × taux − somme à déduire)</span>
-            <table className="odoo-table" style={{ maxWidth: 520 }}>
+          <FormSection title="Barème IR annuel (IR = revenu net imposable × taux − somme à déduire)">
+            <DataPanel label="Barème IR annuel" style={{ maxWidth: 560 }}>
+            <table className="odoo-table ds-dense">
               <thead><tr><th>Jusqu'à ({currencySymbol()}/an)</th><th className="ds-num">Taux (%)</th><th className="ds-num">Somme à déduire ({currencySymbol()})</th></tr></thead>
               <tbody>
                 {brackets.map((b, i) => (
@@ -273,7 +274,8 @@ export default function PayrollSettingsView() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </DataPanel>
+          </FormSection>
           {scale.notes && <p style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{scale.notes}</p>}
           {isAdmin && (
             <div><SubmitButton pending={saveScale.isPending} onClick={async () => {
@@ -314,6 +316,7 @@ export default function PayrollSettingsView() {
         <SectionTitle icon={ListChecks} actions={isAdmin ? (
           <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setEditRub({ kind: 'gain', soumis_cnss: true, soumis_ir: true, is_active: true })}><Plus size={13} aria-hidden="true" /> Nouvelle rubrique</button>
         ) : undefined}>Rubriques de paie</SectionTitle>
+        <DataPanel label="Rubriques de paie">
         <table className="odoo-table">
           <thead>
             <tr>
@@ -337,6 +340,7 @@ export default function PayrollSettingsView() {
             ))}
           </tbody>
         </table>
+        </DataPanel>
       </section>
 
       {editRub && (

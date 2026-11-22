@@ -38,7 +38,7 @@ export default function HaccpPage() {
   if (error) {
     return (
       <SalesPageShell {...SHELL} summary={summary}>
-        <ErrorState title="Relevés HACCP indisponibles" onRetry={() => refetch()}
+        <ErrorState error={error} title="Relevés HACCP indisponibles" onRetry={() => refetch()}
           text={`${String((error as any)?.response?.data?.error?.message ?? error)} — écran réservé aux chefs et au gérant.`} />
       </SalesPageShell>
     );

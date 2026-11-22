@@ -1,5 +1,5 @@
 import { money, currencySymbol } from '../../utils/money';
-import { useState, useMemo, type CSSProperties } from 'react';
+import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, paymentsApi } from '../../api/accounting.api';
@@ -10,19 +10,18 @@ import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { format, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Plus, Pencil, X, Check, Download, Receipt, Loader2, Banknote, Eye, Ban, Trash2,
-  AlertTriangle, Building2, CheckCircle2, Clock, Coins, ClipboardList, Package,
+  Plus, Pencil, Download, Receipt, Banknote, Eye, Ban, Trash2,
+  AlertTriangle, Building2, CheckCircle2, Clock, Coins, ClipboardList,
   Truck, Undo2, Columns3, List, SquareKanban, Maximize2 } from 'lucide-react';
 
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ListToolbar, FilterChips, ListKpi, ListPanel, NextStep } from './ListTemplate';
-import { Segmented, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { Segmented, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, Modal, FormField, FormSection, FormFooter, DataPanel } from '../../components/ds';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 function n(val: number): string {
@@ -84,18 +83,6 @@ function fmtDate(d: unknown, pattern = 'dd MMM yyyy') {
   return d ? format(new Date(String(d).slice(0, 10) + 'T00:00:00'), pattern, { locale: fr }) : '—';
 }
 
-/* Styles partagés des fenêtres (mêmes valeurs que Commandes et Achats). */
-const modalPanelStyle: CSSProperties = {
-  backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)',
-  borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
-};
-const modalHeaderStyle: CSSProperties = { background: 'var(--ds-card)', padding: '0.875rem 1.25rem', color: 'var(--ds-ink)', borderBottom: '1px solid var(--ds-hair)' };
-const labelStyle: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 };
-const fieldStyle: CSSProperties = {
-  width: '100%', padding: '0.4375rem 0.625rem', border: '1px solid var(--ds-line)',
-  borderRadius: 8, fontSize: 14, backgroundColor: 'var(--ds-card)', color: 'var(--ds-ink)',
-};
-const sectionStyle: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' };
 
 /** `actionsSlot` : emplacement de la barre du haut (fil d'Ariane) où poser l'action principale de la page. */
 export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTMLElement | null } = {}) {
@@ -125,12 +112,14 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
   // Édition d'une facture existante : id ciblé (null = création). Réutilise le formulaire manuel.
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
+  // Tentative d'enregistrement : affiche les messages d'erreur sous les champs.
+  const [manualTried, setManualTried] = useState(false);
   // tvaRate : taux TVA de la ligne en % (null = pas de TVA explicite).
   const [manualItems, setManualItems] = useState<{ id?: string; productId: string; description: string; quantity: number; unitPrice: number; tvaRate: number | null }[]>([
     { productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null },
   ]);
 
-  const { data: invoices = [], isLoading } = useQuery({
+  const { data: invoices = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['invoices', 'emitted'],
     queryFn: () => invoicesApi.list({ invoiceType: 'emitted' }),
   });
@@ -187,6 +176,7 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
     setManualRate('');
     setManualItems([{ productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
     setEditingInvoiceId(null);
+    setManualTried(false);
   };
   const foreign = manualCurrency !== BASE_CURRENCY;
   const curLabel = foreign ? manualCurrency : currencySymbol();
@@ -409,7 +399,7 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
       </ListToolbar>
       {actionsSlot && createPortal(newInvoiceBtn, actionsSlot)}
 
-      {isLoading ? <LoadingState label="Chargement des factures…" /> : filteredInvoices.length === 0 ? (
+      {isLoading ? <LoadingState label="Chargement des factures…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : filteredInvoices.length === 0 ? (
         hasFilters
           ? <NoResultState onReset={() => { setStatusFilter(''); setLateOnly(false); setSearchQuery(''); }} text="Aucune facture ne correspond aux filtres." />
           : <EmptyState icon={Receipt} title="Aucune facture" text="Les factures naissent des bons de livraison ou d'une saisie manuelle." />
@@ -542,137 +532,129 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
 
       {/* Création / modification */}
       {showCreateModal && (
-        <ModalBackdrop onClose={() => { setShowCreateModal(false); resetManualForm(); }} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-          <div className="odoo-scope w-full flex flex-col" style={{ ...modalPanelStyle, maxWidth: 860, maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
-            <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Receipt size={18} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{editingInvoiceId ? 'Modifier la facture' : 'Nouvelle facture'}</div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{editingInvoiceId ? 'Date, TVA ou articles' : 'Saisie manuelle d\'une facture client'}</div>
-              </div>
-              <button onClick={() => { setShowCreateModal(false); resetManualForm(); }} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
-            </div>
-            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
-              {!editingInvoiceId && (
-                <StatusBanner tone="info" icon={Truck} title="Facture directe : prestations uniquement">
-                  Des marchandises se facturent depuis leur bon de livraison (Commandes › Livrer sur BL, ou Livraisons pros › À facturer),
-                  pour ne facturer que ce qui a été livré. Une commande de particulier se règle en caisse.
-                </StatusBanner>
-              )}
-              {editLoading ? (
-                <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-                  <Loader2 className="animate-spin" size={22} style={{ margin: '0 auto 8px' }} />
-                  <p style={{ fontSize: '0.8125rem' }}>Chargement de la facture...</p>
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-                    <div>
-                      <label style={labelStyle}>Client</label>
-                      <SearchSelect value={manualCustomerId} onChange={setManualCustomerId}
-                        placeholder="— Sélectionner un client —" width="100%" size="md" ariaLabel="Client"
-                        options={customers.map(c => ({ id: c.id as string, label: customerOption(c) }))} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Date de facturation</label>
-                      <input type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} style={fieldStyle} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Devise</label>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <SearchSelect value={manualCurrency} disabled={!!editingInvoiceId || currencies.length <= 1} clearable={false}
-                          onChange={v => { setManualCurrency(v); setManualRate(v === BASE_CURRENCY ? '' : dayRate(v)); }}
-                          placeholder="Devise" width={foreign ? 90 : '100%'} size="md" ariaLabel="Devise"
-                          options={currencies.map(c => ({ id: c.code.trim(), label: c.code.trim() }))} />
-                        {foreign && (
-                          <input value={manualRate} onChange={e => setManualRate(e.target.value)} disabled={!!editingInvoiceId} inputMode="decimal"
-                            placeholder="taux" title={`${currencySymbol()} pour 1 ${manualCurrency}`} style={{ ...fieldStyle, textAlign: 'right', minWidth: 0 }} />
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {foreign && (
-                    <StatusBanner tone="info" icon={Coins} title={`Facture en ${manualCurrency} au taux de ${manualRate || '…'} ${currencySymbol()}`}>
-                      Prix saisis en {manualCurrency}. La facture est comptabilisée en dirhams à ce taux ; l'écart avec le taux du jour de l'encaissement sera un gain ou une perte de change.
-                    </StatusBanner>
-                  )}
-
-                  <div style={sectionStyle}>
-                    <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center' }}>
-                      <Package size={11} /> Prestations
-                      <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 8 }}>prix HT ou TTC : l'autre se calcule selon la TVA</span>
-                      <button onClick={addManualItem} className="odoo-btn-secondary" style={{ marginLeft: 'auto', padding: '0.15rem 0.5rem' }}><Plus size={12} /> Ligne</button>
-                    </div>
-                    <table className="odoo-table" style={{ margin: 0 }}>
-                      <thead>
-                        <tr>
-                          <th>Désignation</th>
-                          <th style={{ width: 70, textAlign: 'right' }}>Qté</th>
-                          <th style={{ width: 100, textAlign: 'right' }}>P.U. HT{foreign ? ` (${manualCurrency})` : ''}</th>
-                          <th style={{ width: 80 }}>TVA</th>
-                          <th style={{ width: 100, textAlign: 'right' }}>P.U. TTC</th>
-                          <th style={{ width: 110, textAlign: 'right' }}>Total TTC</th>
-                          <th style={{ width: 32 }}></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {manualItems.map((item, idx) => (
-                          <tr key={idx} style={{ cursor: 'default' }}>
-                            <td>
-                              <input type="text" title="Désignation de la prestation" value={item.description} placeholder="Prestation (transport, location, formation…)"
-                                onChange={e => updateManualItem(idx, 'description', e.target.value)} style={fieldStyle} />
-                            </td>
-                            <td><input type="number" title="Quantité" value={item.quantity || ''} min="1" onChange={e => updateManualItem(idx, 'quantity', parseFloat(e.target.value) || 0)} style={{ ...fieldStyle, textAlign: 'right' }} /></td>
-                            <td><input type="number" title="Prix unitaire HT" value={item.unitPrice || ''} min="0" step="0.01" onChange={e => setUnitHt(idx, parseFloat(e.target.value) || 0)} style={{ ...fieldStyle, textAlign: 'right' }} /></td>
-                            <td>
-                              <select title="Taux TVA" value={item.tvaRate === null ? '' : String(item.tvaRate)} style={fieldStyle}
-                                onChange={e => updateManualItem(idx, 'tvaRate', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}>
-                                <option value="">—</option>
-                                {['0', '7', '10', '14', '20'].map(r => (<option key={r} value={r}>{r} %</option>))}
-                              </select>
-                            </td>
-                            <td><input type="number" title="Prix unitaire TTC" value={unitTtc(item) || ''} min="0" step="0.01" onChange={e => setUnitTtc(idx, parseFloat(e.target.value) || 0)} style={{ ...fieldStyle, textAlign: 'right' }} /></td>
-                            <td className="ds-num ds-strong">{n(item.quantity * unitTtc(item))}</td>
-                            <td>
-                              <button onClick={() => removeManualItem(idx)} disabled={manualItems.length <= 1} className="odoo-pager-btn" title="Supprimer la ligne" aria-label="Supprimer la ligne" style={{ color: 'var(--ds-danger)' }}><Trash2 size={13} /></button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 12, alignItems: 'start' }}>
-                    <div>
-                      <label style={labelStyle}>Notes</label>
-                      <input type="text" value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Notes ou référence..." style={fieldStyle} />
-                    </div>
-                    <div style={{ ...sectionStyle, padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total HT</span><span>{n(manualTotal)} {curLabel}</span></div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>TVA</span><span>{n(manualTva)} {curLabel}</span></div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4 }}><span>Total TTC</span><span>{n(manualTtc)} {curLabel}</span></div>
-                      {foreign && rateValue > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}><span>Contre-valeur</span><span>{money(manualTtc * rateValue)}</span></div>
+        <Modal
+          title={editingInvoiceId ? 'Modifier la facture' : 'Nouvelle facture'}
+          subtitle={editingInvoiceId ? 'Date, TVA ou articles' : 'Saisie manuelle d\'une facture client'}
+          onClose={() => { setShowCreateModal(false); resetManualForm(); }}
+          width={860}
+          locked={createManualMutation.isPending || updateManualMutation.isPending}
+          footer={editingInvoiceId ? (
+            <FormFooter onCancel={() => { setShowCreateModal(false); resetManualForm(); }} onSubmit={() => { setManualTried(true); handleUpdateManual(); }}
+              submitLabel="Enregistrer les modifications" busy={updateManualMutation.isPending} disabled={editLoading} />
+          ) : (
+            <FormFooter onCancel={() => { setShowCreateModal(false); resetManualForm(); }} onSubmit={() => { setManualTried(true); handleCreateManual(); }}
+              submitLabel="Créer la facture" busy={createManualMutation.isPending} />
+          )}>
+          {!editingInvoiceId && (
+            <StatusBanner tone="info" icon={Truck} title="Facture directe : prestations uniquement">
+              Des marchandises se facturent depuis leur bon de livraison (Commandes › Livrer sur BL, ou Livraisons pros › À facturer),
+              pour ne facturer que ce qui a été livré. Une commande de particulier se règle en caisse.
+            </StatusBanner>
+          )}
+          {editLoading ? (
+            <LoadingState label="Chargement de la facture..." bare />
+          ) : (
+            <>
+              <FormSection title="En-tête">
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)', gap: 'var(--ds-s4)' }}>
+                  <FormField label="Client" required error={manualTried && !manualCustomerId ? 'Sélectionnez un client.' : undefined}>
+                    <SearchSelect value={manualCustomerId} onChange={setManualCustomerId}
+                      placeholder="— Sélectionner un client —" width="100%" size="md" ariaLabel="Client"
+                      options={customers.map(c => ({ id: c.id as string, label: customerOption(c) }))} />
+                  </FormField>
+                  <FormField label="Date de facturation" htmlFor="mi-date" required error={manualTried && !manualDate ? 'Saisissez la date de facturation.' : undefined}>
+                    <input id="mi-date" type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} className="ds-input" />
+                  </FormField>
+                  <FormField label="Devise" htmlFor="mi-rate"
+                    error={manualTried && foreign && !(rateValue > 0) ? `Indiquez le taux (${currencySymbol()} pour 1 ${manualCurrency}).` : undefined}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <SearchSelect value={manualCurrency} disabled={!!editingInvoiceId || currencies.length <= 1} clearable={false}
+                        onChange={v => { setManualCurrency(v); setManualRate(v === BASE_CURRENCY ? '' : dayRate(v)); }}
+                        placeholder="Devise" width={foreign ? 90 : '100%'} size="md" ariaLabel="Devise"
+                        options={currencies.map(c => ({ id: c.code.trim(), label: c.code.trim() }))} />
+                      {foreign && (
+                        <input id="mi-rate" value={manualRate} onChange={e => setManualRate(e.target.value)} disabled={!!editingInvoiceId} inputMode="decimal"
+                          aria-label={`Taux : ${currencySymbol()} pour 1 ${manualCurrency}`}
+                          placeholder="taux" title={`${currencySymbol()} pour 1 ${manualCurrency}`} className="ds-input" style={{ textAlign: 'right', minWidth: 0 }} />
                       )}
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-              <button onClick={() => { setShowCreateModal(false); resetManualForm(); }} className="odoo-btn-secondary">Annuler</button>
-              {editingInvoiceId ? (
-                <button onClick={handleUpdateManual} disabled={updateManualMutation.isPending || editLoading} className="odoo-btn-primary">
-                  {updateManualMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Enregistrer les modifications
-                </button>
-              ) : (
-                <button onClick={handleCreateManual} disabled={createManualMutation.isPending} className="odoo-btn-primary">
-                  {createManualMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Receipt size={13} />} Créer la facture
-                </button>
-              )}
-            </div>
-          </div>
-        </ModalBackdrop>
+                  </FormField>
+                </div>
+                {foreign && (
+                  <StatusBanner tone="info" icon={Coins} title={`Facture en ${manualCurrency} au taux de ${manualRate || '…'} ${currencySymbol()}`}>
+                    Prix saisis en {manualCurrency}. La facture est comptabilisée en dirhams à ce taux ; l'écart avec le taux du jour de l'encaissement sera un gain ou une perte de change.
+                  </StatusBanner>
+                )}
+              </FormSection>
+
+              <FormSection title="Prestations">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Prix HT ou TTC : l'autre se calcule selon la TVA.</span>
+                  <button type="button" onClick={addManualItem} className="odoo-btn-secondary ds-btn-sm" style={{ marginLeft: 'auto' }}><Plus size={12} /> Ligne</button>
+                </div>
+                <DataPanel label="Prestations">
+                  <table className="odoo-table ds-dense">
+                    <thead>
+                      <tr>
+                        <th>Désignation</th>
+                        <th className="ds-num" style={{ width: 70 }}>Qté</th>
+                        <th className="ds-num" style={{ width: 100 }}>P.U. HT ({curLabel})</th>
+                        <th style={{ width: 80 }}>TVA</th>
+                        <th className="ds-num" style={{ width: 100 }}>P.U. TTC ({curLabel})</th>
+                        <th className="ds-num" style={{ width: 110 }}>Total TTC ({curLabel})</th>
+                        <th style={{ width: 32 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {manualItems.map((item, idx) => (
+                        <tr key={idx} style={{ cursor: 'default' }}>
+                          <td>
+                            <input type="text" aria-label="Désignation de la prestation" title="Désignation de la prestation" value={item.description} placeholder="Prestation (transport, location, formation…)"
+                              aria-invalid={manualTried && !item.description ? true : undefined}
+                              onChange={e => updateManualItem(idx, 'description', e.target.value)} className="ds-input sm" />
+                          </td>
+                          <td><input type="number" aria-label="Quantité" title="Quantité" value={item.quantity || ''} min="1" onChange={e => updateManualItem(idx, 'quantity', parseFloat(e.target.value) || 0)} className="ds-input sm" style={{ textAlign: 'right' }} /></td>
+                          <td><input type="number" aria-label="Prix unitaire HT" title="Prix unitaire HT" value={item.unitPrice || ''} min="0" step="0.01" aria-invalid={manualTried && item.unitPrice <= 0 ? true : undefined} onChange={e => setUnitHt(idx, parseFloat(e.target.value) || 0)} className="ds-input sm" style={{ textAlign: 'right' }} /></td>
+                          <td>
+                            <select aria-label="Taux TVA" title="Taux TVA" value={item.tvaRate === null ? '' : String(item.tvaRate)} className="ds-input sm"
+                              onChange={e => updateManualItem(idx, 'tvaRate', e.target.value === '' ? null : (parseFloat(e.target.value) || 0))}>
+                              <option value="">—</option>
+                              {['0', '7', '10', '14', '20'].map(r => (<option key={r} value={r}>{r} %</option>))}
+                            </select>
+                          </td>
+                          <td><input type="number" aria-label="Prix unitaire TTC" title="Prix unitaire TTC" value={unitTtc(item) || ''} min="0" step="0.01" onChange={e => setUnitTtc(idx, parseFloat(e.target.value) || 0)} className="ds-input sm" style={{ textAlign: 'right' }} /></td>
+                          <td className="ds-num ds-strong">{n(item.quantity * unitTtc(item))}</td>
+                          <td>
+                            <button type="button" onClick={() => removeManualItem(idx)} disabled={manualItems.length <= 1} className="odoo-pager-btn" title="Supprimer la ligne" aria-label="Supprimer la ligne" style={{ color: 'var(--ds-danger)' }}><Trash2 size={13} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </DataPanel>
+                {manualTried && manualItems.some(it => !it.description || it.unitPrice <= 0) && (
+                  <span className="ds-field-hint" role="alert" style={{ color: 'var(--ds-danger)', fontWeight: 600 }}>Chaque ligne doit avoir une désignation et un prix supérieur à 0.</span>
+                )}
+              </FormSection>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 280px', gap: 12, alignItems: 'start' }}>
+                <FormField label="Notes" htmlFor="mi-notes">
+                  <input id="mi-notes" type="text" value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Notes ou référence..." className="ds-input" />
+                </FormField>
+                <table className="odoo-table ds-dense" aria-label="Totaux">
+                  <tbody>
+                    <tr><td>Total HT ({curLabel})</td><td className="ds-num">{n(manualTotal)}</td></tr>
+                    <tr><td>TVA ({curLabel})</td><td className="ds-num">{n(manualTva)}</td></tr>
+                    <tr><td className="ds-strong">Total TTC ({curLabel})</td><td className="ds-num ds-strong">{n(manualTtc)}</td></tr>
+                    {foreign && rateValue > 0 && (
+                      <tr><td style={{ color: 'var(--ds-muted)' }}>Contre-valeur</td><td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{money(manualTtc * rateValue)}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Modal>
       )}
 
       {/* Encaissement — saisi par la direction */}
@@ -692,8 +674,7 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
         const fxSettled = fxAmount >= remainingFx - 0.005 ? remaining : Math.round(fxAmount * num(inv.exchange_rate) * 100) / 100;
         const fxGain = Math.round((fxDh - fxSettled) * 100) / 100;
         return (
-          <ModalBackdrop onClose={() => setShowPayModal(null)} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-            <form className="odoo-scope w-full" style={{ ...modalPanelStyle, maxWidth: 480 }} onClick={e => e.stopPropagation()} onSubmit={e => {
+          <form onSubmit={e => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               const paymentDate = (fd.get('paymentDate') as string) || format(new Date(), 'yyyy-MM-dd');
@@ -716,65 +697,57 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
                 ...(needsRef ? { checkNumber: reference, checkDate: fd.get('checkDate') as string } : {}),
               });
             }}>
-              <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Banknote size={18} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Encaisser la facture</div>
-                  <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{inv.invoice_number as string} · {customerLabel(inv)}</div>
-                </div>
-                <button type="button" onClick={() => setShowPayModal(null)} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
-              </div>
-              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={sectionStyle}>
-                  <div className="odoo-section-header"><Banknote size={11} /> Solde de la facture</div>
-                  <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total TTC</span><span style={{ fontWeight: 600 }}>{money(total)}</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ds-success)' }}><span>Déjà encaissé</span><span style={{ fontWeight: 600 }}>{money(paid)}</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                      <span>Reste à encaisser</span><span style={{ color: 'var(--ds-warning)' }}>{money(remaining)}{payInFx ? ` · ${n(remainingFx)} ${payCur}` : ''}</span>
-                    </div>
-                    {payInFx && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Facture en {payCur} au taux de {num(inv.exchange_rate)} {currencySymbol()}</div>}
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: payInFx ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
+          <Modal title="Encaisser la facture" subtitle={`${inv.invoice_number as string} · ${customerLabel(inv)}`} onClose={() => setShowPayModal(null)} width={480}
+            locked={payMutation.isPending}
+            footer={<FormFooter onCancel={() => setShowPayModal(null)} submitLabel="Confirmer l'encaissement" busy={payMutation.isPending} />}>
+                <FormSection title="Solde de la facture">
+                  <table className="odoo-table ds-dense" aria-label="Solde de la facture">
+                    <tbody>
+                      <tr><td>Total TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{n(total)}</td></tr>
+                      <tr><td style={{ color: 'var(--ds-success)' }}>Déjà encaissé ({currencySymbol()})</td><td className="ds-num ds-strong" style={{ color: 'var(--ds-success)' }}>{n(paid)}</td></tr>
+                      <tr><td className="ds-strong">Reste à encaisser ({currencySymbol()})</td><td className="ds-num ds-strong" style={{ color: 'var(--ds-warning)' }}>{n(remaining)}{payInFx ? ` · ${n(remainingFx)} ${payCur}` : ''}</td></tr>
+                    </tbody>
+                  </table>
+                  {payInFx && <span className="ds-field-hint">Facture en {payCur} au taux de {num(inv.exchange_rate)} {currencySymbol()}</span>}
+                </FormSection>
+                <FormSection title="Encaissement">
+                <div style={{ display: 'grid', gridTemplateColumns: payInFx ? 'repeat(3, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
                   {payInFx ? (
                     <>
-                      <div>
-                        <label style={labelStyle}>Montant reçu ({payCur})</label>
-                        <input value={payForeign} onChange={e => setPayForeign(e.target.value)} inputMode="decimal" autoFocus
-                          style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Taux du jour ({currencySymbol()})</label>
-                        <input value={payRate} onChange={e => setPayRate(e.target.value)} inputMode="decimal" style={{ ...fieldStyle, textAlign: 'right' }} />
-                      </div>
+                      <FormField label={`Montant reçu (${payCur})`} htmlFor="pay-fx" required>
+                        <input id="pay-fx" value={payForeign} onChange={e => setPayForeign(e.target.value)} inputMode="decimal" autoFocus
+                          className="ds-input" style={{ textAlign: 'right', fontWeight: 700 }} />
+                      </FormField>
+                      <FormField label={`Taux du jour (${currencySymbol()})`} htmlFor="pay-rate" required>
+                        <input id="pay-rate" value={payRate} onChange={e => setPayRate(e.target.value)} inputMode="decimal" className="ds-input" style={{ textAlign: 'right' }} />
+                      </FormField>
                     </>
                   ) : (
-                    <div>
-                      <label style={labelStyle}>Montant ({currencySymbol()})</label>
-                      <input name="amount" type="number" step="0.01" defaultValue={remaining.toFixed(2)} max={remaining} autoFocus
-                        style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
-                    </div>
+                    <FormField label={`Montant (${currencySymbol()})`} htmlFor="pay-amount" required>
+                      <input id="pay-amount" name="amount" type="number" step="0.01" defaultValue={remaining.toFixed(2)} max={remaining} autoFocus
+                        className="ds-input" style={{ textAlign: 'right', fontWeight: 700 }} />
+                    </FormField>
                   )}
-                  <div>
-                    <label style={labelStyle}>Date d'encaissement</label>
-                    <input name="paymentDate" type="date" required defaultValue={format(new Date(), 'yyyy-MM-dd')} style={fieldStyle} />
-                  </div>
+                  <FormField label="Date d'encaissement" htmlFor="pay-date" required>
+                    <input id="pay-date" name="paymentDate" type="date" required defaultValue={format(new Date(), 'yyyy-MM-dd')} className="ds-input" />
+                  </FormField>
                 </div>
                 {payInFx && fxAmount > 0 && fxRate > 0 && (
-                  <div style={{ ...sectionStyle, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Reçu en trésorerie</span><span>{money(fxDh)}</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Créance soldée (taux de la facture)</span><span>{money(fxSettled)}</span></div>
-                    {Math.abs(fxGain) >= 0.01 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: fxGain > 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
-                        <span>{fxGain > 0 ? 'Gain de change (7331)' : 'Perte de change (6331)'}</span><span>{money(Math.abs(fxGain))}</span>
-                      </div>
-                    )}
-                  </div>
+                  <table className="odoo-table ds-dense" aria-label="Contre-valeur">
+                    <tbody>
+                      <tr><td>Reçu en trésorerie ({currencySymbol()})</td><td className="ds-num">{n(fxDh)}</td></tr>
+                      <tr><td>Créance soldée, taux de la facture ({currencySymbol()})</td><td className="ds-num">{n(fxSettled)}</td></tr>
+                      {Math.abs(fxGain) >= 0.01 && (
+                        <tr style={{ color: fxGain > 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
+                          <td className="ds-strong">{fxGain > 0 ? 'Gain de change (7331)' : 'Perte de change (6331)'} ({currencySymbol()})</td><td className="ds-num ds-strong">{n(Math.abs(fxGain))}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 )}
-                <div>
-                  <label style={labelStyle}>Mode de paiement</label>
-                  <div className="odoo-view-switcher" role="radiogroup" style={{ width: '100%' }}>
+                <div className="ds-field">
+                  <span id="pay-method-label" className="ds-field-label">Mode de paiement</span>
+                  <div className="odoo-view-switcher" role="radiogroup" aria-labelledby="pay-method-label" style={{ width: '100%' }}>
                     {(['bank', 'check', 'traite', 'cash'] as const).map(m => (
                       <button key={m} type="button" role="radio" aria-checked={payMethod === m} onClick={() => setPayMethod(m)}
                         className={payMethod === m ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', fontWeight: payMethod === m ? 600 : 400 }}>
@@ -784,28 +757,20 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
                   </div>
                 </div>
                 {payMethod !== 'cash' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: needsRef ? '1fr 1fr' : '1fr', gap: 12 }}>
-                    <div>
-                      <label style={labelStyle}>{payMethod === 'bank' ? 'Référence du virement' : `N° ${payMethod === 'traite' ? 'de la traite' : 'du chèque'}`}</label>
-                      <input name="reference" type="text" required style={fieldStyle} />
-                    </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: needsRef ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)', gap: 12 }}>
+                    <FormField label={payMethod === 'bank' ? 'Référence du virement' : `N° ${payMethod === 'traite' ? 'de la traite' : 'du chèque'}`} htmlFor="pay-ref" required>
+                      <input id="pay-ref" name="reference" type="text" required className="ds-input" />
+                    </FormField>
                     {needsRef && (
-                      <div>
-                        <label style={labelStyle}>Date {payMethod === 'traite' ? 'd\'échéance' : 'du chèque'}</label>
-                        <input name="checkDate" type="date" style={fieldStyle} />
-                      </div>
+                      <FormField label={`Date ${payMethod === 'traite' ? 'd\'échéance' : 'du chèque'}`} htmlFor="pay-check-date">
+                        <input id="pay-check-date" name="checkDate" type="date" className="ds-input" />
+                      </FormField>
                     )}
                   </div>
                 )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-                <button type="button" onClick={() => setShowPayModal(null)} className="odoo-btn-secondary" disabled={payMutation.isPending}>Annuler</button>
-                <button type="submit" disabled={payMutation.isPending} className="odoo-btn-primary">
-                  {payMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Confirmer l'encaissement
-                </button>
-              </div>
-            </form>
-          </ModalBackdrop>
+                </FormSection>
+          </Modal>
+          </form>
         );
       })()}
     </div>
@@ -863,27 +828,37 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
     { label: 'Encaissée', sub: status === 'paid' ? 'soldée' : paid > 0.004 ? `${money(paid)} reçus` : 'rien reçu', tone: status === 'paid' ? 'done' : '' },
   ];
   const name = customerLabel(inv);
-  const initials = name.split(/\s+/).filter(w => /[A-Za-zÀ-ÿ]/.test(w[0] ?? '')).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '·';
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.32)' }}>
-      {/* Style Apple (2026-11) : feuille claire, suivi en barre, listes groupées, boutons en pilule (apple-look.css, .kl-sheet). */}
-      <div className="odoo-scope kl-sheet w-full" style={{ maxWidth: 780, maxHeight: '92vh' }} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`Facture ${inv.invoice_number as string}`}>
-        <header className="kl-sheet-head">
-          <span className="ord-mono" aria-hidden="true">{initials}</span>
-          <div className="ord-who">
-            <h2><span className="sal-num" style={{ fontSize: 'inherit' }}>{inv.invoice_number as string}</span> <span className={`kl-pill ${pill}`}>{late && (status === 'pending' || status === 'partial') ? 'En retard' : STATUS_LABEL[status] || status}</span></h2>
-            <p>{name} · {isPro(inv) ? 'Professionnel' : 'Particulier'} · {credit
-              ? `avoir du ${fmtDate(inv.invoice_date, 'dd/MM/yyyy')} sur ${inv.credited_invoice_number ?? '—'} (${CREDIT_REASON_LABEL[inv.credit_reason as string] ?? 'avoir'})`
-              : `émise le ${fmtDate(inv.invoice_date, 'dd/MM/yyyy')}`}</p>
-          </div>
-          <div className="ord-amt">
-            <b>{credit ? '−' : ''}{money(total)}</b>
-            <small>{status === 'cancelled' ? 'annulée' : credit ? (remaining > 0.004 ? `${money(remaining)} à imputer` : 'imputé') : remaining > 0.004 ? `reste ${money(remaining)}` : 'soldée'}</small>
-          </div>
-          <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
-        </header>
-
+    <>
+    <Modal width={780} onClose={onClose} label={`Facture ${inv.invoice_number as string}`}
+      title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><span className="ds-ref">{inv.invoice_number as string}</span> <span className={`kl-pill ${pill}`}>{late && (status === 'pending' || status === 'partial') ? 'En retard' : STATUS_LABEL[status] || status}</span></span>}
+      subtitle={<>{name} · {isPro(inv) ? 'Professionnel' : 'Particulier'} · {credit
+        ? `avoir du ${fmtDate(inv.invoice_date, 'dd/MM/yyyy')} sur ${inv.credited_invoice_number ?? '—'} (${CREDIT_REASON_LABEL[inv.credit_reason as string] ?? 'avoir'})`
+        : `émise le ${fmtDate(inv.invoice_date, 'dd/MM/yyyy')}`}</>}
+      aside={<div style={{ textAlign: 'right' }}>
+        <div className="ds-strong" style={{ fontSize: 18, fontVariantNumeric: 'tabular-nums' }}>{credit ? '−' : ''}{money(total)}</div>
+        <small style={{ color: 'var(--ds-muted)' }}>{status === 'cancelled' ? 'annulée' : credit ? (remaining > 0.004 ? `${money(remaining)} à imputer` : 'imputé') : remaining > 0.004 ? `reste ${money(remaining)}` : 'soldée'}</small>
+      </div>}
+      footer={<>
+          {canCancel(inv) && (
+            <button type="button" onClick={() => onCancel(inv)} className="ds-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la facture</button>
+          )}
+          {!credit && status !== 'cancelled' && !inv.cancelled_by_credit && (
+            <button type="button" onClick={() => setCreditOpen(true)} className="odoo-btn-secondary" disabled={!detail}><Undo2 size={13} /> Émettre un avoir</button>
+          )}
+          <button type="button" onClick={() => onPdf(inv)} className="odoo-btn-secondary"><Download size={13} /> PDF</button>
+          {/* Phase 10.1 — même facture en arabe (RTL, police Cairo). */}
+          <button type="button" onClick={() => onPdf(inv, 'ar')} className="odoo-btn-secondary" title="Facture en arabe"><Download size={13} /> PDF ‎عربي</button>
+          {status !== 'cancelled' && inv.validation_status !== 'validated' && (
+            <button type="button" onClick={() => onEdit(inv)} className="odoo-btn-secondary"><Pencil size={13} /> Modifier</button>
+          )}
+          {open && !credit && remaining > 0.004 && (
+            <button type="button" onClick={() => onPay(inv)} className="odoo-btn-primary"><Banknote size={13} /> Encaisser</button>
+          )}
+      </>}>
+      {/* Corps au style Apple (apple-look.css, .kl-sheet) : suivi en barre, listes groupées. */}
+      <div className="kl-sheet" style={{ margin: -20, borderRadius: 0, boxShadow: 'none', overflow: 'visible' }}>
         <div className="kl-sheet-body">
           {status === 'cancelled' ? (
             <div className="kl-widget"><div className="ord-state">Facture annulée</div><div className="ord-state-sub">{inv.cancelled_by_credit ? 'Annulée par avoir : ses bons de livraison sont redevenus « à facturer ».' : 'Facture annulée.'}</div></div>
@@ -984,29 +959,12 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
             </section>
           )}
         </div>
-
-        <footer className="kl-sheet-foot">
-          {canCancel(inv) && (
-            <button type="button" onClick={() => onCancel(inv)} className="ds-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la facture</button>
-          )}
-          {!credit && status !== 'cancelled' && !inv.cancelled_by_credit && (
-            <button onClick={() => setCreditOpen(true)} className="odoo-btn-secondary" disabled={!detail}><Undo2 size={13} /> Émettre un avoir</button>
-          )}
-          <button onClick={() => onPdf(inv)} className="odoo-btn-secondary"><Download size={13} /> PDF</button>
-          {/* Phase 10.1 — même facture en arabe (RTL, police Cairo). */}
-          <button onClick={() => onPdf(inv, 'ar')} className="odoo-btn-secondary" title="Facture en arabe"><Download size={13} /> PDF ‎عربي</button>
-          {status !== 'cancelled' && inv.validation_status !== 'validated' && (
-            <button onClick={() => onEdit(inv)} className="odoo-btn-secondary"><Pencil size={13} /> Modifier</button>
-          )}
-          {open && !credit && remaining > 0.004 && (
-            <button onClick={() => onPay(inv)} className="odoo-btn-primary"><Banknote size={13} /> Encaisser</button>
-          )}
-        </footer>
       </div>
+    </Modal>
       {creditOpen && detail && (
         <CreditNoteModal invoice={detail} onClose={() => setCreditOpen(false)} onDone={() => { setCreditOpen(false); onClose(); }} />
       )}
-    </ModalBackdrop>
+    </>
   );
 }
 
@@ -1039,67 +997,50 @@ function CreditNoteModal({ invoice: inv, onClose, onDone }: {
   });
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="odoo-scope w-full flex flex-col" style={{ ...modalPanelStyle, maxWidth: 680, maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Undo2 size={18} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Avoir sur la facture {inv.invoice_number as string}</div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Pièce AV numérotée, imputée sur la facture ; le surplus reste au crédit du client</div>
-          </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
-          <div>
-            <label style={labelStyle}>Motif</label>
-            <select value={reason} onChange={e => { setReason(e.target.value as typeof reason); setValues({}); }} style={fieldStyle}>
-              <option value="return">Retour de marchandise (quantités, au prix facturé)</option>
-              <option value="price">Erreur de prix (montant HT par ligne)</option>
-              <option value="commercial">Geste commercial (montant HT par ligne)</option>
-            </select>
-          </div>
-          <table className="odoo-table" style={{ margin: 0 }}>
-            <thead>
-              <tr>
-                <th>Ligne facturée</th>
-                <th className="ds-num">Qté</th>
-                <th className="ds-num">Montant HT</th>
-                <th style={{ width: 120, textAlign: 'right' }}>{byQty ? 'Qté retournée' : 'Avoir HT'}</th>
+    <Modal title={`Avoir sur la facture ${inv.invoice_number as string}`} subtitle="Pièce AV numérotée, imputée sur la facture ; le surplus reste au crédit du client"
+      onClose={onClose} width={680} locked={mutation.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => mutation.mutate()} submitLabel="Émettre l'avoir" disabled={!lines.length} busy={mutation.isPending} />}>
+      <FormField label="Motif" htmlFor="cn-reason" required>
+        <select id="cn-reason" value={reason} onChange={e => { setReason(e.target.value as typeof reason); setValues({}); }} className="ds-input">
+          <option value="return">Retour de marchandise (quantités, au prix facturé)</option>
+          <option value="price">Erreur de prix (montant HT par ligne)</option>
+          <option value="commercial">Geste commercial (montant HT par ligne)</option>
+        </select>
+      </FormField>
+      <DataPanel label="Lignes facturées">
+        <table className="odoo-table ds-dense">
+          <thead>
+            <tr>
+              <th>Ligne facturée</th>
+              <th className="ds-num">Qté</th>
+              <th className="ds-num">Montant HT ({currencySymbol()})</th>
+              <th className="ds-num" style={{ width: 120 }}>{byQty ? 'Qté retournée' : `Avoir HT (${currencySymbol()})`}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(it => (
+              <tr key={it.id as string} style={{ cursor: 'default' }}>
+                <td className="ds-strong">{(it.description as string) || (it.product_name as string)}</td>
+                <td className="ds-num">{num(it.quantity)}</td>
+                <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(num(it.subtotal))}</td>
+                <td>
+                  <input inputMode="decimal" value={values[it.id as string] ?? ''} placeholder="0"
+                    aria-label={`${byQty ? 'Quantité retournée' : 'Avoir HT'} : ${(it.description as string) || (it.product_name as string)}`}
+                    onChange={e => setValues(v => ({ ...v, [it.id as string]: e.target.value }))}
+                    className="ds-input sm" style={{ textAlign: 'right' }} />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {items.map(it => (
-                <tr key={it.id as string} style={{ cursor: 'default' }}>
-                  <td className="ds-strong">{(it.description as string) || (it.product_name as string)}</td>
-                  <td className="ds-num">{num(it.quantity)}</td>
-                  <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{money(num(it.subtotal))}</td>
-                  <td>
-                    <input inputMode="decimal" value={values[it.id as string] ?? ''} placeholder="0"
-                      onChange={e => setValues(v => ({ ...v, [it.id as string]: e.target.value }))}
-                      style={{ ...fieldStyle, textAlign: 'right' }} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px', gap: 12, alignItems: 'end' }}>
-            <div>
-              <label style={labelStyle}>Commentaire (imprimé sur l'avoir)</label>
-              <input type="text" value={note} onChange={e => setNote(e.target.value)} style={fieldStyle} placeholder="ex. 12 baguettes rendues le 03/11" />
-            </div>
-            <div style={{ ...sectionStyle, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--odoo-text-muted)' }}>Avoir HT</span><strong>{money(totalHt)}</strong>
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={() => mutation.mutate()} disabled={!lines.length || mutation.isPending} className="odoo-btn-primary">
-            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Émettre l'avoir
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr><td colSpan={3} className="ds-strong" style={{ textAlign: 'right' }}>Avoir HT ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totalHt)}</td></tr>
+          </tfoot>
+        </table>
+      </DataPanel>
+      <FormField label="Commentaire (imprimé sur l'avoir)" htmlFor="cn-note">
+        <input id="cn-note" type="text" value={note} onChange={e => setNote(e.target.value)} className="ds-input" placeholder="ex. 12 baguettes rendues le 03/11" />
+      </FormField>
+    </Modal>
   );
 }
 

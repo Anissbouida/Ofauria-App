@@ -241,7 +241,8 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button type="button" className="ds-btn-danger" disabled={act.isPending} onClick={async () => { if (await confirm(`Annuler l'inventaire ${c.number} ? Aucun stock ne sera modifié.`)) act.mutate('cancel'); }}><Ban size={13} aria-hidden="true" /> Annuler l'inventaire</button>
             {c.status === 'review' && <button type="button" className="odoo-btn-secondary" disabled={act.isPending} onClick={() => act.mutate('reopen')}><RotateCcw size={13} /> Rouvrir le comptage</button>}
-            <button type="button" className="odoo-btn-primary" disabled={validate.isPending || !c.lines_counted} aria-busy={validate.isPending || undefined}
+            {/* Une seule action principale sur la feuille : « Terminer le comptage » pendant le comptage, « Valider » en revue. */}
+            <button type="button" className={c.status === 'counting' ? 'odoo-btn-secondary' : 'odoo-btn-primary'} disabled={validate.isPending || !c.lines_counted} aria-busy={validate.isPending || undefined}
               onClick={async () => { if (await confirm(`Valider l'inventaire ? Le stock de ${totals.gaps + (zeroUncounted ? totals.uncounted : 0)} article(s) sera ajusté (net ${money(totals.gain + totals.loss)}). Cette opération ne s'annule pas.`)) validate.mutate(); }}>
               {validate.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Valider l'inventaire
             </button>
@@ -367,6 +368,7 @@ function CycleCountPanel({ canOpen, onOpened }: { canOpen: boolean; onOpened: (i
           Ouvrir la campagne ({Math.min(due, data.params.max_lines)} article{Math.min(due, data.params.max_lines) > 1 ? 's' : ''})
         </button>
       </div>
+      <DataPanel label="Classes ABC">
       <table className="odoo-table">
         <thead><tr><th>Classe</th><th className="ds-num">Articles</th><th className="ds-num">Valeur consommée (12 mois)</th><th className="ds-num">À compter</th></tr></thead>
         <tbody>{data.classes.map(c => (
@@ -378,6 +380,7 @@ function CycleCountPanel({ canOpen, onOpened }: { canOpen: boolean; onOpened: (i
           </tr>
         ))}</tbody>
       </table>
+      </DataPanel>
     </section>
   );
 }

@@ -127,7 +127,8 @@ export default function CompanyPage({ onOpen, onLeave }: {
     );
   };
   const text = (k: keyof Draft, placeholder?: string, type = 'text') => (
-    <input id={`company-${k}`} type={type} className="odoo-input" value={d[k]} placeholder={placeholder}
+    <input id={`company-${k}`} type={type} className="ds-input" value={d[k]} placeholder={placeholder}
+      aria-invalid={hints[k]?.tone === 'error' || undefined}
       onChange={e => set(k, e.target.value)} />
   );
 
@@ -173,7 +174,7 @@ export default function CompanyPage({ onOpen, onLeave }: {
               {field('legalName', 'Raison sociale', text('legalName'), { help: 'Nom légal (ex. « SARL ») sur les factures, bons de commande, bulletins et attestations' })}
               {field('companyName', 'Nom commercial', text('companyName'), { help: 'Affiché dans l\'application et sur les tickets' })}
               {field('legalForm', 'Forme juridique', (
-                <select id="company-legalForm" className="odoo-input" value={d.legalForm} onChange={e => set('legalForm', e.target.value)}>
+                <select id="company-legalForm" className="ds-input" value={d.legalForm} onChange={e => set('legalForm', e.target.value)}>
                   {LEGAL_FORMS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               ))}

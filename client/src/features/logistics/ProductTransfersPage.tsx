@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight, Plus, Trash2, Check } from 'lucide-react';
+import { ArrowLeftRight, Plus, Trash2 } from 'lucide-react';
 import { productTransfersApi, type ProductTransfer } from '../../api/product-transfers.api';
 import { storesApi } from '../../api/stores.api';
 import { productsApi } from '../../api/products.api';
@@ -8,13 +8,13 @@ import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
-import { ListKpi, ListPanel, ListToolbar } from '../sales/ListTemplate';
-import { TableFooter, EmptyState, NoResultState } from '../../components/ds';
+import { ListKpi, ListToolbar } from '../sales/ListTemplate';
+import { TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, DataPanel, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 
 // Transferts de produits finis entre sites (phase 7.4) : une pièce, deux mouvements.
 export default function ProductTransfersPage() {
   const qc = useQueryClient();
-  const { data: transfers = [] } = useQuery({ queryKey: ['product-transfers'], queryFn: () => productTransfersApi.list() });
+  const { data: transfers = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['product-transfers'], queryFn: () => productTransfersApi.list() });
   const { data: stores = [] } = useQuery({ queryKey: ['stores'], queryFn: storesApi.list });
   const { data: productsResp } = useQuery({ queryKey: ['products', 'all'], queryFn: () => productsApi.list({ limit: '1000' }) });
   const products: Record<string, any>[] = productsResp?.data ?? productsResp ?? [];
@@ -42,8 +42,6 @@ export default function ProductTransfersPage() {
     onError: (e) => notify.error(getApiErrorMessage(e, 'Échec du transfert')),
   });
 
-  const field: React.CSSProperties = { padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', background: 'var(--odoo-bg)', width: '100%' };
-  const lab: React.CSSProperties = { fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'block', marginBottom: 2 };
   const newForm = () => setForm({ fromStoreId: '', toStoreId: '', notes: '', lines: [{ productId: '', quantity: '' }] });
 
   return (
@@ -59,48 +57,58 @@ export default function ProductTransfersPage() {
       </section>
 
       {form && (
-        <section className="prj-panel" style={{ padding: 14, display: 'grid', gap: 10 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <label><span style={lab}>Site source<span className="ds-req" aria-hidden="true"> *</span></span>
-              <select style={field} value={form.fromStoreId} onChange={(e) => setForm({ ...form, fromStoreId: e.target.value })}>
-                <option value="">— Choisir —</option>
-                {stores.map((s: Record<string, any>) => <option key={s.id} value={s.id}>{s.name}{s.kind === 'warehouse' ? ' (dépôt)' : ''}</option>)}
-              </select></label>
-            <label><span style={lab}>Site destination<span className="ds-req" aria-hidden="true"> *</span></span>
-              <select style={field} value={form.toStoreId} onChange={(e) => setForm({ ...form, toStoreId: e.target.value })}>
-                <option value="">— Choisir —</option>
-                {stores.map((s: Record<string, any>) => <option key={s.id} value={s.id}>{s.name}{s.kind === 'warehouse' ? ' (dépôt)' : ''}</option>)}
-              </select></label>
-          </div>
-          {form.lines.map((l, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-              <label style={{ flex: 2 }}><span style={lab}>Article</span>
-                <SearchSelect value={l.productId} onChange={(id) => { const lines = [...form.lines]; lines[i] = { ...l, productId: id }; setForm({ ...form, lines }); }}
-                  placeholder="— Choisir —" width="100%" size="md" ariaLabel="Article"
-                  options={products.map(p => ({ id: String(p.id), label: p.name as string }))} /></label>
-              <label style={{ width: 120 }}><span style={lab}>Quantité</span>
-                <input type="number" style={field} value={l.quantity} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, quantity: e.target.value }; setForm({ ...form, lines }); }} /></label>
-              <button type="button" className="odoo-btn-secondary" aria-label="Retirer la ligne" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 size={12} /></button>
+        <Modal title="Nouveau transfert" onClose={() => setForm(null)} width={640} locked={create.isPending}
+          footer={<FormFooter onCancel={() => setForm(null)} onSubmit={() => create.mutate()} submitLabel="Valider le transfert"
+            disabled={!form.fromStoreId || !form.toStoreId || form.fromStoreId === form.toStoreId || !form.lines.some(l => l.productId && Number(l.quantity) > 0)} busy={create.isPending} />}>
+          <FormSection title="Trajet">
+            <div className="ds-form-grid">
+              <FormField label="Site source" htmlFor="tr-from" required>
+                <select id="tr-from" className="ds-input" value={form.fromStoreId} onChange={(e) => setForm({ ...form, fromStoreId: e.target.value })}>
+                  <option value="">— Choisir —</option>
+                  {stores.map((s: Record<string, any>) => <option key={s.id} value={s.id}>{s.name}{s.kind === 'warehouse' ? ' (dépôt)' : ''}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Site destination" htmlFor="tr-to" required
+                error={form.toStoreId && form.fromStoreId === form.toStoreId ? 'La destination doit différer de la source.' : undefined}>
+                <select id="tr-to" className="ds-input" value={form.toStoreId} onChange={(e) => setForm({ ...form, toStoreId: e.target.value })}>
+                  <option value="">— Choisir —</option>
+                  {stores.map((s: Record<string, any>) => <option key={s.id} value={s.id}>{s.name}{s.kind === 'warehouse' ? ' (dépôt)' : ''}</option>)}
+                </select>
+              </FormField>
             </div>
-          ))}
-          <button className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setForm({ ...form, lines: [...form.lines, { productId: '', quantity: '' }] })}><Plus size={12} /> Ligne</button>
-          <label><span style={lab}>Notes</span><input style={field} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="odoo-btn-secondary" onClick={() => setForm(null)}>Annuler</button>
-            <button className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-              disabled={!form.fromStoreId || !form.toStoreId || form.fromStoreId === form.toStoreId || !form.lines.some(l => l.productId && Number(l.quantity) > 0) || create.isPending}
-              onClick={() => create.mutate()}><Check size={13} /> Valider le transfert</button>
-          </div>
-        </section>
+          </FormSection>
+          <FormSection title="Articles">
+            <DataPanel label="Articles transférés">
+              <table className="odoo-table ds-dense">
+                <thead><tr><th>Article</th><th className="ds-num" style={{ width: 120 }}>Quantité</th><th style={{ width: 40 }} /></tr></thead>
+                <tbody>
+                  {form.lines.map((l, i) => (
+                    <tr key={i} style={{ cursor: 'default' }}>
+                      <td><SearchSelect value={l.productId} onChange={(id) => { const lines = [...form.lines]; lines[i] = { ...l, productId: id }; setForm({ ...form, lines }); }}
+                        placeholder="— Choisir —" width="100%" ariaLabel="Article"
+                        options={products.map(p => ({ id: String(p.id), label: p.name as string }))} /></td>
+                      <td><input type="number" aria-label="Quantité" className="ds-input sm" style={{ textAlign: 'right' }} value={l.quantity} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, quantity: e.target.value }; setForm({ ...form, lines }); }} /></td>
+                      <td><button type="button" className="odoo-pager-btn" aria-label="Retirer la ligne" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 size={12} /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </DataPanel>
+            <button type="button" className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setForm({ ...form, lines: [...form.lines, { productId: '', quantity: '' }] })}><Plus size={12} /> Ligne</button>
+          </FormSection>
+          <FormField label="Notes" htmlFor="tr-notes">
+            <input id="tr-notes" className="ds-input" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          </FormField>
+        </Modal>
       )}
 
       <ListToolbar search={search} onSearch={setSearch} placeholder="N° de transfert, site…" />
-      {!shown.length ? (
+      {isLoading ? <LoadingState label="Chargement des transferts…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : !shown.length ? (
         transfers.length
           ? <NoResultState onReset={() => setSearch('')} text="Aucun transfert ne correspond à la recherche." />
           : <EmptyState icon={ArrowLeftRight} title="Aucun transfert" text="« Nouveau transfert » pour déplacer des produits finis d'un site à un autre." />
       ) : (
-        <ListPanel footer={<TableFooter note={<>{shown.length} transfert{shown.length > 1 ? 's' : ''}</>} />}>
+        <DataPanel label="Transferts" footer={<TableFooter note={<>{shown.length} transfert{shown.length > 1 ? 's' : ''}</>} />}>
           <table className="odoo-table">
             <thead><tr><th>N°</th><th>Date</th><th>Source</th><th>Destination</th><th className="ds-num">Articles</th></tr></thead>
             <tbody>
@@ -115,7 +123,7 @@ export default function ProductTransfersPage() {
               ))}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
     </SalesPageShell>
   );

@@ -1,4 +1,4 @@
-import { money } from '../../utils/money';
+import { currencySymbol } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Loader2, Check, X } from 'lucide-react';
@@ -41,17 +41,17 @@ export default function InvoiceDisputePanel({ invoiceId, remaining, editable }: 
         <>
           {data.length > 0 && (
             <table className="odoo-table" style={{ fontSize: 13 }}>
-              <thead><tr><th>Motif</th><th>Contesté</th><th>État</th><th /></tr></thead>
+              <thead><tr><th>Motif</th><th className="ds-num">Contesté ({currencySymbol()})</th><th>État</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {data.map(d => (
                   <tr key={d.id}>
                     <td>{d.reason}</td>
-                    <td>{money(d.disputed_amount)}</td>
+                    <td className="ds-num">{Number(d.disputed_amount ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td>{d.status === 'open' ? 'Ouvert' : d.status === 'resolved' ? 'Résolu' : 'Rejeté'}</td>
                     <td>{editable && d.status === 'open' && (
                       <span style={{ display: 'inline-flex', gap: 4 }}>
-                        <button className="odoo-pager-btn" title="Résoudre" onClick={() => resolve.mutate(d.id)}><Check size={13} /></button>
-                        <button className="odoo-pager-btn" title="Rejeter" onClick={() => reject.mutate(d.id)}><X size={13} /></button>
+                        <button type="button" className="odoo-pager-btn" title="Résoudre" aria-label="Résoudre le litige" onClick={() => resolve.mutate(d.id)}><Check size={13} /></button>
+                        <button type="button" className="odoo-pager-btn" title="Rejeter" aria-label="Rejeter le litige" onClick={() => reject.mutate(d.id)}><X size={13} /></button>
                       </span>
                     )}</td>
                   </tr>
@@ -61,8 +61,8 @@ export default function InvoiceDisputePanel({ invoiceId, remaining, editable }: 
           )}
           {editable && !hasOpen && remaining > 0.005 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
-              <input className="odoo-input" placeholder="Motif du litige" value={reason} onChange={e => setReason(e.target.value)} style={{ minWidth: 180 }} />
-              <input className="odoo-input" type="number" placeholder="Montant contesté" value={amount} onChange={e => setAmount(e.target.value)} style={{ width: 150 }} max={remaining} />
+              <input className="odoo-input" aria-label="Motif du litige" placeholder="Motif du litige" value={reason} onChange={e => setReason(e.target.value)} style={{ minWidth: 180 }} />
+              <input className="odoo-input" type="number" aria-label={`Montant contesté (${currencySymbol()})`} placeholder="Montant contesté" value={amount} onChange={e => setAmount(e.target.value)} style={{ width: 150 }} max={remaining} />
               <button className="odoo-btn-secondary" disabled={!reason || !(Number(amount) > 0) || open.isPending} onClick={() => open.mutate()}>
                 {open.isPending ? <Loader2 size={13} className="spin" /> : <AlertTriangle size={13} />} Déclarer un litige
               </button>

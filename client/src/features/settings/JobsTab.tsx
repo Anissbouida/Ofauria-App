@@ -7,6 +7,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { DataPanel, LoadingState } from '../../components/ds';
 
 /**
  * Paramètres › Tâches planifiées (mig 364) : ce que l'application fait seule, à quelle
@@ -38,7 +39,7 @@ export default function JobsTab() {
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
-  if (isLoading || !data) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading || !data) return <LoadingState />;
   const { jobs, engine } = data;
   const errors = jobs.filter(j => j.enabled && j.last_status === 'error').length;
 
@@ -50,7 +51,7 @@ export default function JobsTab() {
           ? <> · déclencheur externe {dt(engine.lastExternalTick)}</>
           : <span title="Si l'hébergeur met le serveur en veille (Cloud Run), il faut un déclencheur externe : variable CRON_SECRET et un appel planifié à /api/v1/cron/tick."> · sans déclencheur externe</span>}
       </StatusBanner>
-      <div className="prj-panel prj-scroll">
+      <DataPanel label="Tâches planifiées">
         <table className="odoo-table">
           <thead><tr><th style={{ width: 60 }}>Active</th><th>Tâche</th><th>Fréquence</th><th>Dernier passage</th><th>Résultat</th><th>Prochain</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>{jobs.map((j: ScheduledJob) => (
@@ -59,14 +60,14 @@ export default function JobsTab() {
                 <td><input type="checkbox" checked={j.enabled} disabled={!editable || update.isPending} aria-label={`Activer « ${j.label} »`}
                   onChange={e => update.mutate({ key: j.key, data: { enabled: e.target.checked } })} /></td>
                 <td>
-                  <div style={{ fontWeight: 600 }}>{j.label} <span className="odoo-tag odoo-tag-grey" style={{ fontWeight: 400 }}>{DOMAINS[j.domain] ?? j.domain}</span></div>
+                  <div className="ds-strong">{j.label} <span className="odoo-tag odoo-tag-grey" style={{ fontWeight: 400 }}>{DOMAINS[j.domain] ?? j.domain}</span></div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{j.description}</div>
                 </td>
                 <td>
                   {editable ? (
                     <select value={j.interval_minutes} disabled={update.isPending} aria-label={`Fréquence de « ${j.label} »`}
                       onChange={e => update.mutate({ key: j.key, data: { intervalMinutes: Number(e.target.value) } })}
-                      style={{ fontSize: '0.8125rem', padding: '2px 4px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }}>
+                      className="ds-input sm" style={{ width: 'auto' }}>
                       {(FREQS.some(f => f[0] === j.interval_minutes) ? FREQS : [...FREQS, [j.interval_minutes, freqLabel(j.interval_minutes)] as [number, string]])
                         .map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
@@ -78,20 +79,20 @@ export default function JobsTab() {
                   <span style={{ fontSize: '0.8125rem', color: j.last_status === 'error' ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>{j.last_message ?? (j.last_run_at ? '' : 'Jamais lancée')}</span>
                 </td>
                 <td style={{ whiteSpace: 'nowrap', color: 'var(--ds-muted)' }}>{j.enabled ? dt(j.next_run_at) : '—'}</td>
-                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
                   {editable && j.implemented && (
-                    <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={run.isPending}
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={run.isPending}
                       onClick={() => run.mutate(j.key)}>
                       {run.isPending && run.variables === j.key ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />} Lancer
                     </button>
                   )}{' '}
-                  <button type="button" className="odoo-pager-btn" aria-label="Historique" title="Historique des passages" onClick={() => setOpen(open === j.key ? null : j.key)}>
+                  <button type="button" className="odoo-pager-btn" aria-label="Historique des passages" aria-expanded={open === j.key} title="Historique des passages" onClick={() => setOpen(open === j.key ? null : j.key)}>
                     {open === j.key ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </button>
                 </td>
               </tr>
               {open === j.key && (
-                <tr><td colSpan={7} style={{ background: 'var(--odoo-bg-alt)' }}>
+                <tr><td colSpan={7} style={{ background: 'var(--ds-bg)' }}>
                   {j.runs.length === 0 ? <span style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Aucun passage.</span> : (
                     <table className="odoo-table" style={{ margin: 0 }}>
                       <thead><tr><th>Début</th><th>Déclenché</th><th>Statut</th><th className="ds-num">Éléments</th><th>Message</th></tr></thead>
@@ -111,7 +112,7 @@ export default function JobsTab() {
             </Fragment>
           ))}</tbody>
         </table>
-      </div>
+      </DataPanel>
     </div>
   );
 }

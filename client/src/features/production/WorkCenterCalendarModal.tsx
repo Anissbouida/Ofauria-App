@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Plus, Trash2, X } from 'lucide-react';
+import { CalendarDays, Plus, Trash2 } from 'lucide-react';
 import api from '../../api/client';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { Modal, FormSection } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
@@ -47,27 +47,21 @@ export default function WorkCenterCalendarModal({ workCenter, onClose }: { workC
   const weekMinutes = slots.reduce((t, s) => t + minutes(s), 0);
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(680px, 97vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><CalendarDays size={16} /> Calendrier — {workCenter.name}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ overflowY: 'auto', padding: 16, display: 'grid', gap: 16 }}>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Plages d'ouverture</div>
+    <Modal title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><CalendarDays size={18} aria-hidden="true" /> Calendrier</span>}
+      subtitle={workCenter.name} onClose={onClose} width={680}>
+          <FormSection title="Plages d'ouverture">
             {slots.length === 0 && <span className="text-xs text-gray-500">Aucune plage : la capacité journalière du poste s'applique tous les jours.</span>}
             {slots.map((s, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8125rem' }}>
-                <select className="input" style={{ width: 'auto' }} value={s.isoWeekday} aria-label="Jour" onChange={e => set(i, { isoWeekday: Number(e.target.value) })}>
+                <select className="ds-input sm" style={{ width: 'auto' }} value={s.isoWeekday} aria-label="Jour" onChange={e => set(i, { isoWeekday: Number(e.target.value) })}>
                   {DAYS.map((d, k) => <option key={d} value={k + 1}>{d}</option>)}
                 </select>
-                <input type="time" className="input" style={{ width: 'auto' }} value={s.startTime} aria-label="Début" onChange={e => set(i, { startTime: e.target.value })} />
+                <input type="time" className="ds-input sm" style={{ width: 'auto' }} value={s.startTime} aria-label="Début" onChange={e => set(i, { startTime: e.target.value })} />
                 <span>à</span>
-                <input type="time" className="input" style={{ width: 'auto' }} value={s.endTime} aria-label="Fin" onChange={e => set(i, { endTime: e.target.value })} />
-                <label>× <input type="number" min={1} className="input" style={{ width: 56 }} value={s.resources} aria-label="Ressources" onChange={e => set(i, { resources: Math.max(1, Number(e.target.value) || 1) })} /> ressource(s)</label>
+                <input type="time" className="ds-input sm" style={{ width: 'auto' }} value={s.endTime} aria-label="Fin" onChange={e => set(i, { endTime: e.target.value })} />
+                <label>× <input type="number" min={1} className="ds-input sm" style={{ width: 56 }} value={s.resources} aria-label="Ressources" onChange={e => set(i, { resources: Math.max(1, Number(e.target.value) || 1) })} /> ressource(s)</label>
                 <span className="text-xs text-gray-500">{minutes(s)} min</span>
-                <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.4rem' }} aria-label="Retirer la plage" onClick={() => setSlots(a => a.filter((_, j) => j !== i))}><Trash2 size={12} /></button>
+                <button type="button" className="ds-icon-btn" aria-label="Retirer la plage" onClick={() => setSlots(a => a.filter((_, j) => j !== i))}><Trash2 size={14} /></button>
               </div>
             ))}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -76,25 +70,22 @@ export default function WorkCenterCalendarModal({ workCenter, onClose }: { workC
               <span className="text-xs text-gray-500" style={{ marginLeft: 'auto' }}>Semaine : {Math.round(weekMinutes / 6) / 10} h</span>
               <button type="button" className="odoo-btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>Enregistrer</button>
             </div>
-          </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Jours fermés</div>
+          </FormSection>
+          <FormSection title="Jours fermés">
             {(data?.closures ?? []).map(c => (
               <div key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '0.8125rem' }}>
                 <span>{c.closed_on.split('-').reverse().join('/')}</span>
                 <span className="text-gray-500">{c.reason ?? ''}{c.work_center_id ? '' : ' (tous les postes)'}</span>
-                <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.4rem', marginLeft: 'auto' }} aria-label="Rouvrir ce jour" onClick={() => removeClosure.mutate(c.id)}><Trash2 size={12} /></button>
+                <button type="button" className="ds-icon-btn" style={{ marginLeft: 'auto' }} aria-label="Rouvrir ce jour" onClick={() => removeClosure.mutate(c.id)}><Trash2 size={14} /></button>
               </div>
             ))}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8125rem' }}>
-              <input type="date" className="input" style={{ width: 'auto' }} value={closure.closedOn} aria-label="Jour fermé" onChange={e => setClosure(c => ({ ...c, closedOn: e.target.value }))} />
-              <input type="text" className="input" style={{ width: 200 }} placeholder="Motif (férié, maintenance…)" value={closure.reason} onChange={e => setClosure(c => ({ ...c, reason: e.target.value }))} />
+              <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={closure.closedOn} aria-label="Jour fermé" onChange={e => setClosure(c => ({ ...c, closedOn: e.target.value }))} />
+              <input type="text" className="ds-input sm" style={{ width: 200 }} placeholder="Motif (férié, maintenance…)" aria-label="Motif de fermeture" value={closure.reason} onChange={e => setClosure(c => ({ ...c, reason: e.target.value }))} />
               <label><input type="checkbox" checked={closure.allCenters} onChange={e => setClosure(c => ({ ...c, allCenters: e.target.checked }))} /> Tous les postes</label>
               <button type="button" className="odoo-btn-secondary" disabled={!closure.closedOn || addClosure.isPending} onClick={() => addClosure.mutate()}>Fermer ce jour</button>
             </div>
-          </div>
-        </div>
-      </div>
-    </ModalBackdrop>
+          </FormSection>
+    </Modal>
   );
 }

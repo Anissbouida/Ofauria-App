@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { X, Printer, Bluetooth, Loader2, AlertCircle } from 'lucide-react';
+import { Printer, Bluetooth, Loader2, AlertCircle } from 'lucide-react';
+import { Modal, FormField } from '../../components/ds';
 import { isWebBluetoothSupported, printLotLabel, NiimbotPrintError, type LotLabelData } from '../../lib/niimbot';
 import { notify } from '../../components/ui/InlineNotification';
 
@@ -33,22 +34,9 @@ export default function PrintModeSelectorModal({ lotData, onPreviewHtml, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-[9998] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-md w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b">
-          <h3 className="text-lg font-semibold text-gray-900">Imprimer le ticket</h3>
-          <button type="button" onClick={onClose} aria-label="Fermer" className="p-1.5 hover:bg-gray-100 rounded-lg" disabled={printing}>
-            <X size={20} className="text-gray-500" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-3">
-          <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-            <span className="font-medium text-gray-700">{lotData.productName}</span>
-            <span className="text-gray-400">•</span>
-            <span className="font-mono text-xs">{lotData.lotNumber}</span>
-          </div>
-
+    <Modal title="Imprimer le ticket" onClose={onClose} locked={printing} width={448}
+      subtitle={<>{lotData.productName} · <span className="font-mono">{lotData.lotNumber}</span></>}>
+        <div className="space-y-3">
           <button
             onClick={handleNiimbotPrint}
             disabled={!btSupported || printing}
@@ -68,17 +56,19 @@ export default function PrintModeSelectorModal({ lotData, onPreviewHtml, onClose
           </button>
 
           {btSupported && (
-            <div className="flex items-center gap-2 px-3 text-sm">
-              <label className="text-gray-600">Copies :</label>
+            <div className="px-3" style={{ maxWidth: 160 }}>
+              <FormField label="Copies" htmlFor="niimbot-copies">
               <input
+                id="niimbot-copies"
                 type="number"
                 min={1}
                 max={20}
                 value={copies}
                 onChange={(e) => setCopies(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
                 disabled={printing}
-                className="w-16 px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="ds-input sm"
               />
+              </FormField>
             </div>
           )}
 
@@ -106,7 +96,6 @@ export default function PrintModeSelectorModal({ lotData, onPreviewHtml, onClose
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

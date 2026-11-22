@@ -9,10 +9,9 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
-import { money as fmtMoney } from '../../utils/money';
+import { money as fmtMoney, currencySymbol } from '../../utils/money';
 import TransferFormatDialog from './TransferFormatDialog';
-import { LoadingState, DataPanel, EmptyState, TableFooter } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { LoadingState, ErrorState, DataPanel, EmptyState, TableFooter, HeaderActions, FormField, SectionHeader } from '../../components/ds';
 
 /**
  * Paiements fournisseurs en lot (G4-01).
@@ -32,6 +31,8 @@ const STATUS: Record<PaymentRunStatus, { label: string; tone: StatusTone }> = {
   cancelled: { label: 'Annulée', tone: 'cancelled' },
 };
 const money = (n: number) => fmtMoney(n);
+/** Montant sans devise (cellules de tableau : la devise est dans l'en-tête). */
+const amt = (n: number) => Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dmy = (d: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—');
 /** Date du jour en heure locale (toISOString donnerait la date UTC, le lendemain en soirée). */
 const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
@@ -44,21 +45,21 @@ export default function PaymentRunsTab() {
 }
 
 function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) => void }) {
-  const { data: runs = [], isLoading } = useQuery({ queryKey: ['payment-runs'], queryFn: paymentRunsApi.list });
+  const { data: runs = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['payment-runs'], queryFn: paymentRunsApi.list });
   const { data: modes } = useQuery({ queryKey: ['payment-modes'], queryFn: paymentsApi.modes });
   const banks = (modes?.treasuryAccounts ?? []).filter(t => t.kind === 'bank');
   const [formatOpen, setFormatOpen] = useState(false);
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" className="odoo-btn-secondary" disabled={!banks.length} onClick={() => setFormatOpen(true)} title="Format du fichier attendu par le portail de la banque"><Settings2 size={14} aria-hidden="true" /> Format banque</button>
         <button type="button" className="odoo-btn-primary" onClick={onNew}><Plus size={14} aria-hidden="true" /> Nouvelle campagne</button>
-      </AccHeaderActions>
+      </HeaderActions>
       <StatusBanner tone="info" icon={Banknote} title="Paiements fournisseurs en lot">
         Regroupez les factures fournisseurs échues dans une campagne de virement : approbation, fichier pour la banque, puis exécution en un geste
         (règlements, écritures et lettrage créés pour chaque facture).
       </StatusBanner>
-      {isLoading ? <LoadingState /> : runs.length === 0 ? (
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : runs.length === 0 ? (
         <EmptyState icon={Banknote} title="Aucune campagne de paiement" text="Regroupez les factures échues dans une première campagne de virement."
           action={<button type="button" className="odoo-btn-primary" onClick={onNew}><Plus size={14} aria-hidden="true" /> Nouvelle campagne</button>} />
       ) : (
@@ -66,7 +67,7 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
           <table className="odoo-table ds-dense">
             <thead><tr>
               <th>Campagne</th><th>Date de paiement</th><th>Compte</th>
-              <th className="ds-num">Factures</th><th className="ds-num">Total</th><th>Statut</th><th>Préparée par</th>
+              <th className="ds-num">Factures</th><th className="ds-num">Total ({currencySymbol()})</th><th>Statut</th><th>Préparée par</th>
             </tr></thead>
             <tbody>
               {runs.map(r => (
@@ -75,7 +76,7 @@ function RunList({ onNew, onOpen }: { onNew: () => void; onOpen: (id: string) =>
                   <td>{dmy(r.payment_date)}</td>
                   <td>{r.treasury_label}</td>
                   <td className="ds-num">{r.lines}{r.rejected ? ` (${r.rejected} rejetée${r.rejected > 1 ? 's' : ''})` : ''}</td>
-                  <td className="ds-num">{money(r.total_amount)}</td>
+                  <td className="ds-num ds-strong">{amt(r.total_amount)}</td>
                   <td><StatusTag tone={STATUS[r.status].tone} label={STATUS[r.status].label} /></td>
                   <td>{r.created_by_name ?? '—'}</td>
                 </tr>
@@ -97,7 +98,7 @@ function PrepareRun({ onBack, onCreated }: { onBack: () => void; onCreated: (id:
   const [paymentDate, setPaymentDate] = useState(today());
   const [treasuryId, setTreasuryId] = useState('');
   const [picked, setPicked] = useState<Record<string, string>>({});   // invoice_id → montant saisi
-  const { data: candidates = [], isLoading } = useQuery({ queryKey: ['payment-run-candidates', dueBefore], queryFn: () => paymentRunsApi.candidates(dueBefore) });
+  const { data: candidates = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['payment-run-candidates', dueBefore], queryFn: () => paymentRunsApi.candidates(dueBefore) });
   const { data: modes } = useQuery({ queryKey: ['payment-modes'], queryFn: paymentsApi.modes });
   const banks = (modes?.treasuryAccounts ?? []).filter(t => t.kind === 'bank');
   const bankId = treasuryId || banks.find(b => b.is_default)?.id || banks[0]?.id || '';
@@ -141,42 +142,43 @@ function PrepareRun({ onBack, onCreated }: { onBack: () => void; onCreated: (id:
         <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={onBack}><ArrowLeft size={14} aria-hidden="true" /> Campagnes</button>
         <h2 className="ds-subhead" style={{ fontSize: 17 }}>Nouvelle campagne de paiement</h2>
       </div>
-      <div className="prj-toolbar" style={{ alignItems: 'flex-end', gap: 16, fontSize: 13 }}>
-        <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Factures échues au plus tard le</span>
-          <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={dueBefore} onChange={e => { setDueBefore(e.target.value); setPicked({}); }} /></label>
-        <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Date du virement</span>
-          <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={paymentDate} onChange={e => setPaymentDate(e.target.value)} /></label>
-        <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Compte débité</span>
-          <select className="ds-input sm" style={{ width: 'auto' }} value={bankId} onChange={e => setTreasuryId(e.target.value)} aria-label="Compte débité">
+      <div className="prj-toolbar" style={{ alignItems: 'flex-end', gap: 16 }}>
+        <FormField label="Factures échues au plus tard le" htmlFor="pr-due" required>
+          <input id="pr-due" type="date" className="ds-input sm" style={{ width: 'auto' }} value={dueBefore} onChange={e => { setDueBefore(e.target.value); setPicked({}); }} />
+        </FormField>
+        <FormField label="Date du virement" htmlFor="pr-date" required>
+          <input id="pr-date" type="date" className="ds-input sm" style={{ width: 'auto' }} value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
+        </FormField>
+        <FormField label="Compte débité" htmlFor="pr-bank" required>
+          <select id="pr-bank" className="ds-input sm" style={{ width: 'auto' }} value={bankId} onChange={e => setTreasuryId(e.target.value)}>
             {banks.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
-          </select></label>
+          </select>
+        </FormField>
       </div>
 
-      {isLoading ? <LoadingState /> : bySupplier.length === 0 ? (
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : bySupplier.length === 0 ? (
         <EmptyState icon={Banknote} title="Aucune facture payable à cette date" text="Seules les factures validées, non soldées, sans blocage et en dirhams entrent dans une campagne." />
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
           {bySupplier.map(([supplierId, g]) => {
             const supplierTotal = g.rows.filter(c => picked[c.invoice_id] !== undefined).reduce((t, c) => t + (Number(picked[c.invoice_id].replace(',', '.')) || 0), 0);
             return (
-              <section key={supplierId} className="ds-panel" style={{ overflowX: 'auto' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--odoo-border)', flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 600 }}>{g.name}</span>
-                  {!g.ribValid && <StatusTag tone="late" label="RIB manquant ou invalide" icon={AlertTriangle} title="À compléter sur la fiche fournisseur avant la soumission" />}
-                  <span style={{ marginLeft: 'auto', fontSize: '0.82rem', color: 'var(--theme-text-muted)' }}>Sélection : <strong style={{ color: 'var(--odoo-text)' }}>{money(supplierTotal)}</strong></span>
-                </div>
+              <div key={supplierId}>
+                <SectionHeader title={<>{g.name}{!g.ribValid && <> <StatusTag tone="late" label="RIB manquant ou invalide" icon={AlertTriangle} title="À compléter sur la fiche fournisseur avant la soumission" /></>}</>}
+                  note={<>Sélection : <strong className="ds-num" style={{ color: 'var(--ds-ink)' }}>{money(supplierTotal)}</strong></>} />
+                <DataPanel label={`Factures de ${g.name}`}>
                 <table className="odoo-table ds-dense">
                   <thead><tr><th style={{ width: 36 }} /><th>Facture</th><th>Échéance</th>
-                    <th className="ds-num">Reste à payer</th><th className="ds-num">À régler</th></tr></thead>
+                    <th className="ds-num">Reste à payer ({currencySymbol()})</th><th className="ds-num">À régler ({currencySymbol()})</th></tr></thead>
                   <tbody>
                     {g.rows.map(c => {
                       const on = picked[c.invoice_id] !== undefined;
                       return (
                         <tr key={c.invoice_id} style={{ opacity: c.open_run ? 0.55 : 1 }}>
                           <td><input type="checkbox" checked={on} disabled={!!c.open_run} onChange={() => toggle(c)} aria-label={`Sélectionner ${c.invoice_number}`} /></td>
-                          <td>{c.supplier_invoice_number || c.invoice_number}{c.open_run && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}> — déjà dans {c.open_run}</span>}</td>
+                          <td className="ds-ref">{c.supplier_invoice_number || c.invoice_number}{c.open_run && <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}> — déjà dans {c.open_run}</span>}</td>
                           <td>{dmy(c.due_date)}</td>
-                          <td className="ds-num">{money(c.remaining)}</td>
+                          <td className="ds-num">{amt(c.remaining)}</td>
                           <td className="ds-num">
                             {on ? <input className="ds-input sm" type="text" inputMode="decimal" style={{ width: 120, textAlign: 'right' }} aria-label={`Montant pour ${c.invoice_number}`}
                               value={picked[c.invoice_id]} onChange={e => setPicked(p => ({ ...p, [c.invoice_id]: e.target.value }))} /> : '—'}
@@ -186,7 +188,8 @@ function PrepareRun({ onBack, onCreated }: { onBack: () => void; onCreated: (id:
                     })}
                   </tbody>
                 </table>
-              </section>
+                </DataPanel>
+              </div>
             );
           })}
         </div>
@@ -195,7 +198,7 @@ function PrepareRun({ onBack, onCreated }: { onBack: () => void; onCreated: (id:
       <div className="ds-panel" style={{ position: 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', overflow: 'visible' }}>
         <span>{selected.length} facture{selected.length > 1 ? 's' : ''} · <strong>{money(total)}</strong></span>
         {forecast && (
-          <span style={{ fontSize: '0.8rem', color: forecast.firstBelowThreshold ? 'var(--ds-danger)' : 'var(--theme-text-muted)' }}
+          <span style={{ fontSize: 13, color: forecast.firstBelowThreshold ? 'var(--ds-danger)' : 'var(--ds-muted)' }}
             title="Prévision de trésorerie avec ces factures payées à la date du virement (les autres à leur échéance)">
             {atDate ? `Solde prévu le ${dmy(paymentDate)} : ${money(atDate.balance)} · ` : ''}point bas sur 13 semaines : {money(forecast.minimum.balance)} le {dmy(forecast.minimum.date)}
             {forecast.firstBelowThreshold ? ' — sous le seuil d\'alerte' : ''}
@@ -214,7 +217,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const [rejecting, setRejecting] = useState<string | null>(null);
-  const { data: run, isLoading } = useQuery({ queryKey: ['payment-run', id], queryFn: () => paymentRunsApi.get(id) });
+  const { data: run, isLoading, isError, error, refetch } = useQuery({ queryKey: ['payment-run', id], queryFn: () => paymentRunsApi.get(id) });
   const refresh = () => { qc.invalidateQueries({ queryKey: ['payment-run', id] }); qc.invalidateQueries({ queryKey: ['payment-runs'] }); };
   const act = useMutation({
     mutationFn: async (kind: 'submit' | 'file' | 'letter' | 'execute' | 'cancel') => {
@@ -242,6 +245,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
   if (isLoading || !run) return <LoadingState />;
   const st = STATUS[run.status];
   const badRib = run.lines.some(l => !l.ribValid);
@@ -263,14 +267,14 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
         <button type="button" className="ds-btn-ghost ds-btn-sm" onClick={onBack}><ArrowLeft size={14} aria-hidden="true" /> Campagnes</button>
         <h2 className="ds-subhead ds-ref" style={{ fontSize: 17 }}>{run.run_number}</h2>
         <StatusTag tone={st.tone} label={st.label} />
-        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>Virement du {dmy(run.payment_date)} · {run.treasury_label} · {money(run.total_amount)}</span>
-        <AccHeaderActions>
+        <span style={{ color: 'var(--ds-muted)', fontSize: 13 }}>Virement du {dmy(run.payment_date)} · {run.treasury_label} · {money(run.total_amount)}</span>
+        <HeaderActions>
           {['draft', 'pending_approval', 'approved', 'file_generated'].includes(run.status) && btn('cancel', 'Annuler', X)}
           {run.status === 'draft' && btn('submit', 'Soumettre', Send, true)}
           {['approved', 'file_generated', 'executed'].includes(run.status) && btn('file', 'Fichier de virement', Download, run.status === 'approved')}
           {['approved', 'file_generated', 'executed'].includes(run.status) && btn('letter', 'Lettre d\'ordre', FileText)}
           {run.status === 'file_generated' && btn('execute', 'Exécuter', Play, true)}
-        </AccHeaderActions>
+        </HeaderActions>
       </div>
 
       {run.status === 'draft' && badRib && (
@@ -287,11 +291,11 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </StatusBanner>
       )}
 
-      <DataPanel>
+      <DataPanel label="Lignes de la campagne">
         <table className="odoo-table ds-dense">
           <thead><tr>
             <th>Fournisseur</th><th>Facture</th><th>RIB</th>
-            <th className="ds-num">Montant</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th>
+            <th className="ds-num">Montant ({currencySymbol()})</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
             {run.lines.map(l => (
@@ -299,10 +303,10 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 <td className="ds-strong">{l.supplier_name}</td>
                 <td className="ds-ref">{l.supplier_invoice_number || l.invoice_number}</td>
                 <td className="ds-ref" style={{ color: l.ribValid ? undefined : 'var(--ds-danger)' }}>{l.rib ?? 'absent'}</td>
-                <td className="ds-num">{money(l.amount)}</td>
+                <td className="ds-num">{amt(l.amount)}</td>
                 <td>
                   <StatusTag tone={l.status === 'paid' ? 'done' : l.status === 'rejected' ? 'late' : 'draft'} label={l.status === 'paid' ? 'Réglée' : l.status === 'rejected' ? 'Rejetée' : 'À régler'} />
-                  {l.reject_reason && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}> — {l.reject_reason}</span>}
+                  {l.reject_reason && <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}> — {l.reject_reason}</span>}
                 </td>
                 <td className="ds-actions">
                   {run.status === 'executed' && l.status === 'paid' && (
@@ -312,6 +316,7 @@ function RunDetail({ id, onBack }: { id: string; onBack: () => void }) {
               </tr>
             ))}
           </tbody>
+          <tfoot><tr><td colSpan={3} className="ds-strong">Total</td><td className="ds-num ds-strong">{amt(run.total_amount)}</td><td colSpan={2} /></tr></tfoot>
         </table>
       </DataPanel>
 

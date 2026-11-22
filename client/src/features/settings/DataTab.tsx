@@ -1,11 +1,12 @@
 import ProcessingRegisterCard from './ProcessingRegisterCard';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Database, Loader2 } from 'lucide-react';
+import { Download, Database } from 'lucide-react';
 import { PageNote } from './SettingsPrimitives';
 import { settingsApi } from '../../api/settings.api';
 import ImportSection from './ImportSection';
 import { notify } from '../../components/ui/InlineNotification';
+import { DataPanel, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Paramètres › Données (audit Paramètres, lot 7) : import guidé (modèle, aperçu
@@ -49,7 +50,7 @@ export default function DataTab() {
     queryClient.invalidateQueries({ queryKey: ['data-status'] });
   });
 
-  if (isLoading || !status) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading || !status) return <LoadingState />;
   const card: React.CSSProperties = { padding: '16px 18px', display: 'grid', gap: 12 };
 
   return (
@@ -58,8 +59,8 @@ export default function DataTab() {
       <ImportSection status={status} onTemplate={entity => save(`import/${entity}/template`)} />
 
       {/* ── Exports ── */}
-      <section className="prj-panel" style={card}>
-        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}><Download size={15} /> Exporter</div>
+      <section className="ds-panel" style={card}>
+        <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Download size={15} aria-hidden="true" /> Exporter</span>} />
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 260px', display: 'grid', gap: 6, alignContent: 'start' }}>
             <div style={{ fontSize: '0.875rem' }}><strong>Configuration</strong> (fichier JSON)</div>
@@ -83,8 +84,8 @@ export default function DataTab() {
       </section>
 
       {/* ── État de la base ── */}
-      <section className="prj-panel" style={card}>
-        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}><Database size={15} /> État de la base</div>
+      <section className="ds-panel" style={card}>
+        <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Database size={15} aria-hidden="true" /> État de la base</span>} />
         <PageNote help="Les sauvegardes automatiques de la base sont faites par l'hébergeur et ne sont pas visibles ici. Gardez en plus un export mensuel des données et de la configuration.">
           Sauvegardes assurées par l'hébergeur ; exportez aussi chaque mois.
         </PageNote>
@@ -98,13 +99,14 @@ export default function DataTab() {
           ))}
         </div>
         {status.exports.length > 0 && (
+          <DataPanel label="Exports et imports récents">
           <table className="odoo-table">
             <thead><tr><th>Date</th><th>Opération</th><th>Par</th><th>Détail</th></tr></thead>
             <tbody>
               {status.exports.map((e, i) => (
                 <tr key={i}>
                   <td style={{ whiteSpace: 'nowrap' }}>{new Date(e.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
-                  <td>{EVENT_LABELS[e.event_type]}</td>
+                  <td className="ds-strong">{EVENT_LABELS[e.event_type]}</td>
                   <td>{e.by_name || '—'}</td>
                   <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
                     {e.event_type === 'data_import' && e.details ? `${String(e.details.entity)} · ${String(e.details.created)} créé(s), ${String(e.details.updated)} mis à jour` : ''}
@@ -113,6 +115,7 @@ export default function DataTab() {
               ))}
             </tbody>
           </table>
+          </DataPanel>
         )}
       </section>
       {/* G3-11 : registre des traitements de données personnelles. */}

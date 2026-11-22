@@ -2,7 +2,7 @@ import { currencySymbol } from '../../utils/money';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { LoadingPanel, Segmented } from '../employees/ui';
 import { useState } from 'react';
-import { DataPanel, TableFooter, EmptyState, ErrorState } from '../../components/ds';
+import { DataPanel, TableFooter, EmptyState, ErrorState, Modal } from '../../components/ds';
 import { useQuery } from '@tanstack/react-query';
 import { ScanSearch, ShieldAlert, Check, Minus, History, Lock } from 'lucide-react';
 import {
@@ -10,7 +10,6 @@ import {
   type AppModule, type Capability, type DataScope, type BusinessVerb, type ApprovalDocumentType,
 } from '@ofauria/shared';
 import { accessReviewApi, rolesApi, type AccessOverviewRow } from '../../api/users.api';
-import { HrModal } from '../employees/ui';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 
 /**
@@ -30,7 +29,7 @@ const HISTORY_LABELS: Record<string, string> = {
 };
 
 export function AccessReviewModal({ userId, name, onClose }: { userId: string; name: string; onClose: () => void }) {
-  const { data, isLoading } = useQuery({ queryKey: ['access-review', userId], queryFn: () => accessReviewApi.review(userId) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['access-review', userId], queryFn: () => accessReviewApi.review(userId) });
   const { data: history = [] } = useQuery({ queryKey: ['access-history', userId], queryFn: () => accessReviewApi.history(userId) });
   const [tab, setTab] = useState<'rights' | 'history'>('rights');
 
@@ -38,14 +37,14 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
     : data?.roles.find(r => r.code === code)?.label ?? code;
 
   return (
-    <HrModal icon={ScanSearch} crumb="Revue des accès" title={name} width={860} onClose={onClose}
+    <Modal subtitle="Revue des accès" title={name} width={860} onClose={onClose}
       footer={<button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>}>
       <div>
         <Segmented label="Vue de la revue" value={tab} onChange={setTab}
           options={[{ key: 'rights', label: 'Droits résolus', icon: ScanSearch }, { key: 'history', label: 'Historique', icon: History }]} />
       </div>
 
-      {isLoading || !data ? <LoadingPanel /> : tab === 'rights' ? (
+      {isError ? <ErrorState bare error={error} title="La revue des accès n'a pas pu être chargée" onRetry={() => void refetch()} /> : isLoading || !data ? <LoadingPanel /> : tab === 'rights' ? (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Rôles :</span>
@@ -125,7 +124,7 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
           </table>
         </DataPanel>
       )}
-    </HrModal>
+    </Modal>
   );
 }
 
@@ -141,7 +140,7 @@ function summarizeDetail(d: Record<string, unknown>): string {
 
 /* ============ ONGLET REVUE DES ACCÈS ============ */
 export default function AccessReviewTab() {
-  const { data: overview = [], isLoading, isError, refetch } = useQuery({ queryKey: ['access-overview'], queryFn: accessReviewApi.overview });
+  const { data: overview = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['access-overview'], queryFn: accessReviewApi.overview });
   const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list });
   const [review, setReview] = useState<{ id: string; name: string } | null>(null);
   const roleLabel = (code: string) => roles.find(r => r.code === code)?.label ?? code;
@@ -154,7 +153,7 @@ export default function AccessReviewTab() {
         title={conflicts ? `${conflicts} compte(s) en conflit de séparation des tâches` : 'Revue des accès de tous les comptes'}>
         Vérifiez qui a quoi, repérez les droits propres et les conflits. Cliquez « Analyser » pour voir les droits résolus et l'historique d'un compte.
       </StatusBanner>
-      {isLoading ? <LoadingPanel /> : isError ? <ErrorState onRetry={() => void refetch()} />
+      {isLoading ? <LoadingPanel /> : isError ? <ErrorState error={error} onRetry={() => void refetch()} />
         : !overview.length ? <EmptyState icon={ScanSearch} title="Aucun compte à passer en revue" /> : (
         <DataPanel label="Revue des accès" footer={<TableFooter note={`${overview.length} compte${overview.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">

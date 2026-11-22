@@ -45,7 +45,7 @@ export default function StockAnomaliesTab() {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [note, setNote] = useState('');
-  const { data = [], isLoading, isError, refetch } = useQuery({ queryKey: ['stock-anomalies', status], queryFn: () => inventoryApi.anomalies(status) });
+  const { data = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['stock-anomalies', status], queryFn: () => inventoryApi.anomalies(status) });
 
   const resolve = useMutation({
     mutationFn: (id: string) => inventoryApi.resolveAnomaly(id, note.trim()),
@@ -81,7 +81,7 @@ export default function StockAnomaliesTab() {
       {isLoading ? (
         <LoadingState label="Chargement des anomalies…" />
       ) : isError ? (
-        <ErrorState onRetry={() => refetch()} />
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
         search.trim()
           ? <NoResultState text="Aucune anomalie ne correspond à la recherche." onReset={() => setSearch('')} />

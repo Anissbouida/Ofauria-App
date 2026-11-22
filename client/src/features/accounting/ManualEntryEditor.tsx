@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Plus, Trash2, Scale, Save, CheckCircle2, Loader2, PenLine } from 'lucide-react';
+import { Plus, Trash2, Scale, Save, CheckCircle2, Loader2 } from 'lucide-react';
 import SearchSelect from '../../components/ui/SearchSelect';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { Modal, FormSection, FormField, FormFooter, DataPanel } from '../../components/ds';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -121,119 +121,115 @@ export default function ManualEntryEditor({ draft, onClose }: { draft?: JournalE
 
   const auxOptions = (accountId: string) => auxiliaries.filter(x => x.account_id === accountId)
     .map(x => ({ id: x.id, label: `${x.code} — ${x.label}` }));
-  const numCell = { textAlign: 'right' as const, fontFamily: 'ui-monospace, monospace' };
-
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" aria-label="Saisie d'écriture" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 1100, maxHeight: '92vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <PenLine size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Écritures</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">{draft ? 'Modifier le brouillon' : 'Nouvelle écriture'}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-
-        <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '220px 150px 1fr', gap: 10, alignItems: 'end' }}>
-          <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Journal
-            <SearchSelect options={journalOptions} value={journalCode} onChange={v => setJournalCode(v || 'OD')} placeholder="Journal" width="100%" />
-          </label>
-          <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Date
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input sm" style={{ width: '100%' }} />
-          </label>
-          <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Libellé *
-            <input value={description} onChange={e => setDescription(e.target.value)} className="odoo-search-input" style={{ width: '100%' }}
+    <Modal title={draft ? 'Modifier le brouillon' : 'Nouvelle écriture'} subtitle="Écritures · saisie libre" onClose={onClose} width={1100} locked={busy}
+      label="Saisie d'écriture"
+      footer={
+        <FormFooter onCancel={onClose} onSubmit={() => post.mutate()} busy={busy} disabled={problems.length > 0} submitLabel="Comptabiliser">
+          <button type="button" className="odoo-btn-secondary" onClick={() => save.mutate()} disabled={busy || filled.length < 2 || !description.trim()}>
+            {save.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Enregistrer le brouillon
+          </button>
+        </FormFooter>
+      }>
+      <FormSection title="En-tête">
+        <div className="ds-form-grid" style={{ gridTemplateColumns: '220px 160px minmax(0, 1fr)' }}>
+          <FormField label="Journal" required>
+            <SearchSelect ariaLabel="Journal" options={journalOptions} value={journalCode} onChange={v => setJournalCode(v || 'OD')} placeholder="Journal" width="100%" size="md" />
+          </FormField>
+          <FormField label="Date" htmlFor="me-date" required>
+            <input id="me-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input" />
+          </FormField>
+          <FormField label="Libellé" htmlFor="me-desc" required>
+            <input id="me-desc" value={description} onChange={e => setDescription(e.target.value)} className="ds-input"
               placeholder="Ex. Dotation provision pour créances douteuses" maxLength={2000} autoFocus={!draft} />
-          </label>
-          <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', gridColumn: '1 / 3' }}>Pièce justificative
-            <input value={pieceRef} onChange={e => setPieceRef(e.target.value)} className="odoo-search-input" style={{ width: '100%' }}
+          </FormField>
+        </div>
+      </FormSection>
+      <FormSection title="Pièce justificative">
+        <div className="ds-form-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) 180px' }}>
+          <FormField label="Référence de la pièce" htmlFor="me-piece">
+            <input id="me-piece" value={pieceRef} onChange={e => setPieceRef(e.target.value)} className="ds-input"
               placeholder="Ex. PV AGO 2026, relevé n° 12…" maxLength={60} />
-          </label>
-          <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', maxWidth: 180 }}>Date de la pièce
-            <input type="date" value={pieceDate} onChange={e => setPieceDate(e.target.value)} className="ds-input sm" style={{ width: '100%' }} />
-          </label>
+          </FormField>
+          <FormField label="Date de la pièce" htmlFor="me-piece-date">
+            <input id="me-piece-date" type="date" value={pieceDate} onChange={e => setPieceDate(e.target.value)} className="ds-input" />
+          </FormField>
         </div>
+      </FormSection>
 
-        <table className="odoo-table ds-dense" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
-          <thead>
-            <tr>
-              <th style={{ width: 34 }}>#</th>
-              <th style={{ width: 280 }}>Compte</th>
-              <th style={{ width: 230 }}>Tiers</th>
-              <th>Libellé</th>
-              <th className="ds-num" style={{ width: 120 }}>Débit</th>
-              <th className="ds-num" style={{ width: 120 }}>Crédit</th>
-              <th style={{ width: 40 }} />
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l, i) => {
-              const collective = !!accountById.get(l.accountId)?.is_collective;
-              const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && i === lines.length - 1) { e.preventDefault(); addLine(); } };
-              return (
-                <tr key={l.key}>
-                  <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{i + 1}</td>
-                  <td><SearchSelect options={accountOptions} value={l.accountId} onChange={v => setLine(l.key, { accountId: v })} placeholder="Compte…" width="100%" /></td>
-                  <td>{collective
-                    ? <SearchSelect options={auxOptions(l.accountId)} value={l.auxiliaryId} onChange={v => setLine(l.key, { auxiliaryId: v })} placeholder="Tiers…" width="100%" />
-                    : <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>—</span>}</td>
-                  <td><input value={l.label} onChange={e => setLine(l.key, { label: e.target.value })} onKeyDown={onKey}
-                    className="odoo-search-input" style={{ width: '100%' }} placeholder={description || 'Libellé de la ligne'} maxLength={200} /></td>
-                  <td><input value={l.debit} onChange={e => setLine(l.key, { debit: e.target.value })} onKeyDown={onKey} inputMode="decimal"
-                    className="odoo-search-input" style={{ width: '100%', ...numCell }} aria-label={`Débit ligne ${i + 1}`} /></td>
-                  <td><input value={l.credit} onChange={e => setLine(l.key, { credit: e.target.value })} onKeyDown={onKey} inputMode="decimal"
-                    className="odoo-search-input" style={{ width: '100%', ...numCell }} aria-label={`Crédit ligne ${i + 1}`} /></td>
-                  <td>
-                    <button type="button" className="odoo-pager-btn" onClick={() => removeLine(l.key)} disabled={lines.length <= 2}
-                      title="Retirer la ligne" aria-label={`Retirer la ligne ${i + 1}`}><Trash2 size={13} /></button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={4}>
-                <div style={{ display: 'inline-flex', gap: 6 }}>
-                  <button type="button" className="odoo-btn-secondary" onClick={addLine}>
-                    <Plus size={12} /> Ligne
-                  </button>
-                  <button type="button" className="odoo-btn-secondary" onClick={balance} disabled={totals.diff === 0}
-                    title="Ajoute une ligne du montant manquant">
-                    <Scale size={12} /> Équilibrer
-                  </button>
-                </div>
-              </td>
-              <td style={numCell}>{fmt(totals.d)}</td>
-              <td style={numCell}>{fmt(totals.c)}</td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
+      <FormSection title="Lignes">
+        <DataPanel label="Lignes de l'écriture">
+          <table className="odoo-table ds-dense">
+            <thead>
+              <tr>
+                <th style={{ width: 34 }}>#</th>
+                <th style={{ width: 280 }}>Compte</th>
+                <th style={{ width: 230 }}>Tiers</th>
+                <th>Libellé</th>
+                <th className="ds-num" style={{ width: 120 }}>Débit ({currencySymbol()})</th>
+                <th className="ds-num" style={{ width: 120 }}>Crédit ({currencySymbol()})</th>
+                <th className="ds-actions" style={{ width: 40 }}><span className="ds-sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l, i) => {
+                const collective = !!accountById.get(l.accountId)?.is_collective;
+                const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && i === lines.length - 1) { e.preventDefault(); addLine(); } };
+                return (
+                  <tr key={l.key}>
+                    <td style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{i + 1}</td>
+                    <td><SearchSelect options={accountOptions} value={l.accountId} onChange={v => setLine(l.key, { accountId: v })} placeholder="Compte…" width="100%" ariaLabel={`Compte ligne ${i + 1}`} /></td>
+                    <td>{collective
+                      ? <SearchSelect options={auxOptions(l.accountId)} value={l.auxiliaryId} onChange={v => setLine(l.key, { auxiliaryId: v })} placeholder="Tiers…" width="100%" ariaLabel={`Tiers ligne ${i + 1}`} />
+                      : <span style={{ color: 'var(--ds-muted)', fontSize: 12 }}>—</span>}</td>
+                    <td><input value={l.label} onChange={e => setLine(l.key, { label: e.target.value })} onKeyDown={onKey}
+                      className="ds-input sm" placeholder={description || 'Libellé de la ligne'} maxLength={200} aria-label={`Libellé ligne ${i + 1}`} /></td>
+                    <td><input value={l.debit} onChange={e => setLine(l.key, { debit: e.target.value })} onKeyDown={onKey} inputMode="decimal"
+                      className="ds-input sm ds-num" style={{ textAlign: 'right' }} aria-label={`Débit ligne ${i + 1}`} /></td>
+                    <td><input value={l.credit} onChange={e => setLine(l.key, { credit: e.target.value })} onKeyDown={onKey} inputMode="decimal"
+                      className="ds-input sm ds-num" style={{ textAlign: 'right' }} aria-label={`Crédit ligne ${i + 1}`} /></td>
+                    <td className="ds-actions">
+                      <button type="button" className="ds-icon-btn" onClick={() => removeLine(l.key)} disabled={lines.length <= 2}
+                        title="Retirer la ligne" aria-label={`Retirer la ligne ${i + 1}`}><Trash2 size={13} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={4}>
+                  <div style={{ display: 'inline-flex', gap: 6 }}>
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={addLine}>
+                      <Plus size={12} /> Ligne
+                    </button>
+                    <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={balance} disabled={totals.diff === 0}
+                      title="Ajoute une ligne du montant manquant">
+                      <Scale size={12} /> Équilibrer
+                    </button>
+                  </div>
+                </td>
+                <td className="ds-num ds-strong">{fmt(totals.d)}</td>
+                <td className="ds-num ds-strong">{fmt(totals.c)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </DataPanel>
+        {totals.diff !== 0 && (
+          <div className="ds-field error"><span className="ds-field-hint" role="alert">
+            Écriture déséquilibrée : écart de {fmt(Math.abs(totals.diff))} {currencySymbol()} {totals.diff > 0 ? 'au débit' : 'au crédit'} — ajoutez une ligne ou utilisez « Équilibrer ».
+          </span></div>
+        )}
+      </FormSection>
 
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {problems.length > 0
-            ? <StatusBanner tone="warning" icon={Scale} title={problems.length === 1 ? problems[0] : `${problems.length} points à compléter`}>
-                {problems.length > 1 ? problems.join(' · ') : 'Le brouillon peut être enregistré en l\'état ; la comptabilisation exige une écriture complète et équilibrée.'}
-              </StatusBanner>
-            : <StatusBanner tone="success" icon={CheckCircle2} title={`Écriture équilibrée : ${fmt(totals.d)} ${currencySymbol()}`}>
-                À la comptabilisation, elle reçoit son numéro de journal et ne se modifie plus (correction par extourne).
-              </StatusBanner>}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={busy}>Annuler</button>
-            <button type="button" className="odoo-btn-secondary" onClick={() => save.mutate()} disabled={busy || filled.length < 2 || !description.trim()}>
-              {save.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Enregistrer le brouillon
-            </button>
-            <button type="button" className="odoo-btn-primary" onClick={() => post.mutate()} disabled={busy || problems.length > 0}>
-              {post.isPending ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Comptabiliser
-            </button>
-          </div>
-        </div>
-      </div>
-    </ModalBackdrop>
+      {problems.length > 0
+        ? <StatusBanner tone="warning" icon={Scale} title={problems.length === 1 ? problems[0] : `${problems.length} points à compléter`}>
+            {problems.length > 1 ? problems.join(' · ') : 'Le brouillon peut être enregistré en l\'état ; la comptabilisation exige une écriture complète et équilibrée.'}
+          </StatusBanner>
+        : <StatusBanner tone="success" icon={CheckCircle2} title={`Écriture équilibrée : ${fmt(totals.d)} ${currencySymbol()}`}>
+            À la comptabilisation, elle reçoit son numéro de journal et ne se modifie plus (correction par extourne).
+          </StatusBanner>}
+    </Modal>
   );
 }

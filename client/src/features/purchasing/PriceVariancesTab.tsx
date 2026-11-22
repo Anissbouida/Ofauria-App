@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Scale, Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { receptionVouchersApi } from '../../api/purchase-orders.api';
-import { SectionHeader, DataPanel, TableFooter, EmptyState, LoadingState, Alert } from '../../components/ds';
+import { SectionHeader, DataPanel, TableFooter, EmptyState, LoadingState, Alert, ErrorState } from '../../components/ds';
 import { currencySymbol } from '../../utils/money';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
@@ -73,12 +73,12 @@ const STATUS_TAG: Record<VarianceRow['price_status'], { label: string; tone: Sta
 export default function PriceVariancesTab() {
   const queryClient = useQueryClient();
 
-  const { data: variances = [], isLoading: loadingVar } = useQuery<VarianceRow[]>({
+  const { data: variances = [], isLoading: loadingVar, error: varError, refetch: refetchVar } = useQuery<VarianceRow[]>({
     queryKey: ['reception-price-variances'],
     queryFn: () => receptionVouchersApi.priceVariances(),
   });
 
-  const { data: candidates = [], isLoading: loadingCand } = useQuery<CandidateRow[]>({
+  const { data: candidates = [], isLoading: loadingCand, error: candError, refetch: refetchCand } = useQuery<CandidateRow[]>({
     queryKey: ['reception-revaluation-candidates'],
     queryFn: () => receptionVouchersApi.revaluationCandidates(),
   });
@@ -99,7 +99,7 @@ export default function PriceVariancesTab() {
     <>
       {/* ─── 1. Écarts de prix à la réception (prix saisi vs prix BC) ─── */}
       <SectionHeader title="Écarts à la réception" note={toDecide > 0 ? `${toDecide} à décider` : undefined} />
-      {loadingVar ? <LoadingState /> : variances.length === 0 ? (
+      {loadingVar ? <LoadingState /> : varError ? <ErrorState error={varError} onRetry={() => { void refetchVar(); }} /> : variances.length === 0 ? (
         <EmptyState icon={Check} title="Aucun écart de prix"
           text="Toutes les réceptions sont au prix du bon de commande. Un écart entre le prix saisi à la réception et le prix commandé apparaît ici ; la décision est tracée." />
       ) : (
@@ -160,7 +160,7 @@ export default function PriceVariancesTab() {
         Simulation en lecture seule : aucune écriture n'est passée. La part encore en stock réévaluerait le lot (et le coût moyen), la part déjà consommée
         partirait en compte d'écart. La réévaluation effective est un geste séparé : elle exige un compte « price_variance » dans les profils de comptabilisation.
       </Alert>
-      {loadingCand ? <LoadingState /> : candidates.length === 0 ? (
+      {loadingCand ? <LoadingState /> : candError ? <ErrorState error={candError} onRetry={() => { void refetchCand(); }} /> : candidates.length === 0 ? (
         <EmptyState icon={Scale} title="Aucune facture ne déclencherait de réévaluation"
           text="Les prix de facture correspondent aux prix reçus : rien à réévaluer." />
       ) : (
@@ -225,13 +225,14 @@ function CandidateRows({ c }: { c: CandidateRow }) {
                     : <StatusTag tone="blocked" label="Non configuré" />}
                   requis pour la réévaluation effective (profil « price_variance »).
                 </div>
+                <DataPanel label="Détail de la réévaluation">
                 <table className="odoo-table ds-dense">
                   <thead>
                     <tr>
                       <th>Article</th>
-                      <th className="ds-num">Coût du lot</th>
-                      <th className="ds-num">Prix facturé</th>
-                      <th className="ds-num">Écart par unité</th>
+                      <th className="ds-num">Coût du lot ({currencySymbol()})</th>
+                      <th className="ds-num">Prix facturé ({currencySymbol()})</th>
+                      <th className="ds-num">Écart par unité ({currencySymbol()})</th>
                       <th className="ds-num">Qté facturée</th>
                       <th className="ds-num">Qté en stock</th>
                       <th className="ds-num">Part en stock ({currencySymbol()})</th>
@@ -253,6 +254,7 @@ function CandidateRows({ c }: { c: CandidateRow }) {
                     ))}
                   </tbody>
                 </table>
+                </DataPanel>
               </div>
             )}
           </td>

@@ -5,6 +5,7 @@ import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type TaxCode } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { DataPanel, ErrorState, FormField, FormFooter, SectionHeader } from '../../components/ds';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 
@@ -42,7 +43,7 @@ export default function TaxCodesTab() {
   const { canCreate } = usePermissions();
   const [showPast, setShowPast] = useState(false);
   const [draft, setDraft] = useState<null | { code: string; label: string; rate: string; kind: string; recoverable: boolean; validFrom: string; legalRef: string }>(null);
-  const { data: codes = [], isLoading } = useQuery({ queryKey: ['tax-codes'], queryFn: settingsApi.taxCodes });
+  const { data: codes = [], isLoading, error, refetch } = useQuery({ queryKey: ['tax-codes'], queryFn: settingsApi.taxCodes });
 
   const add = useMutation({
     mutationFn: () => settingsApi.addTaxRate({ ...draft!, rate: Number(draft!.rate) }),
@@ -57,8 +58,6 @@ export default function TaxCodesTab() {
     code: c?.code ?? '', label: c?.label ?? '', rate: c ? String(Number(c.rate)) : '', kind: c?.kind ?? 'standard',
     recoverable: c?.recoverable ?? true, validFrom: today, legalRef: c?.legal_ref ?? '',
   });
-  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
   const replacing = draft && existing.find(c => c.code === draft.code.trim().toUpperCase());
 
   return (
@@ -77,62 +76,74 @@ export default function TaxCodesTab() {
         )}
       </div>
 
-      {isLoading ? <Loader2 className="animate-spin" size={16} /> : !codes.length ? (
+      {error ? <ErrorState error={error} onRetry={() => void refetch()} /> : isLoading ? <Loader2 className="animate-spin" size={16} /> : !codes.length ? (
         <StatusBanner tone="warning" icon={Percent} title="Aucun code TVA">La migration 331 n'est pas appliquée sur cette base.</StatusBanner>
       ) : (
-        <div className="prj-panel prj-scroll">
+        <DataPanel label="Codes TVA">
           <table className="odoo-table">
-            <thead><tr><th>Code</th><th>Libellé</th><th className="ds-num">Taux</th><th>Nature</th><th>Déductible</th><th>Du</th><th>Au</th><th>Statut</th><th>Référence</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+            <thead><tr><th>Code</th><th>Libellé</th><th className="ds-num">Taux (%)</th><th>Nature</th><th>Déductible</th><th>Du</th><th>Au</th><th>Statut</th><th>Référence</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
             <tbody>
               {shown.map(c => (
                 <tr key={c.id} style={{ opacity: c.status === 'past' ? 0.6 : 1 }}>
-                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>{c.code}</td>
-                  <td>{c.label}</td>
-                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(c.rate).toLocaleString('fr-FR')} %</td>
+                  <td className="ds-ref">{c.code}</td>
+                  <td className="ds-strong">{c.label}</td>
+                  <td className="ds-num">{Number(c.rate).toLocaleString('fr-FR')}</td>
                   <td>{KINDS.find(k => k[0] === c.kind)?.[1] ?? c.kind}</td>
                   <td>{c.recoverable ? 'Oui' : 'Non'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{d(c.valid_from)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{d(c.valid_to)}</td>
                   <td><StatusTag tone={STATUS[c.status].tone} icon={STATUS[c.status].icon} label={STATUS[c.status].label} /></td>
                   <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{c.legal_ref ?? ''}</td>
-                  <td>
+                  <td className="ds-actions">
                     {c.status !== 'past' && !draft && canCreate('settings') && (
-                      <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', whiteSpace: 'nowrap' }} onClick={() => newRateFor(c)}>Changer le taux</button>
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={() => newRateFor(c)}>Changer le taux</button>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
 
       {draft && (
-        <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
-          <div style={{ fontWeight: 600 }}>{replacing ? `Nouveau taux pour ${replacing.code}` : 'Nouveau code TVA'}</div>
+        <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-label="Nouveau taux">
+          <SectionHeader title={replacing ? `Nouveau taux pour ${replacing.code}` : 'Nouveau code TVA'} />
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <label style={{ ...lab, width: 120 }}>Code
-              <input id="tax-code" style={{ ...field, fontFamily: 'ui-monospace, monospace' }} value={draft.code} onChange={e => setDraft({ ...draft, code: e.target.value.toUpperCase() })} maxLength={20} />
-            </label>
-            <label style={{ ...lab, flex: '1 1 220px' }}>Libellé
-              <input id="tax-label" style={field} value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} maxLength={120} />
-            </label>
-            <label style={{ ...lab, width: 110 }}>Taux (%)
-              <input id="tax-rate" type="number" min={0} max={100} step="0.01" style={field} value={draft.rate} onChange={e => setDraft({ ...draft, rate: e.target.value })} />
-            </label>
-            <label style={{ ...lab, width: 240 }}>Nature
-              <select id="tax-kind" style={field} value={draft.kind} onChange={e => setDraft({ ...draft, kind: e.target.value })}>
+            <div style={{ width: 120 }}>
+              <FormField label="Code" htmlFor="tax-code" required>
+              <input id="tax-code" className="ds-input" style={{ fontFamily: 'ui-monospace, monospace' }} value={draft.code} onChange={e => setDraft({ ...draft, code: e.target.value.toUpperCase() })} maxLength={20} />
+              </FormField>
+            </div>
+            <div style={{ flex: '1 1 220px' }}>
+              <FormField label="Libellé" htmlFor="tax-label" required>
+              <input id="tax-label" className="ds-input" value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} maxLength={120} />
+              </FormField>
+            </div>
+            <div style={{ width: 110 }}>
+              <FormField label="Taux (%)" htmlFor="tax-rate" required>
+              <input id="tax-rate" type="number" min={0} max={100} step="0.01" className="ds-input" value={draft.rate} onChange={e => setDraft({ ...draft, rate: e.target.value })} />
+              </FormField>
+            </div>
+            <div style={{ width: 240 }}>
+              <FormField label="Nature" htmlFor="tax-kind">
+              <select id="tax-kind" className="ds-input" value={draft.kind} onChange={e => setDraft({ ...draft, kind: e.target.value })}>
                 {KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
-            </label>
+              </FormField>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <label style={{ ...lab, width: 170 }}>À partir du
-              <input id="tax-from" type="date" style={field} value={draft.validFrom} onChange={e => setDraft({ ...draft, validFrom: e.target.value })} />
-            </label>
-            <label style={{ ...lab, flex: '1 1 260px' }}>Référence légale
-              <input id="tax-ref" style={field} value={draft.legalRef} onChange={e => setDraft({ ...draft, legalRef: e.target.value })} placeholder="CGI art. 98, LF 2026…" />
-            </label>
+            <div style={{ width: 170 }}>
+              <FormField label="À partir du" htmlFor="tax-from" required>
+              <input id="tax-from" type="date" className="ds-input" value={draft.validFrom} onChange={e => setDraft({ ...draft, validFrom: e.target.value })} />
+              </FormField>
+            </div>
+            <div style={{ flex: '1 1 260px' }}>
+              <FormField label="Référence légale" htmlFor="tax-ref">
+              <input id="tax-ref" className="ds-input" value={draft.legalRef} onChange={e => setDraft({ ...draft, legalRef: e.target.value })} placeholder="CGI art. 98, LF 2026…" />
+              </FormField>
+            </div>
             <label htmlFor="tax-recoverable" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
               <input id="tax-recoverable" type="checkbox" checked={draft.recoverable} onChange={e => setDraft({ ...draft, recoverable: e.target.checked })} /> TVA déductible
             </label>
@@ -142,14 +153,9 @@ export default function TaxCodesTab() {
               Le taux actuel ({Number(replacing.rate).toLocaleString('fr-FR')} %) s'arrêtera le {draft.validFrom ? d(dayBefore(draft.validFrom)) : '…'}.
             </div>
           )}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
-            <button type="button" className="odoo-btn-primary" disabled={add.isPending || !draft.code.trim() || !draft.label.trim() || draft.rate === '' || !draft.validFrom}
-              onClick={() => add.mutate()}>
-              {add.isPending ? 'Enregistrement…' : 'Enregistrer le taux'}
-            </button>
-          </div>
-        </div>
+          <FormFooter onCancel={() => setDraft(null)} busy={add.isPending} submitLabel="Enregistrer le taux"
+            disabled={!draft.code.trim() || !draft.label.trim() || draft.rate === '' || !draft.validFrom} onSubmit={() => add.mutate()} />
+        </section>
       )}
     </div>
   );

@@ -8,7 +8,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { LoadingState, KpiGrid, KpiCard, DataPanel, TableFooter, EmptyState } from '../../components/ds';
+import { LoadingState, ErrorState, KpiGrid, KpiCard, DataPanel, TableFooter, EmptyState } from '../../components/ds';
 
 const n0 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 const n2 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -19,13 +19,14 @@ export default function CustomerLoyalty({ customerId }: { customerId: string }) 
   const qc = useQueryClient();
   const { user } = useAuth();
   const isDirection = user?.role === 'admin' || user?.role === 'manager';
-  const { data: l, isLoading } = useQuery({ queryKey: ['loyalty', 'customer', customerId], queryFn: () => loyaltyApi.customer(customerId) });
+  const { data: l, isLoading, isError, error, refetch } = useQuery({ queryKey: ['loyalty', 'customer', customerId], queryFn: () => loyaltyApi.customer(customerId) });
   const [adj, setAdj] = useState({ points: '', note: '' });
   const adjust = useMutation({
     mutationFn: () => loyaltyApi.adjust(customerId, Number(adj.points), adj.note),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['loyalty'] }); qc.invalidateQueries({ queryKey: ['customer-stats', customerId] }); setAdj({ points: '', note: '' }); notify.success('Points ajustés'); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} bare />;
   if (isLoading || !l) return <LoadingState bare />;
   const toNext = l.nextTier ? l.nextTier.min_points - l.points12m : 0;
   return (

@@ -53,16 +53,14 @@ import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, pay
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
-import { AccHeaderSlot, AccHeaderActions } from './AccHeaderActions';
 // Barre d'outils commune (prj-toolbar, prj-search, prj-views) : styles de base du gabarit Liste.
 import '../projects/projects.css';
 import {
   StagePipeline, PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel, periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 import { money, currencySymbol } from '../../utils/money';
-import { Alert, DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, NoResultState, PageHeader, SearchBar, SectionHeader, TableFooter, Toolbar, Tabs, Segmented } from '../../components/ds';
+import { MonthYearField, HeaderActions, HeaderSlotContext, Alert, DataPanel, EmptyState, ErrorState, FormField, FormFooter, FormSection, Modal, KpiCard, KpiGrid, LoadingState, NoResultState, PageHeader, SearchBar, SectionHeader, TableFooter, Toolbar, Tabs, Segmented } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
-import { MonthYearField } from './AccToolbarFields';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
@@ -369,8 +367,8 @@ export default function AccountingPage() {
     <ModuleShell title="Comptabilité" views={views} current={current} onSelect={select} flush look="apple"
       actions={<div ref={setHeaderSlot} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }} />}>
       {/* Gabarit de page (Design System) : fil d'Ariane « Comptabilité › Rubrique › Page » posé par ModuleShell,
-          actions de l'écran en haut à droite (AccHeaderActions), puis titre et description d'une ligne. */}
-      <AccHeaderSlot.Provider value={headerSlot}>
+          actions de l'écran en haut à droite (HeaderActions), puis titre et description d'une ligne. */}
+      <HeaderSlotContext.Provider value={headerSlot}>
       <div className="acc-page">
       <PageHeader title={current?.label} description={tab ? PAGE_LEADS[tab] : undefined} />
       {/* Suivi des echeances fournisseurs (visible sur tous les onglets) */}
@@ -408,7 +406,7 @@ export default function AccountingPage() {
       {tab === 'prevision' && <CashForecastTab />}
       {tab === 'costcenters' && <CostCentersTab />}
       </div>
-      </AccHeaderSlot.Provider>
+      </HeaderSlotContext.Provider>
     </ModuleShell>
   );
 }
@@ -493,7 +491,7 @@ function DettesTab() {
   const [rasAmount, setRasAmount] = useState('');
   const [avoirAmount, setAvoirAmount] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['invoice-debts'],
     queryFn: () => invoicesApi.debts() as Promise<{
       receivables: DebtInvoice[]; payables: DebtInvoice[]; standaloneDebts?: StandaloneDebt[];
@@ -646,7 +644,6 @@ function DettesTab() {
       ['TIERS', 'N FACTURE', 'DATE', 'ECHEANCE', 'TOTAL', 'PAYE', `RESTE (${currencySymbol()})`, 'STATUT'], rows);
   };
 
-  const accent = isReceivable ? 'var(--ds-success)' : 'var(--ds-danger)';
   const tierLabel = isReceivable ? 'Client' : 'Fournisseur';
 
   return (
@@ -685,11 +682,11 @@ function DettesTab() {
       />
 
       {/* Filtres */}
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary">
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
       <div className="prj-toolbar">
         <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder={`Rechercher un ${tierLabel.toLowerCase()}…`} />
@@ -703,6 +700,8 @@ function DettesTab() {
       {/* Tableau des tiers */}
       {isLoading ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : shownTiers.length === 0 ? (
         situation || searchTerm
           ? <NoResultState text="Aucun tiers ne correspond aux filtres." onReset={() => { setSituation(''); setSearchTerm(''); }} />
@@ -831,19 +830,11 @@ function DettesTab() {
           ? ([payingInvoice.customer_first_name, payingInvoice.customer_last_name].filter(Boolean).join(' ').trim() || 'Client comptoir')
           : (payingInvoice.supplier_name || 'Fournisseur');
         return (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 448, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-              <div className="odoo-control-bar">
-                <div className="odoo-breadcrumb">
-                  <Coins size={14} style={{ color: 'var(--theme-accent)' }} />
-                  <span className="odoo-breadcrumb-current">{isReceivable ? 'Encaisser un règlement' : 'Payer une facture'}</span>
-                <span className="odoo-breadcrumb-separator">›</span>
-                <span>{payingInvoice.invoice_number} · {partyName}</span>
-                </div>
-                <div style={{ flex: 1 }} />
-                <button type="button" onClick={() => setPayingInvoice(null)} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-              </div>
-              <form onSubmit={e => {
+          <Modal title={isReceivable ? 'Encaisser un règlement' : 'Payer une facture'} subtitle={`${payingInvoice.invoice_number} · ${partyName}`}
+            onClose={() => setPayingInvoice(null)} width={520} locked={createPayment.isPending}
+            footer={<FormFooter onCancel={() => setPayingInvoice(null)} busy={createPayment.isPending} submitLabel={isReceivable ? 'Encaisser' : 'Payer'}
+              onSubmit={() => (document.getElementById('dettes-pay-form') as HTMLFormElement | null)?.requestSubmit()} />}>
+              <form id="dettes-pay-form" onSubmit={e => {
                 e.preventDefault();
                 const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
                 const amount = parseFloat(payAmount);
@@ -876,156 +867,132 @@ function DettesTab() {
                   if (avoir > 0) payload.avoirAmount = Math.round(avoir * 100) / 100;
                 }
                 createPayment.mutate(payload);
-              }} className="p-5 space-y-4">
-                <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 flex justify-between">
-                  <span>Reste à payer</span>
-                  <strong style={{ fontFamily: 'ui-monospace, monospace', color: accent }}>{money(remaining)}</strong>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{!isReceivable && rasTypeId ? 'Montant brut *' : 'Montant *'}</label>
-                    <input name="amount" type="number" step="0.01" min="0" max={remaining}
-                      value={payAmount}
-                      onChange={e => {
-                        setPayAmount(e.target.value);
-                        // Recalcule la retenue suggeree si un type RAS est selectionne.
-                        if (rasTypeId) {
-                          const t = rasTypes.find(x => x.id === rasTypeId);
-                          const rate = t ? parseFloat(String(t.rate ?? 0)) : 0;
-                          const br = parseFloat(e.target.value) || 0;
-                          if (rate > 0) setRasAmount(((br * rate) / 100).toFixed(2));
-                        }
-                      }}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" required />
+              }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <Alert tone="info">
+                  <span style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <span>Reste à payer</span>
+                    <strong className="ds-num">{money(remaining)}</strong>
+                  </span>
+                </Alert>
+                <FormSection title="Règlement">
+                  <div className="ds-form-grid">
+                    <FormField label={!isReceivable && rasTypeId ? 'Montant brut' : 'Montant'} htmlFor="pay-amount" required>
+                      <input id="pay-amount" name="amount" type="number" step="0.01" min="0" max={remaining}
+                        value={payAmount}
+                        onChange={e => {
+                          setPayAmount(e.target.value);
+                          // Recalcule la retenue suggeree si un type RAS est selectionne.
+                          if (rasTypeId) {
+                            const t = rasTypes.find(x => x.id === rasTypeId);
+                            const rate = t ? parseFloat(String(t.rate ?? 0)) : 0;
+                            const br = parseFloat(e.target.value) || 0;
+                            if (rate > 0) setRasAmount(((br * rate) / 100).toFixed(2));
+                          }
+                        }}
+                        className="ds-input" required />
+                    </FormField>
+                    <FormField label="Date" htmlFor="pay-date" required>
+                      <input id="pay-date" name="paymentDate" type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
+                        className="ds-input" required />
+                    </FormField>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-                    <input name="paymentDate" type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" required />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de règlement</label>
-                  <PaymentModeSelect value={payMethod} onChange={setPayMethod} />
-                </div>
-                {payModeDef?.requires_reference && payLegacy !== 'check' && payLegacy !== 'traite' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Référence du virement *</label>
-                    <input name="reference" required placeholder="N° d'ordre ou référence bancaire"
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                  </div>
-                )}
-                {!isReceivable && (
-                  <CashLimitGauge supplierId={payingInvoice.supplier_id} date={payDate} amount={parseFloat(payAmount) || 0}
-                    modeCode={payMethod} override={payOverride} onOverrideChange={setPayOverride} />
-                )}
+                  <FormField label="Mode de règlement">
+                    <PaymentModeSelect value={payMethod} onChange={setPayMethod} />
+                  </FormField>
+                  {payModeDef?.requires_reference && payLegacy !== 'check' && payLegacy !== 'traite' && (
+                    <FormField label="Référence du virement" htmlFor="pay-ref" required>
+                      <input id="pay-ref" name="reference" required placeholder="N° d'ordre ou référence bancaire" className="ds-input" />
+                    </FormField>
+                  )}
+                  {!isReceivable && (
+                    <CashLimitGauge supplierId={payingInvoice.supplier_id} date={payDate} amount={parseFloat(payAmount) || 0}
+                      modeCode={payMethod} override={payOverride} onOverrideChange={setPayOverride} />
+                  )}
+                </FormSection>
                 {!isReceivable && (() => {
                   const brut = parseFloat(payAmount) || 0;
                   const retenue = parseFloat(rasAmount) || 0;
                   const net = Math.max(0, brut - retenue);
                   const selRas = rasTypes.find(x => x.id === rasTypeId);
                   return (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Retenue à la source (RAS)</label>
-                      <select value={rasTypeId} onChange={e => {
-                        const id = e.target.value;
-                        setRasTypeId(id);
-                        const t = rasTypes.find(x => x.id === id);
-                        const rate = t ? parseFloat(String(t.rate ?? 0)) : 0;
-                        setRasAmount(id && rate > 0 ? ((brut * rate) / 100).toFixed(2) : '');
-                      }} className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
-                        <option value="">Aucune retenue</option>
-                        {rasTypes.map(t => (
-                          <option key={t.id} value={t.id}>{t.label}{t.rate ? ` — ${t.rate}%` : ''}</option>
-                        ))}
-                      </select>
+                    <FormSection title="Retenue à la source (RAS)">
+                      <FormField label="Type de retenue" htmlFor="pay-ras-type">
+                        <select id="pay-ras-type" value={rasTypeId} onChange={e => {
+                          const id = e.target.value;
+                          setRasTypeId(id);
+                          const t = rasTypes.find(x => x.id === id);
+                          const rate = t ? parseFloat(String(t.rate ?? 0)) : 0;
+                          setRasAmount(id && rate > 0 ? ((brut * rate) / 100).toFixed(2) : '');
+                        }} className="ds-input">
+                          <option value="">Aucune retenue</option>
+                          {rasTypes.map(t => (
+                            <option key={t.id} value={t.id}>{t.label}{t.rate ? ` — ${t.rate}%` : ''}</option>
+                          ))}
+                        </select>
+                      </FormField>
                       {rasTypeId && (
                         <>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs text-gray-600 mb-1">Montant retenu ({currencySymbol()})</label>
-                              <input type="number" step="0.01" min="0" value={rasAmount}
-                                onChange={e => setRasAmount(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
-                            </div>
-                            <div>
-                              <label className="block text-xs text-gray-600 mb-1">Net versé</label>
-                              <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold" style={{ fontFamily: 'ui-monospace, monospace' }}>{money(net)}</div>
-                            </div>
+                          <div className="ds-form-grid">
+                            <FormField label={`Montant retenu (${currencySymbol()})`} htmlFor="pay-ras-amount">
+                              <input id="pay-ras-amount" type="number" step="0.01" min="0" value={rasAmount}
+                                onChange={e => setRasAmount(e.target.value)} className="ds-input" />
+                            </FormField>
+                            <FormField label="Net versé" htmlFor="pay-ras-net">
+                              <output id="pay-ras-net" className="ds-input ds-num" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 600 }}>{money(net)}</output>
+                            </FormField>
                           </div>
-                          <p className="text-xs text-gray-500">
+                          <p style={{ margin: 0, fontSize: 12, color: 'var(--ds-muted)' }}>
                             La retenue de <strong>{money(retenue)}</strong> sera déclarée à l'État (compte <strong>{selRas?.account_code}</strong>) et apparaîtra dans <strong>Retenues source → À reverser</strong>. Le bénéficiaire reçoit le net.
                           </p>
                         </>
                       )}
-                    </div>
+                    </FormSection>
                   );
                 })()}
-                {(payLegacy === 'check' || payLegacy === 'traite') && (<>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">N° {payLegacy === 'traite' ? 'traite' : 'chèque'}</label>
-                      <input name="checkNumber" type="text"
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                {(payLegacy === 'check' || payLegacy === 'traite') && (
+                  <FormSection title={payLegacy === 'traite' ? 'Traite' : 'Chèque'}>
+                    <div className="ds-form-grid">
+                      <FormField label={`N° ${payLegacy === 'traite' ? 'traite' : 'chèque'}`} htmlFor="pay-check-number">
+                        <input id="pay-check-number" name="checkNumber" type="text" className="ds-input" />
+                      </FormField>
+                      <FormField label={`Date ${payLegacy === 'traite' ? 'traite' : 'chèque'}`} htmlFor="pay-check-date">
+                        <input id="pay-check-date" name="checkDate" type="date" className="ds-input" />
+                      </FormField>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Date {payLegacy === 'traite' ? 'traite' : 'chèque'}</label>
-                      <input name="checkDate" type="date"
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    </div>
-                  </div>
-                  {!isReceivable && (() => {
-                    const av = parseFloat(avoirAmount) || 0;
-                    const chk = parseFloat(payAmount) || 0;
-                    return (
-                      <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3 space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">Avoir fournisseur</label>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Montant avoir ({currencySymbol()})</label>
-                            <input type="number" step="0.01" min="0" value={avoirAmount}
-                              onChange={e => setAvoirAmount(e.target.value)}
-                              placeholder="0.00"
-                              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    {!isReceivable && (() => {
+                      const av = parseFloat(avoirAmount) || 0;
+                      const chk = parseFloat(payAmount) || 0;
+                      return (
+                        <>
+                          <div className="ds-form-grid">
+                            <FormField label={`Avoir fournisseur (${currencySymbol()})`} htmlFor="pay-avoir">
+                              <input id="pay-avoir" type="number" step="0.01" min="0" value={avoirAmount}
+                                onChange={e => setAvoirAmount(e.target.value)} placeholder="0.00" className="ds-input" />
+                            </FormField>
+                            {av > 0 && (
+                              <FormField label="Total réglé" htmlFor="pay-avoir-total">
+                                <output id="pay-avoir-total" className="ds-input ds-num" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 600 }}>{money(chk + av)}</output>
+                              </FormField>
+                            )}
                           </div>
                           {av > 0 && (
-                            <div>
-                              <label className="block text-xs text-gray-600 mb-1">Total réglé</label>
-                              <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold" style={{ fontFamily: 'ui-monospace, monospace' }}>{money(chk + av)}</div>
-                            </div>
+                            <p style={{ margin: 0, fontSize: 12, color: 'var(--ds-muted)' }}>
+                              L'avoir de <strong>{money(av)}</strong> sera déduit de la dette. {payLegacy === 'traite' ? 'La traite' : 'Le chèque'} émis sera de <strong>{money(chk)}</strong>.
+                            </p>
                           )}
-                        </div>
-                        {av > 0 && (
-                          <p className="text-xs text-gray-500">
-                            L'avoir de <strong>{money(av)}</strong> sera déduit de la dette. {payLegacy === 'traite' ? 'La traite' : 'Le chèque'} émis sera de <strong>{money(chk)}</strong>.
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </>)}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Note</label>
-                  <textarea name="description" rows={2}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-                {(payLegacy === 'check' || payLegacy === 'traite') && (
-                  <p className="text-xs text-amber-600">
-                    {payLegacy === 'traite' ? 'La traite' : 'Le chèque'} apparaîtra dans l'onglet <strong>Chèques et Traites</strong> en attente d'encaissement. La dette est néanmoins réduite dès maintenant.
-                  </p>
+                        </>
+                      );
+                    })()}
+                    <Alert tone="warning">
+                      {payLegacy === 'traite' ? 'La traite' : 'Le chèque'} apparaîtra dans l'onglet <strong>Chèques et Traites</strong> en attente d'encaissement. La dette est néanmoins réduite dès maintenant.
+                    </Alert>
+                  </FormSection>
                 )}
-                <div className="flex gap-3 justify-end pt-2">
-                  <button type="button" onClick={() => setPayingInvoice(null)}
-                    className="odoo-btn-secondary">Annuler</button>
-                  <button type="submit" disabled={createPayment.isPending}
-                    className="odoo-btn-primary">
-                    {createPayment.isPending && <Loader2 size={14} className="animate-spin" />}
-                    {isReceivable ? 'Encaisser' : 'Payer'}
-                  </button>
-                </div>
+                <FormField label="Note" htmlFor="pay-note">
+                  <textarea id="pay-note" name="description" rows={2} className="ds-input" />
+                </FormField>
               </form>
-            </div>
-          </div>
+          </Modal>
         );
       })()}
       </>)}
@@ -1056,11 +1023,11 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
     title: 'Engagement — factures de la période', accent: 'var(--ds-info)', bg: 'var(--ds-info-bg)',
     filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
-      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'N° facture', render: r => <span className="ds-ref">{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
       { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
       { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
       { label: 'Statut', render: r => INVOICE_STATUS_LABELS[r.status || ''] || r.status || '—', sortValue: r => INVOICE_STATUS_LABELS[r.status || ''] || r.status || '' },
-      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
+      { label: 'Montant', align: 'right', render: r => <span className="ds-strong">{n(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   treasury: {
@@ -1070,50 +1037,50 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
       { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
       { label: 'Bénéficiaire', render: r => r.supplierName || r.label || '—', sortValue: r => r.supplierName || r.label || '' },
       { label: 'Méthode', render: r => PAYMENT_METHOD_LABELS[r.method || ''] || r.method || '—', sortValue: r => PAYMENT_METHOD_LABELS[r.method || ''] || r.method || '' },
-      { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
-      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
+      { label: 'Réf', render: r => <span className="ds-ref">{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'Montant', align: 'right', render: r => <span className="ds-strong">{n(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   remainingToPay: {
     title: 'Reste à payer — factures non soldées', accent: 'var(--ds-warning)', bg: 'var(--ds-warning-bg)',
     filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
-      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'N° facture', render: r => <span className="ds-ref">{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
       { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
       { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
-      { label: 'Total', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.total ?? 0)}</span>, sortValue: r => r.total ?? 0 },
-      { label: 'Payé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.paid ?? 0)}</span>, sortValue: r => r.paid ?? 0 },
-      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: 'var(--ds-warning)' }}>{money(r.amount)}</span>, sortValue: r => r.amount },
+      { label: 'Total', align: 'right', render: r => n(r.total ?? 0), sortValue: r => r.total ?? 0 },
+      { label: 'Payé', align: 'right', render: r => n(r.paid ?? 0), sortValue: r => r.paid ?? 0 },
+      { label: 'Reste', align: 'right', render: r => <span className="ds-strong" style={{ color: 'var(--ds-warning)' }}>{n(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   receivedNotInvoiced: {
     title: 'Reçu non facturé — BC livrés sans facture', accent: 'var(--ds-danger)', bg: 'var(--ds-danger-bg)',
     columns: [
-      { label: 'N° BC', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'N° BC', render: r => <span className="ds-ref">{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
       { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
       { label: 'Date livraison', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
-      { label: 'Montant estimé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
+      { label: 'Montant estimé', align: 'right', render: r => <span className="ds-strong">{n(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   unpaidInvoices: {
     title: 'Factures impayées (toutes périodes)', accent: 'var(--ds-warning)', bg: 'var(--theme-bg-page)',
     filter: { placeholder: 'Tous les statuts', value: r => r.status, display: v => INVOICE_STATUS_LABELS[v] || v },
     columns: [
-      { label: 'N° facture', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'N° facture', render: r => <span className="ds-ref">{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
       { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
       { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
       { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
-      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
+      { label: 'Reste', align: 'right', render: r => <span className="ds-strong">{n(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   uncashedChecks: {
     title: 'Chèques émis non encaissés', accent: 'var(--ds-warning)', bg: 'var(--ds-warning-bg)',
     columns: [
       { label: 'Bénéficiaire', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
-      { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
+      { label: 'Réf', render: r => <span className="ds-ref">{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
       { label: 'Émis le', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
       { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
-      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
+      { label: 'Montant', align: 'right', render: r => <span className="ds-strong">{n(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
 };
@@ -1135,7 +1102,7 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
   onClose: () => void;
 }) {
   const cfg = DETAIL_CONFIG[kind];
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['finance-detail', kind, dateFrom, dateTo],
     queryFn: () => reportsApi.financeOverviewDetail(kind, dateFrom, dateTo),
   });
@@ -1191,42 +1158,32 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
   };
 
   return (
-    <div className="ds-panel">
-      {/* En-tête */}
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <span>Détail</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">{cfg.title}</span>
-        </div>
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-          {rows.length} ligne{rows.length > 1 ? 's' : ''}{rows.length !== allRows.length && <> sur {allRows.length}</>} · <strong style={{ color: 'var(--odoo-text)' }}>{money(total)}</strong>
-        </span>
-        <div style={{ flex: 1 }} />
-        <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer le détail" title="Fermer le détail"><X size={14} /></button>
-      </div>
-      {/* Barre de recherche / filtre / tri */}
-      {!isLoading && allRows.length > 0 && (
-        <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0, borderRadius: 0 }}>
-          <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." aria-label="Rechercher dans le détail"
-            className="odoo-search-input" style={{ flex: '1 1 200px', minWidth: 0 }} />
-          {cfg.filter && filterOptions.length > 0 && (
-            <SelectFilter label={cfg.filter.placeholder.replace(/^Tou(te)?s (les )?/i, '') || 'Filtre'} icon={Filter} value={filterValue} onChange={setFilterValue}
-              allLabel="Tous" options={filterOptions.map(v => ({ key: v, label: cfg.filter!.display(v) }))} />
-          )}
-          {hasControls && (
-            <button type="button" onClick={() => { setSearch(''); setFilterValue(''); setSortCol(null); setSortDir('asc'); }}
-              className="odoo-btn-secondary">
-              <X size={12} /> Effacer les filtres
-            </button>
-          )}
-        </div>
-      )}
-      {/* Body */}
-      <div style={{ overflowX: 'auto' }}>
+    <div>
+      <SectionHeader title={`Détail · ${cfg.title}`}
+        note={<>{rows.length} ligne{rows.length > 1 ? 's' : ''}{rows.length !== allRows.length && <> sur {allRows.length}</>} · <strong>{money(total)}</strong></>}>
+        <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer le détail" title="Fermer le détail"><X size={16} /></button>
+      </SectionHeader>
+      <DataPanel label={cfg.title}
+        bulk={!isLoading && allRows.length > 0 ? (
+          <Toolbar>
+            <SearchBar value={search} onChange={setSearch} placeholder="Rechercher..." label="Rechercher dans le détail" />
+            {cfg.filter && filterOptions.length > 0 && (
+              <SelectFilter label={cfg.filter.placeholder.replace(/^Tou(te)?s (les )?/i, '') || 'Filtre'} icon={Filter} value={filterValue} onChange={setFilterValue}
+                allLabel="Tous" options={filterOptions.map(v => ({ key: v, label: cfg.filter!.display(v) }))} />
+            )}
+            {hasControls && (
+              <button type="button" onClick={() => { setSearch(''); setFilterValue(''); setSortCol(null); setSortDir('asc'); }}
+                className="ds-btn-ghost ds-btn-sm">
+                <X size={12} /> Effacer les filtres
+              </button>
+            )}
+          </Toolbar>
+        ) : undefined}
+        footer={rows.length > 0 ? <Pager page={page} total={rows.length} onPage={setPage} note={cfg.title} /> : undefined}>
         {isLoading ? (
           <LoadingState bare label="Chargement du détail…" />
+        ) : isError ? (
+          <ErrorState bare error={error} onRetry={() => refetch()} />
         ) : rows.length === 0 ? (
           allRows.length === 0
             ? <EmptyState bare icon={ClipboardList} title="Aucune ligne à afficher" />
@@ -1239,7 +1196,7 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
                   <th key={i} onClick={() => toggleSort(i)} className={c.align === 'right' ? 'ds-num' : undefined}
                     aria-sort={sortCol === i ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                     style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
-                    {c.label}
+                    {c.label}{c.align === 'right' ? ` (${currencySymbol()})` : ''}
                     {sortCol === i && (sortDir === 'asc'
                       ? <ArrowUp size={11} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />
                       : <ArrowDown size={11} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />)}
@@ -1256,10 +1213,15 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={cfg.columns.length - 1} className="ds-strong">Total{rows.length !== allRows.length ? ' (filtré)' : ''}</td>
+                <td className="ds-num ds-strong">{n(total)}</td>
+              </tr>
+            </tfoot>
           </table>
         )}
-      </div>
-      {rows.length > 0 && <Pager page={page} total={rows.length} onPage={setPage} note={cfg.title} />}
+      </DataPanel>
     </div>
   );
 }
@@ -1294,7 +1256,7 @@ function PilotageTab() {
   }, [period, customFrom, customTo]);
   const toggleDetail = (k: string) => setDetailKind(d => (d === k ? null : (k as FinanceDetailKind)));
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['finance-overview', dateFrom, dateTo],
     queryFn: () => reportsApi.financeOverview(dateFrom, dateTo),
   });
@@ -1311,6 +1273,7 @@ function PilotageTab() {
     return () => clearTimeout(t);
   }, [detailKind]);
 
+  if (isError) return <ErrorState title="Le pilotage n'a pas pu être chargé" error={error} onRetry={() => refetch()} />;
   if (isLoading || !data) {
     return (
       <LoadingState label="Chargement du pilotage…" />
@@ -1517,7 +1480,7 @@ function PilotageTab() {
                   <th>N° BC</th>
                   <th>Fournisseur</th>
                   <th>Date de livraison</th>
-                  <th className="ds-num">Montant estimé</th>
+                  <th className="ds-num">Montant estimé ({currencySymbol()})</th>
                 </tr>
               </thead>
               <tbody>
@@ -1526,10 +1489,16 @@ function PilotageTab() {
                     <td className="ds-ref">{r.orderNumber}</td>
                     <td className="ds-strong">{r.supplierName}</td>
                     <td>{r.deliveryDate ? format(parseLocalDate(r.deliveryDate), 'dd/MM/yyyy') : '—'}</td>
-                    <td className="ds-num">{money(r.total)}</td>
+                    <td className="ds-num">{n(Number(r.total) || 0)}</td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3}>Total ({pipeline.receivedNotInvoiced.list.length} BC)</td>
+                  <td className="ds-num">{n(pipeline.receivedNotInvoiced.list.reduce((acc, r) => acc + (Number(r.total) || 0), 0))}</td>
+                </tr>
+              </tfoot>
             </table>
           </DataPanel>
         </div>
@@ -1551,7 +1520,7 @@ function CaisseTab() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['caisse-register', year, month],
     queryFn: () => caisseApi.register(year, month),
   });
@@ -1618,14 +1587,14 @@ function CaisseTab() {
 
   return (
     <>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={() => setShowImportModal(true)} className="odoo-btn-secondary">
           <Upload size={13} aria-hidden="true" /> Importer Excel
         </button>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary">
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
       {showImportModal && <CaisseImportModal onClose={() => setShowImportModal(false)} />}
 
@@ -1670,24 +1639,32 @@ function CaisseTab() {
 
       {/* Reconciliation alerts — significant daily discrepancies */}
       {(data as Record<string, any>)?.reconciliationAlerts && ((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length > 0 && (
-        <div className="odoo-section ds-panel">
-          <div className="odoo-section-header">
-            <AlertTriangle size={13} aria-hidden="true" style={{ display: 'inline', marginRight: 6, color: 'var(--ds-danger)' }} />
-            {((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length} jour(s) avec écart caisse significatif (&gt; 5 {currencySymbol()})
-          </div>
+        <div>
+          <SectionHeader title={`${((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length} jour(s) avec écart caisse significatif (> 5 ${currencySymbol()})`} />
+          <DataPanel label="Jours avec écart caisse significatif">
           <table className="odoo-table ds-dense">
+            <thead>
+              <tr>
+                <th style={{ width: 20 }}><span className="ds-sr-only">Alerte</span></th>
+                <th>Jour</th>
+                <th className="ds-num">Caissière ({currencySymbol()})</th>
+                <th className="ds-num">Système ({currencySymbol()})</th>
+                <th className="ds-num">Écart ({currencySymbol()})</th>
+              </tr>
+            </thead>
             <tbody>
               {((data as Record<string, any>).reconciliationAlerts as { date: string; cashCaissiere: number; cashSysteme: number; ecart: number }[]).map(a => (
                 <tr key={a.date}>
                   <td><span className="odoo-status-dot danger" role="img" title="Écart caisse significatif" aria-label="Écart caisse significatif" /></td>
                   <td style={{ textTransform: 'capitalize' }}>{format(parseLocalDate(a.date), 'EEEE dd/MM', { locale: fr })}</td>
-                  <td style={{ color: 'var(--ds-muted)' }}>Caissière {n(a.cashCaissiere)}</td>
-                  <td style={{ color: 'var(--ds-muted)' }}>Système {n(a.cashSysteme)}</td>
-                  <td className="ds-num ds-strong" style={{ color: 'var(--ds-danger)' }}>{a.ecart > 0 ? '+' : ''}{money(a.ecart)}</td>
+                  <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(a.cashCaissiere)}</td>
+                  <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{n(a.cashSysteme)}</td>
+                  <td className="ds-num ds-strong" style={{ color: 'var(--ds-danger)' }}>{a.ecart > 0 ? '+' : ''}{n(a.ecart)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </DataPanel>
         </div>
       )}
 
@@ -1709,24 +1686,21 @@ function CaisseTab() {
       {/* Daily sections */}
       {isLoading ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : days.length === 0 ? (
         <EmptyState icon={Wallet} title="Aucune activité sur ce mois" text="Les ventes, recettes et sorties de caisse apparaîtront ici, jour par jour." />
       ) : (
         <>
         {monthTotals.clientReceipts > 0 && (
-          <div className="odoo-section ds-panel">
-            <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Receipt size={13} /> Règlements clients du mois
-              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--theme-text-muted)' }}>
-                · factures encaissées par la direction, hors ventes de caisse
-              </span>
-              <span style={{ marginLeft: 'auto', color: 'var(--ds-success)' }}>+{money(monthTotals.clientReceipts)}</span>
-            </div>
+          <div>
+            <SectionHeader title="Règlements clients du mois" note="factures encaissées par la direction, hors ventes de caisse" />
+            <DataPanel label="Règlements clients du mois">
             <table className="odoo-table ds-dense">
               <thead>
                 <tr>
                   <th>Date</th><th>Facture</th><th>Client</th><th>Mode</th><th>Référence</th>
-                  <th className="ds-num">Montant</th>
+                  <th className="ds-num">Montant ({currencySymbol()})</th>
                 </tr>
               </thead>
               <tbody>
@@ -1738,15 +1712,23 @@ function CaisseTab() {
                     <td><StatusTag tone={p.payment_method === 'cash' ? 'done' : 'progress'} label={caissePayLabel(p.payment_method)} />
                       <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginLeft: 6 }}>{p.payment_method === 'cash' ? 'solde cash' : 'solde banque'}</span></td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(p.reference as string) || '—'}</td>
-                    <td className="ds-num" style={{ fontWeight: 700, color: 'var(--ds-success)' }}>+{money(parseFloat(p.amount as string) || 0)}</td>
+                    <td className="ds-num" style={{ fontWeight: 700, color: 'var(--ds-success)' }}>+{n(parseFloat(p.amount as string) || 0)}</td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={5}>Total des règlements clients</td>
+                  <td className="ds-num" style={{ color: 'var(--ds-success)' }}>+{n(monthTotals.clientReceipts)}</td>
+                </tr>
+              </tfoot>
             </table>
+            </DataPanel>
           </div>
         )}
-        <div className="odoo-section ds-panel">
-          <div className="odoo-section-header">Journal quotidien <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>· montants en {currencySymbol()}</span></div>
+        <div>
+          <SectionHeader title="Journal quotidien" note={`montants en ${currencySymbol()}`} />
+          <DataPanel label="Journal quotidien">
           <table className="odoo-table ds-dense">
             <thead>
               <tr>
@@ -1826,73 +1808,81 @@ function CaisseTab() {
               })}
             </tbody>
           </table>
+          </DataPanel>
         </div>
         </>
       )}
 
       {/* Monthly recap */}
       {days.length > 0 && (
-        <div className="odoo-section ds-panel">
-          <div className="odoo-section-header">
-            <BarChart3 size={13} style={{ display: 'inline', marginRight: 6 }} />
-            Récap {MONTH_NAMES[month - 1]} {year}
-          </div>
+        <div>
+          <SectionHeader title={`Récap ${MONTH_NAMES[month - 1]} ${year}`} />
+          <DataPanel label={`Récap ${MONTH_NAMES[month - 1]} ${year}`}>
           <table className="odoo-table ds-dense">
+            <thead>
+              <tr>
+                <th>Poste</th>
+                <th className="ds-num">Montant ({currencySymbol()})</th>
+              </tr>
+            </thead>
             <tbody>
               <tr>
                 <td style={{ color: 'var(--theme-text-muted)' }}>Total Ventes ({monthTotals.saleCount})</td>
-                <td className="ds-num" style={{ fontWeight: 600 }}>{money(monthTotals.totalSales)}</td>
+                <td className="ds-num" style={{ fontWeight: 600 }}>{n(monthTotals.totalSales)}</td>
               </tr>
               <tr>
                 <td style={{ color: 'var(--theme-text-muted)' }}>Total encaissé</td>
-                <td className="ds-num" style={{ fontWeight: 600 }}>{money(monthTotals.cashCaissiere)}</td>
+                <td className="ds-num" style={{ fontWeight: 600 }}>{n(monthTotals.cashCaissiere)}</td>
               </tr>
               <tr>
                 <td style={{ color: 'var(--theme-text-muted)' }}>Carte Encaissée</td>
-                <td className="ds-num" style={{ fontWeight: 600 }}>{money(monthTotals.cardReceipts)}</td>
+                <td className="ds-num" style={{ fontWeight: 600 }}>{n(monthTotals.cardReceipts)}</td>
               </tr>
               {monthTotals.cardCommission > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Commission carte ({cardPct} %) — non versée en banque</td>
-                  <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>−{money(monthTotals.cardCommission)}</td>
+                  <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>−{n(monthTotals.cardCommission)}</td>
                 </tr>
               )}
               {monthTotals.clientReceipts > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Règlements clients (factures)</td>
-                  <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-success)' }}>{money(monthTotals.clientReceipts)}</td>
+                  <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-success)' }}>{n(monthTotals.clientReceipts)}</td>
                 </tr>
               )}
               {monthTotals.otherEntries > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Autres entrées</td>
-                  <td className="ds-num" style={{ fontWeight: 600 }}>{money(monthTotals.otherEntries)}</td>
+                  <td className="ds-num" style={{ fontWeight: 600 }}>{n(monthTotals.otherEntries)}</td>
                 </tr>
               )}
               <tr>
                 <td style={{ fontWeight: 600 }}>Total Recettes</td>
-                <td className="ds-num" style={{ fontWeight: 700, color: 'var(--ds-success)' }}>{money(monthTotals.totalRecettes)}</td>
+                <td className="ds-num" style={{ fontWeight: 700, color: 'var(--ds-success)' }}>{n(monthTotals.totalRecettes)}</td>
               </tr>
               {monthTotals.exits > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Sorties (fournisseurs, salaires, dépenses)</td>
-                  <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>−{money(monthTotals.exits)}</td>
+                  <td className="ds-num" style={{ fontWeight: 600, color: 'var(--ds-danger)' }}>−{n(monthTotals.exits)}</td>
                 </tr>
               )}
               {monthTotals.ecart !== 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Écart Caisse</td>
                   <td className="ds-num" style={{ fontWeight: 600, color: monthTotals.ecart > 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>
-                    {monthTotals.ecart > 0 ? '+' : ''}{money(monthTotals.ecart)}
+                    {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)}
                   </td>
                 </tr>
               )}
-              <tr style={{ borderTop: '2px solid var(--theme-bg-separator)' }}>
-                <td style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Solde Final</td>
-                <td className="ds-num" style={{ fontWeight: 700, fontSize: '1.125rem', color: monthTotals.solde >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{money(monthTotals.solde)}</td>
-              </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <td>Solde Final</td>
+                <td className="ds-num" style={{ color: monthTotals.solde >= 0 ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{n(monthTotals.solde)}</td>
+              </tr>
+            </tfoot>
           </table>
+          </DataPanel>
         </div>
       )}
     </>
@@ -1942,61 +1932,40 @@ function ReportOverrideModal({ year, month, current, override, onClose }: {
   const cardNum = parseFloat(card.replace(',', '.')) || 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-2">
-            <Pencil className="w-4 h-4 text-orange-500" />
-            <h2 className="text-base font-semibold">Report mois précédent — {MONTH_NAMES[month - 1]} {year}</h2>
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700" aria-label="Fermer">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-3">
-          <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-            Fixe le solde reporté au 1er {MONTH_NAMES[month - 1].toLowerCase()} {year}.
-            Les mois suivants repartiront de cette valeur, augmentée des mouvements enregistrés depuis.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-              Cash ({currencySymbol()})
-              <input type="text" inputMode="decimal" value={cash} onChange={e => setCash(e.target.value)}
-                className="odoo-filter-dropdown" style={{ width: '100%', marginTop: 4, textAlign: 'right' }} />
-            </label>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-              Carte ({currencySymbol()})
-              <input type="text" inputMode="decimal" value={card} onChange={e => setCard(e.target.value)}
-                className="odoo-filter-dropdown" style={{ width: '100%', marginTop: 4, textAlign: 'right' }} />
-            </label>
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'right' }}>
-            Total : <strong>{money(cashNum + cardNum)}</strong>
-          </div>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, display: 'block' }}>
-            Motif (optionnel)
-            <input type="text" value={note} onChange={e => setNote(e.target.value)}
-              placeholder="Ex : reprise historique avant mise en prod"
-              className="odoo-filter-dropdown" style={{ width: '100%', marginTop: 4 }} />
-          </label>
-        </div>
-
-        <div className="flex items-center justify-between p-4 border-t">
-          {override ? (
-            <button onClick={() => deleteMut.mutate()} disabled={busy} className="odoo-btn-secondary" style={{ color: 'var(--ds-danger)' }}>
+    <Modal title="Report mois précédent" subtitle={`${MONTH_NAMES[month - 1]} ${year}`} onClose={onClose} width={480} locked={busy}
+      footer={
+        <FormFooter onCancel={onClose} onSubmit={() => saveMut.mutate()} busy={busy}>
+          {override && (
+            <button type="button" onClick={() => deleteMut.mutate()} disabled={busy} className="ds-btn-danger">
               <Trash2 size={13} /> Supprimer l'ajustement
             </button>
-          ) : <span />}
-          <div style={{ display: 'inline-flex', gap: 8 }}>
-            <button onClick={onClose} disabled={busy} className="odoo-btn-secondary">Annuler</button>
-            <button onClick={() => saveMut.mutate()} disabled={busy} className="odoo-btn-primary">
-              {busy && <Loader2 size={13} className="animate-spin" />} Enregistrer
-            </button>
-          </div>
+          )}
+        </FormFooter>
+      }>
+      <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)' }}>
+        Fixe le solde reporté au 1er {MONTH_NAMES[month - 1].toLowerCase()} {year}.
+        Les mois suivants repartiront de cette valeur, augmentée des mouvements enregistrés depuis.
+      </p>
+      <FormSection title="Soldes reportés">
+        <div className="ds-form-grid">
+          <FormField label={`Cash (${currencySymbol()})`} htmlFor="report-cash">
+            <input id="report-cash" type="text" inputMode="decimal" value={cash} onChange={e => setCash(e.target.value)}
+              className="ds-input" style={{ textAlign: 'right' }} />
+          </FormField>
+          <FormField label={`Carte (${currencySymbol()})`} htmlFor="report-card">
+            <input id="report-card" type="text" inputMode="decimal" value={card} onChange={e => setCard(e.target.value)}
+              className="ds-input" style={{ textAlign: 'right' }} />
+          </FormField>
         </div>
-      </div>
-    </div>
+        <div style={{ fontSize: 13, color: 'var(--ds-muted)', textAlign: 'right' }}>
+          Total : <strong>{money(cashNum + cardNum)}</strong>
+        </div>
+        <FormField label="Motif (optionnel)" htmlFor="report-note">
+          <input id="report-note" type="text" value={note} onChange={e => setNote(e.target.value)}
+            placeholder="Ex : reprise historique avant mise en prod" className="ds-input" />
+        </FormField>
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -2055,7 +2024,7 @@ function ChargesTab() {
     ? format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: fr })
     : periodLabelOf(period, customFrom, customTo);
 
-  const { data: payments = [], isLoading: isLoadingPayments } = useQuery({
+  const { data: payments = [], isLoading: isLoadingPayments, isError: isPaymentsError, error: paymentsError, refetch: refetchPayments } = useQuery({
     queryKey: ['payments-charges', dateFrom, dateTo],
     queryFn: () => paymentsApi.list({ dateFrom, dateTo }),
   });
@@ -2384,7 +2353,7 @@ function ChargesTab() {
 
   return (
     <>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary">
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
@@ -2398,7 +2367,7 @@ function ChargesTab() {
         }} className="odoo-btn-primary">
           <Plus size={14} aria-hidden="true" /> Nouvelle dépense
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
       {/* Répartition : une carte par grande catégorie (clic = filtre), plus les lignes à catégoriser */}
       <StagePipeline
@@ -2449,6 +2418,8 @@ function ChargesTab() {
       {/* Flat table with referentiel columns */}
       {isLoading ? (
         <LoadingState />
+      ) : isPaymentsError ? (
+        <ErrorState error={paymentsError} onRetry={() => refetchPayments()} />
       ) : outgoing.length === 0 ? (
         <EmptyState icon={Receipt} title="Aucune sortie sur cette période" text="Les achats, salaires et dépenses réglés sur la période apparaîtront ici." />
       ) : displayed.length === 0 ? (
@@ -2542,17 +2513,10 @@ function ChargesTab() {
 
       {/* Add expense modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-              <div className="odoo-control-bar">
-                <div className="odoo-breadcrumb">
-                  <Plus size={14} style={{ color: 'var(--theme-accent)' }} />
-                  <span className="odoo-breadcrumb-current">Nouvelle dépense</span>
-                </div>
-                <div style={{ flex: 1 }} />
-                <button type="button" onClick={() => { setShowForm(false); setFormCategoryId(''); setFormPOId(''); }} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-              </div>
-            <form onSubmit={e => {
+        <Modal title="Nouvelle dépense" onClose={() => { setShowForm(false); setFormCategoryId(''); setFormPOId(''); }} width={560} locked={createMutation.isPending}
+          footer={<FormFooter onCancel={() => { setShowForm(false); setFormCategoryId(''); setFormPOId(''); }} busy={createMutation.isPending} disabled={isRhManagedCategory}
+            onSubmit={() => (document.getElementById('charges-expense-form') as HTMLFormElement | null)?.requestSubmit()} />}>
+            <form id="charges-expense-form" onSubmit={e => {
               e.preventDefault();
               const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
               fd.amount = parseFloat(fd.amount as string);
@@ -2582,158 +2546,135 @@ function ChargesTab() {
               fd.paymentMethod = expLegacy;
               if (expOverride) fd.cashOverride = expOverride;
               createMutation.mutate(fd);
-            }} className="p-5 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie *</label>
-                <CategoryCascadeSelector
-                  value={formCategoryId}
-                  onChange={(id) => { setFormCategoryId(id); setFormPOId(''); }}
-                  type="expense"
-                />
-              </div>
-
-              {isRhManagedCategory && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
-                  ⚠️ Les salaires et avances ne se saisissent plus ici : utilisez <strong>Ressources Humaines → Paie</strong> (salaires)
-                  ou <strong>→ Avances</strong> (avances, avec retenue automatique à la paie).
-                  Une fois payés, ils apparaissent automatiquement dans cette liste.
-                </div>
-              )}
-              {showPOWaivedBanner && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
-                  ℹ️ Cette catégorie demande normalement un bon de commande, mais la règle « BC requis avant dépense » est <strong>désactivée</strong> (paramètre des Achats). Tu peux saisir la dépense directement.
-                </div>
-              )}
-              {requiresPO && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                  <label className="block text-sm font-medium mb-1.5 text-amber-800">
-                    <ClipboardList size={14} className="inline mr-1" /> Bon de commande (obligatoire au-delà de {poRule?.threshold} {poRule?.currency})
-                  </label>
-                  <SearchSelect
-                    ariaLabel="Bon de commande"
-                    placeholder="Sélectionner un BC..."
-                    width="100%"
-                    size="md"
-                    value={formPOId}
-                    onChange={setFormPOId}
-                    options={(eligiblePOs as Record<string, any>[]).map(po => ({
-                      id: po.id as string,
-                      label: `${po.order_number as string} — ${po.supplier_name as string} — ${money(parseFloat(po.total_amount as string) || 0)}`,
-                    }))}
+            }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <FormSection title="Classement">
+                <FormField label="Catégorie" required>
+                  <CategoryCascadeSelector
+                    value={formCategoryId}
+                    onChange={(id) => { setFormCategoryId(id); setFormPOId(''); }}
+                    type="expense"
                   />
-                  {selectedPO && (
-                    <p className="text-xs text-amber-700 mt-2">
-                      Fournisseur: <strong>{selectedPO.supplier_name as string}</strong> | Montant BC: <strong>{money(parseFloat(selectedPO.total_amount as string) || 0)}</strong>
-                    </p>
-                  )}
-                  {(eligiblePOs as Record<string, any>[]).length === 0 && (
-                    <p className="text-xs text-red-600 mt-2">
-                      Aucun bon de commande disponible. Créez d'abord un BC dans l'onglet Bons de commande.
-                    </p>
-                  )}
-                </div>
-              )}
+                </FormField>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Montant *</label>
-                  <input name="amount" type="number" step="0.01" disabled={isRhManagedCategory}
-                    onChange={e => setExpAmount(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" required
-                    defaultValue={selectedPO ? parseFloat(selectedPO.total_amount as string) || '' : ''} key={formPOId} /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-                  <input name="paymentDate" type="date" disabled={isRhManagedCategory}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" required value={expDate} onChange={e => setExpDate(e.target.value)} /></div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de règlement</label>
-                  <PaymentModeSelect value={expMode} onChange={setExpMode} /></div>
-                {!(requiresPO && formPOId) && !isPersonnelExpense && (
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur</label>
+                {isRhManagedCategory && (
+                  <Alert tone="warning" icon={AlertTriangle}>
+                    Les salaires et avances ne se saisissent plus ici : utilisez <strong>Ressources Humaines → Paie</strong> (salaires)
+                    ou <strong>→ Avances</strong> (avances, avec retenue automatique à la paie).
+                    Une fois payés, ils apparaissent automatiquement dans cette liste.
+                  </Alert>
+                )}
+                {showPOWaivedBanner && (
+                  <Alert tone="info">
+                    Cette catégorie demande normalement un bon de commande, mais la règle « BC requis avant dépense » est <strong>désactivée</strong> (paramètre des Achats). Tu peux saisir la dépense directement.
+                  </Alert>
+                )}
+                {requiresPO && (
+                  <FormField label={`Bon de commande (obligatoire au-delà de ${poRule?.threshold} ${poRule?.currency})`}
+                    hint={selectedPO ? <>Fournisseur : <strong>{selectedPO.supplier_name as string}</strong> | Montant BC : <strong>{money(parseFloat(selectedPO.total_amount as string) || 0)}</strong></> : undefined}
+                    error={(eligiblePOs as Record<string, any>[]).length === 0 ? 'Aucun bon de commande disponible. Créez d\'abord un BC dans l\'onglet Bons de commande.' : undefined}>
                     <SearchSelect
-                      ariaLabel="Fournisseur"
-                      placeholder="Aucun"
+                      ariaLabel="Bon de commande"
+                      placeholder="Sélectionner un BC..."
                       width="100%"
                       size="md"
-                      disabled={isRhManagedCategory}
-                      value={expSupplierId}
-                      onChange={setExpSupplierId}
-                      options={(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => ({ id: s.id as string, label: s.name as string }))}
-                    /></div>
+                      value={formPOId}
+                      onChange={setFormPOId}
+                      options={(eligiblePOs as Record<string, any>[]).map(po => ({
+                        id: po.id as string,
+                        label: `${po.order_number as string} — ${po.supplier_name as string} — ${money(parseFloat(po.total_amount as string) || 0)}`,
+                      }))}
+                    />
+                  </FormField>
                 )}
-                {/* Categorie sous "Charges de personnel" : on affiche le selecteur Employe.
-                    Le champ est obligatoire (un salaire/prime doit etre rattache a une ressource). */}
-                {!(requiresPO && formPOId) && isPersonnelExpense && (
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Ressource / Employé *</label>
-                    <SearchSelect
-                      ariaLabel="Ressource / Employé"
-                      placeholder="Choisir un employé..."
-                      width="100%"
-                      size="md"
-                      disabled={isRhManagedCategory}
-                      value={expEmployeeId}
-                      onChange={setExpEmployeeId}
-                      options={(employees as Record<string, any>[])
-                        .filter(emp => emp.is_active !== false)
-                        .sort((a, b) => String(a.first_name || a.name || '').localeCompare(String(b.first_name || b.name || '')))
-                        .map(emp => {
-                          const fullName = [emp.first_name, emp.last_name].filter(Boolean).join(' ')
-                            || (emp.name as string) || (emp.email as string) || 'Sans nom';
-                          const role = emp.role || emp.position;
-                          return { id: emp.id as string, label: `${fullName}${role ? ` — ${role}` : ''}` };
-                        })}
-                    /></div>
-                )}
-              </div>
+              </FormSection>
 
-              {/* Mig 310 : chèque / effet → N° (suivi dans Chèques et Traites) ; virement → référence obligatoire. */}
-              {(expLegacy === 'check' || expLegacy === 'traite') ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1.5">N° {expLegacy === 'traite' ? 'd\'effet' : 'de chèque'} *</label>
-                    <input name="checkNumber" required className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500" /></div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Échéance</label>
-                    <input name="checkDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500" /></div>
+              <FormSection title="Règlement">
+                <div className="ds-form-grid">
+                  <FormField label="Montant" htmlFor="exp-amount" required>
+                    <input id="exp-amount" name="amount" type="number" step="0.01" disabled={isRhManagedCategory}
+                      onChange={e => setExpAmount(parseFloat(e.target.value) || 0)}
+                      className="ds-input" required
+                      defaultValue={selectedPO ? parseFloat(selectedPO.total_amount as string) || '' : ''} key={formPOId} />
+                  </FormField>
+                  <FormField label="Date" htmlFor="exp-date" required>
+                    <input id="exp-date" name="paymentDate" type="date" disabled={isRhManagedCategory}
+                      className="ds-input" required value={expDate} onChange={e => setExpDate(e.target.value)} />
+                  </FormField>
+                  <FormField label="Mode de règlement">
+                    <PaymentModeSelect value={expMode} onChange={setExpMode} />
+                  </FormField>
+                  {!(requiresPO && formPOId) && !isPersonnelExpense && (
+                    <FormField label="Fournisseur">
+                      <SearchSelect
+                        ariaLabel="Fournisseur"
+                        placeholder="Aucun"
+                        width="100%"
+                        size="md"
+                        disabled={isRhManagedCategory}
+                        value={expSupplierId}
+                        onChange={setExpSupplierId}
+                        options={(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => ({ id: s.id as string, label: s.name as string }))}
+                      />
+                    </FormField>
+                  )}
+                  {/* Categorie sous "Charges de personnel" : on affiche le selecteur Employe.
+                      Le champ est obligatoire (un salaire/prime doit etre rattache a une ressource). */}
+                  {!(requiresPO && formPOId) && isPersonnelExpense && (
+                    <FormField label="Ressource / Employé" required>
+                      <SearchSelect
+                        ariaLabel="Ressource / Employé"
+                        placeholder="Choisir un employé..."
+                        width="100%"
+                        size="md"
+                        disabled={isRhManagedCategory}
+                        value={expEmployeeId}
+                        onChange={setExpEmployeeId}
+                        options={(employees as Record<string, any>[])
+                          .filter(emp => emp.is_active !== false)
+                          .sort((a, b) => String(a.first_name || a.name || '').localeCompare(String(b.first_name || b.name || '')))
+                          .map(emp => {
+                            const fullName = [emp.first_name, emp.last_name].filter(Boolean).join(' ')
+                              || (emp.name as string) || (emp.email as string) || 'Sans nom';
+                            const role = emp.role || emp.position;
+                            return { id: emp.id as string, label: `${fullName}${role ? ` — ${role}` : ''}` };
+                          })}
+                      />
+                    </FormField>
+                  )}
                 </div>
-              ) : expModeDef?.requires_reference ? (
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Référence du virement *</label>
-                  <input name="reference" required placeholder="N° d'ordre ou référence bancaire"
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500" /></div>
-              ) : null}
-              <CashLimitGauge supplierId={(requiresPO && formPOId && selectedPO ? selectedPO.supplier_id as string : expSupplierId) || null}
-                date={expDate} amount={expAmount} modeCode={expMode} override={expOverride} onOverrideChange={setExpOverride} />
 
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-                <textarea name="description" rows={2} disabled={isRhManagedCategory}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" /></div>
+                {/* Mig 310 : chèque / effet → N° (suivi dans Chèques et Traites) ; virement → référence obligatoire. */}
+                {(expLegacy === 'check' || expLegacy === 'traite') ? (
+                  <div className="ds-form-grid">
+                    <FormField label={`N° ${expLegacy === 'traite' ? 'd\'effet' : 'de chèque'}`} htmlFor="exp-check-number" required>
+                      <input id="exp-check-number" name="checkNumber" required className="ds-input" />
+                    </FormField>
+                    <FormField label="Échéance" htmlFor="exp-check-date">
+                      <input id="exp-check-date" name="checkDate" type="date" className="ds-input" />
+                    </FormField>
+                  </div>
+                ) : expModeDef?.requires_reference ? (
+                  <FormField label="Référence du virement" htmlFor="exp-ref" required>
+                    <input id="exp-ref" name="reference" required placeholder="N° d'ordre ou référence bancaire" className="ds-input" />
+                  </FormField>
+                ) : null}
+                <CashLimitGauge supplierId={(requiresPO && formPOId && selectedPO ? selectedPO.supplier_id as string : expSupplierId) || null}
+                  date={expDate} amount={expAmount} modeCode={expMode} override={expOverride} onOverrideChange={setExpOverride} />
+              </FormSection>
 
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => { setShowForm(false); setFormCategoryId(''); setFormPOId(''); }}
-                  className="odoo-btn-secondary">Annuler</button>
-                <button type="submit" disabled={createMutation.isPending || isRhManagedCategory}
-                  title={isRhManagedCategory ? 'Saisie depuis Ressources Humaines → Paie / Avances' : undefined}
-                  className="odoo-btn-primary">
-                  {createMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                  Enregistrer
-                </button>
-              </div>
+              <FormField label="Description" htmlFor="exp-desc">
+                <textarea id="exp-desc" name="description" rows={2} disabled={isRhManagedCategory} className="ds-input" />
+              </FormField>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Edit expense modal */}
       {editingPayment && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-              <div className="odoo-control-bar">
-                <div className="odoo-breadcrumb">
-                  <Pencil size={14} style={{ color: 'var(--theme-accent)' }} />
-                  <span className="odoo-breadcrumb-current">Modifier la depense</span>
-                </div>
-                <div style={{ flex: 1 }} />
-                <button type="button" onClick={() => setEditingPayment(null)} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-              </div>
-            <form onSubmit={e => {
+        <Modal title="Modifier la dépense" onClose={() => setEditingPayment(null)} width={560} locked={updateMutation.isPending}
+          footer={<FormFooter onCancel={() => setEditingPayment(null)} busy={updateMutation.isPending}
+            onSubmit={() => (document.getElementById('charges-edit-form') as HTMLFormElement | null)?.requestSubmit()} />}>
+            <form id="charges-edit-form" onSubmit={e => {
               e.preventDefault();
               const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
               // Mig 310 : seuls catégorie et description se modifient ; montant, date et mode
@@ -2741,44 +2682,31 @@ function ChargesTab() {
               updateMutation.mutate({ id: editingPayment.id as string, data: {
                 categoryId: editCategoryId || null, description: fd.description ?? '',
               } });
-            }} className="p-5 space-y-4">
-              <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 space-y-1">
-                <div className="flex justify-between"><span>Montant</span><strong style={{ fontFamily: 'ui-monospace, monospace' }}>{money(parseFloat(editingPayment.amount as string) || 0)}</strong></div>
-                <div className="flex justify-between"><span>Date</span><span>{fmtPaymentDate(editingPayment.payment_date, 'fr')}</span></div>
-                <div className="flex justify-between"><span>Mode</span><span>{editingPayment.payment_mode ? paymentModeLabel(editingPayment, payModes) : getPaymentLabel(editingPayment.payment_method as string)}</span></div>
-                <div style={{ color: 'var(--theme-text-muted)' }}>Montant, date et mode ne se modifient plus : annulez la dépense avec un motif puis ressaisissez-la.</div>
-              </div>
+            }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <Alert tone="info" icon={Lock}>
+                <span style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 16, rowGap: 2 }}>
+                  <span>Montant</span><strong className="ds-num" style={{ textAlign: 'right' }}>{money(parseFloat(editingPayment.amount as string) || 0)}</strong>
+                  <span>Date</span><span style={{ textAlign: 'right' }}>{fmtPaymentDate(editingPayment.payment_date, 'fr')}</span>
+                  <span>Mode</span><span style={{ textAlign: 'right' }}>{editingPayment.payment_mode ? paymentModeLabel(editingPayment, payModes) : getPaymentLabel(editingPayment.payment_method as string)}</span>
+                </span>
+                <span style={{ display: 'block', marginTop: 6 }}>Montant, date et mode ne se modifient plus : annulez la dépense avec un motif puis ressaisissez-la.</span>
+              </Alert>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie</label>
+              <FormField label="Catégorie"
+                hint={editingPayment.category_id && !editCategoryId ? <>Catégorie actuelle : <strong>{getCategoryPath(String(editingPayment.category_id))}</strong></> : undefined}>
                 <CategoryCascadeSelector
                   value={editCategoryId}
                   onChange={setEditCategoryId}
                   type="expense"
                 />
-                {editingPayment.category_id && !editCategoryId && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Categorie actuelle : <span className="font-medium">{getCategoryPath(String(editingPayment.category_id))}</span>
-                  </p>
-                )}
-              </div>
+              </FormField>
 
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-                <textarea name="description" rows={2} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  defaultValue={editingPayment.description as string || ''} /></div>
-
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => setEditingPayment(null)}
-                  className="odoo-btn-secondary">Annuler</button>
-                <button type="submit" disabled={updateMutation.isPending}
-                  className="odoo-btn-primary">
-                  {updateMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                  Enregistrer
-                </button>
-              </div>
+              <FormField label="Description" htmlFor="edit-exp-desc">
+                <textarea id="edit-exp-desc" name="description" rows={2} className="ds-input"
+                  defaultValue={editingPayment.description as string || ''} />
+              </FormField>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {voidTarget && (
@@ -2795,19 +2723,11 @@ function ChargesTab() {
 
       {/* Modal de categorisation d'une ligne de charge (ligne seule) */}
       {categorizingInvoice && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-              <div className="odoo-control-bar">
-                <div className="odoo-breadcrumb">
-                  <Pencil size={14} style={{ color: 'var(--theme-accent)' }} />
-                  <span className="odoo-breadcrumb-current">Catégoriser la ligne</span>
-                <span className="odoo-breadcrumb-separator">›</span>
-                <span>{(categorizingInvoice.invoice_number as string) || '—'} · {(categorizingInvoice.supplier_name as string) || ''}</span>
-                </div>
-                <div style={{ flex: 1 }} />
-                <button type="button" onClick={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-              </div>
-            <form onSubmit={e => {
+        <Modal title="Catégoriser la ligne" subtitle={`${(categorizingInvoice.invoice_number as string) || '—'} · ${(categorizingInvoice.supplier_name as string) || ''}`}
+          onClose={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }} width={560} locked={updateInvoiceCategoryMutation.isPending}
+          footer={<FormFooter onCancel={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }} busy={updateInvoiceCategoryMutation.isPending}
+            onSubmit={() => (document.getElementById('charges-categorize-form') as HTMLFormElement | null)?.requestSubmit()} />}>
+            <form id="charges-categorize-form" onSubmit={e => {
               e.preventDefault();
               if (!categorizingCategoryId) { notify.error('Sélectionnez une catégorie'); return; }
               updateInvoiceCategoryMutation.mutate({
@@ -2815,35 +2735,20 @@ function ChargesTab() {
                 source: (categorizingInvoice.line_source as string) || 'invoice_item',
                 categoryId: categorizingCategoryId,
               });
-            }} className="p-5 space-y-4">
-              <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+            }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <Alert tone="warning">
                 Cette catégorie s&apos;applique <strong>uniquement à cette ligne</strong>. Les autres lignes de la facture / du bon de commande ne sont pas modifiées.
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Catégorie *</label>
+              </Alert>
+              <FormField label="Catégorie" required
+                hint={categorizingInvoice.category_id ? <>Catégorie actuelle : <strong>{getCategoryPath(String(categorizingInvoice.category_id))}</strong></> : undefined}>
                 <CategoryCascadeSelector
                   value={categorizingCategoryId}
                   onChange={setCategorizingCategoryId}
                   type="expense"
                 />
-                {categorizingInvoice.category_id && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Catégorie actuelle : <span className="font-medium">{getCategoryPath(String(categorizingInvoice.category_id))}</span>
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }}
-                  className="odoo-btn-secondary">Annuler</button>
-                <button type="submit" disabled={updateInvoiceCategoryMutation.isPending}
-                  className="odoo-btn-primary">
-                  {updateInvoiceCategoryMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                  Enregistrer
-                </button>
-              </div>
+              </FormField>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
     </>
   );
@@ -2948,7 +2853,7 @@ function ChequesTab() {
   // On charge TOUS les cheques pour que les KPIs et l'equation tresorerie
   // restent coherents quel que soit le filtre actif. Le tableau est ensuite
   // filtre cote client (statut + recherche).
-  const { data: checks = [], isLoading } = useQuery({
+  const { data: checks = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['payments-checks', 'all'],
     queryFn: () => paymentsApi.listChecks({ status: 'all' }),
   });
@@ -3302,6 +3207,8 @@ function ChequesTab() {
       {/* Tableau */}
       {isLoading ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : filtered.length === 0 ? (
         (hasActiveFilters || searchTerm)
           ? <NoResultState text="Aucun chèque ne correspond aux filtres." onReset={() => { resetFilters(); setSearchTerm(''); }} />
@@ -3332,7 +3239,7 @@ function ChequesTab() {
                 <th style={{ width: 110 }}>Encaissé le</th>
                 <th className="ds-num" style={{ width: 130, cursor: 'pointer', userSelect: 'none' }}
                   onClick={() => { if (sortBy === 'amount') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('amount'); setSortDir('desc'); } }}>
-                  Montant {sortBy === 'amount' && (sortDir === 'asc' ? '▲' : '▼')}
+                  Montant ({currencySymbol()}) {sortBy === 'amount' && (sortDir === 'asc' ? '▲' : '▼')}
                 </th>
                 <th style={{ width: 130 }}>Statut</th>
                 <th className="ds-actions" style={{ width: 190 }}><span className="ds-sr-only">Actions</span></th>
@@ -3383,13 +3290,13 @@ function ChequesTab() {
                         <>
                           {c.invoice_number && (
                             <div>
-                              Facture <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{c.invoice_number}</strong>
+                              Facture <strong className="ds-ref">{c.invoice_number}</strong>
                               {c.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({money(parseFloat(c.invoice_total))})</span>}
                             </div>
                           )}
                           {c.purchase_order_number && (
                             <div style={{ color: 'var(--theme-text-muted)' }}>
-                              BC <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{c.purchase_order_number}</strong>
+                              BC <strong className="ds-ref">{c.purchase_order_number}</strong>
                             </div>
                           )}
                           {!c.invoice_number && !c.purchase_order_number && (c.description || c.category_name) && (
@@ -3422,7 +3329,7 @@ function ChequesTab() {
                       )}
                     </td>
                     <td className="ds-num ds-strong">
-                      {money(g.totalAmount)}
+                      {n(g.totalAmount)}
                     </td>
                     <td><CheckStatusDot status={isCashed ? 'cashed' : isOverdue ? 'overdue' : 'pending'} /></td>
                     <td className="ds-actions" onClick={e => e.stopPropagation()}>
@@ -3456,7 +3363,7 @@ function ChequesTab() {
                       <td style={{ fontSize: '0.75rem' }}>
                         {r.invoice_number ? (
                           <div>
-                            Facture <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{r.invoice_number}</strong>
+                            Facture <strong className="ds-ref">{r.invoice_number}</strong>
                             {r.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({money(parseFloat(r.invoice_total))})</span>}
                           </div>
                         ) : (
@@ -3464,7 +3371,7 @@ function ChequesTab() {
                         )}
                         {r.purchase_order_number && r.invoice_number && (
                           <div style={{ color: 'var(--theme-text-muted)' }}>
-                            BC <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{r.purchase_order_number}</strong>
+                            BC <strong className="ds-ref">{r.purchase_order_number}</strong>
                           </div>
                         )}
                       </td>
@@ -3474,7 +3381,7 @@ function ChequesTab() {
                         {r.cashed_at ? fmtDate(r.cashed_at) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                       </td>
                       <td className="ds-num" style={{ fontSize: '0.75rem' }}>
-                        {money(parseFloat(r.amount))}
+                        {n(parseFloat(r.amount) || 0)}
                       </td>
                       <td><CheckStatusDot status={r.status === 'cashed' ? 'cashed' : r.status === 'overdue' ? 'overdue' : 'pending'} /></td>
                       <td className="ds-actions">
@@ -3492,6 +3399,13 @@ function ChequesTab() {
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={6}>Total ({groups.length} chèque{groups.length > 1 ? 's' : ''})</td>
+                <td className="ds-num">{n(groups.reduce((s, g) => s + g.totalAmount, 0))}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
           </table>
         </DataPanel>
       )}
@@ -3538,76 +3452,43 @@ function ConfirmCashedModal({
   const [note, setNote] = useState<string>('');
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 480, background: 'var(--theme-bg-card)', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Check size={14} style={{ color: 'var(--ds-success)' }} />
-            <span>Confirmer encaissement</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>
-              {check.check_number || `${parseFloat(check.amount).toFixed(2)} ${currencySymbol()}`}
-            </span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ padding: '10px 12px', background: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.8125rem' }}>
-            <div><strong>Beneficiaire :</strong> {check.supplier_name || check.employee_name || '—'}</div>
-            <div><strong>Montant :</strong> {money(parseFloat(check.amount))}</div>
-            {invoices && invoices.length > 0 ? (
-              <div style={{ marginTop: 6 }}>
-                <strong>{invoices.length} factures reglees par ce cheque :</strong>
-                <ul style={{ margin: '4px 0 0', paddingLeft: 16, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                  {invoices.map((inv, i) => (
-                    <li key={i} style={{ fontFamily: 'ui-monospace, monospace' }}>
-                      {inv.number || '—'} · {money(inv.amount)}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              check.invoice_number && <div><strong>Facture :</strong> {check.invoice_number}</div>
-            )}
-            {check.invoice_due_date && (
-              <div style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginTop: 4 }}>
-                Echeance prevue : {format(parseLocalDate(check.invoice_due_date.slice(0, 10)), 'dd/MM/yyyy')}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
-              Date d'encaissement effective *
-            </label>
-            <input type="date" value={cashedAt} onChange={e => setCashedAt(e.target.value)}
-              className="odoo-input" style={{ width: '100%' }} />
-            <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 4 }}>
-              Date du debit bancaire (releve de compte). Sert de date de charge en tresorerie.
-            </p>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
-              Note (optionnel)
-            </label>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
-              placeholder="Ex : vu sur releve bancaire du 12/07"
-              className="odoo-input" style={{ width: '100%' }} />
-          </div>
-        </div>
-        <div style={{ borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={() => onConfirm(cashedAt, note.trim() || undefined)} disabled={isPending || !cashedAt}
-            className="odoo-btn-primary">
-            {isPending && <Loader2 size={12} className="animate-spin" />}
-            <Check size={13} /> Confirmer
-          </button>
-        </div>
-      </div>
-    </div>
+    <Modal title="Confirmer l'encaissement" subtitle={check.check_number || `${parseFloat(check.amount).toFixed(2)} ${currencySymbol()}`}
+      onClose={onClose} width={480} locked={isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => onConfirm(cashedAt, note.trim() || undefined)} busy={isPending} disabled={!cashedAt} submitLabel="Confirmer" />}>
+      <Alert tone="info">
+        <span style={{ display: 'block' }}><strong>Bénéficiaire :</strong> {check.supplier_name || check.employee_name || '—'}</span>
+        <span style={{ display: 'block' }}><strong>Montant :</strong> {money(parseFloat(check.amount))}</span>
+        {invoices && invoices.length > 0 ? (
+          <span style={{ display: 'block', marginTop: 6 }}>
+            <strong>{invoices.length} factures réglées par ce chèque :</strong>
+            <ul style={{ margin: '4px 0 0', paddingLeft: 16, fontSize: 12 }}>
+              {invoices.map((inv, i) => (
+                <li key={i} className="ds-ref">
+                  {inv.number || '—'} · {money(inv.amount)}
+                </li>
+              ))}
+            </ul>
+          </span>
+        ) : (
+          check.invoice_number && <span style={{ display: 'block' }}><strong>Facture :</strong> {check.invoice_number}</span>
+        )}
+        {check.invoice_due_date && (
+          <span style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+            Échéance prévue : {format(parseLocalDate(check.invoice_due_date.slice(0, 10)), 'dd/MM/yyyy')}
+          </span>
+        )}
+      </Alert>
+      <FormSection title="Encaissement">
+        <FormField label="Date d'encaissement effective" htmlFor="cashed-at" required
+          hint="Date du débit bancaire (relevé de compte). Sert de date de charge en trésorerie.">
+          <input id="cashed-at" type="date" value={cashedAt} onChange={e => setCashedAt(e.target.value)} className="ds-input" />
+        </FormField>
+        <FormField label="Note (optionnel)" htmlFor="cashed-note">
+          <textarea id="cashed-note" value={note} onChange={e => setNote(e.target.value)} rows={2}
+            placeholder="Ex : vu sur relevé bancaire du 12/07" className="ds-input" />
+        </FormField>
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -3619,7 +3500,7 @@ function ResumeTab() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['caisse-register', year, month],
     queryFn: () => caisseApi.register(year, month),
   });
@@ -3686,11 +3567,11 @@ function ResumeTab() {
 
   return (
     <>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary">
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
       {/* Indicateurs du mois */}
       <KpiGrid>
@@ -3709,6 +3590,8 @@ function ResumeTab() {
       {/* Daily grid */}
       {isLoading ? (
         <LoadingState label="Chargement du résumé…" />
+      ) : isError ? (
+        <ErrorState title="Le résumé n'a pas pu être chargé" error={error} onRetry={() => refetch()} />
       ) : (
         <DataPanel label="Résumé du mois" footer={<TableFooter note={`${MONTH_NAMES[month - 1]} ${year} · montants en ${currencySymbol()}`} />}>
           <table className="odoo-table ds-dense">
@@ -3786,53 +3669,50 @@ function InternalTransferModal({ accounts, pending, onClose, onSubmit }: {
   const refRequired = from?.kind === 'bank';
   const amt = parseFloat(amount) || 0;
   const valid = !!fromId && !!toId && fromId !== toId && amt > 0 && !!date && (!refRequired || reference.trim().length > 0);
-  const field = 'w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400';
-  const lbl: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb"><ArrowLeftRight size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">Mouvement interne</span></div>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <form onSubmit={(e) => {
+    <Modal title="Mouvement interne" onClose={onClose} width={520} locked={pending}
+      footer={<FormFooter onCancel={onClose} busy={pending} disabled={!valid}
+        onSubmit={() => (document.getElementById('internal-transfer-form') as HTMLFormElement | null)?.requestSubmit()} />}>
+        <form id="internal-transfer-form" onSubmit={(e) => {
           e.preventDefault();
           if (!valid) return;
           onSubmit({ fromAccountId: fromId, toAccountId: toId, amount: Math.round(amt * 100) / 100, paymentDate: date,
             reference: reference.trim() || undefined, description: description.trim() || undefined });
-        }} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+        }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)' }}>
             Un versement d'espèces en banque n'est pas une dépense : il ne touche ni les charges ni le plafond espèces des fournisseurs.
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label style={lbl}>De *</label>
-              <SearchSelect value={fromId} onChange={setFromId} clearable={false}
-                placeholder="Compte source" width="100%" size="md" ariaLabel="Compte source"
-                options={accounts.map(a => ({ id: String(a.id), label: a.label as string }))} /></div>
-            <div><label style={lbl}>Vers *</label>
-              <SearchSelect value={toId} onChange={setToId} clearable={false}
-                placeholder="Compte destination" width="100%" size="md" ariaLabel="Compte destination"
-                options={accounts.map(a => ({ id: String(a.id), label: a.label as string }))} /></div>
-          </div>
-          {fromId === toId && <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--ds-danger)' }}>Choisissez deux comptes différents.</p>}
-          <div className="grid grid-cols-2 gap-3">
-            <div><label style={lbl}>Montant *</label>
-              <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} className={field} required /></div>
-            <div><label style={lbl}>Date *</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={field} required /></div>
-          </div>
-          <div><label style={lbl}>{refRequired ? 'Référence bancaire *' : 'Référence (bordereau de versement)'}</label>
-            <input value={reference} onChange={e => setReference(e.target.value)} className={field} /></div>
-          <div><label style={lbl}>Note</label>
-            <input value={description} onChange={e => setDescription(e.target.value)} className={field} placeholder="Optionnel" /></div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="submit" disabled={!valid || pending} className="odoo-btn-primary">Enregistrer</button>
-          </div>
+          <FormSection title="Comptes">
+            <div className="ds-form-grid">
+              <FormField label="De" required error={fromId === toId ? 'Choisissez deux comptes différents.' : undefined}>
+                <SearchSelect value={fromId} onChange={setFromId} clearable={false}
+                  placeholder="Compte source" width="100%" size="md" ariaLabel="Compte source"
+                  options={accounts.map(a => ({ id: String(a.id), label: a.label as string }))} />
+              </FormField>
+              <FormField label="Vers" required>
+                <SearchSelect value={toId} onChange={setToId} clearable={false}
+                  placeholder="Compte destination" width="100%" size="md" ariaLabel="Compte destination"
+                  options={accounts.map(a => ({ id: String(a.id), label: a.label as string }))} />
+              </FormField>
+            </div>
+          </FormSection>
+          <FormSection title="Mouvement">
+            <div className="ds-form-grid">
+              <FormField label="Montant" htmlFor="transfer-amount" required>
+                <input id="transfer-amount" type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} className="ds-input" required />
+              </FormField>
+              <FormField label="Date" htmlFor="transfer-date" required>
+                <input id="transfer-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="ds-input" required />
+              </FormField>
+            </div>
+            <FormField label={refRequired ? 'Référence bancaire' : 'Référence (bordereau de versement)'} htmlFor="transfer-ref" required={refRequired}>
+              <input id="transfer-ref" value={reference} onChange={e => setReference(e.target.value)} className="ds-input" />
+            </FormField>
+            <FormField label="Note" htmlFor="transfer-note">
+              <input id="transfer-note" value={description} onChange={e => setDescription(e.target.value)} className="ds-input" placeholder="Optionnel" />
+            </FormField>
+          </FormSection>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

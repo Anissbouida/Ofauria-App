@@ -3,6 +3,7 @@ import { Hash, Loader2 } from 'lucide-react';
 import api from '../../api/client';
 
 import { LoadingState } from '../../components/ds';
+import './production.css';
 /**
  * Numéros de série de l'ordre (M9, mig 585) : un par pièce des articles suivis par série,
  * créés à la déclaration (saisis, sinon « numéro de lot-0001… »). Lecture seule.
@@ -16,8 +17,8 @@ export default function SerialsPanel({ planId }: { planId: string }) {
     queryFn: () => api.get(`/production/${planId}/serials`).then(r => r.data.data as SerialRow[]),
   });
   return (
-    <div className="odoo-section" style={{ margin: '1rem' }}>
-      <div className="odoo-section-header"><Hash size={12} /> Numéros de série
+    <div className="ds-panel pd-section" style={{ margin: '1rem' }}>
+      <div className="pd-section-head"><Hash size={12} /> Numéros de série
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{data.length}</span>
       </div>
       {isLoading ? <LoadingState bare /> : data.length === 0 ? (
@@ -26,7 +27,7 @@ export default function SerialsPanel({ planId }: { planId: string }) {
         </p>
       ) : (
         <div style={{ overflowX: 'auto', maxHeight: 320 }}>
-          <table className="odoo-table">
+          <table className="odoo-table ds-dense">
             <thead><tr><th>Numéro</th><th>Article</th><th>Lot</th><th>État</th></tr></thead>
             <tbody>
               {data.map(s => (

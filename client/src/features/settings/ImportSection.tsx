@@ -8,6 +8,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { DataPanel, FormField, SectionHeader } from '../../components/ds';
 
 /**
  * Import générique (mig 370) : modèle Excel, association des colonnes du fichier aux
@@ -25,7 +26,6 @@ const ACTION_TAG = {
   error: { tone: 'blocked', label: 'Erreur' },
   skip: { tone: 'cancelled', label: 'Ignorée' },
 } as const;
-const select: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
 
 function errorMessage(err: unknown, fallback: string) {
   const e = err as { response?: { data?: { error?: { message?: string } } } };
@@ -66,7 +66,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
     qc.invalidateQueries({ queryKey: ['data-status'] }); qc.invalidateQueries({ queryKey: ['data-imports'] }); qc.invalidateQueries();
   });
   const undo = async (id: string, label: string) => {
-    if (!(await confirm(`Annuler l'import « ${label} » ? Les fiches créées seront supprimées (ou désactivées si elles sont déjà utilisées) et les valeurs modifiées remises comme avant.`))) return;
+    if (!(await confirm(`Annuler l'import « ${label} » ? Les fiches créées seront supprimées (ou désactivées si elles sont déjà utilisées) et les valeurs modifiées remises comme avant.`, { danger: true, confirmLabel: "Annuler l'import" }))) return;
     run(`undo:${id}`, async () => {
       const r = await settingsApi.undoImport(id);
       notify.success(`Import annulé : ${r.deleted} supprimée(s), ${r.deactivated} désactivée(s), ${r.restored} remise(s) en l'état`);
@@ -81,20 +81,28 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
 
   return (
     <>
-      <section className="prj-panel" style={card}>
-        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}><Upload size={15} /> Importer des données</div>
+      <section className="ds-panel" style={card}>
+        <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Upload size={15} aria-hidden="true" /> Importer des données</span>} />
         <PageNote help="Partez du modèle ou de votre propre fichier : vous associez ses colonnes aux champs de la fiche, chaque ligne est contrôlée, puis tout est importé d'un coup, ou rien s'il reste une erreur. Chaque import s'annule depuis le journal.">
           Excel ou CSV, contrôlé ligne par ligne, annulable.
         </PageNote>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select aria-label="Données à importer" value={entity} style={select}
-            onChange={e => { const k = e.target.value; setEntity(k); const m = (status.entities.find(x => x.key === k)?.modes ?? ['upsert']) as ImportMode[]; setMode(m[0]); reset(); }}>
-            {status.entities.map(e => <option key={e.key} value={e.key}>{e.label}</option>)}
-          </select>
-          <select aria-label="Mode d'import" value={mode} style={select} disabled={modes.length < 2}
-            onChange={e => { const md = e.target.value as ImportMode; setMode(md); if (file) runPreview(file, mapping, md); }}>
-            {modes.map(m => <option key={m} value={m}>{MODE_LABELS[m].label}</option>)}
-          </select>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ width: 240 }}>
+            <FormField label="Données à importer" htmlFor="import-entity">
+              <select id="import-entity" className="ds-input" value={entity}
+                onChange={e => { const k = e.target.value; setEntity(k); const m = (status.entities.find(x => x.key === k)?.modes ?? ['upsert']) as ImportMode[]; setMode(m[0]); reset(); }}>
+                {status.entities.map(e => <option key={e.key} value={e.key}>{e.label}</option>)}
+              </select>
+            </FormField>
+          </div>
+          <div style={{ width: 240 }}>
+            <FormField label="Mode d'import" htmlFor="import-mode">
+              <select id="import-mode" className="ds-input" value={mode} disabled={modes.length < 2}
+                onChange={e => { const md = e.target.value as ImportMode; setMode(md); if (file) runPreview(file, mapping, md); }}>
+                {modes.map(m => <option key={m} value={m}>{MODE_LABELS[m].label}</option>)}
+              </select>
+            </FormField>
+          </div>
           <button type="button" className="odoo-btn-secondary" onClick={() => run('tpl', () => onTemplate(entity))} disabled={busy !== null} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <FileSpreadsheet size={13} /> Modèle Excel
           </button>
@@ -110,15 +118,15 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
 
         {preview && mapping && (
           <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Colonnes du fichier</div>
-            <div style={{ overflowX: 'auto' }}>
+            <SectionHeader title="Colonnes du fichier" />
+            <DataPanel label="Association des colonnes">
               <table className="odoo-table">
                 <thead><tr><th>Colonne du fichier</th><th>Champ de la fiche</th></tr></thead>
                 <tbody>{preview.headers.map(h => (
                   <tr key={h}>
-                    <td>{h}</td>
+                    <td className="ds-strong">{h}</td>
                     <td>
-                      <select aria-label={`Champ pour la colonne ${h}`} value={mapping[h] ?? ''} style={{ ...select, minWidth: 240 }}
+                      <select aria-label={`Champ pour la colonne ${h}`} value={mapping[h] ?? ''} className="ds-input sm" style={{ minWidth: 240, width: 'auto' }}
                         onChange={e => { setMapping({ ...mapping, [h]: e.target.value }); setMappingDirty(true); }}>
                         <option value="">— ignorer cette colonne —</option>
                         {preview.fields.map(f => (
@@ -131,7 +139,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                   </tr>
                 ))}</tbody>
               </table>
-            </div>
+            </DataPanel>
             {missingRequired.length > 0 && (
               <StatusBanner tone="warning" icon={FileSpreadsheet} title="Champ obligatoire non associé">
                 {missingRequired.map(f => f.header).join(', ')} : associez une colonne, sinon les créations seront en erreur.
@@ -150,7 +158,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                 <StatusTag tone={ACTION_TAG.error.tone} label={`${preview.summary.error} erreur(s)`} />
                 {preview.summary.skip > 0 && <StatusTag tone={ACTION_TAG.skip.tone} label={`${preview.summary.skip} ignorée(s)`} />}
                 <div style={{ flex: 1 }} />
-                <select aria-label="Lignes affichées" value={filter} onChange={e => setFilter(e.target.value as typeof filter)} style={select}>
+                <select aria-label="Lignes affichées" value={filter} onChange={e => setFilter(e.target.value as typeof filter)} className="ds-input sm" style={{ width: 'auto' }}>
                   <option value="issues">Lignes en erreur</option><option value="all">Toutes les lignes</option>
                 </select>
               </div>
@@ -160,21 +168,21 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                 </StatusBanner>
               )}
               {rows.length > 0 && (
-                <div style={{ overflowX: 'auto', maxHeight: 360, overflowY: 'auto' }}>
-                  <table className="odoo-table">
-                    <thead><tr><th style={{ width: 60 }}>Ligne</th><th style={{ width: 120 }}>Résultat</th><th>Données</th><th>Motif</th></tr></thead>
+                <DataPanel label="Contrôle des lignes" style={{ maxHeight: 360, overflowY: 'auto' }}>
+                  <table className="odoo-table ds-dense">
+                    <thead><tr><th className="ds-num" style={{ width: 60 }}>Ligne</th><th style={{ width: 120 }}>Résultat</th><th>Données</th><th>Motif</th></tr></thead>
                     <tbody>{rows.map(r => (
                       <tr key={r.line}>
-                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.line}</td>
+                        <td className="ds-num">{r.line}</td>
                         <td><StatusTag tone={ACTION_TAG[r.action].tone} label={ACTION_TAG[r.action].label} /></td>
                         <td style={{ fontSize: '0.8125rem' }}>{Object.values(r.values).filter(v => v !== null && v !== '').slice(0, 4).map(String).join(' · ')}</td>
-                        <td style={{ fontSize: '0.8125rem', color: r.action === 'error' ? 'var(--odoo-danger, #b3261e)' : 'var(--ds-muted)' }}>
+                        <td style={{ fontSize: '0.8125rem', color: r.action === 'error' ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>
                           {r.errors.length ? r.errors.map(e => `${e.column} : ${e.message}`).join(' ; ') : r.reason ?? ''}
                         </td>
                       </tr>
                     ))}</tbody>
                   </table>
-                </div>
+                </DataPanel>
               )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button type="button" className="odoo-btn-secondary" onClick={reset}>Annuler</button>
@@ -188,16 +196,16 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
         )}
       </section>
 
-      <section className="prj-panel" style={card}>
-        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}><History size={15} /> Journal des imports</div>
+      <section className="ds-panel" style={card}>
+        <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><History size={15} aria-hidden="true" /> Journal des imports</span>} />
         {imports.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', margin: 0 }}>Aucun import enregistré.</p> : (
-          <div style={{ overflowX: 'auto' }}>
+          <DataPanel label="Journal des imports">
             <table className="odoo-table">
               <thead><tr><th>Date</th><th>Données</th><th>Fichier</th><th>Mode</th><th className="ds-num">Créées</th><th className="ds-num">Mises à jour</th><th>Par</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{imports.map(i => (
                 <tr key={i.id} style={{ opacity: i.status === 'undone' ? 0.6 : 1 }}>
                   <td style={{ whiteSpace: 'nowrap' }}>{new Date(i.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
-                  <td>{i.entity_label}</td>
+                  <td className="ds-strong">{i.entity_label}</td>
                   <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{i.file_name ?? '—'}</td>
                   <td style={{ fontSize: '0.8125rem' }}>{MODE_LABELS[i.mode].label}</td>
                   <td className="ds-num">{i.created_count}</td>
@@ -206,16 +214,16 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                   <td>{i.status === 'undone'
                     ? <StatusTag tone="cancelled" title={i.undo_report ? `${i.undo_report.deleted} supprimée(s), ${i.undo_report.deactivated} désactivée(s), ${i.undo_report.restored} remise(s) en l'état` : undefined} label={`Annulé${i.undone_by_name ? ` par ${i.undone_by_name}` : ''}`} />
                     : <StatusTag tone="done" label="Importé" />}</td>
-                  <td className="ds-num">
+                  <td className="ds-actions">
                     {i.can_undo && canEdit('settings') && (
-                      <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={busy !== null}
+                      <button type="button" className="odoo-btn-secondary ds-btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={busy !== null}
                         onClick={() => undo(i.id, `${i.entity_label} · ${i.file_name ?? ''}`)}><Undo2 size={12} /> Annuler</button>
                     )}
                   </td>
                 </tr>
               ))}</tbody>
             </table>
-          </div>
+          </DataPanel>
         )}
       </section>
     </>

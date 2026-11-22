@@ -6,13 +6,12 @@ import { fr } from 'date-fns/locale';
 import { controleApi, type ReceptionCheckRow } from '../../api/controle.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar, ListEmpty } from '../sales/ListTemplate';
 import { StageChips, Panel, PagerFoot, PageLoading } from './KlUi';
-import { Breadcrumb, FormField, FormFooter, NoResultState } from '../../components/ds';
+import { FormField, FormFooter, Modal, NoResultState } from '../../components/ds';
 
 /**
  * Contrôles à réception : un bon de réception = un contrôle (température, aspect,
@@ -204,15 +203,10 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
   );
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" aria-label="Contrôle à réception" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <Breadcrumb icon={ClipboardCheck} items={[{ label: 'Contrôle à réception' }, { label: <span className="ds-ref">{row.voucher_number}</span> }]} />
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <Modal title="Contrôle à réception" subtitle={<span className="ds-ref">{row.voucher_number}</span>} onClose={onClose} locked={save.isPending} width={520}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => save.mutate()} submitLabel="Enregistrer le contrôle"
+        busy={save.isPending} disabled={!overall && !notes.trim()} />}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)', marginBottom: 6 }}>
             {row.supplier_name ?? 'Fournisseur inconnu'} · reçu le {format(new Date(row.reception_date), 'd MMM yyyy', { locale: fr })} · {row.line_count} ligne{row.line_count > 1 ? 's' : ''}
           </div>
@@ -221,7 +215,7 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', padding: '8px 0', borderBottom: '1px solid var(--odoo-border)' }}>
               <Thermometer size={14} style={{ color: 'var(--ds-muted)' }} /> Température relevée
               <input type="number" step="0.1" value={temperatureValue} onChange={e => setTemperatureValue(e.target.value)}
-                className="odoo-filter-dropdown" style={{ width: 90, textAlign: 'right' }} aria-label="Température en degrés" /> °C
+                className="ds-input sm ds-num" style={{ width: 90 }} aria-label="Température en degrés" /> °C
             </label>
           )}
           <Crit label="Aspect visuel (couleur, odeur, intégrité)" value={visualOk} onChange={v => setVisualOk(v !== false)} />
@@ -244,11 +238,6 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
             </StatusBanner>
           </div>
         </div>
-        <div style={{ position: 'sticky', bottom: 0, background: 'var(--ds-card)' }}>
-          <FormFooter onCancel={onClose} onSubmit={() => save.mutate()} submitLabel="Enregistrer le contrôle"
-            busy={save.isPending} disabled={!overall && !notes.trim()} />
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }

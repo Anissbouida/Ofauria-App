@@ -9,6 +9,8 @@ import { ListKpi, FilterChips, ListEmpty } from '../sales/ListTemplate';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { DataPanel, FormField, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Paramètres › E-mails (mig 364). Le serveur d'envoi (SMTP) se configure par variables
@@ -19,8 +21,6 @@ const STATUS: Record<OutboxMessage['status'], { label: string; tone: StatusTone 
   failed: { label: 'Échec', tone: 'blocked' }, cancelled: { label: 'Annulé', tone: 'cancelled' },
 };
 const dt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
-const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)', width: '100%' };
-const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
 
 export default function MailTab() {
   const qc = useQueryClient();
@@ -53,7 +53,7 @@ export default function MailTab() {
     onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)),
   });
 
-  if (isLoading || !st) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading || !st) return <LoadingState />;
   const dirty = form.fromName !== (st.settings.from_name ?? '') || form.replyTo !== (st.settings.reply_to ?? '') || form.footer !== (st.settings.footer ?? '');
 
   return (
@@ -81,27 +81,39 @@ export default function MailTab() {
         <ListKpi label="Envoyés (30 j)" value={String(st.counts.sent_30d)} />
       </section>
 
-      <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
-        <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em' }}>Expéditeur</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-          <label style={lab}>Nom affiché<input style={field} maxLength={120} disabled={!editable} value={form.fromName} onChange={e => setForm({ ...form, fromName: e.target.value })} placeholder="Ex. : Ofauria — Gestion" /></label>
-          <label style={lab}>Adresse de réponse<input style={field} type="email" maxLength={255} disabled={!editable} value={form.replyTo} onChange={e => setForm({ ...form, replyTo: e.target.value })} placeholder="Laisser vide : réponse à l'expéditeur" /></label>
+      <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-labelledby="mail-sender-title">
+        <SectionHeader title={<span id="mail-sender-title">Expéditeur</span>}>
+          {editable && (
+            <button type="button" className="odoo-btn-primary" disabled={!dirty || save.isPending} aria-busy={save.isPending || undefined}
+              onClick={() => save.mutate({ fromName: form.fromName, replyTo: form.replyTo, footer: form.footer })}>Enregistrer</button>
+          )}
+        </SectionHeader>
+        <div className="ds-form-grid">
+          <FormField label="Nom affiché" htmlFor="mail-from-name">
+            <input id="mail-from-name" className="ds-input" maxLength={120} disabled={!editable} value={form.fromName} onChange={e => setForm({ ...form, fromName: e.target.value })} placeholder="Ex. : Ofauria — Gestion" />
+          </FormField>
+          <FormField label="Adresse de réponse" htmlFor="mail-reply-to" hint="Laisser vide : réponse à l'expéditeur">
+            <input id="mail-reply-to" className="ds-input" type="email" maxLength={255} disabled={!editable} value={form.replyTo} onChange={e => setForm({ ...form, replyTo: e.target.value })} />
+          </FormField>
         </div>
-        <label style={lab}>Pied de message<textarea style={{ ...field, minHeight: 56 }} maxLength={500} disabled={!editable} value={form.footer} onChange={e => setForm({ ...form, footer: e.target.value })} placeholder="Ajouté sous chaque e-mail (coordonnées, mention…)" /></label>
+        <FormField label="Pied de message" htmlFor="mail-footer" hint="Ajouté sous chaque e-mail (coordonnées, mention…)">
+          <textarea id="mail-footer" className="ds-input" style={{ minHeight: 56 }} maxLength={500} disabled={!editable} value={form.footer} onChange={e => setForm({ ...form, footer: e.target.value })} />
+        </FormField>
         {editable && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button type="button" className="odoo-btn-primary" disabled={!dirty || save.isPending} onClick={() => save.mutate({ fromName: form.fromName, replyTo: form.replyTo, footer: form.footer })}>Enregistrer</button>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
-              <input type="checkbox" checked={st.settings.enabled} disabled={save.isPending} onChange={e => save.mutate({ enabled: e.target.checked })} />
-              Envoi des e-mails activé
-            </label>
-          </div>
+          <label htmlFor="mail-enabled" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+            <input id="mail-enabled" type="checkbox" checked={st.settings.enabled} disabled={save.isPending} onChange={e => save.mutate({ enabled: e.target.checked })} />
+            Envoi des e-mails activé
+          </label>
         )}
       </section>
 
       {editable && (
-        <section className="prj-panel" style={{ padding: '16px 18px', display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <label style={{ ...lab, flex: '1 1 260px', maxWidth: 360 }}>Envoyer un e-mail de test à<input style={field} type="email" value={testTo} onChange={e => setTestTo(e.target.value)} /></label>
+        <section className="ds-panel" style={{ padding: '16px 18px', display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }} aria-label="E-mail de test">
+          <div style={{ flex: '1 1 260px', maxWidth: 360 }}>
+            <FormField label="Envoyer un e-mail de test à" htmlFor="mail-test-to">
+              <input id="mail-test-to" className="ds-input" type="email" value={testTo} onChange={e => setTestTo(e.target.value)} />
+            </FormField>
+          </div>
           <button type="button" className="odoo-btn-secondary" disabled={!st.configured || !/\S+@\S+\.\S+/.test(testTo) || test.isPending} onClick={() => test.mutate()}
             title={st.configured ? undefined : 'Aucun serveur d\'envoi configuré'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             {test.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Envoyer le test
@@ -110,7 +122,7 @@ export default function MailTab() {
       )}
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <div className="kl-sec" style={{ margin: '4px 4px 0' }}><h2 style={{ fontSize: 19 }}>File d'envoi</h2></div>
+        <SectionHeader title="File d'envoi" />
         <FilterChips label="Filtrer par statut" value={filter} onChange={setFilter} chips={[
           { key: '', label: 'Tous' },
           { key: 'queued', label: 'En attente', count: st.counts.queued },
@@ -119,14 +131,14 @@ export default function MailTab() {
           { key: 'cancelled', label: 'Annulés' },
         ]} />
         {outbox.length === 0 ? <ListEmpty icon={Mail} title="Aucun message." /> : (
-          <div className="prj-panel prj-scroll">
+          <DataPanel label="File d'envoi">
             <table className="odoo-table">
               <thead><tr><th>Créé le</th><th>Destinataire</th><th>Objet</th><th>Événement</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{outbox.map(m => (
                 <tr key={m.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{dt(m.created_at)}</td>
                   <td>{m.to_name ? <>{m.to_name}<div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{m.to_email}</div></> : m.to_email}</td>
-                  <td>{m.subject}{m.last_error && <div style={{ fontSize: '0.75rem', color: 'var(--ds-danger)' }} title={m.last_error}>{m.last_error.slice(0, 120)}</div>}</td>
+                  <td className="ds-strong">{m.subject}{m.last_error && <div style={{ fontSize: '0.75rem', color: 'var(--ds-danger)' }} title={m.last_error}>{m.last_error.slice(0, 120)}</div>}</td>
                   <td style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>{m.type_label ?? (m.type === 'manual' ? 'Envoi manuel' : m.type)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <StatusTag tone={STATUS[m.status].tone} label={STATUS[m.status].label} />
@@ -134,18 +146,20 @@ export default function MailTab() {
                       {m.status === 'sent' ? dt(m.sent_at) : m.status === 'queued' && m.attempts > 0 ? `essai ${m.attempts + 1} à ${dt(m.next_attempt_at)}` : m.attempts ? `${m.attempts} essai(s)` : ''}
                     </div>
                   </td>
-                  <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                    {editable && (m.status === 'failed' || m.status === 'cancelled' || (m.status === 'queued' && m.attempts > 0)) && (
-                      <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => act.mutate({ id: m.id, action: 'retry' })}><RotateCcw size={12} /> Renvoyer</button>
-                    )}{' '}
-                    {editable && (m.status === 'queued' || m.status === 'failed') && (
-                      <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} aria-label="Annuler l'envoi" title="Annuler l'envoi" onClick={() => act.mutate({ id: m.id, action: 'cancel' })}><X size={12} /></button>
-                    )}
+                  <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                      {editable && (m.status === 'failed' || m.status === 'cancelled' || (m.status === 'queued' && m.attempts > 0)) && (
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={act.isPending} onClick={() => act.mutate({ id: m.id, action: 'retry' })}><RotateCcw size={12} /> Renvoyer</button>
+                      )}
+                      {editable && (m.status === 'queued' || m.status === 'failed') && (
+                        <RowMenu label={`Actions sur « ${m.subject} »`} items={[{ label: "Annuler l'envoi", icon: X, disabled: act.isPending, onSelect: () => act.mutate({ id: m.id, action: 'cancel' }) }]} />
+                      )}
+                    </span>
                   </td>
                 </tr>
               ))}</tbody>
             </table>
-          </div>
+          </DataPanel>
         )}
       </section>
     </div>

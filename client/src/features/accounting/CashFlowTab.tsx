@@ -3,9 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
-import { money as fmtMoney } from '../../utils/money';
-import { EmptyState, KpiCard, LoadingState, DataPanel, KpiGrid, SectionHeader, Toolbar } from '../../components/ds';
-import { DateRangeField } from './AccToolbarFields';
+import { money as fmtMoney, currencySymbol } from '../../utils/money';
+import { EmptyState, KpiCard, LoadingState, DataPanel, KpiGrid, SectionHeader, Toolbar, DateRangeField } from '../../components/ds';
 
 /**
  * État de flux de trésorerie (comptes classe 5). Encaissements et décaissements
@@ -14,6 +13,9 @@ import { DateRangeField } from './AccToolbarFields';
  */
 
 const money = (v: number) => fmtMoney(v);
+/** Montant sans devise (devise dans l'en-tête de colonne). */
+const amt = (v: number) => (v || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const cur = currencySymbol;
 
 export default function CashFlowTab() {
   const { user } = useAuth();
@@ -61,34 +63,34 @@ export default function CashFlowTab() {
               <thead>
                 <tr>
                   <th>Compte</th>
-                  <th className="ds-num">Ouverture</th>
-                  <th className="ds-num">Encaissements</th>
-                  <th className="ds-num">Décaissements</th>
-                  <th className="ds-num">Clôture</th>
+                  <th className="ds-num">Ouverture ({cur()})</th>
+                  <th className="ds-num">Encaissements ({cur()})</th>
+                  <th className="ds-num">Décaissements ({cur()})</th>
+                  <th className="ds-num">Clôture ({cur()})</th>
                 </tr>
               </thead>
               <tbody>
                 {data.accounts.map(a => (
                   <tr key={a.code}>
-                    <td><span style={{ fontFamily: 'ui-monospace, monospace' }}>{a.code}</span> {a.label}</td>
-                    <td className="ds-num">{money(a.opening)}</td>
-                    <td className="ds-num" style={{ color: 'var(--ds-success)' }}>{a.inflow > 0 ? money(a.inflow) : '—'}</td>
-                    <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{a.outflow > 0 ? money(a.outflow) : '—'}</td>
-                    <td className="ds-num" style={{ fontWeight: 600 }}>{money(a.closing)}</td>
+                    <td><span className="ds-ref">{a.code}</span> {a.label}</td>
+                    <td className="ds-num">{amt(a.opening)}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-success)' }}>{a.inflow > 0 ? amt(a.inflow) : '—'}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-danger)' }}>{a.outflow > 0 ? amt(a.outflow) : '—'}</td>
+                    <td className="ds-num ds-strong">{amt(a.closing)}</td>
                   </tr>
                 ))}
                 {data.accounts.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 20, color: 'var(--theme-text-muted)' }}>Aucun mouvement de trésorerie sur la période.</td></tr>
+                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 20, color: 'var(--ds-muted)' }}>Aucun mouvement de trésorerie sur la période.</td></tr>
                 )}
               </tbody>
               {data.accounts.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td>Total</td>
-                    <td className="ds-num">{money(data.openingTotal)}</td>
-                    <td className="ds-num">{money(data.inflowTotal)}</td>
-                    <td className="ds-num">{money(data.outflowTotal)}</td>
-                    <td className="ds-num">{money(data.closingTotal)}</td>
+                    <td className="ds-strong">Total</td>
+                    <td className="ds-num">{amt(data.openingTotal)}</td>
+                    <td className="ds-num">{amt(data.inflowTotal)}</td>
+                    <td className="ds-num">{amt(data.outflowTotal)}</td>
+                    <td className="ds-num">{amt(data.closingTotal)}</td>
                   </tr>
                 </tfoot>
               )}
@@ -101,20 +103,20 @@ export default function CashFlowTab() {
               <thead>
                 <tr>
                   <th>Nature</th>
-                  <th className="ds-num">Entrées</th>
-                  <th className="ds-num">Sorties</th>
+                  <th className="ds-num">Entrées ({cur()})</th>
+                  <th className="ds-num">Sorties ({cur()})</th>
                 </tr>
               </thead>
               <tbody>
                 {data.nature.map(n => (
                   <tr key={n.account_class}>
                     <td>{n.label}</td>
-                    <td className="ds-num" style={{ color: n.inflow > 0 ? 'var(--ds-success)' : 'var(--theme-text-muted)' }}>{n.inflow > 0 ? money(n.inflow) : '—'}</td>
-                    <td className="ds-num" style={{ color: n.outflow > 0 ? 'var(--ds-danger)' : 'var(--theme-text-muted)' }}>{n.outflow > 0 ? money(n.outflow) : '—'}</td>
+                    <td className="ds-num" style={{ color: n.inflow > 0 ? 'var(--ds-success)' : 'var(--ds-muted)' }}>{n.inflow > 0 ? amt(n.inflow) : '—'}</td>
+                    <td className="ds-num" style={{ color: n.outflow > 0 ? 'var(--ds-danger)' : 'var(--ds-muted)' }}>{n.outflow > 0 ? amt(n.outflow) : '—'}</td>
                   </tr>
                 ))}
                 {data.nature.length === 0 && (
-                  <tr><td colSpan={3} style={{ textAlign: 'center', padding: 20, color: 'var(--theme-text-muted)' }}>—</td></tr>
+                  <tr><td colSpan={3} style={{ textAlign: 'center', padding: 20, color: 'var(--ds-muted)' }}>—</td></tr>
                 )}
               </tbody>
             </table>

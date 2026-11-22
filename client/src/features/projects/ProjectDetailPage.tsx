@@ -13,9 +13,8 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { Breadcrumb, EmptyState, LoadingState } from '../../components/ds';
+import { Breadcrumb, DataPanel, EmptyState, LoadingState, Modal } from '../../components/ds';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import {
   ProjectFormModal, TaskFormModal, TimeEntryForm, TaskBoard, n2, n0, h1, PRIORITY_TAG, projectRevenue, consumption, usageTone,
 } from './shared';
@@ -201,9 +200,9 @@ export default function ProjectDetailPage() {
                 <TaskBoard tasks={tasks} editable={editable} onMove={(taskId, status) => setTaskStatus.mutate({ taskId, status })}
                   onOpen={t => editable && setTaskModal({ task: t })} />
               ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <DataPanel>
                   <table className="odoo-table">
-                    <thead><tr><th style={{ width: 40 }} /><th>Tâche</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th className="ds-num">Heures (h)</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+                    <thead><tr><th style={{ width: 40 }} /><th>Tâche</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th className="ds-num">Heures (h)</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
                     <tbody>{tasks.map(t => (
                       <tr key={t.id} style={{ opacity: t.status === 'cancelled' ? 0.5 : 1 }}>
                         <td><input type="checkbox" aria-label={`Fait : ${t.title}`} checked={t.status === 'done'} disabled={!editable} onChange={e => setTaskStatus.mutate({ taskId: t.id, status: e.target.checked ? 'done' : 'todo' })} /></td>
@@ -224,16 +223,16 @@ export default function ProjectDetailPage() {
                       </tr>
                     ))}</tbody>
                   </table>
-                </div>
+                </DataPanel>
               ))}
 
               {tab === 'time' && (
                 <>
                   {editable && isOpen && <TimeEntryForm projectId={p.id} tasks={tasks} compact />}
                   {!time?.rows.length ? <EmptyState bare icon={Timer} title="Aucune heure déclarée" /> : (
-                    <div style={{ overflowX: 'auto' }}>
+                    <DataPanel>
                       <table className="odoo-table">
-                        <thead><tr><th>Date</th><th>Personne</th><th>Tâche ou activité</th><th>Note</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coût ({currencySymbol()})</th><th className="ds-num">Facturable ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+                        <thead><tr><th>Date</th><th>Personne</th><th>Tâche ou activité</th><th>Note</th><th className="ds-num">Heures (h)</th><th className="ds-num">Coût ({currencySymbol()})</th><th className="ds-num">Facturable ({currencySymbol()})</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
                         <tbody>{time.rows.map(t => (
                           <tr key={t.id}>
                             <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.work_date), 'EEE d MMM', { locale: fr })}</td>
@@ -247,7 +246,7 @@ export default function ProjectDetailPage() {
                           </tr>
                         ))}</tbody>
                       </table>
-                    </div>
+                    </DataPanel>
                   )}
                 </>
               )}
@@ -255,9 +254,9 @@ export default function ProjectDetailPage() {
               {tab === 'purchases' && (!invoices?.length ? (
                 <EmptyState bare icon={Link2} title="Aucune facture rattachée" text="Le coût des factures rattachées entre dans la marge du projet." />
               ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <DataPanel>
                   <table className="odoo-table">
-                    <thead><tr><th>Facture</th><th>Type</th><th>Fournisseur ou catégorie</th><th>Date</th><th>Statut</th><th className="ds-num">Montant HT ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+                    <thead><tr><th>Facture</th><th>Type</th><th>Fournisseur ou catégorie</th><th>Date</th><th>Statut</th><th className="ds-num">Montant HT ({currencySymbol()})</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
                     <tbody>{invoices.map(inv => (
                       <tr key={inv.id}>
                         <td className="ds-ref">{inv.invoice_number}</td>
@@ -270,7 +269,7 @@ export default function ProjectDetailPage() {
                       </tr>
                     ))}</tbody>
                   </table>
-                </div>
+                </DataPanel>
               ))}
 
               {tab === 'notes' && (
@@ -347,28 +346,25 @@ function LinkInvoiceModal({ projectId, onClose, onLinked }: { projectId: string;
     onError: e => notify.error(apiErrorMessage(e)),
   });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(680px, 96vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Link2 size={16} /> Rattacher une facture</span>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' }}>
+    <Modal title="Rattacher une facture" onClose={onClose} width={680}
+      footer={<button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input type="search" className="ds-input" value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une facture" placeholder="N° de facture ou fournisseur…" />
-          <div style={{ overflowY: 'auto' }}>
+          <div>
             {isLoading ? <LoadingState bare />
               : rows.length === 0 ? <EmptyState bare icon={Link2} title="Aucune facture disponible" text="Les factures déjà rattachées à un autre projet ou annulées ne sont pas listées." />
               : (
-                <table className="odoo-table">
-                  <thead><tr><th>Facture</th><th>Type</th><th>Fournisseur</th><th>Date</th><th className="ds-num">Montant HT ({currencySymbol()})</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+                <DataPanel label="Factures disponibles">
+                <table className="odoo-table ds-dense">
+                  <thead><tr><th>Facture</th><th>Type</th><th>Fournisseur</th><th>Date</th><th className="ds-num">Montant HT ({currencySymbol()})</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
                   <tbody>{rows.map((inv: ProjectInvoice) => (
                     <tr key={inv.id}>
                       <td className="ds-ref">{inv.invoice_number}</td>
                       <td><span className={`odoo-tag ${inv.invoice_type === 'received' ? 'odoo-tag-orange' : 'odoo-tag-blue'}`}>{inv.invoice_type === 'received' ? 'Coût' : 'Produit'}</span></td>
                       <td>{inv.supplier_name || '—'}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(inv.invoice_date), 'd MMM yyyy', { locale: fr })}</td>
-                      <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{n2(inv.amount)}</td>
-                      <td className="ds-num">
+                      <td className="ds-num">{n2(inv.amount)}</td>
+                      <td className="ds-actions">
                         {inv.project_id === projectId
                           ? <StatusTag tone="done" label="Rattachée" />
                           : <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={link.isPending} onClick={() => link.mutate(inv.id)}><Plus size={12} /> Rattacher</button>}
@@ -376,13 +372,10 @@ function LinkInvoiceModal({ projectId, onClose, onLinked }: { projectId: string;
                     </tr>
                   ))}</tbody>
                 </table>
+                </DataPanel>
               )}
           </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }

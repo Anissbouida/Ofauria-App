@@ -29,7 +29,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  const { data: employees = [], isLoading, isError, refetch } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
+  const { data: employees = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['employees'], queryFn: employeesApi.list });
   const { getLabel: getRoleLabel, getColor: getRoleColor } = useReferentiel('employee_roles');
   const { getLabel: getContractLabel } = useReferentiel('contract_types');
   // Suppression/reactivation employes : backend reserve admin. On masque les
@@ -304,7 +304,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
       {isLoading ? (
         <LoadingState label="Chargement des employés…" />
       ) : isError ? (
-        <ErrorState onRetry={() => void refetch()} />
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : employees.length === 0 ? (
         <EmptyState icon={Users} title="Aucun employé" text="Les fiches des salariés apparaîtront ici."
           action={<button type="button" className="odoo-btn-primary" onClick={() => navigate('/employees/new')}>Nouvel employé</button>} />

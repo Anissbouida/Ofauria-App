@@ -79,7 +79,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
   const { start: periodStartDate, end: periodEndDate } = biweeklyPeriod(periodOffset);
   const periodStartStr = format(periodStartDate, 'yyyy-MM-dd');
 
-  const { data: periodData, isLoading, isError, refetch } = useQuery<BiweeklyPayrollData>({
+  const { data: periodData, isLoading, isError, error, refetch } = useQuery<BiweeklyPayrollData>({
     queryKey: ['biweekly-payroll', periodStartStr],
     queryFn: () => biweeklyPayrollApi.list(periodStartStr) as Promise<BiweeklyPayrollData>,
   });
@@ -243,7 +243,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
       {isLoading ? (
         <LoadingPanel />
       ) : isError ? (
-        <ErrorState onRetry={() => void refetch()} />
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : rows.length === 0 ? (
         <EmptyState icon={Banknote} title="Aucun employé payé par quinzaine" text="Passez un employé en « Fréquence de paie : Par quinzaine » dans l'écran Employés pour le voir ici." />
       ) : visibleRows.length === 0 ? (

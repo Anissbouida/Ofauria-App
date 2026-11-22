@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
 import api from '../../api/client';
-import { EmptyState, ErrorState, LoadingState } from '../ds';
+import { DataPanel, EmptyState, ErrorState, LoadingState } from '../ds';
 
 /**
  * Onglet « Historique » d'une fiche (G6-07) : modifications champ par champ et suppression,
@@ -14,7 +14,7 @@ const show = (v: unknown) => (v === null || v === undefined ? '∅' : typeof v =
 
 export default function HistoryPanel({ table, id }: { table: string; id: string }) {
   const [open, setOpen] = useState(false);
-  const { data = [], isLoading, isError } = useQuery({
+  const { data = [], isLoading, isError, error } = useQuery({
     queryKey: ['audit-trail', table, id], enabled: open, retry: false,
     queryFn: () => api.get(`/settings/audit-trail/${table}/${id}`).then(r => r.data.data as Entry[]),
   });
@@ -26,9 +26,9 @@ export default function HistoryPanel({ table, id }: { table: string; id: string 
       {open && (
         <div style={{ padding: '8px 16px' }}>
           {isLoading ? <LoadingState bare label="Chargement de l'historique…" />
-            : isError ? <ErrorState bare title="Historique non disponible" text="Votre profil ne donne pas accès à l'historique de cette fiche." />
+            : isError ? <ErrorState error={error} bare title="Historique non disponible" text="Votre profil ne donne pas accès à l'historique de cette fiche." />
             : data.length === 0 ? <EmptyState bare icon={History} title="Aucune modification enregistrée" text="Les changements de cette fiche s'afficheront ici." /> : (
-            <div style={{ overflowX: 'auto' }}>
+            <DataPanel>
               <table className="odoo-table ds-dense">
                 <thead><tr><th>Date</th><th>Auteur</th><th>Modification</th></tr></thead>
                 <tbody>{data.map(e => (
@@ -44,7 +44,7 @@ export default function HistoryPanel({ table, id }: { table: string; id: string 
                   </tr>
                 ))}</tbody>
               </table>
-            </div>
+            </DataPanel>
           )}
         </div>
       )}

@@ -12,7 +12,7 @@
 .kl-apple .pd-page > * { min-width: 0; }
 
 /* Les anciennes sections (.odoo-section) portaient margin: 1rem : la pile gère l'espacement. */
-.kl-apple .pd-page .odoo-section { margin: 0 !important; }
+.kl-apple .pd-page .odoo-section, .kl-apple .pd-page .pd-section { margin: 0 !important; }
 
 /* En-tête de fiche : la frise d'étapes est intégrée au panneau, sous un filet. */
 .kl-apple .pd-hero .ui-timeline { background: transparent; border-bottom: 0; border-top: 1px solid var(--kl-hair); padding: 14px 0 0; margin: 0; }
@@ -38,8 +38,17 @@
 
 /* Bon de sortie (en ligne ou en page) : pile de panneaux. */
 .kl-apple .bsi-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.kl-apple .bsi-stack > .odoo-section { margin: 0 !important; }
+.kl-apple .bsi-stack > .odoo-section, .kl-apple .bsi-stack > .pd-section { margin: 0 !important; }
 .kl-apple .bsi-lines-toolbar { padding: 12px 16px; background: transparent; border-bottom-color: var(--kl-hair); }
 
 /* Fiche nomenclature : les indicateurs du format restent visibles pendant l'édition. */
 .kl-apple .pd-sticky-kpis { position: sticky; top: 52px; z-index: 9; background: var(--kl-bg); padding: 8px 0; margin: -8px 0; }
+
+/* ── Panneaux de la fiche plan, d'exécution et de la nomenclature (Design System, 2026-11-22) ──
+ * Carte commune (.ds-panel) + en-tête de section au niveau 3 (même échelle que SectionHeader) :
+ * remplace l'ancienne .odoo-section (bandeau gris en capitales). Les tableaux posés dedans
+ * prennent l'en-tête et les lignes du tableau standard (.ds-panel .odoo-table). */
+.pd-section { margin: 16px 0; }
+.ds-sheet-body .pd-section, .plan-synth-grid .pd-section { margin: 0; }
+.pd-section-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 14px 16px 12px; border-bottom: 1px solid var(--ds-hair); font-size: 15px; font-weight: 700; letter-spacing: -.01em; color: var(--ds-ink); text-transform: none; background: transparent; }
+.pd-section-head > svg { color: var(--ds-muted); flex: none; }

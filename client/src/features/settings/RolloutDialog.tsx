@@ -1,8 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X } from 'lucide-react';
 import { MODULE_LABELS, STORE_SCOPED_MODULES, type AppModule, type ModulePilot } from '@ofauria/shared';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { Modal } from '../../components/ds';
 import { rolesApi, usersApi } from '../../api/users.api';
 import { storesApi } from '../../api/stores.api';
 
@@ -38,25 +37,25 @@ export default function RolloutDialog({ module, pilot, disabledStores, busy, onC
   const listStyle: CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 6, maxHeight: 180, overflowY: 'auto' };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ background: 'var(--odoo-bg)', borderRadius: 6, border: '1px solid var(--odoo-border)', width: '100%', maxWidth: 620, margin: '0 16px', display: 'grid', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <div style={{ fontWeight: 600 }}>Diffusion — {MODULE_LABELS[module]}</div>
-          <button type="button" onClick={onClose} aria-label="Fermer" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ds-muted)' }}><X size={16} /></button>
-        </div>
-
-        <div style={{ padding: 16, display: 'grid', gap: 16 }}>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <div className="odoo-setting-label">Qui voit le module ?</div>
+    <Modal title={`Diffusion — ${MODULE_LABELS[module]}`} onClose={onClose} locked={busy} width={620}
+      footer={<>
+        <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={busy}>Annuler</button>
+        <button type="button" className="odoo-btn-primary" disabled={busy || pilotEmpty} aria-busy={busy || undefined}
+          onClick={() => onSave({ pilot: inPilot ? { roles, users } : null, disabledStores: storeScoped ? closed : [] })}>
+          Enregistrer la diffusion
+        </button>
+      </>}>
+        <div style={{ display: 'grid', gap: 16 }}>
+          <fieldset style={{ display: 'grid', gap: 6, border: 0, padding: 0, margin: 0 }}>
+            <legend className="ds-field-label" style={{ marginBottom: 6 }}>Qui voit le module ?</legend>
             <label style={box}><input type="radio" checked={!inPilot} onChange={() => setInPilot(false)} /> Tous les rôles autorisés</label>
             <label style={box}><input type="radio" checked={inPilot} onChange={() => setInPilot(true)} /> Pilote : seulement les rôles et utilisateurs choisis (l'administrateur le voit toujours)</label>
-          </div>
+          </fieldset>
 
           {inPilot && (
             <>
               <div style={{ display: 'grid', gap: 6 }}>
-                <div className="odoo-setting-help">Rôles du pilote</div>
+                <div className="ds-field-label">Rôles du pilote</div>
                 <div style={listStyle}>
                   {roleRows.filter(r => r.is_active && r.code !== 'admin').map(r => (
                     <label key={r.code} style={box}><input type="checkbox" checked={roles.includes(r.code)} onChange={() => toggle(roles, setRoles, r.code)} /> {r.label}</label>
@@ -64,7 +63,7 @@ export default function RolloutDialog({ module, pilot, disabledStores, busy, onC
                 </div>
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
-                <div className="odoo-setting-help">Utilisateurs du pilote</div>
+                <div className="ds-field-label">Utilisateurs du pilote</div>
                 <div style={listStyle}>
                   {(userRows as { id: string; firstName: string; lastName: string; isActive?: boolean }[])
                     .filter(u => u.isActive !== false)
@@ -73,14 +72,14 @@ export default function RolloutDialog({ module, pilot, disabledStores, busy, onC
                     ))}
                 </div>
               </div>
-              {pilotEmpty && <p className="odoo-setting-help" style={{ color: 'var(--ds-danger)' }}>Choisissez au moins un rôle ou un utilisateur.</p>}
+              {pilotEmpty && <p className="ds-field-hint" role="alert" style={{ margin: 0, color: 'var(--ds-danger)', fontWeight: 600 }}>Choisissez au moins un rôle ou un utilisateur.</p>}
             </>
           )}
 
           {storeScoped ? (
             <div style={{ display: 'grid', gap: 6 }}>
-              <div className="odoo-setting-label">Dans quels établissements ?</div>
-              <p className="odoo-setting-help">Décochez un établissement pour y fermer le module (le labo produit, la boutique non). Ses données restent intactes.</p>
+              <div className="ds-field-label">Dans quels établissements ?</div>
+              <p className="ds-field-hint" style={{ margin: 0 }}>Décochez un établissement pour y fermer le module (le labo produit, la boutique non). Ses données restent intactes.</p>
               <div style={listStyle}>
                 {(stores as { id: string; name: string }[]).map(st => (
                   <label key={st.id} style={box}><input type="checkbox" checked={!closed.includes(st.id)} onChange={() => toggle(closed, setClosed, st.id)} /> {st.name}</label>
@@ -88,18 +87,10 @@ export default function RolloutDialog({ module, pilot, disabledStores, busy, onC
               </div>
             </div>
           ) : (
-            <p className="odoo-setting-help">Ce module est central : il s'applique à toute la société, pas établissement par établissement.</p>
+            <p className="ds-field-hint" style={{ margin: 0 }}>Ce module est central : il s'applique à toute la société, pas établissement par établissement.</p>
           )}
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={busy}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={busy || pilotEmpty}
-            onClick={() => onSave({ pilot: inPilot ? { roles, users } : null, disabledStores: storeScoped ? closed : [] })}>
-            Enregistrer la diffusion
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }

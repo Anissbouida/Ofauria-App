@@ -8,7 +8,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage, saveBlobResponse } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
-import { SectionTitle, SubmitButton, Field, inputCls, panel } from '../ui';
+import { SectionTitle, inputCls, panel } from '../ui';
+import { DataPanel, FormField, FormFooter, FormSection } from '../../../components/ds';
 
 const REASONS: Record<string, string> = {
   demission: 'Démission', licenciement: 'Licenciement', faute_grave: 'Licenciement pour faute grave',
@@ -99,29 +100,31 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
 
       {form && (
         <div style={{ ...panel, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <FormSection title="Sortie du salarié">
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Date de sortie" required>
-              <input className={inputCls} type="date" value={form.exitDate} onChange={e => setForm({ ...form, exitDate: e.target.value })} /></Field>
-            <Field label="Motif" required>
-              <select className={inputCls} value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>
+            <FormField label="Date de sortie" htmlFor="departure-exit-date" required>
+              <input id="departure-exit-date" className={inputCls} type="date" value={form.exitDate} onChange={e => setForm({ ...form, exitDate: e.target.value })} /></FormField>
+            <FormField label="Motif" htmlFor="departure-reason" required>
+              <select id="departure-reason" className={inputCls} value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>
                 {Object.entries(REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select></Field>
+              </select></FormField>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, marginTop: 20 }}>
               <input type="checkbox" checked={!!form.noticeWorked} onChange={e => setForm({ ...form, noticeWorked: e.target.checked })} /> Préavis effectué
             </label>
             {form.reason === 'licenciement' && (
-              <Field label="Dommages-intérêts (mois, sur décision)">
-                <input className={inputCls} type="number" min="0" step="0.5" value={form.damagesMonths ?? ''} onChange={e => setForm({ ...form, damagesMonths: e.target.value })} /></Field>
+              <FormField label="Dommages-intérêts (mois, sur décision)" htmlFor="departure-damages">
+                <input id="departure-damages" className={inputCls} type="number" min="0" step="0.5" value={form.damagesMonths ?? ''} onChange={e => setForm({ ...form, damagesMonths: e.target.value })} /></FormField>
             )}
             {(employee.pay_frequency ?? 'monthly') !== 'monthly' && (
-              <Field label="Paiement du solde">
-                <select className={inputCls} value={form.paymentMethod ?? 'cash'} onChange={e => setForm({ ...form, paymentMethod: e.target.value })}>
+              <FormField label="Paiement du solde" htmlFor="departure-payment">
+                <select id="departure-payment" className={inputCls} value={form.paymentMethod ?? 'cash'} onChange={e => setForm({ ...form, paymentMethod: e.target.value })}>
                   <option value="cash">Espèces</option><option value="bank">Virement</option><option value="check">Chèque</option>
-                </select></Field>
+                </select></FormField>
             )}
-            <div className="col-span-3"><Field label="Notes">
-              <input className={inputCls} value={form.notes ?? ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field></div>
+            <div className="col-span-3"><FormField label="Notes" htmlFor="departure-notes">
+              <input id="departure-notes" className={inputCls} value={form.notes ?? ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormField></div>
           </div>
+          </FormSection>
 
           {error ? (
             <StatusBanner tone="danger" icon={AlertTriangle} title="Calcul impossible">{apiErrorMessage(error, 'Calcul impossible')}</StatusBanner>
@@ -132,7 +135,8 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
                 {preview.referenceMonths < 3 && ' (salaire de base : moins de 3 bulletins)'} · préavis légal {preview.notice.label}
                 {preview.notice.owedByEmployee && ' — dû par le salarié'} · indemnité de licenciement : {preview.severance.reason}
               </p>
-              <table className="odoo-table">
+              <DataPanel label="Solde de tout compte">
+              <table className="odoo-table ds-dense">
                 <thead><tr><th>Élément</th><th>Calcul</th><th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
                 <tbody>
                   {preview.lines.map((l: Record<string, any>) => (
@@ -144,6 +148,7 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
                   {!preview.lines.length && <tr><td colSpan={3} style={{ color: 'var(--ds-muted)' }}>Aucune indemnité due.</td></tr>}
                 </tbody>
               </table>
+              </DataPanel>
               <p style={hint}>
                 {preview.payFrequency === 'monthly'
                   ? 'Ces montants seront ajoutés au bulletin du mois de sortie (salaire au prorata, CNSS et IR sur les indemnités de congés et de préavis ; indemnité de licenciement exonérée dans la limite légale). Le paiement se fait depuis la Paie.'
@@ -151,18 +156,18 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
               </p>
             </>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setForm(null)}>Annuler</button>
-            {isAdmin ? (
-              <SubmitButton disabled={!preview} pending={validate.isPending}
-                onClick={async () => {
-                  if (!(await confirm(`Valider le départ de ${employee.first_name} ${employee.last_name} au ${frd(form.exitDate)} ?\n\nLe contrat sera clôturé et le salarié sorti des effectifs.`, { title: 'Valider le départ', confirmLabel: 'Valider le départ', danger: true }))) return;
-                  validate.mutate();
-                }}>
-                Valider le solde de tout compte
-              </SubmitButton>
-            ) : <span style={hint}>Validation réservée à un administrateur.</span>}
-          </div>
+          {isAdmin ? (
+            <FormFooter onCancel={() => setForm(null)} submitLabel="Valider le solde de tout compte" disabled={!preview} busy={validate.isPending}
+              onSubmit={async () => {
+                if (!(await confirm(`Valider le départ de ${employee.first_name} ${employee.last_name} au ${frd(form.exitDate)} ?\n\nLe contrat sera clôturé et le salarié sorti des effectifs.`, { title: 'Valider le départ', confirmLabel: 'Valider le départ', danger: true }))) return;
+                validate.mutate();
+              }} />
+          ) : (
+            <div className="ds-form-foot">
+              <span className="ds-grow">Validation réservée à un administrateur.</span>
+              <button type="button" className="odoo-btn-secondary" onClick={() => setForm(null)}>Annuler</button>
+            </div>
+          )}
         </div>
       )}
 

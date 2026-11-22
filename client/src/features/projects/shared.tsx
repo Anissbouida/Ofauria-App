@@ -1,8 +1,9 @@
 import { KpiCard } from '../../components/ds';
+import { Modal } from '../../components/ds';
 import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, X } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { fr } from 'date-fns/locale';
 import { format } from 'date-fns';
 import {
@@ -12,7 +13,6 @@ import { customersApi } from '../../api/customers.api';
 import { apiErrorMessage } from '../../api/errors';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { ROLE_LABELS } from '@ofauria/shared';
 import { rolesApi } from '../../api/users.api';
@@ -155,28 +155,18 @@ export function usePeopleOptions(people: Person[]) {
 }
 
 export const PRIORITY_TAG: Record<Priority, string> = { critical: 'odoo-tag-red', high: 'odoo-tag-orange', normal: 'odoo-tag-blue', low: 'odoo-tag-grey' };
-const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4, display: 'block' };
+const label: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6, display: 'block' };
 
 function customerLabel(c: Record<string, any>): string {
   return (c.company_name as string)?.trim() || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
 }
 
 function Shell({ title, onClose, children, footer, width = 640 }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode; width?: number }) {
+  // Fenêtre commune (Design System) : en-tête, corps défilant, pied collé.
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: width, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{title}</span></div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-btn-secondary" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 12 }}>{children}</div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
-          {footer}
-        </div>
-      </div>
-    </ModalBackdrop>
+    <Modal title={title} onClose={onClose} width={width} footer={footer}>
+      <div style={{ display: 'grid', gap: 12 }}>{children}</div>
+    </Modal>
   );
 }
 

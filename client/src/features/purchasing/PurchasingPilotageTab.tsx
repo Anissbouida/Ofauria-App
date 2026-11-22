@@ -7,11 +7,12 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { PODetailModal } from '../accounting/PurchaseOrdersTab';
+import { useOpenReception } from './purchasingNav';
 import {
   StagePipeline, ViewSwitch, PeriodFilter, SelectFilter,
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
-import { KpiGrid, KpiCard, SectionHeader, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, Alert } from '../../components/ds';
+import { KpiGrid, KpiCard, SectionHeader, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, Alert, ErrorState } from '../../components/ds';
 import { pdate } from './PurLayouts';
 import { money, currencySymbol } from '../../utils/money';
 
@@ -113,6 +114,7 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
   const [customTo, setCustomTo] = useState('');
   const [page, setPage] = useState(1);
   const [poDetail, setPoDetail] = useState<string | null>(null);
+  const openReception = useOpenReception();
 
   useEffect(() => {
     const t = setTimeout(() => setSearchTerm(searchInput.trim()), 300);
@@ -129,7 +131,7 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
   }, [kind, group, page, searchTerm, supplierFilter, minAge, period, customFrom, customTo]);
 
   const { data: s } = useQuery({ queryKey: ['purch-reports-summary'], queryFn: () => purchasingReportsApi.summary() });
-  const { data: board, isLoading, isFetching } = useQuery({
+  const { data: board, isLoading, isFetching, error: boardError, refetch: refetchBoard } = useQuery({
     queryKey: ['purch-board', params],
     queryFn: () => purchasingReportsApi.board(params),
     // On ne garde l'ancienne page affichée pendant le chargement que si sa forme est la même
@@ -232,7 +234,7 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
           openLabel="Détail" historyLabel="Par fournisseur" />
       </Toolbar>
 
-      {isLoading || !board ? <LoadingState /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState /> : boardError || !board ? <ErrorState error={boardError} onRetry={() => { void refetchBoard(); }} /> : rows.length === 0 ? (
         hasFilters
           ? <NoResultState onReset={resetFilters} text="Aucune ligne ne correspond aux filtres." />
           : <EmptyState icon={PackageCheck} title="Rien à signaler dans cette liste"
@@ -369,7 +371,7 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
         </div>
       )}
 
-      {poDetail && <PODetailModal poId={poDetail} onClose={() => setPoDetail(null)} />}
+      {poDetail && <PODetailModal poId={poDetail} onClose={() => setPoDetail(null)} onDelivery={() => openReception(poDetail)} />}
     </>
   );
 }

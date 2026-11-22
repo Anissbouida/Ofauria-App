@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, Save, X, Pencil, Workflow } from 'lucide-react';
+import { Plus, Pencil, Workflow } from 'lucide-react';
 import {
   productionApi, useWorkshops, CONSUMPTION_MODE_LABELS,
   type ProductionOrderType, type ProductionOrderTypeInput,
 } from '../../api/production.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
-import { DataPanel, EmptyState, FormField, LoadingState, TableFooter } from '../../components/ds';
+import { DataPanel, EmptyState, FormField, FormFooter, FormSection, LoadingState, Modal, TableFooter } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../context/AuthContext';
@@ -133,14 +133,10 @@ export default function ProductionOrderTypesPanel() {
       )}
 
       {draft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.35)', padding: 16 }}>
-          <div className="odoo-scope" role="dialog" aria-modal="true" aria-label="Type d'ordre"
-            style={{ background: 'var(--ds-card)', borderRadius: 16, width: '100%', maxWidth: 560, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 className="ds-subhead">{draft.id ? `Type ${draft.code}` : 'Nouveau type d\'ordre'}</h2>
-              <button type="button" className="ds-icon-btn" onClick={() => setDraft(null)} aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+        <Modal title={draft.id ? `Type ${draft.code}` : 'Nouveau type d\'ordre'} onClose={() => setDraft(null)} width={560} locked={save.isPending}
+          footer={<FormFooter onCancel={() => setDraft(null)} busy={save.isPending} disabled={!draft.label?.trim() || !draft.code?.trim()} onSubmit={() => save.mutate(draft)} />}>
+            <FormSection title="Identification">
+            <div className="ds-form-grid">
               <FormField label="Code" htmlFor="ot-code" required hint="En majuscules, sans espace.">
                 <input id="ot-code" className="ds-input" value={draft.code ?? ''} disabled={!!draft.id} placeholder="SOUS_TRAITANCE"
                   onChange={(e) => set({ code: e.target.value.toUpperCase() })} />
@@ -162,6 +158,7 @@ export default function ProductionOrderTypesPanel() {
                 </select>
               </FormField>
             </div>
+            </FormSection>
             {impact && impact.draft + impact.underway > 0 && (
               <StatusBanner tone={impact.underway ? 'warning' : 'info'} icon={Workflow} title={`${impact.draft + impact.underway} ordre(s) de ce type non terminé(s)`}>
                 {impact.underway
@@ -169,6 +166,7 @@ export default function ProductionOrderTypesPanel() {
                   : `${impact.draft} brouillon(s) : ils prendront le nouveau réglage à leur confirmation.`}
               </StatusBanner>
             )}
+            <FormSection title="Étapes du parcours">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem 1.25rem', fontSize: '0.875rem' }}>
               <label title="Fabrication confiée à un tiers : envoi des composants, réception du produit fini, coût de façon"><input type="checkbox" disabled={stepsLocked} checked={!!draft.isSubcontracting} onChange={(e) => set({ isSubcontracting: e.target.checked })} /> Sous-traité</label>
               <label style={{ opacity: draft.isSubcontracting ? 0.5 : 1 }}><input type="checkbox" disabled={!!draft.isSubcontracting || stepsLocked} checked={draft.requiresBonSortie !== false} onChange={(e) => set({ requiresBonSortie: e.target.checked })} /> Bon de sortie</label>
@@ -179,17 +177,11 @@ export default function ProductionOrderTypesPanel() {
               <label><input type="checkbox" checked={!!draft.isDefault} onChange={(e) => set({ isDefault: e.target.checked, ...(e.target.checked ? { isActive: true } : {}) })} /> Par défaut</label>
               <label><input type="checkbox" checked={draft.isActive !== false} disabled={!!draft.isDefault} onChange={(e) => set({ isActive: e.target.checked })} /> Actif</label>
             </div>
+            </FormSection>
             <FormField label="Description" htmlFor="ot-desc">
               <textarea id="ot-desc" className="ds-input" rows={2} value={draft.description ?? ''} onChange={(e) => set({ description: e.target.value })} />
             </FormField>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="odoo-btn-secondary" disabled={save.isPending} onClick={() => setDraft(null)}>Annuler</button>
-              <button type="button" className="odoo-btn-primary" disabled={save.isPending || !draft.label?.trim() || !draft.code?.trim()} aria-busy={save.isPending || undefined} onClick={() => save.mutate(draft)}>
-                {save.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Save size={14} aria-hidden="true" />} Enregistrer
-              </button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

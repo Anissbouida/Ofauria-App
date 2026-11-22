@@ -6,6 +6,8 @@ import { useProcessRefs } from '../../api/production.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
+import '../production/production.css';
+import { FormFooter } from '../../components/ds';
 
 /**
  * Étapes de production d'une recette — section partagée par la page produit fini
@@ -126,12 +128,12 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
   });
 
   if (drafts) {
-    const inp = 'h-8 px-2 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400';
-    const area = 'w-full px-2 py-1.5 bg-white border border-gray-200 rounded-md text-[13px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400';
+    const inp = 'ds-input sm';
+    const area = 'ds-input';
     const ar = { fontFamily: 'Tahoma, Arial, sans-serif' };
     return (
-      <div className="odoo-section" style={{ marginTop: '1rem', overflow: 'clip' }}>
-        <div className="odoo-section-header flex items-center gap-2"><ListChecks size={13} /> Étapes de production — modification</div>
+      <div className="ds-panel pd-section" style={{ marginTop: '1rem', overflow: 'clip' }}>
+        <div className="pd-section-head"><ListChecks size={13} /> Étapes de production — modification</div>
         <div>
           {drafts.map((d, i) => (
             <div key={d.k} style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)' }}>
@@ -141,39 +143,39 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                   background: 'var(--theme-accent)', color: '#fff',
                   display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
                 }}>{i + 1}</span>
-                <input className={`${inp} flex-1 min-w-[180px] font-medium`} value={d.nom} placeholder="Nom de l'étape"
+                <input className={`${inp} flex-1 min-w-[180px] font-medium`} style={{ width: 'auto' }} value={d.nom} placeholder="Nom de l'étape" aria-label={`Nom de l'étape ${i + 1}`} aria-required="true"
                   onChange={(e) => patch(d.k, { nom: e.target.value })} maxLength={200} />
                 {(darijaOn || d.nomAr) && (
-                  <input dir="rtl" lang="ar" className={`${inp} flex-1 min-w-[180px]`} style={ar} value={d.nomAr} placeholder="الاسم بالعربية"
+                  <input dir="rtl" lang="ar" className={`${inp} flex-1 min-w-[180px]`} style={{ ...ar, width: 'auto' }} value={d.nomAr} placeholder="الاسم بالعربية" aria-label={`Nom de l'étape ${i + 1} en darija`}
                     onChange={(e) => patch(d.k, { nomAr: e.target.value })} maxLength={300} />
                 )}
                 <span className="inline-flex items-center gap-1">
-                  <input type="number" min="0" step="any" className={`${inp} w-20 text-right tabular-nums`} value={d.duree} placeholder="0"
+                  <input type="number" min="0" step="any" className={`${inp} w-20 text-right tabular-nums`} style={{ width: 80 }} value={d.duree} placeholder="0" aria-label={`Durée estimée de l'étape ${i + 1} (min)`}
                     onChange={(e) => patch(d.k, { duree: e.target.value })} title="Durée estimée" />
                   <span className="text-xs text-gray-400">min</span>
                 </span>
                 <span className="inline-flex items-center gap-1">
-                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="odoo-pager-btn" title="Monter" aria-label="Monter"><ArrowUp size={13} /></button>
-                  <button type="button" onClick={() => move(i, 1)} disabled={i === drafts.length - 1} className="odoo-pager-btn" title="Descendre" aria-label="Descendre"><ArrowDown size={13} /></button>
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="ds-icon-btn" title="Monter" aria-label="Monter"><ArrowUp size={13} /></button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === drafts.length - 1} className="ds-icon-btn" title="Descendre" aria-label="Descendre"><ArrowDown size={13} /></button>
                   <button type="button" onClick={() => setDrafts((ds) => ds && ds.filter((x) => x.k !== d.k))}
-                    className="odoo-pager-btn" title="Supprimer l'étape" aria-label="Supprimer l'étape"><Trash2 size={13} /></button>
+                    className="ds-icon-btn" title="Supprimer l'étape" aria-label="Supprimer l'étape"><Trash2 size={13} /></button>
                 </span>
               </div>
               <div className="flex items-center gap-3 mt-2 flex-wrap" style={{ marginLeft: 30 }}>
                 {/* Conduite de l'étape (mig 342) : type, température, hygrométrie. */}
-                <select className={`${inp} min-w-[150px]`} value={d.type} onChange={(e) => patch(d.k, { type: e.target.value })} title="Type d'étape">
+                <select className={`${inp} min-w-[150px]`} style={{ width: 'auto' }} aria-label={`Type de l'étape ${i + 1}`} value={d.type} onChange={(e) => patch(d.k, { type: e.target.value })} title="Type d'étape">
                   <option value="">Type d'étape…</option>
                   {refs.stepTypes.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
                 </select>
                 <span className="inline-flex items-center gap-1" title="Température (four, étuve, ambiante…)">
                   <Thermometer size={13} className="text-gray-400" />
-                  <input type="number" step="any" min="-40" max="400" className={`${inp} w-16 text-right tabular-nums`} value={d.tC} placeholder="°C"
+                  <input type="number" step="any" min="-40" max="400" className={`${inp} w-16 text-right tabular-nums`} style={{ width: 64 }} value={d.tC} placeholder="°C" aria-label={`Température de l'étape ${i + 1} (°C)`}
                     onChange={(e) => patch(d.k, { tC: e.target.value })} />
                   <span className="text-xs text-gray-400">°C</span>
                 </span>
                 <span className="inline-flex items-center gap-1" title="Hygrométrie (étuve, pousse contrôlée)">
                   <Droplets size={13} className="text-gray-400" />
-                  <input type="number" step="any" min="0" max="100" className={`${inp} w-16 text-right tabular-nums`} value={d.hr} placeholder="HR"
+                  <input type="number" step="any" min="0" max="100" className={`${inp} w-16 text-right tabular-nums`} style={{ width: 64 }} value={d.hr} placeholder="HR" aria-label={`Hygrométrie de l'étape ${i + 1} (% HR)`}
                     onChange={(e) => patch(d.k, { hr: e.target.value })} />
                   <span className="text-xs text-gray-400">% HR</span>
                 </span>
@@ -192,21 +194,21 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                 {d.rep && (
                   <span className="inline-flex items-center gap-1">
                     <Repeat size={12} className="text-gray-400" />
-                    <input type="number" min="1" step="1" className={`${inp} w-14 text-right tabular-nums`} value={d.nbRep}
+                    <input type="number" min="1" step="1" className={`${inp} w-14 text-right tabular-nums`} style={{ width: 56 }} aria-label={`Nombre de répétitions de l'étape ${i + 1}`} value={d.nbRep}
                       onChange={(e) => patch(d.k, { nbRep: e.target.value })} />
                     <span className="text-xs text-gray-400">fois</span>
                   </span>
                 )}
               </div>
               <div className="grid gap-3 mt-2" style={{ gridTemplateColumns: '1fr 1fr', marginLeft: 30 }}>
-                <label className="block">
-                  <span className="text-[11px] text-gray-400">Points à suivre — un par ligne</span>
+                <label className="ds-field">
+                  <span className="ds-field-label">Points à suivre — un par ligne</span>
                   <textarea className={area} rows={Math.max(3, d.pts.split('\n').length)} value={d.pts}
                     onChange={(e) => patch(d.k, { pts: e.target.value })} />
                 </label>
                 {(darijaOn || d.ptsAr) && (
-                  <label className="block">
-                    <span className="text-[11px] text-gray-400">Darija — une ligne par point</span>
+                  <label className="ds-field">
+                    <span className="ds-field-label">Darija — une ligne par point</span>
                     <textarea dir="rtl" lang="ar" className={area} style={ar} rows={Math.max(3, d.ptsAr.split('\n').length)} value={d.ptsAr}
                       onChange={(e) => patch(d.k, { ptsAr: e.target.value })} />
                   </label>
@@ -215,20 +217,14 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
             </div>
           ))}
         </div>
-        <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 flex-wrap px-3 py-2 bg-white border-t border-gray-200"
-          style={{ boxShadow: '0 -2px 6px rgba(0,0,0,0.05)' }}>
-          <button type="button" onClick={() => setDrafts((ds) => [...(ds || []), toDraft({ ordre: (ds?.length || 0) + 1, nom: '' })])}
-            className="text-sm font-medium text-primary-700 hover:text-primary-800 inline-flex items-center gap-1">
-            <Plus size={15} /> Ajouter une étape
-          </button>
-          <div className="inline-flex items-center gap-2">
-            <button type="button" onClick={() => setDrafts(null)} disabled={saveMut.isPending}
-              className="odoo-btn-secondary inline-flex items-center gap-1"><X size={15} /> Annuler</button>
-            <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
-              className="odoo-btn-primary inline-flex items-center gap-1">
-              <Save size={15} /> {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer les étapes'}
+        <div className="sticky bottom-0 z-10" style={{ background: 'var(--ds-card)' }}>
+          <FormFooter onCancel={() => setDrafts(null)} onSubmit={() => saveMut.mutate()} busy={saveMut.isPending}
+            submitLabel={saveMut.isPending ? 'Enregistrement…' : 'Enregistrer les étapes'}>
+            <button type="button" onClick={() => setDrafts((ds) => [...(ds || []), toDraft({ ordre: (ds?.length || 0) + 1, nom: '' })])}
+              className="ds-btn-ghost ds-btn-sm">
+              <Plus size={15} aria-hidden="true" /> Ajouter une étape
             </button>
-          </div>
+          </FormFooter>
         </div>
       </div>
     );
@@ -236,8 +232,8 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
 
   if (!etapes || etapes.length === 0) {
     return (
-      <div className="odoo-section" style={{ marginTop: '1rem' }}>
-        <div className="odoo-section-header flex items-center gap-2"><ListChecks size={13} /> Étapes de production</div>
+      <div className="ds-panel pd-section" style={{ marginTop: '1rem' }}>
+        <div className="pd-section-head"><ListChecks size={13} /> Étapes de production</div>
         <div className="flex items-center gap-3 flex-wrap" style={{ padding: '1rem' }}>
           <span className="text-sm text-gray-400 italic">Aucune étape définie.</span>
           {recipeId && (
@@ -256,8 +252,8 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
   const darijaDispo = etapes.some(aDuDarija);
 
   return (
-    <div className="odoo-section" style={{ marginTop: '1rem' }}>
-      <div className="odoo-section-header flex items-center gap-2">
+    <div className="ds-panel pd-section" style={{ marginTop: '1rem' }}>
+      <div className="pd-section-head">
         <ListChecks size={13} /> Étapes de production
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, fontWeight: 400, textTransform: 'none' }}>
           {dureeTotale > 0 && (

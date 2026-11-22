@@ -6,7 +6,7 @@ import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { ListChecks, Plus, X, Loader2, CheckCircle2, XCircle, Trash2, Power, AlertTriangle, Inbox } from 'lucide-react';
+import { ListChecks, Plus, CheckCircle2, XCircle, Trash2, Power, AlertTriangle, Inbox } from 'lucide-react';
 import { qualityApi, type QualityTemplate, type QualityItem, type QualityResult, type AppliesTo,
   type NonConformity, type NonConformityInput, type NcStatus, type NcSeverity, type NcSource, type InspectionLinks } from '../../api/quality.api';
 import { notify } from '../../components/ui/InlineNotification';
@@ -14,10 +14,10 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { RowMenu } from '../../components/ui/RowMenu';
 import { FilterChips, ListKpi } from '../sales/ListTemplate';
 import { Tabs, Panel } from './KlUi';
-import { EmptyState, LoadingState } from '../../components/ds';
+import { EmptyState, LoadingState, Modal, FormSection, FormField, FormFooter, HeaderActions } from '../../components/ds';
 
 const APPLIES: Record<AppliesTo, string> = { general: 'Général', reception: 'Réception', production: 'Production', product: 'Produit' };
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'd MMM yyyy', { locale: fr });
@@ -85,19 +85,18 @@ function NonConformities() {
       <div className="prj-toolbar">
         <FilterChips label="Statut" value={filter} onChange={k => setFilter(k as '' | NcStatus)}
           chips={[{ key: '', label: 'Toutes' }, { key: 'open', label: 'Ouvertes' }, { key: 'in_progress', label: 'En cours' }, { key: 'closed', label: 'Clôturées' }]} />
-        <div style={{ flex: 1 }} />
-        <button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouvelle non-conformité</button>
+        <HeaderActions><button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouvelle non-conformité</button></HeaderActions>
       </div>
       <Panel>
         <table className="odoo-table">
-          <thead><tr><th>Détectée</th><th>Non-conformité</th><th>Source</th><th>Gravité</th><th>Responsable</th><th>Échéance</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th>Détectée</th><th>Non-conformité</th><th>Source</th><th>Gravité</th><th>Responsable</th><th>Échéance</th><th>Statut</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
           <tbody>
             {isLoading && <tr><td colSpan={8}><LoadingState bare /></td></tr>}
             {!isLoading && rows.length === 0 && <tr><td colSpan={8}><EmptyState bare icon={Inbox} title="Aucune non-conformité" /></td></tr>}
             {rows.map(nc => (
               <tr key={nc.id} style={{ cursor: 'pointer' }} onClick={() => setEditing(nc)}>
                 <td style={{ whiteSpace: 'nowrap' }}>{day(nc.detected_on)}</td>
-                <td style={{ fontWeight: 500 }}>{nc.title}{nc.reference_note && <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{nc.reference_note}</div>}</td>
+                <td className="ds-strong">{nc.title}{nc.reference_note && <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{nc.reference_note}</div>}</td>
                 <td style={{ fontSize: '0.85rem' }}>{NC_SOURCE[nc.source]}</td>
                 <td><span className={`odoo-tag ${NC_SEVERITY[nc.severity].tag}`}>{NC_SEVERITY[nc.severity].label}</span></td>
                 <td style={{ fontSize: '0.85rem', color: 'var(--ds-muted)' }}>{nc.responsible_name || '—'}</td>
@@ -105,11 +104,11 @@ function NonConformities() {
                   {nc.overdue && <AlertTriangle size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 3 }} />}{nc.due_date ? day(nc.due_date) : '—'}
                 </td>
                 <td><StatusTag tone={NC_STATUS[nc.status].tone} label={NC_STATUS[nc.status].label} /></td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                  {nc.status !== 'closed'
-                    ? <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setStatus.mutate({ id: nc.id, status: 'closed' })}>Clôturer</button>
-                    : <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setStatus.mutate({ id: nc.id, status: 'in_progress' })}>Rouvrir</button>}
+                <td className="ds-actions" onClick={e => e.stopPropagation()}>
                   <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => setDetailId(nc.id)}>Fiche</button>
+                  <RowMenu items={[nc.status !== 'closed'
+                    ? { label: 'Clôturer', onSelect: () => setStatus.mutate({ id: nc.id, status: 'closed' }) }
+                    : { label: 'Rouvrir', onSelect: () => setStatus.mutate({ id: nc.id, status: 'in_progress' }) }]} />
                 </td>
               </tr>
             ))}
@@ -143,35 +142,30 @@ function NcForm({ nc, onClose, onSaved }: { nc: NonConformity | null; onClose: (
     onError: e => notify.error(apiErrorMessage(e)),
   });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(600px, 96vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} /> {nc ? 'Non-conformité' : 'Nouvelle non-conformité'}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
-        </div>
-        <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Intitulé"><input type="text" value={f.title} onChange={e => set('title', e.target.value)} placeholder="Ex. Lot beurre rance" style={inp} /></Field>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Field label="Source"><select value={f.source} onChange={e => set('source', e.target.value)} style={inp}>{(Object.keys(NC_SOURCE) as NcSource[]).map(k => <option key={k} value={k}>{NC_SOURCE[k]}</option>)}</select></Field>
-            <Field label="Gravité"><select value={f.severity} onChange={e => set('severity', e.target.value)} style={inp}>{(Object.keys(NC_SEVERITY) as NcSeverity[]).map(k => <option key={k} value={k}>{NC_SEVERITY[k].label}</option>)}</select></Field>
-            <Field label="Référence (optionnel)"><input type="text" value={f.referenceNote} onChange={e => set('referenceNote', e.target.value)} style={inp} /></Field>
+    <Modal title={nc ? 'Non-conformité' : 'Nouvelle non-conformité'} onClose={onClose} locked={save.isPending} width={600}
+      footer={<FormFooter onCancel={onClose} submitLabel={nc ? 'Enregistrer' : 'Créer'} busy={save.isPending} disabled={f.title.trim().length < 2} onSubmit={() => save.mutate()} />}>
+      <FormSection title="Constat">
+        <div style={{ display: 'grid', gap: 12 }}>
+          <FormField label="Intitulé" htmlFor="nc-title" required><input id="nc-title" className="ds-input" type="text" value={f.title} onChange={e => set('title', e.target.value)} placeholder="Ex. Lot beurre rance" /></FormField>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+            <FormField label="Source" htmlFor="nc-source"><select id="nc-source" className="ds-input" value={f.source} onChange={e => set('source', e.target.value)}>{(Object.keys(NC_SOURCE) as NcSource[]).map(k => <option key={k} value={k}>{NC_SOURCE[k]}</option>)}</select></FormField>
+            <FormField label="Gravité" htmlFor="nc-severity"><select id="nc-severity" className="ds-input" value={f.severity} onChange={e => set('severity', e.target.value)}>{(Object.keys(NC_SEVERITY) as NcSeverity[]).map(k => <option key={k} value={k}>{NC_SEVERITY[k].label}</option>)}</select></FormField>
+            <FormField label="Référence (optionnel)" htmlFor="nc-ref"><input id="nc-ref" className="ds-input" type="text" value={f.referenceNote} onChange={e => set('referenceNote', e.target.value)} /></FormField>
           </div>
-          <Field label="Description"><textarea value={f.description} onChange={e => set('description', e.target.value)} style={{ ...inp, minHeight: 56 }} placeholder="Qu'est-ce qui ne va pas ?" /></Field>
-          <Field label="Action corrective"><textarea value={f.correctiveAction} onChange={e => set('correctiveAction', e.target.value)} style={{ ...inp, minHeight: 56 }} placeholder="Que fait-on pour corriger et éviter que ça se reproduise ?" /></Field>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Field label="Responsable"><SearchSelect value={f.responsibleId} onChange={v => set('responsibleId', v)} placeholder="—" width="100%" size="md" ariaLabel="Responsable" options={users.map(u => ({ id: String(u.id), label: u.name as string }))} /></Field>
-            <Field label="Échéance"><input type="date" value={f.dueDate} onChange={e => set('dueDate', e.target.value)} style={inp} /></Field>
-            {nc && <Field label="Statut"><select value={f.status} onChange={e => set('status', e.target.value)} style={inp}>{(Object.keys(NC_STATUS) as NcStatus[]).map(k => <option key={k} value={k}>{NC_STATUS[k].label}</option>)}</select></Field>}
+          <FormField label="Description" htmlFor="nc-desc"><textarea id="nc-desc" className="ds-input" value={f.description} onChange={e => set('description', e.target.value)} style={{ minHeight: 56 }} placeholder="Qu'est-ce qui ne va pas ?" /></FormField>
+        </div>
+      </FormSection>
+      <FormSection title="Traitement">
+        <div style={{ display: 'grid', gap: 12 }}>
+          <FormField label="Action corrective" htmlFor="nc-action"><textarea id="nc-action" className="ds-input" value={f.correctiveAction} onChange={e => set('correctiveAction', e.target.value)} style={{ minHeight: 56 }} placeholder="Que fait-on pour corriger et éviter que ça se reproduise ?" /></FormField>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+            <FormField label="Responsable"><SearchSelect value={f.responsibleId} onChange={v => set('responsibleId', v)} placeholder="—" width="100%" size="md" ariaLabel="Responsable" options={users.map(u => ({ id: String(u.id), label: u.name as string }))} /></FormField>
+            <FormField label="Échéance" htmlFor="nc-due"><input id="nc-due" className="ds-input" type="date" value={f.dueDate} onChange={e => set('dueDate', e.target.value)} /></FormField>
+            {nc && <FormField label="Statut" htmlFor="nc-status"><select id="nc-status" className="ds-input" value={f.status} onChange={e => set('status', e.target.value)}>{(Object.keys(NC_STATUS) as NcStatus[]).map(k => <option key={k} value={k}>{NC_STATUS[k].label}</option>)}</select></FormField>}
           </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={f.title.trim().length < 2 || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {nc ? 'Enregistrer' : 'Créer'}
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -182,7 +176,7 @@ function Inspections() {
   const [newInsp, setNewInsp] = useState(false);
   return (
     <>
-      <div className="prj-toolbar"><button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setNewInsp(true)}><Plus size={14} /> Nouvelle inspection</button></div>
+      <HeaderActions><button type="button" className="odoo-btn-primary" onClick={() => setNewInsp(true)}><Plus size={14} /> Nouvelle inspection</button></HeaderActions>
       <Panel>
         <table className="odoo-table">
           <thead><tr><th>Date</th><th>Inspection</th><th>Modèle</th><th>Référence</th><th style={{ textAlign: 'center' }}>Conformité</th><th>Par</th></tr></thead>
@@ -192,7 +186,7 @@ function Inspections() {
             {rows.map(r => (
               <tr key={r.id}>
                 <td style={{ whiteSpace: 'nowrap' }}>{day(r.inspected_on)}</td>
-                <td style={{ fontWeight: 500 }}>{r.title}</td>
+                <td className="ds-strong">{r.title}</td>
                 <td style={{ color: 'var(--ds-muted)', fontSize: '0.85rem' }}>{r.template_name}</td>
                 <td style={{ color: 'var(--ds-muted)', fontSize: '0.85rem' }}>{r.reference_note || '—'}</td>
                 <td style={{ textAlign: 'center' }}>
@@ -255,67 +249,55 @@ export function InspectionForm({ onClose, onSaved, links = {}, defaultTitle = ''
     setVals(v => { const cur = v[i] ?? { ok: false, value: '', note: '' }; return { ...v, [i]: { ...cur, ...patch } }; });
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(620px, 96vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><ListChecks size={16} /> Nouvelle inspection</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+    <Modal title="Nouvelle inspection" onClose={onClose} locked={save.isPending} width={620}
+      footer={<FormFooter onCancel={onClose} busy={save.isPending} disabled={!tpl || !title.trim()} onSubmit={() => save.mutate()} />}>
+      <FormSection title="Inspection">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+          <FormField label="Modèle" required>
+            <SearchSelect value={templateId} onChange={v => { setTemplateId(v); setVals({}); }}
+              placeholder="— Choisir un modèle —" width="100%" size="md" ariaLabel="Modèle"
+              options={activeTemplates.map(t => ({ id: String(t.id), label: t.name as string }))} />
+          </FormField>
+          <FormField label="Date" htmlFor="insp-date"><input id="insp-date" className="ds-input" type="date" value={date} onChange={e => setDate(e.target.value)} /></FormField>
+          <FormField label="Intitulé" htmlFor="insp-title" required><input id="insp-title" className="ds-input" type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex. Lot farine LI-260610" /></FormField>
+          <FormField label="Référence (optionnel)" htmlFor="insp-ref"><input id="insp-ref" className="ds-input" type="text" value={reference} onChange={e => setReference(e.target.value)} /></FormField>
         </div>
-        <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Field label="Modèle">
-              <SearchSelect value={templateId} onChange={v => { setTemplateId(v); setVals({}); }}
-                placeholder="— Choisir un modèle —" width="100%" size="md" ariaLabel="Modèle"
-                options={activeTemplates.map(t => ({ id: String(t.id), label: t.name as string }))} />
-            </Field>
-            <Field label="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} /></Field>
-          </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Field label="Intitulé"><input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex. Lot farine LI-260610" style={inp} /></Field>
-            <Field label="Référence (optionnel)"><input type="text" value={reference} onChange={e => setReference(e.target.value)} style={inp} /></Field>
-          </div>
+      </FormSection>
 
-          {tpl && (
-            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, overflow: 'hidden' }}>
-              <div className="odoo-section-header" style={{ padding: '8px 12px', background: 'var(--theme-bg-secondary)', fontWeight: 600, fontSize: '0.85rem' }}>Points à vérifier</div>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {tpl.items.map((it, i) => {
-                  const r = results[i];
-                  return (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center', padding: '8px 12px', borderTop: i ? '1px solid var(--odoo-border)' : 'none' }}>
-                      <div>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 500 }}>{it.label}
-                          {it.kind === 'measure' && <span style={{ color: 'var(--ds-muted)', fontWeight: 400, fontSize: '0.78rem' }}> (attendu {it.min ?? '−∞'} à {it.max ?? '+∞'}{it.unit ? ' ' + it.unit : ''})</span>}
-                        </div>
-                        <input type="text" value={vals[i]?.note ?? ''} onChange={e => setVal(i, { note: e.target.value })} placeholder="Remarque…" style={{ ...inp, marginTop: 4, fontSize: '0.78rem', padding: '0.3rem 0.5rem' }} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifySelf: 'end' }}>
-                        {it.kind === 'ok' ? (
-                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={vals[i]?.ok ?? false} onChange={e => setVal(i, { ok: e.target.checked })} style={{ accentColor: 'var(--theme-accent)' }} /> Conforme
-                          </label>
-                        ) : (
-                          <input type="number" step="any" value={vals[i]?.value ?? ''} onChange={e => setVal(i, { value: e.target.value })} placeholder={it.unit || 'valeur'} style={{ ...inp, width: 110 }} />
-                        )}
-                        {r && (vals[i]?.value || vals[i]?.ok || it.kind === 'ok') && (r.ok ? <CheckCircle2 size={16} style={{ color: 'var(--ds-success)' }} /> : <XCircle size={16} style={{ color: 'var(--ds-danger)' }} />)}
-                      </div>
+      {tpl && (
+        <FormSection title="Points à vérifier">
+          <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--ds-hair)', borderRadius: 8 }}>
+            {tpl.items.map((it, i) => {
+              const r = results[i];
+              return (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center', padding: '8px 12px', borderTop: i ? '1px solid var(--ds-hair)' : 'none' }}>
+                  <div>
+                    <div className="ds-strong" style={{ fontSize: '0.88rem' }}>{it.label}
+                      {it.kind === 'measure' && <span style={{ color: 'var(--ds-muted)', fontWeight: 400, fontSize: '0.78rem' }}> (attendu {it.min ?? '−∞'} à {it.max ?? '+∞'}{it.unit ? ' ' + it.unit : ''})</span>}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          <Field label="Notes (optionnel)"><textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inp, minHeight: 56 }} /></Field>
-          {tpl && <div><StatusTag tone={conform ? 'done' : 'blocked'} label={`Résultat : ${conform ? 'Conforme' : 'Non conforme'}`} /></div>}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={!tpl || !title.trim() || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Enregistrer
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+                    <input type="text" className="ds-input sm" aria-label={`Remarque : ${it.label}`} value={vals[i]?.note ?? ''} onChange={e => setVal(i, { note: e.target.value })} placeholder="Remarque…" style={{ marginTop: 4 }} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifySelf: 'end' }}>
+                    {it.kind === 'ok' ? (
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={vals[i]?.ok ?? false} onChange={e => setVal(i, { ok: e.target.checked })} style={{ accentColor: 'var(--theme-accent)' }} /> Conforme
+                      </label>
+                    ) : (
+                      <input type="number" step="any" className="ds-input sm" aria-label={`Mesure : ${it.label}`} value={vals[i]?.value ?? ''} onChange={e => setVal(i, { value: e.target.value })} placeholder={it.unit || 'valeur'} style={{ width: 110 }} />
+                    )}
+                    {r && (vals[i]?.value || vals[i]?.ok || it.kind === 'ok') && (r.ok ? <CheckCircle2 size={16} style={{ color: 'var(--ds-success)' }} /> : <XCircle size={16} style={{ color: 'var(--ds-danger)' }} />)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </FormSection>
+      )}
+      <FormSection title="Conclusion">
+        <FormField label="Notes (optionnel)" htmlFor="insp-notes"><textarea id="insp-notes" className="ds-input" value={notes} onChange={e => setNotes(e.target.value)} style={{ minHeight: 56 }} /></FormField>
+        {tpl && <div style={{ marginTop: 12 }}><StatusTag tone={conform ? 'done' : 'blocked'} label={`Résultat : ${conform ? 'Conforme' : 'Non conforme'}`} /></div>}
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -331,21 +313,21 @@ function Templates() {
   });
   return (
     <>
-      <div className="prj-toolbar"><button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')}><Plus size={14} /> Nouveau modèle</button></div>
+      <HeaderActions><button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouveau modèle</button></HeaderActions>
       <Panel>
         <table className="odoo-table">
-          <thead><tr><th>Modèle</th><th>S'applique à</th><th className="ds-num">Points</th><th className="ds-num">Inspections</th><th>État</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th>Modèle</th><th>S'applique à</th><th className="ds-num">Points</th><th className="ds-num">Inspections</th><th>État</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
           <tbody>
             {isLoading && <tr><td colSpan={6}><LoadingState bare /></td></tr>}
             {!isLoading && rows.length === 0 && <tr><td colSpan={6}><EmptyState bare icon={Inbox} title="Aucun modèle. Créez-en un pour commencer" /></td></tr>}
             {rows.map(t => (
               <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => setEditing(t)}>
-                <td style={{ fontWeight: 500 }}>{t.name}</td>
+                <td className="ds-strong">{t.name}</td>
                 <td>{APPLIES[t.applies_to]}</td>
                 <td className="ds-num">{t.items.length}</td>
                 <td className="ds-num">{t.inspections_count}</td>
                 <td><StatusTag tone={t.is_active ? 'done' : 'cancelled'} label={t.is_active ? 'Actif' : 'Inactif'} /></td>
-                <td className="ds-num">
+                <td className="ds-actions">
                   <button type="button" className="odoo-btn-secondary ds-btn-sm"
                     onClick={e => { e.stopPropagation(); toggle.mutate({ id: t.id, active: !t.is_active }); }} title={t.is_active ? 'Désactiver' : 'Activer'} aria-label={t.is_active ? 'Désactiver' : 'Activer'}>
                     <Power size={12} />
@@ -379,56 +361,41 @@ function TemplateForm({ tpl, onClose, onSaved }: { tpl: QualityTemplate | null; 
   const valid = name.trim().length >= 2 && items.some(i => i.label.trim());
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(640px, 96vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><ListChecks size={16} /> {tpl ? 'Modifier le modèle' : 'Nouveau modèle'}</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+    <Modal title={tpl ? 'Modifier le modèle' : 'Nouveau modèle'} onClose={onClose} locked={save.isPending} width={640}
+      footer={<FormFooter onCancel={onClose} submitLabel={tpl ? 'Enregistrer' : 'Créer'} busy={save.isPending} disabled={!valid} onSubmit={() => save.mutate()} />}>
+      <FormSection title="Modèle">
+        <div className="ds-form-grid">
+          <FormField label="Nom du modèle" htmlFor="tpl-name" required><input id="tpl-name" className="ds-input" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. Réception matière première" /></FormField>
+          <FormField label="S'applique à" htmlFor="tpl-applies">
+            <select id="tpl-applies" className="ds-input" value={appliesTo} onChange={e => setAppliesTo(e.target.value as AppliesTo)}>
+              {(Object.keys(APPLIES) as AppliesTo[]).map(k => <option key={k} value={k}>{APPLIES[k]}</option>)}
+            </select>
+          </FormField>
         </div>
-        <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Field label="Nom du modèle"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. Réception matière première" style={inp} /></Field>
-            <Field label="S'applique à">
-              <select value={appliesTo} onChange={e => setAppliesTo(e.target.value as AppliesTo)} style={inp}>
-                {(Object.keys(APPLIES) as AppliesTo[]).map(k => <option key={k} value={k}>{APPLIES[k]}</option>)}
+      </FormSection>
+
+      <FormSection title={<>Points à vérifier<span className="ds-req" aria-hidden="true"> *</span></>}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {items.map((it, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input type="text" className="ds-input" aria-label={`Point ${i + 1}`} value={it.label} onChange={e => setItem(i, { label: e.target.value })} placeholder="Point à vérifier" style={{ flex: 1, minWidth: 160, width: 'auto' }} />
+              <select className="ds-input" aria-label={`Type du point ${i + 1}`} value={it.kind} onChange={e => setItem(i, { kind: e.target.value as 'ok' | 'measure' })} style={{ width: 150 }}>
+                <option value="ok">Conforme / non</option>
+                <option value="measure">Mesure (plage)</option>
               </select>
-            </Field>
-          </div>
-
-          <div style={{ fontSize: '0.8rem', color: 'var(--ds-muted)' }}>Points à vérifier</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {items.map((it, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input type="text" value={it.label} onChange={e => setItem(i, { label: e.target.value })} placeholder="Point à vérifier" style={{ ...inp, flex: 1, minWidth: 160 }} />
-                <select value={it.kind} onChange={e => setItem(i, { kind: e.target.value as 'ok' | 'measure' })} style={{ ...inp, width: 150 }}>
-                  <option value="ok">Conforme / non</option>
-                  <option value="measure">Mesure (plage)</option>
-                </select>
-                {it.kind === 'measure' && (
-                  <>
-                    <input type="number" step="any" value={it.min ?? ''} onChange={e => setItem(i, { min: e.target.value === '' ? null : Number(e.target.value) })} placeholder="min" style={{ ...inp, width: 70 }} />
-                    <input type="number" step="any" value={it.max ?? ''} onChange={e => setItem(i, { max: e.target.value === '' ? null : Number(e.target.value) })} placeholder="max" style={{ ...inp, width: 70 }} />
-                    <input type="text" value={it.unit ?? ''} onChange={e => setItem(i, { unit: e.target.value })} placeholder="unité" style={{ ...inp, width: 70 }} />
-                  </>
-                )}
-                <button type="button" className="odoo-btn-secondary" style={{ padding: '0.3rem 0.4rem' }} onClick={() => setItems(a => a.filter((_, j) => j !== i))} title="Retirer" aria-label="Retirer"><Trash2 size={13} /></button>
-              </div>
-            ))}
-            <button type="button" className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setItems(a => [...a, { label: '', kind: 'ok' }])}><Plus size={13} /> Ajouter un point</button>
-          </div>
+              {it.kind === 'measure' && (
+                <>
+                  <input type="number" step="any" className="ds-input" aria-label="Minimum" value={it.min ?? ''} onChange={e => setItem(i, { min: e.target.value === '' ? null : Number(e.target.value) })} placeholder="min" style={{ width: 80 }} />
+                  <input type="number" step="any" className="ds-input" aria-label="Maximum" value={it.max ?? ''} onChange={e => setItem(i, { max: e.target.value === '' ? null : Number(e.target.value) })} placeholder="max" style={{ width: 80 }} />
+                  <input type="text" className="ds-input" aria-label="Unité" value={it.unit ?? ''} onChange={e => setItem(i, { unit: e.target.value })} placeholder="unité" style={{ width: 80 }} />
+                </>
+              )}
+              <button type="button" className="ds-icon-btn" onClick={() => setItems(a => a.filter((_, j) => j !== i))} title="Retirer" aria-label="Retirer"><Trash2 size={14} /></button>
+            </div>
+          ))}
+          <button type="button" className="odoo-btn-secondary ds-btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setItems(a => [...a, { label: '', kind: 'ok' }])}><Plus size={13} /> Ajouter un point</button>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={!valid || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {tpl ? 'Enregistrer' : 'Créer'}
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+      </FormSection>
+    </Modal>
   );
-}
-
-const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1, minWidth: 180 }}><span style={{ color: 'var(--ds-muted)' }}>{label}</span>{children}</label>;
 }

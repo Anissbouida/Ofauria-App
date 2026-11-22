@@ -8,6 +8,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { DataPanel, FormField, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Fusion de deux fiches du même ingrédient (G2-03). On choisit la fiche en trop et la fiche
@@ -69,29 +70,25 @@ export default function IngredientMergeCard() {
   const rows = preview ? Object.entries(preview.impact.tables).sort((a, b) => b[1] - a[1]) : [];
 
   return (
-    <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 14 }}>
-      <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <GitMerge size={16} /> Fusionner deux fiches du même ingrédient
-      </h3>
+    <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 14 }} aria-label="Fusionner deux fiches du même ingrédient">
+      <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><GitMerge size={16} aria-hidden="true" /> Fusionner deux fiches du même ingrédient</span>} />
       <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--ds-muted)' }}>
         Les recettes, les lots, les bons de commande et le stock de la fiche en trop passent sur la fiche gardée ; son coût devient la moyenne
         des deux, pondérée par les stocks. Les deux fiches doivent avoir la même unité.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-        <label style={{ display: 'grid', gap: 4, fontSize: '0.82rem' }}>
-          <span style={{ fontWeight: 500 }}>Fiche en trop (elle disparaîtra)</span>
+        <FormField label="Fiche en trop" required hint="Elle disparaîtra après la fusion.">
           <SearchSelect options={options.filter(o => o.id !== targetId)} value={sourceId} onChange={setSourceId}
             placeholder="Choisir la fiche en trop" size="md" width="100%" ariaLabel="Fiche en trop" />
-        </label>
-        <label style={{ display: 'grid', gap: 4, fontSize: '0.82rem' }}>
-          <span style={{ fontWeight: 500 }}>Fiche à garder</span>
+        </FormField>
+        <FormField label="Fiche à garder" required>
           <SearchSelect options={options.filter(o => o.id !== sourceId)} value={targetId} onChange={setTargetId}
             placeholder="Choisir la fiche à garder" size="md" width="100%" ariaLabel="Fiche à garder" />
-        </label>
+        </FormField>
       </div>
 
-      {ready && isFetching && <div><Loader2 size={16} className="animate-spin" /></div>}
+      {ready && isFetching && <LoadingState bare label="Calcul de l'aperçu…" />}
       {ready && error != null && <StatusBanner tone="danger" icon={AlertTriangle} title="Aperçu impossible">{apiErrorMessage(error)}</StatusBanner>}
 
       {ready && preview && !isFetching && (
@@ -105,29 +102,33 @@ export default function IngredientMergeCard() {
               {' '}passeront sur « {preview.target.name} ». Coût unitaire : {fmt(preview.impact.unitCostBefore, 4)} → <strong>{fmt(preview.impact.unitCostAfter, 4)} {currencySymbol()} / {preview.target.unit}</strong>.
             </StatusBanner>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 12, alignItems: 'start' }}>
+              <DataPanel label="Stock par établissement">
               <table className="odoo-table" style={{ width: '100%' }}>
-                <thead><tr><th style={{ textAlign: 'left' }}>Établissement</th><th className="ds-num">Fiche en trop</th><th className="ds-num">Fiche gardée</th><th className="ds-num">Après</th></tr></thead>
+                <thead><tr><th style={{ textAlign: 'left' }}>Établissement</th><th className="ds-num">Fiche en trop ({preview.source.unit})</th><th className="ds-num">Fiche gardée ({preview.target.unit})</th><th className="ds-num">Après ({preview.target.unit})</th></tr></thead>
                 <tbody>
                   {preview.impact.stock.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--ds-muted)' }}>Aucun stock sur ces deux fiches.</td></tr>}
                   {preview.impact.stock.map(s => (
                     <tr key={s.storeId}>
-                      <td>{s.storeName}</td>
-                      <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(s.source, 3)} {preview.source.unit}</td>
-                      <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(s.target, 3)} {preview.target.unit}</td>
-                      <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(s.source + s.target, 3)} {preview.target.unit}</td>
+                      <td className="ds-strong">{s.storeName}</td>
+                      <td className="ds-num">{fmt(s.source, 3)}</td>
+                      <td className="ds-num">{fmt(s.target, 3)}</td>
+                      <td className="ds-num ds-strong">{fmt(s.source + s.target, 3)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </DataPanel>
+              <DataPanel label="Références repointées">
               <table className="odoo-table" style={{ width: '100%' }}>
                 <thead><tr><th style={{ textAlign: 'left' }}>Références repointées</th><th className="ds-num">Lignes</th></tr></thead>
                 <tbody>
                   {rows.length === 0 && <tr><td colSpan={2} style={{ color: 'var(--ds-muted)' }}>La fiche en trop n'est utilisée nulle part.</td></tr>}
                   {rows.map(([table, n]) => (
-                    <tr key={table}><td>{TABLE_LABELS[table] ?? table}</td><td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{n.toLocaleString('fr-FR')}</td></tr>
+                    <tr key={table}><td>{TABLE_LABELS[table] ?? table}</td><td className="ds-num">{n.toLocaleString('fr-FR')}</td></tr>
                   ))}
                 </tbody>
               </table>
+              </DataPanel>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button type="button" className="odoo-btn-primary" disabled={merge.isPending} onClick={() => void run()}
@@ -141,21 +142,23 @@ export default function IngredientMergeCard() {
 
       {history.length > 0 && (
         <div>
-          <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--theme-text-strong)', margin: '4px 0' }}>Dernières fusions</h4>
+          <SectionHeader title="Dernières fusions" />
+          <DataPanel label="Dernières fusions">
           <table className="odoo-table" style={{ width: '100%' }}>
-            <thead><tr><th style={{ textAlign: 'left' }}>Date</th><th style={{ textAlign: 'left' }}>Fiche retirée</th><th style={{ textAlign: 'left' }}>Fiche gardée</th><th className="ds-num">Coût</th><th style={{ textAlign: 'left' }}>Par</th></tr></thead>
+            <thead><tr><th style={{ textAlign: 'left' }}>Date</th><th style={{ textAlign: 'left' }}>Fiche retirée</th><th style={{ textAlign: 'left' }}>Fiche gardée</th><th className="ds-num">Coût unitaire ({currencySymbol()})</th><th style={{ textAlign: 'left' }}>Par</th></tr></thead>
             <tbody>
               {history.slice(0, 10).map(h => (
                 <tr key={h.id}>
                   <td>{new Date(h.merged_at).toLocaleDateString('fr-FR')}</td>
                   <td>{h.source_name}</td>
-                  <td>{h.target_name}</td>
-                  <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(Number(h.unit_cost_before) || 0, 4)} → {fmt(Number(h.unit_cost_after) || 0, 4)}</td>
+                  <td className="ds-strong">{h.target_name}</td>
+                  <td className="ds-num">{fmt(Number(h.unit_cost_before) || 0, 4)} → {fmt(Number(h.unit_cost_after) || 0, 4)}</td>
                   <td>{h.merged_by_name ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </DataPanel>
         </div>
       )}
     </section>

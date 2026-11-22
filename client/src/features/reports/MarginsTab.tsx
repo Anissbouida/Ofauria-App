@@ -1,11 +1,11 @@
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Info } from 'lucide-react';
 import { managementApi } from '../../api/management.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { ListKpi, ListPanel } from '../sales/ListTemplate';
-import { LoadingState } from '../../components/ds';
+import { ListKpi } from '../sales/ListTemplate';
+import { DataPanel, ErrorState, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Rapports › Marges (mig 317) : marge sur coût de revient par famille, canal ou
@@ -27,11 +27,10 @@ export default function MarginsTab({ from, to }: { from: string; to: string }) {
   const [groupBy, setGroupBy] = useState<GroupBy>('category');
   const { data, isLoading, error } = useQuery({ queryKey: ['margins', from, to, groupBy], queryFn: () => managementApi.margins({ from, to, groupBy }), retry: false });
 
-  if (error) {
-    return <StatusBanner tone="danger" icon={AlertTriangle} title="Marges indisponibles">{String((error as any)?.response?.data?.error?.message ?? error)}</StatusBanner>;
-  }
+  if (error) return <ErrorState error={error} title="Marges indisponibles" />;
   if (isLoading || !data) return <LoadingState />;
   const t = data.total;
+  const cur = currencySymbol();
   const lowCoverage = (t.coverage_pct ?? 0) < 80;
 
   const groupLabel = GROUPS.find(g => g.key === groupBy)!.label.replace('Par ', '').replace(/^./, c => c.toUpperCase());
@@ -59,47 +58,46 @@ export default function MarginsTab({ from, to }: { from: string; to: string }) {
 
       {data.groups.length > 0 && (
         <section>
-          <div className="kl-sec">
-            <h2>Marge {groupBy === 'category' ? 'par famille' : groupBy === 'channel' ? 'par canal' : 'par produit'}</h2>
+          <SectionHeader title={`Marge ${groupBy === 'category' ? 'par famille' : groupBy === 'channel' ? 'par canal' : 'par produit'}`}>
             <div className="prj-views" role="tablist" aria-label="Regrouper">
               {GROUPS.map(g => (
                 <button key={g.key} type="button" role="tab" aria-selected={groupBy === g.key} className={groupBy === g.key ? 'active' : ''} onClick={() => setGroupBy(g.key)}>{g.label.replace('Par ', '').replace(/^./, c => c.toUpperCase())}</button>
               ))}
             </div>
-          </div>
-          <ListPanel>
+          </SectionHeader>
+          <DataPanel>
             <table className="odoo-table ds-dense">
               <thead><tr>
                 <th>{groupLabel}</th>
-                <th className="ds-num">CA</th><th className="ds-num">Couverture</th>
-                <th className="ds-num">Coût</th><th className="ds-num">Marge</th><th className="ds-num">Taux</th>
+                <th className="ds-num">CA ({cur})</th><th className="ds-num">Couverture</th>
+                <th className="ds-num">Coût ({cur})</th><th className="ds-num">Marge ({cur})</th><th className="ds-num">Taux</th>
                 {groupBy !== 'product' && <th className="ds-num">Produits sans coût</th>}
               </tr></thead>
               <tbody>{data.groups.map(g => (
                 <tr key={g.key}>
-                  <td style={{ fontWeight: 500 }}>{g.key}</td>
+                  <td className="ds-strong">{g.key}</td>
                   <td className="ds-num">{dh(g.revenue)}</td>
-                  <td style={{ textAlign: 'right' }} className={(g.coverage_pct ?? 0) < 50 ? 'kl-rep-tone-o' : undefined}>{pct(g.coverage_pct)}</td>
+                  <td className="ds-num" style={(g.coverage_pct ?? 0) < 50 ? { color: 'var(--ds-warning)' } : undefined}>{pct(g.coverage_pct)}</td>
                   <td className="ds-num">{g.revenue_costed ? dh(g.cost) : '—'}</td>
                   <td className="ds-num">{g.revenue_costed ? dh(g.margin) : '—'}</td>
-                  <td className="ds-num" style={{ fontWeight: 600 }}>{pct(g.margin_pct)}</td>
+                  <td className="ds-num ds-strong">{pct(g.margin_pct)}</td>
                   {groupBy !== 'product' && <td className="ds-num">{g.products_without_cost + g.products_incoherent} / {g.products}</td>}
                 </tr>
               ))}</tbody>
             </table>
-          </ListPanel>
+          </DataPanel>
         </section>
       )}
 
       {data.toFix.length > 0 && (
         <section>
-          <div className="kl-sec"><h2>Coûts à corriger</h2><small>plus gros CA d'abord</small></div>
-          <ListPanel>
+          <SectionHeader title="Coûts à corriger" note="plus gros CA d'abord" />
+          <DataPanel>
             <table className="odoo-table ds-dense">
-              <thead><tr><th>Produit</th><th>Famille</th><th className="ds-num">CA</th><th className="ds-num">Prix moyen vendu</th><th className="ds-num">Coût retenu</th><th>Problème</th></tr></thead>
+              <thead><tr><th>Produit</th><th>Famille</th><th className="ds-num">CA ({cur})</th><th className="ds-num">Prix moyen vendu ({cur})</th><th className="ds-num">Coût retenu ({cur})</th><th>Problème</th></tr></thead>
               <tbody>{data.toFix.map(p => (
                 <tr key={p.name}>
-                  <td style={{ fontWeight: 500 }}>{p.name}</td>
+                  <td className="ds-strong">{p.name}</td>
                   <td>{p.category ?? '—'}</td>
                   <td className="ds-num">{dh(p.revenue)}</td>
                   <td className="ds-num">{p.avg_price.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
@@ -112,7 +110,7 @@ export default function MarginsTab({ from, to }: { from: string; to: string }) {
                 </tr>
               ))}</tbody>
             </table>
-          </ListPanel>
+          </DataPanel>
         </section>
       )}
       <p className="kl-rep-note">

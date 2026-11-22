@@ -1,7 +1,7 @@
 import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Handshake, Loader2, Plus, Lock, Archive } from 'lucide-react';
+import { Handshake, Plus, Lock, Archive } from 'lucide-react';
 import { StatusTag } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { salesContractsApi, type SalesContract, type CreateContractInput } from '../../api/sales-contracts.api';
@@ -11,8 +11,8 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { FilterChips, ListPanel, NextStep, ListKpi } from './ListTemplate';
-import { TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { FilterChips, NextStep, ListKpi } from './ListTemplate';
+import { TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, DataPanel, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 
 /**
  * Ventes › Contrats-cadres (phase 11, D3-37). Engagement de volume (quantité
@@ -31,7 +31,7 @@ const num = (v: number | string) => Number(v).toLocaleString('fr-FR', { maximumF
 export default function SalesContractsPage() {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: contracts = [], isLoading } = useQuery({ queryKey: ['sales-contracts'], queryFn: () => salesContractsApi.list() });
+  const { data: contracts = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['sales-contracts'], queryFn: () => salesContractsApi.list() });
   const { data: customersRaw } = useQuery({ queryKey: ['customers-min'], queryFn: () => customersApi.list() });
   const { data: productsRaw } = useQuery({ queryKey: ['products-min'], queryFn: () => productsApi.list() });
   const customers = arr<{ id: string; company_name: string | null; first_name: string | null; last_name: string | null }>(customersRaw);
@@ -91,57 +91,58 @@ export default function SalesContractsPage() {
       ]} />
 
       {form && (
-        <section className="prj-panel" style={{ padding: 16, display: 'grid', gap: 10 }}>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <label style={{ display: 'grid', gap: 2 }}>Client
-              <SearchSelect value={f.customerId} onChange={v => setF({ ...f, customerId: v })}
-                placeholder="— Client —" width={240} size="md" ariaLabel="Client"
-                options={customers.map(c => ({ id: String(c.id), label: c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() }))} />
-            </label>
-            <label style={{ display: 'grid', gap: 2 }}>Base
-              <select className="odoo-input" value={f.basis} onChange={e => setF({ ...f, basis: e.target.value as 'quantity' | 'value' })}>
-                <option value="value">Valeur ({currencySymbol()})</option>
-                <option value="quantity">Volume (article)</option>
-              </select>
-            </label>
-            {f.basis === 'quantity' ? (
-              <>
-                <label style={{ display: 'grid', gap: 2 }}>Article
-                  <SearchSelect value={f.productId ?? ''} onChange={v => setF({ ...f, productId: v })}
-                    placeholder="— Article —" width={240} size="md" ariaLabel="Article"
-                    options={products.map(pr => ({ id: String(pr.id), label: pr.name as string }))} />
-                </label>
-                <label style={{ display: 'grid', gap: 2 }}>Quantité engagée
-                  <input className="odoo-input" type="number" value={f.committedQuantity ?? ''} onChange={e => setF({ ...f, committedQuantity: Number(e.target.value) })} style={{ width: 130 }} />
-                </label>
-              </>
-            ) : (
-              <label style={{ display: 'grid', gap: 2 }}>Montant engagé ({currencySymbol()})
-                <input className="odoo-input" type="number" value={f.committedValue ?? ''} onChange={e => setF({ ...f, committedValue: Number(e.target.value) })} style={{ width: 150 }} />
-              </label>
-            )}
-            <label style={{ display: 'grid', gap: 2 }}>Début
-              <input className="odoo-input" type="date" value={f.startDate} onChange={e => setF({ ...f, startDate: e.target.value })} />
-            </label>
-            <label style={{ display: 'grid', gap: 2 }}>Fin
-              <input className="odoo-input" type="date" value={f.endDate ?? ''} onChange={e => setF({ ...f, endDate: e.target.value })} />
-            </label>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setForm(false)}>Annuler</button>
-            <button type="button" className="odoo-btn-primary" disabled={!f.customerId || create.isPending} onClick={() => create.mutate()}>
-              {create.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Créer le contrat
-            </button>
-          </div>
-        </section>
+        <Modal title="Nouveau contrat-cadre" onClose={() => setForm(false)} width={640} locked={create.isPending}
+          footer={<FormFooter onCancel={() => setForm(false)} onSubmit={() => create.mutate()} submitLabel="Créer le contrat" disabled={!f.customerId} busy={create.isPending} />}>
+          <FormSection title="Client et engagement">
+            <div className="ds-form-grid">
+              <FormField label="Client" required>
+                <SearchSelect value={f.customerId} onChange={v => setF({ ...f, customerId: v })}
+                  placeholder="— Client —" width="100%" size="md" ariaLabel="Client"
+                  options={customers.map(c => ({ id: String(c.id), label: c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() }))} />
+              </FormField>
+              <FormField label="Base" htmlFor="sc-basis">
+                <select id="sc-basis" className="ds-input" value={f.basis} onChange={e => setF({ ...f, basis: e.target.value as 'quantity' | 'value' })}>
+                  <option value="value">Valeur ({currencySymbol()})</option>
+                  <option value="quantity">Volume (article)</option>
+                </select>
+              </FormField>
+              {f.basis === 'quantity' ? (
+                <>
+                  <FormField label="Article">
+                    <SearchSelect value={f.productId ?? ''} onChange={v => setF({ ...f, productId: v })}
+                      placeholder="— Article —" width="100%" size="md" ariaLabel="Article"
+                      options={products.map(pr => ({ id: String(pr.id), label: pr.name as string }))} />
+                  </FormField>
+                  <FormField label="Quantité engagée" htmlFor="sc-qty">
+                    <input id="sc-qty" className="ds-input" type="number" value={f.committedQuantity ?? ''} onChange={e => setF({ ...f, committedQuantity: Number(e.target.value) })} />
+                  </FormField>
+                </>
+              ) : (
+                <FormField label={`Montant engagé (${currencySymbol()})`} htmlFor="sc-value">
+                  <input id="sc-value" className="ds-input" type="number" value={f.committedValue ?? ''} onChange={e => setF({ ...f, committedValue: Number(e.target.value) })} />
+                </FormField>
+              )}
+            </div>
+          </FormSection>
+          <FormSection title="Période">
+            <div className="ds-form-grid">
+              <FormField label="Début" htmlFor="sc-start">
+                <input id="sc-start" className="ds-input" type="date" value={f.startDate} onChange={e => setF({ ...f, startDate: e.target.value })} />
+              </FormField>
+              <FormField label="Fin" htmlFor="sc-end">
+                <input id="sc-end" className="ds-input" type="date" value={f.endDate ?? ''} onChange={e => setF({ ...f, endDate: e.target.value })} />
+              </FormField>
+            </div>
+          </FormSection>
+        </Modal>
       )}
 
-      {isLoading ? <LoadingState label="Chargement des contrats…" /> : !filtered.length ? (
+      {isLoading ? <LoadingState label="Chargement des contrats…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : !filtered.length ? (
         contracts.length
           ? <NoResultState onReset={() => setView('')} text="Aucun contrat ne correspond au filtre." />
           : <EmptyState icon={Handshake} title="Aucun contrat-cadre" text="« Nouveau contrat » pour engager un client sur un volume ou un montant." />
       ) : (
-        <ListPanel footer={<TableFooter note={`${filtered.length} contrat${filtered.length > 1 ? 's' : ''}`} />}>
+        <DataPanel label="Contrats-cadres" footer={<TableFooter note={`${filtered.length} contrat${filtered.length > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
             <thead><tr><th>N°</th><th>Client</th><th>Base</th><th className="ds-num">Engagé</th><th>Consommé</th><th className="ds-num">Restant</th><th>État</th><th className="ds-actions">Actions</th></tr></thead>
             <tbody>
@@ -173,7 +174,7 @@ export default function SalesContractsPage() {
               })}
             </tbody>
           </table>
-        </ListPanel>
+        </DataPanel>
       )}
     </SalesPageShell>
   );

@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Landmark, Loader2 } from 'lucide-react';
+import { Plus, Landmark } from 'lucide-react';
 import { settingsApi, type CompanyBankAccount } from '../../api/settings.api';
 import { storesApi } from '../../api/stores.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { settingAnchor } from './SettingsPrimitives';
+import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Comptes bancaires de la société (audit Paramètres, lot 5, mig 331). Le RIB
@@ -48,79 +49,70 @@ export default function CompanyBankAccounts() {
     : { id: null, draft: { ...EMPTY, isDefault: accounts.length === 0 } });
 
   const ribDigits = editing?.draft.rib.replace(/\s/g, '') ?? '';
-  const field: React.CSSProperties = { fontSize: 14, padding: '0 10px', minHeight: 36, border: '1px solid var(--ds-line)', borderRadius: 8, background: 'var(--ds-card)', color: 'var(--ds-ink)' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
   const set = (k: keyof Draft, v: string | boolean) => setEditing(e => e && { ...e, draft: { ...e.draft, [k]: v } });
 
   return (
     <div id={settingAnchor('Comptes bancaires')} data-toc="Comptes bancaires" className="odoo-scope" style={{ display: 'grid', gap: 10, scrollMarginTop: '1rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Comptes bancaires</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>Le compte par défaut figure sur les factures et sert aux virements.</div>
-        </div>
+      <SectionHeader title="Comptes bancaires" note="Le compte par défaut figure sur les factures et sert aux virements.">
         {!editing && !isError && (
           <button type="button" className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Plus size={13} /> Ajouter un compte
           </button>
         )}
-      </div>
+      </SectionHeader>
 
       {isError && <StatusBanner tone="warning" icon={Landmark} title="Comptes bancaires indisponibles">La migration 331 n'est pas appliquée sur cette base.</StatusBanner>}
-      {isLoading ? <Loader2 className="animate-spin" size={16} /> : accounts.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
+      {isLoading ? <LoadingState /> : accounts.length > 0 && (
+        <DataPanel label="Comptes bancaires">
           <table className="odoo-table">
-            <thead><tr><th>Compte</th><th>Banque</th><th>RIB</th><th>Compte comptable</th><th>Établissement</th><th>Statut</th><th style={{ width: 40 }}></th></tr></thead>
+            <thead><tr><th>Compte</th><th>Banque</th><th>RIB</th><th>Compte comptable</th><th>Établissement</th><th>Statut</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
               {accounts.map(a => (
                 <tr key={a.id} style={{ opacity: a.is_active ? 1 : 0.6 }}>
-                  <td>{a.label} {a.is_default && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>Par défaut</span>}</td>
+                  <td className="ds-strong">{a.label} {a.is_default && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>Par défaut</span>}</td>
                   <td>{a.bank_name}</td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>{formatRib(a.rib)}</td>
-                  <td>{a.ledger_account ?? '—'}</td>
+                  <td className="ds-ref" style={{ whiteSpace: 'nowrap' }}>{formatRib(a.rib)}</td>
+                  <td className="ds-ref">{a.ledger_account ?? '—'}</td>
                   <td>{a.store_name ?? 'Tous'}</td>
                   <td><StatusTag tone={a.is_active ? 'done' : 'cancelled'} label={a.is_active ? (a.show_on_invoices ? 'Actif · sur factures' : 'Actif') : 'Fermé'} /></td>
-                  <td><button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(a)} aria-label={`Modifier ${a.label}`}><Pencil size={13} /></button></td>
+                  <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => open(a)} aria-label={`Modifier ${a.label}`}>Modifier</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
       {!isLoading && !isError && !accounts.length && !editing && (
-        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--ds-muted)' }}>Aucun compte bancaire : ajoutez celui de la société pour qu'il figure sur les factures.</p>
+        <EmptyState icon={Landmark} title="Aucun compte bancaire" text="Ajoutez celui de la société pour qu'il figure sur les factures." />
       )}
 
       {editing && (
-        <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <label style={{ ...lab, flex: '1 1 180px' }}>Libellé
-              <input id="bank-label" style={field} value={editing.draft.label} onChange={e => set('label', e.target.value)} placeholder="Compte courant" maxLength={80} />
-            </label>
-            <label style={{ ...lab, flex: '1 1 180px' }}>Banque
-              <input id="bank-name" style={field} value={editing.draft.bankName} onChange={e => set('bankName', e.target.value)} placeholder="Attijariwafa bank" maxLength={80} />
-            </label>
-            <label style={{ ...lab, flex: '2 1 280px' }}>RIB (24 chiffres)
-              <input id="bank-rib" style={{ ...field, fontFamily: 'ui-monospace, monospace' }} value={editing.draft.rib} inputMode="numeric"
+        <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-label={editing.id ? 'Modifier le compte bancaire' : 'Nouveau compte bancaire'}>
+          <div className="ds-form-grid">
+            <FormField label="Libellé" htmlFor="bank-label" required>
+              <input id="bank-label" className="ds-input" value={editing.draft.label} onChange={e => set('label', e.target.value)} placeholder="Compte courant" maxLength={80} />
+            </FormField>
+            <FormField label="Banque" htmlFor="bank-name" required>
+              <input id="bank-name" className="ds-input" value={editing.draft.bankName} onChange={e => set('bankName', e.target.value)} placeholder="Attijariwafa bank" maxLength={80} />
+            </FormField>
+            <FormField label="RIB (24 chiffres)" htmlFor="bank-rib" required
+              hint={`${ribDigits.length}/24 chiffres · la clé est vérifiée à l'enregistrement`}
+              error={ribDigits && ribDigits.length !== 24 ? `${ribDigits.length}/24 chiffres : le RIB doit compter 24 chiffres` : undefined}>
+              <input id="bank-rib" className="ds-input" style={{ fontFamily: 'ui-monospace, monospace' }} value={editing.draft.rib} inputMode="numeric"
                 onChange={e => set('rib', e.target.value)} placeholder="000 000 0000000000000000 00" />
-              <span style={{ fontSize: '0.75rem', color: ribDigits.length === 24 || !ribDigits ? 'var(--ds-muted)' : 'var(--odoo-danger, #b3261e)' }}>
-                {ribDigits.length}/24 chiffres · la clé est vérifiée à l'enregistrement
-              </span>
-            </label>
-          </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <label style={{ ...lab, width: 150 }}>SWIFT / BIC
-              <input id="bank-swift" style={field} value={editing.draft.swift} onChange={e => set('swift', e.target.value.toUpperCase())} maxLength={11} />
-            </label>
-            <label style={{ ...lab, width: 150 }}>Compte comptable
-              <input id="bank-ledger" style={field} value={editing.draft.ledgerAccount} onChange={e => set('ledgerAccount', e.target.value)} placeholder="5141" maxLength={10} />
-            </label>
-            <label style={{ ...lab, width: 200 }}>Établissement
-              <select id="bank-store" style={field} value={editing.draft.storeId} onChange={e => set('storeId', e.target.value)}>
+            </FormField>
+            <FormField label="SWIFT / BIC" htmlFor="bank-swift">
+              <input id="bank-swift" className="ds-input" value={editing.draft.swift} onChange={e => set('swift', e.target.value.toUpperCase())} maxLength={11} />
+            </FormField>
+            <FormField label="Compte comptable" htmlFor="bank-ledger">
+              <input id="bank-ledger" className="ds-input" value={editing.draft.ledgerAccount} onChange={e => set('ledgerAccount', e.target.value)} placeholder="5141" maxLength={10} />
+            </FormField>
+            <FormField label="Établissement" htmlFor="bank-store">
+              <select id="bank-store" className="ds-input" value={editing.draft.storeId} onChange={e => set('storeId', e.target.value)}>
                 <option value="">Tous</option>
                 {stores.map((s: Record<string, any>) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
-            </label>
+            </FormField>
           </div>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.875rem' }}>
             {([['isDefault', 'Compte par défaut'], ['showOnInvoices', 'Afficher sur les factures'], ['isActive', 'Compte ouvert']] as const).map(([k, l]) => (
@@ -129,14 +121,10 @@ export default function CompanyBankAccounts() {
               </label>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
-            <button type="button" className="odoo-btn-primary" disabled={save.isPending || ribDigits.length !== 24 || !editing.draft.label.trim() || !editing.draft.bankName.trim()}
-              onClick={() => save.mutate()}>
-              {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
-          </div>
-        </div>
+          <FormFooter onCancel={() => setEditing(null)} busy={save.isPending}
+            disabled={ribDigits.length !== 24 || !editing.draft.label.trim() || !editing.draft.bankName.trim()}
+            onSubmit={() => save.mutate()} />
+        </section>
       )}
     </div>
   );

@@ -6,6 +6,7 @@ import { History, Layers, Package, ChefHat, PackageCheck, type LucideIcon } from
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import type { ProductionPlanEvent } from '@ofauria/shared';
 import { planStatusTag, bonStatusTag } from './status';
+import './production.css';
 
 /**
  * Sections d'affichage pur de la fiche plan, sorties de PlanDetailPage (lot 4) :
@@ -16,15 +17,15 @@ export function PlanJournal({ events }: { events: ProductionPlanEvent[] }) {
   const planEvents = events;
   if (planEvents.length === 0) return null;
   return (
-    <details className="odoo-section">
-      <summary className="odoo-section-header" style={{ cursor: 'pointer', listStyle: 'none' }}>
+    <details className="ds-panel pd-section">
+      <summary className="pd-section-head" style={{ cursor: 'pointer', listStyle: 'none' }}>
         <History size={12} /> Journal du plan
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
           {planEvents.length} transition{planEvents.length > 1 ? 's' : ''}
         </span>
       </summary>
       <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
+        <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th>Date</th>
@@ -62,15 +63,15 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
   const productionLotUsage = usage;
   if (productionLotUsage.length === 0) return null;
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header">
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head">
         <Layers size={12} /> Traçabilité des lots
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
           {(productionLotUsage as Record<string, any>[]).length} lot(s) d'ingrédients utilisé(s)
         </span>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
+        <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th style={{ width: 24 }}></th>
@@ -134,8 +135,8 @@ export function PlanLinkedOrder({ plan }: { plan: Record<string, any> }) {
     </div>
   );
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header">
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head">
         <Package size={12} /> Commande liée
         <span style={{ marginLeft: 4, fontFamily: 'ui-monospace, monospace', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{plan.order_number}</span>
         <span style={{ marginLeft: 'auto' }}><StatusTag tone={orderTone.tone} icon={orderTone.icon} label={orderLabel} /></span>

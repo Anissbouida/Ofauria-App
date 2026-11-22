@@ -12,7 +12,6 @@ import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { getApiErrorMessage } from '../../utils/api-error';
 import {
@@ -26,7 +25,7 @@ import SubscriptionsTab from './SubscriptionsTab';
 import RoutesTab from './RoutesTab';
 import { ListKpi } from './ListTemplate';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { KpiGrid, KpiCard, Toolbar, SearchBar, Segmented, DataPanel, LoadingState, EmptyState } from '../../components/ds';
+import { KpiGrid, KpiCard, Toolbar, SearchBar, Segmented, DataPanel, LoadingState, EmptyState, ErrorState, Modal, FormField, FormFooter } from '../../components/ds';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ReceivablesTab from './ReceivablesTab';
 import OfflineAbandonedSection from './OfflineAbandonedSection';
@@ -63,6 +62,10 @@ function exportCSV(filename: string, headers: string[], rows: string[][]) {
 
 function formatCurrency(value: number) {
   return money(value);
+}
+/** Montant sans unité (l'unité est dans l'en-tête de colonne). */
+function n2(value: number) {
+  return value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function parseCSVFiles(files: FileList): Promise<{ date: string; items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[] }[]> {
@@ -212,7 +215,7 @@ export default function SalesPage() {
 
   // Receipt list query — la liste affiche les ventes encaissees du jour ;
   // les ventes a plus tard non encaissees vivent dans l'onglet Impayes.
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError: salesError, error: salesErrorObj, refetch: refetchSales } = useQuery({
     queryKey: ['sales', { dateFrom, dateTo }],
     queryFn: () => salesApi.list({ dateFrom, dateTo, limit: '500' }),
     enabled: mainTab === 'sales' && view === 'receipt',
@@ -263,7 +266,7 @@ export default function SalesPage() {
   });
 
   // Summary query (grouped views)
-  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+  const { data: summaryData, isLoading: summaryLoading, isError: summaryError, error: summaryErrorObj, refetch: refetchSummary } = useQuery({
     queryKey: ['sales-summary', { dateFrom, dateTo, groupBy: view }],
     queryFn: () => salesApi.summary({ dateFrom, dateTo, groupBy: view }),
     enabled: mainTab === 'sales' && view !== 'receipt',
@@ -279,7 +282,7 @@ export default function SalesPage() {
   const periodTotals = (periodTotalsData as Record<string, any>[] | undefined) ?? null;
 
   // Sessions query
-  const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
+  const { data: sessionsData, isLoading: sessionsLoading, isError: sessionsError, error: sessionsErrorObj, refetch: refetchSessions } = useQuery({
     queryKey: ['cash-register-sessions', { dateFrom, dateTo }],
     queryFn: () => cashRegisterApi.list({ dateFrom, dateTo }),
     enabled: mainTab === 'sessions',
@@ -302,7 +305,7 @@ export default function SalesPage() {
   }, [manualEntriesData]);
 
   // Returns query
-  const { data: returnsData, isLoading: returnsLoading } = useQuery({
+  const { data: returnsData, isLoading: returnsLoading, isError: returnsError, error: returnsErrorObj, refetch: refetchReturns } = useQuery({
     queryKey: ['returns', { dateFrom, dateTo }],
     queryFn: () => returnsApi.list({ dateFrom, dateTo, limit: '500' }),
     enabled: mainTab === 'returns',
@@ -613,10 +616,9 @@ export default function SalesPage() {
 
       {/* Import results modal */}
       {importResults && (
-        <ModalBackdrop onClose={() => setImportResults(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Résultats de l'import</h3>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
+        <Modal title="Résultats de l'import" onClose={() => setImportResults(null)} width={520}
+          footer={<button type="button" className="odoo-btn-secondary" onClick={() => setImportResults(null)}>Fermer</button>}>
+            <div className="space-y-3">
               {importResults.map((r, i) => (
                 <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${r.created ? 'bg-emerald-50' : 'bg-red-50'}`}>
                   {r.created ? <CheckCircle size={18} className="text-emerald-600 mt-0.5 flex-shrink-0" /> : <XCircle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />}
@@ -645,12 +647,7 @@ export default function SalesPage() {
                 </div>
               ))}
             </div>
-            <button onClick={() => setImportResults(null)}
-              className="mt-4 w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
-              Fermer
-            </button>
-          </div>
-        </ModalBackdrop>
+        </Modal>
       )}
 
       <div className="sal-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -677,8 +674,8 @@ export default function SalesPage() {
 
           {/* ── Receipt view ── */}
           {view === 'receipt' && (
-            isLoading ? <LoadingState /> : (
-              <DataPanel>
+            isLoading ? <LoadingState /> : salesError ? <ErrorState error={salesErrorObj} onRetry={() => refetchSales()} /> : (
+              <DataPanel label="Ventes par reçu">
                 <table className="odoo-table">
                   <thead>
                     <tr>
@@ -687,7 +684,7 @@ export default function SalesPage() {
                       <SortHeader label="Client" sortKey="customer" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                       <SortHeader label="Caissier" sortKey="cashier" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                       <SortHeader label="Paiement" sortKey="payment_method" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                      <SortHeader label="Total" sortKey="total" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label={`Total (${currencySymbol()})`} sortKey="total" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="Heure" sortKey="created_at" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                       <th className="ds-actions">Actions</th>
                     </tr>
@@ -730,9 +727,7 @@ export default function SalesPage() {
                             </span>
                           )}
                         </td>
-                        <td className="ds-num">
-                          <span style={{ fontWeight: 700 }}>{formatCurrency(parseFloat(s.total as string))}</span>
-                        </td>
+                        <td className="ds-num ds-strong">{n2(parseFloat(s.total as string))}</td>
                         <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
                           {format(new Date(s.created_at as string), 'HH:mm', { locale: fr })}
                         </td>
@@ -766,15 +761,15 @@ export default function SalesPage() {
 
           {/* ── Category view ── */}
           {view === 'category' && (
-            summaryLoading ? <LoadingState /> : (
-              <DataPanel>
+            summaryLoading ? <LoadingState /> : summaryError ? <ErrorState error={summaryErrorObj} onRetry={() => refetchSummary()} /> : (
+              <DataPanel label="Ventes par catégorie">
                 <table className="odoo-table">
                   <thead>
                     <tr>
                       <SortHeader label="Catégorie" sortKey="label" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                       <SortHeader label="Articles vendus" sortKey="total_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="Nb ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                      <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label={`CA (${currencySymbol()})`} sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <th className="ds-num">Part</th>
                     </tr>
                   </thead>
@@ -793,8 +788,8 @@ export default function SalesPage() {
                             </span>
                           </td>
                           <td className="ds-num ds-strong">{row.total_quantity as string}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{row.sale_count as string}</td>
-                          <td className="ds-num ds-strong">{formatCurrency(rev)}</td>
+                          <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{row.sale_count as string}</td>
+                          <td className="ds-num ds-strong">{n2(rev)}</td>
                           <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ width: 60, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
@@ -821,8 +816,8 @@ export default function SalesPage() {
 
           {/* ── Product view ── */}
           {view === 'product' && (
-            summaryLoading ? <LoadingState /> : (
-              <DataPanel>
+            summaryLoading ? <LoadingState /> : summaryError ? <ErrorState error={summaryErrorObj} onRetry={() => refetchSummary()} /> : (
+              <DataPanel label="Ventes par article">
                 <table className="odoo-table">
                   <thead>
                     <tr>
@@ -831,7 +826,7 @@ export default function SalesPage() {
                       <SortHeader label="Catégorie" sortKey="category_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                       <SortHeader label="Qté vendue" sortKey="total_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <SortHeader label="Nb ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                      <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label={`CA (${currencySymbol()})`} sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <th className="ds-num">Part</th>
                     </tr>
                   </thead>
@@ -854,8 +849,8 @@ export default function SalesPage() {
                             ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                           </td>
                           <td className="ds-num ds-strong">{row.total_quantity as string}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{row.sale_count as string}</td>
-                          <td className="ds-num ds-strong">{formatCurrency(rev)}</td>
+                          <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{row.sale_count as string}</td>
+                          <td className="ds-num ds-strong">{n2(rev)}</td>
                           <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ width: 60, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
@@ -882,15 +877,15 @@ export default function SalesPage() {
 
           {/* ── Cashier view ── */}
           {view === 'cashier' && (
-            summaryLoading ? <LoadingState /> : (
-              <DataPanel>
+            summaryLoading ? <LoadingState /> : summaryError ? <ErrorState error={summaryErrorObj} onRetry={() => refetchSummary()} /> : (
+              <DataPanel label="Ventes par vendeuse">
                 <table className="odoo-table">
                   <thead>
                     <tr>
                       <th>Vendeuse / Caissier</th>
                       <th>Rôle</th>
                       <SortHeader label="Ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                      <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label={`CA (${currencySymbol()})`} sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <th className="ds-num">Part</th>
                     </tr>
                   </thead>
@@ -912,7 +907,7 @@ export default function SalesPage() {
                             <span className="odoo-tag odoo-tag-grey">{ROLE_LABELS[row.role as string] || String(row.role)}</span>
                           </td>
                           <td className="ds-num ds-strong">{row.sale_count as string}</td>
-                          <td className="ds-num ds-strong">{formatCurrency(rev)}</td>
+                          <td className="ds-num ds-strong">{n2(rev)}</td>
                           <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ width: 60, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
@@ -932,15 +927,15 @@ export default function SalesPage() {
 
           {/* ── Payment view ── */}
           {view === 'payment' && (
-            summaryLoading ? <LoadingState /> : (
-              <DataPanel>
+            summaryLoading ? <LoadingState /> : summaryError ? <ErrorState error={summaryErrorObj} onRetry={() => refetchSummary()} /> : (
+              <DataPanel label="Ventes par mode de paiement">
                 <table className="odoo-table">
                   <thead>
                     <tr>
                       <th style={{ width: 24 }}></th>
                       <th>Méthode</th>
                       <SortHeader label="Ventes" sortKey="sale_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                      <SortHeader label="CA" sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                      <SortHeader label={`CA (${currencySymbol()})`} sortKey="total_revenue" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                       <th className="ds-num">Part</th>
                     </tr>
                   </thead>
@@ -959,7 +954,7 @@ export default function SalesPage() {
                             <span className={`odoo-tag ${isCash ? 'odoo-tag-green' : 'odoo-tag-blue'}`}>{label as string}</span>
                           </td>
                           <td className="ds-num ds-strong">{row.sale_count as string}</td>
-                          <td className="ds-num ds-strong">{formatCurrency(rev)}</td>
+                          <td className="ds-num ds-strong">{n2(rev)}</td>
                           <td className="ds-num">
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ width: 80, height: 4, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
@@ -984,7 +979,7 @@ export default function SalesPage() {
 
       {/* ═══════════ RETURNS TAB ═══════════ */}
       {mainTab === 'returns' && (
-        returnsLoading ? <LoadingState /> : (
+        returnsLoading ? <LoadingState /> : returnsError ? <ErrorState error={returnsErrorObj} onRetry={() => refetchReturns()} /> : (
           <>
             {/* Returns summary tiles */}
             {(() => {
@@ -1003,7 +998,7 @@ export default function SalesPage() {
               );
             })()}
 
-            <DataPanel>
+            <DataPanel label="Retours et échanges">
               <table className="odoo-table">
                 <thead>
                   <tr>
@@ -1012,7 +1007,7 @@ export default function SalesPage() {
                     <th>Vente orig.</th>
                     <th>Type</th>
                     <th>Articles</th>
-                    <th className="ds-num">Montant</th>
+                    <th className="ds-num">Montant ({currencySymbol()})</th>
                     <th>Caissier</th>
                     <th>Date</th>
                     <th>Motif</th>
@@ -1028,7 +1023,7 @@ export default function SalesPage() {
                       <tr key={r.id as string}>
                         <td>{isReturn ? <RotateCcw size={13} style={{ color: 'var(--ds-danger)' }} /> : <ArrowLeftRight size={13} style={{ color: 'var(--theme-accent)' }} />}</td>
                         <td><span className="ds-ref">{r.return_number as string}</span></td>
-                        <td style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{r.original_sale_number as string}</td>
+                        <td><span className="ds-ref">{r.original_sale_number as string}</span></td>
                         <td><span className={`odoo-tag ${isReturn ? 'odoo-tag-red' : 'odoo-tag-blue'}`}>{isReturn ? 'Retour' : 'Échange'}</span></td>
                         <td style={{ color: 'var(--theme-text-muted)' }}>
                           {items.map((it, idx) => (
@@ -1037,7 +1032,7 @@ export default function SalesPage() {
                             </div>
                           ))}
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--ds-danger)' }}>{formatCurrency(parseFloat(r.refund_amount as string))}</td>
+                        <td className="ds-num ds-strong" style={{ color: 'var(--ds-danger)' }}>{n2(parseFloat(r.refund_amount as string))}</td>
                         <td style={{ color: 'var(--theme-text-muted)' }}>{r.user_first_name as string} {r.user_last_name as string}</td>
                         <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{format(new Date(r.created_at as string), 'dd/MM HH:mm', { locale: fr })}</td>
                         <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(r.reason as string) || '—'}</td>
@@ -1053,7 +1048,7 @@ export default function SalesPage() {
 
       {/* ═══════════ SESSIONS TAB ═══════════ */}
       {mainTab === 'sessions' && (
-        sessionsLoading ? <LoadingState /> : (
+        sessionsLoading ? <LoadingState /> : sessionsError ? <ErrorState error={sessionsErrorObj} onRetry={() => refetchSessions()} /> : (
           <div className="prj" style={{ gap: 24 }}>
             <section className="prj-kpis" aria-label="Indicateurs">
               <ListKpi label="Sessions" value={String(sessions.length)} sub={sessionKpis.open ? `${sessionKpis.open} encore ouverte${sessionKpis.open > 1 ? 's' : ''}` : 'toutes clôturées'} tone={sessionKpis.open ? 'orange' : undefined} />
@@ -1094,7 +1089,7 @@ export default function SalesPage() {
                     const statusLabel = totalDiff === null ? 'Sans comptage'
                       : totalDiff === 0 ? 'Caisse juste'
                       : `${totalDiff > 0 ? '+' : ''}${formatCurrency(totalDiff)}`;
-                    const signed = (v: number) => `${v > 0 ? '+' : ''}${formatCurrency(v)}`;
+                    const signed = (v: number) => `${v > 0 ? '+' : ''}${n2(v)}`;
                     const tone = (v: number | null) => (v ?? 0) < 0 ? 'r' : (v ?? 0) > 0 ? 'b' : 'g';
                     const advances = parseFloat(s.total_advances as string || '0');
                     const cashExpected = parseFloat(s.expected_cash as string || '0');
@@ -1132,20 +1127,20 @@ export default function SalesPage() {
                         <div className="kl-sess-rec">
                           <table>
                             <thead>
-                              <tr><th /><th>Attendu</th><th>Saisi par le caissier</th><th>Écart</th></tr>
+                              <tr><th /><th>Attendu ({currencySymbol()})</th><th>Saisi par le caissier ({currencySymbol()})</th><th>Écart ({currencySymbol()})</th></tr>
                             </thead>
                             <tbody>
                               <tr>
                                 <th><Banknote size={14} /> Espèces <small>tiroir</small></th>
-                                <td>{formatCurrency(cashExpected)}</td>
-                                <td>{cashCounted != null ? formatCurrency(cashCounted) : <em>non compté</em>}</td>
+                                <td>{n2(cashExpected)}</td>
+                                <td>{cashCounted != null ? n2(cashCounted) : <em>non compté</em>}</td>
                                 <td>{diff != null ? <b className={tone(diff)}>{signed(diff)}</b> : '—'}
                                   {s.difference_reason && <small>{REASON_LABELS[s.difference_reason as string] ?? s.difference_reason}</small>}</td>
                               </tr>
                               <tr>
                                 <th><CreditCard size={14} /> Carte <small>TPE</small></th>
-                                <td>{formatCurrency(cardExpected)}</td>
-                                <td>{cardExpected === 0 && s.actual_card_amount == null ? '—' : formatCurrency(cardCounted)}
+                                <td>{n2(cardExpected)}</td>
+                                <td>{cardExpected === 0 && s.actual_card_amount == null ? '—' : n2(cardCounted)}
                                   {cardMissing && <small className="warn">non saisie à la fermeture</small>}</td>
                                 <td>{cardDiff != null ? <b className={tone(cardDiff)}>{signed(cardDiff)}</b> : '—'}
                                   {cardMissing ? <small>Montant TPE non saisi</small>
@@ -1155,8 +1150,8 @@ export default function SalesPage() {
                             <tfoot>
                               <tr>
                                 <th>Total</th>
-                                <td>{formatCurrency(totalExpected)}</td>
-                                <td>{totalCounted != null ? formatCurrency(totalCounted) : '—'}</td>
+                                <td>{n2(totalExpected)}</td>
+                                <td>{totalCounted != null ? n2(totalCounted) : '—'}</td>
                                 <td>{totalDiff != null ? <b className={tone(totalDiff)}>{signed(totalDiff)}</b> : '—'}</td>
                               </tr>
                             </tfoot>
@@ -1184,10 +1179,7 @@ export default function SalesPage() {
               </section>
             )}
             {sessions.length === 0 && (
-              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-                <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-                <p style={{ fontSize: '0.8125rem' }}>Aucune session de caisse sur cette période</p>
-              </div>
+              <EmptyState icon={Lock} title="Aucune session de caisse sur cette période" />
             )}
           </div>
         )
@@ -1210,138 +1202,87 @@ export default function SalesPage() {
 
       {/* Modal d'encaissement d'une vente impayée */}
       {paySaleTarget && (
-        <ModalBackdrop onClose={() => setPaySaleTarget(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-amber-50 rounded-full flex items-center justify-center">
-                <Banknote size={20} className="text-amber-600" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold">Encaisser la vente</h2>
-                <p className="text-xs text-gray-500 font-mono">{paySaleTarget.sale_number as string}</p>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 rounded-lg p-3 mb-4 space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">Bénéficiaire</span>
-                <span className="font-medium text-gray-800">
+        <Modal title="Encaisser la vente" subtitle={<span className="ds-ref">{paySaleTarget.sale_number as string}</span>} onClose={() => setPaySaleTarget(null)} width={400}
+          locked={paySaleMutation.isPending}
+          footer={<FormFooter onCancel={() => setPaySaleTarget(null)} submitLabel="Encaisser" busy={paySaleMutation.isPending}
+            onSubmit={() => paySaleMutation.mutate({ id: paySaleTarget.id as string, paymentMethod: payPaymentMethod, paidAt: payDate })} />}>
+            <table className="odoo-table ds-dense" aria-label="Vente à encaisser">
+              <tbody>
+                <tr><td>Bénéficiaire</td><td className="ds-strong" style={{ textAlign: 'right' }}>
                   {paySaleTarget.customer_first_name
                     ? `${paySaleTarget.customer_first_name} ${paySaleTarget.customer_last_name}`
                     : (paySaleTarget.unpaid_customer_name as string) || '—'}
-                </span>
+                </td></tr>
+                <tr><td>Montant à encaisser ({currencySymbol()})</td><td className="ds-num ds-strong">{n2(parseFloat(paySaleTarget.total as string))}</td></tr>
+              </tbody>
+            </table>
+
+            <div className="ds-field">
+              <span id="sp-pay-method" className="ds-field-label">Mode de paiement</span>
+              <div className="odoo-view-switcher" role="radiogroup" aria-labelledby="sp-pay-method" style={{ width: '100%' }}>
+                {([['cash', 'Espèces', Banknote], ['card', 'Carte', CreditCard]] as const).map(([key, label, Icon]) => (
+                  <button key={key} type="button" role="radio" aria-checked={payPaymentMethod === key} onClick={() => setPayPaymentMethod(key)}
+                    className={payPaymentMethod === key ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', gap: 4, fontWeight: payPaymentMethod === key ? 600 : 400 }}>
+                    <Icon size={13} /> {label}
+                  </button>
+                ))}
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500">Montant à encaisser</span>
-                <span className="text-xl font-bold text-primary-700">{formatCurrency(parseFloat(paySaleTarget.total as string))}</span>
-              </div>
             </div>
 
-            <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
-            <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-4">
-              <button onClick={() => setPayPaymentMethod('cash')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold transition-all ${
-                  payPaymentMethod === 'cash' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'
-                }`}>
-                <Banknote size={15} /> Espèces
-              </button>
-              <button onClick={() => setPayPaymentMethod('card')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-semibold transition-all ${
-                  payPaymentMethod === 'card' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'
-                }`}>
-                <CreditCard size={15} /> Carte
-              </button>
-            </div>
-
-            <label className="block text-sm font-medium text-gray-700 mb-2">Date d'encaissement</label>
-            <input type="date" value={payDate}
-              min={format(new Date(paySaleTarget.created_at as string), 'yyyy-MM-dd')}
-              max={format(new Date(), 'yyyy-MM-dd')}
-              onChange={(e) => setPayDate(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:border-primary-400" />
-            <p className="text-xs text-gray-400 mb-5">La vente sera comptabilisée dans le CA de ce jour.</p>
-
-            <div className="flex gap-3">
-              <button onClick={() => setPaySaleTarget(null)} className="btn-secondary flex-1">Annuler</button>
-              <button onClick={() => paySaleMutation.mutate({ id: paySaleTarget.id as string, paymentMethod: payPaymentMethod, paidAt: payDate })}
-                disabled={paySaleMutation.isPending}
-                className="btn-primary flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-40">
-                {paySaleMutation.isPending ? 'En cours...' : 'Encaisser'}
-              </button>
-            </div>
-          </div>
-        </ModalBackdrop>
+            <FormField label="Date d'encaissement" htmlFor="sp-pay-date" required hint="La vente sera comptabilisée dans le CA de ce jour.">
+              <input id="sp-pay-date" type="date" value={payDate}
+                min={format(new Date(paySaleTarget.created_at as string), 'yyyy-MM-dd')}
+                max={format(new Date(), 'yyyy-MM-dd')}
+                onChange={(e) => setPayDate(e.target.value)}
+                className="ds-input" />
+            </FormField>
+        </Modal>
       )}
 
       {/* ── Annulation de ticket (phase 8.1) ── */}
       {cancelTarget && (
-        <ModalBackdrop onClose={() => setCancelTarget(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-4">
-              <XCircle size={18} className="text-red-600" />
-              <div>
-                <h2 className="text-lg font-bold">Annuler le ticket</h2>
-                <p className="text-xs text-gray-500 font-mono">{cancelTarget.sale_number as string}</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-600 mb-3">L'écriture comptable est extournée et le stock vitrine restitué. Interdit si la caisse est clôturée.</p>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Motif (obligatoire)</label>
-            <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={2}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-primary-400" placeholder="Erreur de caisse, double ticket…" />
-            <div className="flex gap-3">
-              <button onClick={() => setCancelTarget(null)} className="btn-secondary flex-1">Fermer</button>
-              <button onClick={() => cancelMutation.mutate({ id: cancelTarget.id as string, reason: cancelReason })}
-                disabled={cancelReason.trim().length < 3 || cancelMutation.isPending}
-                className="btn-primary flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-40">
-                {cancelMutation.isPending ? 'En cours...' : 'Annuler le ticket'}
-              </button>
-            </div>
-          </div>
-        </ModalBackdrop>
+        <Modal title="Annuler le ticket" subtitle={<span className="ds-ref">{cancelTarget.sale_number as string}</span>} onClose={() => setCancelTarget(null)} width={460}
+          locked={cancelMutation.isPending}
+          footer={<FormFooter onCancel={() => setCancelTarget(null)} cancelLabel="Fermer" submitLabel="Annuler le ticket"
+            disabled={cancelReason.trim().length < 3} busy={cancelMutation.isPending}
+            onSubmit={() => cancelMutation.mutate({ id: cancelTarget.id as string, reason: cancelReason })} />}>
+            <p style={{ margin: 0, fontSize: 14 }}>L'écriture comptable est extournée et le stock vitrine restitué. Interdit si la caisse est clôturée.</p>
+            <FormField label="Motif" htmlFor="sp-cancel-reason" required
+              error={cancelReason !== '' && cancelReason.trim().length < 3 ? 'Au moins 3 caractères.' : undefined}>
+              <textarea id="sp-cancel-reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={2}
+                className="ds-input" placeholder="Erreur de caisse, double ticket…" />
+            </FormField>
+        </Modal>
       )}
 
       {/* ── Facture depuis un ticket (phase 5.5) ── */}
       {invoiceTarget && (
-        <ModalBackdrop onClose={() => setInvoiceTarget(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-4">
-              <FileText size={18} className="text-primary-600" />
-              <div>
-                <h2 className="text-lg font-bold">Établir la facture</h2>
-                <p className="text-xs text-gray-500 font-mono">{invoiceTarget.sale_number as string}</p>
-              </div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 mb-4 flex justify-between items-center">
-              <span className="text-sm text-gray-600">Montant TTC</span>
-              <span className="text-xl font-bold text-primary-700">{formatCurrency(parseFloat(invoiceTarget.total as string))}</span>
-            </div>
+        <Modal title="Établir la facture" subtitle={<span className="ds-ref">{invoiceTarget.sale_number as string}</span>} onClose={() => setInvoiceTarget(null)} width={460}
+          locked={invoiceMutation.isPending}
+          footer={<FormFooter onCancel={() => setInvoiceTarget(null)} submitLabel="Émettre la facture"
+            disabled={!invoiceTarget.customer_id && !invoiceCustomerId} busy={invoiceMutation.isPending}
+            onSubmit={() => invoiceMutation.mutate({ id: invoiceTarget.id as string, customerId: invoiceTarget.customer_id ? undefined : invoiceCustomerId || undefined })} />}>
+            <table className="odoo-table ds-dense" aria-label="Ticket à facturer">
+              <tbody>
+                <tr><td>Montant TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{n2(parseFloat(invoiceTarget.total as string))}</td></tr>
+              </tbody>
+            </table>
             {invoiceTarget.customer_id ? (
-              <p className="text-sm text-gray-600 mb-5">
+              <p style={{ margin: 0, fontSize: 14 }}>
                 Client : <strong>{invoiceTarget.customer_first_name} {invoiceTarget.customer_last_name}</strong>.
                 La vente est déjà encaissée ; la facture reprend ses lignes sans nouvelle écriture comptable.
               </p>
             ) : (
-              <div className="mb-5">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Client (ticket anonyme)</label>
+              <FormField label="Client (ticket anonyme)" required>
                 <SearchSelect value={invoiceCustomerId} onChange={setInvoiceCustomerId}
                   placeholder="— Choisir un client —" width="100%" size="md" ariaLabel="Client"
                   options={((invoiceCustomers?.data ?? invoiceCustomers ?? []) as Record<string, any>[]).map((c) => ({
                     id: c.id as string,
                     label: `${c.first_name} ${c.last_name}${c.company_name ? ` (${c.company_name})` : ''}`.trim(),
                   }))} />
-              </div>
+              </FormField>
             )}
-            <div className="flex gap-3">
-              <button onClick={() => setInvoiceTarget(null)} className="btn-secondary flex-1">Annuler</button>
-              <button
-                onClick={() => invoiceMutation.mutate({ id: invoiceTarget.id as string, customerId: invoiceTarget.customer_id ? undefined : invoiceCustomerId || undefined })}
-                disabled={invoiceMutation.isPending || (!invoiceTarget.customer_id && !invoiceCustomerId)}
-                className="btn-primary flex-1 disabled:opacity-40">
-                {invoiceMutation.isPending ? 'En cours...' : 'Émettre la facture'}
-              </button>
-            </div>
-          </div>
-        </ModalBackdrop>
+        </Modal>
       )}
     </div>
   );
@@ -1480,7 +1421,8 @@ function InventoryBilan({ session }: { session: Record<string, any> }) {
       </button>
 
       {expanded && items && items.length > 0 && (
-        <table className="odoo-table" style={{ margin: '0 0 12px', boxShadow: 'none' }}>
+        <DataPanel label="Bilan des produits" style={{ margin: '0 16px 12px' }}>
+        <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th>Produit</th>
@@ -1503,7 +1445,7 @@ function InventoryBilan({ session }: { session: Record<string, any> }) {
                   <td className="ds-num ds-strong">{rep}</td>
                   <td className="ds-num ds-strong">{sold}</td>
                   <td className="ds-num ds-strong">{rem}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: disc > 0 ? 'var(--ds-danger)' : disc < 0 ? 'var(--theme-accent)' : 'var(--ds-success)' }}>
+                  <td className="ds-num ds-strong" style={{ color: disc > 0 ? 'var(--ds-danger)' : disc < 0 ? 'var(--theme-accent)' : 'var(--ds-success)' }}>
                     {disc === 0 ? '✓' : disc > 0 ? `−${disc}` : `+${Math.abs(disc)}`}
                   </td>
                 </tr>
@@ -1511,6 +1453,7 @@ function InventoryBilan({ session }: { session: Record<string, any> }) {
             })}
           </tbody>
         </table>
+        </DataPanel>
       )}
       {expanded && items && items.length === 0 && (
         <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textAlign: 'center', padding: '8px 0' }}>Aucun détail d'inventaire disponible</p>

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { routingOpMinutes, routingOpCost } from '@ofauria/shared';
 import { money, currencySymbol } from '../../utils/money';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Cog, Plus, X, Loader2, Power, Trash2, Route, Save, Wrench, ListOrdered, Gauge, CalendarDays } from 'lucide-react';
+import { Cog, Plus, Power, Trash2, Route, Wrench, ListOrdered, Gauge, CalendarDays } from 'lucide-react';
 import { routingsApi, opToInput, OP_TYPE_LABELS, type OpType, type Routing, type OperationInput } from '../../api/routings.api';
 import WorkCenterOeeModal from './WorkCenterOeeModal';
 import WorkCenterCalendarModal from './WorkCenterCalendarModal';
@@ -21,16 +21,14 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import SalesPageShell from '../sales/SalesPageShell';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { DataPanel, EmptyState, ErrorState, FormField, LoadingState, Segmented, TableFooter, Toolbar } from '../../components/ds';
+import { DataPanel, EmptyState, ErrorState, FormField, FormFooter, FormSection, LoadingState, Modal, Segmented, TableFooter, Toolbar } from '../../components/ds';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const suffix: React.CSSProperties = { position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--ds-muted)' };
-const modalHead: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--ds-hair)' };
 
 /** Grille partagée en-tête / lignes de l'éditeur d'opérations (alignement des colonnes). */
 const OPS_GRID = '26px minmax(0, 1fr) 190px 92px 94px 34px';
@@ -62,7 +60,7 @@ export default function WorkCentersPage() {
 
 function Centers({ creating: showForm, onCreatingChange: setShowForm }: { creating: boolean; onCreatingChange: (v: boolean) => void }) {
   const qc = useQueryClient();
-  const { data: rows = [], isLoading, isError, refetch } = useQuery({ queryKey: ['work-centers'], queryFn: routingsApi.workCenters });
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['work-centers'], queryFn: routingsApi.workCenters });
   const [oeeFor, setOeeFor] = useState<{ id: string; name: string } | null>(null);
   const [calFor, setCalFor] = useState<{ id: string; name: string } | null>(null);
   const toggle = useMutation({
@@ -77,7 +75,7 @@ function Centers({ creating: showForm, onCreatingChange: setShowForm }: { creati
   });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
         <EmptyState icon={Wrench} title="Aucun poste de travail" text="Créez un poste (pétrin, four, façonnage…) avec son coût horaire."
           action={<button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} aria-hidden="true" /> Nouveau poste</button>} />
       ) : (
@@ -128,13 +126,9 @@ function CenterForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
     onError: e => notify.error(apiErrorMessage(e)),
   });
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Nouveau poste de travail" style={{ background: 'var(--ds-card)', borderRadius: 16, width: 'min(440px, 96vw)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={modalHead}>
-          <h2 className="ds-subhead" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Wrench size={16} aria-hidden="true" /> Nouveau poste de travail</h2>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <Modal title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Wrench size={18} aria-hidden="true" /> Nouveau poste de travail</span>}
+      onClose={onClose} width={440} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} submitLabel="Créer le poste" busy={save.isPending} disabled={name.trim().length < 2} onSubmit={() => save.mutate()} />}>
           <FormField label="Nom du poste" htmlFor="wc-name" required>
             <input id="wc-name" type="text" className="ds-input" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. : four à sole" />
           </FormField>
@@ -150,27 +144,20 @@ function CenterForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
               <span style={suffix}>min/j</span>
             </div>
           </FormField>
-        </div>
-        <div className="ds-form-foot">
-          <span className="ds-grow" />
-          <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={save.isPending}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={name.trim().length < 2 || save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Plus size={13} aria-hidden="true" />} Créer le poste</button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
 function Routings({ creating, onCreatingChange }: { creating: boolean; onCreatingChange: (v: boolean) => void }) {
   const qc = useQueryClient();
-  const { data: rows = [], isLoading, isError, refetch } = useQuery({ queryKey: ['routings'], queryFn: routingsApi.list });
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['routings'], queryFn: routingsApi.list });
   const [editingId, setEditing] = useState<string | null>(null);
   // « Nouvelle gamme » vient de la barre du haut ; une gamme existante s'ouvre au clic sur sa ligne.
   const editing: string | 'new' | null = creating ? 'new' : editingId;
   const closeEditor = () => { setEditing(null); onCreatingChange(false); };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
         <EmptyState icon={Route} title="Aucune gamme" text="Une gamme est une séquence d'opérations, chacune sur un poste, qui donne un coût de main-d'œuvre standard."
           action={<button type="button" className="odoo-btn-primary" onClick={() => onCreatingChange(true)}><Plus size={14} aria-hidden="true" /> Nouvelle gamme</button>} />
       ) : (
@@ -249,15 +236,19 @@ export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: {
   const setOp = (i: number, patch: Partial<OperationInput>) => setOps(a => a.map((o, j) => j === i ? { ...o, ...patch } : o));
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={id ? 'Modifier la gamme' : 'Nouvelle gamme'} style={{ background: 'var(--ds-card)', borderRadius: 16, width: 'min(760px, 97vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={modalHead}>
-          <h2 className="ds-subhead" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Route size={16} aria-hidden="true" /> {id ? 'Modifier la gamme' : 'Nouvelle gamme'}</h2>
-          <button type="button" onClick={onClose} className="ds-icon-btn" aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-        </div>
-
-        <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {/* Identité de la gamme */}
+    <Modal title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Route size={18} aria-hidden="true" /> {id ? 'Modifier la gamme' : 'Nouvelle gamme'}</span>}
+      onClose={onClose} width={760} locked={save.isPending || del.isPending}
+      footer={
+        <FormFooter onCancel={onClose} submitLabel={id ? 'Enregistrer' : 'Créer la gamme'} busy={save.isPending} disabled={name.trim().length < 2} onSubmit={() => save.mutate()}>
+          {id && (
+            <button type="button" className="ds-btn-danger" disabled={del.isPending || save.isPending}
+              onClick={async () => { if (await confirm('La gamme et ses opérations seront supprimées définitivement.', { title: 'Supprimer cette gamme ?', confirmLabel: 'Supprimer', danger: true })) del.mutate(); }}>
+              <Trash2 size={13} aria-hidden="true" /> Supprimer
+            </button>
+          )}
+        </FormFooter>
+      }>
+          <FormSection title="Identité de la gamme">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
             <FormField label="Nom de la gamme" htmlFor="rt-name" required>
               <input id="rt-name" type="text" className="ds-input" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. : fabrication baguette" />
@@ -272,10 +263,10 @@ export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: {
               </div>
             </FormField>
           </div>
+          </FormSection>
 
           {/* Opérations : tableau à en-têtes */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <h3 className="ds-subhead">Opérations</h3>
+          <FormSection title="Opérations">
             <div style={{ overflowX: 'auto' }}>
               <div style={{ minWidth: 540, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {/* En-têtes de colonnes */}
@@ -318,7 +309,7 @@ export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: {
               </div>
             </div>
             <button type="button" className="odoo-btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={() => setOps(a => [...a, { operationName: '', workCenterId: null, durationMin: 0 }])}><Plus size={13} aria-hidden="true" /> Ajouter une opération</button>
-          </div>
+          </FormSection>
 
           {/* Totaux */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 28, borderTop: '1px solid var(--ds-hair)', paddingTop: 12 }}>
@@ -331,20 +322,6 @@ export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: {
               <div className="ds-strong" style={{ fontSize: 17, fontVariantNumeric: 'tabular-nums' }}>{money(liveCost)}</div>
             </div>
           </div>
-        </div>
-
-        <div className="ds-form-foot">
-          {id && (
-            <button type="button" className="ds-btn-danger" disabled={del.isPending || save.isPending}
-              onClick={async () => { if (await confirm('La gamme et ses opérations seront supprimées définitivement.', { title: 'Supprimer cette gamme ?', confirmLabel: 'Supprimer', danger: true })) del.mutate(); }}>
-              <Trash2 size={13} aria-hidden="true" /> Supprimer
-            </button>
-          )}
-          <span className="ds-grow" />
-          <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={save.isPending}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={name.trim().length < 2 || save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : (id ? <Save size={13} aria-hidden="true" /> : <Plus size={13} aria-hidden="true" />)} {id ? 'Enregistrer' : 'Créer la gamme'}</button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }

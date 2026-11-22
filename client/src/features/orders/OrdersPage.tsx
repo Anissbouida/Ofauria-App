@@ -1,21 +1,20 @@
 import { money, currencySymbol } from '../../utils/money';
-import { useState, useMemo, type CSSProperties } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
 import { format, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StageProgress, SelectFilter, type StageDef } from '../../components/purchasing/ProcessBoard';
 import {
-  ClipboardList, Plus, Pencil, Eye, X,
+  ClipboardList, Plus, Pencil, Eye,
   Clock, CheckCircle2, Factory, Truck, Ban, CalendarDays,
   Banknote, CreditCard, Package, PackageCheck, FileText,
-  AlertTriangle, Trash2, Loader2, Tag, Building2, CalendarClock, Printer, List, SquareKanban, Columns3,
+  AlertTriangle, Trash2, Tag, Building2, CalendarClock, List, SquareKanban, Columns3,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -24,7 +23,7 @@ import OrderFormModal from '../../components/orders/OrderFormModal';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi } from '../sales/ListTemplate';
-import { Toolbar, SearchBar, Segmented, DataPanel, BulkBar, TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { Toolbar, SearchBar, Segmented, DataPanel, BulkBar, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 import { OrderList, OrderPane, OrderPaneEmpty, OrderStatusTag } from './OrderSplit';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import '../projects/projects.css';
@@ -104,18 +103,6 @@ const BULK_STEPS = [
 /** Couleur des colonnes = règle commune de StatusTag (gris brouillon, bleu en cours, ambre à remettre, vert terminé). */
 const LANE_TONE: Record<string, string> = { pending: 'grey', confirmed: 'blue', in_production: 'blue', ready: 'orange', partially_delivered: 'blue', completed: 'green', cancelled: 'grey' };
 
-/* Styles partagés des fenêtres (mêmes valeurs que les modales Achats). */
-const modalPanelStyle: CSSProperties = {
-  backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)',
-  borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
-};
-const modalHeaderStyle: CSSProperties = { background: 'var(--ds-card)', padding: '0.875rem 1.25rem', color: 'var(--ds-ink)', borderBottom: '1px solid var(--ds-hair)' };
-const labelStyle: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 };
-const fieldStyle: CSSProperties = {
-  width: '100%', padding: '0.4375rem 0.625rem', border: '1px solid var(--ds-line)',
-  borderRadius: 8, fontSize: 14, backgroundColor: 'var(--ds-card)', color: 'var(--ds-ink)',
-};
-const sectionStyle: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' };
 
 /* ═══════════════════════ Page ═══════════════════════ */
 
@@ -145,7 +132,7 @@ export default function OrdersPage() {
 
   // Une seule lecture : les compteurs du pipeline et la liste partagent la même source,
   // le filtrage par statut se fait côté client (le serveur pagine à 20 par défaut).
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['orders', { all: true }],
     queryFn: () => ordersApi.list({ limit: '500' }),
   });
@@ -370,6 +357,8 @@ export default function OrdersPage() {
 
         {isLoading ? (
           <LoadingState label="Chargement des commandes…" />
+        ) : isError ? (
+          <ErrorState error={error} onRetry={() => refetch()} />
         ) : filteredOrders.length === 0 && view !== 'kanban' ? (
           hasFilters
             ? <NoResultState onReset={resetFilters} text="Aucune commande ne correspond aux filtres." />
@@ -569,36 +558,15 @@ export function PrepaymentModal({ order, onClose, onDone }: { order: OrderRow; o
   });
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="odoo-scope w-full" style={{ ...modalPanelStyle, maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Banknote size={18} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Facture d'acompte</div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · total {money(total)}</div>
-          </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <StatusBanner tone="info" icon={FileText} title="Pièce numérotée (série FA)">
-            L'acompte est une vraie facture, avec TVA, déduite ensuite de la facture finale de la commande.
-          </StatusBanner>
-          <div>
-            <label style={labelStyle}>Pourcentage de l'acompte</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="number" min={1} max={100} value={percent} onChange={e => setPercent(e.target.value)} style={{ ...fieldStyle, width: 120 }} />
-              <span style={{ color: 'var(--theme-text-muted)' }}>% → <strong>{money(amount)}</strong> TTC</span>
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
-          <button onClick={() => mutation.mutate()} className="odoo-btn-primary" disabled={mutation.isPending || !(pct > 0)}>
-            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />} Émettre l'acompte
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    <Modal title="Facture d'acompte" subtitle={`${order.order_number as string} · total ${money(total)}`} onClose={onClose} width={440} locked={mutation.isPending}
+      footer={<FormFooter onCancel={onClose} cancelLabel="Fermer" onSubmit={() => mutation.mutate()} submitLabel="Émettre l'acompte" disabled={!(pct > 0)} busy={mutation.isPending} />}>
+      <StatusBanner tone="info" icon={FileText} title="Pièce numérotée (série FA)">
+        L'acompte est une vraie facture, avec TVA, déduite ensuite de la facture finale de la commande.
+      </StatusBanner>
+      <FormField label="Pourcentage de l'acompte" htmlFor="pp-percent" required hint={<>Soit <strong>{money(amount)}</strong> TTC.</>}>
+        <input id="pp-percent" type="number" min={1} max={100} value={percent} onChange={e => setPercent(e.target.value)} className="ds-input" style={{ width: 120 }} />
+      </FormField>
+    </Modal>
   );
 }
 
@@ -629,66 +597,46 @@ export function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow;
   const change = payment === 'cash' ? Math.max(0, paid - remaining) : 0;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="odoo-scope w-full" style={{ ...modalPanelStyle, maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Truck size={18} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Remise au client</div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · {customerName(order)}</div>
-          </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
-        </div>
+    <Modal title="Remise au client" subtitle={`${order.order_number as string} · ${customerName(order)}`} onClose={onClose} width={460} locked={deliverMutation.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => deliverMutation.mutate()} submitLabel={`Encaisser ${money(remaining)} et remettre`} disabled={short} busy={deliverMutation.isPending} />}>
+      <FormSection title="Solde de la commande">
+        <table className="odoo-table ds-dense" aria-label="Solde de la commande">
+          <tbody>
+            <tr><td>Total commande ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totalAmt)}</td></tr>
+            <tr><td style={{ color: 'var(--ds-success)' }}>Avance déjà versée ({currencySymbol()})</td><td className="ds-num ds-strong" style={{ color: 'var(--ds-success)' }}>{n(advanceAmt)}</td></tr>
+            <tr><td className="ds-strong">Reste à encaisser ({currencySymbol()})</td><td className="ds-num ds-strong" style={{ color: 'var(--ds-warning)' }}>{n(remaining)}</td></tr>
+          </tbody>
+        </table>
+      </FormSection>
 
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={sectionStyle}>
-            <div className="odoo-section-header"><Banknote size={11} /> Solde de la commande</div>
-            <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total commande</span><span style={{ fontWeight: 600 }}>{money(totalAmt)}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ds-success)' }}><span>Avance déjà versée</span><span style={{ fontWeight: 600 }}>{money(advanceAmt)}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                <span>Reste à encaisser</span><span style={{ color: 'var(--ds-warning)' }}>{money(remaining)}</span>
-              </div>
+      <FormSection title="Encaissement">
+        <div className="ds-form-grid">
+          <FormField label={`Montant reçu (${currencySymbol()})`} htmlFor="dlv-amount" required error={short ? `Il manque ${money(remaining - paid)}.` : undefined}>
+            <input id="dlv-amount" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min={remaining} step="0.01" autoFocus
+              className="ds-input" style={{ textAlign: 'right', fontWeight: 700 }} />
+          </FormField>
+          <div className="ds-field">
+            <span id="dlv-method-label" className="ds-field-label">Mode de paiement</span>
+            <div className="odoo-view-switcher" role="radiogroup" aria-labelledby="dlv-method-label" style={{ width: '100%' }}>
+              {([['cash', 'Espèces', Banknote], ['card', 'Carte', CreditCard]] as const).map(([key, label, Icon]) => (
+                <button key={key} type="button" role="radio" aria-checked={payment === key} onClick={() => { setPayment(key); if (key === 'card') setAmount(remaining.toFixed(2)); }}
+                  className={payment === key ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', gap: 4, fontWeight: payment === key ? 600 : 400 }}>
+                  <Icon size={13} /> {label}
+                </button>
+              ))}
             </div>
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Montant reçu ({currencySymbol()})</label>
-              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min={remaining} step="0.01" autoFocus
-                style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
-            </div>
-            <div>
-              <label style={labelStyle}>Mode de paiement</label>
-              <div className="odoo-view-switcher" role="radiogroup" style={{ width: '100%' }}>
-                {([['cash', 'Espèces', Banknote], ['card', 'Carte', CreditCard]] as const).map(([key, label, Icon]) => (
-                  <button key={key} type="button" role="radio" aria-checked={payment === key} onClick={() => { setPayment(key); if (key === 'card') setAmount(remaining.toFixed(2)); }}
-                    className={payment === key ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', gap: 4, fontWeight: payment === key ? 600 : 400 }}>
-                    <Icon size={13} /> {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {short ? (
-            <StatusBanner tone="danger" icon={AlertTriangle} title={`Il manque ${money(remaining - paid)}`}>
-              Le reste doit être réglé en totalité pour remettre la commande.
-            </StatusBanner>
-          ) : change > 0.004 ? (
-            <StatusBanner tone="info" icon={Banknote} title={`Monnaie à rendre : ${money(change)}`} />
-          ) : null}
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary" disabled={deliverMutation.isPending}>Annuler</button>
-          <button onClick={() => deliverMutation.mutate()} disabled={deliverMutation.isPending || short} className="odoo-btn-primary">
-            {deliverMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-            Encaisser {money(remaining)} et remettre
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+        {short ? (
+          <StatusBanner tone="danger" icon={AlertTriangle} title={`Il manque ${money(remaining - paid)}`}>
+            Le reste doit être réglé en totalité pour remettre la commande.
+          </StatusBanner>
+        ) : change > 0.004 ? (
+          <StatusBanner tone="info" icon={Banknote} title={`Monnaie à rendre : ${money(change)}`} />
+        ) : null}
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -757,107 +705,94 @@ export function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderR
   });
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="odoo-scope w-full flex flex-col" style={{ ...modalPanelStyle, maxWidth: 640, maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Truck size={18} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Livraison sur bon de livraison</div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · {customerName(order)}</div>
-          </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
-        </div>
+    <Modal title="Livraison sur bon de livraison" subtitle={`${order.order_number as string} · ${customerName(order)}`} onClose={onClose} width={640} locked={mutation.isPending}
+      footer={<FormFooter onCancel={onClose} onSubmit={() => mutation.mutate()}
+        submitLabel={creditBlock ? 'Déroger et livrer' : perDelivery ? 'Livrer, facturer et imprimer le BL' : 'Livrer et imprimer le BL'}
+        disabled={isLoading || (totals.ht <= 0 && !(short && closeRemainder)) || (!!creditBlock && overrideReason.trim().length < 3)}
+        busy={mutation.isPending} />}>
+      <StatusBanner tone="info" icon={FileText}
+        title={perDelivery ? 'Facturé à chaque livraison : la facture est créée avec le BL' : 'Facturation mensuelle : le BL rejoint « À facturer »'}>
+        Aucun encaissement : le règlement de la facture est saisi par la direction. Imprimez le BL et faites-le signer à la livraison.
+      </StatusBanner>
 
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
-          <StatusBanner tone="info" icon={FileText}
-            title={perDelivery ? 'Facturé à chaque livraison : la facture est créée avec le BL' : 'Facturation mensuelle : le BL rejoint « À facturer »'}>
-            Aucun encaissement : le règlement de la facture est saisi par la direction. Imprimez le BL et faites-le signer à la livraison.
-          </StatusBanner>
-
-          <div style={sectionStyle}>
-            <div className="odoo-section-header"><Package size={11} /> Quantités livrées</div>
-            {isLoading ? (
-              <div style={{ padding: '1rem', textAlign: 'center' }}><Loader2 size={16} className="animate-spin" /></div>
-            ) : (
-              <table className="odoo-table" style={{ margin: 0 }}>
-                <thead>
-                  <tr>
-                    <th>Produit</th>
-                    <th className="ds-num">Commandé</th>
-                    {alreadyDelivered && <th className="ds-num">Déjà livré</th>}
-                    <th style={{ textAlign: 'right', width: 110 }}>À livrer</th>
-                    <th className="ds-num">P.U. HT</th>
-                    <th className="ds-num">TVA</th>
+      <FormSection title="Quantités livrées">
+        {isLoading ? (
+          <LoadingState bare />
+        ) : (
+          <DataPanel label="Quantités livrées">
+            <table className="odoo-table ds-dense">
+              <thead>
+                <tr>
+                  <th>Produit</th>
+                  <th className="ds-num">Commandé</th>
+                  {alreadyDelivered && <th className="ds-num">Déjà livré</th>}
+                  <th className="ds-num" style={{ width: 110 }}>À livrer</th>
+                  <th className="ds-num">P.U. HT ({currencySymbol()})</th>
+                  <th className="ds-num">TVA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map(l => (
+                  <tr key={l.id} style={{ cursor: 'default' }}>
+                    <td className="ds-strong">{l.description}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{num(l.quantity)}</td>
+                    {alreadyDelivered && <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{num(l.qty_delivered)}</td>}
+                    <td className="ds-num">
+                      <input type="number" min="0" step="0.01" value={qty[l.id] ?? String(num(l.remaining))} aria-label={`Quantité à livrer : ${l.description}`}
+                        onChange={e => setQty({ ...qty, [l.id]: e.target.value })}
+                        className="ds-input sm" style={{ width: 90, textAlign: 'right', fontWeight: 600 }} />
+                    </td>
+                    <td className="ds-num">{n(num(l.unit_price))}</td>
+                    <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{l.tva_rate != null ? `${num(l.tva_rate)} %` : '—'}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {lines.map(l => (
-                    <tr key={l.id} style={{ cursor: 'default' }}>
-                      <td className="ds-strong">{l.description}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{num(l.quantity)}</td>
-                      {alreadyDelivered && <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{num(l.qty_delivered)}</td>}
-                      <td className="ds-num">
-                        <input type="number" min="0" step="0.01" value={qty[l.id] ?? String(num(l.remaining))}
-                          onChange={e => setQty({ ...qty, [l.id]: e.target.value })}
-                          style={{ ...fieldStyle, width: 90, textAlign: 'right', fontWeight: 600 }} />
-                      </td>
-                      <td className="ds-num">{n(num(l.unit_price))}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{l.tva_rate != null ? `${num(l.tva_rate)} %` : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-          {changed && (
-            <StatusBanner tone="warning" icon={AlertTriangle} title={short ? 'Livraison partielle' : 'Quantités différentes de la commande'}>
-              La facture portera les quantités livrées.{short && ' Le reste demeure à livrer sur un prochain bon, sauf si vous soldez le reliquat.'}
-            </StatusBanner>
-          )}
-          {creditBlock && (
-            <StatusBanner tone="danger" icon={AlertTriangle} title="Expédition bloquée par le contrôle de crédit">
-              {creditBlock}
-              <div style={{ marginTop: 8 }}>
-                <label style={labelStyle}>Motif de la dérogation (direction)</label>
-                <input type="text" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} maxLength={500}
-                  placeholder="Ex. règlement promis vendredi, accord du gérant" style={fieldStyle} />
-              </div>
-            </StatusBanner>
-          )}
-          {short && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem' }}>
-              <input type="checkbox" checked={closeRemainder} onChange={e => setCloseRemainder(e.target.checked)} />
-              Solder le reliquat : rien d'autre ne sera livré, la commande est terminée
-            </label>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Date de livraison</label>
-              <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} style={fieldStyle} />
+                ))}
+              </tbody>
+            </table>
+          </DataPanel>
+        )}
+        {changed && (
+          <StatusBanner tone="warning" icon={AlertTriangle} title={short ? 'Livraison partielle' : 'Quantités différentes de la commande'}>
+            La facture portera les quantités livrées.{short && ' Le reste demeure à livrer sur un prochain bon, sauf si vous soldez le reliquat.'}
+          </StatusBanner>
+        )}
+        {creditBlock && (
+          <StatusBanner tone="danger" icon={AlertTriangle} title="Expédition bloquée par le contrôle de crédit">
+            {creditBlock}
+            <div style={{ marginTop: 8 }}>
+              <FormField label="Motif de la dérogation (direction)" htmlFor="pdl-override" required
+                error={overrideReason !== '' && overrideReason.trim().length < 3 ? 'Au moins 3 caractères.' : undefined}>
+                <input id="pdl-override" type="text" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} maxLength={500}
+                  placeholder="Ex. règlement promis vendredi, accord du gérant" className="ds-input" />
+              </FormField>
             </div>
-            <div>
-              <label style={labelStyle}>Reçu par (nom du réceptionnaire)</label>
-              <input type="text" value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Facultatif, sinon à remplir sur le BL" style={fieldStyle} />
-            </div>
-          </div>
+          </StatusBanner>
+        )}
+        {short && (
+          <label htmlFor="pdl-close" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem' }}>
+            <input id="pdl-close" type="checkbox" checked={closeRemainder} onChange={e => setCloseRemainder(e.target.checked)} />
+            Solder le reliquat : rien d'autre ne sera livré, la commande est terminée
+          </label>
+        )}
+      </FormSection>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, fontSize: '0.8125rem' }}>
-            <span>HT <strong>{money(totals.ht)}</strong></span>
-            <span>TVA <strong>{money(totals.tva)}</strong></span>
-            <span>TTC <strong>{money(totals.ht + totals.tva)}</strong></span>
-          </div>
+      <FormSection title="Livraison">
+        <div className="ds-form-grid">
+          <FormField label="Date de livraison" htmlFor="pdl-date" required>
+            <input id="pdl-date" type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="ds-input" />
+          </FormField>
+          <FormField label="Reçu par (nom du réceptionnaire)" htmlFor="pdl-received">
+            <input id="pdl-received" type="text" value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Facultatif, sinon à remplir sur le BL" className="ds-input" />
+          </FormField>
         </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary" disabled={mutation.isPending}>Annuler</button>
-          <button onClick={() => mutation.mutate()} disabled={mutation.isPending || isLoading || (totals.ht <= 0 && !(short && closeRemainder)) || (!!creditBlock && overrideReason.trim().length < 3)} className="odoo-btn-primary">
-            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
-            {creditBlock ? 'Déroger et livrer' : perDelivery ? 'Livrer, facturer et imprimer le BL' : 'Livrer et imprimer le BL'}
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+        <table className="odoo-table ds-dense" aria-label="Totaux" style={{ width: 'auto', marginLeft: 'auto' }}>
+          <tbody>
+            <tr><td>HT ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totals.ht)}</td></tr>
+            <tr><td>TVA ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totals.tva)}</td></tr>
+            <tr><td>TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totals.ht + totals.tva)}</td></tr>
+          </tbody>
+        </table>
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -882,43 +817,24 @@ export function RescheduleModal({ order, isDirection, onClose, onDone }: { order
   });
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="odoo-scope w-full" style={{ ...modalPanelStyle, maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <CalendarClock size={18} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Reporter le retrait</div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · prévu le {fmtDate(order.pickup_date)}</div>
-          </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: 'var(--ds-muted)', padding: 4 }}><X size={16} /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {late ? (
-            <StatusBanner tone={blocked ? 'danger' : 'warning'} icon={AlertTriangle} title="Moins de 24 h avant le retrait">
-              {blocked ? 'Seule la direction peut encore reporter cette commande.' : 'Report forcé par la direction : le motif est obligatoire.'}
-            </StatusBanner>
-          ) : (
-            <StatusBanner tone="info" icon={CalendarDays} title="Report possible">
-              Le client prévient au moins 24 h avant le retrait. La production liée est décalée d'autant.
-            </StatusBanner>
-          )}
-          <div>
-            <label style={labelStyle}>Nouvelle date de retrait</label>
-            <input type="date" value={date} min={format(new Date(), 'yyyy-MM-dd')} onChange={e => setDate(e.target.value)} style={fieldStyle} disabled={blocked} />
-          </div>
-          <div>
-            <label style={labelStyle}>Motif{late ? ' (obligatoire)' : ''}</label>
-            <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="Appel du client, imprévu…" style={fieldStyle} disabled={blocked} />
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
-          <button onClick={() => mutation.mutate()} className="odoo-btn-primary"
-            disabled={blocked || mutation.isPending || !date || (late && !reason.trim())}>
-            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CalendarClock size={13} />} Reporter
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    <Modal title="Reporter le retrait" subtitle={`${order.order_number as string} · prévu le ${fmtDate(order.pickup_date)}`} onClose={onClose} width={440} locked={mutation.isPending}
+      footer={<FormFooter onCancel={onClose} cancelLabel="Fermer" onSubmit={() => mutation.mutate()} submitLabel="Reporter"
+        disabled={blocked || !date || (late && !reason.trim())} busy={mutation.isPending} />}>
+      {late ? (
+        <StatusBanner tone={blocked ? 'danger' : 'warning'} icon={AlertTriangle} title="Moins de 24 h avant le retrait">
+          {blocked ? 'Seule la direction peut encore reporter cette commande.' : 'Report forcé par la direction : le motif est obligatoire.'}
+        </StatusBanner>
+      ) : (
+        <StatusBanner tone="info" icon={CalendarDays} title="Report possible">
+          Le client prévient au moins 24 h avant le retrait. La production liée est décalée d'autant.
+        </StatusBanner>
+      )}
+      <FormField label="Nouvelle date de retrait" htmlFor="rs-date" required>
+        <input id="rs-date" type="date" value={date} min={format(new Date(), 'yyyy-MM-dd')} onChange={e => setDate(e.target.value)} className="ds-input" disabled={blocked} />
+      </FormField>
+      <FormField label="Motif" htmlFor="rs-reason" required={late}>
+        <input id="rs-reason" type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="Appel du client, imprévu…" className="ds-input" disabled={blocked} />
+      </FormField>
+    </Modal>
   );
 }

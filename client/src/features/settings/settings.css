@@ -50,7 +50,7 @@
 .odoo-settings-nav-badge {
   margin-left: auto; min-width: 1.125rem; padding: 0 0.3rem; border-radius: 999px; text-align: center;
   font-size: 0.6875rem; font-weight: 700; line-height: 1.125rem; letter-spacing: 0; text-transform: none;
-  background: #fdecea; color: #c0392b;
+  background: var(--ds-danger-bg); color: var(--ds-danger);
 }
 .odoo-settings-nav-group-end .odoo-settings-nav-badge { margin-left: 0; }
 .odoo-settings-nav-hidden {
@@ -140,7 +140,7 @@
   border-radius: 4px; background: var(--odoo-bg); color: var(--odoo-text);
 }
 .odoo-input:focus { outline: none; border-color: var(--odoo-purple); box-shadow: 0 0 0 2px var(--odoo-purple-light); }
-.odoo-input.invalid { border-color: #c0392b; }
+.odoo-input.invalid { border-color: var(--ds-danger); }
 .odoo-input:disabled { opacity: 0.6; }
 
 /* Repérage après une recherche ⌘K */
@@ -176,7 +176,7 @@
   background: var(--odoo-bg); box-shadow: 0 6px 20px rgba(0,0,0,0.12);
 }
 .odoo-savebar-text { font-size: 0.8125rem; font-weight: 600; color: var(--odoo-text); }
-.odoo-savebar-note { font-size: 0.75rem; color: #c0392b; }
+.odoo-savebar-note { font-size: 0.75rem; color: var(--ds-danger); }
 .odoo-savebar-actions { margin-left: auto; display: flex; gap: 0.5rem; }
 
 /* ── Palette de recherche ⌘K ── */
@@ -276,13 +276,13 @@
   display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; padding: 0.0625rem 0.625rem;
   border-radius: 999px; border: 1px solid var(--odoo-border); background: var(--odoo-bg-alt); color: var(--odoo-text-muted);
 }
-.odoo-company-pill.ok { background: #e6f4ea; border-color: #bfe3c8; color: #1e7e34; }
-.odoo-company-pill.warn { background: #fff1e6; border-color: #f5cfae; color: #b85d1a; }
+.odoo-company-pill.ok { background: var(--ds-success-bg); border-color: color-mix(in srgb, var(--ds-success) 30%, transparent); color: var(--ds-success); }
+.odoo-company-pill.warn { background: var(--ds-warning-bg); border-color: color-mix(in srgb, var(--ds-warning) 30%, transparent); color: var(--ds-warning); }
 .odoo-company-progress { min-width: 180px; display: grid; justify-items: end; gap: 0.25rem; font-size: 0.8125rem; color: var(--odoo-text-muted); }
 .odoo-company-progress strong { color: var(--odoo-text); }
 .odoo-company-bar { width: 180px; height: 6px; border-radius: 3px; background: var(--odoo-bg-alt); border: 1px solid var(--odoo-border); overflow: hidden; }
 .odoo-company-bar span { display: block; height: 100%; background: var(--odoo-purple); transition: width 0.3s; }
-.odoo-company-progress button { color: #b85d1a; font-size: 0.8125rem; }
+.odoo-company-progress button { color: var(--ds-warning); font-size: 0.8125rem; }
 .odoo-company-progress button:hover { text-decoration: underline; }
 
 .odoo-company-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1rem; align-items: start; }
@@ -308,12 +308,12 @@
 .odoo-company-field { display: grid; gap: 0.3125rem; min-width: 0; align-content: start; scroll-margin-top: 1rem; border-radius: 4px; }
 .odoo-company-field label { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; font-size: 0.8125rem; font-weight: 600; color: var(--odoo-text); }
 .odoo-company-help { display: inline-flex; color: var(--odoo-text-muted); cursor: help; }
-.odoo-company-field.todo .odoo-input { border-color: #f0b98a; background: #fff8f2; }
-.odoo-company-field.error .odoo-input { border-color: #c0392b; }
+.odoo-company-field.todo :is(.odoo-input, .ds-input) { border-color: color-mix(in srgb, var(--ds-warning) 45%, transparent); background: var(--ds-warning-bg); }
+.odoo-company-field.error :is(.odoo-input, .ds-input) { border-color: var(--ds-danger); }
 .odoo-company-hint { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; }
-.odoo-company-hint.ok { color: #1e7e34; }
-.odoo-company-hint.warn { color: #b85d1a; }
-.odoo-company-hint.error { color: #c0392b; }
+.odoo-company-hint.ok { color: var(--ds-success); }
+.odoo-company-hint.warn { color: var(--ds-warning); }
+.odoo-company-hint.error { color: var(--ds-danger); }
 .odoo-company-readonly {
   display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: 34px; padding: 0 0.5rem;
   border: 1px dashed var(--odoo-border); border-radius: 4px; font-size: 0.8125rem; color: var(--odoo-text-muted);
@@ -330,7 +330,7 @@
 .odoo-company-paper-head strong { color: var(--odoo-purple); font-size: 0.9375rem; }
 .odoo-company-paper-name { font-size: 0.875rem; font-weight: 700; color: #1f2937; }
 .odoo-company-paper hr { border: 0; border-top: 1px dashed #d1d5db; margin: 0.5rem 0; }
-.odoo-company-paper .miss { color: #b85d1a; background: #fff1e6; border-radius: 3px; padding: 0 0.25rem; }
+.odoo-company-paper .miss { color: var(--ds-warning); background: var(--ds-warning-bg); border-radius: 3px; padding: 0 0.25rem; }
 .odoo-company-paper .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .odoo-company-preview-note { margin: 0; font-size: 0.75rem; color: var(--odoo-text-muted); }
 .odoo-company-preview-note button { color: var(--odoo-purple); }
@@ -357,7 +357,7 @@
 .odoo-stores-card-name code { font-size: 0.6875rem; font-weight: 500; padding: 0 0.375rem; border-radius: 4px; background: var(--odoo-bg-alt);
   border: 1px solid var(--odoo-border); color: var(--odoo-text-muted); }
 .odoo-stores-card-kind { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--odoo-text-muted); margin-top: 0.125rem; }
-.odoo-stores-dot { width: 7px; height: 7px; border-radius: 50%; background: #1e7e34; display: inline-block; }
+.odoo-stores-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ds-success); display: inline-block; }
 .odoo-stores-dot.off { background: var(--odoo-text-muted); }
 .odoo-stores-card-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3125rem; font-size: 0.8125rem; color: var(--odoo-text); }
 .odoo-stores-card-lines li { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; overflow-wrap: anywhere; }
@@ -366,7 +366,7 @@
 .odoo-stores-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.25rem; }
 .odoo-stores-strip span {
   display: grid; justify-items: center; gap: 0.0625rem; padding: 0.25rem 0.125rem; border-radius: 6px; font-size: 0.625rem; line-height: 1.2;
-  background: #e6f4ea; color: #1e7e34; text-align: center; overflow: hidden;
+  background: var(--ds-success-bg); color: var(--ds-success); text-align: center; overflow: hidden;
 }
 .odoo-stores-strip span b { font-size: 0.6875rem; }
 .odoo-stores-strip span.closed { background: var(--odoo-bg-alt); color: var(--odoo-text-muted); }
@@ -376,7 +376,7 @@
   border: 1px dashed var(--odoo-border); font-size: 0.8125rem; color: var(--odoo-purple);
 }
 .odoo-stores-add-hours:hover { border-color: var(--odoo-purple); background: var(--odoo-purple-light); }
-.odoo-stores-missing { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: #b85d1a; }
+.odoo-stores-missing { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--ds-warning); }
 .odoo-stores-card > footer { margin-top: auto; display: flex; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--odoo-border); }
 .odoo-stores-card > footer .odoo-btn-secondary { display: inline-flex; align-items: center; gap: 0.3rem; }
 .odoo-stores-empty {
@@ -450,8 +450,8 @@
 .odoo-params-seg button:focus-visible { outline: 2px solid var(--odoo-purple); outline-offset: -2px; }
 .odoo-params-seg button.on { font-weight: 600; }
 .odoo-params-seg button.on.off { background: var(--odoo-bg-alt); color: var(--odoo-text); }
-.odoo-params-seg button.on.warn { background: #fff1e6; color: #b85d1a; }
-.odoo-params-seg button.on.block { background: #fdecea; color: #c0392b; }
+.odoo-params-seg button.on.warn { background: var(--ds-warning-bg); color: var(--ds-warning); }
+.odoo-params-seg button.on.block { background: var(--ds-danger-bg); color: var(--ds-danger); }
 .odoo-params-seg button.on.accent { background: var(--odoo-purple-light); color: var(--odoo-purple); }
 .odoo-params-extra { padding: 0.75rem 1rem 1rem; border-top: 1px solid var(--odoo-border); }
 .odoo-params-extra > div, .odoo-params-extra > section { border: none !important; padding: 0 !important; background: transparent !important; }
@@ -461,8 +461,8 @@
 .odoo-params-summary > div { padding: 0.75rem 0.875rem; border: 1px solid var(--odoo-border); border-radius: 10px; background: var(--odoo-bg); }
 .odoo-params-summary small { display: block; font-size: 0.75rem; color: var(--odoo-text-muted); }
 .odoo-params-summary strong { font-size: 1.375rem; }
-.odoo-params-summary .block strong { color: #c0392b; }
-.odoo-params-summary .warn strong { color: #b85d1a; }
+.odoo-params-summary .block strong { color: var(--ds-danger); }
+.odoo-params-summary .warn strong { color: var(--ds-warning); }
 .odoo-params-summary .off strong { color: var(--odoo-text-muted); }
 .odoo-params-summary .info strong { color: var(--odoo-purple); }
 .odoo-params-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--odoo-text-muted); }
@@ -478,9 +478,9 @@
 .odoo-params-score-weights .odoo-input { text-align: right; font-weight: 600; }
 .odoo-params-class { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0.25rem 0.125rem 0.625rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
 .odoo-params-class .odoo-input { width: 64px; text-align: right; }
-.odoo-params-class.ok { background: #e6f4ea; color: #1e7e34; }
+.odoo-params-class.ok { background: var(--ds-success-bg); color: var(--ds-success); }
 .odoo-params-class.info { background: var(--odoo-purple-light); color: var(--odoo-purple); }
-.odoo-params-class.warn { background: #fff1e6; color: #b85d1a; }
+.odoo-params-class.warn { background: var(--ds-warning-bg); color: var(--ds-warning); }
 @media (max-width: 760px) {
   .odoo-params-row { grid-template-columns: minmax(0, 1fr); }
   .odoo-params-control { justify-content: flex-start; }
@@ -490,7 +490,7 @@
 .odoo-sod-compact { display: grid; gap: 0.5rem; }
 .odoo-sod-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; }
 .odoo-sod-chip { font-size: 0.75rem; padding: 0.25rem 0.625rem; border-radius: 6px; border: 1px solid var(--odoo-border); background: var(--odoo-bg-alt); color: var(--odoo-text); }
-.odoo-sod-chip.warn strong { color: #b85d1a; }
+.odoo-sod-chip.warn strong { color: var(--ds-warning); }
 .odoo-sod-chip.off { opacity: 0.6; }
 .odoo-sod-more { justify-self: start; font-size: 0.75rem; color: var(--odoo-purple); }
 .odoo-sod-more:hover { text-decoration: underline; }
@@ -665,7 +665,7 @@
 .kl-apple .odoo-company-bar span { background: var(--kl-accent); }
 .kl-apple .odoo-company-progress button, .kl-apple .odoo-company-hint.warn { color: var(--prj-orange); }
 .kl-apple .odoo-company-hint.ok { color: var(--prj-green); }
-.kl-apple .odoo-company-hint.error, .kl-apple .odoo-company-field.error .odoo-input { color: var(--prj-red); border-color: var(--prj-red); }
+.kl-apple .odoo-company-hint.error, .kl-apple .odoo-company-field.error :is(.odoo-input, .ds-input) { color: var(--prj-red); border-color: var(--prj-red); }
 .kl-apple .odoo-company-paper { border-radius: 12px; }
 
 /* Établissements */
@@ -738,5 +738,5 @@
 .kl-apple .odoo-setting-section .prj-kpi { box-shadow: none; background: color-mix(in srgb, var(--kl-bg) 70%, var(--kl-card)); }
 
 /* Chiffres mis en avant (statistiques des sachets). */
-.sach-red { color: var(--prj-red, #DC2626); }
-.sach-orange { color: var(--prj-orange, #B45309); }
+.sach-red { color: var(--ds-danger); }
+.sach-orange { color: var(--ds-warning); }

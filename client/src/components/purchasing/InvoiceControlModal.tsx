@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, ShieldAlert, ShieldCheck, RefreshCw, Loader2, PauseCircle } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, RefreshCw, Loader2, PauseCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import ModalBackdrop from '../ui/ModalBackdrop';
 import { StatusBanner } from '../ui/StatusBanner';
 import { notify } from '../ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { invoicesApi } from '../../api/accounting.api';
 import ReasonCodeDialog from './ReasonCodeDialog';
-import { LoadingState } from '../ds';
+import { DataPanel, ErrorState, LoadingState, Modal } from '../ds';
+import { currencySymbol } from '../../utils/money';
 import { StatusTag } from '../ui/StatusTag';
 
 /**
@@ -52,7 +52,7 @@ function holdDetail(h: Hold): string {
 export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId: string; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [revalidate, setRevalidate] = useState(false);
-  const { data, isLoading, refetch, isFetching } = useQuery<Control>({
+  const { data, isLoading, refetch, isFetching, error } = useQuery<Control>({
     queryKey: ['invoice-control', invoiceId, revalidate],
     queryFn: () => invoicesApi.control(invoiceId, revalidate),
   });
@@ -79,27 +79,20 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
   const blocking = open.filter(h => h.blocks_payment);
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 940, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <ShieldCheck size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Contrôle de facture</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">{data ? (data.supplier_invoice_number ?? data.invoice_number) : '…'}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" className="odoo-btn-secondary ds-btn-sm" style={{ marginRight: 8 }}
-            disabled={isFetching} onClick={() => { setRevalidate(true); refetch(); }} title="Relancer le contrôle">
-            {isFetching ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={13} aria-hidden="true" />} Recontrôler
-          </button>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        {isLoading || !data ? (
+    <Modal title="Contrôle de facture" subtitle={data ? (data.supplier_invoice_number ?? data.invoice_number) : '…'} width={940}
+      onClose={onClose} locked={!!releaseFor}
+      aside={
+        <button type="button" className="odoo-btn-secondary ds-btn-sm"
+          disabled={isFetching} onClick={() => { setRevalidate(true); refetch(); }} title="Relancer le contrôle">
+          {isFetching ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={13} aria-hidden="true" />} Recontrôler
+        </button>
+      }>
+        {isLoading ? (
           <LoadingState bare label="Contrôle en cours…" />
+        ) : error || !data ? (
+          <ErrorState bare error={error} title="Le contrôle n'a pas pu être chargé" onRetry={() => { void refetch(); }} />
         ) : (
-          <div className="flex-1 overflow-y-auto" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <>
             {data.validation_status === 'cancelled' ? (
               <StatusBanner tone="neutral" icon={ShieldCheck} title="Facture annulée">Aucun blocage actif.</StatusBanner>
             ) : blocking.length > 0 ? (
@@ -117,6 +110,7 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
             <div>
               <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Blocages ouverts</h3>
               {open.length === 0 ? <p style={{ fontSize: 14, color: 'var(--ds-muted)', margin: 0 }}>Aucun.</p> : (
+                <DataPanel label="Blocages ouverts">
                 <table className="odoo-table ds-dense">
                   <tbody>
                     {open.map(h => (
@@ -133,14 +127,16 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
                     ))}
                   </tbody>
                 </table>
+                </DataPanel>
               )}
             </div>
 
             {data.match.some(m => m.purchase_order_item_id) && (
               <div>
                 <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Rapprochement par ligne</h3>
+                <DataPanel label="Rapprochement par ligne">
                 <table className="odoo-table ds-dense">
-                  <thead><tr><th>Article</th><th className="ds-num">Commandé</th><th className="ds-num">Reçu</th><th className="ds-num">Facturé (toutes factures)</th><th className="ds-num">Prix commandé</th><th className="ds-num">Prix facturé</th></tr></thead>
+                  <thead><tr><th>Article</th><th className="ds-num">Commandé</th><th className="ds-num">Reçu</th><th className="ds-num">Facturé (toutes factures)</th><th className="ds-num">Prix commandé ({currencySymbol()})</th><th className="ds-num">Prix facturé ({currencySymbol()})</th></tr></thead>
                   <tbody>
                     {data.match.map(m => {
                       const overQty = m.quantity_received != null && Number(m.quantity_invoiced_total) > Number(m.quantity_received) + 0.0001;
@@ -158,6 +154,7 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
                     })}
                   </tbody>
                 </table>
+                </DataPanel>
               </div>
             )}
 
@@ -177,6 +174,7 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
             {closed.length > 0 && (
               <div>
                 <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Blocages levés</h3>
+                <DataPanel label="Blocages levés">
                 <table className="odoo-table ds-dense">
                   <tbody>
                     {closed.map(h => (
@@ -188,11 +186,11 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
                     ))}
                   </tbody>
                 </table>
+                </DataPanel>
               </div>
             )}
-          </div>
+          </>
         )}
-      </div>
       {releaseFor && (
         <ReasonCodeDialog
           title={`Lever le blocage · ${releaseFor.label}`}
@@ -204,6 +202,6 @@ export default function InvoiceControlModal({ invoiceId, onClose }: { invoiceId:
           onSubmit={(reason) => releaseMutation.mutate({ holdId: releaseFor.id, reason })}
         />
       )}
-    </ModalBackdrop>
+    </Modal>
   );
 }

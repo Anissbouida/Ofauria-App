@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import SalesPageShell from '../sales/SalesPageShell';
 import { RowMenu } from '../../components/ui/RowMenu';
 import {
-  BulkBar, DataPanel, EmptyState, ErrorState, KpiCard, KpiGrid, LoadingState, NoResultState, SearchBar, Segmented, TableFooter, Tabs, Toolbar,
+  BulkBar, DataPanel, EmptyState, ErrorState, FormField, FormFooter, KpiCard, KpiGrid, LoadingState, Modal, NoResultState, SearchBar, Segmented, TableFooter, Tabs, Toolbar,
 } from '../../components/ds';
 import ItemConversionsPanel from '../../components/ItemConversionsPanel';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -27,7 +27,6 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEditor';
 import { customFieldsApi, useCustomFieldsForm, type CfValues } from '../../api/custom-fields.api';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import ProductPipelineTab from '../pipeline/ProductPipelinePage';
 import ProductionProfileTab from './ProductionProfileTab';
 import ProductLabelTab from './ProductLabelTab';
@@ -110,7 +109,7 @@ function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
     else { setSortKey(key); setSortDir(key === 'price' || key === 'stock_quantity' ? 'desc' : 'asc'); }
   };
 
-  const { data: productsData, isLoading, isError, refetch } = useQuery({
+  const { data: productsData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['products', { search, categoryId: categoryFilter }],
     queryFn: () => productsApi.list({ search, categoryId: categoryFilter, limit: '500' }),
   });
@@ -354,7 +353,7 @@ function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
       {isLoading ? (
         <LoadingState label="Chargement des produits…" />
       ) : isError ? (
-        <ErrorState onRetry={() => refetch()} />
+        <ErrorState error={error} onRetry={() => refetch()} />
       ) : filteredProducts.length === 0 ? (
         hasFilters
           ? <NoResultState text="Aucun produit ne correspond aux filtres." onReset={resetFilters} />
@@ -607,25 +606,25 @@ function CatalogueTab({ headerSlot }: { headerSlot: HTMLDivElement | null }) {
 
 type FormTab = 'general' | 'pricing' | 'lifecycle' | 'label';
 
-const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
-const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '9px 11px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
-const fieldInputRO: React.CSSProperties = { ...fieldInput, background: 'var(--odoo-bg-alt)', cursor: 'not-allowed' };
+/** Libellé d'un groupe de boutons (pas de contrôle unique à relier par htmlFor). */
+const groupLabel: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 6 };
+const roInput: React.CSSProperties = { background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', cursor: 'not-allowed' };
 
-/** Section de formulaire repliable avec en-tête compact (remplace les grands
- *  bandeaux pour raccourcir les onglets longs). */
-function FormSection({ title, subtitle, icon: Icon, defaultOpen = true, children }: {
+/** Section de formulaire repliable (variante repliable de FormSection, propre à la fiche
+ *  produit : les onglets longs restent courts). Présentation alignée sur le Design System. */
+function CollapsibleSection({ title, subtitle, icon: Icon, defaultOpen = true, children }: {
   title: string; subtitle?: string; icon?: LucideIcon; defaultOpen?: boolean; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, overflow: 'hidden' }}>
-      <button type="button" onClick={() => setOpen(o => !o)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--odoo-bg-alt)', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--odoo-text)' }}>
-        {Icon && <Icon size={15} style={{ color: 'var(--theme-accent)', flexShrink: 0 }} />}
-        <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{title}</span>
-        {subtitle && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>· {subtitle}</span>}
+    <div style={{ border: '1px solid var(--ds-hair)', borderRadius: 12, overflow: 'hidden' }}>
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'color-mix(in srgb, var(--ds-bg) 50%, var(--ds-card))', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--ds-ink)' }}>
+        {Icon && <Icon size={15} aria-hidden="true" style={{ color: 'var(--ds-accent)', flexShrink: 0 }} />}
+        <span className="ds-subhead">{title}</span>
+        {subtitle && <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>· {subtitle}</span>}
         <span style={{ flex: 1 }} />
-        {open ? <ChevronDown size={15} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronRight size={15} style={{ color: 'var(--theme-text-muted)' }} />}
+        {open ? <ChevronDown size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /> : <ChevronRight size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
       </button>
       {open && <div style={{ padding: 14, display: 'grid', gap: 14 }}>{children}</div>}
     </div>
@@ -1017,8 +1016,9 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     );
   };
 
+  const formRef = useRef<HTMLFormElement>(null);
   const tabs: { key: FormTab; label: string; icon: React.ReactNode }[] = [
-    { key: 'general', label: 'General', icon: <ShoppingBag size={16} /> },
+    { key: 'general', label: 'Général', icon: <ShoppingBag size={16} /> },
     { key: 'pricing', label: 'Tarifs', icon: <Coins size={16} /> },
     // Production & cycle de vie n'a de sens que pour un bien stockable.
     ...(isIntangible ? [] : [{ key: 'lifecycle' as FormTab, label: 'Production & cycle de vie', icon: <Clock size={16} /> }]),
@@ -1027,51 +1027,30 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   ];
 
   return (
-    <ModalBackdrop onClose={() => { if (mounted) onClose(); }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 980, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
-        {/* Control bar */}
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            {imagePreview ? (
-              <img src={imagePreview} alt="" style={{ width: 18, height: 18, borderRadius: 3, objectFit: 'cover' }} />
-            ) : (
-              <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
-            )}
-            <span>Produit</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">
-              {product ? (product.name as string) : 'Nouveau produit'}
-            </span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-
-        {/* Tabs Odoo */}
-        <div className="odoo-tabs">
-          {tabs.map(tab => (
-            <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
-              className={`odoo-tab ${activeTab === tab.key ? 'active' : ''}`}>
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
+    <Modal onClose={() => { if (mounted) onClose(); }} width={980} locked={isLoading}
+      title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        {imagePreview
+          ? <img src={imagePreview} alt="" style={{ width: 22, height: 22, borderRadius: 4, objectFit: 'cover' }} />
+          : <ShoppingBag size={18} aria-hidden="true" />}
+        {product ? (product.name as string) : 'Nouveau produit'}
+      </span>}
+      subtitle="Produit"
+      footer={<FormFooter onCancel={onClose} busy={isLoading} onSubmit={() => formRef.current?.requestSubmit()}
+        submitLabel={isLoading ? 'Enregistrement…' : (product ? 'Mettre à jour' : 'Créer le produit')} />}>
+        <Tabs label="Sections de la fiche produit" value={activeTab} onChange={setActiveTab}
+          tabs={tabs.map(t => ({ key: t.key, label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{t.icon}{t.label}</span> }))} />
 
         {/* Form content */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div style={{ display: 'grid', gridTemplateColumns: '1.45fr 0.95fr', alignItems: 'start' }}>
-            <div className="p-5 space-y-5" style={{ minWidth: 0 }}>
+        <form ref={formRef} onSubmit={handleSubmit} aria-label={product ? 'Modifier le produit' : 'Nouveau produit'}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.45fr 0.95fr', alignItems: 'start', gap: 20 }}>
+            <div className="space-y-5" style={{ minWidth: 0 }}>
 
             {/* ═══ Tab: General ═══ */}
             {activeTab === 'general' && (
               <>
                 {/* Image upload */}
                 <div>
-                  <label style={fieldLabel}>Photo du produit</label>
+                  <span style={groupLabel}>Photo du produit</span>
                   <div className="flex items-start gap-4">
                     {imagePreview ? (
                       <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-gray-200 shrink-0 group">
@@ -1109,7 +1088,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} className="hidden" />
                   <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleImageChange} className="hidden" />
                   {showCamera && (
-                    <div className="fixed inset-0 bg-black z-[60] flex flex-col">
+                    <div className="fixed inset-0 bg-black z-[80] flex flex-col">
                       <video ref={videoRef} autoPlay playsInline muted className="flex-1 object-cover w-full" />
                       <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-6 pb-8 pt-4 bg-gradient-to-t from-black/70">
                         <button type="button" onClick={stopCamera} aria-label="Fermer la caméra" className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white">
@@ -1125,16 +1104,15 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 </div>
 
                 {/* Name */}
-                <div>
-                  <label style={fieldLabel}>Nom du produit</label>
-                  <input style={{ ...fieldInput, fontWeight: 500 }}
+                <FormField label="Nom du produit" htmlFor="product-name" required>
+                  <input id="product-name" className="ds-input"
                     value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Ex: Croissant au beurre" />
-                </div>
+                </FormField>
 
                 {/* Nature de l'article (mig 469) — pilote le reste de la fiche */}
                 <div>
-                  <label style={fieldLabel}>Nature de l'article</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                  <span style={groupLabel} id="product-kind-label">Nature de l'article</span>
+                  <div role="radiogroup" aria-labelledby="product-kind-label" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                     {([
                       { v: 'manufactured', label: 'Fabriqué', desc: 'Produit par recette', icon: Factory },
                       { v: 'resale', label: 'Revente', desc: 'Négoce, acheté-revendu', icon: Package },
@@ -1144,7 +1122,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       const active = form.itemKind === opt.v;
                       const OptIcon = opt.icon;
                       return (
-                        <button key={opt.v} type="button" onClick={() => setItemKind(opt.v)}
+                        <button key={opt.v} type="button" role="radio" aria-checked={active} onClick={() => setItemKind(opt.v)}
                           style={{
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '10px 6px', textAlign: 'center', cursor: 'pointer',
                             border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
@@ -1163,8 +1141,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 {/* Recipe smart search — mandatory (fabriqué uniquement) */}
                 {isManufactured && (
                 <div ref={recipeDropdownRef} className="relative">
-                  <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <BookOpen size={14} style={{ color: 'var(--theme-accent)' }} /> Recette <span className="text-red-500">*</span>
+                  <label htmlFor="product-recipe" style={{ ...groupLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <BookOpen size={14} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} /> Recette <span className="ds-req" aria-hidden="true">*</span>
                   </label>
                   {allRecipesList.length === 0 ? (
                     <StatusBanner tone="warning" icon={AlertTriangle} title="Aucune recette disponible">
@@ -1175,8 +1153,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       {/* Search input — always visible */}
                       <div className="relative">
                         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input ref={recipeInputRef} type="text"
-                          style={{ ...fieldInput, paddingLeft: 34, paddingRight: 34, ...(selectedRecipe ? { background: 'var(--odoo-purple-light)', fontWeight: 600 } : {}) }}
+                        <input ref={recipeInputRef} type="text" id="product-recipe" className="ds-input" aria-required="true"
+                          style={{ paddingLeft: 34, paddingRight: 34, ...(selectedRecipe ? { background: 'var(--ds-tint)', fontWeight: 600 } : {}) }}
                           placeholder="Tapez pour rechercher une recette..."
                           value={recipeDropdownOpen ? recipeSearch : (selectedRecipe ? (selectedRecipe.name as string) : recipeSearch)}
                           onChange={(e) => { setRecipeSearch(e.target.value); setRecipeDropdownOpen(true); if (form.recipeId) setForm(f => ({ ...f, recipeId: '' })); }}
@@ -1291,36 +1269,30 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
                 {/* Catégorie + Responsable */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label style={fieldLabel}>Catégorie</label>
+                  <FormField label="Catégorie" required>
                     <SearchSelect value={form.categoryId != null ? String(form.categoryId) : ''} onChange={(id) => setForm({ ...form, categoryId: parseInt(id) })}
                       clearable={false} placeholder="Catégorie" width="100%" size="md" ariaLabel="Catégorie"
                       options={categories.map(c => ({ id: String(c.id), label: c.name as string }))} />
-                  </div>
-                  <div>
-                    <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} /> Responsable
-                    </label>
+                  </FormField>
+                  <FormField label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ChefHat size={14} aria-hidden="true" style={{ color: 'var(--ds-accent)' }} /> Responsable</span>}>
                     <SearchSelect value={form.responsibleUserId} onChange={(v) => setForm({ ...form, responsibleUserId: v })}
                       placeholder="Aucun responsable" width="100%" size="md" ariaLabel="Responsable"
                       options={chefUsers.map((u: Record<string, any>) => ({ id: u.id as string, label: `${u.firstName as string} ${u.lastName as string} — ${ROLE_LABELS[(u.role as Role)] || u.role}` }))} />
-                  </div>
+                  </FormField>
                 </div>
 
                 {/* Code-barres (mig 472) : code physique scanné en caisse */}
-                <div>
-                  <label style={fieldLabel}>Code-barres</label>
-                  <input style={{ ...fieldInput, fontFamily: 'ui-monospace, monospace' }}
+                <FormField label="Code-barres" htmlFor="product-barcode">
+                  <input id="product-barcode" className="ds-input" style={{ fontFamily: 'ui-monospace, monospace' }}
                     value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })}
                     placeholder="EAN / UPC — scanné en caisse (optionnel)" maxLength={64} />
-                </div>
+                </FormField>
 
                 {/* Description */}
-                <div>
-                  <label style={fieldLabel}>Description</label>
-                  <textarea style={{ ...fieldInput, resize: 'vertical' }}
+                <FormField label="Description" htmlFor="product-description">
+                  <textarea id="product-description" className="ds-input"
                     rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description optionnelle..." />
-                </div>
+                </FormField>
 
                 {/* Toggles */}
                 <div className="flex gap-6">
@@ -1354,49 +1326,40 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             {activeTab === 'pricing' && (
               <>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label style={fieldLabel}>Prix de vente ({currencySymbol()})</label>
+                  <FormField label={`Prix de vente (${currencySymbol()})`} htmlFor="product-price"
+                    hint={isManufactured ? 'Prix conseillé par la fiche technique (coût de production × multiplicateur, arrondi), en TTC si la base est TTC.' : 'Prix de vente saisi librement.'}>
                     {isManufactured ? (
-                      <>
-                        <input type="number" step="0.01" readOnly tabIndex={-1} style={{ ...fieldInputRO, fontWeight: 700 }} value={form.price} placeholder="0.00" />
-                        <p className="text-xs text-gray-400 mt-1">Prix conseillé par la fiche technique (coût de production × multiplicateur, arrondi), en TTC si la base est TTC.</p>
-                      </>
+                      <input id="product-price" type="number" step="0.01" readOnly tabIndex={-1} className="ds-input" style={{ ...roInput, fontWeight: 700 }} value={form.price} placeholder="0.00" />
                     ) : (
-                      <>
-                        <input type="number" step="0.01" min={0} style={{ ...fieldInput, fontWeight: 700 }}
-                          value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0.00" />
-                        <p className="text-xs text-gray-400 mt-1">Prix de vente saisi librement.</p>
-                      </>
+                      <input id="product-price" type="number" step="0.01" min={0} className="ds-input" style={{ fontWeight: 700 }}
+                        value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0.00" />
                     )}
-                  </div>
+                  </FormField>
                   {!isIntangible && (
-                  <div>
-                    <label style={fieldLabel}>{isManufactured ? 'Prix de revient' : "Prix d'achat"} ({currencySymbol()})</label>
-                    {isManufactured ? (
-                      <>
-                        <input type="number" step="0.01" readOnly tabIndex={-1} style={fieldInputRO} value={form.costPrice} placeholder="Auto" />
-                        <p className="text-xs text-gray-400 mt-1">Coût de production de la fiche : matière, main-d'œuvre, énergie et structure.</p>
-                      </>
-                    ) : (
-                      <>
-                        <input type="number" step="0.01" min={0} style={fieldInput}
+                  <div style={{ display: 'grid', gap: 14 }}>
+                    <FormField label={`${isManufactured ? 'Prix de revient' : "Prix d'achat"} (${currencySymbol()})`} htmlFor="product-cost"
+                      hint={isManufactured ? "Coût de production de la fiche : matière, main-d'œuvre, énergie et structure." : "Coût d'achat unitaire (négoce)."}>
+                      {isManufactured ? (
+                        <input id="product-cost" type="number" step="0.01" readOnly tabIndex={-1} className="ds-input" style={roInput} value={form.costPrice} placeholder="Auto" />
+                      ) : (
+                        <input id="product-cost" type="number" step="0.01" min={0} className="ds-input"
                           value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} placeholder="0.00" />
-                        <p className="text-xs text-gray-400 mt-1">Coût d'achat unitaire (négoce).</p>
-                      </>
-                    )}
-                    <label style={{ ...fieldLabel, marginTop: 10 }}>Prix plancher ({currencySymbol()})</label>
-                    <input type="number" step="0.01" min={0} style={fieldInput}
-                      value={form.floorPrice} onChange={(e) => setForm({ ...form, floorPrice: e.target.value })} placeholder="—" />
-                    <p className="text-xs text-gray-400 mt-1">En dessous, une vente ou un devis exige l'approbation de la direction (phase 6.4). Vide = pas de plancher.</p>
+                      )}
+                    </FormField>
+                    <FormField label={`Prix plancher (${currencySymbol()})`} htmlFor="product-floor"
+                      hint="En dessous, une vente ou un devis exige l'approbation de la direction (phase 6.4). Vide = pas de plancher.">
+                      <input id="product-floor" type="number" step="0.01" min={0} className="ds-input"
+                        value={form.floorPrice} onChange={(e) => setForm({ ...form, floorPrice: e.target.value })} placeholder="—" />
+                    </FormField>
                   </div>
                   )}
                 </div>
 
                 {/* Code TVA par défaut de l'article (mig 473) : la TVA des lignes
                     de vente (commande pro, BL) en découle. */}
-                <div>
-                  <label style={fieldLabel}>Code TVA par défaut</label>
-                  <select style={fieldInput} value={form.taxCode} onChange={(e) => setForm({ ...form, taxCode: e.target.value })}>
+                <FormField label="Code TVA par défaut" htmlFor="product-tax"
+                  hint="Appliqué par défaut aux lignes de commande et de bon de livraison ; modifiable ligne par ligne.">
+                  <select id="product-tax" className="ds-input" value={form.taxCode} onChange={(e) => setForm({ ...form, taxCode: e.target.value })}>
                     <option value="">Aucun — TVA saisie à la ligne</option>
                     {taxCodesList.map(t => (
                       <option key={t.code as string} value={t.code as string}>
@@ -1404,22 +1367,21 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-gray-400 mt-1">Appliqué par défaut aux lignes de commande et de bon de livraison ; modifiable ligne par ligne.</p>
-                </div>
+                </FormField>
 
                 {/* Base du prix catalogue (mig 479) : le prix saisi est-il TTC
                     (prix payé en boutique) ou HT ? Le HT/TTC manquant se dérive
                     du code TVA ci-dessus. Par défaut TTC (réalité boutique). */}
                 <div>
-                  <label style={fieldLabel}>Base du prix catalogue</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                  <span style={groupLabel} id="product-taxbase-label">Base du prix catalogue</span>
+                  <div role="radiogroup" aria-labelledby="product-taxbase-label" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                     {([
                       { v: true, label: 'TTC', desc: 'Toutes taxes comprises (prix boutique)' },
                       { v: false, label: 'HT', desc: 'Hors taxe (TVA ajoutée)' },
                     ] as const).map(opt => {
                       const active = form.priceIncludesTax === opt.v;
                       return (
-                        <button key={String(opt.v)} type="button" onClick={() => setForm({ ...form, priceIncludesTax: opt.v })}
+                        <button key={String(opt.v)} type="button" role="radio" aria-checked={active} onClick={() => setForm({ ...form, priceIncludesTax: opt.v })}
                           style={{
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 6px', textAlign: 'center', cursor: 'pointer',
                             border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
@@ -1434,8 +1396,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 </div>
 
                 <div>
-                  <label style={fieldLabel}>Mode de vente</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  <span style={groupLabel} id="product-saleunit-label">Mode de vente</span>
+                  <div role="radiogroup" aria-labelledby="product-saleunit-label" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                     {([
                       { v: 'unit', label: 'À la pièce', desc: 'Prix unitaire' },
                       { v: 'weight', label: 'Au poids', desc: 'Prix au kg / paliers' },
@@ -1443,7 +1405,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     ] as const).map(opt => {
                       const active = form.saleUnit === opt.v;
                       return (
-                        <button key={opt.v} type="button" onClick={() => setForm({ ...form, saleUnit: opt.v })}
+                        <button key={opt.v} type="button" role="radio" aria-checked={active} onClick={() => setForm({ ...form, saleUnit: opt.v })}
                           style={{
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 6px', textAlign: 'center', cursor: 'pointer',
                             border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
@@ -1459,13 +1421,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 </div>
 
                 {form.saleUnit === 'person' && (
-                  <div>
-                    <label style={fieldLabel}>Prix par personne ({currencySymbol()})</label>
-                    <input type="number" step="0.01" min={0} style={{ ...fieldInput, fontWeight: 600 }}
+                  <FormField label={`Prix par personne (${currencySymbol()})`} htmlFor="product-ppp"
+                    hint="Ce montant est multiplié par le nombre de parts choisi en caisse.">
+                    <input id="product-ppp" type="number" step="0.01" min={0} className="ds-input" style={{ fontWeight: 600 }}
                       value={form.pricePerPerson} onChange={e => setForm({ ...form, pricePerPerson: e.target.value })}
                       placeholder="Ex : 30" />
-                    <p className="text-xs text-gray-400 mt-1">Ce montant est multiplié par le nombre de parts choisi en caisse.</p>
-                  </div>
+                  </FormField>
                 )}
 
                 {product && product.sale_unit === 'weight' && (
@@ -1493,31 +1454,23 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             {activeTab === 'lifecycle' && (
               <>
                 {product?.id && (
-                  <FormSection title="Unités et conversions" subtitle="1 carton = 12 pièces, 1 pièce = 0,35 kg" icon={Factory} defaultOpen={false}>
+                  <CollapsibleSection title="Unités et conversions" subtitle="1 carton = 12 pièces, 1 pièce = 0,35 kg" icon={Factory} defaultOpen={false}>
                     <ItemConversionsPanel kind="product" itemId={product.id as string} />
-                  </FormSection>
+                  </CollapsibleSection>
                 )}
-                <FormSection title="Paramètres de production" subtitle="plans de production automatiques" icon={Factory} defaultOpen={false}>
+                <CollapsibleSection title="Paramètres de production" subtitle="plans de production automatiques" icon={Factory} defaultOpen={false}>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Package size={14} style={{ color: 'var(--theme-accent)' }} /> Seuil d'alerte stock
-                    </label>
-                    <input type="number" step="1" min="0" style={fieldInput}
+                  <FormField label="Seuil d'alerte stock" htmlFor="product-min-stock" hint="Alerte de réassort dès que le stock passe sous ce seuil.">
+                    <input id="product-min-stock" type="number" step="1" min="0" className="ds-input"
                       value={form.stockMinThreshold} onChange={(e) => setForm({ ...form, stockMinThreshold: e.target.value })}
                       placeholder="0 = pas d'alerte" />
-                    <p className="text-xs text-gray-400 mt-1.5">Alerte de réassort dès que le stock passe sous ce seuil.</p>
-                  </div>
-                  <div>
-                    <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Factory size={14} style={{ color: 'var(--theme-accent)' }} /> Lot minimum de production
-                    </label>
-                    <input type="number" step="1" min="0" style={fieldInput}
+                  </FormField>
+                  <FormField label="Lot minimum de production" htmlFor="product-min-lot" hint="Minimum produit à chaque lancement ; le surplus va en stock central.">
+                    <input id="product-min-lot" type="number" step="1" min="0" className="ds-input"
                       value={form.minProductionQuantity} onChange={(e) => setForm({ ...form, minProductionQuantity: e.target.value })}
                       placeholder="0 = pas de minimum" />
-                    <p className="text-xs text-gray-400 mt-1.5">Minimum produit à chaque lancement ; le surplus va en stock central.</p>
-                  </div>
+                  </FormField>
                 </div>
 
                 {product && (() => {
@@ -1535,14 +1488,14 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   );
                 })()}
 
-                </FormSection>
+                </CollapsibleSection>
 
-                <FormSection title="Cycle de vie du produit" subtitle="DLC, type de vente, exposition, valorisation" icon={Clock} defaultOpen>
+                <CollapsibleSection title="Cycle de vie du produit" subtitle="DLC, type de vente, exposition, valorisation" icon={Clock} defaultOpen>
 
                 {/* Type de vente (audit P1.1 : pilote de l'onglet) */}
                 <div>
-                  <label style={fieldLabel}>Type de vente</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  <span style={groupLabel} id="product-saletype-label">Type de vente</span>
+                  <div role="radiogroup" aria-labelledby="product-saletype-label" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                     {([
                       { value: 'jour', label: 'Vente du jour', desc: 'Produit du jour, non stocké', icon: Sun },
                       { value: 'dlv', label: 'Multi-jours (DLC)', desc: 'Vendable sur plusieurs jours', icon: CalendarDays },
@@ -1551,7 +1504,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       const active = form.saleType === opt.value;
                       const OptIcon = opt.icon;
                       return (
-                        <button key={opt.value} type="button" onClick={() => setSaleType(opt.value)}
+                        <button key={opt.value} type="button" role="radio" aria-checked={active} onClick={() => setSaleType(opt.value)}
                           style={{
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 12, textAlign: 'center', cursor: 'pointer',
                             border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
@@ -1578,28 +1531,18 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 {form.saleType !== 'commande' && (
                   <>
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label style={fieldLabel}>
-                          DLC — Durée de vie (jours) {form.saleType === 'dlv' && <span className="text-red-500">*</span>}
-                        </label>
-                        <input type="number" step="1" min="0"
-                          style={fieldInput}
+                      <FormField label="DLC — Durée de vie (jours)" htmlFor="product-dlc" required={form.saleType === 'dlv'}
+                        hint={form.saleType === 'jour' ? 'Laisser vide pour une vente le jour même.' : 'Durée de conservation à compter de la date de production.'}>
+                        <input id="product-dlc" type="number" step="1" min="0" className="ds-input"
                           value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })}
                           placeholder={form.saleType === 'dlv' ? 'Obligatoire — ex. 3' : 'Vide = jour même'}
                           required={form.saleType === 'dlv'} />
-                        <p className="text-xs text-gray-400 mt-1.5 ml-1">
-                          {form.saleType === 'jour'
-                            ? 'Laisser vide pour une vente le jour même.'
-                            : 'Durée de conservation à compter de la date de production.'}
-                        </p>
-                      </div>
-                      <div>
-                        <label style={fieldLabel}>Exposition max en vitrine (heures)</label>
-                        <input type="number" step="1" min="0"
-                          style={fieldInput}
+                      </FormField>
+                      <FormField label="Exposition max en vitrine (heures)" htmlFor="product-display"
+                        hint="Durée maximale en vitrine après la mise en rayon ; la première échéance atteinte (DLC ou exposition) s’applique.">
+                        <input id="product-display" type="number" step="1" min="0" className="ds-input"
                           value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 24" />
-                        <p className="text-xs text-gray-400 mt-1.5 ml-1">Durée maximale en vitrine après la mise en rayon ; la première échéance atteinte (DLC ou exposition) s’applique.</p>
-                      </div>
+                      </FormField>
                     </div>
 
                     {/* M9 : traçabilité — lot (défaut) ou un numéro de série par pièce fabriquée. */}
@@ -1609,7 +1552,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                           <span className="text-sm font-semibold text-gray-900">Traçabilité</span>
                           <span className="block text-xs text-gray-400">Par série : un numéro unique par pièce, créé à la déclaration de production.</span>
                         </span>
-                        <select style={{ ...fieldInput, width: 180 }} value={form.trackingMode}
+                        <select className="ds-input" style={{ width: 180 }} value={form.trackingMode}
                           onChange={(e) => setForm({ ...form, trackingMode: e.target.value as 'lot' | 'serial' })} aria-label="Traçabilité">
                           <option value="lot">Par lot</option>
                           <option value="serial">Par numéro de série</option>
@@ -1635,7 +1578,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                           {form.isReexposable && (
                             <div className="flex items-center gap-1.5">
                               <input type="number" step="1" min="1" max="10"
-                                style={{ ...fieldInput, width: 60, textAlign: 'center', padding: '7px 8px' }}
+                                className="ds-input sm" style={{ width: 60, textAlign: 'center' }} aria-label="Durée de remise en vente (jours)"
                                 value={form.maxReexpositions}
                                 onChange={(e) => setForm({ ...form, maxReexpositions: e.target.value })}
                                 placeholder="1" title="Durée de remise en vente (jours)" />
@@ -1697,42 +1640,17 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     </div>
                   </>
                 )}
-                </FormSection>
+                </CollapsibleSection>
               </>
             )}
             </div>
-            <aside style={{ position: 'sticky', top: 0, alignSelf: 'start', borderLeft: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', padding: 16 }}>
+            <aside style={{ position: 'sticky', top: 0, alignSelf: 'start', borderLeft: '1px solid var(--ds-hair)', paddingLeft: 20 }}>
               <ProductPreview form={form} imagePreview={imagePreview} categories={categories} chefUsers={chefUsers} />
             </aside>
           </div>
 
-          {/* Footer actions Odoo */}
-          <div style={{
-            position: 'sticky', bottom: 0,
-            backgroundColor: 'var(--theme-bg-card)',
-            borderTop: '1px solid var(--theme-bg-separator)',
-            padding: '0.625rem 1rem',
-            display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem',
-          }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">
-              Annuler
-            </button>
-            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
-              {isLoading ? (
-                <>
-                  <div style={{ width: 12, height: 12, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                  Enregistrement...
-                </>
-              ) : (
-                <>
-                  <Pencil size={13} /> {product ? 'Mettre à jour' : 'Créer le produit'}
-                </>
-              )}
-            </button>
-          </div>
         </form>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }
 
@@ -1802,7 +1720,7 @@ function PricingTiersPanel({ productId }: { productId: string }) {
   });
 
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: 14, display: 'grid', gap: 10 }}>
+    <div style={{ border: '1px solid var(--ds-hair)', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div>
           <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Coins size={14} style={{ color: 'var(--theme-accent)' }} /> Paliers tarifaires (vente au kg)</div>
@@ -1814,19 +1732,19 @@ function PricingTiersPanel({ productId }: { productId: string }) {
       {rows.length === 0 ? (
         <StatusBanner tone="info" icon={Coins} title="Aucun palier">Le POS utilisera le prix unique du produit.</StatusBanner>
       ) : (
-        <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th className="ds-num">À partir de (g)</th><th className="ds-num">Jusqu'à (g)</th><th className="ds-num">Prix au kg ({currencySymbol()})</th><th style={{ width: 36 }}></th></tr></thead>
+        <DataPanel label="Paliers tarifaires"><table className="odoo-table ds-dense">
+          <thead><tr><th className="ds-num">À partir de (g)</th><th className="ds-num">Jusqu'à (g)</th><th className="ds-num">Prix au kg ({currencySymbol()})</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
           <tbody>
             {rows.map((row, idx) => (
               <tr key={idx}>
-                <td><input type="number" min={0} step={1} style={{ ...fieldInput, textAlign: 'right' }} value={row.min} onChange={e => updateRow(idx, 'min', e.target.value)} placeholder="0" /></td>
-                <td><input type="number" min={0} step={1} style={{ ...fieldInput, textAlign: 'right' }} value={row.max} onChange={e => updateRow(idx, 'max', e.target.value)} placeholder="∞ (vide)" /></td>
-                <td><input type="number" min={0} step="0.01" style={{ ...fieldInput, textAlign: 'right', fontWeight: 600 }} value={row.prix} onChange={e => updateRow(idx, 'prix', e.target.value)} placeholder="80.00" /></td>
-                <td style={{ textAlign: 'center' }}><button type="button" onClick={() => removeRow(idx)} className="odoo-pager-btn" title="Supprimer" aria-label="Supprimer"><Trash2 size={13} /></button></td>
+                <td className="ds-num"><input type="number" min={0} step={1} className="ds-input sm" style={{ textAlign: 'right' }} aria-label={`Palier ${idx + 1} : à partir de (g)`} value={row.min} onChange={e => updateRow(idx, 'min', e.target.value)} placeholder="0" /></td>
+                <td className="ds-num"><input type="number" min={0} step={1} className="ds-input sm" style={{ textAlign: 'right' }} aria-label={`Palier ${idx + 1} : jusqu'à (g)`} value={row.max} onChange={e => updateRow(idx, 'max', e.target.value)} placeholder="∞ (vide)" /></td>
+                <td className="ds-num"><input type="number" min={0} step="0.01" className="ds-input sm" style={{ textAlign: 'right', fontWeight: 600 }} aria-label={`Palier ${idx + 1} : prix au kg`} value={row.prix} onChange={e => updateRow(idx, 'prix', e.target.value)} placeholder="80.00" /></td>
+                <td className="ds-actions"><button type="button" onClick={() => removeRow(idx)} className="ds-icon-btn" title="Supprimer" aria-label={`Supprimer le palier ${idx + 1}`}><Trash2 size={14} /></button></td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></DataPanel>
       )}
 
       {rows.length > 0 && (
@@ -1929,7 +1847,7 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Destinations de valorisation</div>
-        <button type="button" onClick={addRow} className="odoo-btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }}><Plus size={12} /> Ajouter</button>
+        <button type="button" onClick={addRow} className="odoo-btn-secondary ds-btn-sm"><Plus size={12} /> Ajouter</button>
       </div>
 
       {rows.length === 0 && (
@@ -1937,25 +1855,25 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
       )}
 
       {rows.length > 0 && (
-        <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th>Ingrédient cible</th><th>Libellé</th><th style={{ textAlign: 'right', width: 90 }}>Rendement</th><th style={{ width: 36 }}></th></tr></thead>
+        <DataPanel label="Destinations de valorisation"><table className="odoo-table ds-dense">
+          <thead><tr><th>Ingrédient cible</th><th>Libellé</th><th className="ds-num" style={{ width: 90 }}>Rendement</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
           <tbody>
             {rows.map((row, idx) => (
               <tr key={idx}>
                 <td><SearchSelect ariaLabel="Ingrédient cible" placeholder="— Ingrédient cible —" width="100%" size="md" value={row.ingredientId} onChange={(id) => updateRow(idx, { ingredientId: id })} options={ingredientOptions.map(opt => ({ id: String(opt.id), label: `${opt.name}${opt.unit ? ` (${opt.unit})` : ''}` }))} /></td>
-                <td><input type="text" value={row.label} onChange={(e) => updateRow(idx, { label: e.target.value })} placeholder="Libellé (ex: Vers chapelure)" style={fieldInput} /></td>
-                <td><input type="number" step="0.01" min="0.01" max="2" value={row.yieldRatio} onChange={(e) => updateRow(idx, { yieldRatio: e.target.value })} style={{ ...fieldInput, textAlign: 'right' }} title="Rendement : 1.0 = 100 %, 0.7 = 30 % de perte au séchage" /></td>
-                <td style={{ textAlign: 'center' }}><button type="button" onClick={() => removeRow(idx)} className="odoo-pager-btn" title="Supprimer" aria-label="Supprimer"><Trash2 size={13} /></button></td>
+                <td><input type="text" value={row.label} onChange={(e) => updateRow(idx, { label: e.target.value })} placeholder="Libellé (ex: Vers chapelure)" aria-label={`Libellé de la destination ${idx + 1}`} className="ds-input sm" /></td>
+                <td className="ds-num"><input type="number" step="0.01" min="0.01" max="2" value={row.yieldRatio} onChange={(e) => updateRow(idx, { yieldRatio: e.target.value })} className="ds-input sm" style={{ textAlign: 'right' }} aria-label={`Rendement de la destination ${idx + 1}`} title="Rendement : 1.0 = 100 %, 0.7 = 30 % de perte au séchage" /></td>
+                <td className="ds-actions"><button type="button" onClick={() => removeRow(idx)} className="ds-icon-btn" title="Supprimer" aria-label={`Supprimer la destination ${idx + 1}`}><Trash2 size={14} /></button></td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></DataPanel>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, paddingTop: 8, borderTop: '1px solid var(--odoo-border)' }}>
         <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Rendement : 1.0 = conversion complète, 0.7 = 30 % de perte</p>
         {dirty && (
-          <button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending} className="odoo-btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>{mutation.isPending ? 'Enregistrement…' : 'Enregistrer'}</button>
+          <button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending} className="odoo-btn-primary ds-btn-sm">{mutation.isPending ? 'Enregistrement…' : 'Enregistrer'}</button>
         )}
       </div>
     </div>
@@ -2019,12 +1937,13 @@ function ChannelPricingPanel({ productId, saleUnit }: { productId: string; saleU
   if (channels.length === 0) return null;
 
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: 14, display: 'grid', gap: 10 }}>
+    <div style={{ border: '1px solid var(--ds-hair)', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
       <div>
         <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Target size={14} style={{ color: 'var(--theme-accent)' }} /> Prix par canal de vente</div>
         <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>Remplace le prix par défaut pour un canal précis. Laissez vide pour le prix de catalogue (ou le palier pour la vente au poids).</div>
       </div>
-      <table className="odoo-table" style={{ margin: 0 }}>
+      <DataPanel label="Prix par canal"><table className="odoo-table ds-dense">
+        <thead><tr><th>Canal</th><th className="ds-num">Prix ({currencySymbol()}{saleUnit === 'weight' ? '/kg' : '/pièce'})</th></tr></thead>
         <tbody>
           {channels.map((c: SalesChannel) => {
             const row = rows[c.id] || { price: '', priceKg: '' };
@@ -2037,20 +1956,18 @@ function ChannelPricingPanel({ productId, saleUnit }: { productId: string; saleU
                     {c.is_default && <span className="odoo-tag odoo-tag-green">défaut</span>}
                   </span>
                 </td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-                    <input type="number" min={0} step="0.01" style={{ ...fieldInput, width: 150, textAlign: 'right', fontWeight: 600 }}
+                <td className="ds-num">
+                    <input type="number" min={0} step="0.01" className="ds-input sm" style={{ width: 170, textAlign: 'right', fontWeight: 600 }}
+                      aria-label={`Prix pour le canal ${c.label}`}
                       value={saleUnit === 'weight' ? row.priceKg : row.price}
                       onChange={e => updateField(c.id, saleUnit === 'weight' ? 'priceKg' : 'price', e.target.value)}
                       placeholder={saleUnit === 'weight' ? 'auto (produit / palier)' : 'auto (prix produit)'} />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}{saleUnit === 'weight' ? '/kg' : '/pièce'}</span>
-                  </span>
                 </td>
               </tr>
             );
           })}
         </tbody>
-      </table>
+      </table></DataPanel>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button type="button" onClick={handleSave} disabled={saving} className="odoo-btn-primary">{saving ? 'Enregistrement…' : 'Enregistrer les prix par canal'}</button>
       </div>

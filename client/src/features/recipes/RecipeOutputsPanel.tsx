@@ -6,6 +6,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { money } from '../../utils/money';
+import '../production/production.css';
 
 /**
  * Sorties déclarées de la fiche (M4-06) : co-produits (coût au prorata des pièces
@@ -43,8 +44,8 @@ export default function RecipeOutputsPanel({ recipeId }: { recipeId: string }) {
   const keyOk = form.outputType === 'co_produit' ? (n(form.equivPieces) ?? 0) > 0 : (n(form.fixedUnitValue) ?? -1) >= 0;
 
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header flex items-center gap-2"><Split size={13} /> Sorties déclarées
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head"><Split size={13} /> Sorties déclarées
         <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setAdding(a => !a)}>{adding ? 'Fermer' : 'Ajouter'}</button>
       </div>
       <div style={{ padding: '0.5rem 1rem', display: 'grid', gap: 8 }}>

@@ -8,8 +8,7 @@ import { fxRevaluationApi } from '../../api/ledger.api';
 import type { FxRevaluation, FxRevaluationLine } from '../../api/ledger.api';
 import EditionButtons from './EditionButtons';
 import { currencySymbol } from '../../utils/money';
-import { KpiCard, KpiGrid, LoadingState } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { DataPanel, ErrorState, FormField, HeaderActions, KpiCard, KpiGrid, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Écarts de change (mig 431) : réévaluation au 31/12 des créances et dettes en
@@ -22,7 +21,6 @@ const fmtDate = (s: string) => s.slice(0, 10).split('-').reverse().join('/');
 const rt = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: 6 });
 const rateNum = (s: string) => Number(s.replace(/\s/g, '').replace(',', '.')) || 0;
 const mono = { fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' } as const;
-const inp: React.CSSProperties = { padding: '5px 8px', border: '1px solid var(--theme-bg-separator)', borderRadius: 6, fontSize: '0.8125rem', background: 'var(--theme-bg-input)' };
 
 const ACCOUNT_HINT: Record<string, string> = {
   '3701': 'perte latente (créance en baisse)', '3702': 'perte latente (dette en hausse)',
@@ -36,7 +34,7 @@ export default function FxRevaluationTab() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [applied, setApplied] = useState<Record<string, number>>({});
   useEffect(() => { setDraft({}); setApplied({}); }, [year]);
-  const { data: s, isLoading, isFetching } = useQuery({
+  const { data: s, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['fx-revaluation', year, applied], queryFn: () => fxRevaluationApi.get(year, applied),
   });
   const refresh = () => { qc.invalidateQueries({ queryKey: ['fx-revaluation'] }); qc.invalidateQueries({ queryKey: ['ledger-entries'] }); };
@@ -45,9 +43,9 @@ export default function FxRevaluationTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <AccHeaderActions>
+      <HeaderActions>
         <EditionButtons kind="ecarts-conversion" params={{ endDate: `${year}-12-31` }} />
-      </AccHeaderActions>
+      </HeaderActions>
 
       {s && (
         <>
@@ -73,7 +71,7 @@ export default function FxRevaluationTab() {
         </select>
         {isFetching && !isLoading && <Loader2 size={14} className="animate-spin" aria-label="Actualisation" />}
       </div>
-      {isLoading || !s ? <LoadingState /> : (
+      {isError ? <ErrorState error={error} title="La réévaluation n'a pas pu être chargée" onRetry={() => refetch()} /> : isLoading || !s ? <LoadingState /> : (
         <>
           <Rates s={s} draft={draft} setDraft={setDraft} dirty={dirty} onApply={() => setApplied(
             Object.fromEntries(Object.entries(draft).filter(([, v]) => rateNum(v) > 0).map(([k, v]) => [k, rateNum(v)])))} />
@@ -91,13 +89,12 @@ function Stat({ label, value, sub, tone }: { label: string; value: number; sub: 
   );
 }
 
-function Section({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
+/** Carte à en-tête : SectionHeader au-dessus, contenu dans un DataPanel (`flush` = tableau sans marge). */
+function Section({ title, children, note, aside, flush }: { title: string; children: React.ReactNode; note?: React.ReactNode; aside?: React.ReactNode; flush?: boolean }) {
   return (
-    <div className="odoo-section ds-panel" style={{ padding: 0 }}>
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--theme-bg-secondary)' }}>
-        <strong style={{ fontSize: '0.8125rem', flex: 1 }}>{title}</strong>{aside}
-      </div>
-      <div style={{ padding: 12 }}>{children}</div>
+    <div style={{ display: 'grid', gap: 8 }}>
+      <SectionHeader title={title} note={note}>{aside}</SectionHeader>
+      <DataPanel label={title}>{flush ? children : <div style={{ padding: 12 }}>{children}</div>}</DataPanel>
     </div>
   );
 }
@@ -110,25 +107,24 @@ function Rates({ s, draft, setDraft, dirty, onApply }: {
   const booked = s.status === 'booked';
   return (
     <Section title={`Taux de clôture au ${fmtDate(s.closing_date)}`} aside={!booked && (
-      <button type="button" className="odoo-btn-secondary" disabled={!dirty} onClick={onApply}>
+      <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={!dirty} onClick={onApply}>
         <RefreshCw size={12} /> Recalculer
       </button>)}>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="ds-form-grid cols-4">
         {codes.map(code => {
           const r = s.rates[code];
-          return (
-            <label key={code} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
-              <strong>1 {code} =</strong>
-              {booked ? <span style={mono}>{r.rate != null ? rt(r.rate) : '—'}</span> : (
-                <input value={draft[code] ?? (r.rate != null ? String(r.rate).replace('.', ',') : '')} inputMode="decimal"
-                  onChange={e => setDraft({ ...draft, [code]: e.target.value })} placeholder="taux"
-                  style={{ ...inp, width: 90, textAlign: 'right', borderColor: r.rate == null ? 'var(--ds-danger)' : undefined }} />
-              )}
-              <span>{currencySymbol()}</span>
-              {!booked && <span style={{ color: r.rate == null ? 'var(--ds-danger)' : 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
-                {r.source === 'table' ? `taux du ${fmtDate(r.valid_on!)}` : r.source === 'saisi' ? 'saisi' : 'manquant'}
-              </span>}
-            </label>
+          const sourceLabel = r.source === 'table' ? `taux du ${fmtDate(r.valid_on!)}` : r.source === 'saisi' ? 'saisi' : 'manquant';
+          return booked ? (
+            <div key={code} className="ds-field">
+              <span className="ds-field-label">1 {code} en {currencySymbol()}</span>
+              <span style={mono}>{r.rate != null ? rt(r.rate) : '—'}</span>
+            </div>
+          ) : (
+            <FormField key={code} label={`1 ${code} en ${currencySymbol()}`} htmlFor={`fx-rate-${code}`} required
+              hint={r.rate != null ? sourceLabel : undefined} error={r.rate == null ? 'Taux manquant' : undefined}>
+              <input id={`fx-rate-${code}`} className="ds-input" value={draft[code] ?? (r.rate != null ? String(r.rate).replace('.', ',') : '')} inputMode="decimal"
+                onChange={e => setDraft({ ...draft, [code]: e.target.value })} placeholder="taux" style={{ textAlign: 'right' }} aria-invalid={r.rate == null || undefined} />
+            </FormField>
           );
         })}
       </div>
@@ -145,45 +141,43 @@ function Rates({ s, draft, setDraft, dirty, onApply }: {
 
 function Lines({ s }: { s: FxRevaluation }) {
   if (!s.lines.length) {
-    return <Section title="Créances et dettes en devise"><div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune facture en devise ouverte au {fmtDate(s.closing_date)}.</div></Section>;
+    return <Section title="Créances et dettes en devise"><div style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Aucune facture en devise ouverte au {fmtDate(s.closing_date)}.</div></Section>;
   }
   const group = (side: FxRevaluationLine['side']) => s.lines.filter(l => l.side === side);
   return (
-    <Section title="Créances et dettes en devise">
-      <div style={{ overflowX: 'auto' }}>
+    <Section flush title="Créances et dettes en devise">
         <table className="odoo-table ds-dense">
           <thead>
             <tr>
               <th>Facture</th><th>Tiers</th><th className="ds-num">Reste en devise</th>
-              <th className="ds-num">Taux facture</th><th className="ds-num">Au taux historique</th>
-              <th className="ds-num">Taux de clôture</th><th className="ds-num">Au taux de clôture</th>
-              <th className="ds-num">Écart</th><th>Compte</th>
+              <th className="ds-num">Taux facture</th><th className="ds-num">Au taux historique ({currencySymbol()})</th>
+              <th className="ds-num">Taux de clôture</th><th className="ds-num">Au taux de clôture ({currencySymbol()})</th>
+              <th className="ds-num">Écart ({currencySymbol()})</th><th>Compte</th>
             </tr>
           </thead>
           <tbody>
             {(['receivable', 'payable'] as const).filter(side => group(side).length).map(side => [
-              <tr key={side}><td colSpan={9} style={{ fontWeight: 600, background: 'var(--theme-bg-secondary)' }}>{side === 'receivable' ? 'Créances clients' : 'Dettes fournisseurs'}</td></tr>,
+              <tr key={side} className="ds-group"><td colSpan={9}>{side === 'receivable' ? 'Créances clients' : 'Dettes fournisseurs'}</td></tr>,
               ...group(side).map(l => (
                 <tr key={l.invoice_id}>
-                  <td><span style={mono}>{l.invoice_number}</span>{l.external_ref && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{l.external_ref}</div>}</td>
-                  <td>{l.tiers ?? '—'}<div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>du {fmtDate(l.invoice_date)}</div></td>
+                  <td><span className="ds-ref">{l.invoice_number}</span>{l.external_ref && <div style={{ fontSize: 11, color: 'var(--ds-muted)' }}>{l.external_ref}</div>}</td>
+                  <td><span className="ds-strong">{l.tiers ?? '—'}</span><div style={{ fontSize: 11, color: 'var(--ds-muted)' }}>du {fmtDate(l.invoice_date)}</div></td>
                   <td className="ds-num">{n(l.foreign_remaining)} {l.currency_code}</td>
                   <td className="ds-num">{rt(l.book_rate)}</td>
                   <td className="ds-num">{n(l.book_amount)}</td>
                   <td className="ds-num">{l.closing_rate != null ? rt(l.closing_rate) : '—'}</td>
                   <td className="ds-num">{l.closing_amount != null ? n(l.closing_amount) : '—'}</td>
-                  <td className="ds-num" style={{ fontWeight: 600, color: l.account_code?.startsWith('37') ? 'var(--ds-danger)' : l.account_code?.startsWith('47') ? 'var(--ds-success)' : undefined }}>
+                  <td className="ds-num ds-strong" style={{ color: l.account_code?.startsWith('37') ? 'var(--ds-danger)' : l.account_code?.startsWith('47') ? 'var(--ds-success)' : undefined }}>
                     {l.difference != null ? n(l.difference) : '—'}
                   </td>
                   <td title={l.account_code ? ACCOUNT_HINT[l.account_code] : undefined}>
-                    {l.account_code && l.account_code !== '-' ? <span style={mono}>{l.account_code}</span> : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                    {l.account_code && l.account_code !== '-' ? <span className="ds-ref">{l.account_code}</span> : <span style={{ color: 'var(--ds-muted)' }}>—</span>}
                   </td>
                 </tr>
               )),
             ])}
           </tbody>
         </table>
-      </div>
     </Section>
   );
 }
@@ -200,10 +194,10 @@ function Booking({ s, applied, dirty, refresh, onErr }: { s: FxRevaluation; appl
   const cancel = useMutation({ mutationFn: () => fxRevaluationApi.cancel(s.year, reason.trim()), onSuccess: () => { setReason(''); notify.success('Réévaluation annulée'); refresh(); }, onError: onErr });
   const moving = s.lines.some(l => l.difference);
   return (
-    <Section title="Écritures">
+    <Section title="Écritures" note={`montants en ${currencySymbol()}`}>
       {s.status !== 'booked' ? (
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: '0.8125rem', flex: 1, minWidth: 280, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 13, flex: 1, minWidth: 280, lineHeight: 1.6 }}>
             Au 31/12/{s.year} : une ligne par facture sur le compte du tiers (<span style={mono}>3421</span> / <span style={mono}>4411</span>), contrepartie
             {' '}<span style={mono}>37xx</span> (pertes, {n(s.loss_total)}) ou <span style={mono}>47xx</span> (gains, {n(s.gain_total)}) ;
             provision <span style={mono}>6393</span> / <span style={mono}>4506</span> de {n(s.provision)}
@@ -218,13 +212,13 @@ function Booking({ s, applied, dirty, refresh, onErr }: { s: FxRevaluation; appl
           </button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8125rem' }}>
-          <div>Écriture du 31/12/{s.year} : <span style={{ ...mono, color: 'var(--ds-info)' }}>{s.reval_entry_number}</span>
-            {s.reopen_entry_number && <> · contre-passation du 01/01/{s.year + 1} : <span style={{ ...mono, color: 'var(--ds-info)' }}>{s.reopen_entry_number}</span></>}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+          <div>Écriture du 31/12/{s.year} : <span className="ds-ref">{s.reval_entry_number}</span>
+            {s.reopen_entry_number && <> · contre-passation du 01/01/{s.year + 1} : <span className="ds-ref">{s.reopen_entry_number}</span></>}</div>
           {!s.fiscal_year_closed && (
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: 8 }}>
-              <AlertTriangle size={13} style={{ color: 'var(--ds-warning)' }} />
-              <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Motif pour annuler la réévaluation" style={{ ...inp, flex: 1 }} />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', borderTop: '1px solid var(--ds-hair)', paddingTop: 8 }}>
+              <AlertTriangle size={13} style={{ color: 'var(--ds-warning)' }} aria-hidden="true" />
+              <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Motif pour annuler la réévaluation" aria-label="Motif pour annuler la réévaluation" className="ds-input sm" style={{ flex: 1 }} />
               <button type="button" className="odoo-btn-secondary" disabled={reason.trim().length < 3 || cancel.isPending} onClick={() => cancel.mutate()}><Undo2 size={12} /> Annuler la réévaluation</button>
             </div>
           )}

@@ -25,6 +25,8 @@ interface SearchSelectProps {
   size?: 'sm' | 'md';
   /** Libellé accessible quand aucun <label> visible n'est associé. */
   ariaLabel?: string;
+  /** Identifiant du champ de saisie, pour le relier à son libellé (FormField htmlFor). */
+  id?: string;
   /** Désactive la saisie (champ de formulaire grisé, non ouvrable). */
   disabled?: boolean;
   /** Masque la croix d'effacement (utile quand une valeur est obligatoire). */
@@ -33,7 +35,7 @@ interface SearchSelectProps {
 
 const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-export default function SearchSelect({ options, value, onChange, placeholder, width = 220, size = 'sm', ariaLabel, disabled = false, clearable = true }: SearchSelectProps) {
+export default function SearchSelect({ options, value, onChange, placeholder, width = 220, size = 'sm', ariaLabel, id, disabled = false, clearable = true }: SearchSelectProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -92,6 +94,7 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
     <div ref={containerRef} style={{ position: 'relative', width }}>
       <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--odoo-text-muted)', pointerEvents: 'none' }} />
       <input
+        id={id}
         ref={inputRef}
         type="text"
         aria-label={ariaLabel ?? placeholder}

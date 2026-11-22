@@ -142,7 +142,7 @@ function GridTab({ canEdit, onTab }: { canEdit: boolean; onTab: (t: Tab) => void
       </Toolbar>
 
       {isLoading ? <LoadingState label="Calcul de la prévision…" /> : error ? (
-        <ErrorState title="Prévision indisponible" text={String((error as any)?.response?.data?.error?.message ?? error)} onRetry={() => refetch()} />
+        <ErrorState error={error} title="Prévision indisponible" text={String((error as any)?.response?.data?.error?.message ?? error)} onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
         (search || category)
           ? <NoResultState text="Aucun produit ne correspond aux filtres." onReset={() => { setSearch(''); setCategory(''); }} />
@@ -231,7 +231,7 @@ function EventsTab({ canEdit }: { canEdit: boolean }) {
   const confirm = useConfirm();
   const [showPast, setShowPast] = useState(false);
   const [draft, setDraft] = useState<EventDraft | null>(null);
-  const { data = [], isLoading, isError, refetch } = useQuery({
+  const { data = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['forecast-events', showPast],
     queryFn: () => forecastApi.events(showPast ? undefined : iso(new Date())),
   });
@@ -305,7 +305,7 @@ function EventsTab({ canEdit }: { canEdit: boolean }) {
         </form>
       )}
 
-      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : data.length === 0 ? (
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : data.length === 0 ? (
         <EmptyState icon={CalendarDays} title="Aucun événement à venir"
           text="Ajoutez Ramadan, les fêtes, les vacances scolaires ou les jours de fermeture : la prévision en tient compte, et exclut ces jours de l'historique normal." />
       ) : (
@@ -353,7 +353,7 @@ function LinksTab() {
   const qc = useQueryClient();
   const [onlySold, setOnlySold] = useState(true);
   const [choice, setChoice] = useState<Record<string, string>>({});
-  const { data = [], isLoading, isError, refetch } = useQuery({ queryKey: ['forecast-unmapped'], queryFn: forecastApi.unmapped });
+  const { data = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['forecast-unmapped'], queryFn: forecastApi.unmapped });
   const { data: productsRes } = useQuery({
     queryKey: ['products-all-for-link'],
     queryFn: () => productsApi.list({ limit: '1000', page: '1' }),
@@ -379,7 +379,7 @@ function LinksTab() {
         </label>
       </Toolbar>
       <datalist id="forecast-products">{products.map(p => <option key={p.id} value={p.name} />)}</datalist>
-      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : rows.length === 0 ? (
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : rows.length === 0 ? (
         <EmptyState icon={CheckCircle2} title="Tous les articles vendus sont reliés" text="Leurs ventes alimentent la prévision et la fiche de besoin." />
       ) : (
         <DataPanel label="Articles à relier" footer={<TableFooter note={`${rows.length} article(s)`} />}>
@@ -419,7 +419,7 @@ function AccuracyTab() {
   const today = iso(new Date());
   const [from, setFrom] = useState(addDays(today, -28));
   const [to, setTo] = useState(addDays(today, -1));
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['forecast-accuracy', from, to], queryFn: () => forecastApi.accuracy(from, to) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['forecast-accuracy', from, to], queryFn: () => forecastApi.accuracy(from, to) });
   const tone = (m: number | null): StatusTone => (m == null ? 'draft' : m <= 25 ? 'done' : m <= 40 ? 'todo' : 'blocked');
 
   return (
@@ -430,7 +430,7 @@ function AccuracyTab() {
         <span style={{ fontSize: 14 }}>au</span>
         <input type="date" value={to} onChange={e => setTo(e.target.value)} className="ds-input" style={{ width: 170 }} aria-label="Au" />
       </Toolbar>
-      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => refetch()} /> : !data || data.days === 0 ? (
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : !data || data.days === 0 ? (
         <EmptyState icon={Target} title="Pas encore de mesure"
           text="La précision se mesure sur les prévisions réellement utilisées (création d'un plan de production, fiche de besoin), comparées au vendu une fois la journée passée." />
       ) : (

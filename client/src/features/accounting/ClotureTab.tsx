@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Lock, LockOpen, ShieldCheck, ListChecks, AlertTriangle, CheckCircle2, RotateCcw, Inbox, PackageOpen, X } from 'lucide-react';
+import { Loader2, Lock, LockOpen, ShieldCheck, ListChecks, AlertTriangle, CheckCircle2, RotateCcw, Inbox, PackageOpen } from 'lucide-react';
 import { fiscalPeriodsApi, purchaseLedgerApi, type CloseCheck, type PeriodEndOperation } from '../../api/ledger.api';
 import type { FiscalPeriod } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
@@ -9,12 +9,11 @@ import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { apiErrorMessage } from '../../api/errors';
 import IntegrityPanel from './IntegrityPanel';
 import FiscalYearsPanel from './FiscalYearsPanel';
-import { money } from '../../utils/money';
-import { DataPanel, EmptyState, LoadingState, SectionHeader, Toolbar, TableFooter } from '../../components/ds';
+import { money, currencySymbol } from '../../utils/money';
+import { DataPanel, EmptyState, ErrorState, LoadingState, SectionHeader, Toolbar, TableFooter, Modal, FormField, FormFooter } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
@@ -49,7 +48,7 @@ export default function ClotureTab() {
   const [reopen, setReopen] = useState<FiscalPeriod | null>(null);
   const [reopenNote, setReopenNote] = useState('');
 
-  const { data: periods = [], isLoading } = useQuery({
+  const { data: periods = [], isLoading, isError: periodsError, error: periodsErr, refetch: refetchPeriods } = useQuery({
     queryKey: ['ledger-fiscal-periods', year],
     queryFn: () => fiscalPeriodsApi.list(year),
     enabled: canSee,
@@ -116,7 +115,7 @@ export default function ClotureTab() {
           </StatusBanner>
           <DataPanel label="Pièces non comptabilisées">
           <table className="odoo-table ds-dense">
-            <thead><tr><th style={{ width: 120 }}>Pièce</th><th style={{ width: 160 }}>Document</th><th>Motif de l'échec</th><th className="ds-num" style={{ width: 70 }}>Essais</th>{isAdmin && <th style={{ width: 90 }} />}</tr></thead>
+            <thead><tr><th style={{ width: 120 }}>Pièce</th><th style={{ width: 160 }}>Document</th><th>Motif de l'échec</th><th className="ds-num" style={{ width: 70 }}>Essais</th>{isAdmin && <th className="ds-actions" style={{ width: 90 }} />}</tr></thead>
             <tbody>
               {pendingOutbox.map(o => (
                 <tr key={o.id}>
@@ -158,6 +157,8 @@ export default function ClotureTab() {
 
       {isLoading ? (
         <LoadingState />
+      ) : periodsError ? (
+        <ErrorState error={periodsErr} title="Les périodes n'ont pas pu être chargées" onRetry={() => refetchPeriods()} />
       ) : (
         <DataPanel label="Périodes mensuelles" footer={<TableFooter note={`${periods.length} période${periods.length > 1 ? 's' : ''} · exercice ${year}`} />}>
           <table className="odoo-table ds-dense">
@@ -220,7 +221,7 @@ export default function ClotureTab() {
         {grir.length > 0 && (
           <DataPanel label="Réceptions à facturer">
           <table className="odoo-table ds-dense">
-            <thead><tr><th>Fournisseur</th><th style={{ width: 130 }}>BC</th><th>Article</th><th style={{ width: 110 }}>Depuis</th><th className="ds-num" style={{ width: 70 }}>Âge</th><th className="ds-num" style={{ width: 120 }}>Solde</th></tr></thead>
+            <thead><tr><th>Fournisseur</th><th style={{ width: 130 }}>BC</th><th>Article</th><th style={{ width: 110 }}>Depuis</th><th className="ds-num" style={{ width: 70 }}>Âge</th><th className="ds-num" style={{ width: 120 }}>Solde ({currencySymbol()})</th></tr></thead>
             <tbody>
               {grir.map(g => {
                 const v = parseFloat(g.open_amount);
@@ -243,29 +244,16 @@ export default function ClotureTab() {
       </div>
 
       {reopen && (
-        <ModalBackdrop onClose={() => setReopen(null)} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 440, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-            <div className="odoo-control-bar">
-              <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Rouvrir {MONTH_NAMES[reopen.month - 1]} {reopen.year}</span></div>
-              <div style={{ flex: 1 }} />
-              <button onClick={() => setReopen(null)} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); mutation.mutate({ id: reopen.id, status: 'open', note: reopenNote.trim() }); }}
-              style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-                La réouverture est historisée avec son motif. Refermez la période après la correction.
-              </p>
-              <label htmlFor="reopen-note" style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Motif *</label>
-              <textarea id="reopen-note" rows={2} value={reopenNote} onChange={(e) => setReopenNote(e.target.value)} autoFocus
-                className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm" />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button type="button" onClick={() => setReopen(null)} className="odoo-btn-secondary">Retour</button>
-                <button type="submit" disabled={reopenNote.trim().length < 3 || mutation.isPending} className="odoo-btn-primary">Rouvrir</button>
-              </div>
-            </form>
-          </div>
-        </ModalBackdrop>
+        <Modal title={`Rouvrir ${MONTH_NAMES[reopen.month - 1]} ${reopen.year}`} onClose={() => setReopen(null)} width={440} locked={mutation.isPending}
+          footer={<FormFooter onCancel={() => setReopen(null)} cancelLabel="Retour" submitLabel="Rouvrir" busy={mutation.isPending}
+            disabled={reopenNote.trim().length < 3} onSubmit={() => mutation.mutate({ id: reopen.id, status: 'open', note: reopenNote.trim() })} />}>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-muted)' }}>
+            La réouverture est historisée avec son motif. Refermez la période après la correction.
+          </p>
+          <FormField label="Motif" htmlFor="reopen-note" required hint="3 caractères au moins.">
+            <textarea id="reopen-note" rows={2} value={reopenNote} onChange={(e) => setReopenNote(e.target.value)} autoFocus className="ds-input" />
+          </FormField>
+        </Modal>
       )}
     </>
   );
@@ -273,13 +261,14 @@ export default function ClotureTab() {
 
 /** Contrôles de clôture d'une période + historique des transitions. */
 function PeriodChecks({ periodId }: { periodId: string }) {
-  const { data: checks = [], isLoading } = useQuery({
+  const { data: checks = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger-close-checklist', periodId], queryFn: () => fiscalPeriodsApi.checklist(periodId),
   });
   const { data: events = [] } = useQuery({
     queryKey: ['ledger-period-events', periodId], queryFn: () => fiscalPeriodsApi.events(periodId),
   });
   if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState error={error} title="Les contrôles n'ont pas pu être chargés" onRetry={() => refetch()} />;
   const blocking = (checks as CloseCheck[]).filter(c => c.blocking && c.item_count > 0);
   const warnings = (checks as CloseCheck[]).filter(c => !c.blocking && c.item_count > 0);
   return (
@@ -287,8 +276,9 @@ function PeriodChecks({ periodId }: { periodId: string }) {
       {blocking.length > 0
         ? <StatusBanner tone="danger" icon={AlertTriangle} title={`${blocking.length} contrôle(s) bloquant(s)`}>La période ne peut pas être clôturée tant qu'ils ne sont pas résolus.</StatusBanner>
         : <StatusBanner tone="success" icon={CheckCircle2} title="Aucun point bloquant">{warnings.length ? `${warnings.length} avertissement(s) à examiner.` : 'Tous les contrôles sont au vert.'}</StatusBanner>}
+      <DataPanel label="Contrôles de clôture">
       <table className="odoo-table ds-dense">
-        <thead><tr><th>Contrôle</th><th className="ds-num" style={{ width: 90 }}>Nombre</th><th className="ds-num" style={{ width: 130 }}>Montant</th><th style={{ width: 120 }}>Effet</th></tr></thead>
+        <thead><tr><th>Contrôle</th><th className="ds-num" style={{ width: 90 }}>Nombre</th><th className="ds-num" style={{ width: 130 }}>Montant ({currencySymbol()})</th><th style={{ width: 120 }}>Effet</th></tr></thead>
         <tbody>
           {(checks as CloseCheck[]).map(c => (
             <tr key={c.code}>
@@ -302,10 +292,11 @@ function PeriodChecks({ periodId }: { periodId: string }) {
           ))}
         </tbody>
       </table>
+      </DataPanel>
       {events.length > 0 && (
-        <div className="ui-timeline" style={{ fontSize: '0.75rem' }}>
+        <div className="ui-timeline" style={{ fontSize: 12 }}>
           {events.map(e => (
-            <div key={e.id} style={{ color: 'var(--theme-text-muted)' }}>
+            <div key={e.id} style={{ color: 'var(--ds-muted)' }}>
               {new Date(e.at).toLocaleString('fr-FR')} · <strong>{TRANSITION_LABEL[e.to_status] ?? e.to_status}</strong>
               {e.user_name ? ` par ${e.user_name}` : ''}{e.note ? ` — ${e.note}` : ''}
               {e.chain_hash && (
@@ -353,15 +344,15 @@ function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean })
     (kind === 'fae' ? fae : fg).mutate();
   };
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 8 }}>
-      <div className="odoo-section-header"><PackageOpen size={11} /> Fin de période — ventes</div>
-      <div style={{ padding: '8px 12px', display: 'grid', gap: 8, fontSize: '0.8125rem' }}>
+    <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+      <SectionHeader title="Fin de période — ventes" />
+      <div className="ds-panel" style={{ padding: '12px 16px', display: 'grid', gap: 10, fontSize: 13 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ flex: 1, minWidth: 260 }}>
             <strong>Factures à établir</strong> — {unbilled.length
               ? `${unbilled.length} BL livré(s) non facturé(s) à la fin de la période, ${money(unbilledHt)} HT`
               : 'aucun BL livré non facturé à la fin de la période'}
-            {faeOp && <span style={{ color: 'var(--theme-text-muted)' }}> · passées : {money(faeOp.amount)} (extournées le 1er du mois suivant)</span>}
+            {faeOp && <span style={{ color: 'var(--ds-muted)' }}> · passées : {money(faeOp.amount)} (extournées le 1er du mois suivant)</span>}
           </span>
           {open && (
             <button type="button" className="odoo-btn-secondary" disabled={fae.isPending} onClick={() => run('fae', !!faeOp)}>
@@ -375,7 +366,7 @@ function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean })
               ? <>valorisé à {money(fgOp.amount)} (variation {money(fgOp.detail?.delta ?? 0)}){fgOp.detail?.products_without_cost
                   ? <span style={{ color: 'var(--ds-warning)' }}> · {fgOp.detail.products_without_cost} produit(s) sans coût</span> : null}</>
               : 'non valorisé pour cette période'}
-            <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+            <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)' }}>
               Valorisation du stock au moment du calcul (lots au coût figé, sinon coût standard) : à lancer le dernier jour du mois.
             </span>
           </span>

@@ -14,14 +14,14 @@ import { serverUrl } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { RowMenu } from '../../components/ui/RowMenu';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import ComplaintFormModal from '../../components/sav/ComplaintFormModal';
 import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar } from '../sales/ListTemplate';
 import { StageChips, Panel, PagerFoot, PageLoading } from './KlUi';
-import { EmptyState, FormField, NoResultState, SectionHeader } from '../../components/ds';
+import { Drawer, EmptyState, FormField, FormFooter, NoResultState, SectionHeader } from '../../components/ds';
 import { InterventionFormModal } from '../maintenance/forms';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useNavigate } from 'react-router-dom';
@@ -182,25 +182,18 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   );
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.32)' }}>
-      {/* Fiche au design Ventes : feuille .kl-sheet (en-tête au thème, corps en cartes). */}
-      <div className="odoo-scope kl-sheet w-full" role="dialog" aria-label={c ? `Réclamation ${c.number}` : 'Réclamation'} onClick={e => e.stopPropagation()}
-        style={{ maxWidth: 760, maxHeight: '92vh' }}>
+    <Drawer
+      title={c ? <span className="ds-ref" style={{ fontSize: 'inherit' }}>{c.number}</span> : 'Réclamation'}
+      subtitle={c?.subject}
+      aside={c ? <StatusTag tone={STATUS_TONE[c.status] ?? 'draft'} label={STATUS_LABELS[c.status]} /> : undefined}
+      label={c ? `Réclamation ${c.number}` : 'Réclamation'}
+      onClose={onClose} width={760}>
         {isLoading || !c ? (
           <PageLoading />
         ) : (
           <>
-            <header className="kl-sheet-head">
-              <div className="ord-who">
-                <h2><span className="ds-ref" style={{ fontSize: 'inherit' }}>{c.number}</span></h2>
-                <p>{c.subject}</p>
-              </div>
-              <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} aria-hidden="true" /></button>
-            </header>
-
-            <div className="kl-sheet-body" style={{ gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                <StatusTag tone={STATUS_TONE[c.status] ?? 'draft'} label={STATUS_LABELS[c.status]} />
                 <span className={`odoo-tag ${PRIORITY_TAG[c.priority]}`}>{PRIORITY_LABELS[c.priority]}</span>
               </div>
               {c.is_overdue && (
@@ -209,14 +202,17 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                 </StatusBanner>
               )}
 
-              {/* Actions selon l'étape */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {/* Actions selon l'étape : une seule action principale, une secondaire, le reste dans le menu. */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                 {c.status === 'open' && (
-                  <button type="button" className="odoo-btn-primary" onClick={() => { if (!c.assigned_to) assignMe.mutate(); setStatus.mutate({ status: 'in_progress' }); }}>
-                    <PlayCircle size={13} /> Prendre en charge
-                  </button>
+                  <>
+                    <button type="button" className="odoo-btn-primary" onClick={() => { if (!c.assigned_to) assignMe.mutate(); setStatus.mutate({ status: 'in_progress' }); }}>
+                      <PlayCircle size={13} /> Prendre en charge
+                    </button>
+                    <button type="button" className="odoo-btn-secondary" onClick={() => setResolving('resolved')}><CheckCircle2 size={13} /> Résoudre</button>
+                  </>
                 )}
-                {(c.status === 'open' || c.status === 'in_progress') && (
+                {c.status === 'in_progress' && (
                   <>
                     <button type="button" className="odoo-btn-primary" onClick={() => setResolving('resolved')}><CheckCircle2 size={13} /> Résoudre</button>
                     <button type="button" className="odoo-btn-secondary" onClick={() => setResolving('rejected')}><XCircle size={13} /> Non fondée</button>
@@ -229,18 +225,19 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                   <button type="button" className="odoo-btn-secondary" onClick={() => setStatus.mutate({ status: 'open' })}><RotateCcw size={13} /> Rouvrir</button>
                 )}
                 {['open', 'in_progress'].includes(c.status) && (
-                  c.assigned_to === user?.id
-                    ? <button type="button" className="odoo-btn-secondary" onClick={() => unassign.mutate()}><User size={13} /> Me retirer</button>
-                    : <button type="button" className="odoo-btn-secondary" onClick={() => assignMe.mutate()}><User size={13} /> Me l'affecter</button>
-                )}
-                {/* Pont vers la Maintenance (mig 359) : panne chez le client, installation défectueuse… */}
-                {['open', 'in_progress'].includes(c.status) && hasModule('maintenance') && (
-                  <button type="button" className="odoo-btn-secondary" onClick={() => setIntervention(true)}><Wrench size={13} /> Créer une intervention</button>
-                )}
-                {['open', 'in_progress'].includes(c.status) && (
-                  <select className="odoo-filter-dropdown" value={c.priority} onChange={e => setPriority.mutate(e.target.value as ComplaintPriority)} title="Changer la priorité">
+                  <select className="ds-input sm" style={{ width: 'auto' }} value={c.priority} onChange={e => setPriority.mutate(e.target.value as ComplaintPriority)} title="Changer la priorité" aria-label="Priorité">
                     {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>Priorité : {v}</option>)}
                   </select>
+                )}
+                {['open', 'in_progress'].includes(c.status) && (
+                  <RowMenu label="Autres actions" items={[
+                    ...(c.status === 'open' ? [{ label: 'Non fondée', icon: XCircle, onSelect: () => setResolving('rejected') }] : []),
+                    c.assigned_to === user?.id
+                      ? { label: 'Me retirer', icon: User, onSelect: () => unassign.mutate() }
+                      : { label: 'Me l\'affecter', icon: User, onSelect: () => assignMe.mutate() },
+                    // Pont vers la Maintenance (mig 359) : panne chez le client, installation défectueuse…
+                    ...(hasModule('maintenance') ? [{ label: 'Créer une intervention', icon: Wrench, onSelect: () => setIntervention(true) }] : []),
+                  ]} />
                 )}
               </div>
 
@@ -262,15 +259,10 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                   <FormField label={resolving === 'resolved' ? 'Ce qui a été fait pour le client' : 'Pourquoi la réclamation n\'est pas retenue'} htmlFor="cpl-res-text">
                     <textarea id="cpl-res-text" className="ds-input" style={{ minHeight: 70 }} value={resolution} onChange={e => setResolution(e.target.value)} />
                   </FormField>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button type="button" className="odoo-btn-secondary" onClick={() => setResolving(null)}>Annuler</button>
-                    <button type="button" className="odoo-btn-primary" disabled={setStatus.isPending}
-                      onClick={() => setStatus.mutate(resolving === 'resolved'
-                        ? { status: 'resolved', resolutionCode, resolution: resolution.trim() || undefined, resolutionAmount: amount ? Number(amount) : null }
-                        : { status: 'rejected', note: resolution.trim() || undefined })}>
-                      Confirmer
-                    </button>
-                  </div>
+                  <FormFooter onCancel={() => setResolving(null)} submitLabel="Confirmer" busy={setStatus.isPending}
+                    onSubmit={() => setStatus.mutate(resolving === 'resolved'
+                      ? { status: 'resolved', resolutionCode, resolution: resolution.trim() || undefined, resolutionAmount: amount ? Number(amount) : null }
+                      : { status: 'rejected', note: resolution.trim() || undefined })} />
                 </div>
               )}
 
@@ -327,13 +319,12 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
           </>
         )}
-      </div>
       {intervention && c && (
         <InterventionFormModal onClose={() => setIntervention(false)} onCreated={id => navigate(`/maintenance?tab=interventions&open=${id}`)}
           defaults={{ title: c.subject, customerId: c.customer_id, customerName: c.customer_label ?? '', equipmentLabel: c.product_name ?? '',
             reportedProblem: c.description ?? '', complaintId: c.id, priority: c.priority, kind: 'corrective' }} />
       )}
-    </ModalBackdrop>
+    </Drawer>
   );
 }
 

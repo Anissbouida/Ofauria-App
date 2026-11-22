@@ -41,7 +41,7 @@ export default function PlanCostAllocation({ planId, canEdit }: { planId: string
         Clé : <strong>{KEY[data.key] ?? data.key}</strong>{data.applied !== data.key && <> → appliquée : <strong>{KEY[data.applied]}</strong></>}
         {data.fallback && <span className="text-orange-700"> · {data.fallback}</span>}
       </div>
-      <table className="odoo-table">
+      <table className="odoo-table ds-dense">
         <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Article</th><th className="text-right px-2">Quantité</th>
           {manual && <th className="text-right px-2">Part saisie (%)</th>}
           <th className="text-right px-2">Part</th><th className="text-right px-2">Coût</th><th className="text-right px-2">Coût unitaire</th></tr></thead>

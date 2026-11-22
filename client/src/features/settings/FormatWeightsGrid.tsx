@@ -7,6 +7,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { DataPanel, EmptyState, LoadingState } from '../../components/ds';
 
 /**
  * Poids des formats, en grille (G2-05) : une ligne par format actif, poids cru, poids cuit
@@ -77,7 +78,7 @@ export default function FormatWeightsGrid() {
   const missing = rows.filter(r => r.poidsCuitG === null).length;
   const shown = onlyMissing ? rows.filter(r => r.poidsCuitG === null || drafts[r.formatId] || savedId === r.formatId) : rows;
 
-  if (isLoading) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading) return <LoadingState />;
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -92,17 +93,17 @@ export default function FormatWeightsGrid() {
         { key: 'all', label: 'Tous les formats', count: rows.length },
       ]} />
 
-      {shown.length === 0 && <div style={{ padding: 16, color: 'var(--ds-muted)' }}>Aucun format à afficher.</div>}
+      {shown.length === 0 && <EmptyState icon={Scale} title="Aucun format à afficher" />}
 
       {shown.length > 0 && (
-        <div className="prj-panel" style={{ overflowX: 'auto' }}>
-          <table className="odoo-table" style={{ width: '100%' }}>
+        <DataPanel label="Poids des formats">
+          <table className="odoo-table ds-dense" style={{ width: '100%' }}>
             <thead><tr>
               <th style={{ textAlign: 'left' }}>Fiche</th>
               <th style={{ textAlign: 'left' }}>Format</th>
               <th className="ds-num">Poids cru</th>
               <th className="ds-num">Poids cuit</th>
-              <th className="ds-num">Perte à la cuisson</th>
+              <th className="ds-num">Perte à la cuisson (%)</th>
               <th style={{ textAlign: 'left' }}>Pesées réelles (3 mois)</th>
               <th style={{ textAlign: 'left' }}>État</th>
             </tr></thead>
@@ -111,7 +112,7 @@ export default function FormatWeightsGrid() {
                 const d = draftOf(r);
                 const loss = lossPct(toG(parse(d.cru), d.cruUnit), toG(parse(d.cuit), d.cuitUnit));
                 const unitSelect = (field: 'cruUnit' | 'cuitUnit', label: string) => (
-                  <select className="odoo-input" value={d[field]} aria-label={`Unité du ${label} de ${r.recipeName}`} style={{ width: 56, marginLeft: 4 }}
+                  <select className="ds-input sm" value={d[field]} aria-label={`Unité du ${label} de ${r.recipeName}`} style={{ width: 60, marginLeft: 4 }}
                     onChange={e => { const next = { ...d, [field]: e.target.value as Unit }; setDrafts(x => ({ ...x, [r.formatId]: next })); commit(r, next); }}>
                     <option value="g">g</option><option value="kg">kg</option>
                   </select>
@@ -119,24 +120,24 @@ export default function FormatWeightsGrid() {
                 const dirty = Boolean(drafts[r.formatId]);
                 return (
                   <tr key={r.formatId}>
-                    <td style={{ fontWeight: 500 }}>{r.recipeName}</td>
+                    <td className="ds-strong">{r.recipeName}</td>
                     <td style={{ color: 'var(--ds-muted)' }}>{r.formatLabel}{r.isDefault ? ' · par défaut' : ''}</td>
                     <td className="ds-num">
-                      <input className="odoo-input" type="text" inputMode="decimal" aria-label={`Poids cru de ${r.recipeName}, ${r.formatLabel}`}
+                      <input className="ds-input sm" type="text" inputMode="decimal" aria-label={`Poids cru de ${r.recipeName}, ${r.formatLabel}`}
                         style={{ width: 90, textAlign: 'right' }} value={d.cru}
                         onChange={e => edit(r, { cru: e.target.value })} onBlur={() => commit(r)} />
                       {unitSelect('cruUnit', 'poids cru')}
                     </td>
                     <td className="ds-num">
-                      <input className="odoo-input" type="text" inputMode="decimal" aria-label={`Poids cuit de ${r.recipeName}, ${r.formatLabel}`}
+                      <input className="ds-input sm" type="text" inputMode="decimal" aria-label={`Poids cuit de ${r.recipeName}, ${r.formatLabel}`}
                         style={{ width: 90, textAlign: 'right' }} value={d.cuit}
                         onChange={e => edit(r, { cuit: e.target.value })} onBlur={() => commit(r)} />
                       {unitSelect('cuitUnit', 'poids cuit')}
                     </td>
-                    <td className="ds-num" style={{ fontVariantNumeric: 'tabular-nums' }}>{loss === null ? '—' : `${loss.toLocaleString('fr-FR')} %`}</td>
+                    <td className="ds-num">{loss === null ? '—' : loss.toLocaleString('fr-FR')}</td>
                     <td style={{ fontSize: '0.8rem' }}>
                       {r.proposal ? (
-                        <button type="button" className="odoo-btn-secondary" onClick={() => applyProposal(r)}
+                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => applyProposal(r)}
                           title={`Moyenne de ${r.proposal.samples} pesée${r.proposal.samples > 1 ? 's' : ''} : reprendre ces valeurs`}>
                           {r.proposal.cruG !== null ? `${r.proposal.cruG.toLocaleString('fr-FR')} g cru` : ''}
                           {r.proposal.cruG !== null && r.proposal.cuitG !== null ? ' · ' : ''}
@@ -156,7 +157,7 @@ export default function FormatWeightsGrid() {
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
     </div>
   );

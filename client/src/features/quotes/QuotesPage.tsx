@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  FileSignature, FileText, Send, CheckCircle2, XCircle, ShoppingCart, Plus, Loader2, X, Copy, RotateCcw, Ban, Trash2, Printer, Clock, Pencil,
+  FileSignature, FileText, Send, CheckCircle2, XCircle, ShoppingCart, Plus, Copy, RotateCcw, Ban, Trash2, Printer, Clock, Pencil,
   type LucideIcon,
 } from 'lucide-react';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
@@ -15,13 +15,12 @@ import { deliveryNotesApi } from '../../api/delivery-notes.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { crmApi, type Opportunity } from '../../api/crm.api';
 import { PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
-import { TableFooter, EmptyState, NoResultState, LoadingState } from '../../components/ds';
+import { TableFooter, EmptyState, NoResultState, LoadingState, ErrorState, Modal, FormField, FormSection, FormFooter, DataPanel } from '../../components/ds';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { ListToolbar, FilterChips, ListKpi, ListPanel, NextStep } from '../sales/ListTemplate';
 import SalesPageShell from '../sales/SalesPageShell';
@@ -34,8 +33,7 @@ import SalesPageShell from '../sales/SalesPageShell';
 const n2 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const d10 = (v: string | null | undefined) => (v ? String(v).slice(0, 10) : '');
 const fr = (v: string | null | undefined) => (v ? format(new Date(`${d10(v)}T00:00:00`), 'dd/MM/yyyy') : '—');
-const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
-const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
+const lab: React.CSSProperties = { fontSize: '0.8125rem', color: 'var(--ds-muted)' };
 const TVA_RATES = ['', '0', '7', '10', '14', '20'];
 /** Statut d'un devis en étiquette commune (perdu = clos sans suite, expiré = échéance dépassée). */
 export const QUOTE_TONE: Record<QuoteStatus, { tone: StatusTone; icon?: LucideIcon }> = {
@@ -76,7 +74,7 @@ export default function QuotesPage() {
   const params: Record<string, string> = { page: String(page), limit: String(PAGE_SIZE) };
   if (status) params.status = status;
   if (search) params.search = search;
-  const { data, isLoading } = useQuery({ queryKey: ['quotes', params], queryFn: () => quotesApi.list(params) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['quotes', params], queryFn: () => quotesApi.list(params) });
   const { data: ov } = useQuery({ queryKey: ['quotes', 'overview'], queryFn: quotesApi.overview });
   const by = ov?.byStatus ?? {};
   const lost = { count: (by.refused?.count ?? 0) + (by.expired?.count ?? 0), amount: (by.refused?.amount ?? 0) + (by.expired?.amount ?? 0) };
@@ -144,7 +142,7 @@ export default function QuotesPage() {
 
       <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="N°, objet, client, prospect…" />
 
-      {isLoading ? <LoadingState label="Chargement des devis…" /> : !data?.data.length ? (
+      {isLoading ? <LoadingState label="Chargement des devis…" /> : isError ? <ErrorState error={error} onRetry={() => refetch()} /> : !data?.data.length ? (
         status || search
           ? <NoResultState onReset={() => { setStatus(''); setSearchInput(''); }} text="Aucun devis ne correspond aux filtres." />
           : <EmptyState icon={FileSignature} title="Aucun devis"
@@ -286,57 +284,79 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
   });
   const canSave = (mode === 'customer' ? !!customerId : !!(prospect.name.trim() || prospect.company.trim())) && valid.length > 0 && head.validUntil >= head.quoteDate;
 
-  return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 1000, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{quote ? `Modifier le devis ${quote.number}` : 'Nouveau devis'}</span></div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-btn-secondary" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {(['customer', 'prospect'] as const).map(m => (
-              <button key={m} type="button" className={mode === m ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode(m)}>
-                {m === 'customer' ? 'Client existant' : 'Prospect (sans fiche)'}
-              </button>
-            ))}
-          </div>
-          {mode === 'customer' ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, alignItems: 'end' }}>
-              <label style={lab}>Client<SearchSelect options={customerOptions} value={customerId} onChange={setCustomerId} placeholder="Rechercher un client…" width="100%" size="md" /></label>
-              <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', paddingBottom: 6 }}>
-                {customer ? (isPro ? 'Professionnel : prix HT, TVA par ligne, remise client appliquée' : 'Particulier : prix TTC') : ''}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-              <label style={lab}>Nom du contact<input style={field} maxLength={160} value={prospect.name} onChange={e => setProspect({ ...prospect, name: e.target.value })} /></label>
-              <label style={lab}>Société<input style={field} maxLength={200} value={prospect.company} onChange={e => setProspect({ ...prospect, company: e.target.value })} /></label>
-              <label style={lab}>Téléphone<input style={field} maxLength={30} value={prospect.phone} onChange={e => setProspect({ ...prospect, phone: e.target.value })} /></label>
-              <label style={lab}>E-mail<input style={field} type="email" maxLength={255} value={prospect.email} onChange={e => setProspect({ ...prospect, email: e.target.value })} /></label>
-              <label style={{ ...lab, gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input type="checkbox" checked={head.withTax} onChange={e => setHead({ ...head, withTax: e.target.checked })} />
-                Prix HT avec TVA par ligne (prospect professionnel) — sinon prix TTC
-              </label>
-            </div>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-            <label style={lab}>Objet<input style={field} maxLength={200} value={head.title} onChange={e => setHead({ ...head, title: e.target.value })} placeholder="Ex. : buffet mariage 120 personnes" /></label>
-            <label style={lab}>Date du devis<input style={field} type="date" value={head.quoteDate} onChange={e => setHead({ ...head, quoteDate: e.target.value })} /></label>
-            <label style={lab}>Valable jusqu'au<input style={field} type="date" value={head.validUntil} min={head.quoteDate} onChange={e => setHead({ ...head, validUntil: e.target.value })} /></label>
-            <label style={lab}>Remise globale (%)<input style={field} type="number" min={0} max={100} step="0.5" value={head.discountPct} onChange={e => setHead({ ...head, discountPct: e.target.value })} /></label>
-          </div>
+  const [initialSnapshot] = useState(() => JSON.stringify({ mode, customerId, prospect, head, lines }));
+  const dirty = JSON.stringify({ mode, customerId, prospect, head, lines }) !== initialSnapshot;
+  const dateError = head.validUntil < head.quoteDate ? 'La date de validité doit suivre la date du devis.' : undefined;
+  const tvaSelect = (l: Line, i: number) => (
+    <select className="ds-input sm" aria-label="Taux de TVA" value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })}>{TVA_RATES.map(r => <option key={r} value={r}>{r === '' ? '—' : `${r} %`}</option>)}</select>
+  );
 
-          <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table" style={{ minWidth: 720 }}>
-            <thead><tr><th>Article</th><th>Précision</th><th style={{ width: 90 }}>Qté</th><th style={{ width: 130 }}>Prix unit. {withTax ? 'HT' : 'TTC'}</th>{withTax && <th style={{ width: 90 }}>TVA %</th>}<th style={{ textAlign: 'right', width: 120 }}>Montant</th><th style={{ width: 36 }}></th></tr></thead>
+  return (
+    <Modal title={quote ? `Modifier le devis ${quote.number}` : 'Nouveau devis'} onClose={onClose} width={1000} locked={save.isPending}
+      footer={<FormFooter dirty={dirty} onCancel={onClose} onSubmit={() => save.mutate()} disabled={!canSave} busy={save.isPending} />}>
+      <FormSection title="Destinataire">
+        <div style={{ display: 'flex', gap: 8 }} role="group" aria-label="Type de destinataire">
+          {(['customer', 'prospect'] as const).map(m => (
+            <button key={m} type="button" aria-pressed={mode === m} className={mode === m ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode(m)}>
+              {m === 'customer' ? 'Client existant' : 'Prospect (sans fiche)'}
+            </button>
+          ))}
+        </div>
+        {mode === 'customer' ? (
+          <FormField label="Client" required hint={customer ? (isPro ? 'Professionnel : prix HT, TVA par ligne, remise client appliquée' : 'Particulier : prix TTC') : undefined}>
+            <SearchSelect options={customerOptions} value={customerId} onChange={setCustomerId} placeholder="Rechercher un client…" ariaLabel="Client" width="100%" size="md" />
+          </FormField>
+        ) : (
+          <>
+            <div className="ds-form-grid">
+              <FormField label="Nom du contact" htmlFor="qf-p-name" hint="Nom du contact ou société obligatoire.">
+                <input id="qf-p-name" className="ds-input" maxLength={160} value={prospect.name} onChange={e => setProspect({ ...prospect, name: e.target.value })} />
+              </FormField>
+              <FormField label="Société" htmlFor="qf-p-company">
+                <input id="qf-p-company" className="ds-input" maxLength={200} value={prospect.company} onChange={e => setProspect({ ...prospect, company: e.target.value })} />
+              </FormField>
+              <FormField label="Téléphone" htmlFor="qf-p-phone">
+                <input id="qf-p-phone" className="ds-input" maxLength={30} value={prospect.phone} onChange={e => setProspect({ ...prospect, phone: e.target.value })} />
+              </FormField>
+              <FormField label="E-mail" htmlFor="qf-p-email">
+                <input id="qf-p-email" className="ds-input" type="email" maxLength={255} value={prospect.email} onChange={e => setProspect({ ...prospect, email: e.target.value })} />
+              </FormField>
+            </div>
+            <label htmlFor="qf-p-tax" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <input id="qf-p-tax" type="checkbox" checked={head.withTax} onChange={e => setHead({ ...head, withTax: e.target.checked })} />
+              Prix HT avec TVA par ligne (prospect professionnel) — sinon prix TTC
+            </label>
+          </>
+        )}
+      </FormSection>
+
+      <FormSection title="En-tête du devis">
+        <div className="ds-form-grid cols-4">
+          <FormField label="Objet" htmlFor="qf-title">
+            <input id="qf-title" className="ds-input" maxLength={200} value={head.title} onChange={e => setHead({ ...head, title: e.target.value })} placeholder="Ex. : buffet mariage 120 personnes" />
+          </FormField>
+          <FormField label="Date du devis" htmlFor="qf-date" required>
+            <input id="qf-date" className="ds-input" type="date" value={head.quoteDate} onChange={e => setHead({ ...head, quoteDate: e.target.value })} />
+          </FormField>
+          <FormField label="Valable jusqu'au" htmlFor="qf-valid" required error={dateError}>
+            <input id="qf-valid" className="ds-input" type="date" value={head.validUntil} min={head.quoteDate} aria-invalid={!!dateError || undefined} onChange={e => setHead({ ...head, validUntil: e.target.value })} />
+          </FormField>
+          <FormField label="Remise globale (%)" htmlFor="qf-discount">
+            <input id="qf-discount" className="ds-input" type="number" min={0} max={100} step="0.5" value={head.discountPct} onChange={e => setHead({ ...head, discountPct: e.target.value })} />
+          </FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Lignes">
+        <DataPanel label="Lignes du devis">
+          <table className="odoo-table ds-dense" style={{ minWidth: 720 }}>
+            <thead><tr><th>Article</th><th>Précision</th><th style={{ width: 90 }}>Qté</th><th style={{ width: 130 }}>Prix unit. {withTax ? 'HT' : 'TTC'} ({currencySymbol()})</th>{withTax && <th style={{ width: 90 }}>TVA %</th>}<th className="ds-num" style={{ width: 120 }}>Montant ({currencySymbol()})</th><th style={{ width: 36 }}></th></tr></thead>
             <tbody>{lines.map((l, i) => {
               const del = <td><button type="button" className="odoo-pager-btn" aria-label="Retirer la ligne" onClick={() => setLines(lines.length > 1 ? lines.filter((_, k) => k !== i) : [emptyLine()])}><Trash2 size={13} /></button></td>;
               // Section (phase 11, D3-24) : intitulé de lot sur toute la largeur.
               if (l.lineType === 'section') return (
-                <tr key={i} style={{ background: 'var(--odoo-bg-alt)' }}>
-                  <td colSpan={withTax ? 6 : 5}><input style={{ ...field, fontWeight: 600 }} maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Titre de section (ex. : Lot 1 — Prestations)" /></td>
+                <tr key={i} className="ds-group">
+                  <td colSpan={withTax ? 6 : 5}><input className="ds-input sm" style={{ fontWeight: 600 }} aria-label="Titre de section" maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Titre de section (ex. : Lot 1 — Prestations)" /></td>
                   {del}
                 </tr>
               );
@@ -344,55 +364,61 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
               // Ligne libre : désignation saisie à la place de l'article.
               if (l.lineType === 'free') return (
                 <tr key={i}>
-                  <td style={{ minWidth: 220 }}><input style={field} maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Désignation libre (sans article)…" /></td>
-                  <td style={{ opacity: 0.6, fontSize: 12 }}>ligne libre</td>
-                  <td><input style={field} type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
-                  <td><input style={field} type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
-                  {withTax && <td><select style={field} value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })}>{TVA_RATES.map(r => <option key={r} value={r}>{r === '' ? '—' : `${r} %`}</option>)}</select></td>}
+                  <td style={{ minWidth: 220 }}><input className="ds-input sm" aria-label="Désignation" maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Désignation libre (sans article)…" /></td>
+                  <td style={{ color: 'var(--ds-muted)', fontSize: 12 }}>ligne libre</td>
+                  <td><input className="ds-input sm" aria-label="Quantité" type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
+                  <td><input className="ds-input sm" aria-label="Prix unitaire" type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
+                  {withTax && <td>{tvaSelect(l, i)}</td>}
                   <td className="ds-num">{l.description && l.unitPrice !== '' ? amount : ''}</td>
                   {del}
                 </tr>
               );
               return (
                 <tr key={i}>
-                  <td style={{ minWidth: 220 }}><SearchSelect options={productOptions} value={l.productId} onChange={id => pickProduct(i, id)} placeholder="Choisir un article…" width="100%" size="md" /></td>
-                  <td><input style={field} maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Parfum, inscription, format…" /></td>
-                  <td><input style={field} type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
-                  <td><input style={field} type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
-                  {withTax && <td><select style={field} value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })}>{TVA_RATES.map(r => <option key={r} value={r}>{r === '' ? '—' : `${r} %`}</option>)}</select></td>}
+                  <td style={{ minWidth: 220 }}><SearchSelect options={productOptions} value={l.productId} onChange={id => pickProduct(i, id)} placeholder="Choisir un article…" ariaLabel="Article" width="100%" size="sm" /></td>
+                  <td><input className="ds-input sm" aria-label="Précision" maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Parfum, inscription, format…" /></td>
+                  <td><input className="ds-input sm" aria-label="Quantité" type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
+                  <td><input className="ds-input sm" aria-label="Prix unitaire" type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
+                  {withTax && <td>{tvaSelect(l, i)}</td>}
                   <td className="ds-num">{l.productId ? amount : ''}</td>
                   {del}
                 </tr>
               );
             })}</tbody>
           </table>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, emptyLine()])} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Ajouter une ligne</button>
+        </DataPanel>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, emptyLine()])}><Plus size={13} /> Ajouter une ligne</button>
             {/* Lignes libres / sections (phase 11, D3-24). */}
-            <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, freeLine()])} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Ligne libre</button>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, sectionLine()])} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Section</button>
-            <table style={{ fontSize: '0.875rem', minWidth: 280 }}>
-              <tbody>
-                <tr><td>Sous-total {withTax ? 'HT' : 'TTC'}</td><td className="ds-num">{money(subtotal)}</td></tr>
-                {pct > 0 && <tr><td>Remise {pct} %</td><td className="ds-num">−{money(discount)}</td></tr>}
-                {withTax && <tr><td>TVA</td><td className="ds-num">{money(tax)}</td></tr>}
-                <tr style={{ fontWeight: 700 }}><td>Total TTC</td><td className="ds-num">{money(total)}</td></tr>
-              </tbody>
-            </table>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, freeLine()])}><Plus size={13} /> Ligne libre</button>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, sectionLine()])}><Plus size={13} /> Section</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-            <label style={lab}>Livraison / délai (imprimé)<input style={field} maxLength={300} value={head.deliveryTerms} onChange={e => setHead({ ...head, deliveryTerms: e.target.value })} placeholder="Ex. : livraison sur site le jour J, 9 h" /></label>
-            <label style={lab}>Conditions particulières (imprimé)<input style={field} maxLength={2000} value={head.notes} onChange={e => setHead({ ...head, notes: e.target.value })} placeholder="Ex. : acompte de 30 % à la commande" /></label>
-            <label style={{ ...lab, gridColumn: '1 / -1' }}>Note interne (non imprimée)<textarea style={{ ...field, minHeight: 50 }} maxLength={2000} value={head.internalNotes} onChange={e => setHead({ ...head, internalNotes: e.target.value })} /></label>
-          </div>
+          <table className="odoo-table ds-dense" style={{ minWidth: 280, width: 'auto' }}>
+            <tbody>
+              <tr><td>Sous-total {withTax ? 'HT' : 'TTC'}</td><td className="ds-num">{money(subtotal)}</td></tr>
+              {pct > 0 && <tr><td>Remise {pct} %</td><td className="ds-num">−{money(discount)}</td></tr>}
+              {withTax && <tr><td>TVA</td><td className="ds-num">{money(tax)}</td></tr>}
+              <tr><td className="ds-strong">Total TTC</td><td className="ds-num ds-strong">{money(total)}</td></tr>
+            </tbody>
+          </table>
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
-          <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="odoo-btn-primary" disabled={!canSave || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Enregistrer</button>
+      </FormSection>
+
+      <FormSection title="Conditions">
+        <div className="ds-form-grid">
+          <FormField label="Livraison / délai (imprimé)" htmlFor="qf-delivery">
+            <input id="qf-delivery" className="ds-input" maxLength={300} value={head.deliveryTerms} onChange={e => setHead({ ...head, deliveryTerms: e.target.value })} placeholder="Ex. : livraison sur site le jour J, 9 h" />
+          </FormField>
+          <FormField label="Conditions particulières (imprimé)" htmlFor="qf-notes">
+            <input id="qf-notes" className="ds-input" maxLength={2000} value={head.notes} onChange={e => setHead({ ...head, notes: e.target.value })} placeholder="Ex. : acompte de 30 % à la commande" />
+          </FormField>
         </div>
-      </div>
-    </ModalBackdrop>
+        <FormField label="Note interne (non imprimée)" htmlFor="qf-internal">
+          <textarea id="qf-internal" className="ds-input" style={{ minHeight: 50 }} maxLength={2000} value={head.internalNotes} onChange={e => setHead({ ...head, internalNotes: e.target.value })} />
+        </FormField>
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -409,7 +435,7 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
   const qc = useQueryClient();
   const confirm = useConfirm();
   const navigate = useNavigate();
-  const { data: q, isLoading } = useQuery({ queryKey: ['quote', id], queryFn: () => quotesApi.get(id) });
+  const { data: q, isLoading, isError, error, refetch } = useQuery({ queryKey: ['quote', id], queryFn: () => quotesApi.get(id) });
   const { entries: reasons } = useReferentiel('quote_lost_reasons');
   const [losing, setLosing] = useState<{ reasonCode: string; note: string } | null>(null);
   const [converting, setConverting] = useState<{ pickupDate: string; customerId: string } | null>(null);
@@ -444,23 +470,32 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
+  if (isError) return <Modal title="Devis" onClose={onClose} width={960}><ErrorState title="Le devis n'a pas pu être chargé" error={error} onRetry={() => refetch()} bare /></Modal>;
+  if (isLoading || !q) return <Modal title="Devis" onClose={onClose} width={960}><LoadingState bare /></Modal>;
+
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[55] flex items-center justify-center bg-black/40 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 960, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        {isLoading || !q ? <LoadingState bare /> : (<>
-          <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1, flexWrap: 'wrap', gap: 6 }}>
-            <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Devis {q.number}</span></div>
-            <QuoteStatusTag status={q.status} />
-            {(q as { version?: number }).version && (q as { version?: number }).version! > 1 && (
-              <span className="odoo-tag odoo-tag-grey" title="Version du devis">v{(q as { version?: number }).version}</span>
-            )}
-            <div style={{ flex: 1 }} />
-            <button className="odoo-btn-secondary" onClick={() => openPdf(q.id, 'quote')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Devis PDF</button>
-            <button className="odoo-btn-secondary" onClick={() => openPdf(q.id, 'proforma')} title={q.proforma_number ? `Proforma ${q.proforma_number}` : 'Attribue un numéro de proforma à la première édition'}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><FileText size={13} /> Proforma</button>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary" aria-label="Fermer"><X size={14} /></button>
-          </div>
-          <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
+    <Modal title={`Devis ${q.number}`} onClose={onClose} width={960}
+      aside={<div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <QuoteStatusTag status={q.status} />
+        {(q as { version?: number }).version && (q as { version?: number }).version! > 1 && (
+          <span className="odoo-tag odoo-tag-grey" title="Version du devis">v{(q as { version?: number }).version}</span>
+        )}
+        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => openPdf(q.id, 'quote')}><Printer size={13} /> Devis PDF</button>
+        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => openPdf(q.id, 'proforma')} title={q.proforma_number ? `Proforma ${q.proforma_number}` : 'Attribue un numéro de proforma à la première édition'}><FileText size={13} /> Proforma</button>
+      </div>}
+      footer={<>
+        {(q.status === 'draft' || q.status === 'sent') && <button type="button" className="odoo-btn-secondary" onClick={() => onEdit(q)}>Modifier</button>}
+        <button type="button" className="odoo-btn-secondary" disabled={dup.isPending} onClick={() => dup.mutate()}><Copy size={13} /> Dupliquer</button>
+        {q.status !== 'converted' && (
+          <button type="button" className="odoo-btn-secondary" disabled={rev.isPending} onClick={() => rev.mutate()} title="Crée une nouvelle version ; l'actuelle est figée"><FileSignature size={13} /> Réviser</button>
+        )}
+        <div style={{ flex: 1 }} />
+        {['draft', 'sent', 'accepted'].includes(q.status) && (
+          <button type="button" className="ds-btn-danger" disabled={act.isPending}
+            onClick={async () => { if (await confirm(`Annuler le devis ${q.number} ?`)) act.mutate({ action: 'cancel' }); }}><Ban size={13} /> Annuler le devis</button>
+        )}
+        {q.status === 'cancelled' && <button type="button" className="odoo-btn-secondary" disabled={act.isPending} onClick={() => act.mutate({ action: 'reopen' })}><RotateCcw size={13} /> Rouvrir</button>}
+      </>}>
             {/* Chaîne des versions (phase 11, D3-22) : versions figées accessibles. */}
             {versions.length > 1 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
@@ -497,30 +532,37 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
               </>}>{q.lost_note || 'Le motif alimente l\'analyse des devis perdus.'}</StatusBanner>}
 
             {losing && (
-              <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', background: 'var(--odoo-bg-alt)' }}>
-                <label style={{ ...lab, width: 240 }}>Motif de la perte<select style={field} value={losing.reasonCode} onChange={e => setLosing({ ...losing, reasonCode: e.target.value })}>
-                  <option value="">Choisir…</option>{reasons.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}</select></label>
-                <label style={{ ...lab, flex: '1 1 240px' }}>Précision<input style={field} maxLength={1000} value={losing.note} onChange={e => setLosing({ ...losing, note: e.target.value })} placeholder="Ex. : concurrent 15 % moins cher" /></label>
-                <button className="odoo-btn-secondary" onClick={() => setLosing(null)}>Annuler</button>
-                <button className="odoo-btn-primary" disabled={!losing.reasonCode || act.isPending} onClick={() => act.mutate({ action: 'refuse', reasonCode: losing.reasonCode, note: losing.note })}>Classer perdu</button>
-              </div>
+              <FormSection title="Classer le devis perdu">
+                <div className="ds-form-grid">
+                  <FormField label="Motif de la perte" htmlFor="qd-lost-reason" required>
+                    <select id="qd-lost-reason" className="ds-input" value={losing.reasonCode} onChange={e => setLosing({ ...losing, reasonCode: e.target.value })}>
+                      <option value="">Choisir…</option>{reasons.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}</select>
+                  </FormField>
+                  <FormField label="Précision" htmlFor="qd-lost-note">
+                    <input id="qd-lost-note" className="ds-input" maxLength={1000} value={losing.note} onChange={e => setLosing({ ...losing, note: e.target.value })} placeholder="Ex. : concurrent 15 % moins cher" />
+                  </FormField>
+                </div>
+                <FormFooter onCancel={() => setLosing(null)} submitLabel="Classer perdu" disabled={!losing.reasonCode} busy={act.isPending}
+                  onSubmit={() => act.mutate({ action: 'refuse', reasonCode: losing.reasonCode, note: losing.note })} />
+              </FormSection>
             )}
             {converting && (
-              <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', background: 'var(--odoo-bg-alt)' }}>
-                <label style={{ ...lab, width: 240 }}>Livraison ou retrait le<input style={field} type="datetime-local" value={converting.pickupDate} onChange={e => setConverting({ ...converting, pickupDate: e.target.value })} /></label>
-                {!q.customer_id && (
-                  <label style={{ ...lab, flex: '1 1 260px' }}>Client (facultatif)
-                    <SearchSelect value={converting.customerId} onChange={v => setConverting({ ...converting, customerId: v })} width="100%" size="md"
-                      placeholder={`Sinon : commande au nom de « ${q.prospect_company || q.prospect_name} »`}
-                      options={customers.map(c => ({ id: String(c.id), label: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' '), sublabel: (c.customer_type ?? 'particulier') !== 'particulier' ? 'Professionnel' : 'Particulier' }))} />
-                  </label>
-                )}
-                <button className="odoo-btn-secondary" onClick={() => setConverting(null)}>Annuler</button>
-                <button className="odoo-btn-primary" disabled={!converting.pickupDate || convert.isPending}
-                  onClick={async () => { if (await confirm(`Créer la commande depuis le devis ${q.number} (${money(q.total)}) ?`)) convert.mutate(); }}>
-                  {convert.isPending ? <Loader2 size={13} className="animate-spin" /> : <ShoppingCart size={13} />} Créer la commande
-                </button>
-              </div>
+              <FormSection title="Transformer en commande">
+                <div className="ds-form-grid">
+                  <FormField label="Livraison ou retrait le" htmlFor="qd-pickup" required>
+                    <input id="qd-pickup" className="ds-input" type="datetime-local" value={converting.pickupDate} onChange={e => setConverting({ ...converting, pickupDate: e.target.value })} />
+                  </FormField>
+                  {!q.customer_id && (
+                    <FormField label="Client (facultatif)">
+                      <SearchSelect value={converting.customerId} onChange={v => setConverting({ ...converting, customerId: v })} width="100%" size="md" ariaLabel="Client (facultatif)"
+                        placeholder={`Sinon : commande au nom de « ${q.prospect_company || q.prospect_name} »`}
+                        options={customers.map(c => ({ id: String(c.id), label: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' '), sublabel: (c.customer_type ?? 'particulier') !== 'particulier' ? 'Professionnel' : 'Particulier' }))} />
+                    </FormField>
+                  )}
+                </div>
+                <FormFooter onCancel={() => setConverting(null)} submitLabel="Créer la commande" disabled={!converting.pickupDate} busy={convert.isPending}
+                  onSubmit={async () => { if (await confirm(`Créer la commande depuis le devis ${q.number} (${money(q.total)}) ?`)) convert.mutate(); }} />
+              </FormSection>
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, fontSize: '0.875rem' }}>
@@ -531,13 +573,14 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
               <div><div style={lab}>Proforma</div>{q.proforma_number ?? '—'}</div>
             </div>
 
-            <table className="odoo-table">
-              <thead><tr><th>Article</th><th className="ds-num">Qté</th><th className="ds-num">Prix unit. {q.with_tax ? 'HT' : 'TTC'}</th>{q.with_tax && <th className="ds-num">TVA</th>}<th className="ds-num">Montant</th></tr></thead>
+            <DataPanel label="Lignes du devis">
+            <table className="odoo-table ds-dense">
+              <thead><tr><th>Article</th><th className="ds-num">Qté</th><th className="ds-num">Prix unit. {q.with_tax ? 'HT' : 'TTC'} ({currencySymbol()})</th>{q.with_tax && <th className="ds-num">TVA</th>}<th className="ds-num">Montant ({currencySymbol()})</th></tr></thead>
               <tbody>{(q.items ?? []).map(i => {
                 // Section (phase 11, D3-24) : intitulé de lot sur toute la largeur.
                 if ((i.line_type ?? 'product') === 'section') return (
-                  <tr key={i.id} style={{ background: 'var(--odoo-bg-alt)' }}>
-                    <td colSpan={q.with_tax ? 5 : 4} style={{ fontWeight: 600 }}>{i.description}</td>
+                  <tr key={i.id} className="ds-group">
+                    <td colSpan={q.with_tax ? 5 : 4}>{i.description}</td>
                   </tr>
                 );
                 return (
@@ -555,9 +598,10 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
                 {Number(q.promotion_amount) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Promotions</td><td className="ds-num">−{n2(q.promotion_amount)}</td></tr>}
                 {Number(q.discount_pct) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Remise {Number(q.discount_pct)} %</td><td className="ds-num">−{n2(Number(q.discount_amount) - Number(q.promotion_amount ?? 0))}</td></tr>}
                 {q.with_tax && <tr><td colSpan={4} style={{ textAlign: 'right' }}>TVA</td><td className="ds-num">{n2(q.tax_amount)}</td></tr>}
-                <tr style={{ fontWeight: 700 }}><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Total TTC</td><td className="ds-num">{money(q.total)}</td></tr>
+                <tr><td colSpan={q.with_tax ? 4 : 3} className="ds-strong" style={{ textAlign: 'right' }}>Total TTC</td><td className="ds-num ds-strong">{n2(q.total)}</td></tr>
               </tfoot>
             </table>
+            </DataPanel>
             {(q.delivery_terms || q.notes || q.internal_notes) && (
               <div style={{ fontSize: '0.8125rem', display: 'grid', gap: 4 }}>
                 {q.delivery_terms && <div><strong>Livraison :</strong> {q.delivery_terms}</div>}
@@ -577,22 +621,6 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
                 ))}
               </ul>
             </div>
-          </div>
-          <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', gap: 8, flexWrap: 'wrap', position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
-            {(q.status === 'draft' || q.status === 'sent') && <button className="odoo-btn-secondary" onClick={() => onEdit(q)}>Modifier</button>}
-            <button className="odoo-btn-secondary" disabled={dup.isPending} onClick={() => dup.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Copy size={13} /> Dupliquer</button>
-            {q.status !== 'converted' && (
-              <button className="odoo-btn-secondary" disabled={rev.isPending} onClick={() => rev.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title="Crée une nouvelle version ; l'actuelle est figée"><FileSignature size={13} /> Réviser</button>
-            )}
-            <div style={{ flex: 1 }} />
-            {['draft', 'sent', 'accepted'].includes(q.status) && (
-              <button className="odoo-btn-secondary" disabled={act.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                onClick={async () => { if (await confirm(`Annuler le devis ${q.number} ?`)) act.mutate({ action: 'cancel' }); }}><Ban size={13} /> Annuler le devis</button>
-            )}
-            {q.status === 'cancelled' && <button className="odoo-btn-secondary" disabled={act.isPending} onClick={() => act.mutate({ action: 'reopen' })}><RotateCcw size={13} /> Rouvrir</button>}
-          </div>
-        </>)}
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }

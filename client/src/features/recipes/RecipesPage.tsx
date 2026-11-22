@@ -444,7 +444,7 @@ export default function RecipesPage() {
       {isLoading ? (
         <LoadingState label="Chargement des fiches…" />
       ) : listError ? (
-        <ErrorState onRetry={() => refetch()} />
+        <ErrorState error={listError} onRetry={() => refetch()} />
       ) : viewMode === 'grid' ? (
         /* ═══ Vue cartes ═══ */
         sortedFiltered.length === 0 ? <EmptyState /> : (

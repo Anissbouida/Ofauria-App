@@ -32,7 +32,7 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
     : activeEmployees;
 
   // Daily records
-  const { data: records = [], isLoading, isError, refetch } = useQuery({
+  const { data: records = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['attendance', selectedDate],
     queryFn: () => attendanceApi.list(selectedDate, selectedDate),
     enabled: attView === 'daily',
@@ -68,7 +68,7 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
 
   // M8-05 : récapitulatif calculé au serveur, avec la même fonction que le bulletin
   // (pointage réel seulement, demi-journée = 0,5, shift double payé en plus, congés et fériés couverts).
-  const { data: recap, isLoading: monthlyLoading, isError: monthlyError, refetch: refetchRecap } = useQuery({
+  const { data: recap, isLoading: monthlyLoading, isError: monthlyError, error: recapError, refetch: refetchRecap } = useQuery({
     queryKey: ['attendance', 'recap', summaryMonth, summaryYear], // rafraîchi par chaque pointage enregistré
     queryFn: () => attendanceApi.monthlyRecap(summaryMonth, summaryYear),
     enabled: attView === 'monthly',
@@ -127,7 +127,7 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
         monthlyLoading ? (
           <LoadingPanel />
         ) : monthlyError ? (
-          <ErrorState title="Le récapitulatif n'a pas pu être chargé" onRetry={() => void refetchRecap()} />
+          <ErrorState error={recapError} title="Le récapitulatif n'a pas pu être chargé" onRetry={() => void refetchRecap()} />
         ) : listState ?? (
           <DataPanel label="Récapitulatif mensuel du pointage"
             footer={<TableFooter note={`${filteredEmployees.length} employé${filteredEmployees.length > 1 ? 's' : ''} · base ${baseDays} jours`} />}>
@@ -199,7 +199,7 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
         isLoading ? (
           <LoadingPanel />
         ) : isError ? (
-          <ErrorState title="Le pointage n'a pas pu être chargé" onRetry={() => void refetch()} />
+          <ErrorState error={error} title="Le pointage n'a pas pu être chargé" onRetry={() => void refetch()} />
         ) : listState ?? (
         <>
         <SectionHeader title="Pointage du jour">

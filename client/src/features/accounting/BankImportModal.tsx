@@ -1,15 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Landmark, X, Upload, AlertTriangle, CheckCircle2, Save, Columns3 } from 'lucide-react';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { Landmark, Upload, AlertTriangle, CheckCircle2, Save, Columns3 } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { paymentsApi } from '../../api/accounting.api';
 import { bankImportApi } from '../../api/bank-reconciliation.api';
 import type { BankCsvProfile, BankDateFormat, BankFormat, BankImportProfile } from '../../api/bank-reconciliation.api';
-import { money } from '../../utils/money';
-import { LoadingState } from '../../components/ds';
+import { money, currencySymbol } from '../../utils/money';
+import { LoadingState, Modal, FormSection, FormField, FormFooter, DataPanel } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
@@ -163,177 +162,177 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
   }, [pv, opening, closing]);
   const fresh = pv ? pv.stats.count - pv.stats.duplicates : 0;
 
-  const inputStyle = { width: '100%', padding: '6px 9px', border: '1px solid var(--theme-bg-separator)', borderRadius: 6, fontSize: '0.8125rem', background: 'var(--theme-bg-input)' };
-  const labelStyle = { fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'block', marginBottom: 4 };
-
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 960, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Landmark size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span className="odoo-breadcrumb-current">Importer un relevé bancaire</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
-          {/* 1. Fichier et compte */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
-            <div style={{ gridColumn: 'span 2' }}>
-              <label style={labelStyle}>Fichier de la banque *</label>
-              <label className="odoo-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', justifyContent: 'center' }}>
-                <Upload size={13} /> {file ? file.name : 'Choisir un fichier (CSV, Excel, OFX, MT940, CFONB)'}
-                <input type="file" accept=".csv,.txt,.xlsx,.ofx,.qfx,.sta,.mt940,.940,.cfo,.dat" style={{ display: 'none' }}
-                  onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+    <Modal title={<><Landmark size={16} aria-hidden="true" style={{ color: 'var(--theme-accent)', verticalAlign: '-2px' }} /> Importer un relevé bancaire</>}
+      onClose={onClose} width={960} locked={doImport.isPending}
+      footer={
+        <FormFooter onCancel={onClose} onSubmit={() => doImport.mutate()} busy={doImport.isPending} disabled={!pv || fresh === 0}
+          submitLabel={doImport.isPending ? 'Import…' : fresh ? `Importer ${fresh} opération(s)` : 'Rien de nouveau à importer'} />
+      }>
+      {/* 1. Fichier et compte */}
+      <FormSection title="Fichier et compte">
+        <div className="ds-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+          <div style={{ gridColumn: 'span 2' }}>
+            <FormField label="Fichier de la banque" htmlFor="bi-file" required>
+              <label htmlFor="bi-file" className="odoo-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', justifyContent: 'center' }}>
+                <Upload size={13} aria-hidden="true" /> {file ? file.name : 'Choisir un fichier (CSV, Excel, OFX, MT940, CFONB)'}
               </label>
-            </div>
-            <div>
-              <label style={labelStyle}>Compte bancaire</label>
-              <select value={treasuryAccountId} onChange={e => setTreasuryAccountId(e.target.value)} style={inputStyle}>
-                <option value="">{pv ? `${pv.treasuryAccount.label} (${pv.treasuryAccount.account_code})` : 'Par défaut'}</option>
-                {banks.map(b => <option key={b.id} value={b.id}>{b.label} ({b.account_code})</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Format</label>
-              <select value={format} onChange={e => setFormat(e.target.value as BankFormat | 'auto')} style={inputStyle}>
-                <option value="auto">{pv ? `Détecté : ${FORMAT_LABELS[pv.format]}` : 'Détection automatique'}</option>
-                {(Object.keys(FORMAT_LABELS) as BankFormat[]).map(f => <option key={f} value={f}>{FORMAT_LABELS[f]}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Encodage</label>
-              <select value={encoding} onChange={e => setEncoding(e.target.value as typeof encoding)} style={inputStyle}>
-                <option value="auto">Automatique</option>
-                <option value="utf-8">UTF-8</option>
-                <option value="windows-1252">Windows (ANSI)</option>
-              </select>
-            </div>
+              <input id="bi-file" type="file" accept=".csv,.txt,.xlsx,.ofx,.qfx,.sta,.mt940,.940,.cfo,.dat" className="ds-sr-only"
+                onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+            </FormField>
           </div>
+          <FormField label="Compte bancaire" htmlFor="bi-bank">
+            <select id="bi-bank" className="ds-input" value={treasuryAccountId} onChange={e => setTreasuryAccountId(e.target.value)}>
+              <option value="">{pv ? `${pv.treasuryAccount.label} (${pv.treasuryAccount.account_code})` : 'Par défaut'}</option>
+              {banks.map(b => <option key={b.id} value={b.id}>{b.label} ({b.account_code})</option>)}
+            </select>
+          </FormField>
+          <FormField label="Format" htmlFor="bi-format">
+            <select id="bi-format" className="ds-input" value={format} onChange={e => setFormat(e.target.value as BankFormat | 'auto')}>
+              <option value="auto">{pv ? `Détecté : ${FORMAT_LABELS[pv.format]}` : 'Détection automatique'}</option>
+              {(Object.keys(FORMAT_LABELS) as BankFormat[]).map(f => <option key={f} value={f}>{FORMAT_LABELS[f]}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Encodage" htmlFor="bi-enc">
+            <select id="bi-enc" className="ds-input" value={encoding} onChange={e => setEncoding(e.target.value as typeof encoding)}>
+              <option value="auto">Automatique</option>
+              <option value="utf-8">UTF-8</option>
+              <option value="windows-1252">Windows (ANSI)</option>
+            </select>
+          </FormField>
+        </div>
+      </FormSection>
 
-          {previewQ.isFetching && !pv && (
-            <LoadingState />
-          )}
-          {previewQ.isError && (
-            <StatusBanner tone="danger" icon={AlertTriangle} title="Fichier illisible">{apiErrorMessage(previewQ.error, 'Lecture impossible')}</StatusBanner>
-          )}
+      {previewQ.isFetching && !pv && (
+        <LoadingState />
+      )}
+      {previewQ.isError && (
+        <StatusBanner tone="danger" icon={AlertTriangle} title="Fichier illisible">{apiErrorMessage(previewQ.error, 'Lecture impossible')}</StatusBanner>
+      )}
 
-          {/* 2. Colonnes d'un CSV / Excel */}
-          {pv && tabular && (
-            <div className="odoo-section ds-panel" style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Columns3 size={14} />
-                <strong style={{ fontSize: '0.8125rem' }}>Colonnes du fichier</strong>
-                <select value={profileId} onChange={e => {
-                  const id = e.target.value;
-                  const p = profilesQ.data?.find(x => x.id === id);
-                  if (p) { setMapping(fromProfile(p)); if (p.treasury_account_id) setTreasuryAccountId(p.treasury_account_id); }
-                  setProfileId(id);
-                }} style={{ ...inputStyle, width: 'auto', minWidth: 220 }}>
-                  <option value="custom">Choisies ci-dessous</option>
-                  {(profilesQ.data ?? []).map(p => <option key={p.id} value={p.id}>Profil : {p.name}</option>)}
-                </select>
-                {profileId && profileId !== 'custom' && (
-                  <button type="button" className="odoo-btn-secondary" onClick={() => setProfileId('custom')}>Modifier les colonnes</button>
+      {/* 2. Colonnes d'un CSV / Excel */}
+      {pv && tabular && (
+        <FormSection title={<><Columns3 size={14} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Colonnes du fichier</>}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+            <FormField label="Correspondance" htmlFor="bi-profile">
+              <select id="bi-profile" className="ds-input" value={profileId} onChange={e => {
+                const id = e.target.value;
+                const p = profilesQ.data?.find(x => x.id === id);
+                if (p) { setMapping(fromProfile(p)); if (p.treasury_account_id) setTreasuryAccountId(p.treasury_account_id); }
+                setProfileId(id);
+              }} style={{ width: 'auto', minWidth: 220 }}>
+                <option value="custom">Choisies ci-dessous</option>
+                {(profilesQ.data ?? []).map(p => <option key={p.id} value={p.id}>Profil : {p.name}</option>)}
+              </select>
+            </FormField>
+            {profileId && profileId !== 'custom' && (
+              <button type="button" className="odoo-btn-secondary" onClick={() => setProfileId('custom')}>Modifier les colonnes</button>
+            )}
+          </div>
+          {profileId === 'custom' && mapping && pv.rawRows && (
+            <>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <FormField label="Lignes à sauter" htmlFor="bi-skip">
+                  <input id="bi-skip" className="ds-input sm" type="number" min={0} max={50} value={mapping.skipRows} onChange={e => patchMapping({ skipRows: Math.max(0, Number(e.target.value) || 0) })} style={{ width: 70 }} />
+                </FormField>
+                <FormField label="Dates" htmlFor="bi-datefmt">
+                  <select id="bi-datefmt" className="ds-input sm" value={mapping.dateFormat} onChange={e => patchMapping({ dateFormat: e.target.value as BankDateFormat })} style={{ width: 'auto' }}>{DATE_FORMATS.map(f => <option key={f}>{f}</option>)}</select>
+                </FormField>
+                <FormField label="Décimale" htmlFor="bi-dec">
+                  <select id="bi-dec" className="ds-input sm" value={mapping.decimalSep} onChange={e => patchMapping({ decimalSep: e.target.value as ',' | '.' })} style={{ width: 'auto' }}><option value=",">virgule (1 234,56)</option><option value=".">point (1,234.56)</option></select>
+                </FormField>
+                {pv.format === 'csv' && (
+                  <FormField label="Séparateur" htmlFor="bi-sep">
+                    <select id="bi-sep" className="ds-input sm" value={mapping.delimiter ?? ''} onChange={e => patchMapping({ delimiter: e.target.value || null })} style={{ width: 'auto' }}><option value="">auto</option><option value=";">;</option><option value=",">,</option><option value={'\t'}>tabulation</option><option value="|">|</option></select>
+                  </FormField>
+                )}
+                <label htmlFor="bi-header" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14, minHeight: 32 }}>
+                  <input id="bi-header" type="checkbox" checked={mapping.hasHeader} onChange={e => patchMapping({ hasHeader: e.target.checked })} /> 1re ligne = en-têtes
+                </label>
+                {mapping.colAmount != null && (
+                  <label htmlFor="bi-neg" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 14, minHeight: 32 }}>
+                    <input id="bi-neg" type="checkbox" checked={mapping.negativeIsOut !== false} onChange={e => patchMapping({ negativeIsOut: e.target.checked })} /> négatif = sortie
+                  </label>
                 )}
               </div>
-              {profileId === 'custom' && mapping && pv.rawRows && (
-                <>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: '0.75rem', alignItems: 'center' }}>
-                    <label>Lignes à sauter <input type="number" min={0} max={50} value={mapping.skipRows} onChange={e => patchMapping({ skipRows: Math.max(0, Number(e.target.value) || 0) })} style={{ ...inputStyle, width: 60, display: 'inline-block' }} /></label>
-                    <label><input type="checkbox" checked={mapping.hasHeader} onChange={e => patchMapping({ hasHeader: e.target.checked })} /> 1re ligne = en-têtes</label>
-                    <label>Dates <select value={mapping.dateFormat} onChange={e => patchMapping({ dateFormat: e.target.value as BankDateFormat })} style={{ ...inputStyle, width: 'auto', display: 'inline-block' }}>{DATE_FORMATS.map(f => <option key={f}>{f}</option>)}</select></label>
-                    <label>Décimale <select value={mapping.decimalSep} onChange={e => patchMapping({ decimalSep: e.target.value as ',' | '.' })} style={{ ...inputStyle, width: 'auto', display: 'inline-block' }}><option value=",">virgule (1 234,56)</option><option value=".">point (1,234.56)</option></select></label>
-                    {pv.format === 'csv' && (
-                      <label>Séparateur <select value={mapping.delimiter ?? ''} onChange={e => patchMapping({ delimiter: e.target.value || null })} style={{ ...inputStyle, width: 'auto', display: 'inline-block' }}><option value="">auto</option><option value=";">;</option><option value=",">,</option><option value={'\t'}>tabulation</option><option value="|">|</option></select></label>
-                    )}
-                    {mapping.colAmount != null && (
-                      <label><input type="checkbox" checked={mapping.negativeIsOut !== false} onChange={e => patchMapping({ negativeIsOut: e.target.checked })} /> négatif = sortie</label>
-                    )}
-                  </div>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="odoo-table ds-dense" style={{ margin: 0, fontSize: '0.75rem' }}>
-                      <thead>
-                        <tr>
-                          {Array.from({ length: Math.max(...pv.rawRows.map(r => r.length)) }, (_, i) => (
-                            <th key={i} style={{ minWidth: 110 }}>
-                              <select value={roleOf(i)} onChange={e => setRole(i, e.target.value as Role)} style={{ ...inputStyle, padding: '3px 4px', fontSize: '0.75rem' }} aria-label={`Rôle de la colonne ${i + 1}`}>
-                                {ROLES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
-                              </select>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pv.rawRows.slice(0, 8).map((r, ri) => (
-                          <tr key={ri} style={{ opacity: ri < mapping.skipRows + (mapping.hasHeader ? 1 : 0) ? 0.45 : 1 }}>
-                            {r.map((c, ci) => <td key={ci} style={{ whiteSpace: 'nowrap', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</td>)}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Nom du profil (ex. BMCE — export CSV)" style={{ ...inputStyle, maxWidth: 300 }} />
-                    <button type="button" className="odoo-btn-secondary" disabled={!profileName.trim() || saveProfile.isPending} onClick={() => saveProfile.mutate()}><Save size={13} /> Enregistrer le profil</button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* 3. Aperçu des opérations et soldes */}
-          {pv && (
-            <>
-              {pv.warnings.map((w, i) => <StatusBanner key={i} tone="warning" icon={AlertTriangle} title={w} />)}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
-                <div><label style={labelStyle}>Libellé du relevé</label><input value={label} onChange={e => setLabel(e.target.value)} placeholder={`Relevé ${pv.treasuryAccount.label}`} style={inputStyle} /></div>
-                <div><label style={labelStyle}>Date du relevé</label><input type="date" value={statementDate || pv.statementDate || ''} onChange={e => setStatementDate(e.target.value)} style={inputStyle} /></div>
-                <div><label style={labelStyle}>Solde d'ouverture</label><input value={opening} onChange={e => setOpening(e.target.value)} placeholder={pv.openingBalance != null ? n(pv.openingBalance) : '0,00'} style={inputStyle} inputMode="decimal" /></div>
-                <div><label style={labelStyle}>Solde de clôture</label><input value={closing} onChange={e => setClosing(e.target.value)} placeholder={pv.closingBalance != null ? n(pv.closingBalance) : 'calculé'} style={inputStyle} inputMode="decimal" /></div>
-              </div>
-              {check != null && (check === 0
-                ? <StatusBanner tone="success" icon={CheckCircle2} title="Soldes cohérents">Ouverture + opérations du fichier = solde de clôture.</StatusBanner>
-                : <StatusBanner tone="danger" icon={AlertTriangle} title={`Écart de ${money(check)} entre les soldes et les opérations`}>Vérifiez les soldes saisis ou les colonnes débit/crédit.</StatusBanner>)}
-
-              <div style={{ fontSize: '0.8125rem', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                <span><strong>{pv.stats.count}</strong> opération(s) lue(s){pv.accountNumber ? ` · compte ${pv.accountNumber}` : ''}</span>
-                {pv.stats.duplicates > 0 && <span style={{ color: 'var(--ds-warning)' }}>{pv.stats.duplicates} déjà importée(s), écartée(s)</span>}
-                <span style={{ color: 'var(--ds-success)' }}>+ {n(pv.stats.in)}</span>
-                <span style={{ color: 'var(--ds-danger)' }}>− {n(pv.stats.out)}</span>
-              </div>
-              {pv.lines.length > 0 && (
-                <div className="odoo-section ds-panel" style={{ padding: 0, maxHeight: 280, overflowY: 'auto' }}>
-                  <table className="odoo-table ds-dense" style={{ margin: 0 }}>
-                    <thead><tr><th style={{ width: 86 }}>Date</th><th>Libellé</th><th style={{ width: 120 }}>Référence</th><th className="ds-num" style={{ width: 110 }}>Montant</th><th style={{ width: 110 }} /></tr></thead>
-                    <tbody>
-                      {pv.lines.map((l, i) => (
-                        <tr key={i} style={{ opacity: l.duplicate ? 0.5 : 1 }}>
-                          <td style={{ fontSize: '0.75rem' }}>{fmtDate(l.operationDate)}</td>
-                          <td style={{ fontSize: '0.8125rem' }}>{l.label || '—'}</td>
-                          <td className="ds-ref">{l.reference ?? ''}</td>
-                          <td className="ds-num" style={{ color: l.direction === 'in' ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{l.direction === 'in' ? '+' : '−'}{n(l.amount)}</td>
-                          <td>{l.duplicate && <StatusTag tone="draft" label="Déjà importée" />}</td>
-                        </tr>
+              <DataPanel label="Aperçu brut du fichier">
+                <table className="odoo-table ds-dense">
+                  <thead>
+                    <tr>
+                      {Array.from({ length: Math.max(...pv.rawRows.map(r => r.length)) }, (_, i) => (
+                        <th key={i} style={{ minWidth: 110 }}>
+                          <select className="ds-input sm" value={roleOf(i)} onChange={e => setRole(i, e.target.value as Role)} aria-label={`Rôle de la colonne ${i + 1}`}>
+                            {ROLES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+                          </select>
+                        </th>
                       ))}
-                    </tbody>
-                  </table>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pv.rawRows.slice(0, 8).map((r, ri) => (
+                      <tr key={ri} style={{ opacity: ri < mapping.skipRows + (mapping.hasHeader ? 1 : 0) ? 0.45 : 1 }}>
+                        {r.map((c, ci) => <td key={ci} style={{ whiteSpace: 'nowrap', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </DataPanel>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div style={{ flex: '0 1 300px' }}>
+                  <FormField label="Nom du profil" htmlFor="bi-pname">
+                    <input id="bi-pname" className="ds-input" value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="ex. BMCE — export CSV" />
+                  </FormField>
                 </div>
-              )}
+                <button type="button" className="odoo-btn-secondary" disabled={!profileName.trim() || saveProfile.isPending} onClick={() => saveProfile.mutate()}><Save size={13} aria-hidden="true" /> Enregistrer le profil</button>
+              </div>
             </>
           )}
-        </div>
+        </FormSection>
+      )}
 
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button type="button" onClick={() => doImport.mutate()} disabled={!pv || fresh === 0 || doImport.isPending} className="odoo-btn-primary">
-            {doImport.isPending ? 'Import…' : fresh ? `Importer ${fresh} opération(s)` : 'Rien de nouveau à importer'}
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+      {/* 3. Aperçu des opérations et soldes */}
+      {pv && (
+        <FormSection title="Relevé et soldes">
+          {pv.warnings.map((w, i) => <StatusBanner key={i} tone="warning" icon={AlertTriangle} title={w} />)}
+          <div className="ds-form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+            <FormField label="Libellé du relevé" htmlFor="bi-label"><input id="bi-label" className="ds-input" value={label} onChange={e => setLabel(e.target.value)} placeholder={`Relevé ${pv.treasuryAccount.label}`} /></FormField>
+            <FormField label="Date du relevé" htmlFor="bi-date"><input id="bi-date" className="ds-input" type="date" value={statementDate || pv.statementDate || ''} onChange={e => setStatementDate(e.target.value)} /></FormField>
+            <FormField label={`Solde d'ouverture (${currencySymbol()})`} htmlFor="bi-open"><input id="bi-open" className="ds-input" value={opening} onChange={e => setOpening(e.target.value)} placeholder={pv.openingBalance != null ? n(pv.openingBalance) : '0,00'} inputMode="decimal" /></FormField>
+            <FormField label={`Solde de clôture (${currencySymbol()})`} htmlFor="bi-close"
+              error={check != null && check !== 0 ? `Écart de ${money(check)} avec les opérations` : undefined}>
+              <input id="bi-close" className="ds-input" value={closing} onChange={e => setClosing(e.target.value)} placeholder={pv.closingBalance != null ? n(pv.closingBalance) : 'calculé'} inputMode="decimal" />
+            </FormField>
+          </div>
+          {check != null && (check === 0
+            ? <StatusBanner tone="success" icon={CheckCircle2} title="Soldes cohérents">Ouverture + opérations du fichier = solde de clôture.</StatusBanner>
+            : <StatusBanner tone="danger" icon={AlertTriangle} title={`Écart de ${money(check)} entre les soldes et les opérations`}>Vérifiez les soldes saisis ou les colonnes débit/crédit.</StatusBanner>)}
+
+          <div style={{ fontSize: 13, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <span><strong>{pv.stats.count}</strong> opération(s) lue(s){pv.accountNumber ? ` · compte ${pv.accountNumber}` : ''}</span>
+            {pv.stats.duplicates > 0 && <span style={{ color: 'var(--ds-warning)' }}>{pv.stats.duplicates} déjà importée(s), écartée(s)</span>}
+            <span className="ds-num" style={{ color: 'var(--ds-success)' }}>+ {n(pv.stats.in)}</span>
+            <span className="ds-num" style={{ color: 'var(--ds-danger)' }}>− {n(pv.stats.out)}</span>
+          </div>
+          {pv.lines.length > 0 && (
+            <DataPanel label="Opérations lues" style={{ maxHeight: 280, overflowY: 'auto' }}>
+              <table className="odoo-table ds-dense">
+                <thead><tr><th style={{ width: 86 }}>Date</th><th>Libellé</th><th style={{ width: 120 }}>Référence</th><th className="ds-num" style={{ width: 110 }}>Montant ({currencySymbol()})</th><th style={{ width: 110 }}><span className="ds-sr-only">État</span></th></tr></thead>
+                <tbody>
+                  {pv.lines.map((l, i) => (
+                    <tr key={i} style={{ opacity: l.duplicate ? 0.5 : 1 }}>
+                      <td>{fmtDate(l.operationDate)}</td>
+                      <td>{l.label || '—'}</td>
+                      <td className="ds-ref">{l.reference ?? ''}</td>
+                      <td className="ds-num" style={{ color: l.direction === 'in' ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{l.direction === 'in' ? '+' : '−'}{n(l.amount)}</td>
+                      <td>{l.duplicate && <StatusTag tone="draft" label="Déjà importée" />}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </DataPanel>
+          )}
+        </FormSection>
+      )}
+    </Modal>
   );
 }

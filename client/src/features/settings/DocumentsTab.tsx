@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDirtyForm, useDraft } from './DirtyForms';
-import { FileText, Loader2, Eye } from 'lucide-react';
+import { FileText, Eye } from 'lucide-react';
 import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type DocumentTemplate } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
+import { FormField, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Modèles de documents (audit Paramètres, lot 6, mig 332) : mentions des pièces
@@ -23,7 +24,7 @@ function errorMessage(err: unknown, fallback: string) {
 
 export default function DocumentsTab() {
   const { data = [], isLoading } = useQuery({ queryKey: ['document-templates'], queryFn: settingsApi.documentTemplates });
-  if (isLoading) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading) return <LoadingState />;
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
       <PageNote help="Le pied de page légal (raison sociale, forme juridique, capital, siège, RC, IF, ICE, patente) vient de la page Société, et le compte bancaire du compte par défaut. Réglez ici les mentions propres à chaque pièce, puis vérifiez avec l'aperçu.">
@@ -69,51 +70,44 @@ function TemplateCard({ tpl }: { tpl: DocumentTemplate }) {
     }
   };
 
-  const area: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%', resize: 'vertical' };
-  const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--ds-muted)' };
   const isInvoice = tpl.doc_type === 'invoice';
+  const id = (k: string) => `doc-${tpl.doc_type}-${k}`;
 
   return (
-    <div id={`doc-${tpl.doc_type}`} className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12, scrollMarginTop: '1rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>{tpl.label}</div>
-          <div style={{ fontSize: '0.8125rem', color: 'var(--ds-muted)' }}>
-            {tpl.updated_by_name ? `Modifié le ${new Date(tpl.updated_at).toLocaleDateString('fr-FR')} par ${tpl.updated_by_name}` : 'Réglages d\'origine'}
-          </div>
-        </div>
+    <section id={`doc-${tpl.doc_type}`} className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12, scrollMarginTop: '1rem' }} aria-label={tpl.label}>
+      <SectionHeader title={tpl.label}
+        note={tpl.updated_by_name ? `Modifié le ${new Date(tpl.updated_at).toLocaleDateString('fr-FR')} par ${tpl.updated_by_name}` : 'Réglages d\'origine'}>
         <button type="button" className="odoo-btn-secondary" onClick={preview} disabled={previewing || dirty} title={dirty ? 'Enregistrez avant l\'aperçu' : undefined}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Eye size={13} /> {previewing ? 'Génération…' : 'Aperçu PDF'}
         </button>
-      </div>
-      <label style={lab}>{isInvoice ? 'Conditions de paiement' : 'Conditions de livraison et de facturation'}
-        <textarea id={`doc-${tpl.doc_type}-terms`} rows={2} maxLength={500} style={area} disabled={!editable}
+      </SectionHeader>
+      <FormField label={isInvoice ? 'Conditions de paiement' : 'Conditions de livraison et de facturation'} htmlFor={id('terms')}>
+        <textarea id={id('terms')} rows={2} maxLength={500} className="ds-input" style={{ minHeight: 60 }} disabled={!editable}
           value={form.paymentTerms} onChange={e => setForm({ ...form, paymentTerms: e.target.value })} />
-      </label>
+      </FormField>
       {isInvoice && (
-        <label style={lab}>Pénalités de retard
-          <textarea id={`doc-${tpl.doc_type}-penalty`} rows={2} maxLength={500} style={area} disabled={!editable}
+        <FormField label="Pénalités de retard" htmlFor={id('penalty')} hint="Mention conseillée par la loi n° 69-21 sur les délais de paiement.">
+          <textarea id={id('penalty')} rows={2} maxLength={500} className="ds-input" style={{ minHeight: 60 }} disabled={!editable}
             value={form.latePenalty} onChange={e => setForm({ ...form, latePenalty: e.target.value })} />
-          <span style={{ fontSize: '0.75rem' }}>Mention conseillée par la loi n° 69-21 sur les délais de paiement.</span>
-        </label>
+        </FormField>
       )}
-      <label style={lab}>Note de pied de page
-        <input id={`doc-${tpl.doc_type}-footer`} maxLength={300} style={area} disabled={!editable}
+      <FormField label="Note de pied de page" htmlFor={id('footer')}>
+        <input id={id('footer')} maxLength={300} className="ds-input" disabled={!editable}
           value={form.footerNote} onChange={e => setForm({ ...form, footerNote: e.target.value })} placeholder="Merci de votre confiance" />
-      </label>
+      </FormField>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.875rem' }}>
         {isInvoice && (
-          <label htmlFor={`doc-${tpl.doc_type}-bank`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <input id={`doc-${tpl.doc_type}-bank`} type="checkbox" disabled={!editable} checked={form.showBank} onChange={e => setForm({ ...form, showBank: e.target.checked })} />
+          <label htmlFor={id('bank')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <input id={id('bank')} type="checkbox" disabled={!editable} checked={form.showBank} onChange={e => setForm({ ...form, showBank: e.target.checked })} />
             Afficher le compte bancaire
           </label>
         )}
-        <label htmlFor={`doc-${tpl.doc_type}-form`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <input id={`doc-${tpl.doc_type}-form`} type="checkbox" disabled={!editable} checked={form.showLegalForm} onChange={e => setForm({ ...form, showLegalForm: e.target.checked })} />
+        <label htmlFor={id('form')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <input id={id('form')} type="checkbox" disabled={!editable} checked={form.showLegalForm} onChange={e => setForm({ ...form, showLegalForm: e.target.checked })} />
           Forme juridique et capital dans le pied de page
         </label>
       </div>
-    </div>
+    </section>
   );
 }

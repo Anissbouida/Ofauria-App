@@ -9,6 +9,7 @@ import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { RowMenu } from '../../../components/ui/RowMenu';
 import { PromptDialog } from '../ui';
+import { DataPanel } from '../../../components/ds';
 
 const fmt = (v: unknown) => (parseFloat(String(v ?? 0)) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -36,7 +37,8 @@ export default function AdvanceRequestsPanel() {
   if (!rows.length) return null;
   return (
     <StatusBanner tone="orange" icon={HandCoins} title={`${rows.length} demande(s) d'avance à traiter`}>
-      <table className="odoo-table" style={{ marginTop: 6 }}>
+      <DataPanel label="Demandes d'avance">
+      <table className="odoo-table ds-dense">
         <thead><tr><th>Salarié</th><th>Demandée le</th><th className="ds-num">Montant ({currencySymbol()})</th><th className="ds-num">Retenue par paie ({currencySymbol()})</th><th>Motif</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
         <tbody>
           {rows.map(r => (
@@ -66,6 +68,7 @@ export default function AdvanceRequestsPanel() {
           ))}
         </tbody>
       </table>
+      </DataPanel>
       {rejecting && (
         <PromptDialog icon={HandCoins} crumb="Avance" title={`Refuser la demande de ${rejecting.first_name} ${rejecting.last_name}`}
           label="Motif du refus (communiqué au salarié)" confirmLabel="Refuser"

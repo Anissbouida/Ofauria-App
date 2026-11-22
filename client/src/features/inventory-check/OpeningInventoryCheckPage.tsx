@@ -14,6 +14,7 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import SalesPageShell from '../sales/SalesPageShell';
 import { PageLoading } from '../controle/KlUi';
+import { DataPanel } from '../../components/ds';
 
 /** En-tête commun (design Ventes) : barre Inventaire / Contrôle d'ouverture, puis grand titre. */
 const SHELL = { icon: ClipboardCheck, parent: 'Inventaire', title: "Contrôle d'ouverture" } as const;
@@ -263,8 +264,8 @@ export default function OpeningInventoryCheckPage() {
         const catItems = grouped[catName];
         const catTotalExpected = catItems.reduce((s, it) => s + it.expected_qty, 0);
         return (
-          <div key={catName} className="odoo-section" style={{ margin: 0 }}>
-            <div className="odoo-section-header" style={{ justifyContent: 'space-between' }}>
+          <DataPanel key={catName} label={catName} bulk={
+            <div className="prj-panel-head" style={{ justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span>{catName}</span>
                 <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400, fontSize: '0.75rem', color: 'var(--odoo-text-light)' }}>
@@ -275,7 +276,7 @@ export default function OpeningInventoryCheckPage() {
                 {catTotalExpected} attendu{catTotalExpected > 1 ? 's' : ''}
               </span>
             </div>
-
+          }>
             <table className="odoo-table">
               <thead>
                 <tr>
@@ -370,7 +371,7 @@ export default function OpeningInventoryCheckPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </DataPanel>
         );
       })}
 

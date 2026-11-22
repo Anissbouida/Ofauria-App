@@ -18,7 +18,7 @@ import SalesPageShell from '../sales/SalesPageShell';
 import { FilterChips } from '../sales/ListTemplate';
 import { PurHeaderActions } from '../purchasing/PurHeaderActions';
 import {
-  KpiGrid, KpiCard, Tabs, DataPanel, TableFooter, EmptyState, LoadingState, SectionHeader, Alert, FormField,
+  KpiGrid, KpiCard, Tabs, DataPanel, TableFooter, EmptyState, LoadingState, SectionHeader, Alert, FormField, ErrorState,
 } from '../../components/ds';
 import { currencySymbol } from '../../utils/money';
 import './approvals.css';
@@ -391,7 +391,7 @@ export default function ApprovalsPage() {
       <Tabs label="Vues des approbations" value={tab} onChange={setTab} tabs={tabs} />
 
       {tab === 'inbox' && (
-        inbox.isLoading ? <LoadingState /> : !inboxRows.length ? (
+        inbox.isLoading ? <LoadingState /> : inbox.error ? <ErrorState error={inbox.error} onRetry={() => { void inbox.refetch(); }} /> : !inboxRows.length ? (
           <EmptyState icon={CheckCircle2} title="Rien à approuver" text="Aucune pièce n'attend votre décision : tout est traité." />
         ) : (
           <RequestsTable rows={inboxRows} label="Pièces à approuver" busy={decideMutation.isPending}
@@ -401,7 +401,7 @@ export default function ApprovalsPage() {
       )}
 
       {tab === 'mine' && (
-        mine.isLoading ? <LoadingState /> : !mine.data?.length ? (
+        mine.isLoading ? <LoadingState /> : mine.error ? <ErrorState error={mine.error} onRetry={() => { void mine.refetch(); }} /> : !mine.data?.length ? (
           <EmptyState icon={Send} title="Aucune demande" text="Vous n'avez soumis aucune pièce à approbation." />
         ) : (
           <RequestsTable rows={mine.data} label="Mes demandes" busy={cancelMutation.isPending}
@@ -418,7 +418,7 @@ export default function ApprovalsPage() {
               key: st, label: APPROVAL_REQUEST_STATUS_LABELS[st], count: histRows.filter(r => r.status === st).length,
             })),
           ]} />
-          {history.isLoading ? <LoadingState /> : !history.data?.rows.length ? (
+          {history.isLoading ? <LoadingState /> : history.error ? <ErrorState error={history.error} onRetry={() => { void history.refetch(); }} /> : !history.data?.rows.length ? (
             <EmptyState icon={History} title="Aucune demande" text="Les demandes traitées sur les 30 derniers jours s'affichent ici." />
           ) : (
             <DataPanel label="Demandes traitées"
@@ -471,7 +471,7 @@ export default function ApprovalsPage() {
           </section>
 
           <SectionHeader title="Délégations enregistrées" note={activeDelegations > 0 ? `${activeDelegations} active${activeDelegations > 1 ? 's' : ''}` : undefined} />
-          {delegations.isLoading ? <LoadingState /> : !delegations.data?.length ? (
+          {delegations.isLoading ? <LoadingState /> : delegations.error ? <ErrorState error={delegations.error} onRetry={() => { void delegations.refetch(); }} /> : !delegations.data?.length ? (
             <EmptyState icon={UserCheck} title="Aucune délégation" text="Déléguez vos approbations pendant une absence pour que les pièces ne restent pas bloquées." />
           ) : (
             <DataPanel label="Délégations enregistrées" footer={<TableFooter note={`${delegations.data.length} délégation${delegations.data.length > 1 ? 's' : ''}`} />}>

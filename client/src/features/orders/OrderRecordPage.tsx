@@ -121,7 +121,7 @@ export default function OrderRecordPage() {
   if (error || !o) {
     return (
       <div className="prj sal-page">
-        <ErrorState title="Commande introuvable" text={getApiErrorMessage(error, 'Elle a peut-être été supprimée.')} />
+        <ErrorState title="Commande introuvable" text={getApiErrorMessage(error, 'Elle a peut-être été supprimée.')} error={error} />
         <div><button type="button" className="odoo-btn-secondary" onClick={() => navigate('/orders')}>Retour aux commandes</button></div>
       </div>
     );

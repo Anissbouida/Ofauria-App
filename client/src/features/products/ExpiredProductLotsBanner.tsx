@@ -1,7 +1,8 @@
 import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Trash2, X, HelpCircle } from 'lucide-react';
+import { AlertTriangle, Trash2, HelpCircle } from 'lucide-react';
+import { Alert, FormField, FormSection, Modal } from '../../components/ds';
 import { productLotApi } from '../../api/product-lot.api';
 import { notify } from '../../components/ui/InlineNotification';
 
@@ -176,26 +177,19 @@ function SendToLossesDialog({ item, isPending, onClose, onConfirm }: {
   const backroomQty = parseFloat(item.backroom_qty as string) || 0;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="px-5 py-4 border-b border-red-100 bg-gradient-to-r from-red-50 to-orange-50 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-red-500 flex items-center justify-center shrink-0">
-            <Trash2 size={18} className="text-white" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-base font-bold text-red-900">Envoyer aux pertes</h3>
-            <p className="text-xs text-red-700 mt-0.5">
-              {isOrphan
-                ? 'Stock non tracé par lot — sera retiré du compteur global.'
-                : 'Action irréversible — le lot sera retiré du stock.'}
-            </p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Fermer" className="p-1 hover:bg-red-100 rounded-lg">
-            <X size={18} className="text-red-700" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
+    <Modal title="Envoyer aux pertes" onClose={onClose} width={448} locked={isPending}
+      footer={<>
+        <button type="button" onClick={onClose} disabled={isPending} className="odoo-btn-secondary">Annuler</button>
+        <button type="button" onClick={() => onConfirm(reason, note || undefined)} disabled={isPending} className="ds-btn-danger solid" aria-busy={isPending || undefined}>
+          {isPending ? 'Envoi...' : <><Trash2 size={14} aria-hidden="true" /> Confirmer l&apos;envoi aux pertes</>}
+        </button>
+      </>}>
+        <Alert tone="danger" icon={Trash2}>
+          {isOrphan
+            ? 'Stock non tracé par lot — sera retiré du compteur global.'
+            : 'Action irréversible — le lot sera retiré du stock.'}
+        </Alert>
+        <div className="space-y-4">
           <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-gray-500">Produit</span>
@@ -230,16 +224,15 @@ function SendToLossesDialog({ item, isPending, onClose, onConfirm }: {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Motif</label>
-            <div className="grid grid-cols-2 gap-2">
+          <FormSection title="Motif">
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Motif">
               {([
                 { v: 'dlc_expired', label: 'DLC expirée', sub: 'Date de péremption' },
                 { v: 'dlv_expired', label: 'Exposition dépassée', sub: 'Durée d\'exposition vitrine' },
                 { v: 'damaged', label: 'Endommagé', sub: 'Casse, contamination' },
                 { v: 'quarantine_failed', label: 'Échec contrôle', sub: 'Non conforme' },
               ] as const).map(opt => (
-                <button key={opt.v} type="button" onClick={() => setReason(opt.v)}
+                <button key={opt.v} type="button" role="radio" aria-checked={reason === opt.v} onClick={() => setReason(opt.v)}
                   className={`px-3 py-2 rounded-lg border text-left transition-all ${
                     reason === opt.v
                       ? 'border-red-400 bg-red-50 ring-2 ring-red-200'
@@ -250,28 +243,14 @@ function SendToLossesDialog({ item, isPending, onClose, onConfirm }: {
                 </button>
               ))}
             </div>
-          </div>
+          </FormSection>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Note (optionnel)</label>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2}
-              placeholder="Détails additionnels..."
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500" />
-          </div>
+          <FormField label="Note" htmlFor="loss-note" hint="Optionnel.">
+            <textarea id="loss-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2}
+              placeholder="Détails additionnels..." className="ds-input" />
+          </FormField>
 
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} disabled={isPending}
-              className="flex-1 py-2.5 px-4 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">
-              Annuler
-            </button>
-            <button onClick={() => onConfirm(reason, note || undefined)}
-              disabled={isPending}
-              className="flex-1 py-2.5 px-4 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
-              {isPending ? 'Envoi...' : <><Trash2 size={14} /> Confirmer l&apos;envoi aux pertes</>}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

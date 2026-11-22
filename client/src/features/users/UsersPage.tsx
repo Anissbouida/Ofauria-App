@@ -16,10 +16,10 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { HrModal, Field, SubmitButton, Segmented, HrHeaderSlot } from '../employees/ui';
+import { Field, SubmitButton, Segmented, HrHeaderSlot } from '../employees/ui';
 import { ListPage, FilterChips } from '../sales/ListTemplate';
 import {
-  Breadcrumb, PageHeader, KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState,
+  Modal, Breadcrumb, PageHeader, KpiGrid, KpiCard, Toolbar, SearchBar, DataPanel, TableFooter, EmptyState, NoResultState, LoadingState, ErrorState,
 } from '../../components/ds';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -153,7 +153,7 @@ function AccountsTab({ onEdit, policyOpen, onPolicyClose }: { onEdit: (u: UserRo
   const [bulkBusy, setBulkBusy] = useState(false);
   const { run } = useAccountActions();
 
-  const { data: users = [], isLoading, isError, refetch } = useQuery<UserRow[]>({ queryKey: ['users'], queryFn: usersApi.list });
+  const { data: users = [], isLoading, isError, error, refetch } = useQuery<UserRow[]>({ queryKey: ['users'], queryFn: usersApi.list });
   const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
   const { roles, label: roleLabel } = useRoleLabel();
   const storeName = (id: unknown) => stores.find(s => s.id === id)?.name as string | undefined;
@@ -231,7 +231,7 @@ function AccountsTab({ onEdit, policyOpen, onPolicyClose }: { onEdit: (u: UserRo
         </select>
       </Toolbar>
 
-      {isLoading ? <LoadingState /> : isError ? <ErrorState onRetry={() => void refetch()} />
+      {isLoading ? <LoadingState /> : isError ? <ErrorState error={error} onRetry={() => void refetch()} />
         : !users.length ? <EmptyState icon={Users} title="Aucun utilisateur" text="Les comptes de connexion apparaîtront ici." />
         : !shown.length ? <NoResultState text="Aucun compte ne correspond aux filtres." onReset={filtered ? resetFilters : undefined} />
         : (
@@ -420,9 +420,9 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
   };
 
   return (
-    <HrModal icon={Lock} crumb="Utilisateurs" title={user ? `${user.firstName} ${user.lastName}` : 'Nouvel utilisateur'}
-      tag={user && <StatusTag tone={user.isActive ? 'done' : 'cancelled'} label={user.isActive ? 'Actif' : 'Désactivé'} />}
-      width={620} onClose={onClose}
+    <Modal subtitle="Utilisateurs" title={user ? `${user.firstName} ${user.lastName}` : 'Nouvel utilisateur'}
+      aside={user && <StatusTag tone={user.isActive ? 'done' : 'cancelled'} label={user.isActive ? 'Actif' : 'Désactivé'} />}
+      width={620} onClose={onClose} locked={save.isPending}
       footer={<>
         <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={save.isPending}>Annuler</button>
         <SubmitButton pending={save.isPending} disabled={invalid} onClick={() => save.mutate()}>
@@ -519,7 +519,7 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
         </select>
       </Field>
       {user && <SecuritySection userId={user.id as string} selfId={me?.id} onDeleted={onClose} />}
-    </HrModal>
+    </Modal>
   );
 }
 
@@ -558,7 +558,7 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
   const userRole = user.role as string;
   const userName = `${user.firstName} ${user.lastName}`;
 
-  const { data: existingPerms, isLoading } = useQuery({
+  const { data: existingPerms, isLoading, isError: permsError, error: permsErr, refetch: refetchPerms } = useQuery({
     queryKey: ['user-permissions', userId],
     queryFn: () => usersApi.getPermissions(userId),
   });
@@ -697,10 +697,10 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
 
   if (userRole === 'admin') {
     return (
-      <HrModal icon={Settings2} crumb="Droits" title={userName} width={480} onClose={onClose}
+      <Modal subtitle="Droits" title={userName} width={480} onClose={onClose}
         footer={<button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>}>
         <StatusBanner tone="neutral" icon={Lock} title="Administrateur">L'administrateur a accès à tous les modules ; ses droits ne se règlent pas.</StatusBanner>
-      </HrModal>
+      </Modal>
     );
   }
 
@@ -710,8 +710,8 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
   });
 
   return (
-    <HrModal icon={Settings2} crumb="Droits" title={userName} width={760} onClose={onClose}
-      tag={<span className={`odoo-tag ${hasCustomPerms ? 'odoo-tag-orange' : 'odoo-tag-blue'}`}>{hasCustomPerms ? 'Droits propres' : `Droits du rôle ${roleLabel}`}</span>}
+    <Modal subtitle="Droits" title={userName} width={760} onClose={onClose}
+      aside={<span className={`odoo-tag ${hasCustomPerms ? 'odoo-tag-orange' : 'odoo-tag-blue'}`}>{hasCustomPerms ? 'Droits propres' : `Droits du rôle ${roleLabel}`}</span>}
       footer={<>
         {hasCustomPerms && (
           <button type="button" className="odoo-btn-secondary" style={{ marginRight: 'auto' }} disabled={resetMutation.isPending} onClick={() => void resetToRole()}>
@@ -728,8 +728,8 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
           ? 'Ils remplacent ceux de son rôle tant qu\'ils existent.'
           : 'Enregistrer crée des droits propres à cet utilisateur, qui remplacent alors ceux du rôle.'}
       </StatusBanner>
-      {isLoading || !perms ? <LoadingState bare /> : (
-        <div style={{ overflowX: 'auto' }}>
+      {permsError ? <ErrorState bare error={permsErr} title="Les droits n'ont pas pu être chargés" onRetry={() => void refetchPerms()} /> : isLoading || !perms ? <LoadingState bare /> : (
+        <DataPanel label="Droits par module">
           <table className="odoo-table">
             <thead><tr><th>Module</th>{ACTIONS.map(([, l]) => <th key={l} style={{ textAlign: 'center', width: 84 }}>{l}</th>)}</tr></thead>
             <tbody>
@@ -740,7 +740,7 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
                 const slugs = (p.config.category_slugs as string[]) || [];
                 return [
                   <tr key={mod} style={{ opacity: p.canView ? 1 : 0.65 }}>
-                    <td style={{ fontWeight: p.canView ? 600 : 400 }}>{MODULE_LABELS[mod] ?? mod}</td>
+                    <td className={p.canView ? 'ds-strong' : undefined}>{MODULE_LABELS[mod] ?? mod}</td>
                     {ACTIONS.map(([f, l]) => (
                       <td key={f} style={{ textAlign: 'center' }}>
                         <input type="checkbox" id={`up-${mod}-${f}`} aria-label={`${l} ${MODULE_LABELS[mod] ?? mod}`}
@@ -825,8 +825,8 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
               })}
             </tbody>
           </table>
-        </div>
+        </DataPanel>
       )}
-    </HrModal>
+    </Modal>
   );
 }

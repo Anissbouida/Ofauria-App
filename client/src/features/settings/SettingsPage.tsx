@@ -10,6 +10,7 @@ import SalesChannelsManager from '../sales/SalesChannelsManager';
 import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, ChevronDown, ChevronRight, EyeOff, History, Menu } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { FormField } from '../../components/ds';
 import PrinterSettingsCard from './PrinterSettingsCard';
 import SachetsTab from './SachetsTab';
 import SectorTab from './SectorTab';
@@ -59,7 +60,7 @@ export default function SettingsPage() {
   if (!hasModule('settings')) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500">Vous n'avez pas accès aux paramètres.</p>
+        <p style={{ color: 'var(--ds-muted)' }}>Vous n'avez pas accès aux paramètres.</p>
       </div>
     );
   }
@@ -549,12 +550,12 @@ function AppearanceTab() {
                 }}>
                 {isActive && (
                   <span className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--theme-accent)' }}>
-                    <Check size={12} className="text-white" />
+                    <Check size={12} style={{ color: 'var(--theme-cta-text, #fff)' }} />
                   </span>
                 )}
                 {/* Mini preview */}
-                <div className="w-full h-16 rounded-lg overflow-hidden border border-gray-200"
-                  style={{ background: preset.values.themeBgPage }}>
+                <div className="w-full h-16 rounded-lg overflow-hidden "
+                  style={{ background: preset.values.themeBgPage, border: '1px solid var(--ds-line)' }}>
                   <div className="h-4 flex items-center px-2" style={{ background: preset.values.themeAccent }}>
                     <span className="text-[6px] font-bold" style={{ color: preset.values.themeCtaText }}>{settings.companyName}</span>
                   </div>
@@ -577,14 +578,14 @@ function AppearanceTab() {
       {groups.map(group => (
         <SettingsSection key={group} title={group}>
           {THEME_FIELDS.filter(f => f.group === group).map(field => (
-            <SettingItem key={field.key} {...mark(field.key)} title={field.label}>
+            <SettingItem key={field.key} {...mark(field.key)} htmlFor={`theme-${field.key}`} title={field.label}>
               <div className="flex gap-2">
                 <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme[field.key]) ? theme[field.key] : '#000000'}
                   onChange={e => setColor(field.key, e.target.value)} aria-label={`${field.label} : couleur`}
-                  className="odoo-input" style={{ width: 48, height: 34, padding: 2, cursor: 'pointer' }} />
+                  className="ds-input" style={{ width: 48, padding: 2, cursor: 'pointer' }} />
                 <input id={`theme-${field.key}`} type="text" value={theme[field.key]}
                   onChange={e => { if (/^#[0-9a-fA-F]{0,6}$/.test(e.target.value) || e.target.value === '') setColor(field.key, e.target.value); }}
-                  className={`odoo-input${/^#[0-9a-fA-F]{6}$/.test(theme[field.key]) ? '' : ' invalid'}`} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="#000000" maxLength={7} />
+                  className="ds-input" aria-invalid={!/^#[0-9a-fA-F]{6}$/.test(theme[field.key])} style={{ fontFamily: 'ui-monospace, monospace', maxWidth: 140 }} placeholder="#000000" maxLength={7} />
               </div>
             </SettingItem>
           ))}
@@ -776,27 +777,28 @@ function PrintTab() {
             toggle={{ checked: receiptShowLogo, onChange: setReceiptShowLogo }}
           >
             {receiptShowLogo && (
-              <label style={{ display: 'grid', gap: 4, maxWidth: 320, fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
-                Taille du logo (px) : {receiptLogoSize}
-                <input type="range" min="20" max="80" value={receiptLogoSize}
-                  onChange={(e) => setReceiptLogoSize(parseInt(e.target.value))} style={{ accentColor: 'var(--odoo-purple)' }} />
-              </label>
+              <div style={{ maxWidth: 320 }}>
+                <FormField label={`Taille du logo (px) : ${receiptLogoSize}`} htmlFor="receipt-logo-size">
+                  <input id="receipt-logo-size" type="range" min="20" max="80" value={receiptLogoSize}
+                    onChange={(e) => setReceiptLogoSize(parseInt(e.target.value))} style={{ accentColor: 'var(--ds-accent)' }} />
+                </FormField>
+              </div>
             )}
           </SettingItem>
         </SettingsSection>
 
         <SettingsSection title="Contenu du reçu" columns={1}>
-          <SettingItem {...mark('receiptHeader')} title="En-tête supplémentaire" description="Affiché sous le sous-titre (adresse, téléphone, ICE…)">
+          <SettingItem {...mark('receiptHeader')} htmlFor="receipt-header" title="En-tête supplémentaire" description="Affiché sous le sous-titre (adresse, téléphone, ICE…)">
             <input id="receipt-header" type="text" value={receiptHeader} onChange={(e) => setReceiptHeader(e.target.value)}
-              className="odoo-input" style={{ maxWidth: 448 }} placeholder="Ex. : adresse, téléphone, ICE…" />
+              className="ds-input" style={{ maxWidth: 448 }} placeholder="Ex. : adresse, téléphone, ICE…" />
           </SettingItem>
-          <SettingItem {...mark('receiptFooter')} title="Message de pied de page" description="Texte de remerciement en bas du ticket">
+          <SettingItem {...mark('receiptFooter')} htmlFor="receipt-footer" title="Message de pied de page" description="Texte de remerciement en bas du ticket">
             <input id="receipt-footer" type="text" value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)}
-              className="odoo-input" style={{ maxWidth: 448 }} placeholder="Merci pour votre visite !" />
+              className="ds-input" style={{ maxWidth: 448 }} placeholder="Merci pour votre visite !" />
           </SettingItem>
-          <SettingItem {...mark('receiptExtraLines')} title="Lignes supplémentaires" description="Chaque ligne sera affichée en bas du reçu">
+          <SettingItem {...mark('receiptExtraLines')} htmlFor="receipt-extra" title="Lignes supplémentaires" description="Chaque ligne sera affichée en bas du reçu">
             <textarea id="receipt-extra" value={receiptExtraLines} onChange={(e) => setReceiptExtraLines(e.target.value)}
-              className="odoo-input" style={{ maxWidth: 448 }} rows={3}
+              className="ds-input" style={{ maxWidth: 448 }} rows={3}
               placeholder="Ex. : horaires d'ouverture, conditions de retour…" />
           </SettingItem>
         </SettingsSection>
@@ -821,9 +823,9 @@ function PrintTab() {
             description="Le tiroir s'ouvre à chaque impression (tiroir connecté à l'imprimante)"
             toggle={{ checked: receiptOpenDrawer, onChange: setReceiptOpenDrawer }}
           />
-          <SettingItem {...mark('receiptNumCopies')} title="Nombre de copies" description="Nombre de reçus imprimés à chaque vente">
+          <SettingItem {...mark('receiptNumCopies')} htmlFor="receipt-copies" title="Nombre de copies" description="Nombre de reçus imprimés à chaque vente">
             <select id="receipt-copies" value={receiptNumCopies} onChange={(e) => setReceiptNumCopies(parseInt(e.target.value))}
-              className="odoo-input" style={{ width: 160 }}>
+              className="ds-input" style={{ width: 160 }}>
               <option value={1}>1 copie</option>
               <option value={2}>2 copies</option>
               <option value={3}>3 copies</option>
@@ -837,14 +839,14 @@ function PrintTab() {
         </SettingsSection>
 
         <SettingsSection title="Format d'impression">
-          <SettingItem {...mark('receiptFontSize')} title="Taille de police" description={`Texte du ticket : ${receiptFontSize} px`}>
+          <SettingItem {...mark('receiptFontSize')} htmlFor="receipt-font" title="Taille de police" description={`Texte du ticket : ${receiptFontSize} px`}>
             <input id="receipt-font" type="range" min="9" max="16" value={receiptFontSize}
               onChange={(e) => setReceiptFontSize(parseInt(e.target.value))}
-              style={{ width: '100%', maxWidth: 320, accentColor: 'var(--odoo-purple)' }} />
+              style={{ width: '100%', maxWidth: 320, accentColor: 'var(--ds-accent)' }} />
           </SettingItem>
-          <SettingItem {...mark('receiptPaperWidth')} title="Largeur du papier" description="Format du rouleau thermique">
+          <SettingItem {...mark('receiptPaperWidth')} htmlFor="receipt-width" title="Largeur du papier" description="Format du rouleau thermique">
             <select id="receipt-width" value={receiptPaperWidth} onChange={(e) => setReceiptPaperWidth(parseInt(e.target.value))}
-              className="odoo-input" style={{ width: 176 }}>
+              className="ds-input" style={{ width: 176 }}>
               <option value={58}>58 mm (petit)</option>
               <option value={80}>80 mm (standard)</option>
             </select>
@@ -854,7 +856,7 @@ function PrintTab() {
 
         {/* Live receipt preview */}
         <div className="odoo-settings-preview">
-          <div className="prj-panel" style={{ padding: '16px 18px' }}>
+          <div className="ds-panel" style={{ padding: '16px 18px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <Eye size={15} style={{ color: 'var(--ds-muted)' }} />
               <h3 className="odoo-setting-label" style={{ margin: 0 }}>Aperçu du reçu</h3>

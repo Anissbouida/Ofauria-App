@@ -6,6 +6,7 @@ import { fr } from 'date-fns/locale';
 import { settingsApi, type SetupCheck } from '../../api/settings.api';
 import { tableLabel } from './AuditLogTab';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { ErrorState } from '../../components/ds';
 import { GROUP_ICONS, LEGACY_PAGES, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, type SettingsPageDef, type SettingsPageKey } from './settingsPages';
 
 /**
@@ -18,10 +19,10 @@ import { GROUP_ICONS, LEGACY_PAGES, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP
 type Filter = 'all' | 'open' | 'done';
 
 const STATUS: Record<SetupCheck['status'], { icon: typeof Info; color: string; label: string }> = {
-  todo: { icon: CircleAlert, color: 'var(--prj-red, #c0392b)', label: 'À faire' },
-  warn: { icon: TriangleAlert, color: 'var(--prj-orange, #b85d1a)', label: 'Recommandé' },
+  todo: { icon: CircleAlert, color: 'var(--ds-danger)', label: 'À faire' },
+  warn: { icon: TriangleAlert, color: 'var(--ds-warning)', label: 'Recommandé' },
   info: { icon: Info, color: 'var(--ds-muted)', label: 'À vérifier' },
-  ok: { icon: CheckCircle2, color: 'var(--prj-green, #1e7e34)', label: 'Fait' },
+  ok: { icon: CheckCircle2, color: 'var(--ds-success)', label: 'Fait' },
 };
 const ORDER: Record<SetupCheck['status'], number> = { todo: 0, warn: 1, info: 2, ok: 3 };
 const OPERATIONS: Record<string, string> = { INSERT: 'Création', UPDATE: 'Modification', DELETE: 'Suppression' };
@@ -50,7 +51,7 @@ export default function SetupHome({ pages, onOpen, onOpenUsers }: {
   onOpenUsers: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>('open');
-  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['settings', 'setup'], queryFn: settingsApi.setup, staleTime: 0,
   });
   const checks = useMemo(() => data?.checks ?? [], [data]);
@@ -70,11 +71,7 @@ export default function SetupHome({ pages, onOpen, onOpenUsers }: {
 
   if (isLoading) return <p className="odoo-settings-subtitle">Analyse du paramétrage…</p>;
   if (isError) {
-    return (
-      <p className="odoo-settings-subtitle">
-        État du paramétrage indisponible. <button type="button" className="odoo-btn-secondary" onClick={() => void refetch()}>Réessayer</button>
-      </p>
-    );
+    return <ErrorState error={error} title="État du paramétrage indisponible" onRetry={() => void refetch()} />;
   }
 
   const visible = (c: SetupCheck) => filter === 'all' || (filter === 'done' ? c.status === 'ok' : c.status !== 'ok');

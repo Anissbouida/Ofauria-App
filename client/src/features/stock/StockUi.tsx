@@ -92,9 +92,4 @@ export function FullPageBar({ backLabel, onBack, trail = [], current, actions }:
  * en secondaire à sa gauche). StockPage fournit l'élément ; un écran y pose ses boutons
  * avec `HeaderActions`. Hors coquille, les boutons restent là où l'écran les écrit.
  */
-export const StockHeaderSlot = createContext<HTMLElement | null>(null);
-
-export function HeaderActions({ children }: { children: ReactNode }) {
-  const slot = useContext(StockHeaderSlot);
-  return slot ? createPortal(children, slot) : <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>{children}</div>;
-}
+export { HeaderSlotContext as StockHeaderSlot, HeaderActions as HeaderActions } from '../../components/ds';

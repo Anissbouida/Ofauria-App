@@ -42,7 +42,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
   const { user } = useAuth();
   const confirm = useConfirm();
 
-  const { data: advances = [], isLoading, isError, refetch } = useQuery({
+  const { data: advances = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['salary-advances', statusFilter],
     queryFn: () => advancesApi.list(statusFilter === 'open' ? { status: 'open' } : undefined),
   });
@@ -157,7 +157,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
       {isLoading ? (
         <LoadingPanel />
       ) : isError ? (
-        <ErrorState onRetry={() => void refetch()} />
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : rows.length === 0 ? (
         <EmptyState icon={HandCoins} title={statusFilter === 'open' ? 'Aucune avance en cours' : 'Aucune avance enregistrée'}
           text="La retenue se fait automatiquement au moment de payer le salaire (écran Paie)." />

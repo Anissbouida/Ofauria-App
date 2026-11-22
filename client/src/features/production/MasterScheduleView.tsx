@@ -21,7 +21,7 @@ const wk = (d: string) => `Sem. du ${format(new Date(`${d}T00:00:00`), 'dd/MM', 
 export default function MasterScheduleView({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const today = new Date().toLocaleDateString('sv-SE');
-  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['master-schedule', today], queryFn: () => productionApi.masterSchedule(today, 8) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['master-schedule', today], queryFn: () => productionApi.masterSchedule(today, 8) });
   const [draft, setDraft] = useState<Record<string, number | null>>({});
   const [query, setQuery] = useState('');
   const cell = (pid: string, w: string) => `${pid}|${w}`;
@@ -41,7 +41,7 @@ export default function MasterScheduleView({ canEdit }: { canEdit: boolean }) {
     return (data?.rows ?? []).filter(r => !q || r.product_name.toLowerCase().includes(q) || (r.category_name ?? '').toLowerCase().includes(q));
   }, [data, query]);
 
-  if (isError) return <ErrorState title="Le plan par semaine n'a pas pu être chargé" onRetry={() => refetch()} />;
+  if (isError) return <ErrorState error={error} title="Le plan par semaine n'a pas pu être chargé" onRetry={() => refetch()} />;
   if (isLoading || !data) return <LoadingState />;
   const changes = Object.keys(draft).length;
 

@@ -8,11 +8,9 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { ReportViz, toCsv, type VizType } from './ReportViz';
-import { LoadingState } from '../../components/ds';
+import { ErrorState, FormField, FormFooter, FormSection, LoadingState, Modal } from '../../components/ds';
 
-const inp: React.CSSProperties = { padding: '0.4rem 0.55rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit' };
 const uid = () => Math.random().toString(36).slice(2, 10);
 const VIZ: { key: VizType; label: string; icon: typeof Table2 }[] = [
   { key: 'table', label: 'Table', icon: Table2 }, { key: 'bar', label: 'Barres', icon: BarChart3 },
@@ -139,7 +137,7 @@ function BuilderView() {
         </section>
 
         {meas.length === 0 && <StatusBanner tone="warning" icon={Play} title="Sélectionnez au moins un indicateur à calculer." />}
-        {isError && <StatusBanner tone="danger" icon={X} title="Erreur">{apiErrorMessage(error)}</StatusBanner>}
+        {isError && <ErrorState error={error} title="Le rapport n'a pas pu être calculé" text={apiErrorMessage(error)} />}
 
         <section>
           <div className="kl-sec"><h2>Résultat</h2>{rows.length > 0 && <small>{rows.length} ligne{rows.length > 1 ? 's' : ''}{rows.length === 500 ? ' (limité à 500)' : ''}</small>}</div>
@@ -227,25 +225,24 @@ function AddToDashboard({ tile, onClose }: { tile: DashboardTile; onClose: () =>
   }
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(460px, 96vw)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><LayoutGrid size={16} /> Ajouter à un tableau de bord</span>
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Titre de la tuile</span><input value={title} onChange={e => setTitle(e.target.value)} style={inp} /></label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Tableau de bord</span>
-            <SearchSelect value={target} onChange={setTarget} placeholder="— Nouveau —" width="100%" size="md" ariaLabel="Tableau de bord"
-              options={dashboards.map(d => ({ id: String(d.id), label: d.name as string }))} /></label>
-          {(!target) && <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Nom du nouveau tableau de bord</span><input value={newName} onChange={e => setNewName(e.target.value)} placeholder="ex : Pilotage quotidien" style={inp} /></label>}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={busy} onClick={add}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Ajouter</button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    <Modal title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><LayoutGrid size={16} aria-hidden="true" /> Ajouter à un tableau de bord</span>}
+      onClose={onClose} width={460} locked={busy}
+      footer={<FormFooter onCancel={onClose} onSubmit={add} busy={busy} submitLabel="Ajouter" />}>
+      <FormSection title="Tuile">
+        <FormField label="Titre de la tuile" htmlFor="rb-tile-title">
+          <input id="rb-tile-title" className="ds-input" value={title} onChange={e => setTitle(e.target.value)} />
+        </FormField>
+        <FormField label="Tableau de bord" htmlFor="rb-tile-dash">
+          <SearchSelect value={target} onChange={setTarget} placeholder="— Nouveau —" width="100%" size="md" ariaLabel="Tableau de bord"
+            options={dashboards.map(d => ({ id: String(d.id), label: d.name as string }))} />
+        </FormField>
+        {!target && (
+          <FormField label="Nom du nouveau tableau de bord" htmlFor="rb-tile-newname" required>
+            <input id="rb-tile-newname" className="ds-input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="ex : Pilotage quotidien" />
+          </FormField>
+        )}
+      </FormSection>
+    </Modal>
   );
 }
 
@@ -314,7 +311,7 @@ function Dashboards() {
 function Tile({ tile, onRemove, onResize, onUp, onDown, isFirst, isLast }: {
   tile: DashboardTile; onRemove: () => void; onResize: () => void; onUp: () => void; onDown: () => void; isFirst: boolean; isLast: boolean;
 }) {
-  const { data: result, isFetching, isError } = useQuery({
+  const { data: result, isFetching, isError, error } = useQuery({
     queryKey: ['rb-tile', tile.id, tile.config],
     queryFn: () => reportsApi.customRun({ sourceKey: tile.source_key, ...tile.config, limit: 200 }),
   });
@@ -332,7 +329,7 @@ function Tile({ tile, onRemove, onResize, onUp, onDown, isFirst, isLast }: {
         </div>
       </div>
       <div style={{ padding: '0 14px 14px', minHeight: 60, flex: 1 }}>
-        {isError ? <p className="kl-viz-empty" style={{ color: 'var(--prj-red)' }}>Erreur de chargement.</p>
+        {isError ? <ErrorState bare error={error} title="Erreur de chargement" />
           : result ? <ReportViz columns={result.columns} rows={result.rows} viz={tile.viz} />
             : <LoadingState />}
       </div>

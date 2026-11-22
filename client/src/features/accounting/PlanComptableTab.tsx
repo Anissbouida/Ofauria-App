@@ -8,8 +8,7 @@ import AccountModal from './AccountModal';
 import { planComptableApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import type { Account } from '@ofauria/shared';
-import { EmptyState, KpiCard, KpiGrid, DataPanel, LoadingState, NoResultState, SearchBar } from '../../components/ds';
-import { AccHeaderActions } from './AccHeaderActions';
+import { EmptyState, ErrorState, HeaderActions, KpiCard, KpiGrid, DataPanel, LoadingState, NoResultState, SearchBar, Toolbar } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
 
 // Libelle clair par classe CGNC pour l'arbre.
@@ -58,7 +57,7 @@ export default function PlanComptableTab() {
 
   // Tous les hooks DOIVENT etre appeles avant tout return conditionnel
   // (regle des hooks React : meme ordre a chaque render).
-  const { data: accounts = [], isLoading } = useQuery({
+  const { data: accounts = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger-accounts', 'all'],
     queryFn: () => planComptableApi.list(true),
     enabled: isAdmin,
@@ -158,16 +157,16 @@ export default function PlanComptableTab() {
       </KpiGrid>
 
       {/* Filtres */}
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary">
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
         <button type="button" onClick={() => setEditing('new')} className="odoo-btn-primary">
           <Plus size={13} aria-hidden="true" /> Nouveau compte
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
-      <div className="prj-toolbar">
+      <Toolbar>
         <SearchBar value={search} onChange={setSearch} placeholder="Rechercher par code ou libellé…" />
         <SearchSelect
           options={[1, 2, 3, 4, 5, 6, 7].map(c => ({
@@ -180,13 +179,15 @@ export default function PlanComptableTab() {
           placeholder="Toutes les classes"
           width={220}
         />
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-          <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Afficher les inactifs
+        <label htmlFor="pc-show-inactive" className="ds-period">
+          <input id="pc-show-inactive" type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Afficher les inactifs
         </label>
-      </div>
+      </Toolbar>
 
       {/* Arbre des comptes */}
-      {tree.length === 0 ? (
+      {isError ? (
+        <ErrorState error={error} title="Le plan comptable n'a pas pu être chargé" onRetry={() => refetch()} />
+      ) : tree.length === 0 ? (
         <NoResultState text="Aucun compte ne correspond aux filtres." onReset={() => { setSearch(''); setClassFilter('all'); }} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

@@ -11,7 +11,7 @@ import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi } from '../sales/ListTemplate';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { DataPanel, TableFooter, EmptyState } from '../../components/ds';
+import { DataPanel, TableFooter, EmptyState, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 import { BASE_CURRENCY } from '../../api/currencies.api';
 
 // Listes de prix (phase 6.1–6.3) : par canal, type/groupe de clients ou client précis,
@@ -76,8 +76,6 @@ export default function PriceListsPage() {
     targeted: lists.filter((l: PriceList) => l.channel_id || l.customer_type || l.price_group || l.customer_id).length,
     ending: lists.filter((l: PriceList) => l.is_active && l.valid_to && l.valid_to.slice(0, 10) >= today && l.valid_to.slice(0, 10) <= soon).length,
   };
-  const field: React.CSSProperties = { padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', background: 'var(--odoo-bg)', width: '100%' };
-  const lab: React.CSSProperties = { fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'block', marginBottom: 2 };
 
   return (
     <SalesPageShell icon={Tag} parent="Ventes" title="Listes de prix"
@@ -127,58 +125,64 @@ export default function PriceListsPage() {
       {detail ? (
         <div style={{ flex: '999 1 480px', minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <input aria-label="Nom de la liste" style={{ ...field, width: 280, fontWeight: 600 }} defaultValue={detail.name} key={detail.id}
+            <input aria-label="Nom de la liste" className="ds-input" style={{ width: 280, fontWeight: 600 }} defaultValue={detail.name} key={detail.id}
               onBlur={(e) => e.target.value !== detail.name && updateList.mutate({ name: e.target.value })} />
             <button type="button" className="ds-btn-danger ds-btn-sm"
               onClick={async () => { if (await confirm(`Supprimer la liste « ${detail.name} » et ses prix ?`, { title: 'Supprimer la liste de prix', confirmLabel: 'Supprimer', danger: true })) delList.mutate(detail.id); }}>
               <Trash2 size={13} /> Supprimer la liste</button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12 }}>
-            <label><span style={lab}>Canal</span>
-              <select style={field} defaultValue={detail.channel_id ?? ''} onChange={(e) => updateList.mutate({ channelId: e.target.value || null })}>
-                <option value="">Tous</option>
-                {channels.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
-            </label>
-            <label><span style={lab}>Type de client</span>
-              <select style={field} defaultValue={detail.customer_type ?? ''} onChange={(e) => updateList.mutate({ customerType: e.target.value || null })}>
-                <option value="">Tous</option>
-                {CUSTOMER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </label>
-            <label><span style={lab}>Groupe de clients</span>
-              <input style={field} defaultValue={detail.price_group ?? ''} placeholder="Hôtels…" onBlur={(e) => updateList.mutate({ priceGroup: e.target.value || null })} />
-            </label>
-            <label><span style={lab}>Devise</span>
-              <input style={{ ...field, textTransform: 'uppercase' }} maxLength={3} defaultValue={detail.currency} onBlur={(e) => updateList.mutate({ currency: e.target.value.toUpperCase() || BASE_CURRENCY })} />
-            </label>
-            <label><span style={lab}>Valide du</span>
-              <input type="date" style={field} defaultValue={detail.valid_from ?? ''} onChange={(e) => updateList.mutate({ validFrom: e.target.value || null })} />
-            </label>
-            <label><span style={lab}>au</span>
-              <input type="date" style={field} defaultValue={detail.valid_to ?? ''} onChange={(e) => updateList.mutate({ validTo: e.target.value || null })} />
-            </label>
-            <label><span style={lab}>Priorité</span>
-              <input type="number" style={field} defaultValue={detail.priority} onBlur={(e) => updateList.mutate({ priority: Number(e.target.value) || 0 })} />
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 18 }}>
-              <input type="checkbox" defaultChecked={detail.is_active} onChange={(e) => updateList.mutate({ isActive: e.target.checked })} /> Active
-            </label>
+          <div style={{ marginBottom: 14 }}>
+          <FormSection title="Ciblage et validité">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+              <FormField label="Canal" htmlFor="pl-channel">
+                <select id="pl-channel" className="ds-input" defaultValue={detail.channel_id ?? ''} onChange={(e) => updateList.mutate({ channelId: e.target.value || null })}>
+                  <option value="">Tous</option>
+                  {channels.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Type de client" htmlFor="pl-ctype">
+                <select id="pl-ctype" className="ds-input" defaultValue={detail.customer_type ?? ''} onChange={(e) => updateList.mutate({ customerType: e.target.value || null })}>
+                  <option value="">Tous</option>
+                  {CUSTOMER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Groupe de clients" htmlFor="pl-group">
+                <input id="pl-group" className="ds-input" defaultValue={detail.price_group ?? ''} placeholder="Hôtels…" onBlur={(e) => updateList.mutate({ priceGroup: e.target.value || null })} />
+              </FormField>
+              <FormField label="Devise" htmlFor="pl-currency">
+                <input id="pl-currency" className="ds-input" style={{ textTransform: 'uppercase' }} maxLength={3} defaultValue={detail.currency} onBlur={(e) => updateList.mutate({ currency: e.target.value.toUpperCase() || BASE_CURRENCY })} />
+              </FormField>
+              <FormField label="Valide du" htmlFor="pl-from">
+                <input id="pl-from" type="date" className="ds-input" defaultValue={detail.valid_from ?? ''} onChange={(e) => updateList.mutate({ validFrom: e.target.value || null })} />
+              </FormField>
+              <FormField label="au" htmlFor="pl-to">
+                <input id="pl-to" type="date" className="ds-input" defaultValue={detail.valid_to ?? ''} onChange={(e) => updateList.mutate({ validTo: e.target.value || null })} />
+              </FormField>
+              <FormField label="Priorité" htmlFor="pl-priority">
+                <input id="pl-priority" type="number" className="ds-input" defaultValue={detail.priority} onBlur={(e) => updateList.mutate({ priority: Number(e.target.value) || 0 })} />
+              </FormField>
+              <label htmlFor="pl-active" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 24, fontSize: 13 }}>
+                <input id="pl-active" type="checkbox" defaultChecked={detail.is_active} onChange={(e) => updateList.mutate({ isActive: e.target.checked })} /> Active
+              </label>
+            </div>
+          </FormSection>
           </div>
 
           <h3 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>Prix par article (palier de quantité)</h3>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
-            <label style={{ flex: 2 }}><span style={lab}>Article</span>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: '2 1 220px' }}><FormField label="Article" required>
               <SearchSelect value={itemForm.productId} onChange={(v) => setItemForm({ ...itemForm, productId: v })}
                 placeholder="— Choisir —" width="100%" size="md" ariaLabel="Article"
                 options={products.map(p => ({ id: String(p.id), label: p.name as string }))} />
-            </label>
-            <label style={{ width: 110 }}><span style={lab}>À partir de</span>
-              <input type="number" style={field} value={itemForm.minQuantity} onChange={(e) => setItemForm({ ...itemForm, minQuantity: e.target.value })} /></label>
-            <label style={{ width: 120 }}><span style={lab}>Prix</span>
-              <input type="number" style={field} value={itemForm.unitPrice} onChange={(e) => setItemForm({ ...itemForm, unitPrice: e.target.value })} /></label>
-            <button className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            </FormField></div>
+            <div style={{ width: 120 }}><FormField label="À partir de (qté)" htmlFor="pl-item-min">
+              <input id="pl-item-min" type="number" className="ds-input" value={itemForm.minQuantity} onChange={(e) => setItemForm({ ...itemForm, minQuantity: e.target.value })} />
+            </FormField></div>
+            <div style={{ width: 130 }}><FormField label={`Prix (${detail.currency})`} htmlFor="pl-item-price" required>
+              <input id="pl-item-price" type="number" className="ds-input" value={itemForm.unitPrice} onChange={(e) => setItemForm({ ...itemForm, unitPrice: e.target.value })} />
+            </FormField></div>
+            <button type="button" className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
               disabled={!itemForm.productId || itemForm.unitPrice === ''}
               onClick={() => { addItem.mutate({ productId: itemForm.productId, minQuantity: Number(itemForm.minQuantity) || 0, unitPrice: Number(itemForm.unitPrice) }); setItemForm({ productId: '', minQuantity: '0', unitPrice: '' }); }}>
               <Check size={13} /> Ajouter
@@ -210,29 +214,27 @@ export default function PriceListsPage() {
 
     </div>
       {bulk && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setBulk(null)}>
-          <div style={{ background: 'var(--odoo-bg)', borderRadius: 8, padding: 20, width: 420 }} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ fontWeight: 700, marginBottom: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}><TrendingUp size={16} /> Mise à jour en masse des prix</h3>
-            <label><span style={lab}>Famille d'articles<span className="ds-req" aria-hidden="true"> *</span></span>
-              <input style={field} value={bulk.family} onChange={(e) => setBulk({ ...bulk, family: e.target.value })} placeholder="Nom exact de la famille (categories.family)" /></label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-              <label><span style={lab}>Opération</span>
-                <select style={field} value={bulk.mode} onChange={(e) => setBulk({ ...bulk, mode: e.target.value as 'increase_pct' | 'set' })}>
-                  <option value="increase_pct">Variation en %</option>
-                  <option value="set">Fixer le prix</option>
-                </select></label>
-              <label><span style={lab}>{bulk.mode === 'increase_pct' ? 'Pourcentage (+/−)' : 'Nouveau prix'}</span>
-                <input type="number" step="0.01" style={field} value={bulk.value} onChange={(e) => setBulk({ ...bulk, value: e.target.value })} /></label>
-            </div>
-            <label style={{ display: 'block', marginTop: 8 }}><span style={lab}>Motif (tracé)</span>
-              <input style={field} value={bulk.reason} onChange={(e) => setBulk({ ...bulk, reason: e.target.value })} placeholder="Hausse tarifaire 2026…" /></label>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button className="odoo-btn-secondary" onClick={() => setBulk(null)}>Annuler</button>
-              <button className="odoo-btn-primary" disabled={!bulk.family.trim() || bulk.value === '' || bulkMut.isPending}
-                onClick={() => bulkMut.mutate()}>{bulkMut.isPending ? 'Application…' : 'Appliquer'}</button>
-            </div>
+        <Modal title="Mise à jour en masse des prix" onClose={() => setBulk(null)} width={440} locked={bulkMut.isPending}
+          footer={<FormFooter onCancel={() => setBulk(null)} onSubmit={() => bulkMut.mutate()} submitLabel={bulkMut.isPending ? 'Application…' : 'Appliquer'}
+            disabled={!bulk.family.trim() || bulk.value === ''} busy={bulkMut.isPending} />}>
+          <FormField label="Famille d'articles" htmlFor="bulk-family" required>
+            <input id="bulk-family" className="ds-input" value={bulk.family} onChange={(e) => setBulk({ ...bulk, family: e.target.value })} placeholder="Nom exact de la famille (categories.family)" />
+          </FormField>
+          <div className="ds-form-grid">
+            <FormField label="Opération" htmlFor="bulk-mode">
+              <select id="bulk-mode" className="ds-input" value={bulk.mode} onChange={(e) => setBulk({ ...bulk, mode: e.target.value as 'increase_pct' | 'set' })}>
+                <option value="increase_pct">Variation en %</option>
+                <option value="set">Fixer le prix</option>
+              </select>
+            </FormField>
+            <FormField label={bulk.mode === 'increase_pct' ? 'Pourcentage (+/−)' : 'Nouveau prix'} htmlFor="bulk-value" required>
+              <input id="bulk-value" type="number" step="0.01" className="ds-input" value={bulk.value} onChange={(e) => setBulk({ ...bulk, value: e.target.value })} />
+            </FormField>
           </div>
-        </div>
+          <FormField label="Motif (tracé)" htmlFor="bulk-reason">
+            <input id="bulk-reason" className="ds-input" value={bulk.reason} onChange={(e) => setBulk({ ...bulk, reason: e.target.value })} placeholder="Hausse tarifaire 2026…" />
+          </FormField>
+        </Modal>
       )}
     </SalesPageShell>
   );

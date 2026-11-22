@@ -13,8 +13,8 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { ListKpi } from '../sales/ListTemplate';
 import { Panel, SectionTitle, PageLoading } from '../controle/KlUi';
-import { EmptyState, NoResultState } from '../../components/ds';
-import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { Breadcrumb, DataPanel, EmptyState, NoResultState } from '../../components/ds';
+import { useConfirm, usePrompt } from '../../components/ui/ConfirmDialog';
 
 /**
  * Contrôle & Qualité › Traçabilité & rappels (mig 316).
@@ -83,7 +83,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
       {term.length >= 2 && (isFetching ? <Loading /> : hits.length === 0 ? (
         <NoResultState text="Aucun lot ne correspond à cette recherche." onReset={() => { setInput(''); setTerm(''); }} />
       ) : (
-        <Panel>
+        <Panel title="Lots trouvés" hint={`${hits.length} résultat${hits.length > 1 ? 's' : ''}`}>
           <table className="odoo-table">
             <thead><tr><th>Type</th><th>Lot</th><th>Article</th><th>Fournisseur / magasin</th><th>Date</th><th>DLC</th><th>Statut</th><th className="ds-actions">Action</th></tr></thead>
             <tbody>
@@ -91,7 +91,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
                 <tr key={`${h.kind}-${h.id}`} style={{ cursor: 'pointer' }} onClick={() => onPick(h)}>
                   <td><span className={`odoo-tag ${h.kind === 'ingredient_lot' ? 'odoo-tag-blue' : 'odoo-tag-purple'}`}>{h.kind === 'ingredient_lot' ? 'Ingrédient' : 'Produit fini'}</span></td>
                   <td className="ds-ref">
-                    {h.lot_number}{h.supplier_lot_number && <div style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}>fourn. {h.supplier_lot_number}</div>}
+                    {h.lot_number}{h.supplier_lot_number && <div style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>fourn. {h.supplier_lot_number}</div>}
                   </td>
                   <td className="ds-strong">{h.item_name}</td>
                   <td>{h.supplier_name ?? '—'}</td>
@@ -120,7 +120,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
                   <td>{r.origin_label}</td>
                   <td style={{ maxWidth: 280 }}>{r.reason}</td>
                   <td className="ds-num">{r.items_count}</td>
-                  <td>{dt(r.created_at)}<div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.created_by_name}</div></td>
+                  <td>{dt(r.created_at)}<div style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{r.created_by_name}</div></td>
                   <td><RecallStatusTag status={r.status} /></td>
                 </tr>
               ))}
@@ -133,6 +133,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
 }
 
 function OpenRecallButton({ originKind, originId, onCreated }: { originKind: 'ingredient_lot' | 'product_lot'; originId: string; onCreated: (id: string) => void }) {
+  const askReason = usePrompt();
   const qc = useQueryClient();
   const create = useMutation({
     mutationFn: (reason: string) => traceabilityApi.createRecall({ originKind, originId, reason }),
@@ -141,8 +142,11 @@ function OpenRecallButton({ originKind, originId, onCreated }: { originKind: 'in
   });
   return (
     <button type="button" className="ds-btn-danger" disabled={create.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-      onClick={() => {
-        const reason = window.prompt('Motif du rappel (contamination, corps étranger, alerte fournisseur…)');
+      onClick={async () => {
+        const reason = await askReason('Les lots concernés seront bloqués et les clients livrés retrouvés.', {
+          title: 'Ouvrir un rappel', label: 'Motif du rappel', placeholder: 'Contamination, corps étranger, alerte fournisseur…',
+          required: true, multiline: true, danger: true, confirmLabel: 'Ouvrir le rappel', hint: 'Au moins 3 caractères.',
+        });
         if (reason && reason.trim().length >= 3) create.mutate(reason.trim());
       }}>
       <Siren size={13} /> Ouvrir un rappel
@@ -150,14 +154,25 @@ function OpenRecallButton({ originKind, originId, onCreated }: { originKind: 'in
   );
 }
 
-/** En-tête d'une fiche (aval, amont, rappel) dans l'onglet : retour, titre de la fiche, actions. */
-function Header({ onBack, title, children }: { onBack: () => void; title: string; children?: React.ReactNode }) {
+/**
+ * En-tête d'une fiche (aval, amont, rappel) au gabarit commun : fil d'Ariane jusqu'à la pièce
+ * (le premier élément ramène à l'accueil), actions à droite, puis titre + étiquette de statut.
+ */
+function Header({ onBack, crumb, title, status, children }: {
+  onBack: () => void; crumb: string; title: string; status?: React.ReactNode; children?: React.ReactNode;
+}) {
   return (
-    <div className="klc-record-head no-print">
-      <button type="button" className="odoo-btn-secondary" onClick={onBack}><ArrowLeft size={13} aria-hidden="true" /> Retour</button>
-      <h2>{title}</h2>
-      <div className="klc-section-actions">{children}</div>
-    </div>
+    <>
+      <div className="klc-record-head no-print">
+        <button type="button" className="ds-icon-btn" onClick={onBack} aria-label="Retour à la traçabilité" title="Retour"><ArrowLeft size={16} aria-hidden="true" /></button>
+        <Breadcrumb items={[{ label: 'Traçabilité & rappels', onClick: onBack }, { label: crumb }]} />
+        <div className="klc-section-actions">{children}</div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '4px 0 12px' }}>
+        <h2 style={{ margin: 0, fontSize: 'var(--ds-t-section, 20px)', fontWeight: 700, color: 'var(--ds-ink)' }}>{title}</h2>
+        {status}
+      </div>
+    </>
   );
 }
 
@@ -168,16 +183,18 @@ function LotSalesRow({ lot, colSpan }: { lot: ProductLotTrace; colSpan: number }
   return (
     <tr><td colSpan={colSpan} style={{ background: 'var(--odoo-bg-hover)' }}>
       {isLoading ? <Loading /> : data.length === 0 ? (
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Aucune vente ni livraison tracée pour ce lot (les ventes ne sont rattachées aux lots que depuis la mise en service).</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>Aucune vente ni livraison tracée pour ce lot (les ventes ne sont rattachées aux lots que depuis la mise en service).</span>
       ) : (
-        <table className="odoo-table" style={{ margin: 0 }}>
+        <DataPanel label={`Ventes du lot ${lot.lot_number}`}>
+        <table className="odoo-table ds-dense">
           <thead><tr><th>Date</th><th>Pièce</th><th className="ds-num">Qté du lot</th><th>Client</th></tr></thead>
           <tbody>{data.map((s, i) => (
             <tr key={`${s.sale_id ?? s.delivery_note_id}-${i}`}><td>{dt(s.created_at)}</td>
-              <td>{s.kind === 'delivery' ? <>BL {s.delivery_note_number} <span className="odoo-tag odoo-tag-blue">pro</span></> : (s.sale_number ?? '—')}</td><td className="ds-num">{q(s.quantity)}</td>
-              <td>{s.customer_name ? `${s.customer_name}${s.customer_phone ? ` · ${s.customer_phone}` : ''}` : <span style={{ color: 'var(--theme-text-muted)' }}>anonyme</span>}</td></tr>
+              <td className="ds-ref">{s.kind === 'delivery' ? <>BL {s.delivery_note_number} <span className="odoo-tag odoo-tag-blue">pro</span></> : (s.sale_number ?? '—')}</td><td className="ds-num">{q(s.quantity)}</td>
+              <td>{s.customer_name ? `${s.customer_name}${s.customer_phone ? ` · ${s.customer_phone}` : ''}` : <span style={{ color: 'var(--ds-muted)' }}>anonyme</span>}</td></tr>
           ))}</tbody>
         </table>
+        </DataPanel>
       )}
     </td></tr>
   );
@@ -193,7 +210,8 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
 
   return (
     <>
-      <Header onBack={onBack} title={`Aval — ${lot.ingredient_name}, lot ${lot.lot_number}`}>
+      <Header onBack={onBack} crumb={`Lot ${lot.lot_number}`} title={`Aval — ${lot.ingredient_name}, lot ${lot.lot_number}`}
+        status={<StatusTag tone="draft" label={String(lot.status)} />}>
         <button type="button" className="odoo-btn-secondary" onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Imprimer</button>
         <OpenRecallButton originKind="ingredient_lot" originId={id} onCreated={onRecall} />
       </Header>
@@ -212,7 +230,7 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
       ) : null}
 
       {data.plans.length > 0 && (
-        <Panel>
+        <Panel title="Productions" hint={`${data.plans.length}`}>
           <table className="odoo-table">
             <thead><tr><th>Production</th><th>Magasin</th><th>Statut</th><th className="ds-num">Quantité du lot utilisée</th><th>Voie</th></tr></thead>
             <tbody>{data.plans.map(p => (
@@ -225,11 +243,11 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
       )}
 
       {data.semiLots.length > 0 && (
-        <Panel>
+        <Panel title="Semi-finis" hint={`${data.semiLots.length}`}>
           <table className="odoo-table">
             <thead><tr><th>Semi-fini</th><th>Lot</th><th className="ds-num">Produit</th><th className="ds-num">Restant</th><th>Statut</th></tr></thead>
             <tbody>{data.semiLots.map(s => (
-              <tr key={s.id}><td>{s.recipe_name}</td><td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{s.lot_number}</td>
+              <tr key={s.id}><td className="ds-strong">{s.recipe_name}</td><td className="ds-ref">{s.lot_number}</td>
                 <td className="ds-num">{q(s.quantity_produced)} {s.unit}</td><td className="ds-num">{q(s.quantity_remaining)} {s.unit}</td><td>{s.status}</td></tr>
             ))}</tbody>
           </table>
@@ -237,13 +255,13 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
       )}
 
       {data.productLots.length > 0 && (
-        <Panel>
+        <Panel title="Lots produits touchés" hint={`${data.productLots.length}`}>
           <table className="odoo-table">
-            <thead><tr><th>Produit</th><th>Lot</th><th>Lien</th><th>Magasin</th><th>DLC</th><th className="ds-num">Produit</th><th className="ds-num">Vendu</th><th className="ds-num">Perdu</th><th className="ds-num">En stock</th><th /></tr></thead>
+            <thead><tr><th>Produit</th><th>Lot</th><th>Lien</th><th>Magasin</th><th>DLC</th><th className="ds-num">Produit</th><th className="ds-num">Vendu</th><th className="ds-num">Perdu</th><th className="ds-num">En stock</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
             <tbody>{data.productLots.map(l => [
               <tr key={l.id} className={l.remaining_qty > 0 ? 'row-warning' : undefined}>
-                <td style={{ fontWeight: 600 }}>{l.product_name}</td>
-                <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}><button type="button" onClick={() => onLot(l.id)} style={{ textDecoration: 'underline', color: 'inherit', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}>{l.lot_number}</button></td>
+                <td className="ds-strong">{l.product_name}</td>
+                <td className="ds-ref"><button type="button" onClick={() => onLot(l.id)} style={{ textDecoration: 'underline', color: 'inherit', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}>{l.lot_number}</button></td>
                 <td><CertaintyTag c={l.certainty} /></td>
                 <td>{l.store_name ?? '—'}</td>
                 <td>{d(l.expires_at)}</td>
@@ -251,8 +269,8 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
                 <td className="ds-num">{q(l.sold_qty)}</td>
                 <td className="ds-num">{q(l.wasted_qty + l.recycled_qty)}</td>
                 <td className="ds-num" style={{ fontWeight: 600 }}>{q(l.remaining_qty)}</td>
-                <td className="ds-num">
-                  <button type="button" className="odoo-btn-secondary" onClick={() => setOpenSales(openSales === l.id ? null : l.id)}>Ventes ({l.sales_count})</button>
+                <td className="ds-actions">
+                  <button type="button" className="odoo-btn-secondary ds-btn-sm" aria-expanded={openSales === l.id} onClick={() => setOpenSales(openSales === l.id ? null : l.id)}>Ventes ({l.sales_count})</button>
                 </td>
               </tr>,
               openSales === l.id && <LotSalesRow key={`${l.id}-s`} lot={l} colSpan={10} />,
@@ -280,7 +298,7 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
   const { lot } = data;
   return (
     <>
-      <Header onBack={onBack} title={`Amont — ${lot.product_name}, lot ${lot.lot_number}`}>
+      <Header onBack={onBack} crumb={`Lot ${lot.lot_number}`} title={`Amont — ${lot.product_name}, lot ${lot.lot_number}`}>
         <button type="button" className="odoo-btn-secondary" onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Imprimer</button>
         <OpenRecallButton originKind="product_lot" originId={id} onCreated={onRecall} />
       </Header>
@@ -295,19 +313,19 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
       {data.ingredientLots.length === 0 ? (
         <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun lot d'ingrédient rattaché">La production n'a pas enregistré de prélèvement par lot (bon de sortie non pesé).</StatusBanner>
       ) : (
-        <Panel>
+        <Panel title="Lots d'ingrédients utilisés" hint={`${data.ingredientLots.length}`}>
           <table className="odoo-table">
-            <thead><tr><th>Ingrédient</th><th>Lot</th><th>Lien</th><th>Fournisseur</th><th>DLC</th><th className="ds-num">Utilisé</th><th>Voie</th><th /></tr></thead>
+            <thead><tr><th>Ingrédient</th><th>Lot</th><th>Lien</th><th>Fournisseur</th><th>DLC</th><th className="ds-num">Utilisé</th><th>Voie</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
             <tbody>{data.ingredientLots.map((l, i) => (
               <tr key={`${l.id}-${i}`}>
-                <td style={{ fontWeight: 600 }}>{l.ingredient_name}</td>
-                <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{l.lot_number}{l.supplier_lot_number && <div style={{ color: 'var(--theme-text-muted)' }}>fourn. {l.supplier_lot_number}</div>}</td>
+                <td className="ds-strong">{l.ingredient_name}</td>
+                <td className="ds-ref">{l.lot_number}{l.supplier_lot_number && <div style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>fourn. {l.supplier_lot_number}</div>}</td>
                 <td><CertaintyTag c={l.certainty} /></td>
                 <td>{l.supplier_name ?? '—'}</td>
                 <td>{d(l.expiration_date)}</td>
                 <td className="ds-num">{q(l.qty_used)} {l.unit ?? ''}</td>
                 <td>{l.depth === 0 ? 'directe' : `semi-fini niv. ${l.depth}`}</td>
-                <td className="ds-num"><button type="button" className="odoo-btn-secondary" onClick={() => onLot(l.id)}>Aval</button></td>
+                <td className="ds-actions"><button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => onLot(l.id)}>Aval</button></td>
               </tr>
             ))}</tbody>
           </table>
@@ -323,6 +341,7 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
   const qc = useQueryClient();
   const { data: r, isLoading } = useQuery({ queryKey: ['recall', id], queryFn: () => traceabilityApi.recall(id) });
   const confirm = useConfirm();
+  const askReason = usePrompt();
   const refresh = () => { qc.invalidateQueries({ queryKey: ['recall', id] }); qc.invalidateQueries({ queryKey: ['recalls'] }); };
   const block = useMutation({ mutationFn: () => traceabilityApi.block(id), onSuccess: () => { refresh(); notify.success('Lots bloqués, boutiques prévenues'); }, onError: (e) => notify.error(e) });
   const dispo = useMutation({
@@ -335,7 +354,7 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
 
   return (
     <>
-      <Header onBack={onBack} title={`Rappel ${r.reference}`}>
+      <Header onBack={onBack} crumb={r.reference} title={`Rappel ${r.reference}`} status={<RecallStatusTag status={r.status} />}>
         <button type="button" className="odoo-btn-secondary" onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Rapport</button>
         {r.status === 'open' && (
           <button type="button" className="ds-btn-danger" disabled={block.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
@@ -345,7 +364,13 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
         )}
         {r.status === 'blocked' && (
           <button type="button" className="odoo-btn-primary" disabled={close.isPending || pending > 0} title={pending ? `${pending} lot(s) sans destination` : undefined}
-            onClick={() => { const note = window.prompt('Conclusion du rappel (cause, mesures, information ONSSA / clients)'); if (note && note.trim().length >= 3) close.mutate(note.trim()); }}>
+            onClick={async () => {
+              const note = await askReason('La conclusion est conservée dans le dossier du rappel.', {
+                title: 'Clôturer le rappel', label: 'Conclusion', placeholder: 'Cause, mesures, information ONSSA / clients',
+                required: true, multiline: true, confirmLabel: 'Clôturer', hint: 'Au moins 3 caractères.',
+              });
+              if (note && note.trim().length >= 3) close.mutate(note.trim());
+            }}>
             Clôturer
           </button>
         )}
@@ -354,7 +379,6 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
       <section className="prj-panel klc-facts" aria-label="Rappel">
         <div><span>Origine</span>{r.origin_label}</div>
         <div><span>Motif</span>{r.reason}</div>
-        <div><span>Statut</span><RecallStatusTag status={r.status} /></div>
         <div><span>Ouvert</span>{dt(r.created_at)} · {r.created_by_name}</div>
         <div><span>Bloqué</span>{r.blocked_at ? `${dt(r.blocked_at)} · ${r.blocked_by_name ?? ''}` : '—'}</div>
         <div><span>Clôturé</span>{r.closed_at ? `${dt(r.closed_at)} · ${r.closed_by_name ?? ''}` : '—'}</div>
@@ -373,22 +397,22 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
         </StatusBanner>
       )}
 
-      <Panel>
+      <Panel title="Lots du rappel" hint={pending ? `${pending} sans destination` : `${r.items.length}`}>
         <table className="odoo-table">
           <thead><tr><th>Type</th><th>Article</th><th>Lot</th><th>Lien</th><th>Magasin</th><th className="ds-num">Vendu</th><th className="ds-num">En stock</th><th>Statut</th><th>Destination</th></tr></thead>
           <tbody>{r.items.map(i => (
             <tr key={i.id} className={(i.current_remaining ?? 0) > 0 && !i.disposition ? 'row-warning' : undefined}>
               <td>{i.item_kind === 'ingredient_lot' ? 'Ingrédient' : i.item_kind === 'semi_finished_lot' ? 'Semi-fini' : 'Produit fini'}</td>
-              <td style={{ fontWeight: 600 }}>{i.label}</td>
-              <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{i.lot_number ?? '—'}</td>
+              <td className="ds-strong">{i.label}</td>
+              <td className="ds-ref">{i.lot_number ?? '—'}</td>
               <td><CertaintyTag c={i.certainty} /></td>
               <td>{i.store_name ?? '—'}</td>
-              <td className="ds-num">{i.item_kind === 'product_lot' ? <>{q(i.qty_sold)}{i.sales_count ? <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{i.sales_count} ticket(s)</div> : null}</> : '—'}</td>
+              <td className="ds-num">{i.item_kind === 'product_lot' ? <>{q(i.qty_sold)}{i.sales_count ? <div style={{ fontSize: '0.6875rem', color: 'var(--ds-muted)' }}>{i.sales_count} ticket(s)</div> : null}</> : '—'}</td>
               <td className="ds-num" style={{ fontWeight: 600 }}>{q(i.current_remaining)} {i.unit && i.unit !== 'u' ? i.unit : ''}</td>
               <td>{i.current_status}</td>
               <td>
                 {r.status === 'closed' ? (i.disposition ? DISPOSITION_LABELS[i.disposition] : '—') : (
-                  <select value={i.disposition ?? ''} disabled={r.status === 'open'} aria-label={`Destination ${i.label}`} className="odoo-search-input"
+                  <select value={i.disposition ?? ''} disabled={r.status === 'open'} aria-label={`Destination ${i.label}`} className="ds-input sm" style={{ width: 'auto' }}
                     onChange={e => dispo.mutate({ itemId: i.id, disposition: (e.target.value || null) as Disposition | null })}>
                     <option value="">{r.status === 'open' ? 'Bloquer d\'abord' : 'À renseigner'}</option>
                     {(Object.keys(DISPOSITION_LABELS) as Disposition[]).map(k => <option key={k} value={k}>{DISPOSITION_LABELS[k]}</option>)}

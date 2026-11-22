@@ -42,7 +42,7 @@ export default function DeclarationsView() {
   const [declareKind, setDeclareKind] = useState<Kind | null>(null);
   const [settleForm, setSettleForm] = useState({ paymentMethod: 'bank', paymentDate: new Date().toISOString().slice(0, 10) });
 
-  const { data, isLoading, isError, refetch } = useQuery<Record<string, any>>({
+  const { data, isLoading, isError, error, refetch } = useQuery<Record<string, any>>({
     queryKey: ['payroll-declarations', month, year],
     queryFn: () => payrollConfigApi.declarations(month, year),
   });
@@ -177,7 +177,7 @@ export default function DeclarationsView() {
       {isLoading ? (
         <LoadingPanel />
       ) : isError || !data ? (
-        <ErrorState title="Les déclarations n'ont pas pu être chargées" onRetry={() => void refetch()} />
+        <ErrorState error={error} title="Les déclarations n'ont pas pu être chargées" onRetry={() => void refetch()} />
       ) : (
         <>
           {detail === 'cnss' ? (

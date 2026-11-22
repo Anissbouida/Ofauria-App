@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, Loader2, FilePenLine } from 'lucide-react';
-import ModalBackdrop from '../ui/ModalBackdrop';
+import { FilePenLine } from 'lucide-react';
 import { StatusBanner } from '../ui/StatusBanner';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { purchaseOrdersApi, newIdempotencyKey } from '../../api/purchase-orders.api';
 import { notify } from '../ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
-import { FormField } from '../ds';
+import { currencySymbol } from '../../utils/money';
+import { DataPanel, FormField, FormFooter, Modal } from '../ds';
 
 /**
  * Demande de changement (avenant) d'un BC engagé (mig 307).
@@ -82,23 +82,16 @@ export default function ChangeOrderModal({ po, onClose }: {
   const inputCls = 'ds-input sm ds-num';
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 920, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <FilePenLine size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Demande de changement</span>
-            <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">{po.order_number} · révision {versions.length ? Math.max(...versions.map((v: { version_no: number }) => v.version_no)) + 1 : 1}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <Modal title="Demande de changement" width={920} onClose={onClose} locked={mutation.isPending}
+      subtitle={`${po.order_number} · révision ${versions.length ? Math.max(...versions.map((v: { version_no: number }) => v.version_no)) + 1 : 1}`}
+      footer={
+        <FormFooter onCancel={onClose} onSubmit={() => mutation.mutate()} busy={mutation.isPending} disabled={!valid}
+          submitLabel="Enregistrer la révision" dirty={hasChanges} />
+      }>
           <StatusBanner tone="info" icon={FilePenLine} title="Le BC est engagé : chaque modification devient une révision motivée">
             Une quantité ne descend pas sous ce qui est déjà reçu ou clôturé. Le prix d'un BC facturé ne change plus ici.
           </StatusBanner>
+          <DataPanel label="Lignes du bon de commande">
           <table className="odoo-table ds-dense">
             <thead>
               <tr>
@@ -106,7 +99,7 @@ export default function ChangeOrderModal({ po, onClose }: {
                 <th className="ds-num">Contenants</th>
                 <th className="ds-num">= base</th>
                 <th className="ds-num">Reçu + clôturé</th>
-                <th className="ds-num">Prix / unité</th>
+                <th className="ds-num">Prix / unité ({currencySymbol()})</th>
                 <th className="ds-num">Remise (%)</th>
                 <th className="ds-num">TVA (%)</th>
               </tr>
@@ -134,12 +127,13 @@ export default function ChangeOrderModal({ po, onClose }: {
               })}
             </tbody>
           </table>
+          </DataPanel>
           <div className="ds-form-grid">
             <FormField label="Livraison prévue" htmlFor="co-expected">
               <input id="co-expected" type="date" value={expected} onChange={e => setExpected(e.target.value)} className="ds-input" />
             </FormField>
             <FormField label="Motif" htmlFor="co-reason" required>
-              <select id="co-reason" value={reasonCodeId} onChange={e => setReasonCodeId(e.target.value)} className="ds-input">
+              <select id="co-reason" value={reasonCodeId} onChange={e => setReasonCodeId(e.target.value)} className="ds-input" aria-required="true">
                 <option value="">— Choisir un motif —</option>
                 {reasons.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
@@ -152,6 +146,7 @@ export default function ChangeOrderModal({ po, onClose }: {
           {versions.length > 0 && (
             <div>
               <h3 className="ds-subhead" style={{ marginBottom: 6 }}>Révisions</h3>
+              <DataPanel label="Révisions">
               <table className="odoo-table ds-dense">
                 <tbody>
                   {versions.map((v: { version_no: number; created_at: string; created_by_name: string | null; reason_label: string | null; reason_note: string | null; reconstituted: boolean; diff: Array<{ path: string; old: unknown; new: unknown }> | null }) => (
@@ -170,17 +165,9 @@ export default function ChangeOrderModal({ po, onClose }: {
                   ))}
                 </tbody>
               </table>
+              </DataPanel>
             </div>
           )}
-        </div>
-        <div className="ds-form-foot" style={{ justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} className="odoo-btn-secondary" disabled={mutation.isPending}>Annuler</button>
-          <button type="button" disabled={!valid || mutation.isPending} aria-busy={mutation.isPending || undefined} onClick={() => mutation.mutate()} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            {mutation.isPending && <Loader2 size={13} className="animate-spin" aria-hidden="true" />}
-            Enregistrer la révision
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
+    </Modal>
   );
 }

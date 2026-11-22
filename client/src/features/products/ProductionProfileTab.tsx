@@ -5,6 +5,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { Package, Clock, Check, X, ChevronDown, Layers } from 'lucide-react';
 
 import { LoadingState } from '../../components/ds';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 const TYPE_LABELS: Record<number, string> = {
   1: 'Moule / Decoupe',
   2: 'Entremets monte',
@@ -81,6 +82,7 @@ interface Props {
 }
 
 export default function ProductionProfileTab({ productId, onChange }: Props) {
+  const confirmDialog = useConfirm();
   const queryClient = useQueryClient();
   const isEditMode = !!productId;
 
@@ -389,8 +391,8 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
           {/* Detach button — edit mode only */}
           {isEditMode && profile && (
             <div className="flex items-center justify-between pt-2">
-              <button type="button" onClick={() => { if (confirm('Detacher le format de ce produit ?')) deleteMutation.mutate(); }}
-                className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors flex items-center gap-1.5">
+              <button type="button" onClick={async () => { if (await confirmDialog('Detacher le format de ce produit ?', { title: 'Détacher le format', confirmLabel: 'Détacher', danger: true })) deleteMutation.mutate(); }}
+                className="ds-btn-danger">
                 <X size={14} /> Detacher
               </button>
             </div>

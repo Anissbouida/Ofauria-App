@@ -109,7 +109,7 @@ export default function CustomerRecordPage() {
   if (error || !c) {
     return (
       <div className="prj sal-page">
-        <ErrorState title="Client introuvable" text="La fiche a peut-être été archivée ou supprimée." />
+        <ErrorState title="Client introuvable" text="La fiche a peut-être été archivée ou supprimée." error={error} />
         <div><button type="button" className="odoo-btn-secondary" onClick={() => navigate('/customers')}>Retour aux clients</button></div>
       </div>
     );

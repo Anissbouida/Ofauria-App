@@ -7,6 +7,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity } from '../../utils/units';
 import { containerOf } from '../../utils/container';
+import { FormField, FormFooter, FormSection } from '../../components/ds';
 
 type Row = Record<string, any>;
 
@@ -18,7 +19,7 @@ type Row = Record<string, any>;
  * jour trouveront ensuite le stock « À peser ». Même trace que l'ouverture faite
  * au moment de la pesée (mouvement de zone, nombre de contenants).
  */
-export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () => void; initialIngredientId?: string | null }) {
+export function TransferToPesage({ onDone, onCancel, initialIngredientId }: { onDone?: () => void; /** Dans une fenêtre : affiche Annuler dans le pied. */ onCancel?: () => void; initialIngredientId?: string | null }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [ingredientId, setIngredientId] = useState<string | null>(initialIngredientId ?? null);
@@ -92,12 +93,12 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
   });
 
   return (
-    <div className="odoo-section" style={{ margin: 0 }}>
-      <div className="odoo-section-header"><PackageOpen size={12} aria-hidden="true" /> Ingrédient, lot et quantité à ouvrir</div>
+    <div>
+    <FormSection title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><PackageOpen size={14} aria-hidden="true" /> Ingrédient, lot et quantité à ouvrir</span>}>
       <div className="transfer-pesage-form">
         {/* 1. Ingrédient */}
         <div className="transfer-pesage-field" style={{ position: 'relative', minWidth: 260 }}>
-          <label>Ingrédient</label>
+          <FormField label="Ingrédient" htmlFor="transfer-pesage-search" required>
           {ingredient ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <strong>{ingredient.name as string}</strong>
@@ -107,7 +108,7 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
             <>
               <div className="odoo-search-panel" style={{ margin: 0 }}>
                 <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un ingrédient…" className="odoo-search-input" autoFocus />
+                <input id="transfer-pesage-search" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un ingrédient…" className="odoo-search-input" autoFocus />
               </div>
               {matches.length > 0 && (
                 <ul className="transfer-pesage-matches">
@@ -122,16 +123,17 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
               )}
             </>
           )}
+          </FormField>
         </div>
 
         {/* 2. Lot (FEFO) */}
         {ingredient && (
           <div className="transfer-pesage-field" style={{ minWidth: 300 }}>
-            <label>Lot en économat (FEFO)</label>
+            <FormField label="Lot en économat (FEFO)" htmlFor="transfer-pesage-lot" required>
             {lotsLoading ? <Loader2 size={14} className="animate-spin" />
               : lots.length === 0 ? <span className="bsi-muted">Rien en économat pour cet ingrédient.</span>
               : (
-                <select value={lot?.id as string || ''} onChange={(e) => setLotId(e.target.value)} className="bsi-lot-select" style={{ maxWidth: 'none' }}>
+                <select id="transfer-pesage-lot" value={lot?.id as string || ''} onChange={(e) => setLotId(e.target.value)} className="ds-input">
                   {lots.map(l => (
                     <option key={l.id as string} value={l.id as string} disabled={!!l._expired}>
                       {((l.supplier_lot_number || l.lot_number) as string | null) || 'lot sans n°'} · DLC {l.expiration_date ? format(new Date(l.expiration_date as string), 'dd/MM/yy') : '—'} · économat {fmt(parseFloat(l.economat_quantity as string))}{l._expired ? ' · périmé' : ''}
@@ -139,14 +141,18 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
                   ))}
                 </select>
               )}
+            </FormField>
           </div>
         )}
 
         {/* 3. Quantité */}
         {ingredient && lot && (
           <div className="transfer-pesage-field">
-            <label>Quantité mise au pesage</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+            <FormField label="Quantité mise au pesage" htmlFor="transfer-pesage-qty" required
+              error={containerSize > 0 && !wholeLot && parsedContainers !== null && !qtyOk
+                ? <>Le lot n'a que {fmt(eco)} en économat ({fullContainersInLot} {container!.label.toLowerCase()}{fullContainersInLot > 1 ? 's' : ''} entier{fullContainersInLot > 1 ? 's' : ''}{lotRemainder > 1e-9 ? ` + ${fmt(lotRemainder)}` : ''}).</>
+                : undefined}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               {containerSize > 0 ? (
                 <>
                   {wholeLot ? (
@@ -155,7 +161,7 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
                     </span>
                   ) : (
                     <label className="bsi-containers" title={`${container!.label} de ${fmt(containerSize)} — transfert par contenant entier`}>
-                      <input type="text" inputMode="numeric" value={containers} onChange={(e) => setContainers(e.target.value.replace(/[^0-9]/g, ''))}
+                      <input id="transfer-pesage-qty" type="text" inputMode="numeric" value={containers} onChange={(e) => setContainers(e.target.value.replace(/[^0-9]/g, ''))}
                         className={`bsi-weigh-input bsi-containers-input ${containers && !qtyOk ? 'is-out' : qtyOk ? 'is-ok' : ''}`} placeholder="1" />
                       <span className="bsi-unit">× {container!.label} de {fmt(containerSize)}{parsedContainers !== null ? <> = <strong>{fmt(parsedContainers * containerSize)}</strong></> : null}</span>
                     </label>
@@ -173,7 +179,7 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
                 </>
               ) : (
                 <>
-                  <input type="text" inputMode="decimal" value={qty}
+                  <input id="transfer-pesage-qty" type="text" inputMode="decimal" value={qty}
                     onChange={(e) => setQty(e.target.value.replace(/[^0-9.,]/g, ''))}
                     className={`bsi-weigh-input ${qty && !qtyOk ? 'is-out' : qtyOk ? 'is-ok' : ''}`} placeholder={String(eco)} />
                   <span className="bsi-unit">{unit}</span>
@@ -182,18 +188,21 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
                   </button>
                 </>
               )}
-              <button type="button" className="odoo-btn-primary" disabled={!qtyOk || mutation.isPending} onClick={() => mutation.mutate()}>
-                {mutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Mettre au pesage
-              </button>
             </div>
-            {containerSize > 0 && !wholeLot && parsedContainers !== null && !qtyOk && (
-              <div role="alert" style={{ fontSize: 12, fontWeight: 600, color: 'var(--ds-danger)', marginTop: 2 }}>
-                Le lot n'a que {fmt(eco)} en économat ({fullContainersInLot} {container!.label.toLowerCase()}{fullContainersInLot > 1 ? 's' : ''} entier{fullContainersInLot > 1 ? 's' : ''}{lotRemainder > 1e-9 ? ` + ${fmt(lotRemainder)}` : ''}).
-              </div>
-            )}
+            </FormField>
           </div>
         )}
       </div>
+    </FormSection>
+    {onCancel ? (
+      <FormFooter onCancel={onCancel} submitLabel="Mettre au pesage" busy={mutation.isPending} disabled={!ingredient || !lot || !qtyOk} onSubmit={() => mutation.mutate()} />
+    ) : ingredient && lot && (
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        <button type="button" className="odoo-btn-primary" disabled={!qtyOk || mutation.isPending} onClick={() => mutation.mutate()} aria-busy={mutation.isPending || undefined}>
+          {mutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Mettre au pesage
+        </button>
+      </div>
+    )}
     </div>
   );
 }

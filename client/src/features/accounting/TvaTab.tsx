@@ -15,9 +15,8 @@ const REASON_LABEL: Record<string, string> = {
 };
 import { useAuth } from '../../context/AuthContext';
 import { money, currencySymbol } from '../../utils/money';
-import { DataPanel, EmptyState, KpiCard, KpiGrid, LoadingState, SectionHeader, Toolbar } from '../../components/ds';
+import { DataPanel, EmptyState, ErrorState, HeaderActions, KpiCard, KpiGrid, LoadingState, SectionHeader, Toolbar } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
-import { AccHeaderActions } from './AccHeaderActions';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -49,7 +48,7 @@ export default function TvaTab() {
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger-tva', startDate, endDate],
     queryFn: () => tvaDeclarationApi.declaration(startDate, endDate),
     enabled: isAdmin,
@@ -92,11 +91,11 @@ export default function TvaTab() {
 
   return (
     <>
-      <AccHeaderActions>
+      <HeaderActions>
         <button type="button" onClick={handleExport} className="odoo-btn-secondary" disabled={!data}>
           <Download size={13} aria-hidden="true" /> Exporter CSV
         </button>
-      </AccHeaderActions>
+      </HeaderActions>
 
       {data && (
         <>
@@ -159,7 +158,9 @@ export default function TvaTab() {
         />
       </Toolbar>
 
-      {isLoading || !data ? (
+      {isError ? (
+        <ErrorState error={error} title="La déclaration de TVA n'a pas pu être calculée" onRetry={() => refetch()} />
+      ) : isLoading || !data ? (
         <LoadingState />
       ) : (
         <>
@@ -171,22 +172,22 @@ export default function TvaTab() {
               <tbody>
                 <tr className="ds-group"><td colSpan={3}>TVA collectée sur ventes</td></tr>
                 {data.collected.length === 0 ? (
-                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune TVA collectée sur la période</td></tr>
+                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--ds-muted)' }}>Aucune TVA collectée sur la période</td></tr>
                 ) : data.collected.map(c => (
                   <tr key={c.code}>
                     <td className="ds-ref" style={{ width: 70 }}>{c.code}</td>
-                    <td>{c.label} <span style={{ color: 'var(--theme-text-muted)' }}>· {c.tva_rate}%</span></td>
+                    <td>{c.label} <span style={{ color: 'var(--ds-muted)' }}>· {c.tva_rate}%</span></td>
                     <td className="ds-num">{n(c.amount)}</td>
                   </tr>
                 ))}
 
                 <tr className="ds-group"><td colSpan={3}>TVA déductible sur achats</td></tr>
                 {data.deductible.length === 0 ? (
-                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune TVA déductible sur la période</td></tr>
+                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--ds-muted)' }}>Aucune TVA déductible sur la période</td></tr>
                 ) : data.deductible.map(d => (
                   <tr key={d.code}>
                     <td className="ds-ref" style={{ width: 70 }}>{d.code}</td>
-                    <td>{d.label} <span style={{ color: 'var(--theme-text-muted)' }}>· {d.tva_rate}%</span></td>
+                    <td>{d.label} <span style={{ color: 'var(--ds-muted)' }}>· {d.tva_rate}%</span></td>
                     <td className="ds-num">{n(d.amount)}</td>
                   </tr>
                 ))}
@@ -217,18 +218,18 @@ export default function TvaTab() {
                 <th className="ds-num" style={{ width: 110 }}>HT ({currencySymbol()})</th><th className="ds-num" style={{ width: 110 }}>TVA ({currencySymbol()})</th><th>Règlements</th></tr></thead>
               <tbody>
                 {statement.length === 0 ? (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune facture déductible sur la période</td></tr>
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ds-muted)' }}>Aucune facture déductible sur la période</td></tr>
                 ) : statement.map(r => (
                   <tr key={r.invoice_id} style={!r.is_vat_recoverable ? { opacity: 0.6 } : undefined}>
                     <td className="ds-strong">{r.supplier_name}</td>
                     <td className="ds-ref">{r.supplier_ice || <StatusTag tone="todo" label="sans ICE" />}</td>
                     <td className="ds-ref">{r.supplier_invoice_number || r.invoice_number}</td>
-                    <td style={{ fontSize: '0.75rem' }}>{r.vat_recoverable_from ? String(r.vat_recoverable_from).slice(0, 10).split('-').reverse().join('/') : '—'}</td>
+                    <td>{r.vat_recoverable_from ? String(r.vat_recoverable_from).slice(0, 10).split('-').reverse().join('/') : '—'}</td>
                     <td className="ds-num">{n(r.amount_ht)}</td>
                     <td className="ds-num">
                       {n(r.amount_tva)} {!r.is_vat_recoverable && <StatusTag tone="blocked" label="exclue" title={REASON_LABEL[r.vat_non_recoverable_reason ?? ''] ?? ''} />}
                     </td>
-                    <td style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.payments || '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{r.payments || '—'}</td>
                   </tr>
                 ))}
               </tbody>

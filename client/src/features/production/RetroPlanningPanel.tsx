@@ -8,6 +8,7 @@ import { productionEtapesApi } from '../../api/production-etapes.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { useProcessRefs } from '../../api/production.api';
+import './production.css';
 
 // Rétro-planning par temps de procédé (mig 432, épic labo L6).
 // À partir de l'heure de mise en vitrine, le serveur remonte étape par étape ;
@@ -105,8 +106,8 @@ export default function RetroPlanningPanel({ planId, planStatus, isChef, worksho
   const conflicts = lastResult?.conflicts ?? [];
 
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header flex items-center justify-between flex-wrap gap-2">
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head" style={{ justifyContent: "space-between" }}>
         <span className="flex items-center gap-2"><CalendarClock size={16} /> Rétro-planning par temps de procédé</span>
         {isChef && (
           <div className="flex items-center gap-2">

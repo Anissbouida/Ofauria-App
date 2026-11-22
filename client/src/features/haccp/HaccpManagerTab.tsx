@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePrompt } from '../../components/ui/ConfirmDialog';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Printer, Plus, ClipboardCheck } from 'lucide-react';
 import { format } from 'date-fns';
@@ -84,9 +85,12 @@ function ActionsView() {
     },
     onError: (e) => notify.error(e),
   });
-  const sendBack = (id: string) => {
-    const note = window.prompt('Pourquoi renvoyer cette action ? (le chef verra ce commentaire)');
-    if (note?.trim()) validate.mutate({ id, approve: false, note });
+  const askReason = usePrompt();
+  const sendBack = async (id: string) => {
+    const note = await askReason('Le chef verra ce commentaire avec l\'action renvoyée.', {
+      title: 'Renvoyer l\'action au chef', label: 'Motif du renvoi', required: true, multiline: true, confirmLabel: 'Renvoyer',
+    });
+    if (note?.trim()) validate.mutate({ id, approve: false, note: note.trim() });
   };
 
   return (

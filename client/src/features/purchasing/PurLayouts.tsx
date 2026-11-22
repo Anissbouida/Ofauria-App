@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Columns3, List, SquareKanban, Maximize2 } from 'lucide-react';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import '../sales/sales.css';
 import { money } from '../../utils/money';
@@ -148,9 +149,10 @@ export function PaneState({ title, sub, pct, late, steps }: { title: string; sub
 
 /**
  * Fiche compacte d'un bon de commande (colonne de droite) : étapes du BC, articles
- * commandés / reçus, pièces liées. `actions` = boutons propres à l'écran (Réceptionner, Facturer…).
+ * commandés / reçus, pièces liées. `actions` = l'action principale de l'écran (Réceptionner, Facturer…) ;
+ * `menu` = actions secondaires, regroupées avec « Fiche complète » dans le menu « ⋯ ».
  */
-export function POPane({ poId, actions, onFull, children }: { poId: string; actions?: ReactNode; onFull?: () => void; children?: ReactNode }) {
+export function POPane({ poId, actions, menu = [], onFull, children }: { poId: string; actions?: ReactNode; menu?: RowMenuItem[]; onFull?: () => void; children?: ReactNode }) {
   const { data: po, isLoading } = useQuery({ queryKey: ['purchase-orders', poId], queryFn: () => purchaseOrdersApi.getById(poId) });
   if (isLoading || !po) return <section className="ord-pane"><div className="kl-empty">{isLoading ? 'Chargement…' : 'Bon de commande introuvable.'}</div></section>;
 
@@ -181,7 +183,12 @@ export function POPane({ poId, actions, onFull, children }: { poId: string; acti
         amount={pmoney(total)} amountSub={stage >= 2 && stage < 5 ? `reçu ${pmoney(received)}` : undefined} />
       <div className="ord-actions">
         {actions}
-        {onFull && <button type="button" className="odoo-btn-secondary" onClick={onFull} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Maximize2 size={13} /> Fiche complète</button>}
+        {/* Sans action principale, la fiche complète reste un bouton visible ; sinon elle rejoint le menu. */}
+        {onFull && !actions && <button type="button" className="odoo-btn-secondary" onClick={onFull} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Maximize2 size={13} aria-hidden="true" /> Fiche complète</button>}
+        {(() => {
+          const items: RowMenuItem[] = [...(onFull && actions ? [{ label: 'Fiche complète', icon: Maximize2, onSelect: onFull }] : []), ...menu];
+          return items.length > 0 ? <RowMenu items={items} label={`Plus d'actions sur ${po.order_number}`} /> : null;
+        })()}
       </div>
       <PaneState title={title} late={late || !!po.on_hold}
         sub={cancelled ? (po.cancel_note || 'Ce BC ne sera plus livré.') : po.on_hold ? (po.hold_note || 'Ni réception ni facture tant que le blocage n\'est pas levé.')

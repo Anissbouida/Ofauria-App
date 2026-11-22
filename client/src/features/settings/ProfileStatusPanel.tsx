@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Circle, AlertCircle, ChevronRight } from 'lucide-react';
 import api from '../../api/client';
+import { SectionHeader } from '../../components/ds';
 
 /**
  * Configuration du profil d'industrie (C-03) : une tuile par couche avec son état et l'écran
@@ -13,9 +14,9 @@ interface ProfileLayer { key: string; label: string; state: LayerState; detail: 
 interface ProfileStatus { sector: { code: string; label: string }; layers: ProfileLayer[]; configured: number; total: number }
 
 const STATE: Record<LayerState, { label: string; color: string; icon: typeof Circle }> = {
-  configured: { label: 'Configuré', color: 'var(--kl-read-green, #1e7e34)', icon: CheckCircle2 },
-  default: { label: 'Par défaut', color: 'var(--odoo-text-muted, #6b7280)', icon: Circle },
-  todo: { label: 'À compléter', color: 'var(--kl-read-amber, #946300)', icon: AlertCircle },
+  configured: { label: 'Configuré', color: 'var(--ds-success)', icon: CheckCircle2 },
+  default: { label: 'Par défaut', color: 'var(--ds-muted)', icon: Circle },
+  todo: { label: 'À compléter', color: 'var(--ds-warning)', icon: AlertCircle },
 };
 
 export default function ProfileStatusPanel() {
@@ -29,19 +30,19 @@ export default function ProfileStatusPanel() {
   const todo = data.layers.filter(l => l.state === 'todo').length;
 
   return (
-    <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-label="Configuration du profil">
+    <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-label="Configuration du profil">
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Configuration du profil « {data.sector.label} »</div>
-          <div className="text-xs text-gray-500">
+          <SectionHeader title={`Configuration du profil « ${data.sector.label} »`} />
+          <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>
             {data.configured} couche(s) réglée(s) sur {data.total}{todo ? ` · ${todo} à compléter` : ''}. « Par défaut » : la valeur du profil s'applique.
           </div>
         </div>
         <div style={{ minWidth: 160 }} aria-label={`Avancement ${pct} %`}>
-          <div style={{ height: 6, background: 'var(--kl-fill, var(--odoo-border, #e5e7eb))', borderRadius: 99, overflow: 'hidden' }}>
-            <div style={{ width: `${pct}%`, height: '100%', background: 'var(--theme-accent, #714b67)' }} />
+          <div style={{ height: 6, background: 'var(--ds-sep)', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ width: `${pct}%`, height: '100%', background: 'var(--ds-accent)' }} />
           </div>
-          <div className="text-xs text-gray-500" style={{ textAlign: 'right', marginTop: 2 }}>{pct} %</div>
+          <div style={{ fontSize: 12, color: 'var(--ds-muted)', textAlign: 'right', marginTop: 2 }}>{pct} %</div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 8 }}>
@@ -50,16 +51,16 @@ export default function ProfileStatusPanel() {
           const Icon = st.icon;
           return (
             <button key={l.key} type="button" onClick={() => navigate(l.to)}
-              style={{ textAlign: 'left', border: '1px solid var(--theme-bg-separator, var(--odoo-border, #e5e7eb))', borderRadius: 12, padding: '9px 12px',
-                background: 'var(--odoo-bg, #fff)', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+              style={{ textAlign: 'left', border: '1px solid var(--ds-sep)', borderRadius: 12, padding: '9px 12px',
+                background: 'var(--ds-card)', color: 'var(--ds-ink)', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
               aria-label={`${l.label} : ${st.label}. ${l.detail}`}>
               <Icon size={16} style={{ color: st.color, flexShrink: 0 }} />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontWeight: 500, fontSize: '0.8125rem' }}>{l.label}</span>
                 <span style={{ display: 'block', fontSize: 12, color: st.color }}>{st.label}</span>
-                <span style={{ display: 'block', fontSize: 12, color: 'var(--odoo-text-muted, #6b7280)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.detail}</span>
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.detail}</span>
               </span>
-              <ChevronRight size={14} style={{ color: 'var(--odoo-text-muted, #6b7280)' }} />
+              <ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
             </button>
           );
         })}

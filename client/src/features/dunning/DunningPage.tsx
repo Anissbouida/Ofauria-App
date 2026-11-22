@@ -13,7 +13,7 @@ import { PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi, FilterChips } from '../sales/ListTemplate';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
-import { Tabs, SectionHeader, DataPanel, TableFooter, EmptyState, LoadingState } from '../../components/ds';
+import { Tabs, SectionHeader, DataPanel, TableFooter, EmptyState, LoadingState, ErrorState, Modal, FormField, FormSection, FormFooter } from '../../components/ds';
 
 /** Statut d'une lettre de relance en étiquette commune (à envoyer = action attendue). */
 const DUNNING_TONE: Record<DunningStatus, { tone: StatusTone; icon?: LucideIcon }> = {
@@ -26,8 +26,6 @@ const DUNNING_TONE: Record<DunningStatus, { tone: StatusTone; icon?: LucideIcon 
  */
 const n2 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fr = (v: string | null | undefined) => (v ? format(new Date(`${String(v).slice(0, 10)}T00:00:00`), 'dd/MM/yyyy') : '—');
-const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
-const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
 const VIA: Record<string, string> = { email: 'e-mail', print: 'courrier', phone: 'téléphone', other: 'autre' };
 
 async function openPdf(id: string) {
@@ -48,14 +46,14 @@ export default function DunningPage() {
 function Letters() {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: ov, isLoading } = useQuery({ queryKey: ['dunning', 'overview'], queryFn: dunningApi.overview });
+  const { data: ov, isLoading, isError, error, refetch } = useQuery({ queryKey: ['dunning', 'overview'], queryFn: dunningApi.overview });
   const [status, setStatus] = useState<DunningStatus | ''>('draft');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
   const params: Record<string, string> = { page: String(page), limit: String(PAGE_SIZE) };
   if (status) params.status = status;
-  const { data: list } = useQuery({ queryKey: ['dunning', 'list', params], queryFn: () => dunningApi.list(params) });
+  const { data: list, isError: listError, error: listErrorObj, refetch: refetchList } = useQuery({ queryKey: ['dunning', 'list', params], queryFn: () => dunningApi.list(params) });
   const refresh = () => qc.invalidateQueries({ queryKey: ['dunning'] });
 
   const create = useMutation({
@@ -76,6 +74,7 @@ function Letters() {
   const release = useMutation({ mutationFn: (id: string) => dunningApi.release(id), onSuccess: () => { refresh(); notify.success('Client débloqué'); }, onError: e => notify.error(apiErrorMessage(e)) });
   const unpause = useMutation({ mutationFn: (id: string) => dunningApi.pause(id, null), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
 
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
   if (isLoading || !ov) return <LoadingState label="Chargement des relances…" />;
   const letterMenu = (d: Dunning): RowMenuItem[] => [
     { label: openId === d.id ? 'Masquer la lettre' : 'Voir la lettre', icon: openId === d.id ? ChevronUp : ChevronDown, onSelect: () => setOpenId(openId === d.id ? null : d.id) },
@@ -143,7 +142,7 @@ function Letters() {
           { key: '', label: 'Toutes' },
           ...(Object.keys(DUNNING_STATUS_LABELS) as DunningStatus[]).map(k => ({ key: k, label: DUNNING_STATUS_LABELS[k] })),
         ]} />
-        {!list ? <LoadingState label="Chargement des lettres…" /> : !list.data.length ? (
+        {listError ? <ErrorState error={listErrorObj} onRetry={() => refetchList()} /> : !list ? <LoadingState label="Chargement des lettres…" /> : !list.data.length ? (
           <EmptyState icon={Mail} title={`Aucune lettre${status ? ` « ${DUNNING_STATUS_LABELS[status]} »` : ''}`} text="Les lettres préparées depuis « À relancer maintenant » apparaissent ici." />
         ) : (
           <DataPanel label="Lettres de relance" footer={<TableFooter page={page} pageSize={PAGE_SIZE} total={list.total} onPage={setPage} note={`lettre${list.total > 1 ? 's' : ''}`} />}>
@@ -214,7 +213,7 @@ function Letters() {
 /* ─── Niveaux ─────────────────────────────────────────────────────────────── */
 function Levels() {
   const qc = useQueryClient();
-  const { data: levels = [], isLoading } = useQuery({ queryKey: ['dunning', 'levels'], queryFn: dunningApi.levels });
+  const { data: levels = [], isLoading, isError, error, refetch } = useQuery({ queryKey: ['dunning', 'levels'], queryFn: dunningApi.levels });
   const [editing, setEditing] = useState<DunningLevel | null>(null);
   const save = useMutation({
     mutationFn: (l: DunningLevel) => dunningApi.saveLevel(l.level, {
@@ -225,6 +224,7 @@ function Levels() {
     onError: e => notify.error(apiErrorMessage(e)),
   });
   if (isLoading) return <LoadingState label="Chargement des niveaux…" />;
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
   const nextLevel = Math.min(9, (levels.at(-1)?.level ?? 0) + 1);
   return (
     <>
@@ -254,27 +254,39 @@ function Levels() {
           <Plus size={13} /> Ajouter un niveau</button></div>
       )}
       {editing && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg-alt)' }}>
-          <div style={{ fontWeight: 600 }}>Niveau {editing.level}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-            <label style={lab}>Libellé<input style={field} maxLength={80} value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} /></label>
-            <label style={lab}>Jours après l'échéance<input style={field} type="number" min={0} value={editing.days_after_due} onChange={e => setEditing({ ...editing, days_after_due: Number(e.target.value) })} /></label>
-            <label style={lab}>Frais de relance ({currencySymbol()})<input style={field} type="number" min={0} step="0.01" value={editing.fee_amount} onChange={e => setEditing({ ...editing, fee_amount: e.target.value })} /></label>
-            <label style={lab}>Pénalités (% par an)<input style={field} type="number" min={0} max={100} step="0.01" value={editing.interest_rate} onChange={e => setEditing({ ...editing, interest_rate: e.target.value })} /></label>
-          </div>
-          <label style={lab}>Objet<input style={field} maxLength={200} value={editing.subject} onChange={e => setEditing({ ...editing, subject: e.target.value })} /></label>
-          <label style={lab}>Texte de la lettre<textarea style={{ ...field, minHeight: 180, fontFamily: 'inherit' }} maxLength={4000} value={editing.body} onChange={e => setEditing({ ...editing, body: e.target.value })} /></label>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
-            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={editing.send_email} onChange={e => setEditing({ ...editing, send_email: e.target.checked })} /> Envoyer par e-mail</label>
-            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={editing.credit_hold} onChange={e => setEditing({ ...editing, credit_hold: e.target.checked })} /> Bloquer les achats à crédit à l'envoi</label>
-            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={editing.is_active} onChange={e => setEditing({ ...editing, is_active: e.target.checked })} /> Actif</label>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button className="odoo-btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
-            <button type="button" className="odoo-btn-primary" disabled={save.isPending || editing.label.trim().length < 2 || editing.body.trim().length < 10} onClick={() => save.mutate(editing)}>
-              {save.isPending && <Loader2 size={13} className="animate-spin" />} Enregistrer</button>
-          </div>
-        </div>
+        <Modal title={`Niveau de relance ${editing.level}`} onClose={() => setEditing(null)} width={720} locked={save.isPending}
+          footer={<FormFooter onCancel={() => setEditing(null)} onSubmit={() => save.mutate(editing)} busy={save.isPending}
+            disabled={editing.label.trim().length < 2 || editing.body.trim().length < 10} />}>
+          <FormSection title="Seuil et frais">
+            <div className="ds-form-grid cols-4">
+              <FormField label="Libellé" htmlFor="dl-label" required error={editing.label.trim().length < 2 ? 'Au moins 2 caractères.' : undefined}>
+                <input id="dl-label" className="ds-input" maxLength={80} value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} />
+              </FormField>
+              <FormField label="Jours après l'échéance" htmlFor="dl-days">
+                <input id="dl-days" className="ds-input" type="number" min={0} value={editing.days_after_due} onChange={e => setEditing({ ...editing, days_after_due: Number(e.target.value) })} />
+              </FormField>
+              <FormField label={`Frais de relance (${currencySymbol()})`} htmlFor="dl-fee">
+                <input id="dl-fee" className="ds-input" type="number" min={0} step="0.01" value={editing.fee_amount} onChange={e => setEditing({ ...editing, fee_amount: e.target.value })} />
+              </FormField>
+              <FormField label="Pénalités (% par an)" htmlFor="dl-rate">
+                <input id="dl-rate" className="ds-input" type="number" min={0} max={100} step="0.01" value={editing.interest_rate} onChange={e => setEditing({ ...editing, interest_rate: e.target.value })} />
+              </FormField>
+            </div>
+          </FormSection>
+          <FormSection title="Lettre">
+            <FormField label="Objet" htmlFor="dl-subject">
+              <input id="dl-subject" className="ds-input" maxLength={200} value={editing.subject} onChange={e => setEditing({ ...editing, subject: e.target.value })} />
+            </FormField>
+            <FormField label="Texte de la lettre" htmlFor="dl-body" required error={editing.body.trim().length < 10 ? 'Au moins 10 caractères.' : undefined}>
+              <textarea id="dl-body" className="ds-input" style={{ minHeight: 180 }} maxLength={4000} value={editing.body} onChange={e => setEditing({ ...editing, body: e.target.value })} />
+            </FormField>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+              <label htmlFor="dl-email" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input id="dl-email" type="checkbox" checked={editing.send_email} onChange={e => setEditing({ ...editing, send_email: e.target.checked })} /> Envoyer par e-mail</label>
+              <label htmlFor="dl-hold" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input id="dl-hold" type="checkbox" checked={editing.credit_hold} onChange={e => setEditing({ ...editing, credit_hold: e.target.checked })} /> Bloquer les achats à crédit à l'envoi</label>
+              <label htmlFor="dl-active" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input id="dl-active" type="checkbox" checked={editing.is_active} onChange={e => setEditing({ ...editing, is_active: e.target.checked })} /> Actif</label>
+            </div>
+          </FormSection>
+        </Modal>
       )}
     </>
   );
