@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
 
 /*
@@ -41,6 +42,29 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
   const [highlighted, setHighlighted] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Liste posée hors du flux (portail, position fixe) : une carte à débordement masqué
+  // (ds-panel, fenêtre défilante) ne la coupe plus. Elle s'ouvre vers le haut s'il manque
+  // de place en dessous, et suit le champ au défilement.
+  const [place, setPlace] = useState<CSSProperties | null>(null);
+  useLayoutEffect(() => {
+    if (!open) { setPlace(null); return; }
+    const update = () => {
+      const r = containerRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const below = window.innerHeight - r.bottom;
+      const up = below < 260 && r.top > below;
+      setPlace({
+        position: 'fixed', left: r.left, minWidth: r.width,
+        ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }),
+        maxHeight: Math.max(120, Math.min(240, (up ? r.top : below) - 12)),
+      });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => { window.removeEventListener('scroll', update, true); window.removeEventListener('resize', update); };
+  }, [open]);
 
   const selected = options.find(o => o.id === value) || null;
 
@@ -54,7 +78,8 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
   useEffect(() => {
     if (!open) return;
     const onMouseDown = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      if (containerRef.current && !containerRef.current.contains(t) && !listRef.current?.contains(t)) {
         setOpen(false);
         setQuery('');
       }
@@ -127,43 +152,46 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
           <X size={12} />
         </button>
       )}
-      {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 30,
-          minWidth: '100%', width: 'max-content', maxWidth: 340,
-          backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)',
-          borderRadius: 4, maxHeight: 240, overflowY: 'auto',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+      {open && place && createPortal(
+        <div ref={listRef} role="listbox" aria-label={ariaLabel ?? placeholder} style={{
+          ...place, zIndex: 1000,
+          width: 'max-content', maxWidth: 340,
+          backgroundColor: 'var(--odoo-bg, var(--ds-card))', border: '1px solid var(--odoo-border, var(--ds-line))',
+          borderRadius: 8, overflowY: 'auto',
+          boxShadow: '0 8px 24px rgba(15,23,42,0.14)',
         }}>
           {filtered.length === 0 && (
-            <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', padding: '0.5rem 0.75rem', margin: 0 }}>Aucun résultat</p>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted, var(--ds-muted))', padding: '0.5rem 0.75rem', margin: 0 }}>Aucun résultat</p>
           )}
           {filtered.map((o, i) => (
             <button
               type="button"
               key={o.id}
               onMouseDown={e => { e.preventDefault(); pick(o.id); }}
+              role="option"
+              aria-selected={o.id === value}
               onMouseEnter={() => setHighlighted(i)}
               className="w-full text-left text-sm flex items-center justify-between gap-3"
               style={{
                 padding: '0.5rem 0.75rem',
-                backgroundColor: i === highlighted ? 'var(--odoo-bg-hover)' : (o.id === value ? 'var(--odoo-bg-alt)' : 'transparent'),
+                backgroundColor: i === highlighted ? 'var(--odoo-bg-hover, var(--ds-hair))' : (o.id === value ? 'var(--odoo-bg-alt, var(--ds-bg))' : 'transparent'),
                 cursor: 'pointer', border: 'none',
               }}>
               <span style={{ minWidth: 0 }}>
-                <span className="font-medium" style={{ color: 'var(--odoo-text)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span className="font-medium" style={{ color: 'var(--odoo-text, var(--ds-ink))', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {o.label}
                 </span>
                 {o.sublabel && (
-                  <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{o.sublabel}</span>
+                  <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted, var(--ds-muted))' }}>{o.sublabel}</span>
                 )}
               </span>
               {o.detail && (
-                <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', flexShrink: 0 }}>{o.detail}</span>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted, var(--ds-muted))', flexShrink: 0 }}>{o.detail}</span>
               )}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
