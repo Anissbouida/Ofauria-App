@@ -303,6 +303,7 @@ débordement horizontal, aucun champ visible sans libellé.
 | Approbateurs numérotés « 1. 2. » à la création d'un circuit | flèches entre approbateurs, comme dans le tableau des circuits |
 | Tâches planifiées : colonne Résultat écrasée sur 4 lignes | largeur minimale de colonne |
 | Référentiel : un intertitre flottant et une carte par domaine (7 cartes), compteur hors du bord | un seul panneau standard, lignes de groupe repliables `ds-group` avec le nombre de tables |
+| Paramètres hors gabarit des modules : bande blanche carrée derrière chaque onglet (`.odoo-scope` à fond blanc), action principale noyée dans la page, pas de pied de tableau | `.odoo-scope` transparent hors fenêtres ; emplacement d'actions dans la barre du fil d'Ariane des Paramètres (`HeaderActions`) : Nouveau taux, Exporter / Nouvelle catégorie, Nouvel établissement, Ajouter une devise, Nouvelle règle ; barre d'outils `Toolbar` et `TableFooter` sur TVA et tables du Référentiel |
 | Référentiel : libellés sans accents (« Categories de depenses », « Unites de mesure », « Types de conge »…) | migration 628 : libellés et descriptions des tables du référentiel accentués (seulement si le texte d'origine n'a pas été modifié) |
 
 Restent volontairement hors jetons : l'aperçu du ticket de caisse (rendu papier noir sur blanc) et
