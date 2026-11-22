@@ -308,3 +308,15 @@ débordement horizontal, aucun champ visible sans libellé.
 
 Restent volontairement hors jetons : l'aperçu du ticket de caisse (rendu papier noir sur blanc) et
 les pastilles de couleur des canaux de vente (couleur choisie par l'utilisateur).
+
+### 10.4 Passe sur le code hérité (champs, couleurs, frises)
+
+| Constat | Correction |
+|---|---|
+| 39 champs à l'ancienne classe `input` (Projets, fiches techniques, Production) | `ds-input` dans les formulaires, `ds-input sm` dans les lignes ; marges et tailles de police forcées retirées. Restent volontairement la caisse et les écrans de connexion (plein écran, conçus à part) |
+| Liste de SearchSelect coupée par les cartes (fiche technique › Sorties déclarées) | liste en portail, position fixe, ouverture vers le haut si besoin ; champ aux hauteurs du Design System (40 px formulaire, 36 px barre d'outils) et aux jetons |
+| ≈ 2 300 classes Tailwind de gris et de couleurs en dur | table de correspondance unique dans `design-system.css` (écrans `.kl-ds`) : gris → encre/corps/atténué/séparateurs ; rouge → danger, vert → succès, ambre/orange → alerte, bleu/indigo → accent ; violet reste couleur de catégorie |
+| Frises d'avancement numérotées (plan de production, BC, demande de prix, demande boutique, file magasin, paie, lancement de production) | pastilles sans numéro : cochée si faite, point plein sur l'étape en cours |
+| Petits boutons à taille forcée et couleurs hors palette sur la fiche de plan | `ds-btn-sm`, boutons principaux standard |
+
+Restent hors de cette passe : les ≈ 5 800 styles en ligne de mise en page (sans effet visible, à reprendre au fil de l'eau) et la numérotation des étapes de fabrication d'une fiche technique (ordre de travail réel, conservé).
