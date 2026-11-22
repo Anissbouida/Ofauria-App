@@ -389,3 +389,6 @@ textarea.ds-input { height: auto; min-height: 84px; padding: 8px 12px; resize: v
 /* Boîtes posées hors d'un écran (confirmation, saisie de motif) : mêmes boutons en pilule
    que dans les écrans (la coquille .kl-apple ne les couvre pas). */
 .ds-sheet.kl-ds :is(.odoo-btn-primary, .odoo-btn-secondary, .odoo-btn-danger):not(.ds-btn-sm) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+/* Le tableau ne masque plus son débordement dans un panneau : sinon la colonne d'actions
+   collée à droite perd son effet (le défilement horizontal est porté par .ds-scroll). */
+.kl-ds.kl-ds .ds-panel .odoo-table { overflow: visible !important; }
