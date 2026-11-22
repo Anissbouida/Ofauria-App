@@ -248,13 +248,13 @@ export default function CustomersPage() {
     else { setSortKey(key); setSortDir(key === 'name' || key === 'city' ? 'asc' : 'desc'); }
   };
   const sortableTh = (key: SortKey, label: string, align?: 'right', minWidth?: number) => (
-    <th onClick={() => toggleSort(key)} aria-sort={sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-      style={{ cursor: 'pointer', userSelect: 'none', textAlign: align, minWidth }}>
+    <th aria-sort={sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+      style={{ textAlign: align, minWidth }}><button type="button" className="ds-sort" onClick={() => toggleSort(key)}>
       {label}{' '}
       {sortKey !== key
         ? <ArrowUpDown size={10} style={{ opacity: 0.3, verticalAlign: 'middle' }} />
         : sortDir === 'asc' ? <ArrowUp size={10} style={{ verticalAlign: 'middle' }} /> : <ArrowDown size={10} style={{ verticalAlign: 'middle' }} />}
-    </th>
+    </button></th>
   );
 
   const hasFilters = !!(typeFilter || tierFilter || cityFilter || searchTerm);

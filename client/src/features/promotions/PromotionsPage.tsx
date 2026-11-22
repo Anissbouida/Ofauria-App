@@ -43,7 +43,7 @@ const chip = (on: boolean): React.CSSProperties => ({
   background: on ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)', color: on ? 'var(--odoo-purple)' : 'var(--odoo-text)', fontWeight: on ? 600 : 400,
 });
 /** Signal d'état : point de couleur + texte (couleurs de la palette odoo-tag). */
-const DOT: Record<string, string> = { green: 'var(--ds-success)', blue: '#1f6391', orange: 'var(--ds-warning)', grey: 'var(--ds-muted)', red: 'var(--ds-danger)', purple: 'var(--odoo-purple)' };
+const DOT: Record<string, string> = { green: 'var(--ds-success)', blue: 'var(--ds-cat-blue)', orange: 'var(--ds-warning)', grey: 'var(--ds-muted)', red: 'var(--ds-danger)', purple: 'var(--odoo-purple)' };
 function Dot({ color, children }: { color: keyof typeof DOT; children: React.ReactNode }) {
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
     <span style={{ width: 8, height: 8, borderRadius: 999, background: DOT[color], flexShrink: 0 }} />{children}</span>;
@@ -233,7 +233,7 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
                     </td>
                   </tr>
                   {expanded && (
-                    <tr style={{ background: 'var(--odoo-bg-alt, #f8f9fa)' }}>
+                    <tr style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
                       <td></td>
                       <td colSpan={7} style={{ padding: '12px 12px 14px' }}>
                         <div style={{ fontSize: '0.875rem', marginBottom: 10 }}>{sentence(p, targets(p))}</div>
@@ -486,8 +486,8 @@ const dec = (v: string) => Number(String(v).replace(',', '.')) || 0;
 const pctTxt = (n: number) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %`;
 /** Couleur d'un niveau (champ color, sinon par rang) ; uniquement des teintes de la palette odoo-tag. */
 const TIER_COLORS: Record<string, { bar: string; tag: string }> = {
-  orange: { bar: '#e8a87c', tag: 'odoo-tag-orange' }, grey: { bar: 'var(--ds-muted)', tag: 'odoo-tag-grey' }, yellow: { bar: '#e0b84a', tag: 'odoo-tag-yellow' },
-  blue: { bar: '#7fb2dc', tag: 'odoo-tag-blue' }, green: { bar: '#7dc191', tag: 'odoo-tag-green' }, purple: { bar: 'var(--odoo-purple)', tag: 'odoo-tag-purple' },
+  orange: { bar: 'var(--ds-cat-brown)', tag: 'odoo-tag-orange' }, grey: { bar: 'var(--ds-muted)', tag: 'odoo-tag-grey' }, yellow: { bar: 'var(--ds-cat-gold)', tag: 'odoo-tag-yellow' },
+  blue: { bar: 'var(--ds-cat-blue)', tag: 'odoo-tag-blue' }, green: { bar: 'var(--ds-cat-olive)', tag: 'odoo-tag-green' }, purple: { bar: 'var(--odoo-purple)', tag: 'odoo-tag-purple' },
 };
 const tierColor = (t: TierForm, i: number) => TIER_COLORS[t.color ?? ''] ?? Object.values(TIER_COLORS)[i % 6];
 
@@ -730,7 +730,7 @@ function LoyaltyTab() {
 
       {dirty && (
         <div style={{ position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
-          border: '1px solid #ffe5d0', borderRadius: 4, background: '#fff8f1', boxShadow: '0 -2px 8px rgba(0,0,0,0.06)' }}>
+          border: '1px solid color-mix(in srgb, var(--ds-warning) 30%, var(--ds-card))', borderRadius: 12, background: 'var(--ds-warning-bg)', boxShadow: '0 -2px 8px rgba(0,0,0,0.06)' }}>
           <Info size={14} style={{ color: 'var(--ds-warning)' }} />
           <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--ds-warning)' }}>
             {tiersInvalid ? 'Complétez le nom, le code et le seuil de chaque niveau avant d\'enregistrer.' : 'Modifications non enregistrées'}

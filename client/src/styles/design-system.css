@@ -259,3 +259,32 @@ textarea.ds-input { height: auto; min-height: 84px; padding: 8px 12px; resize: v
 .ds-collapsible > summary::before { content: '›'; display: inline-block; transition: transform .15s; color: var(--ds-muted); }
 .ds-collapsible[open] > summary::before { transform: rotate(90deg); }
 .ds-collapsible-body { display: flex; flex-direction: column; gap: 14px; padding-top: 12px; }
+
+/* ── Palette catégorielle : distinguer des familles (canaux, rôles de nomenclature, shifts,
+   destinations d'invendus…), jamais porter un sens d'état. Contraste du texte ≥ 4,5:1 sur le fond. */
+:root {
+  --ds-cat-blue: #1D5F9A;   --ds-cat-blue-bg: #E6F0FA;
+  --ds-cat-purple: #6D3FC0; --ds-cat-purple-bg: #F1EBFB;
+  --ds-cat-teal: #0F766E;   --ds-cat-teal-bg: #E3F4F2;
+  --ds-cat-pink: #B0306A;   --ds-cat-pink-bg: #FBEAF2;
+  --ds-cat-gold: #8A6100;   --ds-cat-gold-bg: #FBF3DC;
+  --ds-cat-brown: #8A4B12;  --ds-cat-brown-bg: #F7ECE1;
+  --ds-cat-olive: #4D6B12;  --ds-cat-olive-bg: #EEF4E0;
+  --ds-cat-slate: #475569;  --ds-cat-slate-bg: #EEF1F5;
+}
+
+/* ── En-tête de colonne triable (clavier : Tab puis Entrée) ── */
+.ds-sort { all: unset; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border-radius: 4px; font: inherit; color: inherit; white-space: nowrap; }
+.ds-num .ds-sort, th.ds-num > .ds-sort { flex-direction: row; }
+.ds-sort:hover { color: var(--ds-ink); }
+.ds-sort:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* Petit tableau de récapitulatif (totaux, solde) : sans panneau, aligné à droite, chiffres tabulaires. */
+.ds-summary { border-collapse: collapse; margin-left: auto; font-size: 14px; min-width: 260px; }
+.ds-summary :is(th, td) { padding: 6px 0 6px 24px; border: 0; background: transparent; text-align: right; font-variant-numeric: tabular-nums; color: var(--ds-body); white-space: nowrap; }
+.ds-summary :is(th, td):first-child { padding-left: 0; text-align: left; color: var(--ds-muted); font-weight: 500; }
+.ds-summary tr + tr :is(th, td) { border-top: 1px solid var(--ds-hair); }
+.ds-summary tfoot :is(th, td), .ds-summary tr.ds-total :is(th, td) { font-weight: 700; color: var(--ds-ink); border-top: 1px solid var(--ds-sep); }
+/* Sous-tableau imbriqué dans une ligne dépliée. */
+.kl-ds.kl-ds .odoo-table.ds-nested { margin: 0; box-shadow: none !important; background: transparent; border-radius: 0 !important; }
+.kl-ds.kl-ds .odoo-table.ds-nested thead th { background: transparent; }

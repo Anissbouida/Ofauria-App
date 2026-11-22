@@ -28,7 +28,7 @@
 .module-shell-item.active svg { color: var(--odoo-purple); }
 .module-shell-badge {
   margin-inline-start: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
-  background: #dc3545; color: #fff; font-size: 11px; font-weight: 700;
+  background: var(--ds-danger); color: #fff; font-size: 11px; font-weight: 700;
   display: inline-flex; align-items: center; justify-content: center;
 }
 .module-shell-item .module-shell-external { margin-inline-start: auto; }

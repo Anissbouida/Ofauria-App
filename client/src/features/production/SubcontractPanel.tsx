@@ -9,7 +9,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { money } from '../../utils/money';
 
-import { LoadingState } from '../../components/ds';
+import { DataPanel, LoadingState, SectionHeader } from '../../components/ds';
 import './production.css';
 /**
  * Sous-traitance de l'ordre (M9, mig 584) : sous-traitant et prix de façon, bon d'envoi des
@@ -107,19 +107,18 @@ export default function SubcontractPanel({ planId, planStatus, canEdit }: { plan
         )}
 
         {data.shipments.map(s => (
-          <div key={s.id} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6 }}>
-            <div style={{ padding: '6px 10px', fontSize: '0.8125rem', display: 'flex', gap: 12, background: 'var(--odoo-bg-alt)' }}>
-              <strong style={{ fontFamily: 'monospace' }}>{s.numero}</strong>
-              <span>{new Date(s.shipped_at).toLocaleString('fr-FR')}</span>
-              {s.shipped_by_name && <span style={{ color: 'var(--odoo-text-muted)' }}>par {s.shipped_by_name}</span>}
-            </div>
+          <div key={s.id}>
+            <SectionHeader title={<span className="ds-ref">{s.numero}</span>}
+              note={<>{new Date(s.shipped_at).toLocaleString('fr-FR')}{s.shipped_by_name && <> · par {s.shipped_by_name}</>}</>} />
+            <DataPanel label={`Envoi ${s.numero}`}>
             <table className="odoo-table ds-dense">
               <thead><tr><th>Composant</th><th className="ds-num">Quantité envoyée</th></tr></thead>
               <tbody>
                 {s.lines.length === 0 && <tr><td colSpan={2} style={{ color: 'var(--odoo-text-muted)' }}>Aucun composant calculé</td></tr>}
-                {s.lines.map((l, i) => <tr key={i}><td>{l.label}</td><td className="ds-num">{l.quantity} {l.unit ?? ''}</td></tr>)}
+                {s.lines.map((l, i) => <tr key={i}><td className="ds-strong">{l.label}</td><td className="ds-num">{l.quantity} {l.unit ?? ''}</td></tr>)}
               </tbody>
             </table>
+            </DataPanel>
           </div>
         ))}
       </div>

@@ -235,3 +235,12 @@ suivants changent :
 | En-têtes de colonne triables au clavier | non traité |
 | Scénarios des agents métier | non rejoués sur cette version |
 | Caisse | exclue de la mission |
+
+## 9. Troisième passe — restes du § 8.4 (2026-11-22)
+
+| Point | Correction |
+|---|---|
+| Tri au clavier | Les 41 en-têtes triables sont de vrais boutons (Tab, Entrée), `aria-sort` conservé ; composant commun `SortTh` pour les nouveaux écrans |
+| Couleurs en dur | Palette catégorielle commune (`--ds-cat-*`, 8 teintes contrastées, `catTone()`) pour distinguer des familles ; couleurs d'état ramenées à un seul rouge, orange et vert : familles `--prj-*`, étiquettes `odoo-tag-*`, alertes, points de statut, bandeaux et boutons danger pointent sur les jetons. Restent volontairement : préréglages de thème, documents imprimés, étiquettes Niimbot, valeurs par défaut des sélecteurs de couleur |
+| Tableaux | Les tableaux restants sont dans un `DataPanel`, en récapitulatif `ds-summary` (totaux, soldes) ou en sous-tableau `ds-nested` ; la seule exception est le tableau Attendu / Saisi / Écart des sessions de caisse, stylé par sa feuille Apple |
+| Feuille commune | `design-system.css` chargée dès le démarrage (`main.tsx`) : les jetons existent sur tous les écrans, y compris la connexion |

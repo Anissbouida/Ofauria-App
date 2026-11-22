@@ -28,7 +28,7 @@
   --kl-accent-ink: var(--theme-accent-hover);
   --kl-accent-soft: var(--theme-accent-light);
   --kl-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .05);
-  --prj-green: #15803D; --prj-orange: #B45309; --prj-red: #DC2626;
+  --prj-green: var(--ds-success); --prj-orange: var(--ds-warning); --prj-red: var(--ds-danger);
   --kl-nav: color-mix(in srgb, var(--theme-bg-secondary) 45%, var(--theme-bg-page));
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   letter-spacing: -.011em;
@@ -218,7 +218,7 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
   --kl-muted: var(--theme-text-muted); --kl-sep: var(--theme-bg-separator); --kl-hair: color-mix(in srgb, var(--theme-bg-separator) 70%, transparent);
   --kl-fill: color-mix(in srgb, var(--theme-text-muted) 13%, transparent); --kl-accent: var(--theme-accent); --kl-accent-ink: var(--theme-accent-hover);
   --kl-accent-soft: var(--theme-accent-light); --kl-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .05);
-  --prj-green: #15803D; --prj-orange: #B45309; --prj-red: #DC2626;
+  --prj-green: var(--ds-success); --prj-orange: var(--ds-warning); --prj-red: var(--ds-danger);
   display: flex; flex-direction: column; overflow: hidden; border-radius: 20px;
   background-color: var(--kl-bg) !important; color: var(--kl-ink);
   box-shadow: 0 24px 60px rgba(15, 23, 42, .22), 0 0 0 .5px rgba(15, 23, 42, .08);
@@ -244,9 +244,9 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-sheet .kl-sec small { font-size: 13px; color: var(--kl-muted); }
 .kl-sheet .kl-empty { padding: 18px 16px; text-align: center; color: var(--kl-muted); font-size: 14px; display: flex; justify-content: center; align-items: center; gap: 8px; }
 .kl-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: 0; font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; }
-.kl-pill.o { background: color-mix(in srgb, #B45309 13%, transparent); color: #B45309; }
-.kl-pill.r { background: color-mix(in srgb, #DC2626 12%, transparent); color: #DC2626; }
-.kl-pill.g { background: color-mix(in srgb, #15803D 12%, transparent); color: #15803D; }
+.kl-pill.o { background: var(--ds-warning-bg); color: var(--ds-warning); }
+.kl-pill.r { background: var(--ds-danger-bg); color: var(--ds-danger); }
+.kl-pill.g { background: var(--ds-success-bg); color: var(--ds-success); }
 .kl-pill.b { background: var(--theme-accent-light); color: var(--theme-accent-hover); }
 .kl-pill.x { background: color-mix(in srgb, var(--theme-text-muted) 14%, transparent); color: var(--theme-text-body); }
 /* Panneaux internes (litiges, créance douteuse) : titres, champs et tableaux au même style. */
@@ -278,7 +278,7 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-apple .fixed .odoo-btn-primary, .kl-apple .fixed .odoo-btn-secondary, .kl-apple .fixed .odoo-btn-danger { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; }
 .kl-apple .fixed .odoo-btn-secondary { border-color: transparent; background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--theme-accent-hover); }
 .kl-apple .fixed .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-bg-card)); }
-.kl-apple .fixed .odoo-btn-danger { border: 0; background: color-mix(in srgb, #DC2626 10%, transparent); color: #DC2626; }
+.kl-apple .fixed .odoo-btn-danger { border: 0; background: var(--ds-danger-bg); color: var(--ds-danger); }
 .kl-apple .fixed .odoo-section-header { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; background: transparent; }
 .kl-apple .fixed .odoo-table thead th { background: transparent; text-transform: none; letter-spacing: 0; font-weight: 500; }
 .kl-apple .fixed input:not([type=checkbox]):not([type=radio]):not([type=range]), .kl-apple .fixed select, .kl-apple .fixed textarea { border-radius: 8px; }

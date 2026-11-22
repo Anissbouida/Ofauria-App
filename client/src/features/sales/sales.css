@@ -14,7 +14,7 @@
 .sal-bulk button { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, .3); background: transparent; color: #fff; font: inherit; font-size: 0.8125rem; cursor: pointer; }
 .sal-bulk button:hover:not(:disabled) { background: rgba(255, 255, 255, .12); }
 .sal-bulk button:disabled { opacity: .55; cursor: default; }
-.sal-bulk button.danger { color: #FCA5A5; }
+.sal-bulk button.danger { color: color-mix(in srgb, var(--ds-danger) 45%, #fff); }
 
 .sal-panel { overflow: hidden; }
 .sal-panel .odoo-table { margin: 0; }
@@ -113,7 +113,7 @@
  * .sal-module posée par SalesLayout). Les fenêtres (.fixed) et les panneaux de la refonte
  * (.prj-panel) gardent leur présentation.
  */
-.sal-module { --prj-green: #1F7A4D; --prj-orange: #B45309; --prj-red: #B42318; --prj-track: var(--odoo-border); min-height: 100%; }
+.sal-module { --prj-green: var(--ds-success); --prj-orange: var(--ds-warning); --prj-red: var(--ds-danger); --prj-track: var(--odoo-border); min-height: 100%; }
 .sal-module .pb-pipeline:not(.fixed .pb-pipeline) { border-radius: 10px !important; background: var(--theme-bg-card) !important; padding-bottom: 12px; }
 .sal-module .pb-pipeline-head { padding: 12px 14px 0 !important; }
 .sal-module .pb-pipeline-title { font-size: 0.9375rem !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--odoo-text) !important; }
@@ -150,7 +150,7 @@
 .ord-row.sel::before, .ord-row.sel + .ord-row::before { display: none; }
 .ord-dot { position: absolute; left: 10px; top: 16px; width: 8px; height: 8px; border-radius: 50%; }
 .ord-dot.today { background: var(--theme-accent); }
-.ord-dot.late { background: var(--prj-red, #DC2626); }
+.ord-dot.late { background: var(--prj-red, var(--ds-danger)); }
 .ord-row.sel .ord-dot.today { background: #fff; }
 .ord-l1 { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .ord-nm { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -174,13 +174,13 @@
 .ord-state-sub { font-size: 14px; color: var(--theme-text-muted); margin-top: 2px; }
 .ord-track { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--theme-text-muted) 13%, transparent); margin: 18px 0 12px; overflow: hidden; }
 .ord-track span { display: block; height: 100%; border-radius: 99px; background: var(--theme-accent); }
-.ord-track.late span { background: var(--prj-red, #DC2626); }
+.ord-track.late span { background: var(--prj-red, var(--ds-danger)); }
 .ord-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
 .ord-steps li { font-size: 13px; color: var(--theme-text-muted); min-width: 0; }
 .ord-steps li b { display: block; font-weight: 600; color: var(--theme-text-muted); }
 .ord-steps li.done b { color: var(--theme-text-strong); }
 .ord-steps li.current b { color: var(--theme-accent-hover); }
-.ord-steps li.warn b { color: var(--prj-orange, #B45309); }
+.ord-steps li.warn b { color: var(--prj-orange, var(--ds-warning)); }
 .ord-steps li span, .ord-steps li .sal-link { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; margin: 0; text-align: left; }
 .ord-line { display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 9px 16px; position: relative; }
 .ord-line + .ord-line::before, .ord-kv + .ord-kv::before, .ord-ev + .ord-ev::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: color-mix(in srgb, var(--theme-bg-separator) 70%, transparent); }

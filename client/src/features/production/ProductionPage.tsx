@@ -43,14 +43,14 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }) {
   const active = currentKey === sk;
   return (
-    <th onClick={() => onSort(sk)} style={{ textAlign: align }}>
+    <th style={{ textAlign: align }}><button type="button" className="ds-sort" onClick={() => onSort(sk)}>
       <span className="inline-flex items-center gap-1">
         {label}
         <span className={`odoo-sort-arrow ${active ? 'active' : ''}`}>
           {active ? (currentDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
         </span>
       </span>
-    </th>
+    </button></th>
   );
 }
 

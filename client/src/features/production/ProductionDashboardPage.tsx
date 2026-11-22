@@ -107,9 +107,9 @@ export default function ProductionDashboardPage() {
   const totalCout = parseFloat(coutStats?.total_cout || '1');
   const costParts: Array<{ label: string; icon: React.ReactNode; value: number; color: string }> = coutStats ? [
     { label: 'Matières', icon: <Package size={12} />, value: parseFloat(coutStats.total_matieres || '0'), color: 'var(--prj-orange)' },
-    { label: 'Emballages', icon: <Package size={12} />, value: parseFloat(coutStats.total_emballages || '0'), color: '#C2410C' },
+    { label: 'Emballages', icon: <Package size={12} />, value: parseFloat(coutStats.total_emballages || '0'), color: 'var(--ds-cat-brown)' },
     { label: "Main-d'œuvre", icon: <Users size={12} />, value: parseFloat(coutStats.total_main_oeuvre || '0'), color: 'var(--kl-accent)' },
-    { label: 'Énergie', icon: <Zap size={12} />, value: parseFloat(coutStats.total_energie || '0'), color: '#7C3AED' },
+    { label: 'Énergie', icon: <Zap size={12} />, value: parseFloat(coutStats.total_energie || '0'), color: 'var(--ds-cat-purple)' },
     { label: 'Charges', icon: <DollarSign size={12} />, value: parseFloat(coutStats.total_charges || '0'), color: 'var(--prj-green)' },
     { label: 'Pertes', icon: <AlertTriangle size={12} />, value: parseFloat(coutStats.total_pertes || '0'), color: 'var(--ds-danger)' },
   ] : [];

@@ -29,10 +29,10 @@ const DESTS: Destination[] = ['reexpose', 'retour_stock', 'recycle', 'waste'];
 
 /** Un statut = une couleur (palette odoo-tag). */
 export const DEST: Record<Destination, { label: string; tag: string; dot: string; icon: typeof Store }> = {
-  reexpose: { label: 'Vitrine J+1', tag: 'odoo-tag-green', dot: '#28a745', icon: ShieldCheck },
-  retour_stock: { label: 'Retour réserve', tag: 'odoo-tag-blue', dot: '#1f6391', icon: Package },
-  recycle: { label: 'Valoriser', tag: 'odoo-tag-orange', dot: '#d9822b', icon: Recycle },
-  waste: { label: 'Détruire', tag: 'odoo-tag-red', dot: '#dc3545', icon: Trash2 },
+  reexpose: { label: 'Vitrine J+1', tag: 'odoo-tag-green', dot: 'var(--ds-success)', icon: ShieldCheck },
+  retour_stock: { label: 'Retour réserve', tag: 'odoo-tag-blue', dot: 'var(--ds-cat-blue)', icon: Package },
+  recycle: { label: 'Valoriser', tag: 'odoo-tag-orange', dot: 'var(--ds-warning)', icon: Recycle },
+  waste: { label: 'Détruire', tag: 'odoo-tag-red', dot: 'var(--ds-danger)', icon: Trash2 },
 };
 
 function DestTag({ dest, label }: { dest: string; label: string }) {

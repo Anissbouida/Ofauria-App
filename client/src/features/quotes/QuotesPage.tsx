@@ -394,12 +394,12 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
             <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, freeLine()])}><Plus size={13} /> Ligne libre</button>
             <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, sectionLine()])}><Plus size={13} /> Section</button>
           </div>
-          <table className="odoo-table ds-dense" style={{ minWidth: 280, width: 'auto' }}>
+          <table className="ds-summary" aria-label="Totaux">
             <tbody>
               <tr><td>Sous-total {withTax ? 'HT' : 'TTC'}</td><td className="ds-num">{money(subtotal)}</td></tr>
               {pct > 0 && <tr><td>Remise {pct} %</td><td className="ds-num">−{money(discount)}</td></tr>}
               {withTax && <tr><td>TVA</td><td className="ds-num">{money(tax)}</td></tr>}
-              <tr><td className="ds-strong">Total TTC</td><td className="ds-num ds-strong">{money(total)}</td></tr>
+              <tr className="ds-total"><td className="ds-strong">Total TTC</td><td className="ds-num ds-strong">{money(total)}</td></tr>
             </tbody>
           </table>
         </div>

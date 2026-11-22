@@ -399,11 +399,11 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
               <textarea id="bl-notes" value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Notes (adresse, heure de livraison…)" className="ds-input" />
             </FormField>
           </div>
-          <table className="odoo-table ds-dense" aria-label="Totaux" style={{ width: 'auto', minWidth: 220 }}>
+          <table className="ds-summary" aria-label="Totaux">
             <tbody>
               <tr><td>Total HT ({currencySymbol()})</td><td className="ds-num ds-strong">{amt(totals.ht)}</td></tr>
               <tr><td>TVA ({currencySymbol()})</td><td className="ds-num">{amt(totals.tva)}</td></tr>
-              <tr><td className="ds-strong">Total TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{amt(totals.ht + totals.tva)}</td></tr>
+              <tr className="ds-total"><td className="ds-strong">Total TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{amt(totals.ht + totals.tva)}</td></tr>
             </tbody>
           </table>
         </div>

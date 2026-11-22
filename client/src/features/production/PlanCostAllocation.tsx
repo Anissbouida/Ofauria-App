@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import api from '../../api/client';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { DataPanel } from '../../components/ds';
 
 /**
  * Répartition du coût d'un ordre entre ses articles (M3-05). La clé (poids, quantité,
@@ -41,27 +42,29 @@ export default function PlanCostAllocation({ planId, canEdit }: { planId: string
         Clé : <strong>{KEY[data.key] ?? data.key}</strong>{data.applied !== data.key && <> → appliquée : <strong>{KEY[data.applied]}</strong></>}
         {data.fallback && <span className="text-orange-700"> · {data.fallback}</span>}
       </div>
+      <DataPanel label="Répartition du coût entre les articles">
       <table className="odoo-table ds-dense">
-        <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Article</th><th className="text-right px-2">Quantité</th>
-          {manual && <th className="text-right px-2">Part saisie (%)</th>}
-          <th className="text-right px-2">Part</th><th className="text-right px-2">Coût</th><th className="text-right px-2">Coût unitaire</th></tr></thead>
+        <thead><tr><th>Article</th><th className="ds-num">Quantité</th>
+          {manual && <th className="ds-num">Part saisie (%)</th>}
+          <th className="ds-num">Part (%)</th><th className="ds-num">Coût</th><th className="ds-num">Coût unitaire</th></tr></thead>
         <tbody>{data.items.map(i => (
-          <tr key={i.plan_item_id} className="border-t border-gray-100">
-            <td className="px-2 py-1">{i.product_name}</td>
-            <td className="text-right px-2">{i.quantity.toLocaleString('fr-FR')}</td>
+          <tr key={i.plan_item_id}>
+            <td className="ds-strong">{i.product_name}</td>
+            <td className="ds-num">{i.quantity.toLocaleString('fr-FR')}</td>
             {manual && (
-              <td className="text-right px-2">
+              <td className="ds-num">
                 <input className="input" style={{ width: 70, textAlign: 'right', padding: '1px 4px' }} disabled={!canEdit}
                   aria-label={`Part saisie de ${i.product_name}`}
                   value={draft[i.plan_item_id] ?? (i.manual_pct ?? '')} onChange={e => setDraft(d => ({ ...d, [i.plan_item_id]: e.target.value }))} />
               </td>
             )}
-            <td className="text-right px-2">{i.share_pct.toLocaleString('fr-FR')} %</td>
-            <td className="text-right px-2 font-semibold">{money(i.cost)}</td>
-            <td className="text-right px-2">{i.unit_cost != null ? money(i.unit_cost) : '—'}</td>
+            <td className="ds-num">{i.share_pct.toLocaleString('fr-FR')}</td>
+            <td className="ds-num">{money(i.cost)}</td>
+            <td className="ds-num">{i.unit_cost != null ? money(i.unit_cost) : '—'}</td>
           </tr>
         ))}</tbody>
       </table>
+      </DataPanel>
       {manual && canEdit && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
           <span className={`text-xs ${Math.abs(draftTotal - 100) > 0.01 ? 'text-red-600' : 'text-gray-500'}`}>Total saisi : {draftTotal.toLocaleString('fr-FR')} %</span>

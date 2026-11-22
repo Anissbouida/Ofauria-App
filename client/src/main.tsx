@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import StagingBanner from './components/layout/StagingBanner';
 import './styles/index.css';
+import './styles/design-system.css';
 import { installDecimalCommaInput } from './utils/decimalCommaInput';
 import { installDoubleClickGuard } from './utils/doubleClickGuard';
 

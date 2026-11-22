@@ -312,9 +312,9 @@ function PayDialog({ doc, customer, onClose }: { doc: ReceivableDoc; customer: s
   return (
     <Modal title={`Encaisser ${isTicket ? 'le ticket' : 'la facture'} ${doc.number}`} subtitle={customer} onClose={onClose} width={440} locked={mutation.isPending}
       footer={<FormFooter onCancel={onClose} onSubmit={() => mutation.mutate()} submitLabel="Confirmer l'encaissement" disabled={invalid} busy={mutation.isPending} />}>
-      <table className="odoo-table ds-dense" aria-label="Pièce à encaisser">
+      <table className="ds-summary" aria-label="Pièce à encaisser">
         <tbody>
-          <tr><td>Client</td><td className="ds-strong" style={{ textAlign: 'right' }}>{customer}</td></tr>
+          <tr><td>Client</td><td className="ds-strong">{customer}</td></tr>
           <tr><td>Reste dû ({currencySymbol()})</td><td className="ds-num ds-strong">{n2(doc.remaining)}</td></tr>
           {doc.days_late > 0 && <tr style={{ color: 'var(--ds-danger)' }}><td>Retard</td><td className="ds-num ds-strong">{doc.days_late} jours</td></tr>}
         </tbody>
@@ -462,7 +462,7 @@ function AdvancesBlock({ customerId, invoices }: { customerId: string; invoices:
     <div className="kl-ar-adv">
       {advances.map(a => (
         <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <PiggyBank size={13} style={{ color: '#6f42c1' }} />
+          <PiggyBank size={13} style={{ color: 'var(--ds-cat-purple)' }} />
           <span>Avance de <b>{money(a.unapplied)}</b> non affectée
             <span style={{ color: 'var(--odoo-text-muted)' }}> · règlement du {day(a.payment_date)}{a.check_number ? ` · n° ${a.check_number}` : ''}</span></span>
           {invoices.length > 0 && (
@@ -588,7 +588,7 @@ function ReceiptDialog({ c, onClose }: { c: CustomerReceivable; onClose: () => v
             </tbody>
             <tfoot>
               <tr><td colSpan={3} style={{ textAlign: 'right' }}>Affecté aux factures ({currencySymbol()})</td><td className="ds-num ds-strong">{n2(allocated)}</td></tr>
-              <tr style={{ color: rest < -0.004 ? 'var(--ds-danger)' : rest > 0.004 ? '#6f42c1' : undefined }}>
+              <tr style={{ color: rest < -0.004 ? 'var(--ds-danger)' : rest > 0.004 ? 'var(--ds-cat-purple)' : undefined }}>
                 <td colSpan={3} style={{ textAlign: 'right' }}>{rest < -0.004 ? 'Affecté au-delà du montant reçu' : 'Reste en avance du client (4421)'} ({currencySymbol()})</td>
                 <td className="ds-num ds-strong">{n2(Math.abs(rest))}</td>
               </tr>

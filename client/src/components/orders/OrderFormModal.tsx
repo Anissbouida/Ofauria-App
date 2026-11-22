@@ -34,7 +34,7 @@ function StepIndicator({ current }: { current: number }) {
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.25rem 0.625rem', borderRadius: 999, fontSize: '0.75rem',
               fontWeight: active ? 600 : 500,
-              background: active ? 'var(--odoo-purple)' : done ? '#d4edda' : 'var(--odoo-border)',
+              background: active ? 'var(--odoo-purple)' : done ? 'var(--ds-success-bg)' : 'var(--odoo-border)',
               color: active ? '#fff' : done ? 'var(--ds-success)' : 'var(--odoo-text-muted)',
             }}>
               <span style={{ width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700, background: 'rgba(255,255,255,0.35)' }}>

@@ -5,6 +5,8 @@ import { AlertTriangle, Loader2, Check, X } from 'lucide-react';
 import { invoicesApi } from '../../api/accounting.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { DataPanel, SectionHeader } from '../../components/ds';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
  * Litiges d'une facture (phase 11, D5-59). Déclarer un montant contesté le
@@ -36,19 +38,20 @@ export default function InvoiceDisputePanel({ invoiceId, remaining, editable }: 
 
   return (
     <section style={{ marginTop: 12 }}>
-      <h4 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 6px' }}><AlertTriangle size={14} /> Litiges</h4>
+      <SectionHeader title={<><AlertTriangle size={14} /> Litiges</>} />
       {isLoading ? <Loader2 className="spin" size={14} /> : (
         <>
           {data.length > 0 && (
-            <table className="odoo-table" style={{ fontSize: 13 }}>
+            <DataPanel label="Litiges de la facture">
+            <table className="odoo-table ds-dense">
               <thead><tr><th>Motif</th><th className="ds-num">Contesté ({currencySymbol()})</th><th>État</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {data.map(d => (
                   <tr key={d.id}>
-                    <td>{d.reason}</td>
+                    <td className="ds-strong">{d.reason}</td>
                     <td className="ds-num">{Number(d.disputed_amount ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td>{d.status === 'open' ? 'Ouvert' : d.status === 'resolved' ? 'Résolu' : 'Rejeté'}</td>
-                    <td>{editable && d.status === 'open' && (
+                    <td>{d.status === 'open' ? <StatusTag tone="todo" label="Ouvert" /> : d.status === 'resolved' ? <StatusTag tone="done" label="Résolu" /> : <StatusTag tone="cancelled" label="Rejeté" />}</td>
+                    <td className="ds-actions">{editable && d.status === 'open' && (
                       <span style={{ display: 'inline-flex', gap: 4 }}>
                         <button type="button" className="odoo-pager-btn" title="Résoudre" aria-label="Résoudre le litige" onClick={() => resolve.mutate(d.id)}><Check size={13} /></button>
                         <button type="button" className="odoo-pager-btn" title="Rejeter" aria-label="Rejeter le litige" onClick={() => reject.mutate(d.id)}><X size={13} /></button>
@@ -58,6 +61,7 @@ export default function InvoiceDisputePanel({ invoiceId, remaining, editable }: 
                 ))}
               </tbody>
             </table>
+            </DataPanel>
           )}
           {editable && !hasOpen && remaining > 0.005 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>

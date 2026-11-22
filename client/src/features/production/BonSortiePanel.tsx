@@ -513,7 +513,7 @@ export function BonSortiePanel({
           </div>
         )}
 
-        <div style={{ overflowX: 'auto' }}>
+        <div className="ds-scroll">
         <table className="odoo-table bsi-lines-table">
           <thead>
             <tr>
@@ -777,11 +777,11 @@ export function BonSortiePanel({
                   )}
                 </div>
                 {showDerog && (
-                  <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ background: 'var(--ds-warning-bg)', border: '1px solid color-mix(in srgb, var(--ds-warning) 35%, var(--ds-card))', borderRadius: 6, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <span style={{ color: 'var(--ds-warning)' }}>Les lots à DLC dépassée seront alloués. Cette décision est tracée (auteur, date, motif) sur le bon.</span>
                     <textarea value={derogMotif} onChange={(e) => setDerogMotif(e.target.value)} rows={2}
                       placeholder="Motif de la dérogation (obligatoire, 5 caractères min.) — ex. : contrôle organoleptique OK, DLC à J+1, utilisation en cuisson"
-                      style={{ width: '100%', fontSize: '0.75rem', border: '1px solid #fcd34d', borderRadius: 6, padding: '4px 8px', background: '#fff' }} />
+                      style={{ width: '100%', fontSize: '0.75rem', border: '1px solid var(--ds-line)', borderRadius: 6, padding: '4px 8px', background: 'var(--ds-card)' }} />
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => regenerateMutation.mutate(derogMotif.trim())} disabled={regenerateMutation.isPending || derogMotif.trim().length < 5} className="odoo-btn-primary">
                         Confirmer la dérogation

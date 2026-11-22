@@ -23,11 +23,11 @@ export function AllergenSelector({ value, onChange }: { value: string[]; onChang
       </div>
       {legacy.length > 0 && (
         <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.75rem' }}>
-          <span style={{ color: '#b45309' }}>Hors référentiel, à requalifier :</span>
+          <span style={{ color: 'var(--ds-warning)' }}>Hors référentiel, à requalifier :</span>
           {legacy.map(v => (
-            <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', borderRadius: 4, backgroundColor: '#fef3c7', color: '#92400e' }}>
+            <span key={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--ds-warning-bg)', color: 'var(--ds-warning)' }}>
               {allergenLabel(v)}
-              <button type="button" onClick={() => onChange(value.filter(x => x !== v))} title="Retirer" style={{ lineHeight: 1, color: '#92400e' }}>×</button>
+              <button type="button" onClick={() => onChange(value.filter(x => x !== v))} title="Retirer" style={{ lineHeight: 1, color: 'var(--ds-warning)' }}>×</button>
             </span>
           ))}
         </div>

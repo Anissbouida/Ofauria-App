@@ -106,14 +106,14 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }) {
   const active = currentKey === sk;
   return (
-    <th onClick={() => onSort(sk)} style={{ textAlign: align }}>
+    <th style={{ textAlign: align }}><button type="button" className="ds-sort" onClick={() => onSort(sk)}>
       <span className="inline-flex items-center gap-1">
         {label}
         <span className={`odoo-sort-arrow ${active ? 'active' : ''}`}>
           {active ? (currentDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
         </span>
       </span>
-    </th>
+    </button></th>
   );
 }
 
@@ -1206,9 +1206,9 @@ export default function SalesPage() {
           locked={paySaleMutation.isPending}
           footer={<FormFooter onCancel={() => setPaySaleTarget(null)} submitLabel="Encaisser" busy={paySaleMutation.isPending}
             onSubmit={() => paySaleMutation.mutate({ id: paySaleTarget.id as string, paymentMethod: payPaymentMethod, paidAt: payDate })} />}>
-            <table className="odoo-table ds-dense" aria-label="Vente à encaisser">
+            <table className="ds-summary" aria-label="Vente à encaisser">
               <tbody>
-                <tr><td>Bénéficiaire</td><td className="ds-strong" style={{ textAlign: 'right' }}>
+                <tr><td>Bénéficiaire</td><td className="ds-strong">
                   {paySaleTarget.customer_first_name
                     ? `${paySaleTarget.customer_first_name} ${paySaleTarget.customer_last_name}`
                     : (paySaleTarget.unpaid_customer_name as string) || '—'}
@@ -1262,7 +1262,7 @@ export default function SalesPage() {
           footer={<FormFooter onCancel={() => setInvoiceTarget(null)} submitLabel="Émettre la facture"
             disabled={!invoiceTarget.customer_id && !invoiceCustomerId} busy={invoiceMutation.isPending}
             onSubmit={() => invoiceMutation.mutate({ id: invoiceTarget.id as string, customerId: invoiceTarget.customer_id ? undefined : invoiceCustomerId || undefined })} />}>
-            <table className="odoo-table ds-dense" aria-label="Ticket à facturer">
+            <table className="ds-summary" aria-label="Ticket à facturer">
               <tbody>
                 <tr><td>Montant TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{n2(parseFloat(invoiceTarget.total as string))}</td></tr>
               </tbody>

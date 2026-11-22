@@ -314,7 +314,7 @@ const FAMILIES: Array<StageDef & { key: 'all' | LossFamily }> = [
   { key: 'matiere', label: 'Matières premières', hint: 'périmées, casse, fond', icon: Boxes },
 ];
 const FAMILY_DOT: Record<LossFamily, string> = {
-  production: 'var(--ds-warning)', invendu: '#c99a06', vitrine: 'var(--ds-accent)', perime: 'var(--ds-danger)', recyclage: 'var(--ds-success)', matiere: '#6f42c1',
+  production: 'var(--ds-warning)', invendu: 'var(--ds-cat-gold)', vitrine: 'var(--ds-accent)', perime: 'var(--ds-danger)', recyclage: 'var(--ds-success)', matiere: 'var(--ds-cat-purple)',
 };
 
 function LossRegister({ range, periodText }: { range: Record<string, string>; periodText: string }) {

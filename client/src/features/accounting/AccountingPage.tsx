@@ -1193,14 +1193,14 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
             <thead>
               <tr>
                 {cfg.columns.map((c, i) => (
-                  <th key={i} onClick={() => toggleSort(i)} className={c.align === 'right' ? 'ds-num' : undefined}
+                  <th key={i} className={c.align === 'right' ? 'ds-num' : undefined}
                     aria-sort={sortCol === i ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-                    style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                    style={{ whiteSpace: 'nowrap' }}><button type="button" className="ds-sort" onClick={() => toggleSort(i)}>
                     {c.label}{c.align === 'right' ? ` (${currencySymbol()})` : ''}
                     {sortCol === i && (sortDir === 'asc'
                       ? <ArrowUp size={11} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />
                       : <ArrowDown size={11} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />)}
-                  </th>
+                  </button></th>
                 ))}
               </tr>
             </thead>
@@ -2432,13 +2432,13 @@ function ChargesTab() {
           <table className="odoo-table ds-dense">
             <thead>
               <tr>
-                <th onClick={() => toggleSort('date')} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>Date<SortIcon col="date" /></th>
+                <th><button type="button" className="ds-sort" onClick={() => toggleSort('date')}>Date<SortIcon col="date" /></button></th>
                 <th>Désignation</th>
-                <th onClick={() => toggleSort('beneficiaire')} style={{ cursor: 'pointer', userSelect: 'none' }}>Bénéficiaire<SortIcon col="beneficiaire" /></th>
-                <th onClick={() => toggleSort('cat')} style={{ cursor: 'pointer', userSelect: 'none' }}>Catégorie<SortIcon col="cat" /></th>
-                <th onClick={() => toggleSort('type')} style={{ cursor: 'pointer', userSelect: 'none' }}>Type<SortIcon col="type" /></th>
+                <th><button type="button" className="ds-sort" onClick={() => toggleSort('beneficiaire')}>Bénéficiaire<SortIcon col="beneficiaire" /></button></th>
+                <th><button type="button" className="ds-sort" onClick={() => toggleSort('cat')}>Catégorie<SortIcon col="cat" /></button></th>
+                <th><button type="button" className="ds-sort" onClick={() => toggleSort('type')}>Type<SortIcon col="type" /></button></th>
                 <th>Méthode</th>
-                <th className="ds-num" onClick={() => toggleSort('amount')} style={{ cursor: 'pointer', userSelect: 'none' }}>Montant ({currencySymbol()})<SortIcon col="amount" /></th>
+                <th className="ds-num"><button type="button" className="ds-sort" onClick={() => toggleSort('amount')}>Montant ({currencySymbol()})<SortIcon col="amount" /></button></th>
                 <th className="ds-actions" style={{ width: 150 }}><span className="ds-sr-only">Actions</span></th>
               </tr>
             </thead>
@@ -3223,24 +3223,20 @@ function ChequesTab() {
             <thead>
               <tr>
                 <th style={{ width: 110 }}>N° de chèque</th>
-                <th style={{ cursor: 'pointer', userSelect: 'none' }}
-                  onClick={() => { if (sortBy === 'supplier') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('supplier'); setSortDir('asc'); } }}>
+                <th><button type="button" className="ds-sort" onClick={() => { if (sortBy === 'supplier') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('supplier'); setSortDir('asc'); } }}>
                   Bénéficiaire {sortBy === 'supplier' && (sortDir === 'asc' ? '▲' : '▼')}
-                </th>
+                </button></th>
                 <th>Contexte</th>
-                <th style={{ width: 110, cursor: 'pointer', userSelect: 'none' }}
-                  onClick={() => { if (sortBy === 'emission') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('emission'); setSortDir('desc'); } }}>
+                <th style={{ width: 110 }}><button type="button" className="ds-sort" onClick={() => { if (sortBy === 'emission') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('emission'); setSortDir('desc'); } }}>
                   Date d'émission {sortBy === 'emission' && (sortDir === 'asc' ? '▲' : '▼')}
-                </th>
-                <th style={{ width: 110, cursor: 'pointer', userSelect: 'none' }}
-                  onClick={() => { if (sortBy === 'echeance') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('echeance'); setSortDir('asc'); } }}>
+                </button></th>
+                <th style={{ width: 110 }}><button type="button" className="ds-sort" onClick={() => { if (sortBy === 'echeance') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('echeance'); setSortDir('asc'); } }}>
                   Échéance {sortBy === 'echeance' && (sortDir === 'asc' ? '▲' : '▼')}
-                </th>
+                </button></th>
                 <th style={{ width: 110 }}>Encaissé le</th>
-                <th className="ds-num" style={{ width: 130, cursor: 'pointer', userSelect: 'none' }}
-                  onClick={() => { if (sortBy === 'amount') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('amount'); setSortDir('desc'); } }}>
+                <th className="ds-num" style={{ width: 130 }}><button type="button" className="ds-sort" onClick={() => { if (sortBy === 'amount') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('amount'); setSortDir('desc'); } }}>
                   Montant ({currencySymbol()}) {sortBy === 'amount' && (sortDir === 'asc' ? '▲' : '▼')}
-                </th>
+                </button></th>
                 <th style={{ width: 130 }}>Statut</th>
                 <th className="ds-actions" style={{ width: 190 }}><span className="ds-sr-only">Actions</span></th>
               </tr>

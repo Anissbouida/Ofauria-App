@@ -1,5 +1,5 @@
 /* Module Projets — refonte (maquette 2026-11-13) : cartes, fiche, Kanban, planning. */
-.prj { --prj-green: #1F7A4D; --prj-orange: #B45309; --prj-red: #B42318; --prj-track: var(--odoo-border); display: grid; gap: 16px; }
+.prj { --prj-green: var(--ds-success); --prj-orange: var(--ds-warning); --prj-red: var(--ds-danger); --prj-track: var(--odoo-border); display: grid; gap: 16px; }
 
 /* Barre d'outils : recherche, pastilles, choix de vue */
 .prj-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

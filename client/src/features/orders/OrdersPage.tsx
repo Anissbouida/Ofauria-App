@@ -600,7 +600,7 @@ export function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow;
     <Modal title="Remise au client" subtitle={`${order.order_number as string} · ${customerName(order)}`} onClose={onClose} width={460} locked={deliverMutation.isPending}
       footer={<FormFooter onCancel={onClose} onSubmit={() => deliverMutation.mutate()} submitLabel={`Encaisser ${money(remaining)} et remettre`} disabled={short} busy={deliverMutation.isPending} />}>
       <FormSection title="Solde de la commande">
-        <table className="odoo-table ds-dense" aria-label="Solde de la commande">
+        <table className="ds-summary" aria-label="Solde de la commande">
           <tbody>
             <tr><td>Total commande ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totalAmt)}</td></tr>
             <tr><td style={{ color: 'var(--ds-success)' }}>Avance déjà versée ({currencySymbol()})</td><td className="ds-num ds-strong" style={{ color: 'var(--ds-success)' }}>{n(advanceAmt)}</td></tr>
@@ -784,11 +784,11 @@ export function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderR
             <input id="pdl-received" type="text" value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Facultatif, sinon à remplir sur le BL" className="ds-input" />
           </FormField>
         </div>
-        <table className="odoo-table ds-dense" aria-label="Totaux" style={{ width: 'auto', marginLeft: 'auto' }}>
+        <table className="ds-summary" aria-label="Totaux">
           <tbody>
             <tr><td>HT ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totals.ht)}</td></tr>
             <tr><td>TVA ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totals.tva)}</td></tr>
-            <tr><td>TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totals.ht + totals.tva)}</td></tr>
+            <tr className="ds-total"><td>TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{n(totals.ht + totals.tva)}</td></tr>
           </tbody>
         </table>
       </FormSection>

@@ -80,7 +80,7 @@ export default function CustomerPortalPanel({ customerId }: { customerId: string
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
           <span>{status.expired ? 'Accès expiré' : 'Accès actif'} (<code>{status.token_prefix}…</code>)</span>
           <span style={{ opacity: 0.7 }}>Dernière utilisation : {status.last_used_at ?? status.last_login_at ? new Date((status.last_used_at ?? status.last_login_at) as string).toLocaleString('fr-FR') : 'jamais'}</span>
-          <span style={{ opacity: 0.7, color: status.expired ? 'var(--color-danger, #b42318)' : undefined }}>
+          <span style={{ opacity: 0.7, color: status.expired ? 'var(--ds-danger)' : undefined }}>
             {status.expired ? 'Expiré le' : 'Expire le'} {new Date(status.expires_at).toLocaleDateString('fr-FR')}
           </span>
           {editable && (

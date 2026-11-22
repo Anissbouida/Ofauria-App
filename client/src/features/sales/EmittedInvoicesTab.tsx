@@ -641,11 +641,11 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
                 <FormField label="Notes" htmlFor="mi-notes">
                   <input id="mi-notes" type="text" value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Notes ou référence..." className="ds-input" />
                 </FormField>
-                <table className="odoo-table ds-dense" aria-label="Totaux">
+                <table className="ds-summary" aria-label="Totaux">
                   <tbody>
                     <tr><td>Total HT ({curLabel})</td><td className="ds-num">{n(manualTotal)}</td></tr>
                     <tr><td>TVA ({curLabel})</td><td className="ds-num">{n(manualTva)}</td></tr>
-                    <tr><td className="ds-strong">Total TTC ({curLabel})</td><td className="ds-num ds-strong">{n(manualTtc)}</td></tr>
+                    <tr className="ds-total"><td className="ds-strong">Total TTC ({curLabel})</td><td className="ds-num ds-strong">{n(manualTtc)}</td></tr>
                     {foreign && rateValue > 0 && (
                       <tr><td style={{ color: 'var(--ds-muted)' }}>Contre-valeur</td><td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{money(manualTtc * rateValue)}</td></tr>
                     )}
@@ -701,7 +701,7 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
             locked={payMutation.isPending}
             footer={<FormFooter onCancel={() => setShowPayModal(null)} submitLabel="Confirmer l'encaissement" busy={payMutation.isPending} />}>
                 <FormSection title="Solde de la facture">
-                  <table className="odoo-table ds-dense" aria-label="Solde de la facture">
+                  <table className="ds-summary" aria-label="Solde de la facture">
                     <tbody>
                       <tr><td>Total TTC ({currencySymbol()})</td><td className="ds-num ds-strong">{n(total)}</td></tr>
                       <tr><td style={{ color: 'var(--ds-success)' }}>Déjà encaissé ({currencySymbol()})</td><td className="ds-num ds-strong" style={{ color: 'var(--ds-success)' }}>{n(paid)}</td></tr>
@@ -733,7 +733,7 @@ export default function EmittedInvoicesTab({ actionsSlot }: { actionsSlot?: HTML
                   </FormField>
                 </div>
                 {payInFx && fxAmount > 0 && fxRate > 0 && (
-                  <table className="odoo-table ds-dense" aria-label="Contre-valeur">
+                  <table className="ds-summary" aria-label="Contre-valeur">
                     <tbody>
                       <tr><td>Reçu en trésorerie ({currencySymbol()})</td><td className="ds-num">{n(fxDh)}</td></tr>
                       <tr><td>Créance soldée, taux de la facture ({currencySymbol()})</td><td className="ds-num">{n(fxSettled)}</td></tr>

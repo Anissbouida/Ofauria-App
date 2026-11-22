@@ -21,7 +21,7 @@ export default function StagingBanner() {
       role="status"
       style={{
         position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)', zIndex: 10000,
-        background: '#b45309', color: '#fff', font: '600 11px/1 system-ui, sans-serif', letterSpacing: '0.08em',
+        background: 'var(--ds-warning)', color: '#fff', font: '600 11px/1 system-ui, sans-serif', letterSpacing: '0.08em',
         padding: '4px 12px', borderRadius: '0 0 6px 6px', pointerEvents: 'none',
       }}
     >

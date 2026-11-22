@@ -99,12 +99,12 @@ const SHIFT_TONES = {
   SALES_AM: 'yellow', SALES_PM: 'orange', PROD_EARLY: 'green', PROD_MID: 'blue', NIGHT: 'purple', ADMIN_DAY: 'grey',
 } as const;
 const TONE_STYLE: Record<string, { background: string; color: string }> = {
-  yellow: { background: '#fff3cd', color: '#856404' },
-  orange: { background: '#ffe5d0', color: '#b85d1a' },
-  green: { background: '#d4edda', color: '#155724' },
-  blue: { background: '#d6e9f8', color: '#1f6391' },
+  yellow: { background: 'var(--ds-cat-gold-bg)', color: 'var(--ds-cat-gold)' },
+  orange: { background: 'var(--ds-cat-brown-bg)', color: 'var(--ds-cat-brown)' },
+  green: { background: 'var(--ds-cat-olive-bg)', color: 'var(--ds-cat-olive)' },
+  blue: { background: 'var(--ds-cat-blue-bg)', color: 'var(--ds-cat-blue)' },
   purple: { background: 'var(--theme-accent-light)', color: 'var(--theme-accent)' },
-  grey: { background: '#e9ecef', color: '#495057' },
+  grey: { background: 'var(--ds-cat-slate-bg)', color: 'var(--ds-cat-slate)' },
 };
 /** Classe d'etiquette d'un shift (`odoo-tag ${shiftTag(code)}`). */
 export function shiftTag(code: string): string {

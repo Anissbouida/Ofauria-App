@@ -592,10 +592,10 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
       : <ArrowDown size={10} style={{ marginLeft: 4, verticalAlign: 'middle' }} />;
   };
   const sortableTh = (field: string, label: string, cls?: string) => (
-    <th className={cls} onClick={() => toggleSort(field)} aria-sort={sortBy === field ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-      style={{ cursor: 'pointer', userSelect: 'none' }}>
+    <th className={cls} aria-sort={sortBy === field ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+     ><button type="button" className="ds-sort" onClick={() => toggleSort(field)}>
       {label} {sortIcon(field)}
-    </th>
+    </button></th>
   );
   const colCount = 9;
 

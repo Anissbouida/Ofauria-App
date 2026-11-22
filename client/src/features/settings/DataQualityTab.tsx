@@ -28,9 +28,9 @@ function Items({ indicator }: { indicator: DataQualityIndicator }) {
   if (!data.length) return <div style={{ padding: 12, color: 'var(--ds-muted)' }}>Rien à corriger.</div>;
   return (
     <div style={{ maxHeight: 360, overflowY: 'auto', borderTop: '1px solid var(--ds-sep)' }}>
-      <table className="odoo-table" style={{ width: '100%' }}>
+      <table className="odoo-table ds-dense ds-nested">
         <thead>
-          <tr><th style={{ textAlign: 'left' }}>Fiche</th><th style={{ textAlign: 'left' }}>{indicator.detailLabel}</th><th className="ds-actions"><span className="sr-only">Action</span></th></tr>
+          <tr><th>Fiche</th><th>{indicator.detailLabel}</th><th className="ds-actions"><span className="sr-only">Action</span></th></tr>
         </thead>
         <tbody>
           {data.map((it, n) => (
@@ -67,7 +67,7 @@ export default function DataQualityTab() {
       </StatusBanner>
 
       <DataPanel label="Contrôles de qualité">
-        <table className="odoo-table" style={{ width: '100%' }}>
+        <table className="odoo-table">
           <thead>
             <tr>
               <th style={{ textAlign: 'left' }}>Contrôle</th>

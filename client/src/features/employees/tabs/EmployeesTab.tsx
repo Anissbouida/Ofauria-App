@@ -315,13 +315,13 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
           <table className="odoo-table">
             <thead>
               <tr>
-                <th onClick={() => toggleSort('name')} style={{ cursor: 'pointer' }}>Employé <SortIcon col="name" /></th>
+                <th><button type="button" className="ds-sort" onClick={() => toggleSort('name')}>Employé <SortIcon col="name" /></button></th>
                 <th>CIN</th>
-                <th onClick={() => toggleSort('role')} style={{ cursor: 'pointer' }}>Rôle <SortIcon col="role" /></th>
-                <th onClick={() => toggleSort('contract')} style={{ cursor: 'pointer' }}>Contrat <SortIcon col="contract" /></th>
+                <th><button type="button" className="ds-sort" onClick={() => toggleSort('role')}>Rôle <SortIcon col="role" /></button></th>
+                <th><button type="button" className="ds-sort" onClick={() => toggleSort('contract')}>Contrat <SortIcon col="contract" /></button></th>
                 <th>Téléphone</th>
-                <th className="ds-num" onClick={() => toggleSort('salary')} style={{ cursor: 'pointer' }}>Salaire ({currencySymbol()}) <SortIcon col="salary" /></th>
-                <th onClick={() => toggleSort('status')} style={{ cursor: 'pointer' }}>Statut <SortIcon col="status" /></th>
+                <th className="ds-num"><button type="button" className="ds-sort" onClick={() => toggleSort('salary')}>Salaire ({currencySymbol()}) <SortIcon col="salary" /></button></th>
+                <th><button type="button" className="ds-sort" onClick={() => toggleSort('status')}>Statut <SortIcon col="status" /></button></th>
                 <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>

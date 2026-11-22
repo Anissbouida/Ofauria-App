@@ -26,7 +26,7 @@ const KINDS: Array<StageDef & { key: Kind }> = [
   { key: 'pesee', label: 'Pesées hors tolérance', hint: 'écart de pesée motivé', icon: Scale },
   { key: 'refus', label: 'Refus du chef', hint: 'préparation à reprendre', icon: Undo2 },
 ];
-const KIND_DOT: Record<Kind, string> = { qc: 'var(--ds-danger)', rendement: 'var(--ds-warning)', pesee: '#c99a06', refus: 'var(--ds-accent)' };
+const KIND_DOT: Record<Kind, string> = { qc: 'var(--ds-danger)', rendement: 'var(--ds-warning)', pesee: 'var(--ds-cat-gold)', refus: 'var(--ds-accent)' };
 const ACTION: Record<Kind, string> = {
   qc: 'Voir le contrôle', rendement: 'Analyser le plan', pesee: 'Voir le plan', refus: 'Voir le bon',
 };

@@ -24,9 +24,9 @@ interface Contenant { id: string; nom: string; quantite_theorique?: string | num
 const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
 const COLS = '44px 150px minmax(0,1fr) 110px 64px 56px 96px 96px 32px';
 const ROLE_BAR: Record<string, string> = {
-  fond: '#BA7517', biscuit: '#BA7517', croustillant: '#D85A30', garniture: '#7F77DD',
-  insert: '#D4537E', fruits: '#639922', nappage: '#1D9E75', glacage: '#378ADD',
-  decor: '#ED93B1', emballage: '#888780',
+  fond: 'var(--ds-cat-gold)', biscuit: 'var(--ds-cat-gold)', croustillant: 'var(--ds-cat-brown)', garniture: 'var(--ds-cat-purple)',
+  insert: 'var(--ds-cat-pink)', fruits: 'var(--ds-cat-olive)', nappage: 'var(--ds-cat-teal)', glacage: 'var(--ds-cat-blue)',
+  decor: 'var(--ds-cat-pink)', emballage: 'var(--ds-cat-slate)',
 };
 const MASS: Record<string, number> = { g: 1, kg: 1000, mg: 0.001 };
 const VOL: Record<string, number> = { ml: 1, cl: 10, dl: 100, l: 1000 };
@@ -715,7 +715,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     const roleCls = ROLE_COLOR[r.role] || 'bg-gray-100 text-gray-500';
     const cost = lineCost(r);
     const share = coutMatiere > 0 && cost != null ? (cost / coutMatiere) * 100 : null;
-    const barColor = ROLE_BAR[r.role] || '#888780';
+    const barColor = ROLE_BAR[r.role] || 'var(--ds-cat-slate)';
     // L'équivalent n'est affiché que s'il apporte une info (1050 g → 1.05 kg) :
     // « ≈ 80 g » sous une saisie de 80 g n'était que du bruit.
     const eqBig = !!eq && eq.val >= 1000;

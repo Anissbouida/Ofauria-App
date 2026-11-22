@@ -30,7 +30,7 @@ const n0 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleStr
 const fr = (v: string | null | undefined) => (v ? format(new Date(`${String(v).slice(0, 10)}T00:00:00`), 'dd/MM/yyyy') : '—');
 const frt = (v: string | null | undefined) => (v ? format(new Date(v), 'dd/MM HH:mm') : '');
 const lab: React.CSSProperties = { fontSize: '0.8125rem', color: 'var(--ds-muted)' };
-const STAGE_COLOR: Record<Stage, string> = { new: 'var(--ds-muted)', qualified: 'var(--ds-info)', proposal: '#6f42c1', negotiation: 'var(--ds-warning)', won: 'var(--ds-success)', lost: 'var(--ds-danger)' };
+const STAGE_COLOR: Record<Stage, string> = { new: 'var(--ds-muted)', qualified: 'var(--ds-info)', proposal: 'var(--ds-cat-purple)', negotiation: 'var(--ds-warning)', won: 'var(--ds-success)', lost: 'var(--ds-danger)' };
 /** Étape d'une opportunité en étiquette commune (gagné = terminé, perdu = clos sans suite). */
 const STAGE_TONE: Record<Stage, { tone: StatusTone; icon?: LucideIcon }> = {
   new: { tone: 'draft', icon: UserPlus }, qualified: { tone: 'progress' }, proposal: { tone: 'progress', icon: Send },
@@ -429,7 +429,7 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
                     const open = !a.done_at;
                     const overdue = open && a.due_at && new Date(a.due_at) < new Date();
                     return (
-                      <li key={a.id} style={{ fontSize: '0.8125rem', padding: '6px 10px', borderLeft: `3px solid ${overdue ? 'var(--ds-danger)' : open ? 'var(--odoo-primary, #714b67)' : 'var(--odoo-border)'}`, background: open ? 'var(--odoo-bg-alt, #f8f9fa)' : undefined }}>
+                      <li key={a.id} style={{ fontSize: '0.8125rem', padding: '6px 10px', borderLeft: `3px solid ${overdue ? 'var(--ds-danger)' : open ? 'var(--ds-accent)' : 'var(--odoo-border)'}`, background: open ? 'var(--odoo-bg-alt, #f8f9fa)' : undefined }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: open ? 600 : 400, color: overdue ? 'var(--ds-danger)' : undefined }}>
                           <Icon size={13} /> {ACTIVITY_LABEL[a.kind]} · {a.subject}
                         </span>

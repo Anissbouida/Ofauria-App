@@ -339,17 +339,17 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
           <table className="odoo-table ds-dense">
             <thead>
               <tr>
-                <th onClick={() => togglePaySort('name')} style={{ cursor: 'pointer' }}>Employé <PaySortIcon col="name" /></th>
+                <th><button type="button" className="ds-sort" onClick={() => togglePaySort('name')}>Employé <PaySortIcon col="name" /></button></th>
                 <th>Poste</th>
-                <th className="ds-num" onClick={() => togglePaySort('worked')} style={{ cursor: 'pointer' }}>Jours travaillés <PaySortIcon col="worked" /></th>
-                <th className="ds-num" onClick={() => togglePaySort('base')} style={{ cursor: 'pointer' }}>Base ({cur}) <PaySortIcon col="base" /></th>
-                <th className="ds-num" onClick={() => togglePaySort('gross')} style={{ cursor: 'pointer' }}>Brut ({cur}) <PaySortIcon col="gross" /></th>
-                <th className="ds-num" onClick={() => togglePaySort('cnss')} style={{ cursor: 'pointer' }}>CNSS ({cur}) <PaySortIcon col="cnss" /></th>
-                <th className="ds-num" onClick={() => togglePaySort('amo')} style={{ cursor: 'pointer' }}>AMO ({cur}) <PaySortIcon col="amo" /></th>
-                <th className="ds-num" onClick={() => togglePaySort('ir')} style={{ cursor: 'pointer' }}>IR ({cur}) <PaySortIcon col="ir" /></th>
-                <th className="ds-num" onClick={() => togglePaySort('net')} style={{ cursor: 'pointer' }}>Net à verser ({cur}) <PaySortIcon col="net" /></th>
+                <th className="ds-num"><button type="button" className="ds-sort" onClick={() => togglePaySort('worked')}>Jours travaillés <PaySortIcon col="worked" /></button></th>
+                <th className="ds-num"><button type="button" className="ds-sort" onClick={() => togglePaySort('base')}>Base ({cur}) <PaySortIcon col="base" /></button></th>
+                <th className="ds-num"><button type="button" className="ds-sort" onClick={() => togglePaySort('gross')}>Brut ({cur}) <PaySortIcon col="gross" /></button></th>
+                <th className="ds-num"><button type="button" className="ds-sort" onClick={() => togglePaySort('cnss')}>CNSS ({cur}) <PaySortIcon col="cnss" /></button></th>
+                <th className="ds-num"><button type="button" className="ds-sort" onClick={() => togglePaySort('amo')}>AMO ({cur}) <PaySortIcon col="amo" /></button></th>
+                <th className="ds-num"><button type="button" className="ds-sort" onClick={() => togglePaySort('ir')}>IR ({cur}) <PaySortIcon col="ir" /></button></th>
+                <th className="ds-num"><button type="button" className="ds-sort" onClick={() => togglePaySort('net')}>Net à verser ({cur}) <PaySortIcon col="net" /></button></th>
                 <th className="ds-num">Avance ({cur})</th>
-                <th onClick={() => togglePaySort('status')} style={{ cursor: 'pointer' }}>Statut <PaySortIcon col="status" /></th>
+                <th><button type="button" className="ds-sort" onClick={() => togglePaySort('status')}>Statut <PaySortIcon col="status" /></button></th>
                 <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>

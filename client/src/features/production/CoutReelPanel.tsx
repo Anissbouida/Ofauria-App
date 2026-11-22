@@ -5,7 +5,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
-import { LoadingState } from '../../components/ds';
+import { DataPanel, LoadingState } from '../../components/ds';
 import {
   Calculator, Loader2,
   ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock, Scissors, Gauge
@@ -346,65 +346,71 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {(cout.detail_emballages?.length ?? 0) > 0 && (
               <DetailSection title="Détail emballages" icon={<Package size={12} className="text-orange-500" />}
                 isExpanded={expandedSection === 'emballages'} onToggle={() => setExpandedSection(expandedSection === 'emballages' ? null : 'emballages')}>
+                <DataPanel label="Détail emballages">
                 <table className="odoo-table ds-dense">
-                  <thead><tr className="text-gray-400">
-                    <th className="text-left py-1 px-2">Emballage</th>
-                    <th className="text-right py-1 px-2">Qté</th>
-                    <th className="text-right py-1 px-2">PU</th>
-                    <th className="text-right py-1 px-2">Total</th>
+                  <thead><tr>
+                    <th>Emballage</th>
+                    <th className="ds-num">Qté</th>
+                    <th className="ds-num">PU ({currencySymbol()})</th>
+                    <th className="ds-num">Total</th>
                   </tr></thead>
                   <tbody>{(cout.detail_emballages ?? []).map((d, i) => (
-                    <tr key={i} className="border-t border-gray-50">
-                      <td className="py-1 px-2 text-gray-700">{d.name}</td>
-                      <td className="py-1 px-2 text-right">{toNum(d.qty).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}{d.unit ? ` ${d.unit}` : ''}</td>
-                      <td className="py-1 px-2 text-right">{toNum(d.unit_cost).toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium">{fmtMoney(d.total)}</td>
+                    <tr key={i}>
+                      <td className="ds-strong">{d.name}</td>
+                      <td className="ds-num">{toNum(d.qty).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}{d.unit ? ` ${d.unit}` : ''}</td>
+                      <td className="ds-num">{toNum(d.unit_cost).toFixed(2)}</td>
+                      <td className="ds-num">{fmtMoney(d.total)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
+                </DataPanel>
               </DetailSection>
             )}
             {cout.detail_matieres.length > 0 && (
               <DetailSection title="Detail matieres" icon={<Package size={12} className="text-amber-500" />}
                 isExpanded={expandedSection === 'matieres'} onToggle={() => setExpandedSection(expandedSection === 'matieres' ? null : 'matieres')}>
+                <DataPanel label="Détail matières">
                 <table className="odoo-table ds-dense">
-                  <thead><tr className="text-gray-400">
-                    <th className="text-left py-1 px-2">Ingredient</th>
-                    <th className="text-right py-1 px-2">Qte</th>
-                    <th className="text-right py-1 px-2">PU</th>
-                    <th className="text-right py-1 px-2">Total</th>
+                  <thead><tr>
+                    <th>Ingredient</th>
+                    <th className="ds-num">Qte</th>
+                    <th className="ds-num">PU ({currencySymbol()})</th>
+                    <th className="ds-num">Total ({currencySymbol()})</th>
                   </tr></thead>
                   <tbody>{cout.detail_matieres.map((d, i) => (
-                    <tr key={i} className="border-t border-gray-50">
-                      <td className="py-1 px-2 text-gray-700">{d.name}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.qty).toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.unit_cost).toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
+                    <tr key={i}>
+                      <td className="ds-strong">{d.name}</td>
+                      <td className="ds-num">{toNum(d.qty).toFixed(2)}</td>
+                      <td className="ds-num">{toNum(d.unit_cost).toFixed(2)}</td>
+                      <td className="ds-num">{toNum(d.total).toFixed(2)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
+                </DataPanel>
               </DetailSection>
             )}
 
             {cout.detail_main_oeuvre.length > 0 && (
               <DetailSection title="Detail main d'oeuvre" icon={<Users size={12} className="text-blue-500" />}
                 isExpanded={expandedSection === 'mo'} onToggle={() => setExpandedSection(expandedSection === 'mo' ? null : 'mo')}>
+                <DataPanel label="Détail main d'oeuvre">
                 <table className="odoo-table ds-dense">
-                  <thead><tr className="text-gray-400">
-                    <th className="text-left py-1 px-2">Employe</th>
-                    <th className="text-right py-1 px-2">Minutes</th>
-                    <th className="text-right py-1 px-2">Taux/h</th>
-                    <th className="text-right py-1 px-2">Total</th>
+                  <thead><tr>
+                    <th>Employe</th>
+                    <th className="ds-num">Minutes</th>
+                    <th className="ds-num">Taux/h ({currencySymbol()})</th>
+                    <th className="ds-num">Total ({currencySymbol()})</th>
                   </tr></thead>
                   <tbody>{cout.detail_main_oeuvre.map((d, i) => (
-                    <tr key={i} className="border-t border-gray-50">
-                      <td className="py-1 px-2 text-gray-700">{d.name}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.minutes)}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.hourly_rate).toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
+                    <tr key={i}>
+                      <td className="ds-strong">{d.name}</td>
+                      <td className="ds-num">{toNum(d.minutes)}</td>
+                      <td className="ds-num">{toNum(d.hourly_rate).toFixed(2)}</td>
+                      <td className="ds-num">{toNum(d.total).toFixed(2)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
+                </DataPanel>
               </DetailSection>
             )}
 
@@ -417,45 +423,47 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                     pour comparer le temps de main-d'œuvre standard au temps réellement passé.
                   </p>
                 ) : (
+                  <DataPanel label="Écart M.O. : gamme standard vs réel">
                   <table className="odoo-table ds-dense">
-                    <thead><tr className="text-gray-400">
-                      <th className="text-left py-1 px-2">Produit</th>
-                      <th className="text-right py-1 px-2">Std (min)</th>
-                      <th className="text-right py-1 px-2">Réel (min)</th>
-                      <th className="text-right py-1 px-2">Std ({currencySymbol()})</th>
-                      <th className="text-right py-1 px-2">Réel ({currencySymbol()})</th>
-                      <th className="text-right py-1 px-2">Écart ({currencySymbol()})</th>
+                    <thead><tr>
+                      <th>Produit</th>
+                      <th className="ds-num">Std (min)</th>
+                      <th className="ds-num">Réel (min)</th>
+                      <th className="ds-num">Std ({currencySymbol()})</th>
+                      <th className="ds-num">Réel ({currencySymbol()})</th>
+                      <th className="ds-num">Écart ({currencySymbol()})</th>
                     </tr></thead>
                     <tbody>{moEcart.items.map((d) => (
-                      <tr key={d.plan_item_id} className="border-t border-gray-50">
-                        <td className="py-1 px-2 text-gray-700">
+                      <tr key={d.plan_item_id}>
+                        <td className="ds-strong">
                           {d.product_name}
                           {d.std_cost == null && <span className="text-gray-300"> (sans gamme)</span>}
                         </td>
-                        <td className="py-1 px-2 text-right text-gray-500">{d.std_minutes ?? '—'}</td>
-                        <td className="py-1 px-2 text-right text-gray-500">{d.reel_minutes}</td>
-                        <td className="py-1 px-2 text-right text-gray-500">{d.std_cost != null ? d.std_cost.toFixed(2) : '—'}</td>
-                        <td className="py-1 px-2 text-right text-gray-500">{d.reel_cost.toFixed(2)}</td>
-                        <td className="py-1 px-2 text-right font-medium"
-                          style={{ color: d.ecart_cost == null ? '#9ca3af' : d.ecart_cost > 0 ? 'var(--ds-danger)' : d.ecart_cost < 0 ? 'var(--ds-success)' : undefined }}>
+                        <td className="ds-num">{d.std_minutes ?? '—'}</td>
+                        <td className="ds-num">{d.reel_minutes}</td>
+                        <td className="ds-num">{d.std_cost != null ? d.std_cost.toFixed(2) : '—'}</td>
+                        <td className="ds-num">{d.reel_cost.toFixed(2)}</td>
+                        <td className="ds-num"
+                          style={{ color: d.ecart_cost == null ? 'var(--ds-muted)' : d.ecart_cost > 0 ? 'var(--ds-danger)' : d.ecart_cost < 0 ? 'var(--ds-success)' : undefined }}>
                           {d.ecart_cost == null ? '—' : `${d.ecart_cost > 0 ? '+' : ''}${d.ecart_cost.toFixed(2)}`}
                         </td>
                       </tr>
                     ))}</tbody>
                     <tfoot>
-                      <tr className="border-t border-gray-200 font-semibold text-gray-800">
-                        <td className="py-1 px-2">Total (items avec gamme)</td>
-                        <td className="py-1 px-2 text-right">{moEcart.totals.std_minutes}</td>
-                        <td className="py-1 px-2 text-right">{moEcart.totals.reel_minutes}</td>
-                        <td className="py-1 px-2 text-right">{moEcart.totals.std_cost.toFixed(2)}</td>
-                        <td className="py-1 px-2 text-right">{moEcart.totals.reel_cost.toFixed(2)}</td>
-                        <td className="py-1 px-2 text-right"
+                      <tr>
+                        <td>Total (items avec gamme)</td>
+                        <td className="ds-num">{moEcart.totals.std_minutes}</td>
+                        <td className="ds-num">{moEcart.totals.reel_minutes}</td>
+                        <td className="ds-num">{moEcart.totals.std_cost.toFixed(2)}</td>
+                        <td className="ds-num">{moEcart.totals.reel_cost.toFixed(2)}</td>
+                        <td className="ds-num"
                           style={{ color: moEcart.totals.ecart_cost > 0 ? 'var(--ds-danger)' : moEcart.totals.ecart_cost < 0 ? 'var(--ds-success)' : undefined }}>
                           {moEcart.totals.ecart_cost > 0 ? '+' : ''}{moEcart.totals.ecart_cost.toFixed(2)}
                         </td>
                       </tr>
                     </tfoot>
                   </table>
+                  </DataPanel>
                 )}
               </DetailSection>
             )}
@@ -466,28 +474,30 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 {outputsCost.map((g) => (
                   <div key={g.plan_item_id} className="mb-3 last:mb-0">
                     <div className="text-xs font-semibold text-gray-700 px-2 py-1">{g.item_product_name}</div>
+                    <DataPanel label={`Coût par sortie : ${g.item_product_name}`}>
                     <table className="odoo-table ds-dense">
-                      <thead><tr className="text-gray-400">
-                        <th className="text-left py-1 px-2">Sortie</th>
-                        <th className="text-right py-1 px-2">Qté</th>
-                        <th className="text-right py-1 px-2">Équiv/u</th>
-                        <th className="text-right py-1 px-2">Coût/u</th>
-                        <th className="text-right py-1 px-2">Coût total</th>
+                      <thead><tr>
+                        <th>Sortie</th>
+                        <th className="ds-num">Qté</th>
+                        <th className="ds-num">Équiv/u</th>
+                        <th className="ds-num">Coût/u</th>
+                        <th className="ds-num">Coût total</th>
                       </tr></thead>
                       <tbody>{g.outputs.map((o) => (
-                        <tr key={o.output_id} className="border-t border-gray-50">
-                          <td className="py-1 px-2 text-gray-700">{o.product_name || o.label}</td>
-                          <td className="py-1 px-2 text-right text-gray-500">{o.quantity}</td>
-                          <td className="py-1 px-2 text-right text-gray-500">{o.equiv_pieces}</td>
-                          <td className="py-1 px-2 text-right text-gray-500">{o.unit_cost != null ? money(o.unit_cost) : '—'}</td>
-                          <td className="py-1 px-2 text-right font-medium text-gray-900">{o.cost_share != null ? money(o.cost_share) : '—'}</td>
+                        <tr key={o.output_id}>
+                          <td className="ds-strong">{o.product_name || o.label}</td>
+                          <td className="ds-num">{o.quantity}</td>
+                          <td className="ds-num">{o.equiv_pieces}</td>
+                          <td className="ds-num">{o.unit_cost != null ? money(o.unit_cost) : '—'}</td>
+                          <td className="ds-num">{o.cost_share != null ? money(o.cost_share) : '—'}</td>
                         </tr>
                       ))}</tbody>
-                      <tfoot><tr className="border-t border-gray-200 font-semibold text-gray-800">
-                        <td className="py-1 px-2" colSpan={4}>Total article{g.complete ? '' : ' (partiel — sortie sans coût)'}</td>
-                        <td className="py-1 px-2 text-right">{money(g.total_cost)}</td>
+                      <tfoot><tr>
+                        <td colSpan={4}>Total article{g.complete ? '' : ' (partiel — sortie sans coût)'}</td>
+                        <td className="ds-num">{money(g.total_cost)}</td>
                       </tr></tfoot>
                     </table>
+                    </DataPanel>
                   </div>
                 ))}
               </DetailSection>
@@ -501,25 +511,27 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {charge && charge.length > 0 && (
               <DetailSection title="Charge par poste (capacité)" icon={<Gauge size={12} className="text-cyan-600" />}
                 isExpanded={expandedSection === 'charge'} onToggle={() => setExpandedSection(expandedSection === 'charge' ? null : 'charge')}>
+                <DataPanel label="Charge par poste">
                 <table className="odoo-table ds-dense">
-                  <thead><tr className="text-gray-400">
-                    <th className="text-left py-1 px-2">Poste</th>
-                    <th className="text-right py-1 px-2">Charge</th>
-                    <th className="text-right py-1 px-2">Capacité</th>
-                    <th className="text-right py-1 px-2">Utilisation</th>
+                  <thead><tr>
+                    <th>Poste</th>
+                    <th className="ds-num">Charge (min)</th>
+                    <th className="ds-num">Capacité (min/j)</th>
+                    <th className="ds-num">Utilisation (%)</th>
                   </tr></thead>
                   <tbody>{charge.map((c) => (
-                    <tr key={c.work_center_id} className="border-t border-gray-50">
-                      <td className="py-1 px-2 text-gray-700">{c.work_center_name}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{c.minutes_required} min</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{c.capacity_minutes_per_day != null ? `${c.capacity_minutes_per_day} min/j` : '—'}</td>
-                      <td className="py-1 px-2 text-right font-medium"
-                        style={{ color: c.utilisation_pct == null ? '#9ca3af' : c.overloaded ? 'var(--ds-danger)' : c.utilisation_pct > 80 ? 'var(--ds-warning)' : 'var(--ds-success)' }}>
-                        {c.utilisation_pct == null ? '—' : `${c.utilisation_pct}%`}{c.overloaded ? ' ⚠' : ''}
+                    <tr key={c.work_center_id}>
+                      <td className="ds-strong">{c.work_center_name}</td>
+                      <td className="ds-num">{c.minutes_required}</td>
+                      <td className="ds-num">{c.capacity_minutes_per_day != null ? c.capacity_minutes_per_day : '—'}</td>
+                      <td className="ds-num"
+                        style={{ color: c.utilisation_pct == null ? 'var(--ds-muted)' : c.overloaded ? 'var(--ds-danger)' : c.utilisation_pct > 80 ? 'var(--ds-warning)' : 'var(--ds-success)' }}>
+                        {c.utilisation_pct == null ? '—' : c.utilisation_pct}{c.overloaded ? ' ⚠' : ''}
                       </td>
                     </tr>
                   ))}</tbody>
                 </table>
+                </DataPanel>
                 <p className="text-[11px] text-gray-400 px-2 pt-1">Charge = nb de fournées × durées de gamme. Capacité définie dans Production › Postes & gammes.</p>
               </DetailSection>
             )}
@@ -527,64 +539,70 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             {(cout.detail_charges_fixes || []).length > 0 && (
               <DetailSection title="Detail charges fixes" icon={<Building2 size={12} className="text-violet-500" />}
                 isExpanded={expandedSection === 'charges'} onToggle={() => setExpandedSection(expandedSection === 'charges' ? null : 'charges')}>
+                <DataPanel label="Détail charges fixes">
                 <table className="odoo-table ds-dense">
-                  <thead><tr className="text-gray-400">
-                    <th className="text-left py-1 px-2">Charge</th>
-                    <th className="text-right py-1 px-2">Mensuel</th>
-                    <th className="text-right py-1 px-2">Quote-part</th>
+                  <thead><tr>
+                    <th>Charge</th>
+                    <th className="ds-num">Mensuel</th>
+                    <th className="ds-num">Quote-part</th>
                   </tr></thead>
                   <tbody>{(cout.detail_charges_fixes || []).map((d, i) => (
-                    <tr key={i} className="border-t border-gray-50">
-                      <td className="py-1 px-2 text-gray-700">{d.label}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{fmtMoney(d.mensuel)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{fmtMoney(d.part)}</td>
+                    <tr key={i}>
+                      <td className="ds-strong">{d.label}</td>
+                      <td className="ds-num">{fmtMoney(d.mensuel)}</td>
+                      <td className="ds-num">{fmtMoney(d.part)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
+                </DataPanel>
               </DetailSection>
             )}
 
             {(cout.detail_energie || []).length > 0 && (
               <DetailSection title="Detail energie (equipements)" icon={<Zap size={12} className="text-yellow-500" />}
                 isExpanded={expandedSection === 'energie'} onToggle={() => setExpandedSection(expandedSection === 'energie' ? null : 'energie')}>
+                <DataPanel label="Détail énergie">
                 <table className="odoo-table ds-dense">
-                  <thead><tr className="text-gray-400">
-                    <th className="text-left py-1 px-2">Equipement</th>
-                    <th className="text-right py-1 px-2">Minutes</th>
-                    <th className="text-right py-1 px-2">Cout/h</th>
-                    <th className="text-right py-1 px-2">Total</th>
+                  <thead><tr>
+                    <th>Equipement</th>
+                    <th className="ds-num">Minutes</th>
+                    <th className="ds-num">Cout/h ({currencySymbol()})</th>
+                    <th className="ds-num">Total ({currencySymbol()})</th>
                   </tr></thead>
                   <tbody>{(cout.detail_energie || []).map((d, i) => (
-                    <tr key={i} className="border-t border-gray-50">
-                      <td className="py-1 px-2 text-gray-700">{d.name}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.minutes)}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.cout_horaire).toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
+                    <tr key={i}>
+                      <td className="ds-strong">{d.name}</td>
+                      <td className="ds-num">{toNum(d.minutes)}</td>
+                      <td className="ds-num">{toNum(d.cout_horaire).toFixed(2)}</td>
+                      <td className="ds-num">{toNum(d.total).toFixed(2)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
+                </DataPanel>
               </DetailSection>
             )}
 
             {(cout.detail_pertes || []).length > 0 && (
               <DetailSection title="Detail pertes (valorisees au cout matiere)" icon={<TrendingDown size={12} className="text-red-500" />}
                 isExpanded={expandedSection === 'pertes'} onToggle={() => setExpandedSection(expandedSection === 'pertes' ? null : 'pertes')}>
+                <DataPanel label="Détail pertes">
                 <table className="odoo-table ds-dense">
-                  <thead><tr className="text-gray-400">
-                    <th className="text-left py-1 px-2">Categorie</th>
-                    <th className="text-right py-1 px-2">Qte</th>
-                    <th className="text-right py-1 px-2">PU matiere</th>
-                    <th className="text-right py-1 px-2">Total</th>
+                  <thead><tr>
+                    <th>Categorie</th>
+                    <th className="ds-num">Qte</th>
+                    <th className="ds-num">PU matiere ({currencySymbol()})</th>
+                    <th className="ds-num">Total ({currencySymbol()})</th>
                   </tr></thead>
                   <tbody>{(cout.detail_pertes || []).map((d, i) => (
-                    <tr key={i} className="border-t border-gray-50">
-                      <td className="py-1 px-2 text-gray-700">{d.categorie.replace(/^pertes?_/, '').replace(/_/g, ' ')}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.quantite).toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{toNum(d.cout_unitaire).toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{toNum(d.total).toFixed(2)}</td>
+                    <tr key={i}>
+                      <td className="ds-strong">{d.categorie.replace(/^pertes?_/, '').replace(/_/g, ' ')}</td>
+                      <td className="ds-num">{toNum(d.quantite).toFixed(2)}</td>
+                      <td className="ds-num">{toNum(d.cout_unitaire).toFixed(2)}</td>
+                      <td className="ds-num">{toNum(d.total).toFixed(2)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
+                </DataPanel>
               </DetailSection>
             )}
           </div>

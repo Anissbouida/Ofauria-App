@@ -391,13 +391,13 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
             <table className="odoo-table ds-dense">
               <thead>
                 <tr>
-                  <th onClick={() => toggleMenuSort('name')} style={{ cursor: 'pointer' }}>Produit<MenuSortIcon col="name" /></th>
-                  <th onClick={() => toggleMenuSort('class')} style={{ cursor: 'pointer' }}>Classification<MenuSortIcon col="class" /></th>
-                  <th className="ds-num" onClick={() => toggleMenuSort('qty')} style={{ cursor: 'pointer' }}>Vendus<MenuSortIcon col="qty" /></th>
-                  <th className="ds-num" onClick={() => toggleMenuSort('revenue')} style={{ cursor: 'pointer' }}>CA ({currencySymbol()})<MenuSortIcon col="revenue" /></th>
-                  <th className="ds-num" onClick={() => toggleMenuSort('cost')} style={{ cursor: 'pointer' }}>Coût matière ({currencySymbol()})<MenuSortIcon col="cost" /></th>
-                  <th className="ds-num" onClick={() => toggleMenuSort('pct')} style={{ cursor: 'pointer' }}>% matière<MenuSortIcon col="pct" /></th>
-                  <th className="ds-num" onClick={() => toggleMenuSort('contribution')} style={{ cursor: 'pointer' }}>Contribution ({currencySymbol()})<MenuSortIcon col="contribution" /></th>
+                  <th><button type="button" className="ds-sort" onClick={() => toggleMenuSort('name')}>Produit<MenuSortIcon col="name" /></button></th>
+                  <th><button type="button" className="ds-sort" onClick={() => toggleMenuSort('class')}>Classification<MenuSortIcon col="class" /></button></th>
+                  <th className="ds-num"><button type="button" className="ds-sort" onClick={() => toggleMenuSort('qty')}>Vendus<MenuSortIcon col="qty" /></button></th>
+                  <th className="ds-num"><button type="button" className="ds-sort" onClick={() => toggleMenuSort('revenue')}>CA ({currencySymbol()})<MenuSortIcon col="revenue" /></button></th>
+                  <th className="ds-num"><button type="button" className="ds-sort" onClick={() => toggleMenuSort('cost')}>Coût matière ({currencySymbol()})<MenuSortIcon col="cost" /></button></th>
+                  <th className="ds-num"><button type="button" className="ds-sort" onClick={() => toggleMenuSort('pct')}>% matière<MenuSortIcon col="pct" /></button></th>
+                  <th className="ds-num"><button type="button" className="ds-sort" onClick={() => toggleMenuSort('contribution')}>Contribution ({currencySymbol()})<MenuSortIcon col="contribution" /></button></th>
                 </tr>
               </thead>
               <tbody>
@@ -496,8 +496,8 @@ function CostTab({ costData, costLoading, lossStats }: {
   const totFc = displayedBreakdown.reduce((s, r) => s + (parseFloat(r.food_cost) || 0), 0);
   const totPct = totRev > 0 ? totFc / totRev * 100 : 0;
   const sortTh = (col: string, label: string, num = true) => (
-    <th className={num ? 'ds-num' : undefined} onClick={() => toggleCbSort(col)} style={{ cursor: 'pointer', userSelect: 'none' }}
-      aria-sort={cbSort === col ? (cbSortDir === 'asc' ? 'ascending' : 'descending') : undefined}>{label}<CbSortIcon col={col} /></th>
+    <th className={num ? 'ds-num' : undefined}
+      aria-sort={cbSort === col ? (cbSortDir === 'asc' ? 'ascending' : 'descending') : undefined}><button type="button" className="ds-sort" onClick={() => toggleCbSort(col)}>{label}<CbSortIcon col={col} /></button></th>
   );
 
   return (

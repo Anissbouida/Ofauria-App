@@ -35,7 +35,7 @@ import './production.css';
 import '../projects/projects.css';
 import '../sales/sales.css';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { Alert, Breadcrumb, EmptyState, ErrorState, FormField, FormFooter, LoadingState, Modal } from '../../components/ds';
+import { Alert, Breadcrumb, DataPanel, EmptyState, ErrorState, FormField, FormFooter, LoadingState, Modal, SectionHeader } from '../../components/ds';
 import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity, formatQty } from '../../utils/units';
 import ProductionLaunchModal from './ProductionLaunchModal';
@@ -803,7 +803,7 @@ export default function PlanDetailPage() {
           </table>
         </div>
         {!allFulfilled && (
-          <div className="odoo-alert danger" style={{ borderBottom: 'none', borderTop: '1px solid #f5c6cb' }}>
+          <div className="odoo-alert danger" style={{ borderBottom: 'none', borderTop: '1px solid color-mix(in srgb, var(--ds-danger) 25%, var(--ds-card))' }}>
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
             <span>La production ne peut pas démarrer tant que les semi-finis sont en attente.</span>
           </div>
@@ -1527,12 +1527,9 @@ export default function PlanDetailPage() {
               {/* Recipe ingredients */}
               {recipeIngredients.length > 0 && (
                 <>
-                  <div className="pd-section-head" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
-                    <Scale size={12} /> Ingrédients
-                    <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-                      ×{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit}
-                    </span>
-                  </div>
+                  <SectionHeader title={<><Scale size={12} /> Ingrédients</>}
+                    note={<>×{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit}</>} />
+                  <DataPanel label="Ingrédients de la recette">
                   <table className="odoo-table">
                     <thead>
                       <tr>
@@ -1547,7 +1544,7 @@ export default function PlanDetailPage() {
                         const unit = ri.unit as string || ri.base_unit as string || '';
                         return (
                           <tr key={idx} style={{ cursor: 'default' }}>
-                            <td style={{ fontWeight: 500 }}>{ri.ingredient_name as string}</td>
+                            <td className="ds-strong">{ri.ingredient_name as string}</td>
                             <td className="ds-num">
                               <strong>{scaledQty.toFixed(3)}</strong>
                               <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{unit}</span>
@@ -1557,6 +1554,7 @@ export default function PlanDetailPage() {
                       })}
                     </tbody>
                   </table>
+                  </DataPanel>
                 </>
               )}
             </div>

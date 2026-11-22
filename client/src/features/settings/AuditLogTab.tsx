@@ -234,7 +234,7 @@ function ChangeDetail({ e }: { e: AuditLogEntry }) {
         .map(([k, v]) => [k, e.operation === 'DELETE' ? v : undefined, e.operation === 'DELETE' ? undefined : v]);
   if (!pairs.length) return <span style={{ color: 'var(--ds-muted)', fontSize: '0.8125rem' }}>Aucun détail.</span>;
   return (
-    <table className="odoo-table" style={{ margin: 0 }}>
+    <table className="odoo-table ds-dense ds-nested">
       <thead><tr><th>Champ</th><th>Avant</th><th>Après</th></tr></thead>
       <tbody>
         {pairs.map(([k, o, n]) => (

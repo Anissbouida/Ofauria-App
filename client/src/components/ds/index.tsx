@@ -494,3 +494,32 @@ export function MonthYearField({ month, year, onMonth, onYear, label = 'Mois' }:
     </span>
   );
 }
+
+
+/* ── En-tête de colonne triable ── */
+/**
+ * En-tête triable accessible : un vrai bouton dans la cellule (focus au clavier, Entrée),
+ * `aria-sort` sur la cellule quand la colonne est active.
+ */
+export function SortTh({ label, active, dir, onSort, className, style, title }: {
+  label: ReactNode; active?: boolean; dir?: 'asc' | 'desc'; onSort: () => void;
+  className?: string; style?: CSSProperties; title?: string;
+}) {
+  return (
+    <th className={className} style={style} aria-sort={active ? (dir === 'desc' ? 'descending' : 'ascending') : undefined}>
+      <button type="button" className="ds-sort" onClick={onSort} title={title}>
+        {label}
+        <span aria-hidden="true" style={{ opacity: active ? 1 : 0.35, fontSize: 11 }}>{active ? (dir === 'desc' ? '▼' : '▲') : '↕'}</span>
+      </button>
+    </th>
+  );
+}
+
+/** Couleurs de la palette catégorielle, dans l'ordre d'attribution. */
+export const DS_CATEGORY_COLORS = ['blue', 'purple', 'teal', 'pink', 'gold', 'brown', 'olive', 'slate'] as const;
+export type DsCategoryColor = typeof DS_CATEGORY_COLORS[number];
+/** Couleur de texte et fond d'une catégorie (`catTone('teal')` ou `catTone(index)`). */
+export function catTone(c: DsCategoryColor | number): { color: string; background: string } {
+  const k = typeof c === 'number' ? DS_CATEGORY_COLORS[((c % 8) + 8) % 8] : c;
+  return { color: `var(--ds-cat-${k})`, background: `var(--ds-cat-${k}-bg)` };
+}

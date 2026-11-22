@@ -282,13 +282,13 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
     else { setSortBy(field); setSortDir(field === 'name' || field === 'city' ? 'asc' : 'desc'); }
   };
   const sortableTh = (field: string, label: string, align?: 'right') => (
-    <th onClick={() => toggleSort(field)} aria-sort={sortBy === field ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-      className={align ? 'ds-num' : undefined} style={{ cursor: 'pointer', userSelect: 'none' }}>
+    <th aria-sort={sortBy === field ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+      className={align ? 'ds-num' : undefined}><button type="button" className="ds-sort" onClick={() => toggleSort(field)}>
       {label}{' '}
       {sortBy !== field
         ? <ArrowUpDown size={10} aria-hidden="true" style={{ opacity: 0.3, verticalAlign: 'middle' }} />
         : sortDir === 'asc' ? <ArrowUp size={10} aria-hidden="true" style={{ verticalAlign: 'middle' }} /> : <ArrowDown size={10} aria-hidden="true" style={{ verticalAlign: 'middle' }} />}
-    </th>
+    </button></th>
   );
   const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd MMM yyyy', { locale: fr }) : null);
 

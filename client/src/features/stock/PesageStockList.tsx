@@ -250,7 +250,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
                     {isOpen && lots.length > 0 && (
                       <tr className="odoo-subrow">
                         <td colSpan={8} style={{ padding: '0 0 0 1.5rem', background: 'color-mix(in srgb, var(--theme-bg-page) 70%, var(--theme-bg-card))' }}>
-                          <table className="odoo-table" style={{ margin: 0, boxShadow: 'none', background: 'transparent' }}>
+                          <table className="odoo-table ds-dense ds-nested">
                             <thead>
                               <tr>
                                 <th>Lot</th>

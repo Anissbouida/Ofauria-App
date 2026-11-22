@@ -351,16 +351,16 @@ export default function StockPage() {
   const SortHeader = ({ col, children, className = '', align = 'left' }: { col: SortKey; children: React.ReactNode; className?: string; align?: 'left' | 'right' | 'center' }) => {
     const active = sortKey === col;
     return (
-      <th onClick={() => toggleSort(col)} aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+      <th aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
         style={align === 'right' ? undefined : { textAlign: align }}
-        className={`${className}${align === 'right' ? ' ds-num' : ''}`}>
+        className={`${className}${align === 'right' ? ' ds-num' : ''}`}><button type="button" className="ds-sort" onClick={() => toggleSort(col)}>
         <span className="inline-flex items-center gap-1">
           {children}
           <span className={`odoo-sort-arrow ${active ? 'active' : ''}`}>
             {active ? (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
           </span>
         </span>
-      </th>
+      </button></th>
     );
   };
 
