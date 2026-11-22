@@ -291,3 +291,8 @@ textarea.ds-input { height: auto; min-height: 84px; padding: 8px 12px; resize: v
 
 /* Barre du fil d'Ariane : les actions de l'écran sont toujours poussées à droite. */
 .kl-ds .odoo-control-bar > .odoo-breadcrumb { margin-right: auto; }
+
+/* En-tête de bloc repliable (titre + résumé cliquables, chevron). */
+.ds-collapse-head { all: unset; display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; min-width: 0; border-radius: 8px; text-align: left; }
+.ds-collapse-head:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 4px; }
+.ds-collapse-head:hover .ds-subhead { color: var(--ds-accent-ink); }

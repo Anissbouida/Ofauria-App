@@ -47,6 +47,9 @@ export default function PaymentAlertsWidget({
   compact?: boolean;
 }) {
   const navigate = useNavigate();
+  // Liste repliable : l'en-tête (titre + résumé) reste visible ; le choix est retenu sur ce poste.
+  const [open, setOpen] = useState(() => localStorage.getItem('kalum.paymentAlerts.open') !== '0');
+  const toggleOpen = () => setOpen(o => { localStorage.setItem('kalum.paymentAlerts.open', o ? '0' : '1'); return !o; });
   const [expandedChecks, setExpandedChecks] = useState<Set<string>>(new Set());
   const { data = [], isLoading, isError } = useQuery({
     queryKey: ['invoice-payment-alerts', days],
@@ -126,8 +129,12 @@ export default function PaymentAlertsWidget({
 
   return (
     <section className="ds-panel" aria-label="Échéances fournisseurs">
-      <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid var(--ds-sep)' }}>
-        <div className="flex items-center gap-2">
+      <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: open ? '1px solid var(--ds-sep)' : 0 }}>
+        <button type="button" className="ds-collapse-head" onClick={toggleOpen} aria-expanded={open} aria-controls="payment-alerts-list"
+          title={open ? 'Réduire la liste' : 'Développer la liste'}>
+          {open
+            ? <ChevronDown size={16} aria-hidden="true" style={{ color: 'var(--ds-muted)', flex: 'none' }} />
+            : <ChevronRight size={16} aria-hidden="true" style={{ color: 'var(--ds-muted)', flex: 'none' }} />}
           <CalendarClock size={18} aria-hidden="true" style={{ color: overdueCount > 0 ? 'var(--ds-danger)' : 'var(--ds-warning)', flex: 'none' }} />
           <div>
             <h3 className="ds-subhead">Échéances fournisseurs ({days} jours)</h3>
@@ -141,12 +148,12 @@ export default function PaymentAlertsWidget({
               {' · À décaisser : '}{money(totalDue)}
             </p>
           </div>
-        </div>
+        </button>
         <button type="button" onClick={() => navigate('/purchasing')} className="odoo-btn-secondary ds-btn-sm">
           Voir tout
         </button>
       </div>
-      <div className={`divide-y divide-gray-50 overflow-auto ${compact ? 'max-h-80' : 'max-h-[28rem]'}`}>
+      {open && <div id="payment-alerts-list" className={`divide-y divide-gray-50 overflow-auto ${compact ? 'max-h-80' : 'max-h-[28rem]'}`}>
         {items.slice(0, compact ? 8 : 50).map(it => {
           // ─── Cheque multi-factures : ligne depliable ───
           if (it.type === 'group') {
@@ -258,7 +265,7 @@ export default function PaymentAlertsWidget({
             … {items.length - 8} échéance{items.length - 8 > 1 ? 's' : ''} supplémentaire{items.length - 8 > 1 ? 's' : ''}
           </div>
         )}
-      </div>
+      </div>}
     </section>
   );
 }
