@@ -256,6 +256,15 @@ export default function SalesPage() {
     enabled: mainTab === 'sales' && view !== 'receipt',
   });
 
+  // Totaux de la période calculés par le serveur (constat 137, scénario 2) : la liste « Par reçu »
+  // ne charge qu'une page de tickets (200 au plus), ses cartes ne peuvent pas en faire la somme.
+  const { data: periodTotalsData } = useQuery({
+    queryKey: ['sales-summary', { dateFrom, dateTo, groupBy: 'payment' }],
+    queryFn: () => salesApi.summary({ dateFrom, dateTo, groupBy: 'payment' }),
+    enabled: mainTab === 'sales' && view === 'receipt',
+  });
+  const periodTotals = (periodTotalsData as Record<string, any>[] | undefined) ?? null;
+
   // Sessions query
   const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
     queryKey: ['cash-register-sessions', { dateFrom, dateTo }],
@@ -511,10 +520,18 @@ export default function SalesPage() {
       }, 0)
     : summary.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total_revenue as string || '0'), 0);
   const salesGross = posGross;
-  const grossRevenue = view === 'receipt' ? salesGross + manualRevenue : salesGross;
+  // Vue « Par reçu » : totaux serveur de toute la période (saisies manuelles déjà incluses
+  // par le regroupement par paiement) ; repli sur la page chargée tant qu'ils arrivent.
+  const grossRevenue = view === 'receipt'
+    ? (periodTotals
+        ? periodTotals.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total_revenue as string || '0'), 0)
+        : salesGross + manualRevenue)
+    : salesGross;
   const totalRevenue = view === 'receipt' ? grossRevenue - totalRefunds : grossRevenue;
   const totalCount = view === 'receipt'
-    ? sales.length
+    ? (periodTotals
+        ? periodTotals.reduce((sum: number, s: Record<string, any>) => sum + parseInt(s.sale_count as string || '0'), 0)
+        : sales.length)
     : summary.reduce((sum: number, s: Record<string, any>) => sum + parseInt(s.sale_count as string || '0'), 0);
   const returnsCount = salesReturns.filter((r: Record<string, any>) => r.type === 'return').length;
 
