@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { referentielApi } from '../../api/referentiel.api';
 import { usePermissions } from '../../context/PermissionsContext';
-import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, Modal, NoResultState, SearchBar, SectionHeader, Toolbar } from '../../components/ds';
+import { DataPanel, EmptyState, FormField, FormFooter, HeaderActions, LoadingState, Modal, NoResultState, SearchBar, SectionHeader, TableFooter, Toolbar } from '../../components/ds';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
@@ -255,10 +255,20 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
           <ChevronLeft size={13} aria-hidden="true" /> Référentiel
         </button>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <SectionHeader title={String(table?.label || tableId)}
-            note={`${activeCount} active(s)${inactiveCount > 0 ? ` · ${inactiveCount} inactive(s)` : ''}`} />
+          <SectionHeader title={String(table?.label || tableId)} />
         </div>
       </div>
+
+      <HeaderActions>
+        <button type="button" className="odoo-btn-secondary" onClick={() => referentielApi.exportCsv(tableId, entries, String(table?.label || tableId))} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Download size={13} aria-hidden="true" /> Exporter
+        </button>
+        {canCreate('settings') && (
+          <button type="button" className="odoo-btn-primary" onClick={() => openNew()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Plus size={13} aria-hidden="true" /> {isHierarchical ? 'Nouvelle catégorie' : 'Ajouter'}
+          </button>
+        )}
+      </HeaderActions>
 
       <Toolbar>
         <SearchBar value={search} onChange={setSearch} placeholder="Rechercher par libellé, code…" label="Rechercher une valeur" />
@@ -272,14 +282,6 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, ...(showAudit ? { background: 'var(--ds-tint)', color: 'var(--ds-accent-ink)' } : {}) }}>
           <History size={13} aria-hidden="true" /> Historique
         </button>
-        <button type="button" className="odoo-btn-secondary" onClick={() => referentielApi.exportCsv(tableId, entries, String(table?.label || tableId))} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Download size={13} aria-hidden="true" /> Exporter
-        </button>
-        {canCreate('settings') && (
-          <button type="button" className="odoo-btn-primary" onClick={() => openNew()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Plus size={13} aria-hidden="true" /> {isHierarchical ? 'Nouvelle catégorie' : 'Ajouter'}
-          </button>
-        )}
       </Toolbar>
 
       {showAudit && (
@@ -305,7 +307,8 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
           ? <NoResultState text="Aucune valeur ne correspond à la recherche." onReset={() => setSearch('')} />
           : <EmptyState icon={Database} title="Table vide" text="Ajoutez la première valeur avec le bouton « Ajouter »." />
       ) : (
-        <DataPanel label={String(table?.label || tableId)}>
+        <DataPanel label={String(table?.label || tableId)}
+          footer={<TableFooter note={`${activeCount} valeur${activeCount > 1 ? 's' : ''} active${activeCount > 1 ? 's' : ''}${inactiveCount > 0 ? ` · ${inactiveCount} inactive${inactiveCount > 1 ? 's' : ''}` : ''}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>

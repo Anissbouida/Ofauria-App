@@ -14,7 +14,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { DataPanel, FormField, FormFooter, SectionHeader } from '../../components/ds';
+import { DataPanel, FormField, FormFooter, HeaderActions, SectionHeader } from '../../components/ds';
 
 /**
  * Paramètres › Circuits d'approbation (lot 8, mig 350). Une règle = type de
@@ -128,9 +128,12 @@ export default function ApprovalsTab() {
           Une pièce qui remplit la condition attend l'accord des approbateurs.
         </PageNote>
         {editable && canCreate('settings') && !draft && (
-          <button type="button" className="odoo-btn-secondary" onClick={() => setDraft({ label: '', docType: 'purchase_order', condition: null, roles: ['manager'], mode: 'serial' })}>
-            <Plus size={14} /> Nouvelle règle
-          </button>
+          <HeaderActions>
+            <button type="button" className="odoo-btn-primary" onClick={() => setDraft({ label: '', docType: 'purchase_order', condition: null, roles: ['manager'], mode: 'serial' })}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Plus size={13} aria-hidden="true" /> Nouvelle règle
+            </button>
+          </HeaderActions>
         )}
       </div>
       {!rules.length && <StatusBanner tone="warning" icon={ClipboardCheck} title="Circuits indisponibles">La migration 350 n'est pas appliquée sur cette base.</StatusBanner>}

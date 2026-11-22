@@ -51,7 +51,7 @@ import { HOME_PAGE, LEGACY_PAGES, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, 
 import '../projects/projects.css';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Breadcrumb } from '../../components/ds';
+import { Breadcrumb, HeaderSlotContext } from '../../components/ds';
 
 export default function SettingsPage() {
   const { hasModule } = usePermissions();
@@ -127,6 +127,7 @@ function SettingsShell() {
     try { localStorage.setItem('kalum.settings.collapsed', JSON.stringify([...next])); } catch { /* stockage indisponible */ }
     return next;
   });
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   const rawPage = params.get('page');
   const requested = (rawPage ? LEGACY_PAGES[rawPage] ?? rawPage : null) as SettingsPageKey | null;
   // Page absente, inconnue ou non permise : accueil de la configuration (lot B).
@@ -345,6 +346,8 @@ function SettingsShell() {
               <PageHistory table={current.auditTable}
                 onOpen={pages.some(p => p.key === 'audit') ? () => void goTo('audit', { extra: { table: current.auditTable! } }) : undefined} />
             )}
+            {/* Actions de la page (exports, action principale) : même place que dans les modules. */}
+            <div ref={setHeaderSlot} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} />
           </div>
           <div className="odoo-settings-body kl-page">
             <header className="kl-largetitle">
@@ -358,9 +361,11 @@ function SettingsShell() {
               </StatusBanner>
             )}
             {!isHome && <PageToc key={`toc-${current.key}`} />}
-            <div key={current.key} style={{ display: 'grid', gap: '1.5rem', minWidth: 0 }}>
-              {pageContent[current.key]}
-            </div>
+            <HeaderSlotContext.Provider value={headerSlot}>
+              <div key={current.key} style={{ display: 'grid', gap: '1.5rem', minWidth: 0 }}>
+                {pageContent[current.key]}
+              </div>
+            </HeaderSlotContext.Provider>
           </div>
           <SaveBar readOnly={readOnly} />
         </div>

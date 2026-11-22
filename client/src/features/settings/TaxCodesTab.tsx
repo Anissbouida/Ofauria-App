@@ -5,7 +5,7 @@ import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type TaxCode } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { DataPanel, ErrorState, FormField, FormFooter, SectionHeader } from '../../components/ds';
+import { DataPanel, ErrorState, FormField, FormFooter, HeaderActions, SectionHeader, TableFooter, Toolbar } from '../../components/ds';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 
@@ -65,21 +65,23 @@ export default function TaxCodesTab() {
       <PageNote help="Un taux ne se modifie pas : ajoutez le nouveau avec sa date d'effet, l'ancien s'arrête la veille. Les pièces déjà enregistrées gardent leur taux.">
         Taux datés : un nouveau taux remplace l'ancien à sa date d'effet.
       </PageNote>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <label htmlFor="tax-show-past" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
+      {!draft && canCreate('settings') && (
+        <HeaderActions>
+          <button type="button" className="odoo-btn-primary" onClick={() => newRateFor()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Plus size={13} aria-hidden="true" /> Nouveau taux
+          </button>
+        </HeaderActions>
+      )}
+      <Toolbar>
+        <label htmlFor="tax-show-past" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
           <input id="tax-show-past" type="checkbox" checked={showPast} onChange={e => setShowPast(e.target.checked)} /> Afficher l'historique
         </label>
-        {!draft && canCreate('settings') && (
-          <button type="button" className="odoo-btn-primary" onClick={() => newRateFor()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Plus size={13} /> Nouveau taux
-          </button>
-        )}
-      </div>
+      </Toolbar>
 
       {error ? <ErrorState error={error} onRetry={() => void refetch()} /> : isLoading ? <Loader2 className="animate-spin" size={16} /> : !codes.length ? (
         <StatusBanner tone="warning" icon={Percent} title="Aucun code TVA">La migration 331 n'est pas appliquée sur cette base.</StatusBanner>
       ) : (
-        <DataPanel label="Codes TVA">
+        <DataPanel label="Codes TVA" footer={<TableFooter note={`${shown.length} taux affiché${shown.length > 1 ? 's' : ''} · ${codes.filter(c => c.status === 'current').length} en vigueur`} />}>
           <table className="odoo-table">
             <thead><tr><th>Code</th><th>Libellé</th><th className="ds-num">Taux (%)</th><th>Nature</th><th>Déductible</th><th>Du</th><th>Au</th><th>Statut</th><th>Référence</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
             <tbody>

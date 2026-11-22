@@ -11,7 +11,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { DataPanel, ErrorState, FormField, FormFooter } from '../../components/ds';
+import { DataPanel, ErrorState, FormField, FormFooter, HeaderActions } from '../../components/ds';
 import { OdooToggle } from './SettingsPrimitives';
 
 /**
@@ -164,9 +164,11 @@ export default function StoresPanel() {
           </button>
         </div>
         {!editing && (
-          <button type="button" className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Plus size={13} /> Nouvel établissement
-          </button>
+          <HeaderActions>
+            <button type="button" className="odoo-btn-primary" onClick={() => open()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Plus size={13} aria-hidden="true" /> Nouvel établissement
+            </button>
+          </HeaderActions>
         )}
       </div>
 

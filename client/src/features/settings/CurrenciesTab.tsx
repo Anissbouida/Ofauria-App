@@ -9,7 +9,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { apiErrorMessage } from '../../api/errors';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
-import { DataPanel, FormField, FormFooter, LoadingState, SectionHeader } from '../../components/ds';
+import { DataPanel, FormField, FormFooter, HeaderActions, LoadingState, SectionHeader } from '../../components/ds';
 
 /**
  * Devises et taux de change (mig 363). Le dirham reste la devise de tenue : stock, coûts
@@ -49,11 +49,11 @@ export default function CurrenciesTab() {
       <PageNote help={`Stock, coût matière et comptabilité restent en ${currencySymbol()}. Un bon de commande ou un devis fournisseur saisi dans une autre devise fige le taux du jour, et chaque ligne garde son prix d'origine. Un taux est daté : les pièces passées gardent le leur.`}>
         Taux = nombre de {currencySymbol()} pour 1 unité de la devise. La tenue reste en {currencySymbol()}.
       </PageNote>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {!newCur && canCreate('settings') && (
-          <button type="button" className="odoo-btn-secondary" onClick={() => setNewCur({ code: '', label: '', symbol: '' })} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Ajouter une devise</button>
-        )}
-      </div>
+      {!newCur && canCreate('settings') && (
+        <HeaderActions>
+          <button type="button" className="odoo-btn-primary" onClick={() => setNewCur({ code: '', label: '', symbol: '' })} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} aria-hidden="true" /> Ajouter une devise</button>
+        </HeaderActions>
+      )}
       {newCur && (
         <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }} aria-label="Nouvelle devise">
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '120px minmax(0, 1fr) 120px' }}>
