@@ -565,6 +565,8 @@ export default function SalesPage() {
           <Receipt size={14} style={{ color: 'var(--theme-accent)' }} />
           <span>Ventes</span>
           <span className="odoo-breadcrumb-separator">›</span>
+          <span>Opérations</span>
+          <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">{currentMainTab?.label}</span>
         </div>
         <div style={{ flex: 1 }} />

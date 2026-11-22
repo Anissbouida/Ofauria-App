@@ -288,3 +288,6 @@ textarea.ds-input { height: auto; min-height: 84px; padding: 8px 12px; resize: v
 /* Sous-tableau imbriqué dans une ligne dépliée. */
 .kl-ds.kl-ds .odoo-table.ds-nested { margin: 0; box-shadow: none !important; background: transparent; border-radius: 0 !important; }
 .kl-ds.kl-ds .odoo-table.ds-nested thead th { background: transparent; }
+
+/* Barre du fil d'Ariane : les actions de l'écran sont toujours poussées à droite. */
+.kl-ds .odoo-control-bar > .odoo-breadcrumb { margin-right: auto; }

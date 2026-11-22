@@ -120,7 +120,7 @@ export default function ProductionDashboardPage() {
     && rendementByProduct.length === 0 && coutByDay.length === 0;
 
   return (
-    <SalesPageShell icon={BarChart3} parent="Production" title="Tableau de bord" list
+    <SalesPageShell icon={BarChart3} parent="Production › Tableau de bord" title="Tableau de bord" list
       summary={`Rendement, pertes et coûts de fabrication sur les ${periodLabel}.`}
       actions={
         <Segmented label="Période" value={period} onChange={setPeriod}

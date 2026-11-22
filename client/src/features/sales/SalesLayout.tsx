@@ -78,6 +78,8 @@ export default function SalesLayout() {
           ? 'customers'
         : pathname === '/sales-channels'
           ? 'channels'
+        : pathname === '/delivery-notes'
+          ? 'orders:deliveries'
           : pathname.slice(1);
   const current = views.find(v => v.key === currentKey);
 

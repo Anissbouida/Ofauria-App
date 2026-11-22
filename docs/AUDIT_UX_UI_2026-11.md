@@ -244,3 +244,20 @@ suivants changent :
 | Couleurs en dur | Palette catégorielle commune (`--ds-cat-*`, 8 teintes contrastées, `catTone()`) pour distinguer des familles ; couleurs d'état ramenées à un seul rouge, orange et vert : familles `--prj-*`, étiquettes `odoo-tag-*`, alertes, points de statut, bandeaux et boutons danger pointent sur les jetons. Restent volontairement : préréglages de thème, documents imprimés, étiquettes Niimbot, valeurs par défaut des sélecteurs de couleur |
 | Tableaux | Les tableaux restants sont dans un `DataPanel`, en récapitulatif `ds-summary` (totaux, soldes) ou en sous-tableau `ds-nested` ; la seule exception est le tableau Attendu / Saisi / Écart des sessions de caisse, stylé par sa feuille Apple |
 | Feuille commune | `design-system.css` chargée dès le démarrage (`main.tsx`) : les jetons existent sur tous les écrans, y compris la connexion |
+
+### 9.1 Parcours de non-régression à l'écran (5173, compte gérant)
+
+Parcours automatique de **140 écrans** : toutes les rubriques des modules à onglets (Achats 13,
+Comptabilité 30, Stock 14, Personnel 9, Contrôle 7, Maintenance 3, Projets 6) et toutes les pages à
+adresse propre (Ventes, Production, rapports, Journée boutique, administration, accueil). Pour
+chacun : rendu non vide, fil d'Ariane, titre, erreurs d'exécution.
+
+Résultat : **140 / 140 affichés, aucune page blanche, aucune erreur d'exécution** (les réponses
+403 attendues pour un gérant, par exemple sur Utilisateurs, sont affichées « Accès refusé »).
+
+Corrigé à la suite du parcours :
+- actions d'en-tête collées au fil d'Ariane dans la Comptabilité → toujours poussées à droite ;
+- fil d'Ariane à deux niveaux sur Tickets, Bons de livraison et tableau de bord Production → trois niveaux.
+
+Ce parcours vérifie l'affichage ; il ne remplace pas les scénarios métier (saisies, validations
+de bout en bout), qui restent à rejouer avant une mise en production.
