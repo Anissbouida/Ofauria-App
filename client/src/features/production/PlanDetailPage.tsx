@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import { RowMenu } from '../../components/ui/RowMenu';
 import { PlanPanels } from './planPanels';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import ItemRecipeSelect from './ItemRecipeSelect';
@@ -166,7 +167,6 @@ export default function PlanDetailPage() {
   // L'onglet Production n'apparait qu'une fois le BSI cloture (ou deja en cours).
   const [planTab, setPlanTab] = useState<PlanTab>('synthese');
   // Menu « Plus » de l'en-tete (impressions, relance, brouillon, perte).
-  const [moreOpen, setMoreOpen] = useState(false);
   // Fin de l'etape Preparation : UNIQUEMENT quand le bon de sortie est cloture
   // (ingredients transferes et reception confirmee), ou si la production est deja
   // demarree / terminee. Un plan sans besoin calcule (produit sans recette) n'est
@@ -1130,29 +1130,10 @@ export default function PlanDetailPage() {
     menuItems.push({ key: 'loss', sep: menuItems.length > 0, danger: true, label: 'Déclarer une perte', icon: <Trash2 size={13} />, onClick: () => setShowLossModal(true) });
   }
 
+  // Menu « Plus » : menu commun (séparateurs, infobulles des actions désactivées).
   const moreMenu = menuItems.length > 0 ? (
-    <div className="plan-more">
-      <button type="button" className="odoo-btn-secondary" onClick={() => setMoreOpen(o => !o)} aria-expanded={moreOpen}>
-        Plus <ChevronDown size={13} />
-      </button>
-      {moreOpen && (
-        <>
-          <div className="plan-more-backdrop" onClick={() => setMoreOpen(false)} />
-          <div className="plan-more-menu" role="menu">
-            {menuItems.map(m => (
-              <div key={m.key}>
-                {m.sep && <div className="plan-more-sep" />}
-                <button type="button" role="menuitem" disabled={m.disabled} title={m.title}
-                  className={`plan-more-item${m.danger ? ' danger' : ''}`}
-                  onClick={() => { setMoreOpen(false); m.onClick(); }}>
-                  {m.icon} {m.label}
-                </button>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+    <RowMenu label="Plus d'actions sur le plan" trigger="Plus"
+      items={menuItems.map(m => ({ label: m.label, iconNode: m.icon, onSelect: m.onClick, danger: m.danger, disabled: m.disabled, title: m.title, separator: m.sep }))} />
   ) : null;
 
   const planStatusBadge = plan.status === 'completed' && plan.completion_type === 'partial'

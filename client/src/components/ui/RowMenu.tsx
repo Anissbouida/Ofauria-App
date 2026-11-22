@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ChevronDown, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import './row-menu.css';
 
@@ -8,6 +8,12 @@ export interface RowMenuItem {
   onSelect: () => void;
   danger?: boolean;
   disabled?: boolean;
+  /** Infobulle (raison d'une action désactivée, précision). */
+  title?: string;
+  /** Trait de séparation au-dessus de l'élément (regrouper les actions). */
+  separator?: boolean;
+  /** Icône déjà rendue (à la place de `icon`). */
+  iconNode?: ReactNode;
 }
 
 /**
@@ -60,11 +66,14 @@ export function RowMenu({ items, label = 'Plus d\'actions', trigger }: {
           {visible.map(it => {
             const Icon = it.icon;
             return (
-              <button key={it.label} type="button" role="menuitem" disabled={it.disabled}
-                className={`row-menu-item${it.danger ? ' danger' : ''}`}
-                onClick={() => { setOpen(false); it.onSelect(); }}>
-                {Icon && <Icon size={14} />} {it.label}
-              </button>
+              <Fragment key={it.label}>
+                {it.separator && <div className="row-menu-sep" role="separator" />}
+                <button type="button" role="menuitem" disabled={it.disabled} title={it.title}
+                  className={`row-menu-item${it.danger ? ' danger' : ''}`}
+                  onClick={() => { setOpen(false); it.onSelect(); }}>
+                  {it.iconNode ?? (Icon && <Icon size={14} />)} {it.label}
+                </button>
+              </Fragment>
             );
           })}
         </div>

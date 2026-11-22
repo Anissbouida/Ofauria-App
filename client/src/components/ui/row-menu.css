@@ -8,3 +8,5 @@
 .row-menu-item:hover:not(:disabled) { background: var(--odoo-bg-hover, color-mix(in srgb, var(--odoo-text-muted) 8%, transparent)); }
 .row-menu-item.danger, .row-menu-item.danger svg { color: var(--ds-danger, #B91C1C); }
 .row-menu-item:disabled { opacity: .5; cursor: default; }
+
+.row-menu-sep { height: 1px; margin: 4px 0; background: var(--ds-hair, #E2E8F0); }

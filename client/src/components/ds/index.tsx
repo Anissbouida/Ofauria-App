@@ -523,3 +523,26 @@ export function catTone(c: DsCategoryColor | number): { color: string; backgroun
   const k = typeof c === 'number' ? DS_CATEGORY_COLORS[((c % 8) + 8) % 8] : c;
   return { color: `var(--ds-cat-${k})`, background: `var(--ds-cat-${k}-bg)` };
 }
+
+
+/* ── Carte de saisie d'atelier ── */
+/**
+ * Carte de saisie pour les écrans d'atelier (relevés HACCP, contrôles) : titre, précision,
+ * étiquette à droite, puis les champs. `alert` l'entoure de rouge (hors plage, action ouverte).
+ */
+export function EntryCard({ title, detail, aside, alert, children }: {
+  title?: ReactNode; detail?: ReactNode; aside?: ReactNode; alert?: boolean; children?: ReactNode;
+}) {
+  return (
+    <div className={`ds-entry-card${alert ? ' alert' : ''}`}>
+      {(title || detail || aside) && (
+        <div className="ds-entry-card-head">
+          {title && <strong>{title}</strong>}
+          {detail && <small>{detail}</small>}
+          {aside && <span>{aside}</span>}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}

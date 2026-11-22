@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
+import { TableFooter } from '../ds';
 import type { LucideIcon } from 'lucide-react';
-import { CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarRange } from 'lucide-react';
 import { format, subMonths, startOfMonth, startOfYear } from 'date-fns';
 
 /**
@@ -237,19 +238,7 @@ export function ViewSwitch({ view, onChange, openLabel, historyLabel, ariaLabel 
 }
 
 export function Pager({ page, total, onPage, note }: { page: number; total: number; onPage: (p: number) => void; note: string }) {
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 12px', fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
-      <span>{note}</span>
-      <span className="odoo-pager">
-        {total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} / {total}
-        <button type="button" className="odoo-pager-btn" onClick={() => onPage(page - 1)} disabled={page <= 1} aria-label="Page précédente">
-          <ChevronLeft size={14} />
-        </button>
-        <button type="button" className="odoo-pager-btn" onClick={() => onPage(page + 1)} disabled={page >= pageCount} aria-label="Page suivante">
-          <ChevronRight size={14} />
-        </button>
-      </span>
-    </div>
-  );
+  // Délègue au pied de tableau commun (Design System) : même compteur et même pagination partout,
+  // y compris dans les vues Colonnes et Kanban.
+  return <TableFooter note={note} page={page} pageSize={PAGE_SIZE} total={total} onPage={onPage} />;
 }

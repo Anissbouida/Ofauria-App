@@ -296,3 +296,13 @@ textarea.ds-input { height: auto; min-height: 84px; padding: 8px 12px; resize: v
 .ds-collapse-head { all: unset; display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; min-width: 0; border-radius: 8px; text-align: left; }
 .ds-collapse-head:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 4px; }
 .ds-collapse-head:hover .ds-subhead { color: var(--ds-accent-ink); }
+
+/* ── Carte de saisie d'atelier (relevés, contrôles) : grande cible tactile, alerte en contour rouge ── */
+.ds-entry-card { background: var(--ds-card); border-radius: var(--ds-r-card); box-shadow: var(--ds-shadow); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ds-entry-card.alert { box-shadow: inset 0 0 0 1.5px var(--ds-danger), var(--ds-shadow); }
+.ds-entry-card-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ds-entry-card-head strong { font-size: 14px; color: var(--ds-ink); }
+.ds-entry-card-head small { font-size: 12px; color: var(--ds-muted); }
+.ds-entry-card-head > :last-child:not(:first-child) { margin-left: auto; }
+.ds-entry-card :is(input, select, button) { min-height: 40px; }
+.ds-entry-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--ds-s4); }

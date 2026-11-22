@@ -10,8 +10,7 @@ import {
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import SalesPageShell from '../sales/SalesPageShell';
-import { Alert, DataPanel, EmptyState, ErrorState, LoadingState, SectionHeader, TableFooter } from '../../components/ds';
-// Cartes de saisie (klc-card) : styles partagés avec Contrôle & Qualité.
+import { Alert, DataPanel, EmptyState, EntryCard, ErrorState, LoadingState, SectionHeader, TableFooter } from '../../components/ds';
 import '../controle/kl-ui.css';
 
 /**
@@ -125,12 +124,8 @@ function ReadingCard({ e }: { e: TodayEquipment }) {
   });
 
   return (
-    <div className={`klc-card${e.last_in_range === false ? ' alert' : ''}`}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <strong style={{ fontSize: '0.875rem' }}>{e.nom}</strong>
-        <span style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>{t(e.temp_min)} à {t(e.temp_max)}</span>
-        <span style={{ marginLeft: 'auto' }}><StatusTag tone={done ? 'done' : 'todo'} icon={Thermometer} label={`${e.readings_today}/${e.readings_per_day}`} title="Relevés du jour" /></span>
-      </div>
+    <EntryCard alert={e.last_in_range === false} title={e.nom} detail={`${t(e.temp_min)} à ${t(e.temp_max)}`}
+      aside={<StatusTag tone={done ? 'done' : 'todo'} icon={Thermometer} label={`${e.readings_today}/${e.readings_per_day}`} title="Relevés du jour" />}>
       <div style={{ fontSize: '0.75rem', color: 'var(--ds-muted)' }}>
         {e.last_value == null ? 'Aucun relevé aujourd\'hui' : <>Dernier : <strong style={{ color: e.last_in_range ? 'var(--ds-ink)' : 'var(--ds-danger)' }}>{t(e.last_value)}</strong> à {time(e.last_at)}</>}
       </div>
@@ -149,7 +144,7 @@ function ReadingCard({ e }: { e: TodayEquipment }) {
             placeholder="Action réalisée (porte refermée, produits déplacés, technicien appelé…). Laissez vide si rien n'est encore fait." />
         </div>
       )}
-    </div>
+    </EntryCard>
   );
 }
 
@@ -226,7 +221,7 @@ function ActionCard({ a }: { a: CorrectiveAction }) {
     onError: (err) => notify.error(err),
   });
   return (
-    <div className={`klc-card${a.status === 'open' ? ' alert' : ''}`} style={{ gap: 6 }}>
+    <EntryCard alert={a.status === 'open'}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className="odoo-tag odoo-tag-grey">{ACTION_SOURCE_LABELS[a.source_kind]}</span>
         <strong className="ds-strong" style={{ fontSize: 14 }}>{a.problem}</strong>
@@ -245,7 +240,7 @@ function ActionCard({ a }: { a: CorrectiveAction }) {
           <button type="button" className="odoo-btn-primary" disabled={text.trim().length < 3 || complete.isPending} onClick={() => complete.mutate()}>Action réalisée</button>
         </div>
       )}
-    </div>
+    </EntryCard>
   );
 }
 
