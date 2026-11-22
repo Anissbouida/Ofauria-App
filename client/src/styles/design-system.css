@@ -386,3 +386,6 @@ textarea.ds-input { height: auto; min-height: 84px; padding: 8px 12px; resize: v
 /* Frises d'avancement sans numéro (décision utilisateur) : la pastille de l'étape en cours
    porte un point plein, les étapes à venir restent vides, les étapes faites sont cochées. */
 .kl-ds.kl-ds .ui-timeline-step.is-current .ui-timeline-dot:empty::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--ds-accent); }
+/* Boîtes posées hors d'un écran (confirmation, saisie de motif) : mêmes boutons en pilule
+   que dans les écrans (la coquille .kl-apple ne les couvre pas). */
+.ds-sheet.kl-ds :is(.odoo-btn-primary, .odoo-btn-secondary, .odoo-btn-danger):not(.ds-btn-sm) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
