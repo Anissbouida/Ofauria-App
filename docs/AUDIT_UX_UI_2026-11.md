@@ -302,6 +302,7 @@ débordement horizontal, aucun champ visible sans libellé.
 | Groupes de paramètres numérotés (1, 2, 3…) dans Règles de caisse, Devis et crédit, Production, Achats, Règles comptables | numéros retirés (`ParametersPanel`), conformément à la règle « pas de numérotation » |
 | Approbateurs numérotés « 1. 2. » à la création d'un circuit | flèches entre approbateurs, comme dans le tableau des circuits |
 | Tâches planifiées : colonne Résultat écrasée sur 4 lignes | largeur minimale de colonne |
+| Référentiel : un intertitre flottant et une carte par domaine (7 cartes), compteur hors du bord | un seul panneau standard, lignes de groupe repliables `ds-group` avec le nombre de tables |
 | Référentiel : libellés sans accents (« Categories de depenses », « Unites de mesure », « Types de conge »…) | migration 628 : libellés et descriptions des tables du référentiel accentués (seulement si le texte d'origine n'a pas été modifié) |
 
 Restent volontairement hors jetons : l'aperçu du ticket de caisse (rendu papier noir sur blanc) et
