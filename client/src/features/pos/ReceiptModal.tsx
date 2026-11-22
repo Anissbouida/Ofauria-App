@@ -328,7 +328,7 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                         <td colSpan={2} style={{ borderTop: '2px solid #000', paddingTop: '4px' }} />
                       </tr>
                       <tr>
-                        <td style={{ fontSize: `${fs + 2}px`, fontWeight: 'bold', padding: '2px 0' }}>AVANCE PAYEE</td>
+                        <td style={{ fontSize: `${fs + 2}px`, fontWeight: 'bold', padding: '2px 0' }}>AVANCE PAYÉE</td>
                         <td style={{ fontSize: `${fs + 2}px`, fontWeight: 'bold', padding: '2px 0', textAlign: 'right' }}>{money(receipt.total)}</td>
                       </tr>
                       <tr>
@@ -409,7 +409,7 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                 <table style={{ width: '100%', margin: '4px 0' }}>
                   <tbody>
                     <tr>
-                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0' }}>Especes</td>
+                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0' }}>Espèces</td>
                       <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>{money(receipt.cashPart)}</td>
                     </tr>
                     <tr>

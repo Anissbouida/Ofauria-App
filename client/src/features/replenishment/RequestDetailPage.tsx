@@ -502,7 +502,7 @@ function SubRequestDetailView({
             <div className="bg-emerald-50/50 px-6 py-2.5 border-b border-emerald-100 flex items-center gap-2">
               <CheckCircle2 size={14} className="text-emerald-600" />
               <p className="text-xs text-emerald-700 font-medium">
-                {receivedItems.length} article(s) deja recu(s) lors d'un transfert precedent
+                {receivedItems.length} article(s) déjà reçu(s) lors d'un transfert précédent
               </p>
             </div>
           )}
@@ -530,7 +530,7 @@ function SubRequestDetailView({
                   </span>
                   {/* Status */}
                   {isReceived ? (
-                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-700 flex-shrink-0">Deja recu</span>
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-700 flex-shrink-0">Déjà reçu</span>
                   ) : isWaitingProduction ? (
                     <span className="text-[11px] px-2.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700 flex-shrink-0">En production</span>
                   ) : (
@@ -645,7 +645,7 @@ function SubRequestDetailView({
                       className={`w-16 text-center py-1.5 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 ${diff !== 0 ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                   </div>
                   <div className="text-center flex-shrink-0 w-12">
-                    <div className="text-[10px] text-gray-400">Ecart</div>
+                    <div className="text-[10px] text-gray-400">Écart</div>
                     {diff === 0 ? <CheckCircle2 size={18} className="mx-auto text-emerald-500 mt-1" /> :
                       <span className={`text-sm font-bold ${diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>{diff > 0 ? '+' : ''}{diff}</span>}
                   </div>
@@ -660,7 +660,7 @@ function SubRequestDetailView({
             <div className="bg-amber-50 px-6 py-3 border-t border-amber-200 flex items-center gap-2">
               <AlertTriangle size={14} className="text-amber-500" />
               <p className="text-xs text-amber-700">
-                {pendingItems.length} article(s) en attente de production — un autre transfert sera necessaire apres la production.
+                {pendingItems.length} article(s) en attente de production — un autre transfert sera necessaire après la production.
               </p>
             </div>
           )}
@@ -747,7 +747,7 @@ function SubRequestDetailView({
                       <div className="text-sm font-semibold">{qtyReceived ?? '\u2014'}</div>
                     </div>
                     <div className="text-center flex-shrink-0 w-12">
-                      <div className="text-[10px] text-gray-400">Ecart</div>
+                      <div className="text-[10px] text-gray-400">Écart</div>
                       {diff === null ? <span className="text-gray-300">\u2014</span> : diff === 0 ? (
                         <CheckCircle2 size={16} className="mx-auto text-emerald-500 mt-1" />
                       ) : (

@@ -120,7 +120,7 @@ export default function IngredientImportModal({ onClose }: { onClose: () => void
         {!result && (
           <FormSection title="Fichier">
             <FormField label="Fichier Excel (.xlsx)" htmlFor="ingredient-import-file" required
-              hint={<>Colonnes attendues : <code>Nom | Categorie | Unite | Cout ({currencySymbol()}) | Fournisseur | Allergenes</code>. Les ingredients existants (meme nom) seront mis a jour, les nouveaux crees. Toute modification du cout cascade automatiquement sur les recettes liees.</>}>
+              hint={<>Colonnes attendues : <code>Nom | Catégorie | Unité | Coût ({currencySymbol()}) | Fournisseur | Allergenes</code>. Les ingrédients existants (meme nom) seront mis à jour, les nouveaux crees. Toute modification du coût cascade automatiquement sur les recettes liées.</>}>
               <div className="flex items-center gap-3 flex-wrap">
                 <input id="ingredient-import-file" type="file" accept=".xlsx" onChange={onFileChange} className="text-sm" />
                 {file && (
@@ -130,8 +130,8 @@ export default function IngredientImportModal({ onClose }: { onClose: () => void
                   </button>
                 )}
                 <button type="button" onClick={() => ingredientsApi.downloadTemplate()} className="ds-btn-ghost ds-btn-sm" style={{ marginLeft: 'auto' }}
-                  title="Telecharger un modele Excel vide">
-                  <Download size={14} /> Modele vide
+                  title="Telecharger un modèle Excel vide">
+                  <Download size={14} /> Modèle vide
                 </button>
               </div>
             </FormField>
@@ -183,7 +183,7 @@ export default function IngredientImportModal({ onClose }: { onClose: () => void
             )}
 
             {nothingToDo && (
-              <Alert tone="info">Rien a importer — toutes les lignes du fichier correspondent deja aux donnees actuelles.</Alert>
+              <Alert tone="info">Rien à importer — toutes les lignes du fichier correspondent déjà aux données actuelles.</Alert>
             )}
           </div>
         )}
@@ -194,7 +194,7 @@ export default function IngredientImportModal({ onClose }: { onClose: () => void
             <Alert tone="success" icon={Check}>
               <strong>Import termine</strong>
               <div>
-                {result.created} cree(s), {result.updated} mis a jour, {result.unchanged} inchange(s)
+                {result.created} cree(s), {result.updated} mis à jour, {result.unchanged} inchange(s)
                 {result.cascadedRecipes > 0 && ` — ${result.cascadedRecipes} recette(s) recalculee(s)`}
               </div>
             </Alert>
@@ -228,9 +228,9 @@ function PreviewTable({ rows, kind }: { rows: PreviewRow[]; kind: 'create' | 'up
           <tr>
             <th className="ds-num">Ligne</th>
             <th>Nom</th>
-            <th>Categorie</th>
-            <th>Unite</th>
-            <th className="ds-num">Cout ({currencySymbol()})</th>
+            <th>Catégorie</th>
+            <th>Unité</th>
+            <th className="ds-num">Coût ({currencySymbol()})</th>
             <th>Fournisseur</th>
             {kind === 'update' && <th>Champs modifies</th>}
           </tr>

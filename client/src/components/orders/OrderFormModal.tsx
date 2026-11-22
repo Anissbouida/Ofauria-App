@@ -519,7 +519,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   <div className="relative">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input type="text" autoFocus value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
-                      placeholder="Rechercher par nom ou telephone..."
+                      placeholder="Rechercher par nom ou téléphone..."
                       className="ds-input" style={{ paddingLeft: 36 }} />
                   </div>
 
@@ -627,14 +627,14 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   <div className="relative">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input type="text" autoFocus value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)}
-                      placeholder="Rechercher un employe..."
+                      placeholder="Rechercher un employé..."
                       className="ds-input" style={{ paddingLeft: 36 }} />
                   </div>
 
                   {/* Employee list */}
                   <div className="space-y-1.5 max-h-60 overflow-y-auto">
                     {filteredEmployees.length === 0 ? (
-                      <p className="text-center py-6 text-gray-400 text-sm">Aucun employe trouve</p>
+                      <p className="text-center py-6 text-gray-400 text-sm">Aucun employé trouvé</p>
                     ) : filteredEmployees.map(e => {
                       const eId = e.id as string;
                       const isSelected = eId === selectedEmployeeId;

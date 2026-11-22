@@ -621,7 +621,7 @@ export default function PlanDetailPage() {
               return (
                 <button onClick={() => restoreMutation.mutate(waiting.map(it => it.id as string))}
                   disabled={restoreMutation.isPending} className="odoo-btn-primary ds-btn-sm"
-                  title="Re-verifier la dispo et relancer les articles en attente.">
+                  title="Re-vérifier la dispo et relancer les articles en attente.">
                   <RotateCcw size={11} /> Restaurer ({waiting.length}) &amp; relancer
                 </button>
               );
@@ -2039,7 +2039,7 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
         <form onSubmit={submit} className="space-y-4">
           <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-gray-500">Ingredient</span>
+              <span className="text-gray-500">Ingrédient</span>
               <span className="font-semibold text-gray-900">{need.ingredient_name as string}</span>
             </div>
             <div className="flex items-center justify-between">
@@ -2055,13 +2055,13 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
           </div>
 
           <Alert tone="info" icon={Info}>
-            Le responsable stock va verifier physiquement l'ingredient et marquer "OK" s'il est disponible.
-            Apres confirmation, vous pourrez restaurer l'article en attente.
+            Le responsable stock va vérifier physiquement l'ingrédient et marquer "OK" s'il est disponible.
+            Après confirmation, vous pourrez restaurer l'article en attente.
           </Alert>
 
           <FormField label="Note" htmlFor="stock-verif-note" hint="Optionnel.">
             <textarea id="stock-verif-note" value={note} onChange={e => setNote(e.target.value)} rows={2}
-              placeholder="Ex : verifier dans la reserve B..." className="ds-input" />
+              placeholder="Ex : vérifier dans la réserve B..." className="ds-input" />
           </FormField>
         </form>
     </Modal>

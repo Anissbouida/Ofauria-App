@@ -77,8 +77,8 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
       const parts: string[] = [];
       if (data.created) parts.push(`${data.created} cree(s)`);
       if (data.updated) parts.push(`${data.updated} mise(s) a jour`);
-      if (data.ingredientsCreated) parts.push(`${data.ingredientsCreated} ingredient(s) auto-cree(s)`);
-      if (data.productsCreated) parts.push(`${data.productsCreated} produit(s) auto-cree(s)`);
+      if (data.ingredientsCreated) parts.push(`${data.ingredientsCreated} ingredient(s) auto-créé(s)`);
+      if (data.productsCreated) parts.push(`${data.productsCreated} produit(s) auto-créé(s)`);
       notify.success(`Import termine — ${parts.join(', ') || 'aucun changement'}`);
       qc.invalidateQueries({ queryKey: ['recipes'] });
       qc.invalidateQueries({ queryKey: ['products'] });
@@ -142,15 +142,15 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
               <Alert tone="info">
                 <div className="text-xs space-y-1">
                   <p className="font-medium">Structure attendue (4 feuilles) :</p>
-                  <p><strong>Recettes</strong> : Nom | Base? (oui/non) | Produit | Rendement | Unite | Marge | Instructions</p>
-                  <p><strong>Ingredients</strong> : Recette | Ingredient | Quantite | Unite</p>
-                  <p><strong>Sous-recettes</strong> : Recette | Sous-recette | Quantite</p>
-                  <p><strong>Emballages</strong> : Recette | Emballage | Quantite | Unite</p>
+                  <p><strong>Recettes</strong> : Nom | Base? (oui/non) | Produit | Rendement | Unité | Marge | Instructions</p>
+                  <p><strong>Ingrédients</strong> : Recette | Ingrédient | Quantité | Unité</p>
+                  <p><strong>Sous-recettes</strong> : Recette | Sous-recette | Quantité</p>
+                  <p><strong>Emballages</strong> : Recette | Emballage | Quantité | Unité</p>
                   <p className="pt-1">
-                    Les recettes existantes (meme nom) seront mises a jour, les nouvelles creees.
-                    Les <strong>ingredients</strong> et <strong>produits</strong> absents seront <strong>auto-crees</strong>
-                    (cout/prix = 0) — a completer apres. Les unites non standards (ex: "cadre") sont acceptees.
-                    Les <strong>emballages</strong> doivent deja exister.
+                    Les recettes existantes (meme nom) seront mises à jour, les nouvelles créées.
+                    Les <strong>ingrédients</strong> et <strong>produits</strong> absents seront <strong>auto-crees</strong>
+                    (coût/prix = 0) — a compléter après. Les unités non standards (ex: "cadre") sont acceptees.
+                    Les <strong>emballages</strong> doivent déjà exister.
                   </p>
                 </div>
               </Alert>
@@ -172,11 +172,11 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
               {preview.ingredientsToCreate.length > 0 && (
                 <details open>
                   <summary className="ds-subhead" style={{ cursor: 'pointer', marginBottom: 8 }}>
-                    Ingredients absents de l'economat ({preview.ingredientsToCreate.length}) — seront auto-crees
+                    Ingrédients absents de l'économat ({preview.ingredientsToCreate.length}) — seront auto-crees
                   </summary>
                   <p className="ds-field-hint" style={{ marginBottom: 8 }}>
-                    Cout = 0 {currencySymbol()}, categorie = "autre", unite = celle du fichier.
-                    A completer apres dans l'economat.
+                    Coût = 0 {currencySymbol()}, catégorie = "autre", unité = celle du fichier.
+                    A compléter après dans l'économat.
                   </p>
                   <DataPanel label="Ingrédients à créer" style={{ maxHeight: 200, overflowY: 'auto' }}>
                     <table className="odoo-table ds-dense">
@@ -201,8 +201,8 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                     Produits absents du catalogue ({preview.productsToCreate.length}) — seront auto-crees
                   </summary>
                   <p className="ds-field-hint" style={{ marginBottom: 8 }}>
-                    Prix = 0 {currencySymbol()}, categorie par defaut, marque disponible.
-                    A completer apres dans le catalogue produits.
+                    Prix = 0 {currencySymbol()}, catégorie par defaut, marque disponible.
+                    A compléter après dans le catalogue produits.
                   </p>
                   <DataPanel label="Produits à créer" style={{ maxHeight: 200, overflowY: 'auto' }}>
                     <table className="odoo-table ds-dense">
@@ -262,7 +262,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
               )}
 
               {nothingToDo && (
-                <Alert tone="info">Rien a importer — toutes les recettes du fichier correspondent deja aux donnees actuelles.</Alert>
+                <Alert tone="info">Rien à importer — toutes les recettes du fichier correspondent déjà aux données actuelles.</Alert>
               )}
             </div>
           )}
@@ -273,16 +273,16 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
               <Alert tone="success" icon={Check}>
                 <strong>Import termine</strong>
                 <div className="text-sm mt-1">
-                  {result.created} creee(s), {result.updated} mise(s) a jour, {result.unchanged} inchangee(s)
+                  {result.created} créée(s), {result.updated} mise(s) a jour, {result.unchanged} inchangee(s)
                 </div>
                 {result.ingredientsCreated > 0 && (
                   <div className="text-sm mt-1">
-                    {result.ingredientsCreated} ingredient(s) auto-cree(s) — completer les couts dans l'economat.
+                    {result.ingredientsCreated} ingrédient(s) auto-créé(s) — compléter les coûts dans l'économat.
                   </div>
                 )}
                 {result.productsCreated > 0 && (
                   <div className="text-sm mt-1">
-                    {result.productsCreated} produit(s) auto-cree(s) — completer les prix dans le catalogue.
+                    {result.productsCreated} produit(s) auto-créé(s) — compléter les prix dans le catalogue.
                   </div>
                 )}
               </Alert>

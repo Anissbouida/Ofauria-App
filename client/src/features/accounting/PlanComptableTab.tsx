@@ -137,7 +137,7 @@ export default function PlanComptableTab() {
   // Garde non-admin — apres tous les hooks (regle des hooks React)
   if (!isAdmin) {
     return (
-      <EmptyState icon={Lock} title="Le plan comptable est reserve a l'administrateur ou au gerant. Contactez l'admin pour autoriser votre acces." />
+      <EmptyState icon={Lock} title="Le plan comptable est réservé à l'administrateur ou au gérant. Contactez l'admin pour autoriser votre acces." />
     );
   }
 

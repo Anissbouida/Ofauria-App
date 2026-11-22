@@ -1673,10 +1673,10 @@ export default function POSPage() {
               <Lock size={40} className="text-gray-400" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-800">Caisse fermee</h2>
+              <h2 className="text-2xl font-bold text-gray-800">Caisse fermée</h2>
               <p className="text-gray-500 mt-2">
                 {isCashierRole && <span className="block text-lg text-gray-700 font-medium mb-1">Bonjour {user?.firstName} !</span>}
-                Ouvrez la caisse pour commencer a vendre
+                Ouvrez la caisse pour commencer à vendre
               </p>
             </div>
             <button onClick={handleOpenClick} disabled={checkingInventory}
@@ -2581,7 +2581,7 @@ export default function POSPage() {
               <div className="text-center space-y-4 w-full max-w-md px-4">
                 <RotateCcw size={48} className="mx-auto text-gray-300" />
                 <h2 className="text-xl font-bold text-gray-700">Retour ou Echange</h2>
-                <p className="text-sm text-gray-400">Recherchez la vente par son numero de ticket</p>
+                <p className="text-sm text-gray-400">Recherchez la vente par son numéro de ticket</p>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -2600,7 +2600,7 @@ export default function POSPage() {
                   </button>
                 </div>
                 {searchSaleMutation.isError && (
-                  <p className="text-red-500 text-sm">Vente non trouvee. Verifiez le numero.</p>
+                  <p className="text-red-500 text-sm">Vente non trouvee. Verifiez le numéro.</p>
                 )}
               </div>
             </div>
@@ -2632,7 +2632,7 @@ export default function POSPage() {
                       </p>
                     )}
                     {(returnResult.price_difference as number) === 0 && (
-                      <p className="text-lg font-semibold text-green-600">Echange sans ecart de prix</p>
+                      <p className="text-lg font-semibold text-green-600">Echange sans écart de prix</p>
                     )}
                   </div>
                 )}
@@ -2702,7 +2702,7 @@ export default function POSPage() {
                   <div className="flex-1 flex items-center justify-center">
                     <div className="text-center space-y-2">
                       <CheckCircle size={48} className="mx-auto text-green-400" />
-                      <p className="text-lg font-semibold text-gray-600">Tous les articles ont deja ete retournes</p>
+                      <p className="text-lg font-semibold text-gray-600">Tous les articles ont déjà ete retournes</p>
                     </div>
                   </div>
                 ) : (
@@ -2727,7 +2727,7 @@ export default function POSPage() {
                     <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-gray-100 shadow-sm">
                       <div className="p-3 border-b bg-gray-50">
                         <p className="text-sm font-semibold text-gray-600">
-                          Selectionnez les articles a {returnType === 'return' ? 'retourner' : 'echanger'}
+                          Sélectionnez les articles a {returnType === 'return' ? 'retourner' : 'echanger'}
                         </p>
                       </div>
                       <div className="divide-y">
@@ -2747,7 +2747,7 @@ export default function POSPage() {
                                   <p className="text-xs text-gray-400">
                                     {money(parseFloat(item.unit_price as string))} x {item.quantity as number}
                                     {alreadyReturned > 0 && (
-                                      <span className="text-orange-500 ml-1">({alreadyReturned} deja retourne{alreadyReturned > 1 ? 's' : ''})</span>
+                                      <span className="text-orange-500 ml-1">({alreadyReturned} déjà retourne{alreadyReturned > 1 ? 's' : ''})</span>
                                     )}
                                   </p>
                                 </div>
@@ -2834,7 +2834,7 @@ export default function POSPage() {
                           {returnType === 'exchange' && exchangeReady && (
                             <>
                               {exchangeDiff === 0 && (
-                                <p className="text-lg font-bold text-green-600">Echange sans ecart</p>
+                                <p className="text-lg font-bold text-green-600">Echange sans écart</p>
                               )}
                               {exchangeDiff > 0 && (
                                 <p className="text-lg font-bold text-orange-600">Le client doit payer : {money(exchangeDiff)}</p>
@@ -3007,7 +3007,7 @@ export default function POSPage() {
               <input type="number" value={deliverAmount} onChange={(e) => setDeliverAmount(e.target.value)}
                 className="input text-center text-xl font-bold mb-2" min={remaining} step="0.01" autoFocus />
               {deliverShort && (
-                <p className="text-xs text-red-600 mb-2">Le reste doit etre regle en totalite pour remettre la commande.</p>
+                <p className="text-xs text-red-600 mb-2">Le reste doit etre règle en totalite pour remettre la commande.</p>
               )}
               <label className="block text-sm font-medium text-gray-700 mb-2 mt-2">Mode de paiement</label>
               <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-6">
@@ -3098,7 +3098,7 @@ export default function POSPage() {
                   <div>
                     <h2 className="text-xl font-bold text-gray-900">Produits expires en vitrine</h2>
                     <p className="text-sm text-gray-600 mt-1">
-                      {expiredItems.length} produit(s) ont leur DLC ou exposition vitrine depassee. Ils doivent etre detruits avant la fermeture journee.
+                      {expiredItems.length} produit(s) ont leur DLC ou exposition vitrine dépassée. Ils doivent etre detruits avant la fermeture journee.
                     </p>
                   </div>
                 </div>
@@ -3922,7 +3922,7 @@ export default function POSPage() {
                       <div className="bg-amber-50 rounded-xl p-2.5">
                         <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 mb-2">
                           <Coins size={13} />
-                          <span>Pieces</span>
+                          <span>Pièces</span>
                         </div>
                         <div className="grid grid-cols-5 gap-1.5">
                           {DENOMINATIONS.filter(d => d.type === 'coin').map(d => {
@@ -4002,14 +4002,14 @@ export default function POSPage() {
 
                 {reasonRequired && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
-                    <p className="text-sm font-semibold text-amber-800 mb-1">Ecart superieur a {money(5, { decimals: 0 })}</p>
-                    <p className="text-xs text-amber-700 mb-2">Le comptage est enregistre. Indiquez le motif de l'ecart pour cloturer.</p>
+                    <p className="text-sm font-semibold text-amber-800 mb-1">Écart superieur a {money(5, { decimals: 0 })}</p>
+                    <p className="text-xs text-amber-700 mb-2">Le comptage est enregistre. Indiquez le motif de l'écart pour cloturer.</p>
                     <select value={differenceReason} onChange={(e) => setDifferenceReason(e.target.value)}
                       className="input" autoFocus>
                       <option value="">— Choisir un motif —</option>
                       <option value="rendu_monnaie">Erreur de rendu monnaie</option>
                       <option value="erreur_comptage">Erreur de comptage</option>
-                      <option value="depense_hors_paidout">Depense payee sans sortie de caisse</option>
+                      <option value="depense_hors_paidout">Dépense payée sans sortie de caisse</option>
                       <option value="vol">Vol / disparition</option>
                       <option value="autre">Autre (preciser en observation)</option>
                     </select>
@@ -4030,13 +4030,13 @@ export default function POSPage() {
                   )}
                   {cardReasonRequired && (
                     <div className="mt-2">
-                      <p className="text-xs text-amber-700 mb-1">Ecart carte superieur a {money(5, { decimals: 0 })}. Indiquez le motif.</p>
+                      <p className="text-xs text-amber-700 mb-1">Écart carte superieur a {money(5, { decimals: 0 })}. Indiquez le motif.</p>
                       <select value={cardDifferenceReason} onChange={(e) => setCardDifferenceReason(e.target.value)}
                         className="input">
                         <option value="">— Choisir un motif —</option>
                         <option value="erreur_saisie_tpe">Erreur de saisie / lecture TPE</option>
                         <option value="transaction_manquante">Vente carte absente du TPE</option>
-                        <option value="transaction_refusee">Transaction refusee comptee comme vente</option>
+                        <option value="transaction_refusee">Transaction refusée comptee comme vente</option>
                         <option value="erreur_comptage">Erreur de comptage</option>
                         <option value="autre">Autre (preciser en observation)</option>
                       </select>
@@ -4116,7 +4116,7 @@ export default function POSPage() {
                         </div>
                         {parseFloat(String(closeResult!.card_difference || 0)) !== 0 && (
                           <div className="flex justify-between">
-                            <span className="text-gray-500">Ecart carte</span>
+                            <span className="text-gray-500">Écart carte</span>
                             <span className={`font-semibold ${parseFloat(String(closeResult!.card_difference)) < 0 ? 'text-red-600' : 'text-blue-600'}`}>
                               {parseFloat(String(closeResult!.card_difference)) > 0 ? '+' : ''}{money(parseFloat(String(closeResult!.card_difference)))}
                             </span>
@@ -4143,7 +4143,7 @@ export default function POSPage() {
                           <AlertTriangle size={24} className="text-blue-500 shrink-0" />
                           <div>
                             <p className="font-semibold text-blue-800">Excedent de +{money(diff)}</p>
-                            <p className="text-sm text-blue-600">Il y a plus d'argent que prevu dans la caisse.</p>
+                            <p className="text-sm text-blue-600">Il y a plus d'argent que prévu dans la caisse.</p>
                           </div>
                         </div>
                       );
@@ -4183,7 +4183,7 @@ export default function POSPage() {
                         <span className="text-center">Vendu</span>
                         <span className="text-center">Theor.</span>
                         <span className="text-center">Saisi</span>
-                        <span className="text-center">Ecart</span>
+                        <span className="text-center">Écart</span>
                       </div>
                       <div className="max-h-48 overflow-y-auto space-y-1">
                         {inventoryItems.map((it) => {
@@ -4386,7 +4386,7 @@ export default function POSPage() {
                           {isConfirming && (
                             <>
                               <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Reçu</th>
-                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Ecart</th>
+                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Écart</th>
                               <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Note</th>
                             </>
                           )}
@@ -4524,8 +4524,8 @@ export default function POSPage() {
                           <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Attendu</th>
                           {isConfirming && (
                             <>
-                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Recu</th>
-                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Ecart</th>
+                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Reçu</th>
+                              <th className="text-center px-3 py-2 text-xs font-medium text-gray-500 uppercase">Écart</th>
                               <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase">Note</th>
                             </>
                           )}
@@ -5278,7 +5278,7 @@ function ReplenishmentRequestModal({ onClose, onCreated }: { onClose: () => void
                 <p className="text-xs text-amber-600 mt-1">Ces articles ont encore du stock depuis le dernier approvisionnement. Vous pouvez quand meme les envoyer si necessaire.</p>
                 <div className="mt-2 space-y-1 max-h-24 overflow-y-auto">
                   {blockedItems.slice(0, 10).map(bi => (
-                    <p key={bi.productId} className="text-xs text-amber-700">• {bi.productName} — {bi.unsoldQty} unite(s) restante(s)</p>
+                    <p key={bi.productId} className="text-xs text-amber-700">• {bi.productName} — {bi.unsoldQty} unité(s) restante(s)</p>
                   ))}
                   {blockedItems.length > 10 && <p className="text-xs text-amber-700 font-medium">... et {blockedItems.length - 10} autre(s)</p>}
                 </div>

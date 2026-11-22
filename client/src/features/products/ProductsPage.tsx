@@ -1217,7 +1217,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                                           <p className="text-sm font-medium text-gray-700 truncate">{r.name as string}</p>
                                           <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                                             {r.is_base && <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-600 text-[10px] font-bold">BASE</span>}
-                                            {cost > 0 && <span>Cout: {money(cost)}</span>}
+                                            {cost > 0 && <span>Coût: {money(cost)}</span>}
                                             <span>Rend: {recipeYieldLabel(r)}</span>
                                           </div>
                                         </div>
@@ -1231,7 +1231,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                               {filteredLinked.length > 0 && (
                                 <>
                                   <div className="px-3 py-2 border-b border-t border-gray-100 bg-gray-50">
-                                    <p className="text-[10px] text-gray-400 font-bold">{filteredLinked.length} recette{filteredLinked.length > 1 ? 's' : ''} deja liee{filteredLinked.length > 1 ? 's' : ''} a un produit</p>
+                                    <p className="text-[10px] text-gray-400 font-bold">{filteredLinked.length} recette{filteredLinked.length > 1 ? 's' : ''} déjà liée{filteredLinked.length > 1 ? 's' : ''} a un produit</p>
                                   </div>
                                   {filteredLinked.map((r, idx) => {
                                     const globalIdx = filteredAvailable.length + idx;
@@ -1249,8 +1249,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                                         <div className="flex-1 min-w-0">
                                           <p className="text-sm font-medium text-gray-500 truncate">{r.name as string}</p>
                                           <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
-                                            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-500 text-[10px] font-bold">Liee a: {r.product_name as string}</span>
-                                            {cost > 0 && <span>Cout: {money(cost)}</span>}
+                                            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-500 text-[10px] font-bold">Liée à : {r.product_name as string}</span>
+                                            {cost > 0 && <span>Coût: {money(cost)}</span>}
                                           </div>
                                         </div>
                                       </div>

@@ -536,10 +536,10 @@ export default function ProductionLaunchModal({
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center">
           <CheckCircle className="mx-auto mb-3 text-emerald-500" size={40} />
           <p className="text-gray-700 font-medium">
-            Aucune base partagee detectee
+            Aucune base partagee détectée
           </p>
           <p className="text-gray-500 text-sm mt-1">
-            Les ingredients seront deduits directement des recettes des produits finis.
+            Les ingrédients seront deduits directement des recettes des produits finis.
           </p>
         </div>
       );
@@ -548,7 +548,7 @@ export default function ProductionLaunchModal({
     return (
       <div className="space-y-4">
         <p className="text-sm text-gray-500 mb-2">
-          Les bases ci-dessous sont partagees entre plusieurs produits finis. Renseignez les quantites produites.
+          Les bases ci-dessous sont partagees entre plusieurs produits finis. Renseignez les quantités produites.
         </p>
         {subRecipes.map((sr) => {
           const isExpanded = expandedBases.has(sr.subRecipeId);
@@ -585,7 +585,7 @@ export default function ProductionLaunchModal({
                         }))
                       }
                     />
-                    Deja produite
+                    Déjà produite
                   </label>
                   {!alreadyProduced && (
                     <input
@@ -740,7 +740,7 @@ export default function ProductionLaunchModal({
             />
           </div>
           <div className="sm:w-40 ds-field">
-            <span className="ds-field-label">Equipe detectee</span>
+            <span className="ds-field-label">Équipe détectée</span>
             <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>
               <Clock size={16} className="text-gray-400" />
               <span className="text-sm font-medium text-gray-700">{shift}</span>
@@ -757,7 +757,7 @@ export default function ProductionLaunchModal({
               checked={allProducibleSelected}
               onChange={toggleSelectAll}
             />
-            Selectionner tout ({producibleItems.length})
+            Sélectionner tout ({producibleItems.length})
           </label>
           <span className="text-xs text-gray-400">
             {selectedItems.size} selectionne{selectedItems.size > 1 ? 's' : ''}
@@ -862,7 +862,7 @@ export default function ProductionLaunchModal({
                     <input
                       type="text"
                       className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      placeholder="Precisez..."
+                      placeholder="Précisez..."
                       value={lossNotes[id] || ''}
                       onChange={(e) =>
                         setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))
@@ -879,7 +879,7 @@ export default function ProductionLaunchModal({
       {declareLosses && itemsWithLoss.length === 0 && (
         <div className="text-center py-6 text-sm text-gray-500">
           <CheckCircle className="mx-auto mb-2 text-emerald-400" size={32} />
-          Aucun ecart entre quantites planifiees et produites.
+          Aucun écart entre quantités planifiees et produites.
         </div>
       )}
 
@@ -1027,7 +1027,7 @@ export default function ProductionLaunchModal({
           onChange={(e) => setPrintAfter(e.target.checked)}
         />
         <Printer size={16} className="text-gray-400" />
-        Imprimer les tickets apres validation
+        Imprimer les tickets après validation
       </label>
     </div>
   );
@@ -1078,7 +1078,7 @@ export default function ProductionLaunchModal({
                 <div className="rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
                   <div className="px-5 py-3 bg-emerald-50 border-b border-emerald-200 flex items-center gap-2">
                     <Scale size={18} className="text-emerald-600" />
-                    <span className="font-bold text-emerald-800">Ingredients ({ingredients.length})</span>
+                    <span className="font-bold text-emerald-800">Ingrédients ({ingredients.length})</span>
                   </div>
                   <div className="divide-y divide-gray-100">
                     {ingredients.map((ing, idx) => (
@@ -1179,7 +1179,7 @@ export default function ProductionLaunchModal({
       return (
         <div className="mt-4 bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center">
           <BookOpen className="mx-auto mb-2 text-gray-300" size={28} />
-          <p className="text-sm text-gray-500">Aucune recette enregistree pour {productName}.</p>
+          <p className="text-sm text-gray-500">Aucune recette enregistrée pour {productName}.</p>
         </div>
       );
     }
@@ -1203,7 +1203,7 @@ export default function ProductionLaunchModal({
               <div className="flex items-center gap-3 text-xs text-blue-600">
                 {recipeData.yield_quantity && <span>Rendement : {recipeData.yield_quantity} {recipeData.yield_unit || 'unite(s)'}</span>}
                 {recipeData.total_cost && parseFloat(recipeData.total_cost) > 0 && (
-                  <span>Cout : {money(parseFloat(recipeData.total_cost))}</span>
+                  <span>Coût : {money(parseFloat(recipeData.total_cost))}</span>
                 )}
               </div>
             </div>
@@ -1224,7 +1224,7 @@ export default function ProductionLaunchModal({
             <div className="rounded-xl border border-gray-100 overflow-hidden">
               <div className="px-3 py-2 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
                 <Scale size={13} className="text-emerald-600" />
-                <span className="font-semibold text-emerald-800 text-xs ">Ingredients ({ingredients.length})</span>
+                <span className="font-semibold text-emerald-800 text-xs ">Ingrédients ({ingredients.length})</span>
               </div>
               <div className="divide-y divide-gray-50">
                 {ingredients.map((ing, idx) => (
@@ -1842,7 +1842,7 @@ export default function ProductionLaunchModal({
           {format(new Date(plan.plan_date as string), 'EEEE d MMMM yyyy', { locale: fr })}
           {lotNumber && <span className="ml-2 font-mono">• {lotNumber}</span>}
         </>}
-        aside={<span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-50 text-blue-700" style={{ alignSelf: 'center' }}>Etape {singleStep}/{totalSteps}</span>}
+        aside={<span className="text-xs font-medium px-3 py-1 rounded-full bg-blue-50 text-blue-700" style={{ alignSelf: 'center' }}>Étape {singleStep}/{totalSteps}</span>}
         footer={
           <div className="flex items-center justify-between w-full gap-2 flex-wrap">
             <div className="flex items-center gap-2">
@@ -1850,7 +1850,7 @@ export default function ProductionLaunchModal({
                 <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">Annuler</button>
               ) : (
                 <button onClick={() => setSingleStep((s) => s - 1)} className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition-colors">
-                  <ChevronLeft size={16} /> Precedent
+                  <ChevronLeft size={16} /> Précédent
                 </button>
               )}
             </div>
@@ -1954,7 +1954,7 @@ export default function ProductionLaunchModal({
                           })()}
                           {currentProfileStep.controle_qualite && (
                             <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded flex items-center gap-0.5">
-                              <Check size={10} /> Controle qualite
+                              <Check size={10} /> Contrôle qualité
                             </span>
                           )}
                         </div>
@@ -1990,7 +1990,7 @@ export default function ProductionLaunchModal({
                                 value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
                             </div>
                             <div className="w-28 ds-field">
-                              <span className="ds-field-label">Equipe</span>
+                              <span className="ds-field-label">Équipe</span>
                               <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>
                                 <Clock size={12} className="text-gray-400" /> {detectShift(producedAt)}
                               </div>
@@ -1998,7 +1998,7 @@ export default function ProductionLaunchModal({
                           </div>
                           {isAlreadyStarted && (
                             <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-sm text-blue-700 flex items-center gap-2">
-                              <CheckCircle size={14} /> Production deja lancee.
+                              <CheckCircle size={14} /> Production déjà lancee.
                             </div>
                           )}
                         </div>
@@ -2198,7 +2198,7 @@ export default function ProductionLaunchModal({
               {isLastStep && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold text-emerald-700 flex items-center gap-2"><CheckCircle size={18} /> Enregistrement</h2>
-                  <p className="text-sm text-gray-500">Renseignez la quantite produite et terminez la production.</p>
+                  <p className="text-sm text-gray-500">Renseignez la quantité produite et terminez la production.</p>
 
                   <div className="border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
                     <div className="flex gap-3 items-end">
@@ -2212,7 +2212,7 @@ export default function ProductionLaunchModal({
                         <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>{planned}</div>
                       </div>
                       <div className="w-28 ds-field">
-                        <label htmlFor="plm-f-3">Quantite produite</label>
+                        <label htmlFor="plm-f-3">Quantité produite</label>
                         <input id="plm-f-3" type="number" min={0} step="any" inputMode="decimal"
                           className="ds-input" style={{ textAlign: 'center', fontWeight: 700 }}
                           value={actual} disabled={!!cutMode[id]} title={cutMode[id] ? 'Calculée depuis la coupe' : undefined}
@@ -2228,7 +2228,7 @@ export default function ProductionLaunchModal({
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-2">
                           <AlertTriangle size={14} className="text-amber-600" />
-                          <span className="text-sm font-semibold text-amber-800">Perte detectee : {planned - actual} unite(s)</span>
+                          <span className="text-sm font-semibold text-amber-800">Perte détectée : {planned - actual} unité(s)</span>
                         </div>
                         <select className="ds-input" aria-label="Motif de perte"
                           value={lossReasons[id] || ''} onChange={(e) => setLossReasons((prev) => ({ ...prev, [id]: e.target.value }))}>
@@ -2237,7 +2237,7 @@ export default function ProductionLaunchModal({
                         </select>
                         {lossReasons[id] === 'autre' && (
                           <input type="text" className="ds-input mt-2" aria-label="Précisez le motif de perte"
-                            placeholder="Precisez..." value={lossNotes[id] || ''} onChange={(e) => setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))} />
+                            placeholder="Précisez..." value={lossNotes[id] || ''} onChange={(e) => setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))} />
                         )}
                       </div>
                     )}
@@ -2245,7 +2245,7 @@ export default function ProductionLaunchModal({
                     <div className="flex items-center gap-3 pt-2 border-t border-gray-100 text-xs text-gray-500">
                       {lotNumber && <span className="font-mono bg-gray-100 px-2 py-0.5 rounded"><Hash size={10} className="inline" /> {lotNumber}</span>}
                       <span>DLC : {dlc}</span>
-                      <span>Equipe : {detectShift(producedAt)}</span>
+                      <span>Équipe : {detectShift(producedAt)}</span>
                     </div>
                   </div>
                 </div>
@@ -2272,7 +2272,7 @@ export default function ProductionLaunchModal({
                         <div className="flex-1">
                           <h3 className="font-bold text-gray-900 text-lg">{item.product_name as string}</h3>
                           <div className="flex items-center gap-3 mt-1 text-sm text-gray-600">
-                            <span className="font-semibold">Quantite : {planned}</span>
+                            <span className="font-semibold">Quantité : {planned}</span>
                             <span className="flex items-center gap-1 text-xs"><Clock size={11} /> DLC : {dlc}</span>
                           </div>
                         </div>
@@ -2286,7 +2286,7 @@ export default function ProductionLaunchModal({
                             value={producedAt} onChange={(e) => setProducedAt(e.target.value)} />
                         </div>
                         <div className="w-32 ds-field">
-                          <span className="ds-field-label">Equipe</span>
+                          <span className="ds-field-label">Équipe</span>
                           <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>
                             <Clock size={13} className="text-gray-400" /> {detectShift(producedAt)}
                           </div>
@@ -2294,7 +2294,7 @@ export default function ProductionLaunchModal({
                       </div>
                       {isAlreadyStarted && (
                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-700 flex items-center gap-2">
-                          <CheckCircle size={14} /> Production deja lancee — vous pouvez continuer les etapes.
+                          <CheckCircle size={14} /> Production déjà lancee — vous pouvez continuer les étapes.
                         </div>
                       )}
                     </div>
@@ -2311,7 +2311,7 @@ export default function ProductionLaunchModal({
                   <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm">
                     <Package size={16} className="text-blue-600" />
                     <span className="text-blue-800">
-                      <strong>Quantite a produire : {planned}</strong> — {dlc !== 'Vente du jour' ? `DLC : ${dlc}` : 'Vente du jour'}
+                      <strong>Quantité a produire : {planned}</strong> — {dlc !== 'Vente du jour' ? `DLC : ${dlc}` : 'Vente du jour'}
                     </span>
                   </div>
 
@@ -2323,7 +2323,7 @@ export default function ProductionLaunchModal({
               {singleStep === 3 && (
                 <div className="space-y-4">
                   <h2 className="text-lg font-bold text-emerald-700 flex items-center gap-2"><CheckCircle size={18} /> Enregistrement</h2>
-                  <p className="text-sm text-gray-500">Renseignez la quantite produite et terminez la production.</p>
+                  <p className="text-sm text-gray-500">Renseignez la quantité produite et terminez la production.</p>
 
                   <div className="border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
                     <div className="flex gap-3 items-end">
@@ -2337,7 +2337,7 @@ export default function ProductionLaunchModal({
                         <div className="ds-input" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'color-mix(in srgb, var(--ds-bg) 60%, var(--ds-card))', fontWeight: 600 }}>{planned}</div>
                       </div>
                       <div className="w-28 ds-field">
-                        <label htmlFor="plm-f-6">Quantite produite</label>
+                        <label htmlFor="plm-f-6">Quantité produite</label>
                         <input id="plm-f-6" type="number" min={0} step="any" inputMode="decimal"
                           className="ds-input" style={{ textAlign: 'center', fontWeight: 700 }}
                           value={actual} disabled={!!cutMode[id]} title={cutMode[id] ? 'Calculée depuis la coupe' : undefined}
@@ -2353,7 +2353,7 @@ export default function ProductionLaunchModal({
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-2">
                           <AlertTriangle size={14} className="text-amber-600" />
-                          <span className="text-sm font-semibold text-amber-800">Perte detectee : {planned - actual} unite(s)</span>
+                          <span className="text-sm font-semibold text-amber-800">Perte détectée : {planned - actual} unité(s)</span>
                         </div>
                         <select className="ds-input" aria-label="Motif de perte"
                           value={lossReasons[id] || ''} onChange={(e) => setLossReasons((prev) => ({ ...prev, [id]: e.target.value }))}>
@@ -2362,7 +2362,7 @@ export default function ProductionLaunchModal({
                         </select>
                         {lossReasons[id] === 'autre' && (
                           <input type="text" className="ds-input mt-2" aria-label="Précisez le motif de perte"
-                            placeholder="Precisez..." value={lossNotes[id] || ''} onChange={(e) => setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))} />
+                            placeholder="Précisez..." value={lossNotes[id] || ''} onChange={(e) => setLossNotes((prev) => ({ ...prev, [id]: e.target.value }))} />
                         )}
                       </div>
                     )}
@@ -2370,7 +2370,7 @@ export default function ProductionLaunchModal({
                     <div className="flex items-center gap-3 pt-2 border-t border-gray-100 text-xs text-gray-500">
                       {lotNumber && <span className="font-mono bg-gray-100 px-2 py-0.5 rounded"><Hash size={10} className="inline" /> {lotNumber}</span>}
                       <span>DLC : {dlc}</span>
-                      <span>Equipe : {detectShift(producedAt)}</span>
+                      <span>Équipe : {detectShift(producedAt)}</span>
                     </div>
                   </div>
                 </div>
@@ -2399,7 +2399,7 @@ export default function ProductionLaunchModal({
     <Modal onClose={onClose} width={1100} locked={submitting}
       title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Play size={18} aria-hidden="true" className={colors.text} /> Lancer la production</span>}
       subtitle={format(new Date(plan.plan_date as string), 'EEEE d MMMM yyyy', { locale: fr })}
-      aside={<span className={`text-xs font-medium px-3 py-1 rounded-full ${colors.light} ${colors.text}`} style={{ alignSelf: 'center' }}>Etape {step}/4</span>}
+      aside={<span className={`text-xs font-medium px-3 py-1 rounded-full ${colors.light} ${colors.text}`} style={{ alignSelf: 'center' }}>Étape {step}/4</span>}
       footer={
         <div className="flex items-center justify-between w-full gap-2 flex-wrap">
           <div>
@@ -2416,7 +2416,7 @@ export default function ProductionLaunchModal({
                 className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition-colors"
               >
                 <ChevronLeft size={16} />
-                Precedent
+                Précédent
               </button>
             )}
           </div>

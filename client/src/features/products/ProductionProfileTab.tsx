@@ -220,7 +220,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
                 </span>
               </span>
             ) : (
-              <span className="text-gray-400">Selectionner un format...</span>
+              <span className="text-gray-400">Sélectionner un format...</span>
             )}
             <ChevronDown size={16} className={`text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -319,7 +319,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
           {/* Steps preview */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Etapes de production <span className="text-xs font-normal text-gray-400">({displaySteps.length} etapes)</span>
+              Étapes de production <span className="text-xs font-normal text-gray-400">({displaySteps.length} étapes)</span>
             </label>
             <div className="border border-gray-200 rounded-xl overflow-hidden">
               {displaySteps.map((step, idx) => (
@@ -359,7 +359,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
               ))}
               {displaySteps.length === 0 && (
                 <div className="px-4 py-6 text-center text-sm text-gray-400">
-                  Aucune etape definie pour ce format
+                  Aucune étape définie pour ce format
                 </div>
               )}
             </div>
@@ -368,7 +368,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
           {/* Loss categories */}
           {displayPertes.length > 0 && (
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Categories de pertes</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Catégories de pertes</label>
               <div className="flex flex-wrap gap-2">
                 {displayPertes.map((p, i) => (
                   <span key={i} className="px-3 py-1.5 bg-red-50 border border-red-100 text-red-700 text-xs font-medium rounded-lg">
@@ -411,7 +411,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
       {!selectedContenant && !profile && (
         <div className="text-center py-8">
           <Package size={40} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-400">Selectionnez un format pour configurer le profil de production</p>
+          <p className="text-sm text-gray-400">Sélectionnez un format pour configurer le profil de production</p>
           <p className="text-xs text-gray-300 mt-1">Le produit continuera a fonctionner normalement sans profil</p>
         </div>
       )}

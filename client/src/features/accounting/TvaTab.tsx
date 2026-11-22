@@ -69,7 +69,7 @@ export default function TvaTab() {
 
   if (!isAdmin) {
     return (
-      <EmptyState icon={Lock} title="La declaration TVA est reservee a l'administrateur ou au gerant." />
+      <EmptyState icon={Lock} title="La déclaration TVA est réservée à l'administrateur ou au gérant." />
     );
   }
 

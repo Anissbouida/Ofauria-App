@@ -234,7 +234,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
               <div className="flex items-center gap-3">
                 <span className="font-medium text-sm text-gray-900 flex-1">{item.product_name as string}</span>
                 <span className="text-xs text-gray-400">
-                  Prevu: {item.planned_quantity as number} | Fait: {item.actual_quantity as number}
+                  Prévu: {item.planned_quantity as number} | Fait: {item.actual_quantity as number}
                 </span>
 
                 {existing ? (
@@ -314,7 +314,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                   {/* Loss categories from target */}
                   {target && target.categoriesPertes.length > 0 && (
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 mb-1 block">Pertes par categorie</label>
+                      <label className="text-[10px] font-bold text-gray-500 mb-1 block">Pertes par catégorie</label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {target.categoriesPertes.map((cat, i) => {
                           const existing = formData.pertes.find(p => p.categorie === cat);

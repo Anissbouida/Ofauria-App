@@ -351,7 +351,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
             <button
               onClick={onSaveAndExit}
               className="odoo-btn-secondary" style={{ textTransform: 'none', letterSpacing: 0 }}
-              title="Vos actions sont deja enregistrees. Vous reviendrez sur l'etape en cours."
+              title="Vos actions sont déjà enregistrées. Vous reviendrez sur l'étape en cours."
             >
               <Save size={12} /> Enregistrer & quitter
             </button>
@@ -365,7 +365,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
         <div className="px-5 py-2.5 bg-violet-50/60 border-b border-violet-100 flex items-center gap-2 text-xs">
           <Play size={12} className="text-violet-600" />
           <span className="text-violet-800">
-            <span className="font-semibold">Etape en cours :</span> {currentEtape.etape.nom}
+            <span className="font-semibold">Étape en cours :</span> {currentEtape.etape.nom}
             <span className="text-violet-500 ml-1.5">— {grouped.get(currentEtape.itemId)?.productName}</span>
           </span>
         </div>
@@ -385,7 +385,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                 className="w-full px-5 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left">
                 {isExpanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
                 <span className="font-medium text-gray-900 text-sm flex-1">{group.productName}</span>
-                {hasBlocking && <span title="Etapes bloquantes en attente"><AlertTriangle size={12} className="text-amber-500" /></span>}
+                {hasBlocking && <span title="Étapes bloquantes en attente"><AlertTriangle size={12} className="text-amber-500" /></span>}
                 <span className="text-xs text-gray-400">{completedCount}/{totalCount}</span>
                 <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div className="h-full bg-violet-500 rounded-full transition-all" style={{ width: `${(completedCount / totalCount) * 100}%` }} />
@@ -445,7 +445,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                               </div>
                             )}
                             {etape.status === 'completed' && etape.duree_reelle_min != null && (
-                              <span className="text-[10px] text-gray-400">Duree: {Math.round(etape.duree_reelle_min)} min</span>
+                              <span className="text-[10px] text-gray-400">Durée: {Math.round(etape.duree_reelle_min)} min</span>
                             )}
                             {timerActive && !timerDone && (
                               <span className="text-[10px] text-blue-500 animate-pulse">Timer en cours...</span>
@@ -522,7 +522,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                         {/* QC Checklist */}
                         {etape.controle_qualite && etape.checklist_items.length > 0 && etape.status === 'in_progress' && isChef && (
                           <div className="mt-2 pl-9 space-y-1">
-                            <div className="text-[10px] font-bold text-gray-500">Controle qualite</div>
+                            <div className="text-[10px] font-bold text-gray-500">Contrôle qualité</div>
                             {etape.checklist_items.map((label, ci) => {
                               const current = (checklistState[etape.id] || etape.checklist_items.map(l => ({ label: l, ok: false })));
                               if (!checklistState[etape.id]) {

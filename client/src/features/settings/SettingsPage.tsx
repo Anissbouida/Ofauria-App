@@ -933,7 +933,7 @@ function PrintTab() {
 
                 {/* Payment */}
                 <div style={{ textAlign: 'center', fontSize: `${Math.max(receiptFontSize - 2, 8)}px` }}>
-                  Paye par: <strong>Especes</strong>
+                  Paye par: <strong>Espèces</strong>
                 </div>
                 {receiptShowPaymentDetail && (
                   <div style={{ fontSize: `${Math.max(receiptFontSize - 2, 8)}px` }}>

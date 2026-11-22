@@ -367,12 +367,12 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               </DetailSection>
             )}
             {cout.detail_matieres.length > 0 && (
-              <DetailSection title="Detail matieres" icon={<Package size={12} className="text-amber-500" />}
+              <DetailSection title="Détail matières" icon={<Package size={12} className="text-amber-500" />}
                 isExpanded={expandedSection === 'matieres'} onToggle={() => setExpandedSection(expandedSection === 'matieres' ? null : 'matieres')}>
                 <DataPanel label="Détail matières">
                 <table className="odoo-table ds-dense">
                   <thead><tr>
-                    <th>Ingredient</th>
+                    <th>Ingrédient</th>
                     <th className="ds-num">Qte</th>
                     <th className="ds-num">PU ({currencySymbol()})</th>
                     <th className="ds-num">Total ({currencySymbol()})</th>
@@ -391,12 +391,12 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             )}
 
             {cout.detail_main_oeuvre.length > 0 && (
-              <DetailSection title="Detail main d'oeuvre" icon={<Users size={12} className="text-blue-500" />}
+              <DetailSection title="Détail main d'oeuvre" icon={<Users size={12} className="text-blue-500" />}
                 isExpanded={expandedSection === 'mo'} onToggle={() => setExpandedSection(expandedSection === 'mo' ? null : 'mo')}>
                 <DataPanel label="Détail main d'oeuvre">
                 <table className="odoo-table ds-dense">
                   <thead><tr>
-                    <th>Employe</th>
+                    <th>Employé</th>
                     <th className="ds-num">Minutes</th>
                     <th className="ds-num">Taux/h ({currencySymbol()})</th>
                     <th className="ds-num">Total ({currencySymbol()})</th>
@@ -415,7 +415,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             )}
 
             {moEcart && moEcart.items.length > 0 && (
-              <DetailSection title="Ecart M.O. : gamme standard vs reel" icon={<Clock size={12} className="text-indigo-500" />}
+              <DetailSection title="Écart M.O. : gamme standard vs reel" icon={<Clock size={12} className="text-indigo-500" />}
                 isExpanded={expandedSection === 'mo-ecart'} onToggle={() => setExpandedSection(expandedSection === 'mo-ecart' ? null : 'mo-ecart')}>
                 {moEcart.totals.nb_items_sans_gamme === moEcart.totals.nb_items ? (
                   <p className="text-xs text-gray-500 px-2 py-1">
@@ -537,7 +537,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             )}
 
             {(cout.detail_charges_fixes || []).length > 0 && (
-              <DetailSection title="Detail charges fixes" icon={<Building2 size={12} className="text-violet-500" />}
+              <DetailSection title="Détail charges fixes" icon={<Building2 size={12} className="text-violet-500" />}
                 isExpanded={expandedSection === 'charges'} onToggle={() => setExpandedSection(expandedSection === 'charges' ? null : 'charges')}>
                 <DataPanel label="Détail charges fixes">
                 <table className="odoo-table ds-dense">
@@ -559,14 +559,14 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             )}
 
             {(cout.detail_energie || []).length > 0 && (
-              <DetailSection title="Detail energie (equipements)" icon={<Zap size={12} className="text-yellow-500" />}
+              <DetailSection title="Détail energie (equipements)" icon={<Zap size={12} className="text-yellow-500" />}
                 isExpanded={expandedSection === 'energie'} onToggle={() => setExpandedSection(expandedSection === 'energie' ? null : 'energie')}>
                 <DataPanel label="Détail énergie">
                 <table className="odoo-table ds-dense">
                   <thead><tr>
                     <th>Equipement</th>
                     <th className="ds-num">Minutes</th>
-                    <th className="ds-num">Cout/h ({currencySymbol()})</th>
+                    <th className="ds-num">Coût/h ({currencySymbol()})</th>
                     <th className="ds-num">Total ({currencySymbol()})</th>
                   </tr></thead>
                   <tbody>{(cout.detail_energie || []).map((d, i) => (
@@ -583,14 +583,14 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             )}
 
             {(cout.detail_pertes || []).length > 0 && (
-              <DetailSection title="Detail pertes (valorisees au cout matiere)" icon={<TrendingDown size={12} className="text-red-500" />}
+              <DetailSection title="Détail pertes (valorisées au coût matière)" icon={<TrendingDown size={12} className="text-red-500" />}
                 isExpanded={expandedSection === 'pertes'} onToggle={() => setExpandedSection(expandedSection === 'pertes' ? null : 'pertes')}>
                 <DataPanel label="Détail pertes">
                 <table className="odoo-table ds-dense">
                   <thead><tr>
-                    <th>Categorie</th>
+                    <th>Catégorie</th>
                     <th className="ds-num">Qte</th>
-                    <th className="ds-num">PU matiere ({currencySymbol()})</th>
+                    <th className="ds-num">PU matière ({currencySymbol()})</th>
                     <th className="ds-num">Total ({currencySymbol()})</th>
                   </tr></thead>
                   <tbody>{(cout.detail_pertes || []).map((d, i) => (

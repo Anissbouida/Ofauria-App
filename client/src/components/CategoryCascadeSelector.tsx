@@ -151,11 +151,11 @@ export default function CategoryCascadeSelector({
     <div className={`space-y-2 ${className}`}>
       {/* Level 1: Category */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Categorie *</label>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Catégorie *</label>
         <SearchSelect
           ariaLabel="Catégorie"
           id={id}
-          placeholder="Choisir une categorie..."
+          placeholder="Choisir une catégorie..."
           width="100%"
           size="md"
           disabled={disabled}
@@ -175,10 +175,10 @@ export default function CategoryCascadeSelector({
       {/* Level 2: Subcategory (only if L1 has L2 children) */}
       {showL2 && (
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Sous-categorie</label>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Sous-catégorie</label>
           <SearchSelect
             ariaLabel="Sous-catégorie"
-            placeholder="Toutes les sous-categories"
+            placeholder="Toutes les sous-catégories"
             width="100%"
             size="md"
             disabled={disabled}

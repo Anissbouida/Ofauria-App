@@ -301,7 +301,7 @@ export default function PrinterSettingsCard() {
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" checked={form.openDrawerOnCash}
                   onChange={(e) => setForm({ ...form, openDrawerOnCash: e.target.checked })} />
-                Ouvrir tiroir sur paiement especes
+                Ouvrir tiroir sur paiement espèces
               </label>
             </div>
           </div>

@@ -411,7 +411,7 @@ export default function LossDeclarationModal({
               <textarea
                 value={reasonNote}
                 onChange={(e) => setReasonNote(e.target.value)}
-                placeholder="Details supplementaires..."
+                placeholder="Détails supplémentaires..."
                 className="input"
                 rows={2}
               />
@@ -455,7 +455,7 @@ export default function LossDeclarationModal({
             {/* Cost preview */}
             {selectedProduct && reason && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex justify-between items-center">
-                <span className="text-sm text-red-700 font-medium">Cout estime de la perte</span>
+                <span className="text-sm text-red-700 font-medium">Coût estimé de la perte</span>
                 <span className="text-lg font-bold text-red-800">
                   {money(quantity * (parseFloat(String(selectedProduct.cost_price || selectedProduct.price || 0))))}
                 </span>
@@ -483,7 +483,7 @@ export default function LossDeclarationModal({
             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
               <CheckCircle size={32} className="text-green-600" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Perte declaree</h3>
+            <h3 className="text-lg font-bold text-gray-900">Perte déclarée</h3>
             <p className="text-sm text-gray-500 text-center">
               {quantity} {unitLabel} — {selectedProduct?.name as string}{selectedItem?.lotNumber ? ` (lot ${selectedItem.lotNumber})` : ''} — {LOSS_REASONS.find(r => r.value === reason)?.label}
             </p>
