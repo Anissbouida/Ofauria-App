@@ -59,7 +59,7 @@ export interface GeneratedEntry {
   entry_date: string;
   description: string;
   source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual' | 'shift_entry' | 'advance_repayment' | 'product_loss' | 'closure_diff'
-    | 'goods_receipt' | 'goods_receipt_return' | 'loyalty';
+    | 'goods_receipt' | 'goods_receipt_return' | 'loyalty' | 'stock_count';
   source_id: string;
   // Discriminant pour les sources a ecritures multiples (cheque : emission/cashing).
   source_detail?: string | null;
