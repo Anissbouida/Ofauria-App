@@ -37,10 +37,8 @@ function StepIndicator({ current }: { current: number }) {
               background: active ? 'var(--ds-accent)' : done ? 'var(--ds-success-bg)' : 'var(--ds-sep)',
               color: active ? '#fff' : done ? 'var(--ds-success)' : 'var(--ds-muted)',
             }}>
-              <span style={{ width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, background: 'rgba(255,255,255,0.35)' }}>
-                {done ? '✓' : step.num}
-              </span>
-              <span className="hidden sm:inline">{step.label}</span>
+              {done && <Check size={12} aria-hidden="true" />}
+              <span>{step.label}</span>
             </div>
             {i < STEPS.length - 1 && (
               <div style={{ width: 28, height: 2, margin: '0 4px', background: done ? 'var(--ds-success)' : 'var(--ds-sep)' }} />
@@ -431,7 +429,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
           disabled={step === 1 ? !canNextStep1 : step === 2 ? !canNextStep2 : false}
           busy={step === 3 && saving}
         >
-          <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>Étape {step} / {STEPS.length} · {STEPS[step - 1]?.label}</span>
+          <span style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{STEPS[step - 1]?.label}</span>
         </FormFooter>
       }
     >

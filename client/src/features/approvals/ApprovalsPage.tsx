@@ -48,7 +48,7 @@ function Steps({ r }: { r: ApprovalRequest }) {
           <li key={s.id} className={cls}>
             <span className="ui-timeline-dot" />
             <div className="ui-timeline-label">
-              Étape {s.step_order} · {s.approver_name ?? roleLabel(s.approver_role)}
+              {s.approver_name ?? roleLabel(s.approver_role)}
               {s.status === 'pending' && <span style={{ marginLeft: 6 }}><StatusTag tone="progress" label="En cours" /></span>}
               {s.status === 'approved' && <span style={{ marginLeft: 6 }}><StatusTag tone="done" label="Approuvée" /></span>}
               {s.status === 'rejected' && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="Refusée" /></span>}

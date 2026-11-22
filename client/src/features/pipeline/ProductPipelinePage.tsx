@@ -215,7 +215,7 @@ export default function ProductPipelinePage() {
                     <td style={{ minWidth: 160 }}>
                       <StageProgress count={STAGES.length} current={stageIdx} done={p.status === 'completed'} />
                       <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>
-                        Étape {stageIdx + 1}/7 — {STAGES[stageIdx]?.label || ''}
+                        {STAGES[stageIdx]?.label || ''}
                       </span>
                     </td>
                     <td><StatusTag tone={tone} icon={sc.icon} label={sc.label} /></td>
