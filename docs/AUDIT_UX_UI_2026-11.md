@@ -302,7 +302,7 @@ débordement horizontal, aucun champ visible sans libellé.
 | Groupes de paramètres numérotés (1, 2, 3…) dans Règles de caisse, Devis et crédit, Production, Achats, Règles comptables | numéros retirés (`ParametersPanel`), conformément à la règle « pas de numérotation » |
 | Approbateurs numérotés « 1. 2. » à la création d'un circuit | flèches entre approbateurs, comme dans le tableau des circuits |
 | Tâches planifiées : colonne Résultat écrasée sur 4 lignes | largeur minimale de colonne |
-| Référentiel : libellés sans accents (« Categories de depenses », « Categories de revenus », « Categories de produits ») | données en base (migrations 058/059), hors périmètre UI : à corriger par une migration de données |
+| Référentiel : libellés sans accents (« Categories de depenses », « Unites de mesure », « Types de conge »…) | migration 628 : libellés et descriptions des tables du référentiel accentués (seulement si le texte d'origine n'a pas été modifié) |
 
 Restent volontairement hors jetons : l'aperçu du ticket de caisse (rendu papier noir sur blanc) et
 les pastilles de couleur des canaux de vente (couleur choisie par l'utilisateur).
