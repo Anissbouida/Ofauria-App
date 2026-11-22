@@ -620,8 +620,7 @@ export default function PlanDetailPage() {
               if (waiting.length === 0) return null;
               return (
                 <button onClick={() => restoreMutation.mutate(waiting.map(it => it.id as string))}
-                  disabled={restoreMutation.isPending} className="odoo-btn-primary"
-                  style={{ padding: '2px 8px', fontSize: '0.6875rem', backgroundColor: 'var(--ds-success)', borderColor: 'var(--ds-success)' }}
+                  disabled={restoreMutation.isPending} className="odoo-btn-primary ds-btn-sm"
                   title="Re-verifier la dispo et relancer les articles en attente.">
                   <RotateCcw size={11} /> Restaurer ({waiting.length}) &amp; relancer
                 </button>
@@ -703,8 +702,7 @@ export default function PlanDetailPage() {
                       requestedVerifications.has(need.ingredient_id as string) ? (
                         <StatusTag tone="progress" icon={Send} label="Envoyée" title="Demande envoyée" />
                       ) : (
-                        <button onClick={() => setRestockNeed(need)} className="odoo-btn-primary"
-                          style={{ padding: '2px 8px', fontSize: '0.6875rem', backgroundColor: 'var(--ds-info)', borderColor: 'var(--ds-info)' }}
+                        <button onClick={() => setRestockNeed(need)} className="odoo-btn-primary ds-btn-sm"
                           title="Demander au responsable stock de vérifier la dispo">
                           <Send size={11} /> Demander
                         </button>
@@ -790,8 +788,7 @@ export default function PlanDetailPage() {
                     </td>
                     <td className="ds-num">
                       {depPlanId && (
-                        <button type="button" onClick={() => navigate(`/production/${depPlanId}`)} className="odoo-btn-secondary"
-                          style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
+                        <button type="button" onClick={() => navigate(`/production/${depPlanId}`)} className="odoo-btn-secondary ds-btn-sm">
                           <Eye size={11} /> Voir
                         </button>
                       )}
@@ -1458,7 +1455,7 @@ export default function PlanDetailPage() {
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <Layers size={12} /> Plan parent · #{parentShortId.toUpperCase()} — {format(new Date(dep.parent_plan_date as string), 'dd MMM yyyy', { locale: fr })}
                 </span>
-                <button onClick={() => navigate(`/production/${parentPlanId}`)} className="odoo-btn-secondary" style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
+                <button onClick={() => navigate(`/production/${parentPlanId}`)} className="odoo-btn-secondary ds-btn-sm">
                   <Eye size={11} /> Voir
                 </button>
               </div>
@@ -1802,7 +1799,7 @@ export default function PlanDetailPage() {
                 <button type="button"
                   onClick={() => restoreMutation.mutate(waitingItems.map((it: Record<string, any>) => it.id as string))}
                   disabled={restoreMutation.isPending}
-                  className="odoo-btn-primary" style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: '0.6875rem', textTransform: 'none', letterSpacing: 0 }}>
+                  className="odoo-btn-primary ds-btn-sm" style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}>
                   <RotateCcw size={11} /> Restaurer tous ({waitingItems.length})
                 </button>
               )}
@@ -1837,13 +1834,13 @@ export default function PlanDetailPage() {
                       {isChef && (
                         <span style={{ display: 'inline-flex', gap: 6 }}>
                           <button type="button" onClick={() => restoreMutation.mutate([item.id as string])} disabled={restoreMutation.isPending}
-                            className="odoo-btn-secondary" style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
+                            className="odoo-btn-secondary ds-btn-sm">
                             <RotateCcw size={11} /> Restaurer
                           </button>
                           <button type="button"
                             onClick={() => cancelItemsMutation.mutate({ itemIds: [item.id as string], reason: 'Annule depuis la liste d\'attente' })}
                             disabled={cancelItemsMutation.isPending}
-                            className="ds-btn-danger" style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
+                            className="ds-btn-danger ds-btn-sm">
                             <XCircle size={11} /> Annuler
                           </button>
                         </span>
@@ -1899,7 +1896,7 @@ export default function PlanDetailPage() {
             <input type="text" value={newNote} onChange={(e) => setNewNote(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
               placeholder="Ajouter une note..."
-              className="input" style={{ flex: 1 }}
+              className="ds-input sm" style={{ flex: 1 }}
               disabled={addingNote} />
             <button onClick={handleAddNote} disabled={!newNote.trim() || addingNote}
               className="odoo-btn-primary" style={{ padding: '4px 10px' }}>
@@ -2092,7 +2089,7 @@ function PlanHeaderTags({ plan }: { plan: Record<string, any> }) {
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
         Priorité
         <select value={prio} disabled={locked || m.isPending} onChange={(e) => m.mutate(Number(e.target.value))}
-          className="input" style={{ padding: '2px 6px', fontSize: '0.8125rem', width: 'auto' }} aria-label="Priorité de l'ordre">
+          className="ds-input sm" style={{ width: 'auto' }} aria-label="Priorité de l'ordre">
           {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{PRIORITY_LABELS[n]}</option>)}
         </select>
       </label>

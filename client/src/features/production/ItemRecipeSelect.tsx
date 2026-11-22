@@ -23,8 +23,8 @@ export default function ItemRecipeSelect({ planId, itemId, productId, value, edi
   if (options.length < 2) return null;
   const def = options.find(r => r.is_default);
   return (
-    <select className="input" value={value ?? ''} disabled={!editable || save.isPending} aria-label="Nomenclature de la ligne"
-      style={{ padding: '1px 6px', fontSize: '0.75rem', width: 'auto', marginTop: 3 }}
+    <select className="ds-input sm" value={value ?? ''} disabled={!editable || save.isPending} aria-label="Nomenclature de la ligne"
+      style={{ width: 'auto', marginTop: 3 }}
       onChange={e => save.mutate(e.target.value || null)}>
       <option value="">{def ? `${def.name} (par défaut)` : 'Fiche par défaut'}</option>
       {options.filter(r => !r.is_default).map(r => <option key={r.id} value={r.id}>{r.name} ({USAGE[r.usage] ?? r.usage})</option>)}

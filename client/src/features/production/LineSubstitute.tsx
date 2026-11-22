@@ -39,7 +39,7 @@ export default function LineSubstitute({ ligneId, onDone }: { ligneId: string; o
         </label>
       ))}
       <div style={{ display: 'flex', gap: 6 }}>
-        <input className="input" style={{ padding: '1px 6px', fontSize: '0.75rem' }} placeholder="Motif (obligatoire)" value={reason} onChange={e => setReason(e.target.value)} aria-label="Motif de la substitution" />
+        <input className="ds-input sm" style={{ width: 200 }} placeholder="Motif (obligatoire)" value={reason} onChange={e => setReason(e.target.value)} aria-label="Motif de la substitution" />
         <button type="button" className="odoo-btn-secondary" disabled={!choice || reason.trim().length < 3 || apply.isPending} onClick={() => apply.mutate()}>Appliquer</button>
         <button type="button" className="bsi-link-btn" onClick={() => setOpen(false)}>Fermer</button>
       </div>

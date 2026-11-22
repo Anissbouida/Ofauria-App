@@ -37,7 +37,7 @@ export default function AlternativeOfPanel({ recipe }: { recipe: { id: string; p
       <div className="pd-section-head"><Layers size={13} /> Nomenclature supplémentaire d'un produit</div>
       <div style={{ padding: '0.625rem 1rem', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <SearchSelect options={products.map(p => ({ id: p.id, label: p.name }))} value={productId} onChange={setProductId} placeholder="Produit…" width={260} ariaLabel="Produit" />
-        <select className="input" value={usage} onChange={e => setUsage(e.target.value as 'alternative' | 'sous_traitance')} aria-label="Usage" style={{ width: 'auto' }}>
+        <select className="ds-input sm" value={usage} onChange={e => setUsage(e.target.value as 'alternative' | 'sous_traitance')} aria-label="Usage" style={{ width: 'auto' }}>
           <option value="alternative">Alternative</option><option value="sous_traitance">Sous-traitance</option>
         </select>
         <button type="button" className="odoo-btn-secondary" disabled={!productId || save.isPending} onClick={() => save.mutate(productId)}>Rattacher</button>

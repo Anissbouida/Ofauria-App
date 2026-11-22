@@ -53,7 +53,7 @@ export default function PlanCostAllocation({ planId, canEdit }: { planId: string
             <td className="ds-num">{i.quantity.toLocaleString('fr-FR')}</td>
             {manual && (
               <td className="ds-num">
-                <input className="input" style={{ width: 70, textAlign: 'right', padding: '1px 4px' }} disabled={!canEdit}
+                <input className="ds-input sm" style={{ width: 70, textAlign: 'right' }} disabled={!canEdit}
                   aria-label={`Part saisie de ${i.product_name}`}
                   value={draft[i.plan_item_id] ?? (i.manual_pct ?? '')} onChange={e => setDraft(d => ({ ...d, [i.plan_item_id]: e.target.value }))} />
               </td>

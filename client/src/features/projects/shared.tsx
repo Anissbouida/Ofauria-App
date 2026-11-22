@@ -213,7 +213,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
       </>}>
       <div>
         <span style={label}>Nom du projet</span>
-        <input className="input" style={{ width: '100%' }} value={f.name} maxLength={200} onChange={e => set('name', e.target.value)} placeholder="Ex. : Mariage Benali 14 juin, Chantier villa Anfa, Mission audit…" />
+        <input className="ds-input" value={f.name} maxLength={200} onChange={e => set('name', e.target.value)} placeholder="Ex. : Mariage Benali 14 juin, Chantier villa Anfa, Mission audit…" />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
@@ -225,7 +225,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
             </div>
           ) : (
             <>
-              <input className="input" style={{ width: '100%' }} value={customerQuery} onChange={e => setCustomerQuery(e.target.value)} placeholder="Rechercher une fiche (ou interne)" />
+              <input className="ds-input" value={customerQuery} onChange={e => setCustomerQuery(e.target.value)} placeholder="Rechercher une fiche (ou interne)" />
               {customers.length > 0 && customerQuery.trim().length >= 2 && (
                 <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 4, maxHeight: 140, overflowY: 'auto' }}>
                   {customers.slice(0, 8).map(c => (
@@ -241,36 +241,36 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
         </div>
         <div>
           <span style={label}>Priorité</span>
-          <select className="input" style={{ width: '100%' }} value={f.priority} onChange={e => set('priority', e.target.value as Priority)}>
+          <select className="ds-input" value={f.priority} onChange={e => set('priority', e.target.value as Priority)}>
             {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <div><span style={label}>Début</span><input className="input" type="date" style={{ width: '100%' }} value={f.startDate ?? ''} onChange={e => set('startDate', e.target.value || null)} /></div>
-        <div><span style={label}>Échéance</span><input className="input" type="date" style={{ width: '100%' }} value={f.dueDate ?? ''} onChange={e => set('dueDate', e.target.value || null)} /></div>
-        <div><span style={label}>Heures prévues</span><input className="input" type="number" min="0" step="0.5" style={{ width: '100%' }} value={f.estimatedHours ?? ''} onChange={e => set('estimatedHours', num(e.target.value))} /></div>
+        <div><span style={label}>Début</span><input className="ds-input" type="date" style={{ width: '100%' }} value={f.startDate ?? ''} onChange={e => set('startDate', e.target.value || null)} /></div>
+        <div><span style={label}>Échéance</span><input className="ds-input" type="date" style={{ width: '100%' }} value={f.dueDate ?? ''} onChange={e => set('dueDate', e.target.value || null)} /></div>
+        <div><span style={label}>Heures prévues</span><input className="ds-input" type="number" min="0" step="0.5" style={{ width: '100%' }} value={f.estimatedHours ?? ''} onChange={e => set('estimatedHours', num(e.target.value))} /></div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
         <div>
           <span style={label}>Facturation</span>
-          <select className="input" style={{ width: '100%' }} value={f.billingType} onChange={e => set('billingType', e.target.value as BillingType)}>
+          <select className="ds-input" value={f.billingType} onChange={e => set('billingType', e.target.value as BillingType)}>
             {Object.entries(BILLING_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         <div>
           <span style={label}>{f.billingType === 'fixed' ? `Forfait (${currencySymbol()})` : `Budget (${currencySymbol()})`}</span>
-          <input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={f.budgetAmount ?? ''} onChange={e => set('budgetAmount', num(e.target.value))} />
+          <input className="ds-input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={f.budgetAmount ?? ''} onChange={e => set('budgetAmount', num(e.target.value))} />
         </div>
         <div>
           <span style={label}>Taux horaire facturé ({currencySymbol()})</span>
-          <input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={f.hourlyRate ?? ''} disabled={f.billingType !== 'time'}
+          <input className="ds-input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={f.hourlyRate ?? ''} disabled={f.billingType !== 'time'}
             onChange={e => set('hourlyRate', num(e.target.value))} placeholder={f.billingType === 'time' ? 'Sinon taux de l\'activité' : '—'} />
         </div>
       </div>
       <div>
         <span style={label}>Description</span>
-        <textarea className="input" style={{ width: '100%', minHeight: 70 }} value={f.description ?? ''} onChange={e => set('description', e.target.value)} />
+        <textarea className="ds-input" style={{ minHeight: 70 }} value={f.description ?? ''} onChange={e => set('description', e.target.value)} />
       </div>
     </Shell>
   );
@@ -301,7 +301,7 @@ export function TaskFormModal({ projectId, task, onClose }: { projectId: string;
         <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
         <button className="odoo-btn-primary" disabled={!f.title.trim() || save.isPending} onClick={() => save.mutate()}>Enregistrer</button>
       </>}>
-      <div><span style={label}>Tâche</span><input className="input" style={{ width: '100%' }} value={f.title} maxLength={200} onChange={e => set('title', e.target.value)} autoFocus /></div>
+      <div><span style={label}>Tâche</span><input className="ds-input" value={f.title} maxLength={200} onChange={e => set('title', e.target.value)} autoFocus /></div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
           <span style={label}>Affectée à</span>
@@ -310,17 +310,17 @@ export function TaskFormModal({ projectId, task, onClose }: { projectId: string;
         </div>
         <div>
           <span style={label}>Priorité</span>
-          <select className="input" style={{ width: '100%' }} value={f.priority} onChange={e => set('priority', e.target.value as Priority)}>
+          <select className="ds-input" value={f.priority} onChange={e => set('priority', e.target.value as Priority)}>
             {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <div><span style={label}>Début</span><input className="input" type="date" style={{ width: '100%' }} value={f.startDate ?? ''} onChange={e => set('startDate', e.target.value || null)} /></div>
-        <div><span style={label}>Échéance</span><input className="input" type="date" style={{ width: '100%' }} value={f.dueDate ?? ''} onChange={e => set('dueDate', e.target.value || null)} /></div>
-        <div><span style={label}>Heures prévues</span><input className="input" type="number" min="0" step="0.5" style={{ width: '100%' }} value={f.estimatedHours ?? ''} onChange={e => set('estimatedHours', e.target.value === '' ? null : Number(e.target.value))} /></div>
+        <div><span style={label}>Début</span><input className="ds-input" type="date" style={{ width: '100%' }} value={f.startDate ?? ''} onChange={e => set('startDate', e.target.value || null)} /></div>
+        <div><span style={label}>Échéance</span><input className="ds-input" type="date" style={{ width: '100%' }} value={f.dueDate ?? ''} onChange={e => set('dueDate', e.target.value || null)} /></div>
+        <div><span style={label}>Heures prévues</span><input className="ds-input" type="number" min="0" step="0.5" style={{ width: '100%' }} value={f.estimatedHours ?? ''} onChange={e => set('estimatedHours', e.target.value === '' ? null : Number(e.target.value))} /></div>
       </div>
-      <div><span style={label}>Détail</span><textarea className="input" style={{ width: '100%', minHeight: 60 }} value={f.description ?? ''} onChange={e => set('description', e.target.value)} /></div>
+      <div><span style={label}>Détail</span><textarea className="ds-input" style={{ minHeight: 60 }} value={f.description ?? ''} onChange={e => set('description', e.target.value)} /></div>
     </Shell>
   );
 }
@@ -384,11 +384,11 @@ export function TimeEntryForm({ projectId, tasks, onSaved, compact, bare }: { pr
             options={activities.map(a => ({ id: a.code, label: a.label }))} />
         </div>
       )}
-      <div><span style={label}>Date</span><input className="input" type="date" style={{ width: '100%' }} value={workDate} onChange={e => setWorkDate(e.target.value)} /></div>
-      <div><span style={label}>Heures</span><input className="input" type="number" min="0.25" max="24" step="0.25" style={{ width: '100%' }} value={hours} onChange={e => setHours(e.target.value)} placeholder="2" /></div>
+      <div><span style={label}>Date</span><input className="ds-input" type="date" style={{ width: '100%' }} value={workDate} onChange={e => setWorkDate(e.target.value)} /></div>
+      <div><span style={label}>Heures</span><input className="ds-input" type="number" min="0.25" max="24" step="0.25" style={{ width: '100%' }} value={hours} onChange={e => setHours(e.target.value)} placeholder="2" /></div>
       <div>
         <span style={label}>Note</span>
-        <input className="input" style={{ width: '100%' }} value={note} onChange={e => setNote(e.target.value)} placeholder="Ce qui a été fait" onKeyDown={e => { if (e.key === 'Enter' && can) add.mutate(); }} />
+        <input className="ds-input" value={note} onChange={e => setNote(e.target.value)} placeholder="Ce qui a été fait" onKeyDown={e => { if (e.key === 'Enter' && can) add.mutate(); }} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', whiteSpace: 'nowrap' }} title="Compté dans le facturable">

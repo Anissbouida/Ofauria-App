@@ -66,10 +66,10 @@ export default function SubstitutesPanel({ recipeId }: { recipeId: string }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <SearchSelect options={options} value={form.ingredientId} onChange={v => setForm(f => ({ ...f, ingredientId: v }))} placeholder="Article d'origine…" width={220} ariaLabel="Article d'origine" />
             <SearchSelect options={options.filter(o => o.id !== form.ingredientId)} value={form.substituteIngredientId} onChange={v => setForm(f => ({ ...f, substituteIngredientId: v }))} placeholder="Substitut…" width={220} ariaLabel="Substitut" />
-            <label className="text-xs">Ratio <input className="input" style={{ width: 60 }} value={form.ratio} onChange={e => setForm(f => ({ ...f, ratio: e.target.value }))} /></label>
-            <label className="text-xs">Priorité <input className="input" style={{ width: 44 }} value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value.replace(/\D/g, '') }))} /></label>
-            <label className="text-xs">Du <input type="date" className="input" value={form.validFrom} onChange={e => setForm(f => ({ ...f, validFrom: e.target.value }))} /></label>
-            <label className="text-xs">au <input type="date" className="input" value={form.validTo} onChange={e => setForm(f => ({ ...f, validTo: e.target.value }))} /></label>
+            <label className="text-xs">Ratio <input className="ds-input sm" style={{ width: 60 }} value={form.ratio} onChange={e => setForm(f => ({ ...f, ratio: e.target.value }))} /></label>
+            <label className="text-xs">Priorité <input className="ds-input sm" style={{ width: 44 }} value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value.replace(/\D/g, '') }))} /></label>
+            <label className="text-xs">Du <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={form.validFrom} onChange={e => setForm(f => ({ ...f, validFrom: e.target.value }))} /></label>
+            <label className="text-xs">au <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={form.validTo} onChange={e => setForm(f => ({ ...f, validTo: e.target.value }))} /></label>
             <label className="text-xs"><input type="checkbox" checked={form.allRecipes} onChange={e => setForm(f => ({ ...f, allRecipes: e.target.checked }))} /> Toutes les fiches</label>
             <button type="button" className="odoo-btn-primary" disabled={!form.ingredientId || !form.substituteIngredientId || !ratioOk || !form.priority || create.isPending} onClick={() => create.mutate()}>Enregistrer</button>
           </div>

@@ -78,7 +78,7 @@ export default function SubcontractPanel({ planId, planStatus, canEdit }: { plan
           </label>
           <label className="block text-xs font-medium text-gray-500">Prix de façon par unité
             {canEdit && !locked
-              ? <input className="input" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} style={{ width: 120 }} aria-label="Prix de façon par unité" />
+              ? <input className="ds-input sm" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} style={{ width: 120 }} aria-label="Prix de façon par unité" />
               : <div style={{ fontWeight: 500, color: 'var(--odoo-text)' }}>{data.unitFee != null ? money(data.unitFee) : '—'}</div>}
           </label>
           {canEdit && !locked && (

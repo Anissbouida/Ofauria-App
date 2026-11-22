@@ -511,9 +511,9 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                               <button type="button" className="bsi-link-btn" onClick={() => setControlFor(etape)}>Contrôler</button>
                             )}
                             {etape.status === 'in_progress' && isChef && <>
-                              <label>Bonnes <input className="input" style={{ width: 64, padding: '1px 4px' }} inputMode="decimal" value={opQty[etape.id]?.good ?? ''}
+                              <label>Bonnes <input className="ds-input sm" style={{ width: 64 }} inputMode="decimal" value={opQty[etape.id]?.good ?? ''}
                                 onChange={e => setOpQty(s => ({ ...s, [etape.id]: { good: e.target.value, scrap: s[etape.id]?.scrap ?? '' } }))} /></label>
-                              <label>Rebut <input className="input" style={{ width: 64, padding: '1px 4px' }} inputMode="decimal" value={opQty[etape.id]?.scrap ?? ''}
+                              <label>Rebut <input className="ds-input sm" style={{ width: 64 }} inputMode="decimal" value={opQty[etape.id]?.scrap ?? ''}
                                 onChange={e => setOpQty(s => ({ ...s, [etape.id]: { good: s[etape.id]?.good ?? '', scrap: e.target.value } }))} /></label>
                             </>}
                           </div>

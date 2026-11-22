@@ -67,13 +67,13 @@ export default function RecipeOutputsPanel({ recipeId }: { recipeId: string }) {
         {adding && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <SearchSelect options={products.map(p => ({ id: p.id, label: p.name }))} value={form.productId} onChange={v => setForm(f => ({ ...f, productId: v }))} placeholder="Produit…" width={240} ariaLabel="Produit de sortie" />
-            <select className="input" style={{ width: 'auto' }} value={form.outputType} onChange={e => setForm(f => ({ ...f, outputType: e.target.value }))} aria-label="Type de sortie">
+            <select className="ds-input sm" style={{ width: 'auto' }} value={form.outputType} onChange={e => setForm(f => ({ ...f, outputType: e.target.value }))} aria-label="Type de sortie">
               {Object.entries(TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
             {form.outputType === 'co_produit'
-              ? <label className="text-xs">Vaut <input className="input" style={{ width: 60 }} value={form.equivPieces} onChange={e => setForm(f => ({ ...f, equivPieces: e.target.value }))} /> pièces</label>
-              : <label className="text-xs">Valeur unitaire <input className="input" style={{ width: 70 }} value={form.fixedUnitValue} onChange={e => setForm(f => ({ ...f, fixedUnitValue: e.target.value }))} /></label>}
-            <label className="text-xs">Prévu par pièce <input className="input" style={{ width: 60 }} value={form.quantityPerUnit} onChange={e => setForm(f => ({ ...f, quantityPerUnit: e.target.value }))} /></label>
+              ? <label className="text-xs">Vaut <input className="ds-input sm" style={{ width: 60 }} value={form.equivPieces} onChange={e => setForm(f => ({ ...f, equivPieces: e.target.value }))} /> pièces</label>
+              : <label className="text-xs">Valeur unitaire <input className="ds-input sm" style={{ width: 70 }} value={form.fixedUnitValue} onChange={e => setForm(f => ({ ...f, fixedUnitValue: e.target.value }))} /></label>}
+            <label className="text-xs">Prévu par pièce <input className="ds-input sm" style={{ width: 60 }} value={form.quantityPerUnit} onChange={e => setForm(f => ({ ...f, quantityPerUnit: e.target.value }))} /></label>
             <button type="button" className="odoo-btn-primary" disabled={!form.productId || !keyOk || save.isPending} onClick={() => save.mutate()}>Enregistrer</button>
           </div>
         )}

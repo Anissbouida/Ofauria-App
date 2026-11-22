@@ -69,7 +69,7 @@ export default function BomVersionBanner({ recipeId }: { recipeId: string }) {
         <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 10, display: 'grid', gap: 8 }}>
           {pending ? <DiffTable rows={pending} /> : <Loader2 size={14} className="animate-spin" />}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder="Motif de la nouvelle version" aria-label="Motif de la nouvelle version" style={{ flex: '1 1 260px' }} />
+            <input className="ds-input sm" value={reason} onChange={e => setReason(e.target.value)} placeholder="Motif de la nouvelle version" aria-label="Motif de la nouvelle version" style={{ flex: '1 1 260px' }} />
             <button type="button" className="odoo-btn-primary" disabled={reason.trim().length < 3 || activate.isPending} onClick={() => activate.mutate()}>
               Créer la version {(data.versions[0]?.version_no ?? 0) + 1}
             </button>

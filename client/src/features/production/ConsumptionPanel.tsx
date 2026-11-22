@@ -51,8 +51,8 @@ export default function ConsumptionPanel({ planId, mode, canEdit }: { planId: st
         {manual && canEdit && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <SearchSelect options={ingredients.map(i => ({ id: i.id, label: i.name }))} value={form.ingredientId} onChange={v => setForm(f => ({ ...f, ingredientId: v }))} placeholder="Matière…" width={240} ariaLabel="Matière sortie" />
-            <input className="input" style={{ width: 90 }} inputMode="decimal" placeholder="Quantité" aria-label="Quantité sortie" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
-            <input className="input" style={{ width: 200 }} placeholder="Note (optionnel)" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
+            <input className="ds-input sm" style={{ width: 90 }} inputMode="decimal" placeholder="Quantité" aria-label="Quantité sortie" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+            <input className="ds-input sm" style={{ width: 200 }} placeholder="Note (optionnel)" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
             <button type="button" className="odoo-btn-secondary" disabled={!form.ingredientId || !(qty > 0) || issue.isPending} onClick={() => issue.mutate()}>Enregistrer la sortie</button>
           </div>
         )}
