@@ -407,7 +407,7 @@ function SubRequestDetailView({
               const done = isActive && i < currentStep;
               return (
                 <li key={step.key} className={`ui-timeline-step ${done ? 'is-done' : ''} ${isCurrent ? 'is-current' : ''}`}>
-                  <span className="ui-timeline-dot">{done ? <CheckCircle2 size={12} /> : i + 1}</span>
+                  <span className="ui-timeline-dot">{done ? <CheckCircle2 size={12} /> : null}</span>
                   <span className="ui-timeline-label">
                     {isCurrent && displayStatus === 'partially_delivered' && step.key === 'acknowledged'
                       ? 'Partiellement livré'

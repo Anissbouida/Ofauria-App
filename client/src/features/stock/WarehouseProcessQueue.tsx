@@ -358,7 +358,7 @@ export function WarehouseBonWorkspace({
       <ol className="ui-timeline stk-timeline">
         {timeline.map((t, i) => (
           <li key={t.label} className={`ui-timeline-step ${t.done ? 'is-done' : ''} ${t.current ? 'is-current' : ''}`}>
-            <span className="ui-timeline-dot">{t.done ? <Check size={12} /> : i + 1}</span>
+            <span className="ui-timeline-dot">{t.done ? <Check size={12} /> : null}</span>
             <span className="ui-timeline-label">{t.label}</span>
             {t.detail && <span className="ui-timeline-detail">{t.detail}</span>}
           </li>

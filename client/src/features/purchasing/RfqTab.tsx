@@ -352,7 +352,7 @@ export function RfqPage({ id, onBack, onOpenOrder }: { id: string; onBack: () =>
             const current = i === stepIndex && r.status !== 'awarded';
             return (
               <li key={s.label} className={`ui-timeline-step ${done ? 'is-done' : current ? 'is-current' : ''}`} aria-current={current ? 'step' : undefined}>
-                <span className="ui-timeline-dot">{done ? <CheckCircle2 size={14} /> : i + 1}</span>
+                <span className="ui-timeline-dot">{done ? <CheckCircle2 size={14} /> : null}</span>
                 <span className="ui-timeline-label">{s.label}</span>
                 <span className="ui-timeline-detail" style={current && r.is_overdue ? { color: 'var(--ds-danger)', fontWeight: 600 } : undefined}>{s.detail}</span>
               </li>

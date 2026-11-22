@@ -1327,7 +1327,7 @@ export default function PlanDetailPage() {
                 const current = !finished && i === cur;
                 return (
                   <li key={s.label} className={`ui-timeline-step ${done ? 'is-done' : ''} ${current ? 'is-current' : ''}`}>
-                    <span className="ui-timeline-dot">{done ? <CheckCircle2 size={12} /> : i + 1}</span>
+                    <span className="ui-timeline-dot">{done ? <CheckCircle2 size={12} /> : null}</span>
                     <span className="ui-timeline-label">{s.label}</span>
                     {s.detail && <span className="ui-timeline-detail">{s.detail}</span>}
                   </li>

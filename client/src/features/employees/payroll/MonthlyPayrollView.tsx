@@ -531,7 +531,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             <ol className="ui-timeline" aria-label="Cycle de vie du bulletin" style={{ margin: '0 -16px' }}>
               {steps.map((s, i) => (
                 <li key={s.label} className={`ui-timeline-step ${s.done ? 'is-done' : i === currentIdx ? 'is-current' : ''}`} aria-current={i === currentIdx ? 'step' : undefined}>
-                  <span className="ui-timeline-dot">{s.done ? <CheckCircle2 size={14} /> : i + 1}</span>
+                  <span className="ui-timeline-dot">{s.done ? <CheckCircle2 size={14} /> : null}</span>
                   <span className="ui-timeline-label">{s.label}</span>
                   <span className="ui-timeline-detail">{s.detail}</span>
                 </li>

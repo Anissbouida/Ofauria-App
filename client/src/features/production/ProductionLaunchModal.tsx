@@ -494,7 +494,7 @@ export default function ProductionLaunchModal({
                       : 'bg-gray-200 text-gray-500'
                 }`}
               >
-                {done ? <Check size={16} /> : idx + 1}
+                {done ? <Check size={16} aria-hidden="true" /> : null}
               </div>
               <span
                 className={`text-[10px] sm:text-xs font-medium text-center leading-tight max-w-[70px] sm:max-w-[90px] ${
@@ -1902,7 +1902,7 @@ export default function ProductionLaunchModal({
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
                       done ? 'bg-emerald-500 text-white' : active ? 'bg-blue-600 text-white ring-4 ring-blue-200' : 'bg-gray-200 text-gray-500'
                     }`}>
-                      {done ? <Check size={14} /> : s.num}
+                      {done ? <Check size={14} aria-hidden="true" /> : null}
                     </div>
                     <span className={`text-[10px] font-medium max-w-[60px] text-center truncate ${active ? 'text-blue-700' : done ? 'text-gray-700' : 'text-gray-400'}`}>
                       {s.label}
