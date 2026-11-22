@@ -320,3 +320,25 @@ les pastilles de couleur des canaux de vente (couleur choisie par l'utilisateur)
 | Petits boutons à taille forcée et couleurs hors palette sur la fiche de plan | `ds-btn-sm`, boutons principaux standard |
 
 Restent hors de cette passe : les ≈ 5 800 styles en ligne de mise en page (sans effet visible, à reprendre au fil de l'eau) et la numérotation des étapes de fabrication d'une fiche technique (ordre de travail réel, conservé).
+
+### 10.5 Derniers restes et scénarios métier rejoués
+
+| Constat | Correction |
+|---|---|
+| ≈ 1 350 styles en ligne sur les variables d'avant le Design System (`--theme-*`, `--odoo-*`) et tailles de police en `rem` hors échelle | variables remplacées par les jetons `--ds-*` (TSX et feuilles de module) ; tailles ramenées sur l'échelle 11/12/13/14/17 px ; fonds et bordures en dur remplacés |
+| Étapes de fiche technique et opérations de gamme numérotées | repère à la place du numéro (l'ordre reste celui de la liste) |
+| Assistant de commande « 1 Client · 2 Produits · 3 Paiement », « Étape n » dans les approbations et le pipeline produit | sans numéro |
+| Messages sans accents (« Commande creee avec succes »…) | 38 notifications et confirmations corrigées |
+| Bouton principal invisible dans les boîtes de confirmation (variables `--odoo-*` absentes hors écran) | variables définies sur `:root` ; boutons en pilule dans ces boîtes |
+| Colonne d'actions cachée dans les tableaux plus larges que l'écran (paie : 140 px de trop) | le tableau ne masque plus son débordement, la colonne reste collée ; fond opaque au survol |
+
+Scénarios rejoués sur 5173 (base de développement, compte gérant de test) :
+
+- **Vente** : commande comptoir CMD-20261122-0001 créée (passager, 1 croissant, 5,50 DH), passée « Prête » ; la remise est refusée tant que la caisse n'est pas ouverte (règle métier, message clair).
+- **Production** : plan OP-2026-02426 confirmé ; frise passée à « Ingrédients », bon de sortie en génération ; la pesée relève du magasinier.
+- **Paie** : génération de novembre refusée avant la fin du mois (règle) ; paie d'octobre consultée (12 bulletins payés), détail d'un bulletin ouvert.
+- **Comptabilité** : écriture manuelle équilibrée (6125 / 5161, 10 DH) saisie et enregistrée en brouillon, non comptabilisée (journal inaltérable).
+
+Données de test laissées en base : la commande CMD-20261122-0001, le plan confirmé, le brouillon d'écriture « Test scénario UI - brouillon ».
+
+Ce qui reste volontairement : la caisse plein écran et les écrans de connexion (conçus à part), les aperçus d'impression (ticket, étiquette) en noir sur blanc, et ≈ 4 500 styles en ligne de pure mise en page (marges, alignements), sans effet sur l'identité visuelle.
