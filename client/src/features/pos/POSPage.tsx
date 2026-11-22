@@ -1715,18 +1715,18 @@ export default function POSPage() {
   }
 
   return (
-    <div className={`flex flex-col ${isCashierRole ? 'h-screen' : 'h-[calc(100vh-7rem)]'}`} style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+    <div className={`flex flex-col ${isCashierRole ? 'h-screen' : 'h-[calc(100vh-7rem)]'}`} style={{ backgroundColor: 'var(--ds-bg)' }}>
       {/* ═══ Top Bar: Cashier + Tabs + Actions ═══ */}
-      <div className="px-3 py-2 flex items-center gap-3 shrink-0" style={{ backgroundColor: 'var(--theme-bg-card)', borderBottom: '1px solid var(--theme-bg-separator)' }}>
+      <div className="px-3 py-2 flex items-center gap-3 shrink-0" style={{ backgroundColor: 'var(--ds-card)', borderBottom: '1px solid var(--ds-sep)' }}>
         {/* Cashier identity */}
         {isCashierRole && (
-          <div className="flex items-center gap-2 pr-3" style={{ borderRight: '1px solid var(--theme-bg-separator)' }}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: 'var(--theme-accent)', color: 'var(--theme-cta-text)' }}>
+          <div className="flex items-center gap-2 pr-3" style={{ borderRight: '1px solid var(--ds-sep)' }}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: 'var(--ds-accent)', color: 'var(--theme-cta-text)' }}>
               {user?.firstName?.[0]}{user?.lastName?.[0]}
             </div>
             <div className="hidden sm:block min-w-0">
-              <p className="text-sm font-semibold truncate" style={{ color: 'var(--theme-text-strong)' }}>{user?.firstName}</p>
-              <p className="text-[10px]" style={{ color: 'var(--theme-text-muted)' }}>Caisse</p>
+              <p className="text-sm font-semibold truncate" style={{ color: 'var(--ds-ink)' }}>{user?.firstName}</p>
+              <p className="text-[10px]" style={{ color: 'var(--ds-muted)' }}>Caisse</p>
             </div>
           </div>
         )}
@@ -3156,7 +3156,7 @@ export default function POSPage() {
                 {/* Control bar */}
                 <div className="odoo-control-bar">
                   <div className="odoo-breadcrumb">
-                    <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
+                    <ClipboardCheck size={14} style={{ color: 'var(--ds-accent)' }} />
                     <span>Caisse</span>
                     <span className="odoo-breadcrumb-separator">›</span>
                     <span className="odoo-breadcrumb-current">
@@ -3164,7 +3164,7 @@ export default function POSPage() {
                     </span>
                   </div>
                   <div style={{ flex: 1 }} />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: '12px', color: 'var(--ds-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     <Package size={13} />
                     {inventoryItems.length} article{inventoryItems.length > 1 ? 's' : ''}
                   </span>
@@ -3175,7 +3175,7 @@ export default function POSPage() {
                 </div>
 
                 {/* Description */}
-                <div style={{ padding: '0.5rem 1rem 0', fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+                <div style={{ padding: '0.5rem 1rem 0', fontSize: '13px', color: 'var(--ds-muted)' }}>
                   {closeType === 'passation'
                     ? 'Comptez les quantités restantes en vitrine pour le prochain shift.'
                     : 'Vérifiez les quantités et décidez du devenir de chaque produit invendu.'}
@@ -3194,16 +3194,16 @@ export default function POSPage() {
                   return (
                     <div className="odoo-section">
                       <div className="odoo-search-panel">
-                        <Search size={14} style={{ color: 'var(--odoo-text-muted)' }} />
+                        <Search size={14} style={{ color: 'var(--ds-muted)' }} />
                         <input type="text" value={addInvSearch} onChange={(e) => setAddInvSearch(e.target.value)} autoFocus
                           placeholder="Rechercher un produit du catalogue..."
                           className="odoo-search-input" />
                         <button type="button" onClick={() => setShowAddInvProduct(false)}
-                          style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Fermer</button>
+                          style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>Fermer</button>
                       </div>
                       <div style={{ maxHeight: '14rem', overflowY: 'auto' }}>
                         {candidates.length === 0 ? (
-                          <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--odoo-text-light)' }}>
+                          <div style={{ padding: '1rem', textAlign: 'center', fontSize: '12px', color: 'var(--ds-muted)' }}>
                             {allCatalogProducts.length === 0 ? 'Chargement du catalogue...' : 'Aucun produit (déjà dans l\'inventaire ou pas de correspondance)'}
                           </div>
                         ) : candidates.map(p => (
@@ -3237,13 +3237,13 @@ export default function POSPage() {
                             style={{
                               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                               gap: '0.75rem', padding: '0.5rem 1rem', textAlign: 'left',
-                              borderBottom: '1px solid var(--odoo-border)',
-                              fontSize: '0.8125rem', color: 'var(--odoo-text)',
+                              borderBottom: '1px solid var(--ds-sep)',
+                              fontSize: '13px', color: 'var(--ds-ink)',
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--odoo-bg-hover)'}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ds-hair)'}
                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}>
                             <span style={{ fontWeight: 500 }}>{p.name as string}</span>
-                            {p.category_name ? <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-light)' }}>{p.category_name as string}</span> : null}
+                            {p.category_name ? <span style={{ fontSize: '12px', color: 'var(--ds-muted)' }}>{p.category_name as string}</span> : null}
                           </button>
                         ))}
                       </div>
@@ -3348,7 +3348,7 @@ export default function POSPage() {
 
                 {/* Banniere filtre actif */}
                 {inventoryFilter && (
-                  <div style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', borderBottom: '1px solid var(--odoo-border)' }}>
+                  <div style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '12px', borderBottom: '1px solid var(--ds-sep)' }}>
                     <span className="odoo-filter-chip">
                       Filtre : {inventoryFilter === 'replenished' ? 'Approvisionn\u00e9s (> 0)'
                         : inventoryFilter === 'sold' ? 'Vendus (> 0)'
@@ -3403,10 +3403,10 @@ export default function POSPage() {
                   return (
                     <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                       {categoryNames.length === 0 && inventoryFilter && (
-                        <div style={{ margin: '1rem', padding: '2rem', textAlign: 'center', fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', border: '1px dashed var(--odoo-border)', borderRadius: '4px' }}>
+                        <div style={{ margin: '1rem', padding: '2rem', textAlign: 'center', fontSize: '13px', color: 'var(--ds-muted)', border: '1px dashed var(--ds-sep)', borderRadius: '4px' }}>
                           Aucun produit ne correspond a ce filtre.{' '}
                           <button type="button" onClick={() => setInventoryFilter(null)}
-                            style={{ color: 'var(--odoo-purple)', textDecoration: 'underline', fontWeight: 500 }}>Effacer le filtre</button>
+                            style={{ color: 'var(--ds-accent)', textDecoration: 'underline', fontWeight: 500 }}>Effacer le filtre</button>
                         </div>
                       )}
                       {categoryNames.map((catName) => {
@@ -3418,11 +3418,11 @@ export default function POSPage() {
                             <div className="odoo-section-header" style={{ justifyContent: 'space-between' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <span>{catName}</span>
-                                <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400, fontSize: '0.75rem', color: 'var(--odoo-text-light)' }}>
+                                <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400, fontSize: '12px', color: 'var(--ds-muted)' }}>
                                   {catItems.length} article{catItems.length > 1 ? 's' : ''}
                                 </span>
                               </div>
-                              <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+                              <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500, fontSize: '12px', color: 'var(--ds-muted)' }}>
                                 {catCount} restant{catCount > 1 ? 's' : ''}
                               </span>
                             </div>
@@ -3484,7 +3484,7 @@ export default function POSPage() {
                                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                                           <span className={`odoo-status-dot ${dotClass}`} style={{ marginTop: 6 }} role="img" title={dotLabel} aria-label={dotLabel} />
                                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                                            <span style={{ fontWeight: 500, color: 'var(--odoo-text)' }}
+                                            <span style={{ fontWeight: 500, color: 'var(--ds-ink)' }}
                                               title={sugReason || undefined}>
                                               {it.product_name as string}
                                             </span>
@@ -3497,7 +3497,7 @@ export default function POSPage() {
                                               const h = ms / 3_600_000;
                                               if (h <= 0) {
                                                 return (
-                                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.6875rem', color: '#dc3545', fontWeight: 600 }}>
+                                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '12px', color: '#dc3545', fontWeight: 600 }}>
                                                     <Clock size={10} /> Vitrine expirée
                                                   </span>
                                                 );
@@ -3507,9 +3507,9 @@ export default function POSPage() {
                                                 : h < 48 ? `${Math.round(h)}h`
                                                 : `${Math.round(h / 24 * 10) / 10}j`;
                                               return (
-                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.6875rem', color, fontWeight: 500 }}
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '12px', color, fontWeight: 500 }}
                                                   title={`Doit être retiré le ${new Date(dispExp).toLocaleString('fr-FR')}`}>
-                                                  <Clock size={10} /> Vitrine : {txt}{dispLife ? <span style={{ color: 'var(--odoo-text-light)', fontWeight: 400 }}> / {dispLife}h</span> : null}
+                                                  <Clock size={10} /> Vitrine : {txt}{dispLife ? <span style={{ color: 'var(--ds-muted)', fontWeight: 400 }}> / {dispLife}h</span> : null}
                                                 </span>
                                               );
                                             })()}
@@ -3524,20 +3524,20 @@ export default function POSPage() {
                                             Visuellement plus net qu'un trio d'elements separes par 4px. */}
                                         <div style={{
                                           display: 'inline-flex', alignItems: 'stretch',
-                                          border: hasBeenCounted ? '1px solid var(--odoo-border-strong)' : '1px solid #ffc107',
+                                          border: hasBeenCounted ? '1px solid var(--ds-line)' : '1px solid #ffc107',
                                           borderRadius: '4px', overflow: 'hidden',
-                                          backgroundColor: hasBeenCounted ? 'var(--odoo-bg)' : '#fff8e8',
+                                          backgroundColor: hasBeenCounted ? 'var(--ds-card)' : '#fff8e8',
                                           boxShadow: hasBeenCounted ? 'none' : '0 0 0 2px rgba(255, 193, 7, 0.15)',
                                         }}>
                                           <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: Math.max(0, (prev[pid] ?? 0) - 1) }))}
                                             title="Diminuer"
                                             style={{
                                               width: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                              color: 'var(--odoo-text-muted)',
-                                              borderRight: '1px solid var(--odoo-border)',
+                                              color: 'var(--ds-muted)',
+                                              borderRight: '1px solid var(--ds-sep)',
                                               cursor: 'pointer', transition: 'background-color 0.1s',
                                             }}
-                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--odoo-bg-hover)'}
+                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ds-hair)'}
                                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}>
                                             <Minus size={12} />
                                           </button>
@@ -3554,19 +3554,19 @@ export default function POSPage() {
                                             }}
                                             style={{
                                               width: 46, textAlign: 'center',
-                                              fontSize: '0.8125rem', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                                              fontSize: '13px', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
                                               border: 'none', backgroundColor: 'transparent',
-                                              color: hasBeenCounted ? 'var(--odoo-text)' : '#a07900', outline: 'none',
+                                              color: hasBeenCounted ? 'var(--ds-ink)' : '#a07900', outline: 'none',
                                             }} />
                                           <button onClick={() => setInventoryQtys(prev => ({ ...prev, [pid]: (prev[pid] ?? 0) + 1 }))}
                                             title="Augmenter"
                                             style={{
                                               width: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                              color: 'var(--odoo-text-muted)',
-                                              borderLeft: '1px solid var(--odoo-border)',
+                                              color: 'var(--ds-muted)',
+                                              borderLeft: '1px solid var(--ds-sep)',
                                               cursor: 'pointer', transition: 'background-color 0.1s',
                                             }}
-                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--odoo-bg-hover)'}
+                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ds-hair)'}
                                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}>
                                             <Plus size={12} />
                                           </button>
@@ -3575,8 +3575,8 @@ export default function POSPage() {
                                       <td style={{
                                         textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 600,
                                         color: !hasBeenCounted ? '#856404'
-                                          : closeType === 'passation' ? (counted > 0 ? 'var(--odoo-text)' : 'var(--odoo-text-light)')
-                                          : discrepancy !== 0 ? (discrepancy > 0 ? '#dc3545' : '#b85d1a') : 'var(--odoo-text-light)',
+                                          : closeType === 'passation' ? (counted > 0 ? 'var(--ds-ink)' : 'var(--ds-muted)')
+                                          : discrepancy !== 0 ? (discrepancy > 0 ? '#dc3545' : '#b85d1a') : 'var(--ds-muted)',
                                       }}>
                                         {!hasBeenCounted ? '—'
                                           : closeType === 'passation' ? counted
@@ -3607,11 +3607,11 @@ export default function POSPage() {
                                                     title={disabled ? tipDisabled : conf.label}
                                                     style={{
                                                       display: 'inline-flex', alignItems: 'center', gap: 4,
-                                                      padding: '0.25rem 0.5rem', fontSize: '0.6875rem', fontWeight: 600,
+                                                      padding: '0.25rem 0.5rem', fontSize: '12px', fontWeight: 600,
                                                       borderRadius: '4px',
-                                                      border: active ? `1.5px solid ${conf.accent}` : '1px solid var(--odoo-border-strong)',
-                                                      backgroundColor: active ? conf.bg : 'var(--odoo-bg)',
-                                                      color: active ? conf.accent : 'var(--odoo-text-muted)',
+                                                      border: active ? `1.5px solid ${conf.accent}` : '1px solid var(--ds-line)',
+                                                      backgroundColor: active ? conf.bg : 'var(--ds-card)',
+                                                      color: active ? conf.accent : 'var(--ds-muted)',
                                                       cursor: disabled ? 'not-allowed' : 'pointer',
                                                       opacity: disabled ? 0.35 : 1,
                                                       boxShadow: active ? `inset 0 -2px 0 ${conf.accent}` : 'none',
@@ -3622,11 +3622,11 @@ export default function POSPage() {
                                                 );
                                               })}
                                               {isOverride && (
-                                                <span style={{ fontSize: '0.625rem', color: '#b85d1a', fontWeight: 600, marginLeft: 2 }}>modifié</span>
+                                                <span style={{ fontSize: '11px', color: '#b85d1a', fontWeight: 600, marginLeft: 2 }}>modifié</span>
                                               )}
                                             </div>
                                           ) : (
-                                            <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-light)', textAlign: 'center', display: 'block' }}>Tout vendu</span>
+                                            <span style={{ fontSize: '12px', color: 'var(--ds-muted)', textAlign: 'center', display: 'block' }}>Tout vendu</span>
                                           )}
                                           {counted > 0 && finalDest === 'recycle' && Array.isArray(it.recycle_destinations) && (it.recycle_destinations as Record<string, any>[]).length > 1 && (
                                             <div style={{ marginTop: 4, display: 'flex', justifyContent: 'center' }}>
@@ -3634,9 +3634,9 @@ export default function POSPage() {
                                                 value={inventoryRecycleDest[pid] || (it.recycle_ingredient_id as string) || ''}
                                                 onChange={(e) => setInventoryRecycleDest(prev => ({ ...prev, [pid]: e.target.value }))}
                                                 style={{
-                                                  fontSize: '0.6875rem', padding: '0.125rem 0.375rem',
-                                                  border: '1px solid var(--odoo-border-strong)', borderRadius: '3px',
-                                                  backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)', outline: 'none',
+                                                  fontSize: '12px', padding: '0.125rem 0.375rem',
+                                                  border: '1px solid var(--ds-line)', borderRadius: '3px',
+                                                  backgroundColor: 'var(--ds-card)', color: 'var(--ds-ink)', outline: 'none',
                                                 }}>
                                                 {(it.recycle_destinations as { ingredient_id: string; ingredient_name: string; label?: string }[]).map(rd => (
                                                   <option key={rd.ingredient_id} value={rd.ingredient_id}>
@@ -3652,11 +3652,11 @@ export default function POSPage() {
                                                 value={inventoryMotifs[pid] || ''}
                                                 onChange={(e) => setInventoryMotifs(prev => ({ ...prev, [pid]: e.target.value }))}
                                                 style={{
-                                                  width: '100%', fontSize: '0.6875rem', padding: '0.125rem 0.375rem',
-                                                  border: inventoryMotifs[pid] ? '1px solid var(--odoo-border-strong)' : '1px solid #dc3545',
+                                                  width: '100%', fontSize: '12px', padding: '0.125rem 0.375rem',
+                                                  border: inventoryMotifs[pid] ? '1px solid var(--ds-line)' : '1px solid #dc3545',
                                                   borderRadius: '3px',
-                                                  backgroundColor: inventoryMotifs[pid] ? 'var(--odoo-bg)' : '#fdf0ed',
-                                                  color: inventoryMotifs[pid] ? 'var(--odoo-text)' : '#721c24',
+                                                  backgroundColor: inventoryMotifs[pid] ? 'var(--ds-card)' : '#fdf0ed',
+                                                  color: inventoryMotifs[pid] ? 'var(--ds-ink)' : '#721c24',
                                                   fontWeight: inventoryMotifs[pid] ? 400 : 500, outline: 'none',
                                                 }}>
                                                 <option value="">Motif d'écart obligatoire ({discrepancy} manquant)</option>
@@ -3711,7 +3711,7 @@ export default function POSPage() {
                   }
 
                   return totalDiscrepancy !== 0 ? (
-                    <div className={`odoo-alert ${totalDiscrepancy > 0 ? 'danger' : 'warning'}`} style={{ borderTop: '1px solid var(--odoo-border)' }}>
+                    <div className={`odoo-alert ${totalDiscrepancy > 0 ? 'danger' : 'warning'}`} style={{ borderTop: '1px solid var(--ds-sep)' }}>
                       <AlertTriangle size={16} className="flex-shrink-0" />
                       <div>
                         {totalDiscrepancy > 0
@@ -3774,7 +3774,7 @@ export default function POSPage() {
                     </div>
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', padding: '0.75rem 1rem', borderTop: '1px solid var(--ds-sep)' }}>
                   <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setDifferenceReason(''); setReasonRequired(false); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
                     className="odoo-btn-secondary">Annuler</button>
                   <button onClick={async () => {
