@@ -153,10 +153,13 @@ export default function ApprovalsTab() {
             <FormField label="Approbateurs (dans l'ordre)" required>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                 {draft.roles.map((c, i) => (
-                  <span key={`${c}-${i}`} className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    {i + 1}. {roleLabel(c)}
+                  <span key={`${c}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {i > 0 && <ArrowRight size={12} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
+                  <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {roleLabel(c)}
                     <button type="button" aria-label={`Retirer ${roleLabel(c)}`} style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 0 }}
                       onClick={() => setDraft({ ...draft, roles: draft.roles.filter((_, j) => j !== i) })}>×</button>
+                  </span>
                   </span>
                 ))}
                 <select aria-label="Ajouter un approbateur" value="" className="ds-input sm" style={{ width: 'auto' }} onChange={e => e.target.value && setDraft({ ...draft, roles: [...draft.roles, e.target.value] })}>

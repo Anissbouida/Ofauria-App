@@ -288,6 +288,21 @@ brouillon dans Factures reçues avec son menu d'actions complet. Données de tes
 
 | Point | Raison |
 |---|---|
-| Paramètres non vus à l'écran | compte gérant sans accès, administrateur sous double authentification : à contrôler par l'utilisateur |
 | Autres scénarios métier (vente, production, paie, comptabilité) | un seul parcours rejoué ; les autres restent à jouer avant mise en production |
 | Caisse (`/pos`), palette ⌘K, caméra, verrou de session | exclus ou plein écran par conception |
+
+### 10.3 Paramètres contrôlés à l'écran (administrateur)
+
+Les 29 pages des Paramètres ont été parcourues sur 5173 avec le compte administrateur (double
+authentification levée par l'utilisateur) : aucune erreur d'exécution, aucun appel en échec, aucun
+débordement horizontal, aucun champ visible sans libellé.
+
+| Constat | Correction |
+|---|---|
+| Groupes de paramètres numérotés (1, 2, 3…) dans Règles de caisse, Devis et crédit, Production, Achats, Règles comptables | numéros retirés (`ParametersPanel`), conformément à la règle « pas de numérotation » |
+| Approbateurs numérotés « 1. 2. » à la création d'un circuit | flèches entre approbateurs, comme dans le tableau des circuits |
+| Tâches planifiées : colonne Résultat écrasée sur 4 lignes | largeur minimale de colonne |
+| Référentiel : libellés sans accents (« Categories de depenses », « Categories de revenus », « Categories de produits ») | données en base (migrations 058/059), hors périmètre UI : à corriger par une migration de données |
+
+Restent volontairement hors jetons : l'aperçu du ticket de caisse (rendu papier noir sur blanc) et
+les pastilles de couleur des canaux de vente (couleur choisie par l'utilisateur).

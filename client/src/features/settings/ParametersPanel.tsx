@@ -144,12 +144,9 @@ export default function ParametersPanel({ keys, domains, searchable = !keys && !
         </Toolbar>
       )}
       {!shown.length && !extras && <EmptyState icon={SlidersHorizontal} title={`Aucun paramètre ${q ? 'ne correspond à la recherche' : 'accessible'}`} />}
-      {groups.map(([theme, params], i) => (
+      {groups.map(([theme, params]) => (
         <section key={theme} id={settingAnchor(theme)} data-toc={theme} className="odoo-company-card odoo-params-group">
-          <h3>
-            {groups.length > 1 && <span className="odoo-company-card-icon">{i + 1}</span>}
-            {theme}
-          </h3>
+          <h3>{theme}</h3>
           {params.map(p => <ParameterRow key={p.key} param={p} />)}
           {extras?.[theme] && <div className="odoo-params-extra">{extras[theme]}</div>}
         </section>

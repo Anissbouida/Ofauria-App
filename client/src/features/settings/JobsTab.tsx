@@ -53,7 +53,7 @@ export default function JobsTab() {
       </StatusBanner>
       <DataPanel label="Tâches planifiées">
         <table className="odoo-table">
-          <thead><tr><th style={{ width: 60 }}>Active</th><th>Tâche</th><th>Fréquence</th><th>Dernier passage</th><th>Résultat</th><th>Prochain</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th style={{ width: 60 }}>Active</th><th>Tâche</th><th>Fréquence</th><th>Dernier passage</th><th style={{ minWidth: 240 }}>Résultat</th><th>Prochain</th><th className="ds-actions"><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>{jobs.map((j: ScheduledJob) => (
             <Fragment key={j.key}>
               <tr style={{ opacity: j.enabled ? 1 : 0.55 }}>
