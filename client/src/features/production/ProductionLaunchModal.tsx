@@ -437,7 +437,7 @@ export default function ProductionLaunchModal({
       if (resumeKey) {
         try { localStorage.removeItem(resumeKey); } catch { /* ignore */ }
       }
-      notify.success('Production enregistree avec succes');
+      notify.success('Production enregistrée avec succès');
       onCompleted();
       onClose();
     } catch (err) {

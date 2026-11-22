@@ -213,7 +213,7 @@ export default function PlanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
       if (result?.data) {
         setBonNotNeededReason(null);
-        notify.success('Bon de sortie genere — procedez au prelevement des ingredients');
+        notify.success('Bon de sortie généré — procédez au prélèvement des ingrédients');
         // Lots hors DLC ecartes de l'allocation (mig 339) : le chef doit le savoir
         // pour deroger explicitement depuis le bon de sortie s'il le juge utile.
         const skipped = (result.data as { expired_lots_skipped?: { ingredient_name: string; lot_number: string }[] }).expired_lots_skipped;
@@ -271,7 +271,7 @@ export default function PlanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
       setBannerRejecting(false);
       setBannerRejectReason('');
-      notify.success('Reception refusee — le magasinier a ete notifie');
+      notify.success('Réception refusée — le magasinier a été notifié');
     },
     onError: (e: any) => notify.error(apiErrorMessage(e, 'Erreur')),
   });
@@ -321,7 +321,7 @@ export default function PlanDetailPage() {
     mutationFn: () => productionApi.confirm(id!),
     onSuccess: async (result) => {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
-      notify.success('Plan confirme avec succes');
+      notify.success('Plan confirmé avec succès');
       if (result.warnings?.length > 0) {
         result.warnings.forEach((w: string) => notify(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
       }
@@ -445,7 +445,7 @@ export default function PlanDetailPage() {
       if (result.warnings?.length > 0) {
         result.warnings.forEach((w: string) => notify(w, { icon: '\u26a0\ufe0f', duration: 5000 }));
       } else {
-        notify.success('Article(s) restaure(s) avec succes');
+        notify.success('Article(s) restauré(s) avec succès');
       }
       // Feedback BSI : completed (re-FEFO partiel) OU generated (creation initiale)
       if (result.bsi?.generated) {
@@ -481,7 +481,7 @@ export default function PlanDetailPage() {
       productionApi.requestStockVerification(id!, data.ingredientId, data.note),
     onSuccess: (_d, vars) => {
       setRequestedVerifications(prev => new Set(prev).add(vars.ingredientId));
-      notify.success('Demande envoyee au responsable stock');
+      notify.success('Demande envoyée au responsable stock');
       setRestockNeed(null);
     },
     onError: (error: any) => {

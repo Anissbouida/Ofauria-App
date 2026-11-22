@@ -2887,7 +2887,7 @@ function ChequesTab() {
       queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
-      notify.success('Encaissement annule (cheque a nouveau en attente)');
+      notify.success('Encaissement annulé (chèque à nouveau en attente)');
     },
     onError: () => notify.error('Erreur lors de l\'annulation'),
   });

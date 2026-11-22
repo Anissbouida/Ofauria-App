@@ -127,9 +127,9 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
       // Retour du surplus -> frigo automatique : dire ce qui a ete pousse, ou pourquoi pas.
       const frigo = result?.frigo ?? {};
       if (frigo.added && frigo.added > 0) {
-        notify.success(`Rendement enregistre — ${frigo.added} pousse(s) au frigo${frigo.lot_number ? ` (lot ${frigo.lot_number})` : ''}`);
+        notify.success(`Rendement enregistré — ${frigo.added} pousse(s) au frigo${frigo.lot_number ? ` (lot ${frigo.lot_number})` : ''}`);
       } else {
-        notify.success('Rendement enregistre');
+        notify.success('Rendement enregistré');
       }
       if (frigo.warning) {
         notify(frigo.warning, { icon: '⚠️', duration: 8000 });

@@ -117,7 +117,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
       queryClient.invalidateQueries({ queryKey: ['payroll'] });
       queryClient.invalidateQueries({ queryKey: ['advances-outstanding'] });
       queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
-      notify.success('Paiement enregistre');
+      notify.success('Paiement enregistré');
       setPayTarget(null);
     },
     onError: (err: unknown) => {

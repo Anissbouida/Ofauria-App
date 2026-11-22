@@ -567,7 +567,7 @@ export default function POSPage() {
       if (data?.status === 'closed_with_discrepancy') {
         notify('Reception confirmee avec ecart', { icon: '⚠️' });
       } else {
-        notify.success('Reception confirmee');
+        notify.success('Réception confirmée');
       }
     },
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la confirmation')),
@@ -587,7 +587,7 @@ export default function POSPage() {
           .join(' · ');
         notify(`Reception confirmee avec ecart — stock ajuste${detail ? ` : ${detail}` : ''}`, { icon: '⚠️', duration: 9000 });
       } else {
-        notify.success('Reception production confirmee');
+        notify.success('Réception production confirmée');
       }
       if (data?.data?.planCompleted) {
         notify.success('Plan de production termine — tous les articles recus !');
@@ -992,7 +992,7 @@ export default function POSPage() {
       setDeliverOrder(null);
       setDeliverAmount('');
       setDeliverPayment('cash');
-      notify.success('Commande livree et vente enregistree !');
+      notify.success('Commande livrée et vente enregistrée !');
     },
     onError: (err: Error & { response?: { data?: { error?: { message?: string } } } }) => {
       notify.error(err.response?.data?.error?.message || 'Erreur lors de la livraison');
@@ -3864,7 +3864,7 @@ export default function POSPage() {
                       // effets stock cote serveur.
                       const errResp = (err as { response?: { status?: number; data?: { error?: { code?: string; message?: string } } } })?.response;
                       if (errResp?.status === 409 && errResp.data?.error?.code === 'UNSOLD_DECISIONS_ALREADY_SAVED') {
-                        notify.success('Decisions deja enregistrees — passage au comptage');
+                        notify.success('Décisions déjà enregistrées — passage au comptage');
                         setInventoryDone(true);
                         setCloseStep('input');
                         return;
@@ -4289,7 +4289,7 @@ export default function POSPage() {
           onClose={() => setShowProductionForm(false)}
           onCreated={() => {
             setShowProductionForm(false);
-            notify.success('Demande envoyee !');
+            notify.success('Demande envoyée !');
           }}
         />
       )}

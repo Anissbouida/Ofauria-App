@@ -97,7 +97,7 @@ export default function LossesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-losses'] });
       queryClient.invalidateQueries({ queryKey: ['product-losses-stats'] });
-      notify.success('Perte supprimee');
+      notify.success('Perte supprimée');
     },
   });
 
@@ -351,7 +351,7 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
   const createMutation = useMutation({
     mutationFn: productLossesApi.create,
     onSuccess: () => {
-      notify.success('Perte declaree avec succes');
+      notify.success('Perte déclarée avec succès');
       onSuccess();
     },
     onError: () => notify.error('Erreur lors de la declaration'),

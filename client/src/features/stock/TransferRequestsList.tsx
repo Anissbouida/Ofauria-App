@@ -117,8 +117,7 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
       return avail + 1e-9 >= qty;
     });
     if (coverable.length === 0) { notify.error('Aucune ligne couverte par l\'économat'); return; }
-    const ok = await confirm(
-      `Ouvrir ${coverable.length} contenant${coverable.length > 1 ? 's' : ''} avec la quantité exacte demandée par les bons ?` +
+    const ok = await confirm(`Ouvrir ${coverable.length} contenant${coverable.length > 1 ? 's' : ''} avec la quantité exacte demandée par les bons ?` +
       (coverable.length < rows.length ? `\n\n${rows.length - coverable.length} ligne(s) non couverte(s) par l'économat seront laissées de côté.` : '') +
       `\n\nPour ouvrir un contenant entier, utilisez « Ouvrir » sur la ligne.`,
       { title: 'Tout ouvrir', confirmLabel: 'Ouvrir' });

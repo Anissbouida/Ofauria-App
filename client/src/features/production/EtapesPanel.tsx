@@ -321,7 +321,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
       if (n(q.scrap) !== undefined) data.scrap_qty = n(q.scrap);
     }
     updateMutation.mutate({ etapeId: etape.id, status: 'completed', data });
-    notify.success(`Etape "${etape.nom}" terminee`);
+    notify.success(`Étape "${etape.nom}" terminée`);
   };
 
   return (

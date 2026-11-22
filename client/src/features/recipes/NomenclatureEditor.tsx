@@ -569,7 +569,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         pertePct: c.perte_pct != null ? String(parseFloat(String(c.perte_pct))) : '0',
       })));
       setCopySrc('');
-      notify.success('Composition copiée — ajuste les quantités puis Enregistre');
+      notify.success('Composition copiée — ajuste les quantités puis Enregistrer');
     } catch (e) {
       notify.error(extractErr(e));
     }

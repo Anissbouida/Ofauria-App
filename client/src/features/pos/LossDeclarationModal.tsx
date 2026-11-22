@@ -146,7 +146,7 @@ export default function LossDeclarationModal({
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setPhotoUrl(res.data.data.url);
-      notify.success('Photo enregistree');
+      notify.success('Photo enregistrée');
     } catch (err) {
       console.error('Upload error:', err);
       notify.error('Erreur lors de l\'envoi de la photo');
@@ -181,7 +181,7 @@ export default function LossDeclarationModal({
         ...(productionPlanId ? { productionPlanId } : {}),
         ...(selectedItem ? { planItemId: selectedItem.id } : {}),
       });
-      notify.success('Perte declaree avec succes');
+      notify.success('Perte déclarée avec succès');
       setStep('done');
     } catch (err) {
       notify.error(getApiErrorMessage(err, 'Erreur lors de la declaration'));

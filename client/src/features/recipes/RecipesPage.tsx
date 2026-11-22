@@ -146,8 +146,7 @@ export default function RecipesPage() {
         // supprimables : proposer tout de suite l'alternative qui marche,
         // sinon l'utilisateur reclique « Supprimer » en boucle sans issue.
         const names = result.blocked.map(b => b.name).join(', ');
-        if (await confirm(
-          `${result.deletedCount} supprimée(s). ${result.blocked.length} fiche(s) ne peuvent pas être supprimées car l'historique de production les référence :\n${names}\n\nLes archiver à la place ? Elles disparaissent des listes mais restent restaurables via « Archivées ».`,
+        if (await confirm(`${result.deletedCount} supprimée(s). ${result.blocked.length} fiche(s) ne peuvent pas être supprimées car l'historique de production les référence :\n${names}\n\nLes archiver à la place ? Elles disparaissent des listes mais restent restaurables via « Archivées ».`,
           { title: 'Fiches conservées par l\'historique', confirmLabel: 'Archiver ces fiches' }
         )) {
           bulkArchiveMutation.mutate(result.blocked.map(b => b.id));

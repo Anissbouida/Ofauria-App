@@ -2774,7 +2774,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
       })));
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      notify.success('BC mis a jour');
+      notify.success('BC mis à jour');
       onClose();
     } catch (err: unknown) {
       const msg = err && typeof err === 'object' && 'response' in err

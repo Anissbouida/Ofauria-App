@@ -162,7 +162,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production-profile', productId] });
-      notify.success('Profil de production enregistre');
+      notify.success('Profil de production enregistré');
     },
     onError: () => notify.error('Erreur lors de l\'enregistrement'),
   });
@@ -177,7 +177,7 @@ export default function ProductionProfileTab({ productId, onChange }: Props) {
       setSurchargePertes('');
       setSurchargeSeuil('');
       setNotes('');
-      notify.success('Profil de production supprime');
+      notify.success('Profil de production supprimé');
     },
   });
 

@@ -61,8 +61,7 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
   });
 
   const doClose = async (fy: FiscalYear) => {
-    if (!(await confirm(
-      `Clôturer définitivement l'exercice ${fy.year} ? Les à-nouveaux seront générés au 1er janvier ${fy.year + 1}, `
+    if (!(await confirm(`Clôturer définitivement l'exercice ${fy.year} ? Les à-nouveaux seront générés au 1er janvier ${fy.year + 1}, `
       + `les mois de ${fy.year} verrouillés et le grand livre scellé. Plus aucune écriture ne pourra être passée sur ${fy.year}, `
       + `même par extourne : une correction se fera sur ${fy.year + 1}.`, { title: `Clôturer l'exercice ${fy.year}`, confirmLabel: 'Clôturer l\'exercice', danger: true }))) return;
     close.mutate(fy.year);

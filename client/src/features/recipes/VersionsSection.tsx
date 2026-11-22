@@ -48,8 +48,7 @@ export default function VersionsSection({ recipeId }: { recipeId: string }) {
   });
 
   const onRestore = async (v: number) => {
-    const ok = await confirm(
-      `Restaurer la version ${v} ? La composition, les formats, les étapes et les paramètres actuels seront remplacés par ceux de cette version. Une nouvelle version est créée au passage.`,
+    const ok = await confirm(`Restaurer la version ${v} ? La composition, les formats, les étapes et les paramètres actuels seront remplacés par ceux de cette version. Une nouvelle version est créée au passage.`,
       { title: 'Restaurer une version', confirmLabel: 'Restaurer', danger: true },
     );
     if (ok) restore.mutate(v);

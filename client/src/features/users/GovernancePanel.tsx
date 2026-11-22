@@ -71,8 +71,7 @@ function SodSection() {
 
   const m = mode?.mode ?? 'log';
   const changeMode = async (next: 'off' | 'log' | 'enforce') => {
-    if (next === 'enforce' && violations.length && !(await confirm(
-      `${violations.length} utilisateur(s) sont actuellement en conflit de séparation des tâches : la création ou modification de leurs rôles sera refusée. Ajustez d'abord si ces cumuls sont légitimes.`,
+    if (next === 'enforce' && violations.length && !(await confirm(`${violations.length} utilisateur(s) sont actuellement en conflit de séparation des tâches : la création ou modification de leurs rôles sera refusée. Ajustez d'abord si ces cumuls sont légitimes.`,
       { title: 'Bloquer les cumuls interdits ?', confirmLabel: 'Bloquer', danger: true }))) return;
     setMode.mutate(next);
   };

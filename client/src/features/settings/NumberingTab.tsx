@@ -109,8 +109,7 @@ function SequenceEditor({ seq, onClose }: { seq: DocumentSequence; onClose: () =
 
   const changed = form.pattern !== seq.pattern || form.padding !== seq.padding || form.resetPeriod !== seq.reset_period;
   const submit = async () => {
-    if (seq.gapless && !(await confirm(
-      `Les factures clients déjà émises gardent leur numéro ; les suivantes prendront le nouveau modèle. Le compteur continue sans trou.`,
+    if (seq.gapless && !(await confirm(`Les factures clients déjà émises gardent leur numéro ; les suivantes prendront le nouveau modèle. Le compteur continue sans trou.`,
       { title: `Modifier la série « ${seq.label} » ?`, confirmLabel: 'Modifier la série' },
     ))) return;
     save.mutate();

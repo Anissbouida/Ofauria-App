@@ -263,8 +263,7 @@ export default function SectorTab() {
     }
     const dependents = dependentModules(m).filter(d => view.active.has(d));
     if (dependents.length) {
-      const ok = await confirm(
-        `${dependents.map(d => `« ${MODULE_LABELS[d]} »`).join(', ')} ne fonctionne${dependents.length > 1 ? 'nt' : ''} pas sans « ${MODULE_LABELS[m]} » et sera${dependents.length > 1 ? 'ont' : ''} désactivé${dependents.length > 1 ? 's' : ''} aussi. Les données sont conservées.`,
+      const ok = await confirm(`${dependents.map(d => `« ${MODULE_LABELS[d]} »`).join(', ')} ne fonctionne${dependents.length > 1 ? 'nt' : ''} pas sans « ${MODULE_LABELS[m]} » et sera${dependents.length > 1 ? 'ont' : ''} désactivé${dependents.length > 1 ? 's' : ''} aussi. Les données sont conservées.`,
         { title: `Désactiver « ${MODULE_LABELS[m]} » ?`, confirmLabel: 'Désactiver' });
       if (!ok) return;
     }
@@ -283,30 +282,26 @@ export default function SectorTab() {
     // par « Données de départ » sans rien écraser.
     const brings = await settingsApi.sectorStarter(code).then(r => r.preview.items).catch(() => [] as string[]);
     const bringsNote = brings.length ? ` Données de départ proposées ensuite : ${brings.join(' · ')}.` : '';
-    const ok = await confirm(
-      `Les modules et menus seront adaptés à ce secteur. Aucune donnée n'est supprimée.${adjustNote}${bringsNote}`,
+    const ok = await confirm(`Les modules et menus seront adaptés à ce secteur. Aucune donnée n'est supprimée.${adjustNote}${bringsNote}`,
       { title: `Basculer sur « ${label} » ?`, confirmLabel: 'Changer de secteur' });
     if (ok) sectorMut.mutate({ code, keep: keepAdjustments });
   };
 
   const loadStarter = async () => {
-    const ok = await confirm(
-      `Seuls les éléments absents sont créés ; rien d'existant n'est modifié. L'article de démonstration peut ensuite être modifié ou supprimé.`,
+    const ok = await confirm(`Seuls les éléments absents sont créés ; rien d'existant n'est modifié. L'article de démonstration peut ensuite être modifié ou supprimé.`,
       { title: 'Charger les données de départ ?', confirmLabel: 'Charger' });
     if (ok) starterMut.mutate();
   };
 
   const restore = async (id: number, when: string) => {
     if (dirtyCount) { notify.warning('Enregistrez ou annulez vos changements avant de restaurer une version'); return; }
-    const ok = await confirm(
-      `La configuration du ${when} (secteur, modules et options) redevient la configuration courante. Aucune donnée n'est supprimée, et cette restauration pourra elle-même être annulée.`,
+    const ok = await confirm(`La configuration du ${when} (secteur, modules et options) redevient la configuration courante. Aucune donnée n'est supprimée, et cette restauration pourra elle-même être annulée.`,
       { title: 'Restaurer cette version ?', confirmLabel: 'Restaurer' });
     if (ok) restoreMut.mutate(id);
   };
 
   const resetAll = async () => {
-    const ok = await confirm(
-      `Les ${savedAdjustments} ajustement(s) sont effacés et chaque module reprend le réglage du secteur « ${act?.sector.label} ». Aucune donnée n'est supprimée.`,
+    const ok = await confirm(`Les ${savedAdjustments} ajustement(s) sont effacés et chaque module reprend le réglage du secteur « ${act?.sector.label} ». Aucune donnée n'est supprimée.`,
       { title: 'Revenir au préréglage du secteur ?', confirmLabel: 'Revenir au préréglage' });
     if (ok) resetMut.mutate();
   };

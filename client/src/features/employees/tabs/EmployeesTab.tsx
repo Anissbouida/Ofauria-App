@@ -97,8 +97,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
   async function handleHardDelete(emp: Record<string, any>) {
     const fullName = `${emp.first_name} ${emp.last_name}`;
 
-    if (!(await confirm(
-      `Vous êtes sur le point d'effacer ${fullName} DE LA BASE DE DONNÉES.\n\n` +
+    if (!(await confirm(`Vous êtes sur le point d'effacer ${fullName} DE LA BASE DE DONNÉES.\n\n` +
       `Cette action est IRRÉVERSIBLE. Toutes les références (paie, présence,\n` +
       `congés, paiements) seront aussi supprimées.\n\n` +
       `Si vous voulez juste masquer l'employé en gardant l'historique,\n` +
@@ -143,8 +142,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
       ? `Données qui seront EFFACÉES en cascade :\n${deleteLines.join('\n')}\n${salesNote}\n`
       : `Aucune donnée liée à effacer.${salesNote}\n`;
 
-    if (!(await confirm(
-      `${details}` +
+    if (!(await confirm(`${details}` +
       `Confirmer la suppression DÉFINITIVE de ${fullName} ?\n\n` +
       `Action irréversible.`,
       { title: 'Suppression définitive', confirmLabel: 'Supprimer définitivement', danger: true },

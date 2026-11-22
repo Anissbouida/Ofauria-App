@@ -20,8 +20,7 @@ export default function ExpiredProductLotsBanner() {
 
   const handleSuccess = (data: unknown) => {
     const d = data as { lostQuantity: number; lostValue: number; reasonLabel: string };
-    notify.success(
-      `Envoyé aux pertes : ${d.lostQuantity.toFixed(2)} u (${money(d.lostValue)}) — ${d.reasonLabel}`
+    notify.success(`Envoyé aux pertes : ${d.lostQuantity.toFixed(2)} u (${money(d.lostValue)}) — ${d.reasonLabel}`
     );
     qc.invalidateQueries({ queryKey: ['product-lots-expired-active'] });
     qc.invalidateQueries({ queryKey: ['products'] });

@@ -49,8 +49,7 @@ export default function LotsThermalTab() {
   });
 
   const askThaw = async (l: FreezableLot) => {
-    const ok = await confirm(
-      `Décongeler le lot « ${l.item_name} » ? Sa DLC sera fixée à ${DEFAULT_THAW_HOURS} h après décongélation, et il ne pourra plus être recongelé.`,
+    const ok = await confirm(`Décongeler le lot « ${l.item_name} » ? Sa DLC sera fixée à ${DEFAULT_THAW_HOURS} h après décongélation, et il ne pourra plus être recongelé.`,
       { title: 'Décongeler', confirmLabel: 'Décongeler' },
     );
     if (ok) thawMut.mutate(l);

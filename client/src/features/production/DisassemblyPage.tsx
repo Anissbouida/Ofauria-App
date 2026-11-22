@@ -52,8 +52,7 @@ export default function DisassemblyPage() {
   const valid = !!lot && n(qty) > 0 && n(qty) <= lot.backroom && n(recovery) > 0 && n(recovery) <= 100;
   const submit = async () => {
     if (!lot) return;
-    const ok = await confirm(
-      `${n(qty)} × ${lot.product_name} (lot ${lot.lot_number}) sortent du stock ; leurs matières reviennent en stock à ${n(recovery)} %. Cette opération ne s'annule pas.`,
+    const ok = await confirm(`${n(qty)} × ${lot.product_name} (lot ${lot.lot_number}) sortent du stock ; leurs matières reviennent en stock à ${n(recovery)} %. Cette opération ne s'annule pas.`,
       { title: 'Désassembler ?', confirmLabel: 'Désassembler' });
     if (ok) run.mutate();
   };

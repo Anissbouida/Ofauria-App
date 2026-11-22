@@ -340,8 +340,7 @@ export function BonSortiePanel({
   const remettre = async () => {
     if (manquants === 0) { markReadyMutation.mutate(false); return; }
     const names = manquantLines.map((l) => l.ingredient_name as string).join(', ');
-    const ok = await confirm(
-      `${manquants} ingrédient${manquants > 1 ? 's' : ''} manquant${manquants > 1 ? 's' : ''} : ${names}.\n\nRemettre le bon au chef en signalant ${manquants > 1 ? 'ces manquants' : 'ce manquant'} ? Il décidera de produire sans, ou de refuser la réception.`,
+    const ok = await confirm(`${manquants} ingrédient${manquants > 1 ? 's' : ''} manquant${manquants > 1 ? 's' : ''} : ${names}.\n\nRemettre le bon au chef en signalant ${manquants > 1 ? 'ces manquants' : 'ce manquant'} ? Il décidera de produire sans, ou de refuser la réception.`,
       { title: 'Remettre avec des manquants', confirmLabel: 'Remettre au chef' },
     );
     if (ok) markReadyMutation.mutate(true);

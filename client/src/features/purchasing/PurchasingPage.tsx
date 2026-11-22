@@ -405,14 +405,12 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
   async function handleDelete(inv: Record<string, any>) {
     const paid = parseFloat(inv.paid_amount as string || '0');
     const hasPayments = paid > 0;
-    const ok = await confirm(
-      `Supprimer définitivement la facture « ${inv.invoice_number} » de ${inv.supplier_name} ?\n\nCette action est irréversible.`,
+    const ok = await confirm(`Supprimer définitivement la facture « ${inv.invoice_number} » de ${inv.supplier_name} ?\n\nCette action est irréversible.`,
       { title: 'Supprimer le brouillon', confirmLabel: 'Supprimer', danger: true },
     );
     if (!ok) return;
     if (hasPayments) {
-      const force = await confirm(
-        `Cette facture porte ${money(parseFloat(String(inv.paid_amount || '0')))} de paiements enregistrés.\n\n` +
+      const force = await confirm(`Cette facture porte ${money(parseFloat(String(inv.paid_amount || '0')))} de paiements enregistrés.\n\n` +
         `Les supprimer aussi fait perdre leur traçabilité comptable. Pour la conserver, abandonnez et utilisez « Annuler la facture ».`,
         { title: 'Supprimer aussi les paiements ?', confirmLabel: 'Supprimer les paiements', cancelLabel: 'Abandonner', danger: true },
       );
@@ -932,7 +930,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
             queryClient.invalidateQueries({ queryKey: ['invoices'] });
             queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
             queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
-            notify.success('Lignes de facture mises a jour');
+            notify.success('Lignes de facture mises à jour');
             setEditLinesInvoiceId(null);
           }}
         />

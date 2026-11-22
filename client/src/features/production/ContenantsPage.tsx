@@ -186,7 +186,7 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
     mutationFn: (id: string) => contenantsApi.deactivate(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contenants'] });
-      notify.success('Format desactive');
+      notify.success('Format désactivé');
     },
     onError: (err: Error) => notify.error(err.message || 'Impossible de desactiver (produits lies)'),
   });

@@ -76,7 +76,7 @@ export default function PrinterSettingsCard() {
     mutationFn: (id: string) => printersApi.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['printers'] });
-      notify.success('Imprimante supprimee');
+      notify.success('Imprimante supprimée');
     },
   });
 

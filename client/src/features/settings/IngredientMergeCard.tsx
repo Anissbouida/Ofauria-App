@@ -61,8 +61,7 @@ export default function IngredientMergeCard() {
 
   const run = async () => {
     if (!preview || preview.blocker) return;
-    const ok = await confirm(
-      `Fusionner « ${preview.source.name} » dans « ${preview.target.name} » ? La fiche « ${preview.source.name} » disparaîtra ; l'opération ne peut pas être annulée.`,
+    const ok = await confirm(`Fusionner « ${preview.source.name} » dans « ${preview.target.name} » ? La fiche « ${preview.source.name} » disparaîtra ; l'opération ne peut pas être annulée.`,
       { title: 'Fusionner deux fiches', confirmLabel: 'Fusionner', danger: true });
     if (ok) merge.mutate();
   };

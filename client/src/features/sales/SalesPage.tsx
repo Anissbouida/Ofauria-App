@@ -1327,8 +1327,7 @@ function ClosureGapsBanner() {
   const period = data.firstDate && data.lastDate
     ? `du ${format(parseISO(data.firstDate), 'dd/MM/yyyy')} au ${format(parseISO(data.lastDate), 'dd/MM/yyyy')}` : '';
   const go = async () => {
-    const ok = await confirm(
-      `${data.sessions} session(s) ${period}.\n\n`
+    const ok = await confirm(`${data.sessions} session(s) ${period}.\n\n`
       + `Écarts espèces : ${data.cashCount} écriture(s), ${formatCurrency(data.cashTotal)} (6588/7588 contre 5161).\n`
       + `Écarts carte : ${data.cardCount} écriture(s), ${formatCurrency(data.cardTotal)} (6588/7588 contre 5141)`
       + (data.cardMissingCount ? `, dont ${data.cardMissingCount} carte(s) non saisie(s) passées en manque.` : '.')

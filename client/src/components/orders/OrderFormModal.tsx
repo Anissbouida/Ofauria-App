@@ -211,7 +211,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   const createMutation = useMutation({
     mutationFn: ordersApi.create,
-    onSuccess: (data: Record<string, any>) => { notify.success('Commande creee avec succes'); onSaved(data); },
+    onSuccess: (data: Record<string, any>) => { notify.success('Commande créée avec succès'); onSaved(data); },
     onError: (err: any) => {
       const msg = err?.response?.data?.error?.message || 'Erreur lors de la creation';
       notify.error(msg);
@@ -220,7 +220,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, any>) => ordersApi.update(order!.id as string, data),
-    onSuccess: () => { notify.success('Commande modifiee avec succes'); onSaved(); },
+    onSuccess: () => { notify.success('Commande modifiée avec succès'); onSaved(); },
     onError: (err: any) => {
       const msg = err?.response?.data?.error?.message || 'Erreur lors de la modification';
       notify.error(msg);

@@ -191,8 +191,7 @@ export function ProductionTimerProvider({ children }: { children: ReactNode }) {
 
         // Show notifications — click navigates to plan, dismiss (X) just stops alarm
         for (const t of expired) {
-          notify.warning(
-            `⏰ Timer termine : ${t.stepName} — ${t.productName}`,
+          notify.warning(`⏰ Minuteur terminé : ${t.stepName} — ${t.productName}`,
             {
               onClick: () => {
                 stopAlarmSound();
