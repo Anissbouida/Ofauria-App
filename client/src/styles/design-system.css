@@ -306,3 +306,9 @@ textarea.ds-input { height: auto; min-height: 84px; padding: 8px 12px; resize: v
 .ds-entry-card-head > :last-child:not(:first-child) { margin-left: auto; }
 .ds-entry-card :is(input, select, button) { min-height: 40px; }
 .ds-entry-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--ds-s4); }
+
+/* La cellule d'actions collée à droite crée sa propre couche : celle dont le menu « ⋯ » est ouvert
+   passe au-dessus des cellules des lignes suivantes (sinon elles masquent le menu). */
+.kl-ds.kl-ds .ds-panel .odoo-table :is(td, th).ds-actions { z-index: 1; }
+.kl-ds.kl-ds .ds-panel .odoo-table td.ds-actions:has(.row-menu-list) { z-index: 30; }
+.kl-ds.kl-ds .ds-panel .odoo-table td:has(.row-menu-list) { position: relative; z-index: 30; }
