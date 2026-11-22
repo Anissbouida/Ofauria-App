@@ -261,7 +261,7 @@ export default function SalesPage() {
   const { data: periodTotalsData } = useQuery({
     queryKey: ['sales-summary', { dateFrom, dateTo, groupBy: 'payment' }],
     queryFn: () => salesApi.summary({ dateFrom, dateTo, groupBy: 'payment' }),
-    enabled: mainTab === 'sales' && view === 'receipt',
+    enabled: mainTab === 'sales',
   });
   const periodTotals = (periodTotalsData as Record<string, any>[] | undefined) ?? null;
 
@@ -522,17 +522,21 @@ export default function SalesPage() {
   const salesGross = posGross;
   // Vue « Par reçu » : totaux serveur de toute la période (saisies manuelles déjà incluses
   // par le regroupement par paiement) ; repli sur la page chargée tant qu'ils arrivent.
-  const grossRevenue = view === 'receipt'
-    ? (periodTotals
-        ? periodTotals.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total_revenue as string || '0'), 0)
-        : salesGross + manualRevenue)
-    : salesGross;
+  // Constat 140 : mêmes cartes dans toutes les vues (encaissements de la période, tickets distincts).
+  // Les vues par catégorie et par article n'additionnent que les lignes d'articles : l'écart
+  // (acomptes de commandes encaissés sans article) est signalé sous leur tableau.
+  const periodRevenue = periodTotals
+    ? periodTotals.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total_revenue as string || '0'), 0)
+    : null;
+  const grossRevenue = periodRevenue ?? (view === 'receipt' ? salesGross + manualRevenue : salesGross);
+  const itemsRevenue = summary.reduce((sum: number, s: Record<string, any>) => sum + parseFloat(s.total_revenue as string || '0'), 0);
+  const itemsGap = (view === 'category' || view === 'product') && periodRevenue != null ? periodRevenue - itemsRevenue : 0;
   const totalRevenue = view === 'receipt' ? grossRevenue - totalRefunds : grossRevenue;
-  const totalCount = view === 'receipt'
-    ? (periodTotals
-        ? periodTotals.reduce((sum: number, s: Record<string, any>) => sum + parseInt(s.sale_count as string || '0'), 0)
-        : sales.length)
-    : summary.reduce((sum: number, s: Record<string, any>) => sum + parseInt(s.sale_count as string || '0'), 0);
+  const totalCount = periodTotals
+    ? periodTotals.reduce((sum: number, s: Record<string, any>) => sum + parseInt(s.sale_count as string || '0'), 0)
+    : view === 'receipt'
+      ? sales.length
+      : summary.reduce((sum: number, s: Record<string, any>) => sum + parseInt(s.sale_count as string || '0'), 0);
   const returnsCount = salesReturns.filter((r: Record<string, any>) => r.type === 'return').length;
 
   const currentMainTab = SALES_MAIN_TABS.find(t => t.key === mainTab);
@@ -848,6 +852,13 @@ export default function SalesPage() {
                     })}
                   </tbody>
                 </table>
+                {itemsGap > 0.5 && (
+                  <div style={{ padding: '10px 16px', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                    Total des articles : {formatCurrency(itemsRevenue)} — écart de {formatCurrency(itemsGap)} avec le CA encaissé :
+                    acomptes de commandes encaissés sans article (les articles comptent à la remise de la commande).
+                  </div>
+                )}
+
               </div>
             )
           )}
@@ -902,6 +913,13 @@ export default function SalesPage() {
                     })}
                   </tbody>
                 </table>
+                {itemsGap > 0.5 && (
+                  <div style={{ padding: '10px 16px', fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                    Total des articles : {formatCurrency(itemsRevenue)} — écart de {formatCurrency(itemsGap)} avec le CA encaissé :
+                    acomptes de commandes encaissés sans article (les articles comptent à la remise de la commande).
+                  </div>
+                )}
+
               </div>
             )
           )}
