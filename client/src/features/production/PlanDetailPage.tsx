@@ -1068,9 +1068,10 @@ export default function PlanDetailPage() {
   if (['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && !isSemiFini) {
     menuItems.push({ key: 'bsi', label: 'Bon de sortie ingrédients', icon: <Printer size={13} />, onClick: () => printBonSortieIngredients() });
   }
-  // Repasse en brouillon : avant tout demarrage. Le backend verifie aussi qu'aucun item
-  // n'a commence ni le BSI preleve.
-  if (isChef && ['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status)) {
+  // Repasse en brouillon : le serveur ne l'accepte que pour un plan au statut « confirmé »
+  // (et vérifie qu'aucun article n'a démarré ni le bon de sortie été prélevé). Le menu ne
+  // propose donc l'action que dans ce cas, au lieu d'un clic voué à l'erreur.
+  if (isChef && plan.status === 'confirmed') {
     const anyStarted = items.some((it: Record<string, any>) => it.status === 'in_progress' || it.status === 'produced');
     const bsiActive = !!activeBon && ['prelevement', 'verifie', 'cloture'].includes(activeBon.status as string);
     menuItems.push({

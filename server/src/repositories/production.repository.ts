@@ -745,7 +745,7 @@ export const productionRepository = {
       }
       const planStatus = planResult.rows[0].status as string;
       if (planStatus !== 'confirmed') {
-        throw new Error(`Le plan est en statut "${planStatus}". Seul un plan confirme peut etre repasse en brouillon.`);
+        throw new Error(`Le plan est en statut "${planStatus}". Seul un plan confirmé peut être repassé en brouillon.`);
       }
 
       // 2) Verifie qu'aucun item n'a commence
