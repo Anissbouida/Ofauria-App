@@ -32,11 +32,21 @@ const EXTRA_RULES: GuardRule[] = [
   { prefix: '/lot-thermal', modules: ['production', 'stock'] },
 ];
 
-// Routes propres à une OPTION de module : fermées quand l'option est éteinte.
-const FEATURE_RULES: { prefix: string; feature: string }[] = [
+// Routes propres à une OPTION / CAPACITÉ de module : fermées quand elle est éteinte.
+// Les capacités du socle (mig 632) sont actives par défaut : ces règles ne changent rien
+// tant que la société ne les désactive pas.
+const FEATURE_RULES: { prefix?: string; pattern?: RegExp; feature: string }[] = [
   { prefix: '/haccp', feature: 'haccp' },
   { prefix: '/lot-thermal', feature: 'lot_thermal' },
+  { prefix: '/traceability', feature: 'tracabilite' },
+  { prefix: '/quality', feature: 'controle_qualite' },
+  { pattern: /^\/production\/(subcontracting(\/|$)|[^/]+\/subcontract(\/|$))/, feature: 'sous_traitance' },
+  { pattern: /^\/production\/(serials(\/|$)|[^/]+\/serials(\/|$))/, feature: 'series' },
 ];
+
+function featureRuleFor(path: string) {
+  return FEATURE_RULES.find(r => (r.prefix && (path === r.prefix || path.startsWith(r.prefix + '/'))) || (r.pattern && r.pattern.test(path)));
+}
 
 function extraRuleFor(path: string): GuardRule | undefined {
   return EXTRA_RULES.find(r => path === r.prefix || path.startsWith(r.prefix + '/'));
@@ -46,7 +56,7 @@ export async function moduleActivationGuard(req: AuthRequest, res: Response, nex
   try {
     if (req.method === 'OPTIONS') { next(); return; }
     const rule = ruleFor(req.path) ?? extraRuleFor(req.path);
-    const featureRule = FEATURE_RULES.find(r => req.path === r.prefix || req.path.startsWith(r.prefix + '/'));
+    const featureRule = featureRuleFor(req.path);
     if (!rule && !featureRule) { next(); return; }
     if (!req.user) {
       const r = await resolveRequestUser(req);

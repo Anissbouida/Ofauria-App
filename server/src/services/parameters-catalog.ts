@@ -194,6 +194,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'policy' }, scopes: ['company', 'store'],
   },
   {
+    key: 'production.enforce_declared_steps', domain: 'production', section: 'production',
+    label: 'Étapes obligatoires des types d\'ordre',
+    help: 'Rend effectifs les drapeaux « pesée obligatoire » et « contrôle qualité obligatoire » d\'un type d\'ordre : le démarrage attend que toutes les lignes du bon de sortie soient pesées, le transfert attend un contrôle conforme sans contrôle en attente. Désactivé : ces drapeaux restent indicatifs (comportement historique).',
+    fields: [{ name: 'enabled', label: 'Appliquer les étapes obligatoires', type: 'boolean' }],
+    defaults: { enabled: false },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop', 'order_type'],
+  },
+  {
     key: 'production.steps_source', domain: 'production', section: 'production',
     label: 'Source des étapes exécutées à l\'atelier',
     help: 'Étapes de la fiche (liste JSON, comportement historique) ou opérations de la gamme (postes, temps de réglage et unitaires, quantités par opération). Se bascule atelier par atelier après validation par le chef ; sans gamme active, l\'article garde les étapes de la fiche.',

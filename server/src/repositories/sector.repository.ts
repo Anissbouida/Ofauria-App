@@ -4,8 +4,10 @@ import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import {
   ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, STORE_SCOPED_MODULES, canonicalModule, effectiveModules,
-  missingDependencies, modulesForUser, type AppModule, type ModuleOverrides, type ModulePilot, type ModuleRollout,
+  missingDependencies, modulesForUser, withRequirements, capabilityDefault,
+  type AppModule, type ModuleOverrides, type ModulePilot, type ModuleRollout,
 } from '@ofauria/shared';
+import { capabilityUsage } from '../services/capabilities.js';
 import { NO_VISIBLE_CHANGE, describeDiff, diffActivation, type ActivationState, type ImpactDiff } from '../services/module-impact.js';
 
 /**
@@ -27,7 +29,11 @@ import { NO_VISIBLE_CHANGE, describeDiff, diffActivation, type ActivationState, 
  */
 export type SectorPack = { code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[]; is_custom?: boolean };
 
-export type FeatureDef = { key: string; module_key: string; label: string; description: string | null; sort_order: number };
+/** Capacité du catalogue (options mig 507, catalogue étendu mig 632). */
+export type FeatureDef = {
+  key: string; module_key: string; label: string; description: string | null; sort_order: number;
+  kind: 'fonction' | 'reglementaire'; requires: string[]; default_on: boolean;
+};
 
 export type Activation = {
   sector: SectorPack;
@@ -71,16 +77,29 @@ let cache: { at: number; value: Activation } | null = null;
 const canonicalPack = (pack: SectorPack): AppModule[] => [...new Set(pack.modules.map(m => canonicalModule(m as AppModule)))];
 
 function computeFeatures(packFeatures: string[], overrides: ModuleOverrides, catalog: FeatureDef[], modules: Set<AppModule>): Set<string> {
-  const set = new Set(packFeatures);
+  // Préréglage du secteur + socle (capacités default_on, mig 632), puis écarts de la société.
+  const set = new Set([...packFeatures, ...catalog.filter(f => f.default_on).map(f => f.key)]);
   for (const [k, on] of Object.entries(overrides)) {
     if (on === undefined) continue;
     if (on) set.add(k); else set.delete(k);
   }
-  const moduleOf = new Map(catalog.map(f => [f.key, f.module_key]));
-  return new Set([...set].filter(k => {
-    const m = moduleOf.get(k);
+  const byKey = new Map(catalog.map(f => [f.key, f]));
+  // Une capacité n'est effective que si son module l'est…
+  let effective = new Set([...set].filter(k => {
+    const m = byKey.get(k)?.module_key;
     return m !== undefined && modules.has(canonicalModule(m as AppModule));
   }));
+  // … et que ses dépendances le sont (cascade jusqu'à stabilité).
+  for (;;) {
+    const kept = new Set([...effective].filter(k => (byKey.get(k)?.requires ?? []).every(r => effective.has(r))));
+    if (kept.size === effective.size) return kept;
+    effective = kept;
+  }
+}
+
+/** Valeur d'une capacité sans écart de la société : préréglage du secteur ou socle. */
+function featureDefault(key: string, packFeatures: string[], catalog: FeatureDef[]): boolean {
+  return capabilityDefault(catalog.find(f => f.key === key), packFeatures, key);
 }
 
 /** Modules et options effectifs d'un état cible (secteur + écarts). */
@@ -90,7 +109,7 @@ function stateOf(target: Target, catalog: FeatureDef[]): ActivationState {
 }
 
 /** Retire les écarts égaux au préréglage : les tables ne gardent que les vrais écarts. */
-function normalize(target: Target): Target {
+function normalize(target: Target, catalog: FeatureDef[] = []): Target {
   const pack = canonicalPack(target.sector);
   const packFeatures = target.sector.features ?? [];
   const modules: ModuleOverrides = {};
@@ -99,7 +118,7 @@ function normalize(target: Target): Target {
   }
   const features: ModuleOverrides = {};
   for (const [k, on] of Object.entries(target.features)) {
-    if (on !== undefined && on !== packFeatures.includes(k)) features[k] = on;
+    if (on !== undefined && on !== featureDefault(k, packFeatures, catalog)) features[k] = on;
   }
   return { sector: target.sector, modules, features, rollout: target.rollout };
 }
@@ -238,7 +257,8 @@ export const sectorRepository = {
       this.current(),
       loadOverrides('company_module_settings', 'module_key'),
       loadOverrides('company_feature_settings', 'feature_key'),
-      db.query(`SELECT key, module_key, label, description, sort_order FROM app_features ORDER BY module_key, sort_order, label`),
+      db.query(`SELECT key, module_key, label, description, sort_order, kind, requires, default_on
+                  FROM app_features ORDER BY module_key, sort_order, label`),
       loadRollout(),
     ]);
     const catalog = catalogRes.rows as FeatureDef[];
@@ -290,17 +310,58 @@ export const sectorRepository = {
       if (value === null) delete modules[key]; else modules[key] = value;
     }
     const known = new Set(current.catalog.map(f => f.key));
+    const labelOf = this.featureLabel(current);
+    const turnedOn: string[] = [];
+    const turnedOff: string[] = [];
     for (const [key, value] of Object.entries(changes.features ?? {})) {
       if (!known.has(key)) return { error: `Option inconnue : ${key}` };
       if (value === null) delete features[key]; else features[key] = value;
+      if (value === true) turnedOn.push(key);
+      if (value === false) turnedOff.push(key);
+    }
+    // Activer une capacité active celles dont elle dépend (mig 632).
+    for (const req of withRequirements(turnedOn, current.catalog)) {
+      if (!turnedOn.includes(req) && features[req] === false) delete features[req];
+      if (!current.features.has(req) && features[req] === undefined) features[req] = true;
     }
 
-    const target = normalize({ sector: current.sector, modules, features, rollout: current.rollout });
+    const target = normalize({ sector: current.sector, modules, features, rollout: current.rollout }, current.catalog);
     const after = stateOf(target, current.catalog);
     const missing = missingDependencies(after.modules);
     if (missing.length) {
       const m = missing[0];
       return { error: `« ${MODULE_LABELS[m.module]} » a besoin de : ${m.missing.map(d => `« ${MODULE_LABELS[d]} »`).join(', ')}` };
+    }
+    // Une capacité demandée qui reste éteinte alors que son module est actif : une
+    // dépendance est dans un module désactivé. (Module éteint : l'écart est gardé et
+    // prendra effet quand le module sera rallumé, comme avant.)
+    for (const key of turnedOn) {
+      if (after.features.has(key)) continue;
+      const def = current.catalog.find(f => f.key === key)!;
+      if (!after.modules.has(canonicalModule(def.module_key as AppModule))) continue;
+      const blocked = [...withRequirements([key], current.catalog)]
+        .map(k => current.catalog.find(f => f.key === k)!)
+        .filter(f => f && !after.modules.has(canonicalModule(f.module_key as AppModule)));
+      const why = blocked.length
+        ? blocked.map(f => `« ${f.label} » (module « ${MODULE_LABELS[canonicalModule(f.module_key as AppModule)] ?? f.module_key} » désactivé)`).join(', ')
+        : `le module « ${MODULE_LABELS[canonicalModule(def.module_key as AppModule)] ?? def.module_key} »`;
+      return { error: `« ${def.label} » a besoin de ${why}` };
+    }
+    // Désactiver une capacité ne doit pas éteindre en silence celles qui en dépendent.
+    const modulesTurnedOff = new Set([...current.modules].filter(m => !after.modules.has(m)));
+    const implicit = [...current.features].filter(k => !after.features.has(k) && !turnedOff.includes(k)
+      && !modulesTurnedOff.has(canonicalModule(current.catalog.find(f => f.key === k)?.module_key as AppModule)));
+    if (implicit.length && turnedOff.length) {
+      return { error: `Désactiver ${turnedOff.map(k => `« ${labelOf(k)} »`).join(', ')} éteint aussi : ${implicit.map(k => `« ${labelOf(k)} »`).join(', ')}. Désactivez-les aussi.` };
+    }
+    // Capacité réglementaire : refusée tant que des données l'exigent.
+    for (const key of turnedOff) {
+      const def = current.catalog.find(f => f.key === key);
+      if (def?.kind !== 'reglementaire' || !current.features.has(key)) continue;
+      const usage = await capabilityUsage(key);
+      if (usage.length) {
+        return { error: `« ${def.label} » est une capacité réglementaire utilisée : ${usage.map(u => `${u.count} ${u.label}`).join(', ')}. Elle ne peut pas être désactivée.` };
+      }
     }
     return { current, target, diff: diffActivation(current, after) };
   },
@@ -333,7 +394,7 @@ export const sectorRepository = {
       modules: keep ? current.moduleOverrides : {},
       features: keep ? current.featureOverrides : {},
       rollout: keep ? current.rollout : EMPTY_ROLLOUT,
-    });
+    }, current.catalog);
     await this.commit(current, target, opts.userId, `Secteur : ${pack.label}${keep ? '' : ' (préréglage)'}`);
     return this.current();
   },
@@ -486,7 +547,7 @@ export const sectorRepository = {
     }
     const features: ModuleOverrides = {};
     for (const [k, on] of Object.entries(snap.features ?? {})) if (known.has(k)) features[k] = on;
-    const target = normalize({ sector: pack, modules, features, rollout: await this.cleanRollout(snap.rollout ?? EMPTY_ROLLOUT) });
+    const target = normalize({ sector: pack, modules, features, rollout: await this.cleanRollout(snap.rollout ?? EMPTY_ROLLOUT) }, current.catalog);
     const date = new Date(rows[0].created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
     // Une version d'avant les politiques (sans le champ) ne les touche pas.
     await this.commit(current, target, userId, `Restauration de la version du ${date}`,

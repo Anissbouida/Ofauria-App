@@ -17,6 +17,7 @@ import { sectorRepository } from './sector.repository.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
 import { bomVersionRepository } from './bom-version.repository.js';
 import { logger } from '../utils/logger.js';
+import { resolvePolicy } from '../services/policies.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
@@ -1135,6 +1136,21 @@ export const productionRepository = {
         }
       }
 
+      // Étape 1 multi-industries : « pesée obligatoire » du type d'ordre, appliquée quand la
+      // politique production.enforce_declared_steps est active (sinon indicatif, historique).
+      if (!planInfo.rows[0].is_semi_finished_plan && orderType.requires_weighing
+          && await declaredStepsEnforced(planId, orderType.code)) {
+        const unweighed = await db.query(
+          `SELECT count(*)::int AS n
+             FROM production_bons_sortie_lignes l
+             JOIN production_bons_sortie b ON b.id = l.bon_id
+            WHERE b.plan_id = $1 AND b.status <> 'annule'
+              AND COALESCE(l.allocated_quantity, 0) > 0 AND l.weighed_at IS NULL`, [planId]);
+        if (unweighed.rows[0].n > 0) {
+          throw new Error(`Pesée obligatoire pour ce type d'ordre : ${unweighed.rows[0].n} ligne(s) du bon de sortie ne sont pas pesées.`);
+        }
+      }
+
     // Transition gardee (confirmed / awaiting_ingredients / ready_to_produce -> in_progress),
     // journalisee avec l'acteur. Un demarrage qui croise une cloture est refuse.
     await withActor(userId, (c) => transitionPlan(c, planId, 'in_progress'), 'Demarrage de la production');
@@ -2054,6 +2070,23 @@ export const productionRepository = {
 
       if (itemsResult.rows.length === 0) {
         throw new Error('Aucun article produit a transferer');
+      }
+
+      // Étape 1 multi-industries : « contrôle qualité obligatoire » du type d'ordre.
+      const ot = await productionOrderTypeRepository.forPlan(planId, client);
+      if (ot.requires_quality_check && await declaredStepsEnforced(planId, ot.code, client)) {
+        const qc = await client.query(
+          `SELECT count(*) FILTER (WHERE status = 'a_faire')::int AS pending,
+                  count(*) FILTER (WHERE status = 'faite' AND conformity IS NOT FALSE)::int AS ok,
+                  count(*) FILTER (WHERE status = 'faite' AND conformity IS FALSE)::int AS ko
+             FROM quality_inspections WHERE plan_id = $1`, [planId]);
+        const { pending, ok, ko } = qc.rows[0];
+        if (pending > 0 || ko > 0 || ok === 0) {
+          throw new Error(pending > 0
+            ? `Contrôle qualité obligatoire : ${pending} contrôle(s) en attente sur cet ordre.`
+            : ko > 0 ? 'Contrôle qualité obligatoire : un contrôle est non conforme.'
+              : 'Contrôle qualité obligatoire : aucun contrôle conforme enregistré sur cet ordre.');
+        }
       }
 
       // Create transfer record
@@ -2980,4 +3013,16 @@ function getISOWeek(date: Date): number {
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+/** Politique production.enforce_declared_steps résolue pour l'ordre (type d'ordre, atelier,
+ *  établissement, société). Désactivée par défaut : les drapeaux restent indicatifs. */
+async function declaredStepsEnforced(
+  planId: string, orderTypeCode: string,
+  runner: { query: (q: string, p?: unknown[]) => Promise<{ rows: any[] }> } = db,
+): Promise<boolean> {
+  const p = (await runner.query(`SELECT store_id, target_role FROM production_plans WHERE id = $1`, [planId])).rows[0];
+  const pol = await resolvePolicy<{ enabled?: boolean }>('production.enforce_declared_steps',
+    { orderType: orderTypeCode, workshop: p?.target_role ?? null, storeId: p?.store_id ?? null });
+  return pol.value?.enabled === true;
 }

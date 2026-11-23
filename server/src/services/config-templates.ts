@@ -1,5 +1,5 @@
 import {
-  ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, canonicalModule, missingDependencies, requiredModules, type AppModule,
+  ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, canonicalModule, missingDependencies, requiredModules, withRequirements, type AppModule,
 } from '@ofauria/shared';
 import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
@@ -136,8 +136,15 @@ export async function parseConfigModel(raw: unknown): Promise<ParsedModel | { er
   const act = await sectorRepository.activation();
   const known = new Set(act.catalog.map(f => f.key));
   const rawFeatures = Array.isArray(raw.features) ? raw.features.filter((f): f is string => typeof f === 'string') : [];
-  const features = rawFeatures.filter(f => known.has(f));
-  if (features.length < rawFeatures.length) warnings.push(`Options inconnues ignorées : ${rawFeatures.filter(f => !known.has(f)).slice(0, 10).join(', ')}`);
+  const asked = rawFeatures.filter(f => known.has(f));
+  if (asked.length < rawFeatures.length) warnings.push(`Options inconnues ignorées : ${rawFeatures.filter(f => !known.has(f)).slice(0, 10).join(', ')}`);
+  // Étape 1 multi-industries : une capacité importée emporte celles dont elle dépend.
+  const features = [...withRequirements(asked, act.catalog)];
+  const addedCaps = features.filter(f => !asked.includes(f));
+  if (addedCaps.length) {
+    const labelOf = new Map(act.catalog.map(f => [f.key, f.label]));
+    warnings.push(`Capacités ajoutées pour les dépendances : ${addedCaps.map(f => labelOf.get(f) ?? f).join(', ')}`);
+  }
 
   const labels: Record<string, string> = {};
   if (isObj(raw.labels)) {

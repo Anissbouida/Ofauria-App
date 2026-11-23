@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Check, CheckCircle2, Circle, Download, FileDown, FileUp, History, Layers, Lightbulb, Lock, RotateCcw, Save, SlidersHorizontal, Sparkles, Trash2, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
-  missingDependencies, requiredModules, type AppModule,
+  missingDependencies, requiredModules, withRequirements, dependentsOf, type AppModule,
 } from '@ofauria/shared';
 import { settingsApi, type HealthRecommendation, type HealthReport, type ConfigModelPreview, type ConfigSuggestion, type ModuleActivation, type OnboardingReport } from '../../api/settings.api';
 import { OdooToggle, SettingItem, SettingsSection, SettingsTabs } from './SettingsPrimitives';
@@ -111,9 +111,11 @@ export default function SectorTab() {
   const view = useMemo(() => {
     if (!act) return null;
     const moduleOverrides = mergeOverrides(act.moduleOverrides, draft.modules, act.packModules);
-    const featureOverrides = mergeOverrides(act.featureOverrides, draft.features, act.packFeatures);
+    // Valeur sans écart : préréglage du secteur, ou socle commun (capacités default_on, mig 632).
+    const featureDefaults = [...act.packFeatures, ...act.catalog.filter(f => f.default_on).map(f => f.key)];
+    const featureOverrides = mergeOverrides(act.featureOverrides, draft.features, featureDefaults);
     const active = effectiveModules(act.packModules, moduleOverrides);
-    const featureOn = (k: string) => featureOverrides[k] ?? act.packFeatures.includes(k);
+    const featureOn = (k: string) => featureOverrides[k] ?? featureDefaults.includes(k);
     return { moduleOverrides, featureOverrides, active, featureOn, missing: missingDependencies(active) };
   }, [act, draft]);
 
@@ -312,6 +314,17 @@ export default function SectorTab() {
 
   const featuresOf = (m: AppModule) => act.catalog.filter(f => f.module_key === m);
   const featureLabel = (k: string) => act.catalog.find(f => f.key === k)?.label ?? k;
+  /** Capacité : activer emporte ses dépendances, désactiver emporte celles qui en dépendent (mig 632). */
+  const toggleFeature = (key: string, on: boolean) => {
+    const keys = on ? [...withRequirements([key], act.catalog)] : [key, ...dependentsOf(key, act.catalog)];
+    const changes: Record<string, boolean> = {};
+    for (const k of keys) if (k === key || view.featureOn(k) !== on) changes[k] = on;
+    setDraft(d => ({ ...d, features: { ...d.features, ...changes } }));
+    const extra = keys.filter(k => k !== key && changes[k] !== undefined);
+    if (extra.length) {
+      notify.success(`${on ? 'Activé aussi' : 'Désactivé aussi'} : ${extra.map(featureLabel).join(', ')}`);
+    }
+  };
   const moduleLabel = (k: string) => MODULE_LABELS[k as AppModule] ?? k;
   const fmtDate = (d: string) => new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
   const closedStoresOf = (m: string) => Object.entries(act.rollout.storeDisabled).filter(([, mods]) => mods.includes(m)).map(([st]) => st);
@@ -468,7 +481,7 @@ export default function SectorTab() {
       </SettingsSection>
           </>
         ) },
-        { key: 'modules', label: 'Modules et options',
+        { key: 'modules', label: 'Modules et capacités',
           badge: dirtyCount > 0 ? <span className="odoo-tag odoo-tag-blue" title="Changements non enregistrés">{dirtyCount}</span> : undefined,
           content: (
           <>
@@ -587,21 +600,31 @@ export default function SectorTab() {
                     {features.map(f => {
                       const fOn = view.featureOn(f.key);
                       const fAdjusted = view.featureOverrides[f.key] !== undefined;
+                      const inPack = act.packFeatures.includes(f.key);
                       return (
                         <div key={f.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, opacity: on ? 1 : 0.5 }}>
                           <OdooToggle checked={fOn && on} disabled={!on || busy}
-                            onChange={v => setDraft(d => ({ ...d, features: { ...d.features, [f.key]: v } }))} />
+                            onChange={v => toggleFeature(f.key, v)} />
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '13px', fontWeight: 500 }}>
-                              {f.label}{' '}
-                              {fAdjusted && <StatusTag tone="todo" icon={SlidersHorizontal} label="Ajusté" />}
+                            <div style={{ fontSize: '13px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              {f.label}
+                              {f.kind === 'reglementaire' && <StatusTag tone="todo" icon={Lock} label="Réglementaire" />}
+                              {fAdjusted
+                                ? <StatusTag tone="todo" icon={SlidersHorizontal} label="Ajusté" />
+                                : inPack
+                                  ? <StatusTag tone="draft" icon={Layers} label="Préréglage" />
+                                  : f.default_on ? <StatusTag tone="draft" icon={Layers} label="Socle commun" /> : null}
                               {fAdjusted && on && (
                                 <button type="button" className="odoo-btn-link" disabled={busy}
-                                  onClick={() => setDraft(d => ({ ...d, features: { ...d.features, [f.key]: null } }))}>Préréglage</button>
+                                  onClick={() => setDraft(d => ({ ...d, features: { ...d.features, [f.key]: null } }))}>Revenir au préréglage</button>
                               )}
                             </div>
                             {f.description && <p className="odoo-setting-help">{f.description}</p>}
-
+                            {(f.requires ?? []).length > 0 && (
+                              <p className="odoo-setting-help" style={{ marginTop: 2 }}>
+                                Dépend de : {(f.requires ?? []).map(featureLabel).join(', ')}
+                              </p>
+                            )}
                           </div>
                         </div>
                       );

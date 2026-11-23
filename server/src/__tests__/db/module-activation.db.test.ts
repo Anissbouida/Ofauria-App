@@ -52,7 +52,9 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
     expect(act.modules.has('production')).toBe(false);
     expect(act.modules.has('sales')).toBe(true);
     for (const m of ['dashboard', 'settings', 'users'] as const) expect(act.modules.has(m)).toBe(true);
-    expect(act.features.size).toBe(0);
+    // Aucune option hors du socle commun (capacités default_on, mig 632).
+    const socle = new Set(act.catalog.filter(f => f.default_on).map(f => f.key));
+    expect([...act.features].filter(k => !socle.has(k))).toEqual([]);
   });
 
   it('active Production en générique, et ne stocke que les écarts', async () => {
@@ -217,7 +219,8 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
     const act = await sectors.activation();
     for (const m of ['production', 'recipes', 'stock', 'purchasing', 'sales'] as const) expect(act.modules.has(m)).toBe(true);
     for (const m of ['replenishment', 'unsold', 'reconciliation'] as const) expect(act.modules.has(m)).toBe(false);
-    expect(act.features.size).toBe(0); // aucune option boulangerie (HACCP, DLC du jour…)
+    // Aucune option boulangerie (HACCP, DLC du jour…) : seulement le socle commun (mig 632).
+    expect([...act.features].filter(k => !act.catalog.find(f => f.key === k)?.default_on)).toEqual([]);
     expect(await callGuard('GET', '/production/plans')).toBe(200);
     expect(await callGuard('GET', '/haccp/logs')).toBe(403);
     expect(await callGuard('GET', '/unsold-decisions')).toBe(200); // préfixe partagé avec la caisse

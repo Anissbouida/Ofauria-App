@@ -452,7 +452,7 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | Étape | État | Commit | Migrations | Reste |
 |---|---|---|---|---|
 | 0 | Livré | d9bc5d4f | 631 | Mesure en production à passer (`diagnose-multi-industries.sql`) |
-| 1 | À faire | | | |
+| 1 | Livré | voir § F.1 | 632 | Gardes de capacité branchées sur 6 familles de routes ; les autres capacités du socle restent déclaratives jusqu'à leur étape (8, 2 bis) |
 | 2 | À faire | | | |
 | 2 bis | À faire | | | |
 | 3 | À faire | | | |
@@ -486,3 +486,22 @@ Mesures sur la base de dev (simulation) : tables de l'ancien modèle de fiche to
 Constat hors chantier : la base de dev a été basculée sur le secteur « fabrication » le 2026-11-23 à 02:02 UTC depuis l'écran (version de configuration n° 4), avant le début de ce travail. Non modifié.
 
 Tests : suite base 239 fichiers / 892 tests verts ; suite unitaire verte ; compilation serveur propre.
+
+### F.1 — Étape 1 (2026-11-23)
+
+Livré :
+- Mig 632 : `app_features` gagne `kind` (fonction / réglementaire), `requires`, `default_on` ; 17 capacités inscrites (lots, séries, DLC/DDM, allergènes, traçabilité, rappel, pesage, contrôle qualité, quarantaine, relevés de procédé, rendements et pertes, semi-finis, co-produits, sous-traitance, étiquetage actives par défaut ; réservation de matière et conditionnement éteintes, pas encore construites) ; dépendances posées sur les options existantes.
+- `shared/src/constants/capabilities.ts` : fermeture des dépendances, dépendants, dépendances manquantes (communs serveur / écran).
+- `sector.repository` : socle actif par défaut, capacité effective seulement si son module et ses dépendances le sont, activation qui emporte ses dépendances, refus d'une désactivation qui en éteindrait d'autres en silence, refus de désactiver une capacité réglementaire utilisée (`services/capabilities.ts`, registre figé de comptages).
+- Garde d'API étendue : traçabilité, contrôle qualité, sous-traitance, numéros de série (en plus de HACCP et congélation).
+- Politique `production.enforce_declared_steps` (défaut : éteinte ; activée dans les profils process, discret, atelier) : « pesée obligatoire » vérifiée au démarrage, « contrôle obligatoire » au transfert.
+- Import d'un modèle : les capacités emportent leurs dépendances. Aperçu d'impact : données masquées comptées pour 5 capacités.
+- Écran : onglet « Modules et capacités », nature (Réglementaire), origine (Préréglage, Socle commun, Ajusté), « Dépend de », cascade dans le brouillon. Vérifié dans l'application (compte gérant de test, base de test) : cascade de 10 capacités en désactivant « Gestion des lots », refus serveur affiché avec 1 043 lots de matière et 115 lots de produit fini.
+
+Décisions appliquées (recommandation du plan, § E) : n° 9 — l'onglet s'appelle « Modules et capacités » (les modules y restent) ; n° 10 — pesée et contrôle obligatoires désactivés par défaut pour les sociétés existantes.
+
+Écart assumé : la configuration effective change par l'AJOUT des capacités du socle à la liste des options effectives (constaté sur la base de dev : 15 clés ajoutées, aucune retirée). Les 8 options historiques ne bougent pas. Deux assertions de `module-activation.db.test.ts` qui figeaient « aucune option active » ont été précisées en « aucune option hors du socle ».
+
+Défaut évité en chemin : la nouvelle règle refusait d'activer une option dont le module est éteint (régression signalée par le test d'activation) ; corrigé, l'écart est gardé et prend effet au rallumage du module, comme avant.
+
+Tests : `capabilities.db.test.ts` (8) ; suite base 240 fichiers / 900 tests verts ; suite unitaire verte ; compilation serveur et client propre.

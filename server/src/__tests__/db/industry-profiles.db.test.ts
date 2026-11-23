@@ -29,7 +29,7 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
     prof = await import('../../services/industry-profile.js');
     before = {
       types: (await p().query(`SELECT code FROM production_order_types WHERE code IN ('ORDRE_SERIE', 'SOUS_TRAITANCE')`)).rows.map(r => r.code),
-      policies: (await p().query(`SELECT key FROM policy_values WHERE scope_type = 'company' AND key IN ('production.cost_allocation_key', 'production.steps_source')`)).rows.map(r => r.key),
+      policies: (await p().query(`SELECT key FROM policy_values WHERE scope_type = 'company' AND key IN ('production.cost_allocation_key', 'production.steps_source', 'production.enforce_declared_steps')`)).rows.map(r => r.key),
       fiche: (await p().query(`SELECT title, layout, footer_note FROM document_templates WHERE doc_type = 'production_fiche'`)).rows[0],
       demo: (await p().query(`SELECT 1 FROM products WHERE slug = 'starter-demo-etagere'`)).rows.length > 0,
       refs: (await p().query(`SELECT table_id || ':' || code AS k FROM ref_entries WHERE table_id IN ('production_step_types', 'production_equipment_types')`)).rows.map(r => r.k),
@@ -47,7 +47,7 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
                  AND NOT EXISTS (SELECT 1 FROM production_plans pp WHERE pp.order_type_id = production_order_types.id)`,
       [['ORDRE_SERIE', 'SOUS_TRAITANCE'], before.types]);
     await run(`DELETE FROM policy_values WHERE scope_type = 'company' AND key = ANY($1::text[]) AND NOT (key = ANY($2::text[]))`,
-      [['production.cost_allocation_key', 'production.steps_source'], before.policies]);
+      [['production.cost_allocation_key', 'production.steps_source', 'production.enforce_declared_steps'], before.policies]);
     if (before.fiche) await run(`UPDATE document_templates SET title = $1, layout = $2, footer_note = $3 WHERE doc_type = 'production_fiche'`,
       [before.fiche.title, JSON.stringify(before.fiche.layout), before.fiche.footer_note]);
     // Données de départ de « Fabrication » chargées avec le profil : seulement ce que le test a créé.

@@ -276,7 +276,11 @@ export interface ModuleActivation {
   packFeatures: string[];
   moduleOverrides: Record<string, boolean>;
   featureOverrides: Record<string, boolean>;
-  catalog: { key: string; module_key: string; label: string; description: string | null; sort_order: number }[];
+  /** Catalogue de capacités (mig 507, étendu mig 632 : nature, dépendances, socle actif par défaut). */
+  catalog: {
+    key: string; module_key: string; label: string; description: string | null; sort_order: number;
+    kind?: 'fonction' | 'reglementaire'; requires?: string[]; default_on?: boolean;
+  }[];
   modules: string[];
   features: string[];
   /** Diffusion (mig 509) : modules en pilote et modules fermés par établissement. */

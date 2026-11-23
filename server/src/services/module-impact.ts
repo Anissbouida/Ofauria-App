@@ -35,6 +35,12 @@ const DATA_COUNTERS: Partial<Record<AppModule, Counter[]>> = {
 
 const FEATURE_COUNTERS: Record<string, Counter[]> = {
   haccp: [{ label: 'relevé(s) de température', sql: 'SELECT count(*)::int AS n FROM haccp_temperature_readings' }],
+  // Capacités du socle (mig 632).
+  series: [{ label: 'numéro(s) de série', sql: 'SELECT count(*)::int AS n FROM product_serials' }],
+  controle_qualite: [{ label: 'contrôle(s) qualité', sql: 'SELECT count(*)::int AS n FROM quality_inspections' }],
+  sous_traitance: [{ label: 'envoi(s) en sous-traitance', sql: 'SELECT count(*)::int AS n FROM subcontract_shipments' }],
+  releves_temperature: [{ label: 'relevé(s) de procédé', sql: 'SELECT count(*)::int AS n FROM production_step_readings' }],
+  coproduits: [{ label: 'sortie(s) de co-produits paramétrée(s)', sql: 'SELECT count(*)::int AS n FROM recipe_outputs' }],
 };
 
 export type ActivationState = { modules: Set<AppModule>; features: Set<string> };
