@@ -250,7 +250,10 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const versionRef = useRef<string | null>(null);
 
   const { data: roles = [] } = useQuery({ queryKey: ['component-roles'], queryFn: recipesApi.componentRoles, staleTime: 3e5 });
-  const { data: sources } = useQuery({ queryKey: ['component-sources'], queryFn: recipesApi.componentSources, staleTime: 3e5 });
+  // Prix des matières : relus à chaque ouverture de la fiche. Avec un cache de 5 min, un prix
+  // changé sur la fiche matière (ou par une réception, une correction de prix) restait l'ancien
+  // dans le coût calculé ici tant que la page n'était pas rechargée.
+  const { data: sources } = useQuery({ queryKey: ['component-sources'], queryFn: recipesApi.componentSources, staleTime: 3e5, refetchOnMount: 'always' });
   const { data: contenants = [] } = useQuery<Contenant[]>({
     queryKey: ['contenants-list'],
     queryFn: () => contenantsApi.list().then((r: { data?: Contenant[] } | Contenant[]) => ((r as { data?: Contenant[] }).data || r) as Contenant[]),
