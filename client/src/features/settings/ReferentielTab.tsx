@@ -14,6 +14,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { RowMenu } from '../../components/ui/RowMenu';
+import PurchaseTaxCodeSelect from '../../components/purchasing/PurchaseTaxCodeSelect';
 
 /**
  * Référentiel : tables de valeurs paramétrables (catégories, unités, motifs…).
@@ -427,6 +428,14 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                   onChange={e => setForm({ ...form, metadata: { ...form.metadata, requires_po: e.target.checked } })} />
                 Bon de commande requis pour les dépenses de cette catégorie
               </label>
+            )}
+            {tableId === 'expense_categories' && (
+              <FormField label="TVA à l'achat par défaut" htmlFor="ref-form-tax"
+                hint="Appliquée aux articles de la catégorie qui n'ont pas leur propre code, et aux lignes de service ou d'immobilisation : proposée sur le bon de commande, reprise sur la facture.">
+                <PurchaseTaxCodeSelect id="ref-form-tax" value={String(form.metadata.default_tax_code || '')}
+                  onChange={code => setForm({ ...form, metadata: { ...form.metadata, default_tax_code: code || null } })}
+                  emptyLabel="Aucun — taux à préciser sur la ligne" />
+              </FormField>
             )}
             {tableId === 'units' && (
               <>

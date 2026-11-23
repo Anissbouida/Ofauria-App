@@ -14,6 +14,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { currencySymbol } from '../../utils/money';
 import { apiErrorMessage } from '../../api/errors';
 import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, Modal, NoResultState } from '../../components/ds';
+import PurchaseTaxCodeSelect from '../../components/purchasing/PurchaseTaxCodeSelect';
 
 /** Situation d'un consommable (exclusive) : mêmes cartes que le stock des ingrédients. */
 const PKG_SITUATIONS: StageDef[] = [
@@ -38,6 +39,8 @@ interface PackagingItem {
   is_food_safe: boolean;
   is_active: boolean;
   notes: string | null;
+  /** TVA à l'achat (mig 309) : code tax_codes ; null = hériter de la catégorie. */
+  default_tax_code?: string | null;
   stock_quantity?: string | number;
   stock_min_threshold?: string | number;
 }
@@ -301,6 +304,7 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
     is_compostable: item?.is_compostable ?? false,
     is_food_safe: item?.is_food_safe ?? true,
     notes: item?.notes || '',
+    default_tax_code: item?.default_tax_code || '',
   });
 
   const saveMutation = useMutation({
@@ -320,6 +324,8 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
     saveMutation.mutate({
       ...form,
       unit_cost: parseFloat(form.unit_cost) || 0,
+      // TVA à l'achat (constat 124) : vide = hériter de la catégorie.
+      default_tax_code: form.default_tax_code || null,
     });
   };
 
@@ -374,6 +380,13 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
               onChange={(e) => setForm({ ...form, supplier: e.target.value })}
               placeholder="Nom du fournisseur"
               className="ds-input" />
+          </FormField>
+
+          <FormField label="TVA à l'achat" htmlFor="pkg-f7"
+            hint="Proposée sur les lignes de bon de commande et reprise sur la facture. Sans code, la TVA de la catégorie s'applique.">
+            <PurchaseTaxCodeSelect id="pkg-f7" value={form.default_tax_code}
+              onChange={(code) => setForm({ ...form, default_tax_code: code })}
+              emptyLabel="Hériter de la catégorie" />
           </FormField>
 
           <div className="grid grid-cols-3 gap-2 pt-2">

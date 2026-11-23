@@ -13,6 +13,7 @@ import { useCustomFieldsForm } from '../../api/custom-fields.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { currencySymbol } from '../../utils/money';
 import { FormField, FormFooter, FormSection, Modal } from '../../components/ds';
+import PurchaseTaxCodeSelect from '../../components/purchasing/PurchaseTaxCodeSelect';
 
 /*
  * Formulaire unique de creation / modification d'un ingredient.
@@ -72,6 +73,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
     densiteKgL: ing.densite_kg_l != null ? String(ing.densite_kg_l) : '',
     poidsPieceKg: ing.poids_piece_kg != null ? String(ing.poids_piece_kg) : '',
     nonStocke: ing.non_stocke === true,
+    defaultTaxCode: (ing.default_tax_code as string) || '',
     allergens: (Array.isArray(ing.allergens) ? ing.allergens : []) as string[],
   });
   const [submitted, setSubmitted] = useState(false);
@@ -138,6 +140,8 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
       densiteKgL: form.densiteKgL !== '' ? (parseFloat(form.densiteKgL) || null) : null,
       poidsPieceKg: form.poidsPieceKg !== '' ? (parseFloat(form.poidsPieceKg) || null) : null,
       nonStocke: !consumable && form.nonStocke,
+      // TVA à l'achat (constat 124) : vide = hériter de la catégorie.
+      defaultTaxCode: form.defaultTaxCode || null,
       allergens: form.allergens,
     };
     if (mode === 'edit') payload.threshold = parseFloat(form.threshold) || 0;
@@ -251,6 +255,11 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                   </datalist>
                 </Field>
               </div>
+              <Field label="TVA à l'achat"
+                hint="Proposée sur les lignes de bon de commande et reprise sur la facture. Sans code, la TVA de la catégorie s'applique.">
+                <PurchaseTaxCodeSelect value={form.defaultTaxCode} onChange={code => set('defaultTaxCode', code)}
+                  emptyLabel="Hériter de la catégorie" />
+              </Field>
               {mode === 'edit' && (
                 <Field label="Seuil minimum d'alerte">
                   <Suffixed suffix={u}>

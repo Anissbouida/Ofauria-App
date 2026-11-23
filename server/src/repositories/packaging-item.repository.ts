@@ -27,6 +27,8 @@ export interface PackagingItem {
   is_food_safe: boolean;
   is_active: boolean;
   notes: string | null;
+  /** TVA à l'achat (mig 309) : code tax_codes ; NULL = hériter de la catégorie. */
+  default_tax_code: string | null;
 }
 
 /** Mouvement de stock d'emballage (adjustStock). */
@@ -96,13 +98,13 @@ export const packagingItemRepository = {
     name: string; format?: string | null; unit?: string; unit_cost?: number;
     supplier?: string | null; category?: string; category_id?: string | null;
     is_recyclable?: boolean; is_compostable?: boolean; is_food_safe?: boolean;
-    notes?: string | null;
+    notes?: string | null; default_tax_code?: string | null;
   }) {
     const result = await db.query(
       `INSERT INTO packaging_items
          (name, format, unit, unit_cost, supplier, category, category_id,
-          is_recyclable, is_compostable, is_food_safe, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          is_recyclable, is_compostable, is_food_safe, notes, default_tax_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         capitalizeFirst(data.name), data.format ?? null,
@@ -110,6 +112,8 @@ export const packagingItemRepository = {
         data.supplier ?? null, data.category ?? 'autre', data.category_id ?? null,
         data.is_recyclable ?? false, data.is_compostable ?? false,
         data.is_food_safe ?? true, data.notes ?? null,
+        // TVA à l'achat (mig 309, constat 124) : NULL = hériter de la catégorie.
+        data.default_tax_code || null,
       ]
     );
     return result.rows[0];
@@ -117,7 +121,9 @@ export const packagingItemRepository = {
 
   async update(id: string, data: Record<string, unknown>) {
     const allowed = ['name','format','unit','unit_cost','supplier','category','category_id',
-                      'is_recyclable','is_compostable','is_food_safe','is_active','notes'];
+                      'is_recyclable','is_compostable','is_food_safe','is_active','notes',
+                      // TVA à l'achat (mig 309, constat 124) : null = hériter de la catégorie.
+                      'default_tax_code'];
     const fields: string[] = [];
     const values: unknown[] = [];
     let i = 1;

@@ -1046,10 +1046,7 @@
   "admin",
   "manager"
  ],
- "GET /invoices/tax-codes": [
-  "admin",
-  "manager"
- ],
+ "GET /invoices/tax-codes": null,
  "GET /landed-costs": [
   "admin",
   "manager"

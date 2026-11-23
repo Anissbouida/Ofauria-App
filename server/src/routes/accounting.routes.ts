@@ -97,7 +97,11 @@ export const invoicesRouter = Router();
 invoicesRouter.get('/', authenticate, can('accounting.view'), asyncHandler(invoiceController.list));
 invoicesRouter.get('/received-board', authenticate, can('accounting.view'), asyncHandler(invoiceController.receivedBoard));
 invoicesRouter.get('/received-pipeline', authenticate, can('accounting.view'), asyncHandler(invoiceController.receivedPipeline));
-invoicesRouter.get('/tax-codes', authenticate, can('accounting.view'), asyncHandler(invoiceController.taxCodes));
+// Référentiel des codes TVA en vigueur (code, libellé, taux) : donnée publique, non
+// sensible, lue par les fiches article (produit, ingrédient, consommable) et les
+// catégories pour choisir la TVA par défaut (constat 124). Authentification seule :
+// sans cela l'économe, qui n'a pas accounting.view, ne verrait pas la liste.
+invoicesRouter.get('/tax-codes', authenticate, asyncHandler(invoiceController.taxCodes));
 invoicesRouter.get('/line-expenses', authenticate, can('accounting.view'), asyncHandler(invoiceController.lineExpenses));
 invoicesRouter.get('/payment-alerts', authenticate, can('accounting.view'), asyncHandler(invoiceController.paymentAlerts));
 invoicesRouter.get('/debts', authenticate, can('accounting.view'), asyncHandler(invoiceController.debts));

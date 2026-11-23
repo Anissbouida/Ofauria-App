@@ -409,13 +409,13 @@ export const expenseCategoryRepository = {
     );
     return result.rows;
   },
-  async create(data: { name: string; description?: string; parent_id?: string; level?: number; requires_po?: boolean; display_order?: number }) {
+  async create(data: { name: string; description?: string; parent_id?: string; level?: number; requires_po?: boolean; display_order?: number; default_tax_code?: string | null }) {
     const level = data.level || (data.parent_id ? 2 : 1);
     const result = await db.query(
-      `INSERT INTO expense_categories (name, type, description, parent_id, level, requires_po, display_order)
-       VALUES ($1, 'expense', $2, $3, $4, $5, $6) RETURNING *`,
+      `INSERT INTO expense_categories (name, type, description, parent_id, level, requires_po, display_order, default_tax_code)
+       VALUES ($1, 'expense', $2, $3, $4, $5, $6, $7) RETURNING *`,
       [data.name, data.description || null, data.parent_id || null, level,
-       data.requires_po ?? false, data.display_order || 0]
+       data.requires_po ?? false, data.display_order || 0, data.default_tax_code || null]
     );
     return result.rows[0];
   },
@@ -425,6 +425,8 @@ export const expenseCategoryRepository = {
       level: 'level', requires_po: 'requires_po', display_order: 'display_order', is_active: 'is_active',
       // Exigences réception (mig 308, 461) : contrôle qualité / DLC / lot fournisseur.
       requires_qc: 'requires_qc', requires_dlc: 'requires_dlc', requires_lot: 'requires_lot',
+      // TVA à l'achat par défaut (mig 309, constat 124) : héritée par les articles sans code propre.
+      default_tax_code: 'default_tax_code',
     };
     const fields: string[] = []; const values: unknown[] = []; let i = 1;
     for (const [key, col] of Object.entries(mapping)) {

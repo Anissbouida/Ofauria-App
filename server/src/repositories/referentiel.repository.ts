@@ -139,6 +139,22 @@ export const refEntryRepository = {
 
 /* ═══ Native Table Adapters ═══ */
 
+/**
+ * Code TVA reçu dans les métadonnées d'une catégorie (le validateur du référentiel laisse
+ * metadata libre) : absent = inchangé, vide / null = aucun code, sinon code court du
+ * référentiel tax_codes (lettres, chiffres, souligné ; 20 caractères).
+ */
+function taxCodeOf(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  const code = String(v).trim();
+  if (!code) return null;
+  if (code.length > 20 || !/^[A-Za-z0-9_]+$/.test(code)) {
+    throw Object.assign(new Error('Code TVA invalide'), { statusCode: 400 });
+  }
+  return code;
+}
+
 /** Adapter for expense_categories table (hierarchical) */
 const expenseCategoriesAdapter = {
   async findAll(includeInactive = false) {
@@ -160,7 +176,7 @@ const expenseCategoriesAdapter = {
       icon: null,
       display_order: r.display_order,
       is_active: r.is_active,
-      metadata: { requires_po: r.requires_po, level: r.level, parent_id: r.parent_id },
+      metadata: { requires_po: r.requires_po, level: r.level, parent_id: r.parent_id, default_tax_code: r.default_tax_code ?? null },
       created_at: r.created_at,
       updated_at: r.created_at,
       // Hierarchy fields
@@ -174,10 +190,10 @@ const expenseCategoriesAdapter = {
     const md = (data.metadata || {}) as Record<string, unknown>;
     const level = md.level || (md.parent_id ? 2 : 1);
     const result = await db.query(
-      `INSERT INTO expense_categories (name, type, description, parent_id, level, requires_po, display_order)
-       VALUES ($1, 'expense', $2, $3, $4, $5, $6) RETURNING *`,
+      `INSERT INTO expense_categories (name, type, description, parent_id, level, requires_po, display_order, default_tax_code)
+       VALUES ($1, 'expense', $2, $3, $4, $5, $6, $7) RETURNING *`,
       [data.label, data.description || null, md.parent_id || null, level,
-       md.requires_po ?? false, data.display_order || 0]
+       md.requires_po ?? false, data.display_order || 0, taxCodeOf(md.default_tax_code) ?? null]
     );
     return result.rows[0];
   },
@@ -188,6 +204,9 @@ const expenseCategoriesAdapter = {
     if (data.metadata) {
       const md = data.metadata as Record<string, unknown>;
       if (md.requires_po !== undefined) { fields.push(`requires_po = $${i++}`); values.push(md.requires_po); }
+      // TVA à l'achat par défaut (mig 309, constat 124) : héritée par les articles sans code propre.
+      const tax = taxCodeOf(md.default_tax_code);
+      if (tax !== undefined) { fields.push(`default_tax_code = $${i++}`); values.push(tax); }
     }
     if (fields.length === 0) return null;
     values.push(id);

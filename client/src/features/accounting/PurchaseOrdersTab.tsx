@@ -1352,6 +1352,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
         name: data.name, unit: data.unit,
         category_id: data.categoryId || null,
         unit_cost: data.unitCost,
+        default_tax_code: data.defaultTaxCode || null,
       });
     } else {
       createIngredientMutation.mutate(data);

@@ -17,6 +17,8 @@ export interface PoLineInput {
   quantityOrdered: number; unitPrice?: number | null;
   /** Prix dans la devise du BC (mig 363) ; unitPrice reste en DH. */
   foreignUnitPrice?: number | null;
+  /** Taux de TVA saisi (%) : prioritaire ; absent = taux par défaut de l'article ou de sa catégorie (constat 124). */
+  tvaRate?: number | null;
 }
 
 export function lineTypeOf(it: PoLineInput): PoLineType {
@@ -49,6 +51,32 @@ async function lineFields(client: { query: PoolClient['query'] }, it: PoLineInpu
     throw Object.assign(new Error(`« ${p.name} » n'est pas un produit de revente : seul un produit de revente s'achète sur un bon de commande.`), { statusCode: 400 });
   }
   return { description: p.name as string, categoryId: it.categoryId || CAT_ACHATS_MARCHANDISES, unit: 'unit' };
+}
+
+/**
+ * Taux de TVA proposé pour une nouvelle ligne de BC (constat 124, mig 309) : code par défaut
+ * de l'article (ingrédient ou consommable), sinon de sa catégorie — celle de l'article, ou
+ * celle de la ligne pour un service / une immobilisation / un produit de revente — au taux
+ * en vigueur ce jour. Même règle que la facture issue de la réception
+ * (reception-voucher.repository). NULL quand aucun code n'est défini : le taux reste à
+ * préciser, jamais un 0 implicite (le contrôle TAX_VARIANCE le signale à la facture).
+ */
+async function defaultLineTvaRate(
+  client: { query: PoolClient['query'] },
+  it: PoLineInput, lineCategoryId: string | null,
+): Promise<number | null> {
+  // Un taux saisi n'est jamais remplacé.
+  if (it.tvaRate != null && Number.isFinite(Number(it.tvaRate))) return Number(it.tvaRate);
+  if (!it.ingredientId && !it.packagingId && !lineCategoryId) return null;
+  const r = await client.query<{ rate: string | null }>(
+    `SELECT fn_tax_rate(COALESCE(ing.default_tax_code, pkg.default_tax_code, cat.default_tax_code), CURRENT_DATE) AS rate
+       FROM (SELECT 1) one
+       LEFT JOIN ingredients ing ON ing.id = $1::uuid
+       LEFT JOIN packaging_items pkg ON pkg.id = $2::uuid
+       LEFT JOIN expense_categories cat ON cat.id = COALESCE(ing.category_id, pkg.category_id, $3::uuid)`,
+    [it.ingredientId ?? null, it.packagingId ?? null, lineCategoryId]);
+  const rate = r.rows[0]?.rate;
+  return rate != null ? Number(rate) : null;
 }
 
 export const purchaseOrderRepository = {
@@ -355,13 +383,16 @@ export const purchaseOrderRepository = {
           }
         }
         const free = await lineFields(client, item);
+        // TVA proposée (constat 124) : code de l'article ou de sa catégorie ; modifiable ensuite sur la ligne.
+        const tvaRate = await defaultLineTvaRate(client, item, free.categoryId);
         await client.query(
           `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, product_id, quantity_ordered, unit_price,
-                                             line_type, description, category_id, base_unit, foreign_unit_price)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                                             line_type, description, category_id, base_unit, foreign_unit_price, tva_rate)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, item.productId ?? null, qty, item.unitPrice ?? null,
            lineTypeOf(item), free.description, free.categoryId, free.unit,
-           data.currencyCode && data.currencyCode !== baseCurrencyCode() ? (item.foreignUnitPrice ?? null) : null]
+           data.currencyCode && data.currencyCode !== baseCurrencyCode() ? (item.foreignUnitPrice ?? null) : null,
+           tvaRate]
         );
       }
 
@@ -633,12 +664,14 @@ export const purchaseOrderRepository = {
           // Nouvelle ligne — qty_delivered = 0 par defaut (admin ne touche pas le stock via add).
           const newDel = qdelRaw ?? 0;
           const free = await lineFields(client, it);
+          // TVA proposée (constat 124) : code de l'article ou de sa catégorie.
+          const tvaRate = await defaultLineTvaRate(client, it, free.categoryId);
           const inserted = await client.query<{ id: string }>(
             `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, product_id, quantity_ordered, quantity_delivered, unit_price,
-                                               line_type, description, category_id, base_unit)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+                                               line_type, description, category_id, base_unit, tva_rate)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
             [id, it.ingredientId ?? null, it.packagingId ?? null, it.productId ?? null, qord, newDel, price,
-             lineTypeOf(it), free.description, free.categoryId, free.unit]
+             lineTypeOf(it), free.description, free.categoryId, free.unit, tvaRate]
           );
           if (newDel > 0.0001) {
             // Cas atypique : admin ajoute une ligne avec qty deja livree

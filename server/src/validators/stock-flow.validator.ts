@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { uuid, optUuid, optDate, optText, optNumber } from './common.validator.js';
+import { uuid, optUuid, optDate, optText, optNumber, optTaxCode } from './common.validator.js';
 import { addSurplusSchema, consumeSchema, recordLossSchema, adjustSchema } from './stock-frigo.validator.js';
 import { createStockLocationSchema, updateStockLocationSchema } from './stock-location.validator.js';
 
@@ -76,6 +76,8 @@ const ingredientFields = {
   containerSize: rawNum(0, 1e7), densiteKgL: rawNum(0, 1e6), poidsPieceKg: rawNum(0, 1e6),
   // Matière non stockée (eau du réseau) : exclue des besoins, des bons de sortie et des achats (mig 347, constat 134).
   nonStocke: z.boolean().optional(),
+  // TVA à l'achat (mig 309, constat 124) : code du référentiel tax_codes ; '' / null = hériter de la catégorie.
+  defaultTaxCode: optTaxCode,
 };
 export const createIngredientSchema = z.object({
   name: nonBlankName(200),
@@ -97,6 +99,8 @@ const packagingFields = {
   supplier: optText(200), category: z.string().max(40).optional(), category_id: rawUuid,
   is_recyclable: z.boolean().optional(), is_compostable: z.boolean().optional(), is_food_safe: z.boolean().optional(),
   notes: optText(10000),
+  // TVA à l'achat (mig 309, constat 124) : code du référentiel tax_codes ; '' / null = hériter de la catégorie.
+  default_tax_code: optTaxCode,
 };
 export const createPackagingSchema = z.object({ name: nonBlankName(200), ...packagingFields }).passthrough();
 export const updatePackagingSchema = z.object({ name: nonBlankName(200).optional(), is_active: z.boolean().optional(), ...packagingFields }).passthrough();

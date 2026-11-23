@@ -47,6 +47,12 @@ export const optPct = z.preprocess(blankToUndef, z.coerce.number().finite('Pourc
 /** Taux de TVA d'une ligne : null / vide = taux par défaut, sinon 0..100. */
 export const tvaRate = z.preprocess(v => (v === '' ? null : v), z.union([z.null(), z.coerce.number().finite().min(0).max(100)]).optional());
 export const optBool = z.boolean().optional();
+/**
+ * Code TVA par défaut d'un article ou d'une catégorie (mig 309, référentiel tax_codes : N20, R10,
+ * EXO_SDD, HC…). Vide ou null = pas de code (hériter de la catégorie) ; absent = inchangé.
+ */
+export const optTaxCode = z.preprocess(v => (typeof v === 'string' && v.trim() === '' ? null : v),
+  z.union([z.null(), z.string().trim().max(20, 'Code TVA invalide').regex(/^[A-Za-z0-9_]+$/, 'Code TVA invalide')]).optional());
 
 /** Action sans corps (annuler, imprimer, encaisser…) : corps absent ou objet, rien n'est lu. */
 export const emptyBody = z.preprocess(v => v ?? {}, z.object({}).passthrough());
