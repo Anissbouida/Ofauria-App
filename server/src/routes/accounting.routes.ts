@@ -34,7 +34,7 @@ const validateInvoiceSchema = z.object({
   declaredTtc: optionalMoney,
 });
 import { can } from '../middleware/permission.middleware.js';
-import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
+import { ROLES } from '@ofauria/shared';
 import { emptyBody } from '../validators/common.validator.js';
 import { reportOverrideSchema } from '../validators/sales-flow.validator.js';
 import * as PF from '../validators/payments-flow.validator.js';
@@ -60,7 +60,6 @@ caisseRouter.delete('/report-override', authenticate, can('accounting.caisse.del
 
 export const suppliersRouter = Router();
 // Lecture ouverte aux rôles de production et au magasinier (choix du fournisseur sur une DA / réception).
-const SUPPLIER_READERS = Array.from(new Set([...ROLE_GROUPS.PRODUCTION, ...ROLE_GROUPS.WAREHOUSE]));
 suppliersRouter.get('/', authenticate, can('purchasing.suppliers.view'), asyncHandler(supplierController.list));
 suppliersRouter.get('/identifier-types', authenticate, can('purchasing.suppliers.identifier_types.view'), asyncHandler(supplierController.identifierTypes));
 suppliersRouter.get('/board', authenticate, can('purchasing.suppliers.board.view'), asyncHandler(supplierController.board));

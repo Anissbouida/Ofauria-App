@@ -187,8 +187,9 @@ export const notificationRepository = {
   async syncOrderNotifications(role: string, storeId?: string) {
     try {
       // Only for chef roles — find confirmed/in_production orders without notifications
-      const chefRoles = ['baker', 'pastry_chef', 'viennoiserie'];
-      if (!chefRoles.includes(role)) return 0;
+      // Étape 3 multi-industries : un destinataire « fabrication » est un atelier actif.
+      const workshops = await db.query(`SELECT 1 FROM production_workshops WHERE code = $1 AND is_active`, [role]);
+      if (!workshops.rows.length) return 0;
 
       const conditions = [
         `o.status IN ('confirmed', 'in_production')`,

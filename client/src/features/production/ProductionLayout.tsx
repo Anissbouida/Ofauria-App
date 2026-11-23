@@ -16,11 +16,12 @@ type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | '
  */
 export default function ProductionLayout() {
   const { user } = useAuth();
-  const { hasModule, hasFeature, sectorLabel } = usePermissions();
+  const { hasModule, hasFeature, sectorLabel, canEdit } = usePermissions();
   const { pathname } = useLocation();
   // Prévisions et HACCP : droit Production ET rôle chef/gérant/admin, même règle que le
   // lanceur (navigation.ts) et que les routes serveur.
-  const isProductionRole = hasModule('production') && !!user && ROLE_GROUPS.PRODUCTION.includes(user.role);
+  // Étape 3 multi-industries : le droit de modifier la production, plus la liste des rôles boulangers.
+  const isProductionRole = hasModule('production') && !!user && canEdit('production');
 
   const views: ModuleView<ProductionView>[] = [
     { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard', href: '/production/dashboard', hidden: !hasModule('production') },

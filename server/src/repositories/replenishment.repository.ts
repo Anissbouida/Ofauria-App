@@ -199,13 +199,10 @@ export const replenishmentRepository = {
         roleGroups[role].push(item);
       }
 
-      const ROLE_SUFFIXES: Record<string, string> = {
-        baker: 'BOUL',
-        pastry_chef: 'PAT',
-        viennoiserie: 'VIEN',
-        beldi_sale: 'BELD',
-        general: 'GEN',
-      };
+      // Étape 3 multi-industries (mig 637) : le suffixe est le code court de l'atelier.
+      const shortCodes = await client.query(`SELECT code, short_code FROM production_workshops`);
+      const ROLE_SUFFIXES: Record<string, string> = { general: 'GEN' };
+      for (const w of shortCodes.rows) if (w.short_code) ROLE_SUFFIXES[w.code] = w.short_code;
 
       // Create one independent request per role, all sharing the same batch_id
       const requestIds: Record<string, string> = {};

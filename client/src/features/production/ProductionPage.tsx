@@ -30,11 +30,14 @@ import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { DataPanel, TableFooter, Toolbar, SearchBar, LoadingState, EmptyState, NoResultState, ErrorState, FormField, FormFooter, FormSection, Modal, Alert } from '../../components/ds';
 
 
-const roleConfig: Record<string, { color: string; bg: string; gradient: string }> = {
-  baker:        { color: 'text-amber-700',  bg: 'bg-amber-50',  gradient: 'from-amber-500 to-amber-600' },
-  pastry_chef:  { color: 'text-pink-700',   bg: 'bg-pink-50',   gradient: 'from-pink-500 to-pink-600' },
-  viennoiserie: { color: 'text-orange-700', bg: 'bg-orange-50', gradient: 'from-orange-500 to-orange-600' },
-  beldi_sale:   { color: 'text-teal-700',   bg: 'bg-teal-50',   gradient: 'from-teal-500 to-teal-600' },
+// Étape 3 multi-industries (mig 637) : la couleur est portée par l'atelier (production_workshops.color).
+const COLOR_CONFIG: Record<string, { color: string; bg: string; gradient: string }> = {
+  amber:  { color: 'text-amber-700',  bg: 'bg-amber-50',  gradient: 'from-amber-500 to-amber-600' },
+  pink:   { color: 'text-pink-700',   bg: 'bg-pink-50',   gradient: 'from-pink-500 to-pink-600' },
+  orange: { color: 'text-orange-700', bg: 'bg-orange-50', gradient: 'from-orange-500 to-orange-600' },
+  teal:   { color: 'text-teal-700',   bg: 'bg-teal-50',   gradient: 'from-teal-500 to-teal-600' },
+  blue:   { color: 'text-blue-700',   bg: 'bg-blue-50',   gradient: 'from-blue-500 to-blue-600' },
+  violet: { color: 'text-violet-700', bg: 'bg-violet-50', gradient: 'from-violet-500 to-violet-600' },
 };
 
 function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align = 'left' }: {
@@ -81,6 +84,7 @@ function ProductionPlansView() {
 
   // Ateliers (mig 511) : un membre d'atelier ne voit que ses ateliers (le serveur filtre).
   const ws = useWorkshops();
+  const workshopColors: Record<string, string> = Object.fromEntries(ws.all.map(w => [w.code, (w as { color?: string | null }).color ?? '']));
   const isChef = ws.mine.length > 0;
   const isAdmin = ['admin', 'manager'].includes(user?.role || '');
 
@@ -368,7 +372,7 @@ function ProductionPlansView() {
                   <div className="space-y-2">
                     {yesterdayPlans.map((plan) => {
                       const role = plan.target_role as string;
-                      const rc = roleConfig[role] || { color: 'text-gray-700', bg: 'bg-gray-50', gradient: 'from-gray-400 to-gray-500' };
+                      const rc = COLOR_CONFIG[workshopColors[role] ?? ''] || { color: 'text-gray-700', bg: 'bg-gray-50', gradient: 'from-gray-400 to-gray-500' };
                       return (
                         <button key={plan.id as string}
                           onClick={async () => {

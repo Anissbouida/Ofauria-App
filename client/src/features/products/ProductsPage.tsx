@@ -1,3 +1,4 @@
+import { useWorkshops } from '../../api/production.api';
 import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -888,8 +889,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   const { data: allUsers = [] } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
   // Codes TVA du référentiel (mig 473) : défaut de TVA par article.
   const taxCodesList = taxCodes as Record<string, any>[];
-  const chefRoles = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
-  const chefUsers = allUsers.filter((u: Record<string, any>) => chefRoles.includes(u.role as string) && u.isActive !== false);
+  // Étape 3 multi-industries : un responsable de fabrication est membre d'un atelier actif.
+  const { workshops: workshopList } = useWorkshops();
+  const chefRoles = new Set(workshopList.flatMap(w => w.memberRoles ?? []));
+  const chefIds = new Set(workshopList.flatMap(w => w.memberUsers ?? []));
+  const chefUsers = allUsers.filter((u: Record<string, any>) => u.isActive !== false
+    && (chefRoles.has(u.role as string) || chefIds.has(u.id as string) || ((u.roles as string[] | undefined) ?? []).some(r => chefRoles.has(r))));
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>((product?.image_url as string) || null);
   const [showCamera, setShowCamera] = useState(false);

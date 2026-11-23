@@ -38,6 +38,9 @@ export interface Workshop {
   /** Catégories de production des fiches (mig 620). */
   recipeCategoryIds: string[];
   memberRoles: string[];
+  /** Mig 637 : couleur d'écran et code court (suffixe des numéros) portés par l'atelier. */
+  color?: string | null;
+  shortCode?: string | null;
   memberUsers: string[];
 }
 

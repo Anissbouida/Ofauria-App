@@ -455,7 +455,7 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | 1 | Livré | voir § F.1 | 632 | Gardes de capacité branchées sur 6 familles de routes ; les autres capacités du socle restent déclaratives jusqu'à leur étape (8, 2 bis) |
 | 2 | Livré | voir § F.2 | 633 | Relecture métier des profils « À valider » ; liste des spécialisations à confirmer (décision n° 5) |
 | 2 bis | Livré en partie | voir § F.2 bis | 634, 635, 636 | 2b-1 (dette) en attente de la mesure en production et de la décision n° 7 ; saisie écran des lignes d'emballage, des pourcentages et de la nutrition des matières renvoyée au pas 10c (API prêtes) |
-| 3 | À faire | | | |
+| 3 | Livré | voir § F.3 | 637 | Retirer ROLE_CATEGORY_SLUGS et getCategoryRole (obsolètes, encore lus par 3 anciens tests) ; OuvertureTab et JourneeBoutiquePage gardent les groupes caisse et direction (non métier) |
 | 4 | À faire | | | |
 | 5 | À faire | | | |
 | 6 | À faire | | | |
@@ -536,3 +536,14 @@ Non fait, et pourquoi :
 - Saisie à l'écran des lignes d'emballage, des pourcentages et des valeurs nutritionnelles des matières : les API sont prêtes et testées ; l'éditeur de nomenclature (1 334 lignes) doit d'abord être découpé en panneaux (pas 10c).
 
 Tests : `fiche-generique.db.test.ts` (5) ; suite base 242 fichiers / 911 tests verts ; suite unitaire verte ; compilation serveur et client propre.
+
+### F.3 — Étape 3 (2026-11-23)
+
+Livré :
+- Mig 637 : CHECK figé de `roles.base_role` remplacé par « rôle système existant » ; archétypes neutres « Opérateur de production » et « Responsable de production » (rôles proposés, droits par module et par action recopiés de leurs bases) ; `production_workshops.short_code` et `.color` repris à l'identique.
+- Suffixe des numéros de demande boutique lu sur l'atelier (identique : BOUL, VIEN, PATI, BELD, SALE sur la base de dev) ; destinataire « fabrication » d'une notification = atelier actif ; trois constantes de groupes de rôles inutilisées retirées des routes.
+- Client : entrées de pilotage de la production ouvertes par le droit d'édition du module (plus par la liste des rôles boulangers) ; responsables de fabrication = membres d'un atelier actif ; couleur d'écran portée par l'atelier.
+
+Écart assumé : `ROLE_CATEGORY_SLUGS` et `getCategoryRole` restent dans `shared`, marqués obsolètes ; le code métier ne les lit plus (les ateliers portent la correspondance depuis la mig 511), mais trois anciens tests unitaires les vérifient encore.
+
+Tests : suite base 242 / 911 et suite unitaire vertes ; configuration effective de la base de dev identique hormis les deux champs ajoutés aux ateliers.

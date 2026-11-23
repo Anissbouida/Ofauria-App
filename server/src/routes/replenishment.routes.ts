@@ -3,7 +3,7 @@ import { replenishmentController } from '../controllers/replenishment.controller
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS, ROLES } from '@ofauria/shared';
+import { ROLES } from '@ofauria/shared';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { emptyBody } from '../validators/common.validator.js';
 import {
@@ -14,7 +14,6 @@ import {
 /** Store-facing staff */
 const STORE_STAFF = [ROLES.ADMIN, ROLES.MANAGER, ROLES.CASHIER, ROLES.SALESWOMAN];
 /** Responsable produit + admin/manager */
-const RESPONSABLE = [...ROLE_GROUPS.PRODUCTION, ...ROLE_GROUPS.ADMIN_MANAGER];
 
 const router = Router();
 

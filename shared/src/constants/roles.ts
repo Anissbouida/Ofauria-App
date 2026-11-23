@@ -55,6 +55,8 @@ export const ROLE_LABELS: Record<Role, string> = {
  * Maps production roles to the category slugs they are responsible for.
  * Roles not listed here (admin, manager, cashier, saleswoman) see ALL categories.
  */
+/** @deprecated Étape 3 multi-industries : la correspondance catégorie → atelier est portée par
+ *  production_workshop_categories (mig 511) ; plus lue par le code métier, gardée pour les anciens tests. */
 export const ROLE_CATEGORY_SLUGS: Partial<Record<Role, string[]>> = {
   baker: ['baguette', 'baguette-tradition', 'pain-rond', 'pain-sandwich'],
   viennoiserie: ['viennoiseries'],

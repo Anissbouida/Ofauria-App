@@ -3,7 +3,6 @@ import { purchaseRequestController } from '../controllers/purchase-request.contr
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import {
   createPurchaseRequestSchema, updateQuantitySchema, assignSupplierSchema,
@@ -12,7 +11,6 @@ import {
 import { emptyBody } from '../validators/common.validator.js';
 
 // Qui exprime un besoin : chefs, magasinier, gérant, admin (pas la caisse ni la vente).
-const REQUESTERS = Array.from(new Set([...ROLE_GROUPS.PRODUCTION, ...ROLE_GROUPS.WAREHOUSE]));
 
 const router = Router();
 

@@ -23,6 +23,9 @@ export type Workshop = {
   recipeCategoryIds: string[];
   memberRoles: string[];
   memberUsers: string[];
+  /** Mig 637 : couleur d'écran et code court (suffixe des numéros de demande). */
+  color: string | null;
+  shortCode: string | null;
 };
 
 export type WorkshopUser = { userId: string; role: string; baseRoles?: string[] };
@@ -34,7 +37,7 @@ let cache: { at: number; list: Workshop[] } | null = null;
 export async function listWorkshops(): Promise<Workshop[]> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.list;
   const [ws, cats, members, recipeCats] = await Promise.all([
-    db.query(`SELECT code, label, work_center_id, is_default, is_active, sort_order FROM production_workshops ORDER BY sort_order, label`),
+    db.query(`SELECT code, label, work_center_id, is_default, is_active, sort_order, color, short_code FROM production_workshops ORDER BY sort_order, label`),
     db.query(`SELECT wc.workshop_code, c.id, c.slug FROM production_workshop_categories wc JOIN categories c ON c.id = wc.category_id`),
     db.query(`SELECT workshop_code, role_code, user_id FROM production_workshop_members`),
     db.query(`SELECT workshop_code, recipe_category_id FROM production_workshop_recipe_categories`),
@@ -42,6 +45,7 @@ export async function listWorkshops(): Promise<Workshop[]> {
   const list: Workshop[] = ws.rows.map(r => ({
     code: r.code, label: r.label, workCenterId: r.work_center_id, isDefault: r.is_default, isActive: r.is_active,
     sortOrder: r.sort_order, categoryIds: [], categorySlugs: [], recipeCategoryIds: [], memberRoles: [], memberUsers: [],
+    color: r.color ?? null, shortCode: r.short_code ?? null,
   }));
   const byCode = new Map(list.map(w => [w.code, w]));
   for (const c of cats.rows) {
