@@ -462,9 +462,11 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | 7 | Livré | voir § F.7 | 641 | Écran de saisie de la règle CCP : dans Paramètres › Production (catalogue des politiques) ; écran des contrôles « avant livraison » : liste qualité existante |
 | 8 | Livré | voir § F.8 | 642, 643, 644 | Les ~140 lectures des zones (economat_quantity, pesage_quantity) restent un cycle : à basculer vers les emplacements puis retirer les colonnes ; écran de rangement d'un lot dans un emplacement quelconque (fonctions prêtes) |
 | 9 | Livré | voir § F.9 | 645 | Décision comptable n° (inventaire permanent) à prendre avec l'expert-comptable avant d'activer les écritures ; comptes CGNC figés (3151/7132, 6124/3121) tant qu'un écran de comptes de production n'est pas demandé |
-| 10 | À faire | | | |
-| 11 | À faire | | | |
-| 12 | À faire | | | |
+| 10 | Livré | voir § F.10 | 646, 647, 648 | Remplacement des ~370 « ingrédient » restants des écrans secondaires par le vocabulaire (les écrans d'ordre, de bon de sortie et les notifications sont faits) ; écran dédié de comparaison des versions (API prête) |
+| 11 | Livré | voir § F.11 | — | Scénario de simulation par profil = type d'ordre choisi dans l'assistant ; un scénario chiffré par métier reste à écrire avec chaque client |
+| 12 | Livré en partie | voir § F.12 | — | Relecture de chaque profil par une personne du métier avant de le proposer (hors de portée du code) ; scénario D textile après l'étape 13 ; jeux de démonstration = données de départ + simulation |
+| 13 | Sur demande | voir § F.13 | — | Démarre avec un client textile |
+| 14 | Sur décision | voir § F.14 | — | Décision : une base par client (recommandé) ou base partagée |
 
 ### F.0 — Étape 0 (2026-11-23)
 
@@ -626,3 +628,40 @@ Livré :
 - Écran : composantes et écritures dans Paramètres › Production › Coûts et prix ; « Machine » et son détail dans le panneau du coût de revient ; règle CCP dans l'onglet Parcours.
 
 Tests : `couts-etape9.db.test.ts` (4) ; `profile-coverage` vert.
+
+### F.10 — Étape 10 (2026-11-23)
+
+Livré :
+- 10a : `DataTable` du design system (colonnes déclarées une fois, ordre et visibilité par définition, en-têtes triables identiques) ; la liste des ordres l'utilise, rendu identique sans définition.
+- 10b (mig 646) : `screen_definitions` (profil → société → rôle, élément par élément ; brouillon, aperçu, publication versionnée) et catalogue fermé des écrans (`shared/screen-catalog.ts`, éléments verrouillés : numéro, statut, alertes de blocage). Appliquées à la fiche d'ordre (ordre et visibilité des sections), aux listes Ordres et Fiches. Acceptation « réordonner deux sections sans code » testée (serveur et client).
+- 10c : panneaux métier enregistrés par capacité et chargés à la demande (`capabilityPanels.ts`) : la température de base (pâte) n'est chargée qu'avec « saisie par fournée » ; les pâtons et libellés de pâte du rendement l'étaient déjà (M8-06). Écrans laissés au 10c par l'étape 2 bis : valeurs nutritionnelles d'une matière, lignes d'emballage et saisie en pourcentage dans l'éditeur de nomenclature.
+- 10d (mig 647) : termes « ingrédient(s) », zones, titres du bon de sortie et de la fiche, notification de fin de fabrication au vocabulaire du secteur ; valeurs hors alimentaire ; bilan de santé « termes de boulangerie » sur le vocabulaire résolu et les titres de documents (piloté par la capacité « saisie par fournée », jamais par le code du secteur).
+- 10e (mig 648) : tableau de bord de production par profil et par rôle (sections ordonnées et masquables, raccourcis vers les rapports du profil — report_keys) ; le responsable de production et le gérant n'ont pas le même tableau de bord.
+- 10f : poste opérateur tactile plein écran `/production/poste` piloté par l'étape du parcours : pesée au pavé numérique validée au doigt, démarrage.
+- 10g : configurateur (Paramètres › Production › Écrans) : ordre, visibilité, champs personnalisés placés dans une section, vue par rôle, aperçu du brouillon, publication, retour à l'écran par défaut.
+
+Défauts trouvés et corrigés : routes sans schéma de validation (garde G0-07) ; test du code de secteur dans le bilan de vocabulaire (garde C-07) ; paramètre SQL non typé.
+
+### F.11 — Étape 11 (2026-11-23)
+
+Livré : assistant en huit étapes (Paramètres › Production › Assistant) — secteur, spécialisations, modes de production, capacités, processus, écrans, simulation, publication — chacune avec son état et l'écran qui la règle. Simulation d'un ordre fictif dans une transaction annulée (données créées, confirmation, bon de sortie et pesée avec ouverture du contenant, démarrage, déclaration ; rapport avec le stock de la matière à chaque étape ; aucune trace). Publication (version de configuration) refusée tant qu'un point bloquant subsiste (contrôles bloquants du bilan, type d'ordre sans parcours publié, simulation échouée).
+
+Défaut trouvé en chemin : la simulation ne pesait pas une ligne « à ouvrir » (stock en réserve) ; elle suit désormais la pesée réelle.
+
+Tests : `production-setup.db.test.ts` (3).
+
+### F.12 — Étape 12 (2026-11-23)
+
+Livré : scénario B (agroalimentaire conditionné : DDM, contrôle final qui retient le lot, non-conformité numérotée, traçabilité amont/aval, rappel) et scénario C (mécanique : réservation, opération sur poste avec coût machine, séries) automatisés ; test de base de chaque profil de référence (résolution, couches valides, vocabulaire du métier : boulangerie, agroalimentaire conditionné, cosmétique/chimie, fabrication discrète, atelier). Jeu de démonstration de chaque profil : données de départ du profil et simulation de l'assistant.
+
+Non fait, et pourquoi : la relecture par une personne du métier (hors du code) ; le scénario D (textile) dépend des variantes d'article (étape 13).
+
+Tests : `scenarios-profils.db.test.ts` (3).
+
+### F.13 — Étape 13 (variantes d'article) : sur demande
+
+Non démarrée, conformément au plan : « ne démarre que pour un client textile ». Préalable connu : attributs (taille, couleur, modèle, collection) et matrice de saisie à la commande et à l'ordre ; le scénario D en dépend.
+
+### F.14 — Étape 14 (isolation entre entreprises) : sur décision
+
+Non démarrée, conformément au plan : décision attendue. Recommandation inchangée : une base par client au départ (isolation acquise, aucun travail) ; la base partagée (colonne d'entreprise et sécurité par ligne sur toutes les tables) reste un chantier de plusieurs mois, cadré dans le plan de 2026-09.
