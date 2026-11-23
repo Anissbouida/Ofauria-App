@@ -73,6 +73,7 @@ describe.skipIf(!hasTestDb)('Moteur analytique du coût de revient (mig 655)', (
   afterAll(async () => {
     if (prodCentre) await p().query(`UPDATE cost_centers SET normal_capacity = $2 WHERE id = $1`, [prodCentre.id, prodCentre.normal_capacity]).catch(() => undefined);
     if (previousMethod) await p().query(`UPDATE company_settings SET production_charges_method = $1 WHERE id = 1`, [previousMethod]).catch(() => undefined);
+    await p().query(`DELETE FROM analytic_periods WHERE store_id = $1`, [fx?.storeId]).catch(() => undefined);
     await p().query(`DELETE FROM analytic_charges WHERE id = ANY($1)`, [chargeIds]).catch(() => undefined);
     await p().query(`DELETE FROM production_cout_reel WHERE plan_id = ANY($1)`, [planIds]).catch(() => undefined);
     await p().query(`DELETE FROM production_plan_items WHERE plan_id = ANY($1)`, [planIds]).catch(() => undefined);
@@ -142,7 +143,7 @@ describe.skipIf(!hasTestDb)('Moteur analytique du coût de revient (mig 655)', (
       [beurre, id, fx.storeId]);
     engine.invalidateCostModel();
     const c = await cout.computePlanCost(id);
-    const items = (c.niveaux as { items: { product_name: string; matieres: number; cout_revient: number; cout_revient_u: number }[] }).items;
+    const items = (c.niveaux as unknown as { items: { product_name: string; matieres: number; cout_revient: number; cout_revient_u: number }[] }).items;
     const pain = items.find(i => i.product_name.startsWith('Pain ANA'))!;
     const bri = items.find(i => i.product_name.startsWith('Brioche ANA'))!;
     expect(pain.matieres).toBe(100);          // la farine, toute au pain
@@ -183,6 +184,29 @@ describe.skipIf(!hasTestDb)('Moteur analytique du coût de revient (mig 655)', (
       engine.invalidateCostModel();
     }
   });
+
+  it('lot C : un mois clôturé garde ses taux ; modifier une charge ne change plus le coût de ses plans', async () => {
+    const { analyticCostRepository: ana } = await import('../../repositories/analytic-cost.repository.js');
+    const closed = await ana.closeMonth(fx.storeId, MONTH, fx.userId);
+    expect(closed.control).toBe(0);
+    const before = await cout.computePlanCost(planIds[0]);
+    await p().query(`UPDATE analytic_charges SET monthly_amount = 50000 WHERE id = $1`, [chargeIds[0]]);
+    engine.invalidateCostModel();
+    const m = await engine.periodModel(fx.storeId, MONTH);
+    expect(m.closed).toBeTruthy();
+    const frozen = await cout.computePlanCost(planIds[0]);
+    expect(frozen.coutCharges).toBe(before.coutCharges);
+    await expect(ana.recalcMonth(fx.storeId, MONTH, fx.userId)).rejects.toThrow(/clôturé/);
+    await expect(ana.setActual(chargeIds[0], MONTH, 1, fx.userId, fx.storeId)).rejects.toThrow(/clôturé/);
+    await ana.reopenMonth(fx.storeId, MONTH, fx.userId, 'test de réouverture');
+    const live = await cout.computePlanCost(planIds[0]);
+    expect(live.coutCharges).toBeGreaterThan(before.coutCharges);
+    await p().query(`UPDATE analytic_charges SET monthly_amount = 10000 WHERE id = $1`, [chargeIds[0]]);
+    const audit = (await p().query(
+      `SELECT count(*)::int AS n FROM config_audit_log WHERE table_name = 'analytic_periods' AND changed_by = $1`, [fx.userId])).rows[0].n;
+    expect(audit).toBeGreaterThanOrEqual(2);
+    engine.invalidateCostModel();
+  }, 60_000);
 
   it('un montant réel saisi pour le mois crée un écart sur budget, le contrôle reste à 0', async () => {
     await p().query(`INSERT INTO analytic_charge_actuals (charge_id, period, amount) VALUES ($1, $2::date, 12000)`, [chargeIds[0], `${MONTH}-01`]);

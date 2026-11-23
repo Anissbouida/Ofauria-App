@@ -3811,7 +3811,15 @@
   "admin",
   "manager"
  ],
+ "POST /production-cout/analytique/cloturer": [
+  "admin",
+  "manager"
+ ],
  "POST /production-cout/analytique/recalculer": [
+  "admin",
+  "manager"
+ ],
+ "POST /production-cout/analytique/rouvrir": [
   "admin",
   "manager"
  ],

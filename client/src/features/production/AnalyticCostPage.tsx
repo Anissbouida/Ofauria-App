@@ -7,7 +7,7 @@
  */
 import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calculator, Plus, RefreshCw, Pencil, Power, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { Calculator, Plus, RefreshCw, Pencil, Power, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Trash2, Lock, Unlock, Printer } from 'lucide-react';
 import SalesPageShell from '../sales/SalesPageShell';
 import { Alert, DataPanel, EmptyState, ErrorState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, LoadingState, Modal, Tabs, Toolbar } from '../../components/ds';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -56,6 +56,20 @@ export default function AnalyticCostPage() {
     },
     onError: e => notify.error(apiErrorMessage(e)),
   });
+  const periodQ = useQuery({ queryKey: ['analytic', 'period', month], queryFn: () => analyticCostApi.period(month), enabled: allowed });
+  const isClosed = !!periodQ.data?.closed;
+  const [reopening, setReopening] = useState(false);
+  const [reason, setReason] = useState('');
+  const close = useMutation({
+    mutationFn: () => analyticCostApi.close(month),
+    onSuccess: r => { notify.success(`Mois ${r.month} clôturé : ${r.plans} plan(s) recalculé(s), taux figés`); qc.invalidateQueries({ queryKey: ['analytic'] }); qc.invalidateQueries({ queryKey: ['production-cout'] }); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  const reopen = useMutation({
+    mutationFn: () => analyticCostApi.reopen(month, reason.trim()),
+    onSuccess: () => { notify.success('Mois rouvert'); setReopening(false); setReason(''); qc.invalidateQueries({ queryKey: ['analytic'] }); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
   const setMethod = useMutation({
     mutationFn: (m: 'rate' | 'analytic') => analyticCostApi.setMethod(m),
     onSuccess: () => { notify.success('Mode de calcul enregistré'); qc.invalidateQueries({ queryKey: ['analytic'] }); },
@@ -80,11 +94,38 @@ export default function AnalyticCostPage() {
           <input type="month" className="ds-input sm" aria-label="Mois analysé" value={month}
             onChange={e => e.target.value && setMonth(e.target.value)} style={{ width: 150 }} />
         </label>
-        <button type="button" className="odoo-btn-primary" disabled={recalc.isPending || meta.data?.method !== 'analytic'} onClick={() => recalc.mutate()}
-          title="Recalcule le coût de revient de tous les plans en cours ou terminés du mois avec le paramétrage actuel.">
-          <RefreshCw size={14} className={recalc.isPending ? 'animate-spin' : ''} aria-hidden="true" /> Recalculer les plans du mois
-        </button>
+        {!isClosed && (
+          <button type="button" className="odoo-btn-secondary" disabled={recalc.isPending || close.isPending || meta.data?.method !== 'analytic'} onClick={() => recalc.mutate()}
+            title="Recalcule le coût de revient de tous les plans en cours ou terminés du mois avec le paramétrage actuel.">
+            <RefreshCw size={14} className={recalc.isPending ? 'animate-spin' : ''} aria-hidden="true" /> Recalculer les plans du mois
+          </button>
+        )}
+        {periodQ.data?.canClose && (
+          <button type="button" className="odoo-btn-primary" disabled={close.isPending || recalc.isPending || meta.data?.method !== 'analytic'}
+            onClick={() => close.mutate()} title="Recalcule tous les plans du mois puis fige les taux : le paramétrage n'aura plus d'effet sur ce mois.">
+            <Lock size={14} aria-hidden="true" /> {close.isPending ? 'Clôture en cours…' : 'Clôturer le mois'}
+          </button>
+        )}
+        {isClosed && (<>
+          <button type="button" className="odoo-btn-secondary" onClick={() => window.print()}><Printer size={14} aria-hidden="true" /> Imprimer le rapport</button>
+          <button type="button" className="odoo-btn-secondary" onClick={() => setReopening(true)}><Unlock size={14} aria-hidden="true" /> Rouvrir</button>
+        </>)}
       </>}>
+      {isClosed && periodQ.data?.closed && (
+        <Alert tone="success" icon={Lock}>
+          Mois clôturé le {new Date(periodQ.data.closed.at).toLocaleDateString('fr-FR')}{periodQ.data.closed.byName ? ` par ${periodQ.data.closed.byName}` : ''} :
+          les taux et les écarts ci-dessous sont figés ; le paramétrage actuel n'a plus d'effet sur ce mois.
+        </Alert>
+      )}
+      {reopening && (
+        <Modal title={`Rouvrir ${month}`} onClose={() => setReopening(false)} width={520} locked={reopen.isPending}
+          footer={<FormFooter onCancel={() => setReopening(false)} submitLabel="Rouvrir le mois" busy={reopen.isPending} disabled={reason.trim().length < 3} onSubmit={() => reopen.mutate()} />}>
+          <p style={{ marginTop: 0 }}>Les plans du mois seront recalculés avec le paramétrage courant au prochain calcul. La réouverture est tracée au journal.</p>
+          <FormField label="Motif" htmlFor="reopen-reason" required>
+            <textarea id="reopen-reason" className="ds-input" rows={3} value={reason} onChange={e => setReason(e.target.value)} placeholder="Ex. : facture d'électricité d'octobre reçue en retard" />
+          </FormField>
+        </Modal>
+      )}
       {meta.data && meta.data.method !== 'analytic' && (
         <Alert tone="warning" icon={AlertTriangle}
           action={<button type="button" className="odoo-btn-primary" disabled={setMethod.isPending} onClick={() => setMethod.mutate('analytic')}>Activer le moteur analytique</button>}>
@@ -102,7 +143,7 @@ export default function AnalyticCostPage() {
         <>
           {tab === 'periode' && <PeriodTab month={month} meta={meta.data} />}
           {tab === 'centres' && <CentresTab meta={meta.data} />}
-          {tab === 'charges' && <ChargesTab month={month} meta={meta.data} />}
+          {tab === 'charges' && <ChargesTab month={month} meta={meta.data} closed={isClosed} />}
           {tab === 'personnel' && <PersonnelTab month={month} />}
           {tab === 'cles' && <KeysTab />}
         </>
@@ -424,7 +465,7 @@ function CentreModal({ centre, centres, meta, onClose }: { centre: Centre | null
 }
 
 // ═══ Charges ═══════════════════════════════════════════════════════════════
-function ChargesTab({ month, meta }: { month: string; meta: AnalyticMeta }) {
+function ChargesTab({ month, meta, closed }: { month: string; meta: AnalyticMeta; closed: boolean }) {
   const q = useQuery({ queryKey: ['analytic', 'charges', month], queryFn: () => analyticCostApi.charges(month) });
   const centres = useQuery({ queryKey: ['analytic', 'centres'], queryFn: analyticCostApi.centres });
   const keys = useQuery({ queryKey: ['analytic', 'keys'], queryFn: analyticCostApi.keys });
@@ -470,7 +511,7 @@ function ChargesTab({ month, meta }: { month: string; meta: AnalyticMeta }) {
                 <td className="ds-num">
                   <input type="number" min="0" step="any" className="ds-input sm" style={{ width: 120, textAlign: 'right' }}
                     aria-label={`Montant réel de ${c.label} pour ${month}`} placeholder={String(c.monthly_amount)}
-                    defaultValue={c.actual_amount ?? ''} key={`${c.id}-${month}-${c.actual_amount}`} disabled={!c.is_active}
+                    defaultValue={c.actual_amount ?? ''} key={`${c.id}-${month}-${c.actual_amount}`} disabled={!c.is_active || closed}
                     onBlur={e => {
                       const v = e.target.value.trim();
                       const next = v === '' ? null : Number(v);

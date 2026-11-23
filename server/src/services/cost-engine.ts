@@ -115,6 +115,8 @@ export interface PeriodModel {
   totals: { charges: number; actual: number; budget: number; imputed: number; activityVariance: number; budgetVariance: number; control: number };
   warnings: string[];
   computedAt: string;
+  /** Lot C (mig 658) : mois clôturé — modèle figé à la clôture, relu tel quel. */
+  closed?: { at: string; by: string | null; byName: string | null } | null;
 }
 
 const cache = new Map<string, { at: number; model: PeriodModel }>();
@@ -178,10 +180,24 @@ async function productQuantities(storeId: string | null, from: string, to: strin
  * Modèle analytique d'un mois pour un établissement : centres, taux, activité, écarts.
  * Mis en cache 60 s (un calcul en série de 300 plans ne le refait pas à chaque plan).
  */
-export async function periodModel(storeId: string | null, month: string, opts: { fresh?: boolean } = {}): Promise<PeriodModel> {
-  const key = `${storeId ?? '-'}|${month}`;
+export async function periodModel(storeId: string | null, month: string, opts: { fresh?: boolean; live?: boolean } = {}): Promise<PeriodModel> {
+  const key = `${storeId ?? '-'}|${month}${opts.live ? '|live' : ''}`;
   const hit = cache.get(key);
   if (!opts.fresh && hit && Date.now() - hit.at < TTL_MS) return hit.model;
+
+  // Lot C (mig 658) : un mois clôturé garde les taux figés à sa clôture.
+  if (!opts.live) {
+    const closedRow = (await db.query(
+      `SELECT ap.snapshot, ap.closed_at, ap.closed_by, NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), '') AS by_name
+         FROM analytic_periods ap LEFT JOIN users u ON u.id = ap.closed_by
+        WHERE ap.store_id IS NOT DISTINCT FROM $1::uuid AND ap.period = $2::date AND ap.status = 'closed'`,
+      [storeId, `${month}-01`])).rows[0];
+    if (closedRow?.snapshot) {
+      const frozen: PeriodModel = { ...closedRow.snapshot, closed: { at: closedRow.closed_at, by: closedRow.closed_by, byName: closedRow.by_name } };
+      cache.set(key, { at: Date.now(), model: frozen });
+      return frozen;
+    }
+  }
 
   const { y, m, from, to, daysInMonth } = monthBounds(month);
   const today = new Date();
@@ -500,6 +516,7 @@ export async function periodModel(storeId: string | null, month: string, opts: {
     },
     warnings,
     computedAt: new Date().toISOString(),
+    closed: null,
   };
   cache.set(key, { at: Date.now(), model });
   return model;

@@ -55,6 +55,10 @@ export interface PeriodReport {
   warnings: string[];
   method: 'rate' | 'monthly' | 'analytic';
   plans: { total: number; costed: number; revient: number; charges: number };
+  /** Lot C : mois clôturé (modèle figé), clôture possible, historique des clôtures. */
+  closed: { at: string; by: string | null; byName: string | null } | null;
+  canClose: boolean;
+  history: { month: string; status: 'open' | 'closed'; closed_at: string | null; reopened_at: string | null; reopen_reason: string | null; closed_by_name: string | null }[];
 }
 
 export interface ChargeInput {
@@ -68,6 +72,8 @@ export const analyticCostApi = {
   meta: (): Promise<AnalyticMeta> => api.get(`${B}/meta`).then(r => r.data.data),
   setMethod: (method: 'rate' | 'analytic') => api.put(`${B}/methode`, { method }).then(r => r.data.data),
   period: (month: string): Promise<PeriodReport> => api.get(`${B}/periode`, { params: { month } }).then(r => r.data.data),
+  close: (month: string): Promise<{ month: string; plans: number; control: number }> => api.post(`${B}/cloturer`, { month }).then(r => r.data.data),
+  reopen: (month: string, reason: string) => api.post(`${B}/rouvrir`, { month, reason }).then(r => r.data.data),
   recalc: (month: string): Promise<{ total: number; calculated: number; failed: number }> => api.post(`${B}/recalculer`, { month }).then(r => r.data.data),
   centres: (): Promise<Centre[]> => api.get(`${B}/centres`).then(r => r.data.data),
   createCentre: (b: { code: string; name: string; kind: string; level: string; driver: string; parentId?: string | null }) =>

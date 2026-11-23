@@ -106,6 +106,11 @@ router.put('/analytique/methode', authenticate, can(A), validate(z.object({ meth
 router.get('/analytique/periode', authenticate, can(A), run(async (req) => analyticCostRepository.period(store(req), monthOf(req))));
 router.post('/analytique/recalculer', authenticate, can(A), validate(z.object({ month: z.string().regex(MONTH) })),
   run(async (req) => analyticCostRepository.recalcMonth(store(req), req.body.month, req.user!.userId)));
+router.post('/analytique/cloturer', authenticate, can(A), validate(z.object({ month: z.string().regex(MONTH) })),
+  run(async (req) => analyticCostRepository.closeMonth(store(req), req.body.month, req.user!.userId)));
+router.post('/analytique/rouvrir', authenticate, can(A),
+  validate(z.object({ month: z.string().regex(MONTH), reason: z.string().trim().min(3).max(500) })),
+  run(async (req) => analyticCostRepository.reopenMonth(store(req), req.body.month, req.user!.userId, req.body.reason)));
 router.get('/analytique/centres', authenticate, can(A), run(async (req) => analyticCostRepository.centres(store(req))));
 router.post('/analytique/centres', authenticate, can(A), validate(centreCreate),
   run(async (req) => analyticCostRepository.createCentre({ ...req.body, storeId: null, userId: req.user!.userId }), 201));
@@ -125,7 +130,7 @@ router.put('/analytique/charges/:id/actif', authenticate, validateUuidParams('id
   run(async (req) => analyticCostRepository.setChargeActive(req.params.id as string, req.body.active)));
 router.put('/analytique/charges/:id/reel', authenticate, validateUuidParams('id'), can(A),
   validate(z.object({ month: z.string().regex(MONTH), amount: z.number().min(0).max(1e11).nullable() })),
-  run(async (req) => analyticCostRepository.setActual(req.params.id as string, req.body.month, req.body.amount, req.user!.userId)));
+  run(async (req) => analyticCostRepository.setActual(req.params.id as string, req.body.month, req.body.amount, req.user!.userId, store(req))));
 router.get('/analytique/personnel', authenticate, can(A), run(async (req) => analyticCostRepository.personnel(store(req), monthOf(req))));
 router.put('/analytique/personnel/:id', authenticate, validateUuidParams('id'), can(A), validate(allocBody),
   run(async (req) => analyticCostRepository.setAllocations(req.params.id as string, req.body.allocations)));

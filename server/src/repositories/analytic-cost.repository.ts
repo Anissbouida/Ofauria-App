@@ -194,7 +194,8 @@ export const analyticCostRepository = {
     return { id, active };
   },
 
-  async setActual(id: string, month: string, amount: number | null, userId: string | null) {
+  async setActual(id: string, month: string, amount: number | null, userId: string | null, storeId: string | null = null) {
+    await this.assertOpen(storeId, month);
     if (amount == null) await db.query(`DELETE FROM analytic_charge_actuals WHERE charge_id = $1 AND period = $2::date`, [id, `${month}-01`]);
     else await db.query(
       `INSERT INTO analytic_charge_actuals (charge_id, period, amount, updated_by) VALUES ($1, $2::date, $3, $4)
@@ -234,11 +235,76 @@ export const analyticCostRepository = {
          FROM production_plans pp LEFT JOIN production_cout_reel pcr ON pcr.plan_id = pp.id
         WHERE pp.store_id IS NOT DISTINCT FROM $1::uuid AND pp.plan_date >= $2::date AND pp.plan_date < $3::date
           AND pp.status IN ('in_progress', 'completed')`, [storeId, model.from, model.to])).rows[0];
-    return { ...model, method: await this.method(), plans, driverKeys: DRIVER_KEYS };
+    const now = new Date();
+    const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return { ...model, method: await this.method(), plans, driverKeys: DRIVER_KEYS,
+             canClose: !model.closed && month < current, history: await this.periods(storeId) };
+  },
+
+  async periodStatus(storeId: string | null, month: string) {
+    const r = (await db.query(
+      `SELECT status FROM analytic_periods WHERE store_id IS NOT DISTINCT FROM $1::uuid AND period = $2::date`,
+      [storeId, `${month}-01`])).rows[0];
+    return (r?.status ?? 'open') as 'open' | 'closed';
+  },
+
+  async assertOpen(storeId: string | null, month: string) {
+    if (await this.periodStatus(storeId, month) === 'closed') {
+      throw new AnalyticError(`Le mois ${month} est clôturé : rouvrez-le d'abord (Analyse des coûts › Période).`);
+    }
+  },
+
+  /**
+   * Lot C (mig 658) : clôture d'un mois révolu. Tous ses plans sont recalculés avec le
+   * paramétrage courant, puis le modèle du mois (taux, activité, écarts) est figé.
+   */
+  async closeMonth(storeId: string | null, month: string, userId: string) {
+    const now = new Date();
+    const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (month >= current) throw new AnalyticError('Seul un mois terminé peut être clôturé.');
+    await this.assertOpen(storeId, month);
+    if (await this.method() !== 'analytic') throw new AnalyticError('Activez d\'abord le moteur analytique.');
+    const recalc = await this.recalcMonth(storeId, month, userId);
+    if (recalc.failed > 0) throw new AnalyticError(`${recalc.failed} plan(s) n'ont pas pu être recalculés : clôture refusée.`);
+    const model = await periodModel(storeId, month, { fresh: true, live: true });
+    if (Math.abs(model.totals.control) >= 0.05) throw new AnalyticError(`Contrôle déséquilibré (${model.totals.control}) : clôture refusée.`);
+    await withTransaction(async () => {
+      await db.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+      await db.query(
+        `INSERT INTO analytic_periods (store_id, period, status, snapshot, closed_at, closed_by)
+         VALUES ($1, $2::date, 'closed', $3, now(), $4)
+         ON CONFLICT (COALESCE(store_id, '00000000-0000-0000-0000-000000000000'::uuid), period)
+         DO UPDATE SET status = 'closed', snapshot = EXCLUDED.snapshot, closed_at = now(), closed_by = EXCLUDED.closed_by`,
+        [storeId, `${month}-01`, JSON.stringify(model), userId]);
+    });
+    invalidateCostModel();
+    return { month, plans: recalc.calculated, control: model.totals.control };
+  },
+
+  async reopenMonth(storeId: string | null, month: string, userId: string, reason: string) {
+    if (await this.periodStatus(storeId, month) !== 'closed') throw new AnalyticError('Ce mois n\'est pas clôturé.');
+    await withTransaction(async () => {
+      await db.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+      await db.query(
+        `UPDATE analytic_periods SET status = 'open', reopened_at = now(), reopened_by = $3, reopen_reason = $4
+          WHERE store_id IS NOT DISTINCT FROM $1::uuid AND period = $2::date`,
+        [storeId, `${month}-01`, userId, reason]);
+    });
+    invalidateCostModel();
+    return { month, status: 'open' };
+  },
+
+  async periods(storeId: string | null) {
+    return (await db.query(
+      `SELECT to_char(ap.period, 'YYYY-MM') AS month, ap.status, ap.closed_at, ap.reopened_at, ap.reopen_reason,
+              NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), '') AS closed_by_name
+         FROM analytic_periods ap LEFT JOIN users u ON u.id = ap.closed_by
+        WHERE ap.store_id IS NOT DISTINCT FROM $1::uuid ORDER BY ap.period DESC LIMIT 36`, [storeId])).rows;
   },
 
   /** Recalcule le coût de tous les plans (en cours, terminés) d'un mois. */
   async recalcMonth(storeId: string | null, month: string, userId: string) {
+    await this.assertOpen(storeId, month);
     invalidateCostModel();
     const [y, m] = month.split('-').map(Number);
     const from = `${month}-01`;
