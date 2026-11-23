@@ -133,14 +133,14 @@ async function moveEconomatToPesage(
     container_type_id: params.containerTypeId || null,
     bon_sortie_id: params.bonId || null,
   };
+  // Étape 8 : ouverture = mouvement réserve → en-cours ouvert sur les emplacements (source).
+  await client.query(`SELECT fn_lot_move_role($1::uuid, 'reserve', 'en_cours_ouvert', $2::numeric, 'transfert', $3::uuid)`, [lot.id, params.qty, params.userId]);
   await client.query(
     `UPDATE ingredient_lots
-        SET economat_quantity = economat_quantity - $1,
-            pesage_quantity = pesage_quantity + $1,
-            first_opened_at = COALESCE(first_opened_at, NOW()),
-            opening_history = opening_history || $2::jsonb
-      WHERE id = $3`,
-    [params.qty, JSON.stringify(openingEntry), lot.id]
+        SET first_opened_at = COALESCE(first_opened_at, NOW()),
+            opening_history = opening_history || $1::jsonb
+      WHERE id = $2`,
+    [JSON.stringify(openingEntry), lot.id]
   );
   return lot;
 }
@@ -210,19 +210,23 @@ async function consumeBonLines(client: PoolClient, bon: BonRow, userId: string) 
       // enregistrait la quantite complete, et l'inventaire derivait a chaque fois.
       // G0-18 : pesée supérieure à ce que le lot détient (réserve + pesage), refusée ou tracée.
       const lotBefore = await client.query(
-        `SELECT (COALESCE(economat_quantity, 0) + COALESCE(pesage_quantity, 0))::float8 AS available
+        `SELECT (COALESCE(economat_quantity, 0) + COALESCE(pesage_quantity, 0))::float8 AS available,
+                COALESCE(economat_quantity, 0)::float8 AS eco, COALESCE(pesage_quantity, 0)::float8 AS pes
            FROM ingredient_lots WHERE id = $1 FOR UPDATE`, [lotId]);
       await applyStockOut(client, { kind: 'ingredient', itemId: line.ingredient_id, lotId, storeId: bon.store_id,
         requested: qty, available: lotBefore.rows[0]?.available ?? 0, origin: { type: 'bon_sortie', id: bon.id }, userId,
         label: `${line.ingredient_name} — BSI ${bon.numero}` });
-      await client.query(
-        `UPDATE ingredient_lots
-            SET economat_quantity = GREATEST(economat_quantity - GREATEST($1 - pesage_quantity, 0), 0),
-                pesage_quantity   = GREATEST(pesage_quantity - $1, 0),
-                status = CASE WHEN economat_quantity + pesage_quantity - $1 <= 0.0005 THEN 'depleted' ELSE status END
-          WHERE id = $2`,
-        [qty, lotId]
-      );
+      // Étape 8 : sortie écrite sur les emplacements — l'en-cours ouvert d'abord, le complément
+      // sur la réserve du même lot (bornés à ce que le lot détient, comme avant).
+      {
+        const b = lotBefore.rows[0] ?? { eco: 0, pes: 0, available: 0 };
+        const fromPes = Math.min(Math.max(b.pes, 0), qty);
+        const fromEco = Math.min(Math.max(b.eco, 0), Math.max(qty - b.pes, 0));
+        await client.query(`SELECT fn_lot_take($1::uuid, $2::numeric, 'en_cours_ouvert', false)`, [lotId, fromPes]);
+        await client.query(`SELECT fn_lot_take($1::uuid, $2::numeric, 'reserve', false)`, [lotId, fromEco]);
+        await client.query(`SELECT fn_lot_recompute_zones($1::uuid)`, [lotId]);
+        if (b.available - qty <= 0.0005) await client.query(`UPDATE ingredient_lots SET status = 'depleted' WHERE id = $1`, [lotId]);
+      }
       await client.query(
         `INSERT INTO inventory_transactions
            (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id, production_plan_id)

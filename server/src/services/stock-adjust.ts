@@ -54,8 +54,10 @@ export async function adjustIngredientStock(client: Runner, p: {
       const takeEconomat = Math.min(parseFloat(lot.economat_quantity), remaining);
       remaining -= takeEconomat;
       if (takePesage > 0 || takeEconomat > 0) {
-        await client.query(`UPDATE ingredient_lots SET pesage_quantity = pesage_quantity - $1, economat_quantity = economat_quantity - $2 WHERE id = $3`,
-          [takePesage, takeEconomat, lot.id]);
+        // Étape 8 : sortie écrite sur les emplacements (en-cours ouvert puis réserve), zones recalculées.
+        await client.query(`SELECT fn_lot_take($1::uuid, $2::numeric, 'en_cours_ouvert', false)`, [lot.id, takePesage]);
+        await client.query(`SELECT fn_lot_take($1::uuid, $2::numeric, 'reserve', false)`, [lot.id, takeEconomat]);
+        await client.query(`SELECT fn_lot_recompute_zones($1::uuid)`, [lot.id]);
       }
     }
     if (remaining > 0.0001) throw new Error(`Decrement impossible : ${remaining.toFixed(4)} restant non couvert`);

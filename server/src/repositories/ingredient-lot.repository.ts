@@ -208,11 +208,8 @@ export const ingredientLotRepository = {
            (ingredient_lot_id, store_id, from_zone, to_zone, quantity, reason, transferred_by)
          VALUES ($1, $2, 'PESAGE', 'ECONOMAT', $3, $4, $5)`,
         [lot.id, lot.store_id, quantity, reason || 'Retour en reserve', userId]);
-      await client.query(
-        `UPDATE ingredient_lots
-            SET pesage_quantity = pesage_quantity - $1,
-                economat_quantity = economat_quantity + $1
-          WHERE id = $2`, [quantity, lot.id]);
+      // Étape 8 : mouvement écrit sur les emplacements (source), zones du lot recalculées.
+      await client.query(`SELECT fn_lot_move_role($1::uuid, 'en_cours_ouvert', 'reserve', $2::numeric, 'retour', $3::uuid)`, [lot.id, quantity, userId]);
       return { lot_id: lot.id, lot_number: lot.lot_number, returned_quantity: quantity, pesage_quantity: pesage - quantity };
     });
   },
@@ -256,14 +253,14 @@ export const ingredientLotRepository = {
          VALUES ($1, $2, 'ECONOMAT', 'PESAGE', $3, $4, $5, $6, $7)`,
         [lot.id, lot.store_id, quantity, containerCount, options.containerTypeId || lot.container_type_id || null,
          options.reason || 'Mise au pesage (preparation)', userId]);
+      // Étape 8 : ouverture = mouvement réserve → en-cours ouvert sur les emplacements.
+      await client.query(`SELECT fn_lot_move_role($1::uuid, 'reserve', 'en_cours_ouvert', $2::numeric, 'transfert', $3::uuid)`, [lot.id, quantity, userId]);
       await client.query(
         `UPDATE ingredient_lots
-            SET economat_quantity = economat_quantity - $1,
-                pesage_quantity = pesage_quantity + $1,
-                first_opened_at = COALESCE(first_opened_at, NOW()),
-                opening_history = opening_history || $2::jsonb
-          WHERE id = $3`,
-        [quantity, JSON.stringify({ qty: quantity, opened_at: new Date().toISOString(), opened_by: userId, container_count: containerCount, note: options.reason || null }), lot.id]);
+            SET first_opened_at = COALESCE(first_opened_at, NOW()),
+                opening_history = opening_history || $1::jsonb
+          WHERE id = $2`,
+        [JSON.stringify({ qty: quantity, opened_at: new Date().toISOString(), opened_by: userId, container_count: containerCount, note: options.reason || null }), lot.id]);
       return { lot_id: lot.id, lot_number: lot.lot_number, ingredient_name: lot.ingredient_name, opened_quantity: quantity, container_count: containerCount, economat_quantity: eco - quantity };
     });
   },
@@ -295,11 +292,10 @@ export const ingredientLotRepository = {
         [lot.ingredient_id, -quantity,
          `Perte au pesage (lot ${lot.lot_number}) : ${quantity.toFixed(3)} ${lot.ingredient_unit} ${lot.ingredient_name} — ${reason.trim()}`,
          userId, lot.store_id, lot.id, reasonCode || 'autre']);
+      // Étape 8 : sortie écrite sur l'emplacement en-cours ouvert, zones recalculées.
+      await client.query(`SELECT fn_lot_take($1::uuid, $2::numeric, 'en_cours_ouvert')`, [lot.id, quantity]);
       await client.query(
-        `UPDATE ingredient_lots
-            SET pesage_quantity = pesage_quantity - $1,
-                status = CASE WHEN economat_quantity + pesage_quantity - $1 <= 0.0005 THEN 'depleted' ELSE status END
-          WHERE id = $2`, [quantity, lot.id]);
+        `UPDATE ingredient_lots SET status = 'depleted' WHERE id = $1 AND economat_quantity + pesage_quantity <= 0.0005`, [lot.id]);
       await client.query('COMMIT');
       const unitCost = lot.unit_cost != null ? parseFloat(lot.unit_cost) : 0;
       return { lot_id: lot.id, lot_number: lot.lot_number, wasted_quantity: quantity, lost_value: quantity * unitCost };
@@ -419,14 +415,14 @@ export const ingredientLotRepository = {
       note: note ?? null,
     };
 
+    // Étape 8 : ouverture = mouvement réserve → en-cours ouvert sur les emplacements.
+    await client.query(`SELECT fn_lot_move_role($1::uuid, 'reserve', 'en_cours_ouvert', $2::numeric, 'transfert', $3::uuid)`, [lotId, actualToOpen, userId ?? null]);
     await client.query(
       `UPDATE ingredient_lots
-         SET economat_quantity = economat_quantity - $1,
-             pesage_quantity = pesage_quantity + $1,
-             first_opened_at = COALESCE(first_opened_at, $2::timestamptz),
-             opening_history = opening_history || $3::jsonb
-       WHERE id = $4`,
-      [actualToOpen, now.toISOString(), JSON.stringify(newHistoryEntry), lotId]
+         SET first_opened_at = COALESCE(first_opened_at, $1::timestamptz),
+             opening_history = opening_history || $2::jsonb
+       WHERE id = $3`,
+      [now.toISOString(), JSON.stringify(newHistoryEntry), lotId]
     );
 
     // Trace mouvement
@@ -539,16 +535,10 @@ export const ingredientLotRepository = {
       const available = parseFloat(lot.pesage_quantity);
       const take = Math.min(available, remaining);
 
+      // Étape 8 : consommation écrite sur l'emplacement en-cours ouvert, zones recalculées.
+      await client.query(`SELECT fn_lot_take($1::uuid, $2::numeric, 'en_cours_ouvert')`, [lot.id, take]);
       await client.query(
-        `UPDATE ingredient_lots
-            SET pesage_quantity = pesage_quantity - $1,
-                status = CASE
-                  WHEN economat_quantity = 0 AND pesage_quantity - $1 <= 0 THEN 'depleted'
-                  ELSE status
-                END
-          WHERE id = $2`,
-        [take, lot.id]
-      );
+        `UPDATE ingredient_lots SET status = 'depleted' WHERE id = $1 AND economat_quantity = 0 AND pesage_quantity <= 0`, [lot.id]);
 
       await client.query(
         `INSERT INTO production_lot_usage (production_plan_id, ingredient_lot_id, ingredient_id, quantity_used)

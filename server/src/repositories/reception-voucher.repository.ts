@@ -1006,9 +1006,12 @@ export const receptionVoucherRepository = {
             });
           } else if (l.ingredient_id) {
             // Le lot passe « reversed » à zéro : le trigger des lots recalcule le stock.
+            // Étape 8 : emplacements remis à zéro (source), zones recalculées, puis statut.
+            await client.query(
+              `SELECT fn_lot_clear(id) FROM ingredient_lots WHERE reception_voucher_item_id = $1 AND status <> 'reversed'`, [l.id]);
             const lot = await client.query(
               `UPDATE ingredient_lots
-                  SET economat_quantity = 0, pesage_quantity = 0, status = 'reversed',
+                  SET status = 'reversed',
                       status_reason_code_id = $2, status_changed_by = $3, status_changed_at = NOW()
                 WHERE reception_voucher_item_id = $1 AND status <> 'reversed'
                 RETURNING id`,
@@ -1117,11 +1120,9 @@ export const receptionVoucherRepository = {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [orig.reception_voucher_id, poLineId, orig.ingredient_id, qty, orig.unit_price, kind, orig.id, reason.reasonCodeId, userId, reason.note ?? null]
         );
-        await client.query(
-          `UPDATE ingredient_lots SET economat_quantity = economat_quantity + $2,
-                  quantity_received = quantity_received + $2 WHERE id = $1`,
-          [lot.id, delta]
-        );
+        // Étape 8 : correction écrite sur la réserve du lot (source), zones recalculées.
+        await client.query(delta >= 0 ? `SELECT fn_lot_put($1::uuid, $2::numeric, 'reserve')` : `SELECT fn_lot_take($1::uuid, -$2::numeric, 'reserve')`, [lot.id, delta]);
+        await client.query(`UPDATE ingredient_lots SET quantity_received = quantity_received + $2 WHERE id = $1`, [lot.id, delta]);
         await client.query(
           `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, purchase_order_item_id, reception_voucher_id, store_id, ingredient_lot_id)
            VALUES ($1, 'adjustment', $2, $3, $4, $5, $6, $7, $8)`,
