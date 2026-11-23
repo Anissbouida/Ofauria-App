@@ -28,6 +28,9 @@ import SalesPageShell from '../sales/SalesPageShell';
 import { FilterChips, type FilterChip } from '../sales/ListTemplate';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { DataPanel, TableFooter, Toolbar, SearchBar, LoadingState, EmptyState, NoResultState, ErrorState, FormField, FormFooter, FormSection, Modal, Alert } from '../../components/ds';
+import { DataTable, type DataColumn } from '../../components/ds/DataTable';
+import { applyScreenDefinition } from '@ofauria/shared';
+import { useScreenDefinition } from '../../hooks/useScreenDefinition';
 
 
 // Étape 3 multi-industries (mig 637) : la couleur est portée par l'atelier (production_workshops.color).
@@ -76,6 +79,7 @@ function ProductionPlansView() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const { sectorLabel } = usePermissions();
+  const screenDefinition = useScreenDefinition('production.plans');
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -198,6 +202,83 @@ function ProductionPlansView() {
   const hasFilters = !!(searchQuery.trim() || statusFilter || roleFilter);
   const resetFilters = () => { setSearchQuery(''); setStatusFilter(''); setRoleFilter(''); setPage(1); };
 
+  // Étape 10 multi-industries (10a-10b) : colonnes déclarées une fois, ordre et visibilité
+  // résolus par la définition d'écran « production.plans » (profil → société → rôle).
+  const planColumns: DataColumn<Record<string, any>>[] = [
+    { key: 'number', header: 'N° plan', cell: p => {
+      const planNumber = (p.of_number as string) || (p.id as string).slice(0, 8).toUpperCase();
+      const prio = Number(p.priority ?? 3);
+      return (<>
+        <span className="ds-ref">{planNumber}</span>
+        {p.is_semi_finished_plan && (<span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Semi-fini</span>)}
+        {prio < 3 && (<span style={{ marginLeft: 6 }}><StatusTag tone={prio === 1 ? 'blocked' : 'todo'} icon={Flag} label={PRIORITY_LABELS[prio]} /></span>)}
+      </>);
+    } },
+    { key: 'date', header: 'Date', sortKey: 'plan_date', tdClassName: 'ds-strong', tdStyle: { whiteSpace: 'nowrap' },
+      cell: p => format(new Date(p.plan_date as string), 'd MMM yyyy', { locale: fr }) },
+    { key: 'status', header: 'Statut', sortKey: 'status', cell: p => {
+      const status = p.status as string;
+      const depTotal = Number(p.dep_total);
+      const depFulfilled = Number(p.dep_fulfilled);
+      return (<>
+        <StatusTag tone={planStatusTag(status).tone} icon={planStatusTag(status).icon}
+          label={PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]} />
+        {depTotal > 0 && (<span style={{ marginLeft: 4 }}><StatusTag tone={depFulfilled === depTotal ? 'done' : 'progress'} icon={Layers} label={`SF ${depFulfilled}/${depTotal}`} /></span>)}
+      </>);
+    } },
+    { key: 'type', header: 'Type', sortKey: 'type', cell: p => (<>
+      <span className="odoo-tag odoo-tag-grey">{PRODUCTION_TYPE_LABELS[(p.type as string) as keyof typeof PRODUCTION_TYPE_LABELS]}</span>
+      {p.order_type_code && p.order_type_code !== 'PLAN_JOUR' && (<span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 4 }}>{p.order_type_label as string}</span>)}
+    </>) },
+    { key: 'workshop', header: 'Atelier', sortKey: 'target_role', hidden: !isAdmin,
+      cell: p => (p.target_role ? ((p.target_role_label as string) || ws.label(p.target_role as string)) : '—') },
+    { key: 'items', header: 'Produits', sortKey: 'item_count', align: 'right', tdClassName: 'ds-num', cell: p => p.item_count as number },
+    { key: 'created_by', header: 'Créé par', sortKey: 'created_by_name', cell: p => p.created_by_name as string },
+    { key: 'order', header: 'Commande liée', sortKey: 'order_number', cell: p => (p.order_number ? (
+      <span>
+        <span className="ds-ref">{p.order_number as string}</span>
+        {p.order_customer_name && <span style={{ color: 'var(--ds-muted)' }}> — {p.order_customer_name as string}</span>}
+      </span>) : '—') },
+  ];
+  const columnOrder = screenDefinition
+    ? applyScreenDefinition('production.plans', 'columns', planColumns.map(c => c.key), screenDefinition)
+    : undefined;
+  const planActions = (p: Record<string, any>) => {
+    const status = p.status as string;
+    const planNumber = (p.of_number as string) || (p.id as string).slice(0, 8).toUpperCase();
+    const nb = Number(p.relaunchable_count) || 0;
+    // Menu de ligne : la relance (tout plan non brouillon — débloque aussi un plan
+    // confirmé trop tôt en recalculant besoins et bon de sortie) et la suppression.
+    const menu: RowMenuItem[] = [];
+    if (status !== 'draft' && (isChef || isAdmin)) {
+      menu.push({
+        label: nb > 0 ? `Relancer (${nb} article${nb > 1 ? 's' : ''})` : 'Relancer',
+        icon: RotateCcw,
+        disabled: relaunchMutation.isPending,
+        onSelect: async () => {
+          const detail = nb > 0
+            ? `${nb} article(s) annulé(s) ou en attente repassent en production, et les besoins seront recalculés.`
+            : 'Les besoins en ingrédients et le bon de sortie seront recalculés depuis les recettes actuelles.';
+          if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
+            relaunchMutation.mutate(p.id as string);
+          }
+        },
+      });
+    }
+    if (status === 'draft') {
+      menu.push({
+        label: 'Supprimer', icon: Trash2, danger: true,
+        onSelect: async () => {
+          if (await confirmDialog('Ce brouillon sera supprimé définitivement.', { title: 'Supprimer ce plan ?', confirmLabel: 'Supprimer', danger: true })) deleteMutation.mutate(p.id as string);
+        },
+      });
+    }
+    return (<>
+      <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate(`/production/${p.id}`)}>Ouvrir</button>
+      <RowMenu items={menu} label={`Plus d'actions sur le plan ${planNumber}`} />
+    </>);
+  };
+
   return (
     <SalesPageShell icon={Factory} parent="Production › Opérations" title={sectorLabel('production_plans', 'Plans de production')} list
       summary="Ordres de fabrication par atelier, du brouillon jusqu'à la clôture."
@@ -240,110 +321,16 @@ function ProductionPlansView() {
         <DataPanel label="Plans de production"
           footer={<TableFooter page={currentPage} pageSize={PAGE_SIZE} total={sortedPlans.length} onPage={setPage}
             note={stats.in_progress > 0 ? `${stats.in_progress} en cours` : undefined} />}>
-          <table className="odoo-table">
-            <thead>
-              <tr>
-                <th>N° plan</th>
-                <SortHeader label="Date" sortKey="plan_date" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Statut" sortKey="status" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Type" sortKey="type" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                {isAdmin && <SortHeader label="Atelier" sortKey="target_role" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
-                <SortHeader label="Produits" sortKey="item_count" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
-                <SortHeader label="Créé par" sortKey="created_by_name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label="Commande liée" sortKey="order_number" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <th className="ds-actions"><span className="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-                {pagePlans.map((p: Record<string, any>) => {
-                  const status = p.status as string;
-                  const hasOrder = !!p.order_number;
-                  const planDate = new Date(p.plan_date as string);
-                  const planNumber = (p.of_number as string) || (p.id as string).slice(0, 8).toUpperCase();
-                  const prio = Number(p.priority ?? 3);
-                  const nb = Number(p.relaunchable_count) || 0;
-                  // Menu de ligne : la relance (tout plan non brouillon — débloque aussi un plan
-                  // confirmé trop tôt en recalculant besoins et bon de sortie) et la suppression.
-                  const menu: RowMenuItem[] = [];
-                  if (status !== 'draft' && (isChef || isAdmin)) {
-                    menu.push({
-                      label: nb > 0 ? `Relancer (${nb} article${nb > 1 ? 's' : ''})` : 'Relancer',
-                      icon: RotateCcw,
-                      disabled: relaunchMutation.isPending,
-                      onSelect: async () => {
-                        const detail = nb > 0
-                          ? `${nb} article(s) annulé(s) ou en attente repassent en production, et les besoins seront recalculés.`
-                          : 'Les besoins en ingrédients et le bon de sortie seront recalculés depuis les recettes actuelles.';
-                        if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
-                          relaunchMutation.mutate(p.id as string);
-                        }
-                      },
-                    });
-                  }
-                  if (status === 'draft') {
-                    menu.push({
-                      label: 'Supprimer', icon: Trash2, danger: true,
-                      onSelect: async () => {
-                        if (await confirmDialog('Ce brouillon sera supprimé définitivement.', { title: 'Supprimer ce plan ?', confirmLabel: 'Supprimer', danger: true })) deleteMutation.mutate(p.id as string);
-                      },
-                    });
-                  }
-                  return (
-                    <tr key={p.id as string} onClick={() => navigate(`/production/${p.id}`)}>
-                      <td>
-                        <span className="ds-ref">{planNumber}</span>
-                        {p.is_semi_finished_plan && (
-                          <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Semi-fini</span>
-                        )}
-                        {prio < 3 && (
-                          <span style={{ marginLeft: 6 }}><StatusTag tone={prio === 1 ? 'blocked' : 'todo'} icon={Flag} label={PRIORITY_LABELS[prio]} /></span>
-                        )}
-                      </td>
-                      <td className="ds-strong" style={{ whiteSpace: 'nowrap' }}>{format(planDate, 'd MMM yyyy', { locale: fr })}</td>
-                      <td>
-                        <StatusTag tone={planStatusTag(status).tone} icon={planStatusTag(status).icon}
-                          label={PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]} />
-                        {Number(p.dep_total) > 0 && (() => {
-                          const depTotal = Number(p.dep_total);
-                          const depFulfilled = Number(p.dep_fulfilled);
-                          const allDone = depFulfilled === depTotal;
-                          return (
-                            <span style={{ marginLeft: 4 }}>
-                              <StatusTag tone={allDone ? 'done' : 'progress'} icon={Layers} label={`SF ${depFulfilled}/${depTotal}`} />
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td>
-                        <span className="odoo-tag odoo-tag-grey">
-                          {PRODUCTION_TYPE_LABELS[(p.type as string) as keyof typeof PRODUCTION_TYPE_LABELS]}
-                        </span>
-                        {p.order_type_code && p.order_type_code !== 'PLAN_JOUR' && (
-                          <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 4 }}>{p.order_type_label as string}</span>
-                        )}
-                      </td>
-                      {isAdmin && (
-                        <td>{p.target_role ? ((p.target_role_label as string) || ws.label(p.target_role as string)) : '—'}</td>
-                      )}
-                      <td className="ds-num">{p.item_count as number}</td>
-                      <td>{p.created_by_name as string}</td>
-                      <td>
-                        {hasOrder ? (
-                          <span>
-                            <span className="ds-ref">{p.order_number as string}</span>
-                            {p.order_customer_name && <span style={{ color: 'var(--ds-muted)' }}> — {p.order_customer_name as string}</span>}
-                          </span>
-                        ) : '—'}
-                      </td>
-                      <td className="ds-actions" onClick={(e) => e.stopPropagation()}>
-                        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate(`/production/${p.id}`)}>Ouvrir</button>
-                        <RowMenu items={menu} label={`Plus d'actions sur le plan ${planNumber}`} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <DataTable<Record<string, any>>
+            columns={planColumns}
+            order={columnOrder}
+            rows={pagePlans as Record<string, any>[]}
+            rowKey={p => p.id as string}
+            onRowClick={p => navigate(`/production/${p.id}`)}
+            sort={{ key: sortKey, dir: sortDir }}
+            onSort={toggleSort}
+            actions={planActions}
+          />
         </DataPanel>
       )}
 

@@ -10,9 +10,14 @@ import { apiErrorMessage } from '../../api/errors';
  * les enregistre d'un clic. Rien n'est affiché tant qu'aucun champ n'est défini pour ce
  * type de fiche (Paramètres › Champs personnalisés).
  */
-export default function CustomFieldsCard({ entity, id, readOnly = false }: { entity: CfEntity; id: string; readOnly?: boolean }) {
+export default function CustomFieldsCard({ entity, id, readOnly = false, only, exclude, title = 'Champs personnalisés' }: {
+  entity: CfEntity; id: string; readOnly?: boolean;
+  /** Étape 10 (10g) : sous-ensemble de champs (placés dans une section) ou champs à écarter. */
+  only?: string[]; exclude?: string[]; title?: string;
+}) {
   const qc = useQueryClient();
-  const { defs } = useCustomFieldDefs(entity);
+  const { defs: allDefs } = useCustomFieldDefs(entity);
+  const defs = allDefs.filter(d => (!only || only.includes(d.code)) && !exclude?.includes(d.code));
   const key = ['custom-field-values', entity, id];
   const { data } = useQuery({ queryKey: key, queryFn: () => customFieldsApi.values(entity, id), enabled: defs.length > 0 });
   const [values, setValues] = useState<CfValues>({});
@@ -31,7 +36,7 @@ export default function CustomFieldsCard({ entity, id, readOnly = false }: { ent
   const dirty = JSON.stringify(values) !== JSON.stringify(data ?? {});
   return (
     <div className="odoo-section" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
-      <CustomFieldsEditor entity={entity} values={values} onChange={setValues} errors={errors} readOnly={readOnly} title="Champs personnalisés" />
+      <CustomFieldsEditor entity={entity} values={values} onChange={setValues} errors={errors} readOnly={readOnly} title={title} only={only} exclude={exclude} />
       {!readOnly && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
           <button type="button" className="odoo-btn-secondary" disabled={!dirty || save.isPending} aria-busy={save.isPending || undefined} onClick={() => save.mutate()}>Enregistrer les champs</button>

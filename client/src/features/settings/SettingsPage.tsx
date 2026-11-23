@@ -17,6 +17,7 @@ import SectorTab from './SectorTab';
 import WorkshopsCard from './WorkshopsCard';
 import ProcessModelsTab from './ProcessModelsTab';
 import ProductionDocumentsTab from './ProductionDocumentsTab';
+import ScreenConfiguratorTab from './ScreenConfiguratorTab';
 import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
@@ -218,6 +219,7 @@ function SettingsShell() {
         { key: 'markup', label: 'Majoration', content: <ProductionMarkupTab /> },
         { key: 'process', label: 'Parcours', content: <ProcessModelsTab /> },
         { key: 'documents', label: 'Documents', content: <ProductionDocumentsTab /> },
+        { key: 'screens', label: 'Écrans', content: <ScreenConfiguratorTab /> },
       ]} />
     ),
     purchasing: (

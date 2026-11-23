@@ -1,3 +1,4 @@
+import { applyScreenDefinition } from '@ofauria/shared';
 /**
  * Conditions d'affichage des panneaux de l'ordre de fabrication (M8-01), séparées du rendu
  * (planPanels.tsx) pour être testées sans navigateur. Ordre du tableau = ordre d'affichage.
@@ -12,6 +13,8 @@ export type PlanPanelCtx = {
   summary?: import('../../api/production.api').PlanSummary | null;
   /** Éléments masqués par Production › Paramétrage › Écrans (mig 591). */
   hidden?: Set<string>;
+  /** Étape 10 (10b) : définition d'écran « production.plan » (ordre et visibilité des sections). */
+  definition?: import('@ofauria/shared').ScreenDefinition | null;
 };
 export type PanelTab = 'preparation' | 'synthese' | 'production' | 'couts';
 
@@ -43,6 +46,10 @@ export const PLAN_PANEL_RULES: { id: string; tab: PanelTab; when: (c: PlanPanelC
   { id: 'cost', tab: 'couts', when: c => c.productionSettings?.production_cost_enabled !== false },
 ];
 
-/** Règle du registre, puis masquage éventuel (Écrans de fabrication). */
+/**
+ * Règle du registre, puis masquage éventuel (Écrans de fabrication), puis ordre et visibilité
+ * de la définition d'écran (étape 10 ; un panneau verrouillé ne se masque pas).
+ */
 export const visiblePanels = (tab: PanelTab, c: PlanPanelCtx) =>
-  PLAN_PANEL_RULES.filter(p => p.tab === tab && p.when(c) && !c.hidden?.has(p.id)).map(p => p.id);
+  applyScreenDefinition('production.plan', 'sections',
+    PLAN_PANEL_RULES.filter(p => p.tab === tab && p.when(c) && !c.hidden?.has(p.id)).map(p => p.id), c.definition);

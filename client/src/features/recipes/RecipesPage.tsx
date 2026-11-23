@@ -23,6 +23,8 @@ import type { RecipeCategory } from '../../api/recipes.api';
 import { useActionPermissions } from '../../hooks/useActionPermissions';
 import { textIncludes } from '../../utils/searchText';
 import { apiErrorMessage } from '../../api/errors';
+import { applyScreenDefinition } from '@ofauria/shared';
+import { useScreenDefinition } from '../../hooks/useScreenDefinition';
 
 type ActiveTab = 'product' | 'base' | 'contenants';
 type ViewMode = 'grid' | 'list';
@@ -55,6 +57,11 @@ export default function RecipesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { sectorLabel } = usePermissions();
+  // Étape 10 (10b) : colonnes de la liste des fiches masquées par la définition d'écran.
+  const recipesScreen = useScreenDefinition('recipes.list');
+  const shownCols = new Set(applyScreenDefinition('recipes.list', 'columns',
+    ['name', 'type', 'format', 'yield', 'loss', 'net', 'cost', 'unit_cost', 'used_by', 'margin'], recipesScreen));
+  const show = (key: string) => shownCols.has(key);
   // M8-03 : termes du secteur (défaut = boulangerie).
   const T = {
     finishedTab: sectorLabel('finished_products_tab', 'Recettes produits finis'),
@@ -557,28 +564,28 @@ export default function RecipesPage() {
                 {/* Onglet Bases : « Type » ne dit rien (tout est Base) et « Marge »
                     est vide (une préparation ne se vend pas). On rend ces deux
                     colonnes à ce qui manque vraiment — la perte et le net. */}
-                {!isBaseTab && <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
-                <SortHeader label="Format" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label={isBaseTab ? `${T.yield} brut` : T.yield} sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                {!isBaseTab && show('type') && <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
+                {show('format') && <SortHeader label="Format" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
+                {show('yield') && <SortHeader label={isBaseTab ? `${T.yield} brut` : T.yield} sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />}
                 {isBaseTab && (
                   <>
-                    <SortHeader label="Perte (%)" sortKey="perte" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
-                      title="Perte de transformation (cuisson, réduction). Elle sépare le poids engagé du poids réellement utilisable." />
-                    <SortHeader label={`${T.yield} net`} sortKey="net" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
-                      title="Poids brut moins la perte de transformation." />
+                    {show('loss') && <SortHeader label="Perte (%)" sortKey="perte" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                      title="Perte de transformation (cuisson, réduction). Elle sépare le poids engagé du poids réellement utilisable." />}
+                    {show('net') && <SortHeader label={`${T.yield} net`} sortKey="net" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                      title="Poids brut moins la perte de transformation." />}
                   </>
                 )}
                 {/* Ces colonnes viennent de v_recipe_total_cost = matière seule
                     (ingrédients + emballages + sous-recettes). Main d'œuvre, énergie et
                     frais de structure ne sont ajoutés que dans l'éditeur de composition.
                     Les libellés le disent, sinon la marge d'ici contredit celle de là-bas. */}
-                <SortHeader label={`${isBaseTab ? T.batchCost : 'Coût matière'} (${currencySymbol()})`} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
-                  title="Ingrédients, emballages et préparations de base. Hors main d'œuvre, énergie et frais de structure." />
-                <SortHeader label={isBaseTab ? `Coût par kg net (${currencySymbol()}/kg)` : `Coût matière par unité (${currencySymbol()})`} sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                {show('cost') && <SortHeader label={`${isBaseTab ? T.batchCost : 'Coût matière'} (${currencySymbol()})`} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                  title="Ingrédients, emballages et préparations de base. Hors main d'œuvre, énergie et frais de structure." />}
+                {show('unit_cost') && <SortHeader label={isBaseTab ? `Coût par kg net (${currencySymbol()}/kg)` : `Coût matière par unité (${currencySymbol()})`} sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                   title={isBaseTab
                     ? "Coût de la fournée rapporté au kilo réellement utilisable. Normalisé au kg pour que deux préparations soient comparables, quelle que soit l'unité de leur rendement."
-                    : 'Coût matière rapporté à une unité produite.'} />
-                {isBaseTab ? (
+                    : 'Coût matière rapporté à une unité produite.'} />}
+                {!show(isBaseTab ? 'used_by' : 'margin') ? null : isBaseTab ? (
                   <SortHeader label="Utilisée par" sortKey="utilisee_par" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                     title="Nombre de recettes qui consomment cette préparation. À zéro, la fiche n'est utilisée nulle part." />
                 ) : (
@@ -649,33 +656,33 @@ export default function RecipesPage() {
                         {!r.is_base && !r.compo_vide && r.rendement_a_definir && <StatusTag tone="todo" label="Rendement à définir" title={dotTitle} />}
                       </span>
                     </td>
-                    {!isBaseTab && (
+                    {!isBaseTab && show('type') && (
                       <td>
                         <span className={`odoo-tag ${r.is_base ? 'odoo-tag-purple' : 'odoo-tag-green'}`}>
                           {r.is_base ? 'Base' : 'Produit'}
                         </span>
                       </td>
                     )}
-                    <td>{formatNom || '—'}</td>
-                    <td className="ds-num">
+                    {show('format') && <td>{formatNom || '—'}</td>}
+                    {show('yield') && <td className="ds-num">
                       {isComposeRow ? rendement : yieldQty}
                       <span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 3 }}>{isComposeRow ? 'p.' : (r.yield_unit as string || 'u.')}</span>
-                    </td>
+                    </td>}
                     {isBaseTab && (
                       <>
-                        <td className="ds-num" style={{ color: perteBase > 0 ? 'var(--ds-warning)' : undefined }}>
+                        {show('loss') && <td className="ds-num" style={{ color: perteBase > 0 ? 'var(--ds-warning)' : undefined }}>
                           {perteBase > 0 ? perteBase.toFixed(1) : '—'}
-                        </td>
-                        <td className="ds-num">
+                        </td>}
+                        {show('net') && <td className="ds-num">
                           {poidsNetKg > 0
                             ? <>{poidsNetKg >= 1 ? poidsNetKg.toFixed(2) : Math.round(poidsNetKg * 1000)}<span style={{ color: 'var(--ds-muted)', fontSize: 12, marginLeft: 3 }}>{poidsNetKg >= 1 ? 'kg' : 'g'}</span></>
                             : '—'}
-                        </td>
+                        </td>}
                       </>
                     )}
-                    <td className="ds-num ds-strong">{totalCost.toFixed(2)}</td>
-                    <td className="ds-num">{costPerUnit.toFixed(2)}</td>
-                    <td className="ds-num">
+                    {show('cost') && <td className="ds-num ds-strong">{totalCost.toFixed(2)}</td>}
+                    {show('unit_cost') && <td className="ds-num">{costPerUnit.toFixed(2)}</td>}
+                    {show(isBaseTab ? 'used_by' : 'margin') && <td className="ds-num">
                       {isBaseTab ? (
                         utiliseePar > 0
                           ? <span title={`${utiliseePar} recette(s) consomment cette préparation`}>{utiliseePar}</span>
@@ -683,7 +690,7 @@ export default function RecipesPage() {
                       ) : (!r.is_base && price > 0 ? (
                         <StatusTag tone={margin >= 50 ? 'done' : margin >= 30 ? 'todo' : 'blocked'} label={`${margin.toFixed(0)} %`} />
                       ) : '—')}
-                    </td>
+                    </td>}
                     {/* Une seule entrée vers la fiche, des deux côtés : « Voir » et
                         « Modifier » menaient au même écran depuis que la préparation
                         s'ouvre en page pleine comme un produit fini. */}

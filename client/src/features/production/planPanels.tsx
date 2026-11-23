@@ -45,7 +45,8 @@ const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
   subcontract: c => <SubcontractPanel planId={c.id} planStatus={c.plan.status as string} canEdit={c.isChef} />,
   'linked-order': c => <PlanLinkedOrder plan={c.plan} />,
   consumption: c => <ConsumptionPanel planId={c.id} mode={(c.plan.order_type_consumption_mode as string) ?? null} canEdit={c.isChef} />,
-  'custom-fields': c => <div><CustomFieldsCard entity="production_order" id={c.id} /></div>,
+  // Étape 10 (10g) : les champs placés dans une autre section y sont affichés, pas ici.
+  'custom-fields': c => <div><CustomFieldsCard entity="production_order" id={c.id} exclude={(c.definition?.custom_fields ?? []).map(f => f.key)} /></div>,
   history: c => <HistoryPanel table="production_plans" id={c.id} />,
   quality: c => <QualityPanel filter={{ planId: c.id }} links={{ planId: c.id }} title={`Contrôle ${(c.plan.of_number as string) || 'ordre'}`} />,
   'retro-planning': c => <RetroPlanningPanel planId={c.id} planStatus={c.plan.status} isChef={c.isChef} workshop={c.plan.target_role as string | null} storeId={c.plan.store_id as string | null} />,
@@ -58,5 +59,13 @@ const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
 /** `only` : sous-ensemble des panneaux de l'onglet, quand la page intercale d'autres blocs. */
 export function PlanPanels({ tab, ctx, only }: { tab: PanelTab; ctx: PlanPanelCtx; only?: string[] }) {
   const ids = visiblePanels(tab, ctx).filter(id => !only || only.includes(id));
-  return <>{ids.map(id => <div key={id} data-panel={id}>{RENDER[id]?.(ctx)}</div>)}</>;
+  const placed = (id: string) => (ctx.definition?.custom_fields ?? []).filter(f => f.section === id).map(f => f.key);
+  return <>{ids.map(id => (
+    <div key={id} data-panel={id}>
+      {RENDER[id]?.(ctx)}
+      {id !== 'custom-fields' && placed(id).length > 0 && (
+        <CustomFieldsCard entity="production_order" id={ctx.id} only={placed(id)} title="Informations complémentaires" />
+      )}
+    </div>
+  ))}</>;
 }

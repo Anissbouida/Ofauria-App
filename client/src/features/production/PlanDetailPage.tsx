@@ -44,6 +44,7 @@ import LossDeclarationModal from '../pos/LossDeclarationModal';
 import PrintOverlay from '../../components/PrintOverlay';
 import PrintModeSelectorModal from './PrintModeSelectorModal';
 import type { LotLabelData } from '../../lib/niimbot';
+import { useScreenDefinition } from '../../hooks/useScreenDefinition';
 
 type PlanTab = 'synthese' | 'ingredients' | 'production' | 'couts';
 
@@ -113,6 +114,8 @@ export default function PlanDetailPage() {
     queryFn: () => productionApi.printTemplates((plan?.order_type_id as string) ?? null),
     enabled: !!plan, staleTime: 5 * 60_000,
   });
+  // Étape 10 (10b) : ordre et visibilité des sections de la fiche, par profil, société et rôle.
+  const planScreenDefinition = useScreenDefinition('production.plan');
   // Étape 6 : un document désactivé dans le registre n'est plus proposé (l'enregistrement reste).
   const { data: docRegistry = [] } = useQuery({ queryKey: ['production-documents'], queryFn: productionApi.documents, staleTime: 5 * 60_000 });
   const docOn = (key: string) => docRegistry.find(d => d.docKey === key)?.enabled !== false;
@@ -601,7 +604,7 @@ export default function PlanDetailPage() {
   // a repondu "rien a prelever". Ne debloque PAS la production : la preparation reste
   // bloquee tant que les besoins ne sont pas recalcules (recette + relance du plan).
   const bonNotNeeded = !isSemiFini && plan.status !== 'draft' && !activeBon && (noIngredientNeeds || !!bonNotNeededReason);
-  const panelCtx = { summary, hidden: screenHidden, warnings: (plan.warnings as string[] | undefined) ?? [], needsCount: needs.length, bonNotNeeded, hasTabs, recipeLc: T.recipeLc, plan, id: id!, isChef, items, productionSettings, hasFeature, isMagasinier, isSemiFini: !!isSemiFini, activeBon: !!activeBon, lotUsage: productionLotUsage as Record<string, any>[] };
+  const panelCtx = { summary, hidden: screenHidden, definition: planScreenDefinition, warnings: (plan.warnings as string[] | undefined) ?? [], needsCount: needs.length, bonNotNeeded, hasTabs, recipeLc: T.recipeLc, plan, id: id!, isChef, items, productionSettings, hasFeature, isMagasinier, isSemiFini: !!isSemiFini, activeBon: !!activeBon, lotUsage: productionLotUsage as Record<string, any>[] };
 
   // Bloc Besoins en ingredients extrait en JSX pour pouvoir le placer au-dessus de
   // l'apercu FEFO (demande UX : besoins en haut, FEFO en bas dans le sous-onglet "Besoins").

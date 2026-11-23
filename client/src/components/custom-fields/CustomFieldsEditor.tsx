@@ -7,11 +7,14 @@ import { useCustomFieldDefs, formatCfValue, type CfEntity, type CfValues, type C
  * actif (mig 369). Rien n'est affiché tant qu'aucun champ n'est défini pour ce type de fiche.
  * Les valeurs s'enregistrent après la fiche (customFieldsApi.save) ; le serveur les contrôle.
  */
-export default function CustomFieldsEditor({ entity, values, onChange, errors, readOnly, columns = 2, title = 'Informations complémentaires' }: {
+export default function CustomFieldsEditor({ entity, values, onChange, errors, readOnly, columns = 2, title = 'Informations complémentaires', only, exclude }: {
   entity: CfEntity; values: CfValues; onChange: (next: CfValues) => void; errors?: Record<string, string>;
   readOnly?: boolean; columns?: number; title?: string;
+  /** Étape 10 (10g) : champs placés dans une autre section de la fiche (codes). */
+  only?: string[]; exclude?: string[];
 }) {
-  const { defs } = useCustomFieldDefs(entity);
+  const { defs: allDefs } = useCustomFieldDefs(entity);
+  const defs = allDefs.filter(d => (!only || only.includes(d.code)) && !exclude?.includes(d.code));
   if (!defs.length) return null;
   const set = (code: string, v: CfValues[string]) => onChange({ ...values, [code]: v });
   return (
