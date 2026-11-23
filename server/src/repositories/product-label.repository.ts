@@ -32,10 +32,23 @@ export type LabelIngredient = {
   contains: AllergenCode[]; traces: AllergenCode[]; reviewed: boolean;
 };
 
+/** Valeurs nutritionnelles pour 100 g (mig 634). */
+export const NUTRIENTS = ['energy_kj', 'energy_kcal', 'fat', 'saturated_fat', 'carbohydrates', 'sugars', 'fibre', 'protein', 'salt'] as const;
+export type Nutrient = typeof NUTRIENTS[number];
+export const NUTRIENT_LABELS: Record<Nutrient, string> = {
+  energy_kj: 'Énergie (kJ)', energy_kcal: 'Énergie (kcal)', fat: 'Matières grasses (g)', saturated_fat: 'dont acides gras saturés (g)',
+  carbohydrates: 'Glucides (g)', sugars: 'dont sucres (g)', fibre: 'Fibres (g)', protein: 'Protéines (g)', salt: 'Sel (g)',
+};
+/** Valeurs obligatoires d'une déclaration (les fibres sont facultatives). */
+const REQUIRED_NUTRIENTS: Nutrient[] = ['energy_kj', 'energy_kcal', 'fat', 'saturated_fat', 'carbohydrates', 'sugars', 'protein', 'salt'];
+
+export type LabelNutrition = { per100g: Partial<Record<Nutrient, number>>; complete: boolean; missingFor: string[]; basis: 'cru' | 'cuit' };
+
 export type LabelData = {
   product: {
     id: string; name: string; legalName: string; storageConditions: string | null; mentions: string | null;
     shelfLifeDays: number | null; netWeightG: number | null;
+    dateKind?: string; prepackaged?: boolean;
   };
   ingredients: LabelIngredient[];
   allergens: { contains: AllergenCode[]; traces: AllergenCode[] };
@@ -43,6 +56,8 @@ export type LabelData = {
   ingredientsText: string;
   /** « Peut contenir des traces de : soja, lait. » ou chaîne vide. */
   tracesText: string;
+  /** 2b-6 : déclaration nutritionnelle (null sans fiche). */
+  nutrition: LabelNutrition | null;
   blockers: string[];
   warnings: string[];
   printable: boolean;
@@ -54,7 +69,7 @@ const list = (names: string[]) => (names.length > 3 ? `${names.slice(0, 3).join(
 export const productLabelRepository = {
   async labelData(productId: string): Promise<LabelData | null> {
     const product = (await db.query(
-      `SELECT id, name, legal_name, storage_conditions, label_mentions, shelf_life_days FROM products WHERE id = $1`, [productId])).rows[0];
+      `SELECT id, name, legal_name, storage_conditions, label_mentions, shelf_life_days, date_kind, prepackaged FROM products WHERE id = $1`, [productId])).rows[0];
     if (!product) return null;
 
     const blockers: string[] = [];
@@ -64,6 +79,7 @@ export const productLabelRepository = {
 
     let ingredients: LabelIngredient[] = [];
     let netWeightG: number | null = null;
+    let nutrition: LabelNutrition | null = null;
     if (!recipe) {
       blockers.push('Ce produit n\'a pas de fiche technique : la liste des ingrédients ne peut pas être établie');
     } else {
@@ -91,6 +107,43 @@ export const productLabelRepository = {
       const unweighed = ingredients.filter(i => i.weightKg === null).map(i => i.name);
       if (unweighed.length) warnings.push(`Poids non calculable (densité ou poids par pièce manquant) : ${list(unweighed)} — placé${unweighed.length > 1 ? 's' : ''} en fin de liste`);
 
+      // 2b-6 : déclaration nutritionnelle, moyenne des matières pondérée par leur poids.
+      const nut = (await db.query(
+        `SELECT id, nutrition FROM ingredients WHERE id = ANY($1::uuid[])`, [rows.map(r => r.ingredient_id)])).rows;
+      const nutOf = new Map(nut.map(r => [r.id as string, (r.nutrition ?? null) as Record<string, unknown> | null]));
+      const missingFor: string[] = [];
+      const sums: Partial<Record<Nutrient, number>> = {};
+      let weighed = 0;
+      for (const r of rows) {
+        if (r.weight_kg == null || !(r.weight_kg > 0)) continue;
+        const n = nutOf.get(r.ingredient_id);
+        const known = n && REQUIRED_NUTRIENTS.every(k => Number.isFinite(Number(n[k])));
+        if (!known) { missingFor.push(r.name); continue; }
+        weighed += r.weight_kg;
+        for (const k of NUTRIENTS) {
+          const v = Number(n![k]);
+          if (Number.isFinite(v)) sums[k] = (sums[k] ?? 0) + v * r.weight_kg;
+        }
+      }
+      // Perte à la cuisson connue (poids cru / cuit du format) : les nutriments se concentrent.
+      const fmt = (await db.query(
+        `SELECT rf.poids_cru_g::float8 AS cru, rf.poids_cuit_g::float8 AS cuit FROM recipe_formats rf
+          WHERE rf.is_active AND rf.poids_cru_g > 0 AND rf.poids_cuit_g > 0 AND (rf.product_id = $1 OR rf.recipe_id = $2)
+          ORDER BY (rf.product_id = $1) DESC NULLS LAST, rf.is_default DESC, rf.ordre LIMIT 1`, [productId, recipe.id])).rows[0];
+      const concentration = fmt ? fmt.cru / fmt.cuit : 1;
+      const per100g: Partial<Record<Nutrient, number>> = {};
+      if (weighed > 0) {
+        for (const k of NUTRIENTS) {
+          if (sums[k] !== undefined) per100g[k] = Math.round((sums[k]! / weighed) * concentration * 10) / 10;
+        }
+      }
+      nutrition = { per100g, complete: missingFor.length === 0 && weighed > 0, missingFor, basis: fmt ? 'cuit' : 'cru' };
+      // La déclaration nutritionnelle n'est exigée (et donc signalée) que pour un article préemballé.
+      if (product.prepackaged && !nutrition.complete) {
+        blockers.push(`Article préemballé : valeurs nutritionnelles manquantes pour ${missingFor.length ? list(missingFor) : 'la fiche'}`);
+      }
+      if (product.prepackaged && nutrition.complete && !fmt) warnings.push('Valeurs nutritionnelles calculées sur la composition crue (poids cru et cuit du format non renseignés)');
+
       netWeightG = (await db.query(
         `SELECT rf.poids_cuit_g::float8 AS g FROM recipe_formats rf
           WHERE rf.is_active AND rf.poids_cuit_g IS NOT NULL AND (rf.product_id = $1 OR rf.recipe_id = $2)
@@ -113,8 +166,9 @@ export const productLabelRepository = {
         id: product.id, name: product.name, legalName: product.legal_name || product.name,
         storageConditions: product.storage_conditions, mentions: product.label_mentions,
         shelfLifeDays: product.shelf_life_days, netWeightG,
+        dateKind: product.date_kind ?? 'dlc', prepackaged: product.prepackaged === true,
       },
-      ingredients, allergens: { contains, traces }, ingredientsText, tracesText,
+      ingredients, allergens: { contains, traces }, ingredientsText, tracesText, nutrition,
       blockers, warnings, printable: blockers.length === 0,
     };
   },

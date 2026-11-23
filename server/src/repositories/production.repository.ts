@@ -1765,6 +1765,40 @@ export const productionRepository = {
 
         }
 
+        // Étape 2 bis (mig 634) : lignes d'EMBALLAGE de la nomenclature du format, en quantité
+        // par unité produite. Absentes du bon de sortie : elles sortent toujours ici, une fois.
+        if (storeId && !isSemiFinishedPlan && item.product_id && recipeResult.rows[0]) {
+          const fmt = (await client.query(
+            `SELECT COALESCE($1::uuid,
+                    (SELECT rf.id FROM recipe_formats rf WHERE rf.recipe_id = $2 AND rf.is_active
+                      ORDER BY (rf.product_id = $3) DESC NULLS LAST, rf.is_default DESC, rf.ordre LIMIT 1)) AS id`,
+            [item.format_id ?? null, recipeResult.rows[0].id, item.product_id])).rows[0]?.id;
+          if (fmt) {
+            const lines = await client.query(
+              `SELECT c.source_packaging_id, c.quantite::float8 AS qty, pi.name, pi.unit_cost
+                 FROM recipe_format_components c JOIN packaging_items pi ON pi.id = c.source_packaging_id
+                WHERE c.format_id = $1 AND c.source_packaging_id IS NOT NULL`, [fmt]);
+            for (const pk of lines.rows) {
+              const need = Number(pk.qty) * Number(item.actual_quantity);
+              if (!(need > 0)) continue;
+              await client.query('SAVEPOINT fmt_pk_consume');
+              try {
+                await packagingItemRepository.adjustStock(client, {
+                  packagingId: pk.source_packaging_id, storeId, change: -need, type: 'consumption',
+                  referenceId: planId, referenceType: 'production_plan',
+                  unitCost: pk.unit_cost != null ? parseFloat(pk.unit_cost) : null,
+                  note: `Emballage du format : ${item.product_name} x${item.actual_quantity}`, performedBy: userId,
+                });
+                await client.query('RELEASE SAVEPOINT fmt_pk_consume');
+              } catch (pkErr) {
+                await client.query('ROLLBACK TO SAVEPOINT fmt_pk_consume');
+                logger.error({ err: pkErr }, `[emballage du format] erreur pour ${pk.name}:`);
+                warnings.push(`Stock emballage : ${pk.name} non consomme (besoin ${need.toFixed(2)})`);
+              }
+            }
+          }
+        }
+
         // For semi-finished plans: feed semi_finished_stock instead of product stock
         if (isSemiFinishedPlan && item.base_recipe_id) {
           const effectiveStoreId = storeId || planInfo.rows[0]?.store_id || '00000000-0000-0000-0000-000000000000';

@@ -7,6 +7,10 @@ const componentSchema = z
     role: z.string().max(60).nullable().optional(),
     sourceRecipeId: z.string().guid().nullable().optional(),
     sourceIngredientId: z.string().guid().nullable().optional(),
+    // Mig 634 : ligne d'emballage (quantité par unité produite).
+    sourcePackagingId: z.string().guid().nullable().optional(),
+    // Mig 634/635 : part en % de la formule (fiche en mode « pourcentage »).
+    pct: z.number().positive().max(100).nullable().optional(),
     quantite: z.number().positive('La quantité doit être > 0'),
     // Code du référentiel `units` (mig 515), vérifié par la route (requireUnits).
     unite: z.string().trim().min(1).max(20).default('g'),
@@ -16,8 +20,8 @@ const componentSchema = z
     pertePct: z.number().min(0).max(99.99).nullable().optional(),
   })
   .refine(
-    (c) => Boolean(c.sourceRecipeId) !== Boolean(c.sourceIngredientId),
-    { message: 'Un composant référence soit une recette de base, soit un ingrédient (exclusif).' }
+    (c) => [c.sourceRecipeId, c.sourceIngredientId, c.sourcePackagingId].filter(Boolean).length === 1,
+    { message: 'Un composant référence une recette de base, un ingrédient ou un emballage (un seul).' }
   );
 
 // PUT remplace l'intégralité de la nomenclature d'un format + champs format optionnels.

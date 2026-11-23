@@ -63,3 +63,12 @@ export const reorderUpdateSchema = z.object({
   maxStock: z.number().finite().min(0).nullable().optional(),
   mode: z.enum(['manuel', 'calcule']).optional(),
 });
+
+/** Mig 634 : valeurs nutritionnelles pour 100 g (null = effacer). */
+const nutrientValue = z.number().min(0).max(4000).nullable().optional();
+export const ingredientNutritionSchema = z.object({
+  nutrition: z.object({
+    energy_kj: nutrientValue, energy_kcal: nutrientValue, fat: nutrientValue, saturated_fat: nutrientValue,
+    carbohydrates: nutrientValue, sugars: nutrientValue, fibre: nutrientValue, protein: nutrientValue, salt: nutrientValue,
+  }).strict().nullable(),
+});

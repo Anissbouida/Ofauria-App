@@ -88,6 +88,8 @@ export interface PricingTier {
 }
 
 export type ProductLabelData = {
+  /** Étape 2 bis (mig 634) : déclaration nutritionnelle pour 100 g. */
+  nutrition?: { complete: boolean; per100g: Record<string, number>; missingFor: string[]; basis: 'cru' | 'cuit' } | null;
   product: { id: string; name: string; legalName: string; storageConditions: string | null; mentions: string | null; shelfLifeDays: number | null; netWeightG: number | null };
   ingredients: { ingredientId: string; name: string; weightKg: number | null; sharePct: number | null; contains: string[]; traces: string[]; reviewed: boolean }[];
   allergens: { contains: string[]; traces: string[] };

@@ -103,7 +103,7 @@ describe.skipIf(!hasTestDb)('Bilan de santé — contrôles de cohérence (C-04)
   it('unité de fabrication non convertible, puis nomenclature sans version active', async () => {
     ids.ingredient = (await p().query(
       `INSERT INTO ingredients (name, unit, unit_cost) VALUES ($1, 'kg', 10) RETURNING id`, [`Matière ${tag}`])).rows[0].id;
-    ids.recipe = (await p().query(`INSERT INTO recipes (name) VALUES ($1) RETURNING id`, [`Fiche ${tag}`])).rows[0].id;
+    ids.recipe = (await p().query(`INSERT INTO recipes (name) VALUES ($1) RETURNING id`, [`0 Fiche ${tag}`])).rows[0].id; // « 0 » : en tête de la liste bornée (ITEM_LIMIT), quel que soit le volume de la base de test
     await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 3, 'unit')`, [ids.recipe, ids.ingredient]);
 
     const r = await rec('profile.unit.not_convertible');

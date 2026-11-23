@@ -218,10 +218,10 @@ export const productController = {
            responsible_user_id, sale_unit, price_per_kg, price_per_person,
            sale_type, shelf_life_days, display_life_hours,
            is_reexposable, is_recyclable, max_reexpositions, item_kind, barcode, tax_code,
-           price_includes_tax
+           price_includes_tax, date_kind, prepackaged
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                 $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                 $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, COALESCE($24, 'dlc'), COALESCE($25, false))
          RETURNING *`,
         [
           data.name, data.slug, data.categoryId, data.description || null,
@@ -234,6 +234,7 @@ export const productController = {
           (data.barcode as string)?.trim() || null,
           (data.taxCode as string)?.trim() || null,
           data.priceIncludesTax ?? true,
+          (data.dateKind as string) || null, typeof data.prepackaged === 'boolean' ? data.prepackaged : null,
         ]
       );
       const product = productResult.rows[0];

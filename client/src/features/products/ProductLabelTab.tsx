@@ -37,6 +37,7 @@ function labelHtml(d: ProductLabelData): string {
       <div class="lbl-name">${esc(d.product.legalName)}</div>
       <div class="lbl-ing"><b>Ingrédients :</b> ${ingredientsHtml(d)}.</div>
       ${d.tracesText ? `<div class="lbl-tr">${esc(d.tracesText)}</div>` : ''}
+      ${nutritionHtml(d)}
       <div class="lbl-row">
         ${d.product.netWeightG !== null ? `<span><b>Poids net :</b> ${weight(d.product.netWeightG)}</span>` : ''}
         ${dlc ? `<span><b>À consommer jusqu'au :</b> ${dlc}</span>` : ''}
@@ -167,4 +168,17 @@ export default function ProductLabelTab({ productId }: { productId: string }) {
       {printing && <PrintOverlay html={printing} onClose={() => setPrinting(null)} />}
     </div>
   );
+}
+
+/** Étape 2 bis (mig 634) : déclaration nutritionnelle pour 100 g, si elle est complète. */
+const NUTRIENT_ROWS: [string, string][] = [
+  ['energy_kj', 'Énergie (kJ)'], ['energy_kcal', 'Énergie (kcal)'], ['fat', 'Matières grasses (g)'],
+  ['saturated_fat', 'dont acides gras saturés (g)'], ['carbohydrates', 'Glucides (g)'], ['sugars', 'dont sucres (g)'],
+  ['fibre', 'Fibres (g)'], ['protein', 'Protéines (g)'], ['salt', 'Sel (g)'],
+];
+function nutritionHtml(d: { nutrition?: { complete: boolean; per100g: Record<string, number> } | null }): string {
+  if (!d.nutrition?.complete) return '';
+  const rows = NUTRIENT_ROWS.filter(([k]) => d.nutrition!.per100g[k] !== undefined)
+    .map(([k, l]) => `<tr><td>${l}</td><td style="text-align:right">${String(d.nutrition!.per100g[k]).replace('.', ',')}</td></tr>`).join('');
+  return `<table class="lbl-nut" style="width:100%;border-collapse:collapse;font-size:8pt;margin-top:4px"><caption style="text-align:left;font-weight:600">Valeurs nutritionnelles pour 100 g</caption>${rows}</table>`;
 }

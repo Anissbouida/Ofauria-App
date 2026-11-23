@@ -240,6 +240,8 @@ export const productRepository = {
       barcode: 'barcode',
       taxCode: 'tax_code',
       priceIncludesTax: 'price_includes_tax',
+      dateKind: 'date_kind',
+      prepackaged: 'prepackaged',
       saleUnit: 'sale_unit',
       pricePerKg: 'price_per_kg',
       pricePerPerson: 'price_per_person',

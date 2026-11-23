@@ -6,11 +6,15 @@ export interface ComponentInput {
   role?: string | null;
   sourceRecipeId?: string | null;
   sourceIngredientId?: string | null;
+  /** Mig 634 : ligne d'emballage (quantité par unité produite), sortie du stock à la déclaration. */
+  sourcePackagingId?: string | null;
   quantite: number;
   unite: string;
   ordre: number;
   /** Mig 265 (audit A5) : perte % par ligne (0-99.99), defaut 0. */
   pertePct?: number | null;
+  /** Mig 634/635 : part en % de la formule (fiche en mode « pourcentage »). */
+  pct?: number | null;
 }
 
 export interface ReplacePayload {
@@ -310,13 +314,23 @@ export const recipeComponentRepository = {
 
       await client.query(`DELETE FROM recipe_format_components WHERE format_id = $1`, [formatId]);
 
+      // Étape 2 bis : fiche en mode « pourcentage » — la quantité d'une ligne matière ou
+      // semi-fini se déduit de sa part et de la taille du lot de référence. Les besoins,
+      // les coûts et le miroir lisent toujours la quantité : ils n'ont pas à changer.
+      const ref = (await client.query(
+        `SELECT reference_mode, reference_batch_qty::float8 AS qty, reference_batch_unit AS unit FROM recipes WHERE id = $1`, [recipeId])).rows[0];
+      const pctMode = ref?.reference_mode === 'pourcentage' && Number(ref.qty) > 0;
+
       for (const c of data.components) {
+        const fromPct = pctMode && !c.sourcePackagingId && c.pct != null && c.pct > 0;
+        const quantite = fromPct ? Math.round((Number(ref.qty) * Number(c.pct) / 100) * 1e6) / 1e6 : c.quantite;
+        const unite = fromPct ? (ref.unit || c.unite) : c.unite;
         await client.query(
           `INSERT INTO recipe_format_components
-             (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, perte_pct, updated_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [formatId, c.role ?? null, c.sourceRecipeId ?? null, c.sourceIngredientId ?? null,
-           c.quantite, c.unite, c.ordre, c.pertePct ?? 0, userId ?? null]
+             (format_id, role, source_recipe_id, source_ingredient_id, source_packaging_id, quantite, unite, ordre, perte_pct, pct, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [formatId, c.role ?? null, c.sourceRecipeId ?? null, c.sourceIngredientId ?? null, c.sourcePackagingId ?? null,
+           quantite, unite, c.ordre, c.pertePct ?? 0, fromPct ? c.pct : null, userId ?? null]
         );
       }
 

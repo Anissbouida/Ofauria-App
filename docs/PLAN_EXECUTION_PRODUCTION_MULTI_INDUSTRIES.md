@@ -454,7 +454,7 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | 0 | Livré | d9bc5d4f | 631 | Mesure en production à passer (`diagnose-multi-industries.sql`) |
 | 1 | Livré | voir § F.1 | 632 | Gardes de capacité branchées sur 6 familles de routes ; les autres capacités du socle restent déclaratives jusqu'à leur étape (8, 2 bis) |
 | 2 | Livré | voir § F.2 | 633 | Relecture métier des profils « À valider » ; liste des spécialisations à confirmer (décision n° 5) |
-| 2 bis | À faire | | | |
+| 2 bis | Livré en partie | voir § F.2 bis | 634, 635, 636 | 2b-1 (dette) en attente de la mesure en production et de la décision n° 7 ; saisie écran des lignes d'emballage, des pourcentages et de la nutrition des matières renvoyée au pas 10c (API prêtes) |
 | 3 | À faire | | | |
 | 4 | À faire | | | |
 | 5 | À faire | | | |
@@ -518,3 +518,21 @@ Livré :
 Tests : `inheritance.db.test.ts` (6) ; tests des modèles passés en v3 ; instantané des droits régénéré (2 routes ajoutées) ; suite base 241 fichiers / 906 tests verts ; suite unitaire verte ; configuration effective de la base de dev identique avant / après.
 
 Écart assumé : la base de test garde deux comptes de vérification désactivés (`gerant.test`, `admin.test`) : leur suppression est bloquée par des bulletins de paie de test.
+
+### F.2 bis — Étape 2 bis (2026-11-23)
+
+Livré :
+- 2b-2 (mig 634) : référentiels `production_types` et `production_launch_units` ; le CHECK 1..5 du type de production devient un contrôle sur le référentiel. Le format sans contenant existait déjà (mig 267).
+- 2b-3 (mig 634, 635, 636) : ligne de nomenclature EMBALLAGE (`source_packaging_id`, quantité par unité produite) ; rôle de ligne posé et contrôlé par déclencheur ; coût d'emballage du format recalculé depuis ces lignes (vues de coût inchangées) ; miroir de composition qui ignore l'emballage ; sortie du stock d'emballages à la déclaration de production.
+- 2b-4 (mig 634, 635) : `recipes.reference_mode` (fournée, lot, pourcentage) et lot de référence ; `pct` sur les lignes ; en mode pourcentage la quantité est calculée à l'enregistrement (besoins et coûts inchangés) ; unités du format contrôlées par le référentiel des unités.
+- 2b-5 (mig 634) : `products.date_kind` (DLC / DDM) recopié sur le lot ; durée de vie jusqu'à 3 650 jours ; cycle « sur stock » et unité « carton » ; `sale_type` et `sale_unit` contrôlés par référentiel. Décision n° 8 appliquée (recommandation) : un lot dépassé en DDM reste vendable et n'est pas périmé automatiquement ; la DLC continue de bloquer.
+- 2b-6 (mig 634) : `ingredients.nutrition` (pour 100 g) et route `PUT /ingredients/:id/nutrition` ; `products.prepackaged` ; déclaration nutritionnelle calculée sur l'étiquette (moyenne pondérée par le poids, concentrée par le rapport cru/cuit quand il est connu), bloquante seulement pour un article préemballé.
+- Écran : fiche article (nature de la date, préemballé), tableau nutritionnel sur l'étiquette imprimée.
+
+Défauts trouvés et corrigés : mig 634 lisait une colonne absente de `recipe_components` dans une fonction partagée (mig 636) ; le miroir de composition aurait rejeté toute nomenclature contenant un emballage (mig 635) ; un test du bilan de santé dépendait du volume de la base de test (liste bornée à 200).
+
+Non fait, et pourquoi :
+- 2b-1 (retrait de l'ancien modèle des vues, archivage) : la mesure en production n'a pas pu être faite d'ici, la décision n° 7 est attendue, et le plan impose un cycle d'observation. De plus, les aides de test (`createProductWithRecipe`) s'appuient encore sur `recipe_ingredients`.
+- Saisie à l'écran des lignes d'emballage, des pourcentages et des valeurs nutritionnelles des matières : les API sont prêtes et testées ; l'éditeur de nomenclature (1 334 lignes) doit d'abord être découpé en panneaux (pas 10c).
+
+Tests : `fiche-generique.db.test.ts` (5) ; suite base 242 fichiers / 911 tests verts ; suite unitaire verte ; compilation serveur et client propre.

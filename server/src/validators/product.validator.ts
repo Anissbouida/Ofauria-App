@@ -18,7 +18,8 @@ import { z } from 'zod';
 
 const uuid = z.string().guid('Identifiant UUID invalide');
 
-const SALE_TYPES = ['jour', 'dlv', 'commande'] as const;
+// Mig 634 : référentiel product_sale_types (« stock » : longue conservation, pas de vitrine).
+const SALE_TYPES = ['jour', 'dlv', 'commande', 'stock'] as const;
 export const saleTypeSchema = z.enum(SALE_TYPES);
 
 const positiveInt = (max: number, msg: string) =>
@@ -28,7 +29,11 @@ const positiveInt = (max: number, msg: string) =>
 // croisées sont dans le .superRefine plus bas.
 const lifecycleFields = {
   saleType: saleTypeSchema.optional(),
-  shelfLifeDays: positiveInt(365, 'DLV: 0 à 365 jours').optional().nullable(),
+  shelfLifeDays: positiveInt(3650, 'Durée de vie : 0 à 3 650 jours').optional().nullable(),
+  // Mig 634 : DLC (à consommer jusqu'au) ou DDM (de préférence avant).
+  dateKind: z.enum(['dlc', 'ddm']).optional(),
+  // Mig 634 : article préemballé — la déclaration nutritionnelle devient obligatoire.
+  prepackaged: z.boolean().optional(),
   displayLifeHours: positiveInt(24 * 30, 'DDE: 0 à 720 heures').optional().nullable(),
   isReexposable: z.coerce.boolean().optional(),
   /** Traçabilité (M9, mig 585) : lot, ou un numéro de série par pièce fabriquée. */
@@ -51,7 +56,7 @@ const commonProductFields = {
   responsibleUserId: uuid.nullable().optional(),
   stockMinThreshold: z.coerce.number().min(0).max(1_000_000).optional().nullable(),
   minProductionQuantity: z.coerce.number().int().min(0).max(1_000_000).optional().nullable(),
-  saleUnit: z.enum(['unit', 'weight', 'person']).optional(),
+  saleUnit: z.enum(['unit', 'weight', 'person', 'carton']).optional(),
   pricePerKg: z.coerce.number().finite().min(0).max(999999.99).optional().nullable(),
   pricePerPerson: z.coerce.number().finite().min(0).max(999999.99).optional().nullable(),
   // Nature de l'article (mig 469) : pilote la fiche et l'approvisionnement.
@@ -70,7 +75,7 @@ const commonProductFields = {
 function refineLifecycle(
   ctx: z.RefinementCtx,
   data: {
-    saleType?: 'jour' | 'dlv' | 'commande';
+    saleType?: 'jour' | 'dlv' | 'commande' | 'stock';
     shelfLifeDays?: number | null;
     displayLifeHours?: number | null;
     isReexposable?: boolean;
@@ -228,7 +233,7 @@ export const importProductsSchema = z.object({
     category: z.string().trim().max(100).optional().nullable(),
     price: z.coerce.number().finite().min(0, 'Prix ≥ 0').max(999999.99, 'Prix trop élevé'),
     costPrice: z.coerce.number().finite().min(0).max(999999.99).optional().nullable(),
-    saleUnit: z.enum(['unit', 'weight', 'person']).optional(),
+    saleUnit: z.enum(['unit', 'weight', 'person', 'carton']).optional(),
     isAvailable: z.coerce.boolean().optional(),
   })).min(1, 'Fichier vide').max(2000, 'Trop de lignes (max 2000)'),
 });

@@ -701,6 +701,9 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     stockMinThreshold: (product?.stock_min_threshold as string) || '0',
     minProductionQuantity: (product?.min_production_quantity as string) || '0',
     shelfLifeDays: (product?.shelf_life_days as string) || '',
+    // Mig 634 : DLC ou DDM, et article préemballé (déclaration nutritionnelle obligatoire).
+    dateKind: ((product?.date_kind as string) || 'dlc') as 'dlc' | 'ddm',
+    prepackaged: product?.prepackaged === true,
     displayLifeHours: (product?.display_life_hours as string) || '',
     // Audit P1.6 : renomme depuis 'hasDLV' (variable mensongere : c'etait en
     // realite is_reexposable). Alignement stricte avec le champ DB.
@@ -751,6 +754,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
           ...prev,
           saleType: nextType,
           shelfLifeDays: '',
+          dateKind: 'dlc' as 'dlc' | 'ddm',
+          prepackaged: false,
           displayLifeHours: '',
           isReexposable: false,
           isRecyclable: false,
@@ -1003,6 +1008,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         stockMinThreshold: parseFloat(rest.stockMinThreshold) || 0,
         minProductionQuantity: parseInt(rest.minProductionQuantity) || 0,
         shelfLifeDays: isCommande ? null : (parseInt(rest.shelfLifeDays) || null),
+        dateKind: rest.dateKind,
+        prepackaged: rest.prepackaged,
         displayLifeHours: isCommande ? null : (parseInt(rest.displayLifeHours) || null),
         isReexposable,
         isRecyclable,
@@ -1537,6 +1544,22 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                           value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })}
                           placeholder={form.saleType === 'dlv' ? 'Obligatoire — ex. 3' : 'Vide = jour même'}
                           required={form.saleType === 'dlv'} />
+                      </FormField>
+                      <FormField label="Nature de la date" htmlFor="product-date-kind"
+                        hint="DLC : à consommer jusqu’au (lot bloqué à la date). DDM : de préférence avant (lot signalé, toujours vendable).">
+                        <select id="product-date-kind" className="ds-input" value={form.dateKind}
+                          onChange={(e) => setForm({ ...form, dateKind: e.target.value as 'dlc' | 'ddm' })}>
+                          <option value="dlc">DLC — à consommer jusqu’au</option>
+                          <option value="ddm">DDM — de préférence avant</option>
+                        </select>
+                      </FormField>
+                      <FormField label="Article préemballé" htmlFor="product-prepackaged"
+                        hint="Coché : l’étiquette exige la déclaration nutritionnelle complète.">
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 40 }}>
+                          <input id="product-prepackaged" type="checkbox" checked={form.prepackaged}
+                            onChange={(e) => setForm({ ...form, prepackaged: e.target.checked })} />
+                          Vendu emballé, étiqueté
+                        </label>
                       </FormField>
                       <FormField label="Exposition max en vitrine (heures)" htmlFor="product-display"
                         hint="Durée maximale en vitrine après la mise en rayon ; la première échéance atteinte (DLC ou exposition) s’applique.">

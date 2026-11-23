@@ -4867,6 +4867,10 @@
   "admin",
   "manager"
  ],
+ "PUT /ingredients/:id/nutrition": [
+  "admin",
+  "manager"
+ ],
  "PUT /inventory/reorder-points/:id": [
   "admin",
   "manager"

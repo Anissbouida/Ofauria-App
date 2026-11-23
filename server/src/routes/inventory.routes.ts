@@ -11,7 +11,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { conversionHandlers, createConversionSchema, updateConversionSchema } from '../controllers/item-conversions.controller.js';
 
 const ingredientConversions = conversionHandlers('ingredient');
-import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema, correctIngredientCostSchema, ingredientAllergensSchema, reorderApplySchema, reorderUpdateSchema, reorderRecalculateSchema } from '../validators/stock.validator.js';
+import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema, correctIngredientCostSchema, ingredientAllergensSchema, ingredientNutritionSchema, reorderApplySchema, reorderUpdateSchema, reorderRecalculateSchema } from '../validators/stock.validator.js';
 import { emptyBody } from '../validators/common.validator.js';
 import { stockClosingSchema, createIngredientSchema, updateIngredientSchema, convertToConsumableSchema } from '../validators/stock-flow.validator.js';
 
@@ -97,6 +97,13 @@ ingredientsRouter.get('/', authenticate, ingredientController.list);
 // G2-06 — grille des allergènes (déclarée avant /:id).
 ingredientsRouter.get('/allergen-grid', authenticate, can('stock.ingredients.view'), asyncHandler(ingredientController.allergenGrid));
 ingredientsRouter.put('/:id/allergens', authenticate, can('stock.ingredients.allergens'), validate(ingredientAllergensSchema), asyncHandler(ingredientController.saveAllergens));
+// Mig 634 : valeurs nutritionnelles pour 100 g (étiquette des articles préemballés).
+ingredientsRouter.put('/:id/nutrition', authenticate, can('stock.ingredients.allergens'), validate(ingredientNutritionSchema), asyncHandler(async (req, res) => {
+  const { ingredientNutritionRepository } = await import('../repositories/ingredient-nutrition.repository.js');
+  const row = await ingredientNutritionRepository.save(String(req.params.id), (req.body as { nutrition: Record<string, number | null> | null }).nutrition);
+  if (!row) { res.status(404).json({ success: false, error: { message: 'Matière introuvable' } }); return; }
+  res.json({ success: true, data: row });
+}));
 // Conversions propres à l'ingrédient (M3-02).
 ingredientsRouter.get('/:id/conversions', authenticate, validateUuidParams('id'), asyncHandler(ingredientConversions.list));
 ingredientsRouter.post('/:id/conversions', authenticate, validateUuidParams('id'), can('stock.ingredients.edit'), validate(createConversionSchema), asyncHandler(ingredientConversions.create));

@@ -285,7 +285,7 @@ export const productLotRepository = {
     const expiryFilter = opts.includeExpired
       ? ''
       : `AND ((dlc_effective IS NOT NULL AND dlc_effective > NOW())
-              OR (dlc_effective IS NULL AND (expires_at IS NULL OR expires_at > CURRENT_DATE)))
+              OR (dlc_effective IS NULL AND (expires_at IS NULL OR expires_at > CURRENT_DATE OR date_kind = 'ddm')))
          AND (display_expires_at IS NULL OR display_expires_at > NOW())
          AND etat_thermique IS DISTINCT FROM 'surgele'`;
     const result = await client.query(
@@ -320,13 +320,13 @@ export const productLotRepository = {
     const result = await db.query(
       `SELECT
          BOOL_OR(CASE WHEN dlc_effective IS NOT NULL THEN dlc_effective <= NOW()
-                      ELSE expires_at IS NOT NULL AND expires_at <= CURRENT_DATE END) AS dlv_expired,
+                      ELSE expires_at IS NOT NULL AND expires_at <= CURRENT_DATE AND date_kind <> 'ddm' END) AS dlv_expired,
          BOOL_OR(display_expires_at IS NOT NULL AND display_expires_at <= NOW()) AS dde_expired,
          BOOL_AND(etat_thermique = 'surgele') AS all_frozen,
          BOOL_OR(
            etat_thermique IS DISTINCT FROM 'surgele'
            AND CASE WHEN dlc_effective IS NOT NULL THEN dlc_effective > NOW()
-                    ELSE expires_at IS NULL OR expires_at > CURRENT_DATE END
+                    ELSE expires_at IS NULL OR expires_at > CURRENT_DATE OR date_kind = 'ddm' END
            AND (display_expires_at IS NULL OR display_expires_at > NOW())
          ) AS has_valid_lot,
          MIN(LEAST(
@@ -914,7 +914,8 @@ export const productLotRepository = {
          LEFT JOIN v_product_unit_cost vpuc ON vpuc.product_id = pl.product_id
          WHERE pl.status = 'active'
            AND (
-             (pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE)
+             -- Étape 2 bis : une DDM dépassée n'est pas une péremption (lot signalé, pas sorti).
+             (pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE AND pl.date_kind <> 'ddm')
              OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW())
            )
            AND (pl.backroom_qty + pl.vitrine_qty) > 0
