@@ -461,7 +461,7 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | 6 | Livré | voir § F.6 | 640 | Écran des approbations : les cinq nouveaux types apparaissent dans Paramètres › Approbations (catalogue partagé) ; gabarits des documents sans impression (fiche de pesage, rapports) à dessiner au pas 10 |
 | 7 | Livré | voir § F.7 | 641 | Écran de saisie de la règle CCP : dans Paramètres › Production (catalogue des politiques) ; écran des contrôles « avant livraison » : liste qualité existante |
 | 8 | Livré | voir § F.8 | 642, 643, 644 | Les ~140 lectures des zones (economat_quantity, pesage_quantity) restent un cycle : à basculer vers les emplacements puis retirer les colonnes ; écran de rangement d'un lot dans un emplacement quelconque (fonctions prêtes) |
-| 9 | À faire | | | |
+| 9 | Livré | voir § F.9 | 645 | Décision comptable n° (inventaire permanent) à prendre avec l'expert-comptable avant d'activer les écritures ; comptes CGNC figés (3151/7132, 6124/3121) tant qu'un écran de comptes de production n'est pas demandé |
 | 10 | À faire | | | |
 | 11 | À faire | | | |
 | 12 | À faire | | | |
@@ -615,3 +615,14 @@ Livré, une tâche par commit :
 Écarts assumés : les zones restent des colonnes maintenues (lectures existantes, rapports) ; les créations de lot et les anciennes fonctions SQL (`fn_stock_receipt`) écrivent encore les zones, reflétées en écarts.
 
 Tests : `magasin-generique.db.test.ts` (8 : rôles et défaut, réception en réserve, inversion, troisième emplacement, invariant global, sans pesage, réservation) ; `product-lot-locations` adapté (message par rôle).
+
+### F.9 — Étape 9 (2026-11-23)
+
+Livré :
+- Mig 645 : `production_cout_reel.cout_machine` et `detail_machine` ; `cout_total` recréé avec la machine (valeurs existantes inchangées : jeu de référence à zéro écart).
+- Coût machine réel : taux horaire du poste × temps réel des étapes terminées rattachées à un poste (`production_item_etapes.work_center_id`).
+- Composantes de coût en catalogue : politique `production.cost_components` (emballages, main-d'œuvre, machine, énergie, sous-traitance, pertes, charges ; les matières toujours) résolue par société, établissement, atelier et type d'ordre. Défaut : les composantes d'aujourd'hui, machine éteinte (Ofauria inchangé). Profils « discret » et « atelier » : machine allumée. Une composante éteinte vaut zéro.
+- Écritures de production en option (inventaire permanent) : politique `production.ledger_entries` (éteinte par défaut, jamais livrée par un profil). Activée : une OD à la clôture (3151 / 7132 au coût de revient ; 6124 / 3121 pour les matières et emballages), une seule par ordre, via la file de comptabilisation (rejouable, type « production »).
+- Écran : composantes et écritures dans Paramètres › Production › Coûts et prix ; « Machine » et son détail dans le panneau du coût de revient ; règle CCP dans l'onglet Parcours.
+
+Tests : `couts-etape9.db.test.ts` (4) ; `profile-coverage` vert.

@@ -214,7 +214,7 @@ function SettingsShell() {
       <SettingsTabs label="Réglages de production" tabs={[
         { key: 'workshops', label: 'Ateliers', content: <WorkshopsCard /> },
         { key: 'costs', label: 'Coûts et prix',
-          content: <ParametersPanel keys={['production.fixed_charges', 'production.steps_blocking', 'pricing.rounding', 'stock.negative_policy', 'stock.dlc_alerts']} /> },
+          content: <ParametersPanel keys={['production.fixed_charges', 'production.cost_components', 'production.ledger_entries', 'production.steps_blocking', 'pricing.rounding', 'stock.negative_policy', 'stock.dlc_alerts']} /> },
         { key: 'markup', label: 'Majoration', content: <ProductionMarkupTab /> },
         { key: 'process', label: 'Parcours', content: <ProcessModelsTab /> },
         { key: 'documents', label: 'Documents', content: <ProductionDocumentsTab /> },

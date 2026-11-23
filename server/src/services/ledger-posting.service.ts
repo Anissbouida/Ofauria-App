@@ -128,6 +128,10 @@ export async function replayOutbox(userId: string, onlyId?: string) {
         const day = (await client.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d;
         const entry = await fromAdvanceForfeit(client, it.source_id, day);
         if (entry) await persistEntry(client, entry, { userId });
+      } else if (it.source_kind === 'production') {
+        // Étape 9 multi-industries : écriture de production (inventaire permanent).
+        const { writeProductionEntry } = await import('./production-ledger.js');
+        await writeProductionEntry(client, it.source_id, userId);
       } else throw new Error(`Type de pièce non rejouable : ${it.source_kind}`);
       await client.query(`UPDATE ledger_outbox SET status = 'posted', posted_at = now(), updated_at = now() WHERE id = $1`, [it.id]);
       await client.query('COMMIT');

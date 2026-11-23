@@ -67,7 +67,7 @@ export default function ProcessModelsTab() {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <ParametersPanel keys={['production.process_engine']} />
+      <ParametersPanel keys={['production.process_engine', 'quality.ccp_rule']} />
 
       <SettingsSection title="Parcours par type d'ordre" columns={1}
         description="Chaque type d'ordre suit un parcours d'étapes. Une étape se rattache à un état de l'ordre, porte ses conditions de passage (gardes), ses actions et son document. Modifier crée un brouillon ; publier le met en vigueur pour les ordres confirmés ensuite.">

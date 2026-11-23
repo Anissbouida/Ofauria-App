@@ -234,7 +234,7 @@ export const productionCoutRepository = {
       return { packaging_id: r.packaging_id as string, name: r.name as string, unit: r.unit as string | null,
         qty, unit_cost: qty > 0 ? Math.round(total / qty * 10000) / 10000 : 0, total };
     });
-    const coutEmballages = Math.round(detailEmballages.reduce((s, d) => s + d.total, 0) * 100) / 100;
+    let coutEmballages = Math.round(detailEmballages.reduce((s, d) => s + d.total, 0) * 100) / 100;
 
     // 2. Cout main d'oeuvre — depuis production_item_etapes
     // Chaque etape completee a un completed_by (user) et duree_reelle_min.
@@ -260,7 +260,7 @@ export const productionCoutRepository = {
       minutes: parseInt(r.total_minutes), hourly_rate: parseFloat(r.hourly_rate),
       total: parseFloat(r.total),
     }));
-    const coutMO = detailMO.reduce((s, d) => s + d.total, 0);
+    let coutMO = detailMO.reduce((s, d) => s + d.total, 0);
 
     // 2b. Energie — usages equipements enregistres sur le plan (four, petrin, cellule...)
     // duree × cout horaire fige a l'enregistrement (cout_horaire_snapshot). Un usage
@@ -282,7 +282,7 @@ export const productionCoutRepository = {
       minutes: parseInt(r.minutes), cout_horaire: parseFloat(r.cout_horaire),
       total: parseFloat(r.total),
     }));
-    const coutEnergie = Math.round(detailEnergie.reduce((s, d) => s + d.total, 0) * 100) / 100;
+    let coutEnergie = Math.round(detailEnergie.reduce((s, d) => s + d.total, 0) * 100) / 100;
 
     // 2c. Pertes — pertes_detail du rendement, valorisees au cout matiere unitaire
     // de l'item (snapshot theo_cout_matiere_u, mig 261 ; repli : cout matiere du
@@ -320,11 +320,27 @@ export const productionCoutRepository = {
       cout_unitaire: a.quantite > 0 ? Math.round(a.total / a.quantite * 100) / 100 : 0,
       total: Math.round(a.total * 100) / 100,
     }));
-    const coutPertes = Math.round(detailPertes.reduce((s, d) => s + d.total, 0) * 100) / 100;
+    let coutPertes = Math.round(detailPertes.reduce((s, d) => s + d.total, 0) * 100) / 100;
 
     // 3. Charges fixes = taux paramétrable (mig 403, repli constante) × cout matieres
     //    ou, si le gerant l'a choisi (G0-23), charges mensuelles saisies (loyer, energie,
     //    autres) reparties au prorata des matieres des plans du meme mois et etablissement.
+    // 2d. Machine (étape 9 multi-industries) : taux horaire du poste × temps réel des étapes
+    //     rattachées à un poste (production_item_etapes.work_center_id). Composante éteinte par
+    //     défaut (politique production.cost_components) : coût réel d'Ofauria inchangé.
+    const comps = await this.costComponents(planId);
+    const machineResult = comps.machine ? await db.query(
+      `SELECT wc.id AS work_center_id, wc.name, SUM(pie.duree_reelle_min)::float8 AS minutes,
+              wc.hourly_cost::float8 AS hourly_cost,
+              ROUND(SUM(pie.duree_reelle_min) * wc.hourly_cost / 60.0, 2)::float8 AS total
+         FROM production_item_etapes pie
+         JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+         JOIN work_centers wc ON wc.id = pie.work_center_id
+        WHERE ppi.plan_id = $1 AND pie.status = 'completed' AND pie.duree_reelle_min IS NOT NULL
+        GROUP BY wc.id, wc.name, wc.hourly_cost ORDER BY total DESC`, [planId]) : { rows: [] };
+    const detailMachine = machineResult.rows.map(r => ({ work_center_id: r.work_center_id, name: r.name, minutes: r.minutes, hourly_cost: r.hourly_cost, total: r.total }));
+    const coutMachine = Math.round(detailMachine.reduce((t, d) => t + d.total, 0) * 100) / 100;
+
     const charges = await this.chargesSettings(planId);
     let coutCharges: number;
     const detailCharges: { label: string; taux: number; base: number; part: number }[] = [];
@@ -383,12 +399,18 @@ export const productionCoutRepository = {
       ? Math.round((coutPrevu - coutPrevuMixReel) * 100) / 100
       : null;
     // M9 : façon du sous-traitant (prix unitaire × quantité reçue), 0 hors sous-traitance.
-    const facon = await subcontractingRepository.feeCost(planId);
+    const facon = comps.sous_traitance ? await subcontractingRepository.feeCost(planId) : { amount: 0, detail: null };
     const coutSousTraitance = facon.amount;
     const detailSousTraitance = facon.detail;
+    // Étape 9 : une composante éteinte vaut zéro (son détail est vidé).
+    if (!comps.emballage) { coutEmballages = 0; detailEmballages.length = 0; }
+    if (!comps.main_oeuvre) { coutMO = 0; detailMO.length = 0; }
+    if (!comps.energie) { coutEnergie = 0; detailEnergie.length = 0; }
+    if (!comps.pertes) { coutPertes = 0; detailPertes.length = 0; }
+    if (!comps.charges) { coutCharges = 0; detailCharges.length = 0; }
     // Revient = matieres + emballages + MO + energie + charges + façon (les pertes sont un « dont »).
     // Meme somme que la colonne calculee production_cout_reel.cout_total (mig 527, 584).
-    const coutTotal = coutMatieres + coutEmballages + coutMO + coutEnergie + coutCharges + coutSousTraitance;
+    const coutTotal = coutMatieres + coutEmballages + coutMO + coutEnergie + coutCharges + coutSousTraitance + coutMachine;
     const ecartPct = coutPrevu && coutPrevu > 0
       ? Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100
       : null;
@@ -396,11 +418,25 @@ export const productionCoutRepository = {
     const allocation = await this.allocate(planId, coutTotal);
 
     return {
-      coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutSousTraitance, coutTotal,
-      detailSousTraitance,
+      coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutSousTraitance, coutMachine, coutTotal,
+      detailSousTraitance, detailMachine, components: comps,
       coutPrevu, coutPrevuMixReel, ecartMix, ecartPct, chargesMethod: charges.method,
       detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges,
       allocation,
+    };
+  },
+
+  /** Composantes du coût réel pour l'ordre (politique production.cost_components, étape 9). */
+  async costComponents(planId: string) {
+    const plan = (await db.query(
+      `SELECT p.store_id, p.target_role, (SELECT t.code FROM production_order_types t WHERE t.id = p.order_type_id) AS order_type
+         FROM production_plans p WHERE p.id = $1`, [planId])).rows[0];
+    const v = (await resolvePolicy<Record<string, boolean>>('production.cost_components',
+      plan ? { storeId: plan.store_id, workshop: plan.target_role, orderType: plan.order_type } : {})).value ?? {};
+    const on = (k: string, d: boolean) => (typeof v[k] === 'boolean' ? v[k] : d);
+    return {
+      emballage: on('emballage', true), main_oeuvre: on('main_oeuvre', true), machine: on('machine', false),
+      energie: on('energie', true), sous_traitance: on('sous_traitance', true), pertes: on('pertes', true), charges: on('charges', true),
     };
   },
 
@@ -509,7 +545,8 @@ export const productionCoutRepository = {
   async calculateAndSave(planId: string, userId: string) {
     const c = await this.computePlanCost(planId);
     const { coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutPrevu, coutPrevuMixReel, ecartMix, ecartPct,
-      detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges, coutSousTraitance, detailSousTraitance } = c;
+      detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges, coutSousTraitance, detailSousTraitance,
+      coutMachine, detailMachine } = c;
 
     // Upsert (mig 268 : + cout_prevu_mix_reel, ecart_mix ; mig 339 : energie/pertes reels ; mig 527 : emballages)
     const result = await db.query(
@@ -518,10 +555,13 @@ export const productionCoutRepository = {
         cout_charges_fixes, detail_charges_fixes,
         cout_prevu, ecart_pct, cout_prevu_mix_reel, ecart_mix,
         detail_matieres, detail_main_oeuvre, detail_energie, detail_pertes,
-        calculated_by, calculated_at, cout_emballages, detail_emballages, cout_sous_traitance, detail_sous_traitance)
-       VALUES ($1, $2, $3, $13, $14, $4, $5, $6, $7, $11, $12, $8, $9, $15, $16, $10, NOW(), $17, $18, $19, $20)
+        calculated_by, calculated_at, cout_emballages, detail_emballages, cout_sous_traitance, detail_sous_traitance,
+        cout_machine, detail_machine)
+       VALUES ($1, $2, $3, $13, $14, $4, $5, $6, $7, $11, $12, $8, $9, $15, $16, $10, NOW(), $17, $18, $19, $20, $21, $22)
        ON CONFLICT (plan_id)
        DO UPDATE SET
+         cout_machine = EXCLUDED.cout_machine,
+         detail_machine = EXCLUDED.detail_machine,
          cout_emballages = EXCLUDED.cout_emballages,
          cout_sous_traitance = EXCLUDED.cout_sous_traitance,
          detail_sous_traitance = EXCLUDED.detail_sous_traitance,
@@ -551,7 +591,8 @@ export const productionCoutRepository = {
        coutPrevuMixReel, ecartMix,
        coutEnergie, coutPertes,
        JSON.stringify(detailEnergie), JSON.stringify(detailPertes),
-       coutEmballages, JSON.stringify(detailEmballages), coutSousTraitance, detailSousTraitance ? JSON.stringify(detailSousTraitance) : null]
+       coutEmballages, JSON.stringify(detailEmballages), coutSousTraitance, detailSousTraitance ? JSON.stringify(detailSousTraitance) : null,
+       coutMachine, JSON.stringify(detailMachine)]
     );
     // Charges mensuelles : ce plan change la base de repartition du mois. Les autres plans
     // du mois sont re-repartis, pour que la somme des parts egale les charges saisies.

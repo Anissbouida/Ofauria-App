@@ -20,6 +20,7 @@ const EXCEPTIONS: Record<string, string> = {
   'production.oee_thresholds': 'Seuils de TRS propres à chaque atelier.',
   'production.forecast_history': 'Profondeur d\'historique de prévision, sans lien avec le métier.',
   'production.replenishment_history': 'Profondeur d\'historique des demandes boutique, sans lien avec le métier.',
+  'production.ledger_entries': 'Choix comptable (inventaire permanent ou intermittent) propre à chaque société, décidé avec son expert-comptable ; jamais imposé par un profil.',
   'production.process_engine': 'Bascule de déploiement (éteint → ombre → actif) décidée société par société après observation ; aucun profil ne doit la livrer allumée.',
 };
 

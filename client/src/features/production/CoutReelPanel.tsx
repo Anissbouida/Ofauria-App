@@ -47,6 +47,9 @@ interface CoutReel {
   cout_emballages?: Money;
   /** Façon du sous-traitant (M9, mig 584). */
   cout_sous_traitance?: Money;
+  /** Étape 9 multi-industries (mig 645) : taux du poste × temps réel. */
+  cout_machine?: Money;
+  detail_machine?: { work_center_id: string; name: string; minutes: Money; hourly_cost: Money; total: Money }[];
   detail_emballages?: { packaging_id: string; name: string; unit: string | null; qty: Money; unit_cost: Money; total: Money }[];
   detail_matieres: { ingredient_id: string; name: string; qty: Money; unit_cost: Money; total: Money }[];
   detail_main_oeuvre: { employee_id: string; name: string; minutes: Money; hourly_rate: Money; total: Money }[];
@@ -165,12 +168,13 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
   const coutCharges = toNum(cout?.cout_charges_fixes);
   const coutEmballages = toNum(cout?.cout_emballages);
   const coutFacon = toNum(cout?.cout_sous_traitance);
+  const coutMachine = toNum(cout?.cout_machine);
   // G0-23 : le revient est celui du serveur (cout_total = matieres + emballages + MO +
   // energie + charges) ; l'ecran ne refait plus l'addition. Les pertes (cout_pertes) sont
   // une valorisation de matiere DEJA comptee dans cout_matieres : un « dont » (mig 339).
   const coutRevient = cout?.cout_total != null
     ? toNum(cout.cout_total)
-    : coutMat + coutEmballages + coutMO + coutEnergie + coutCharges + coutFacon;
+    : coutMat + coutEmballages + coutMO + coutEnergie + coutCharges + coutFacon + coutMachine;
   const coutPertes = toNum(cout?.cout_pertes);
 
   return (
@@ -235,6 +239,14 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               </div>
               <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutCharges)}</div>
             </div>
+            {coutMachine > 0 && (
+              <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+                <div className="odoo-stat-card-label">
+                  <Building2 size={11} style={{ display: 'inline', marginRight: 4 }} />Machine
+                </div>
+                <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutMachine)}</div>
+              </div>
+            )}
             {coutFacon > 0 && (
               <div className="odoo-stat-card" style={{ cursor: 'default' }}>
                 <div className="odoo-stat-card-label">
@@ -574,6 +586,30 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                       <td className="ds-strong">{d.name}</td>
                       <td className="ds-num">{toNum(d.minutes)}</td>
                       <td className="ds-num">{toNum(d.cout_horaire).toFixed(2)}</td>
+                      <td className="ds-num">{toNum(d.total).toFixed(2)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                </DataPanel>
+              </DetailSection>
+            )}
+
+            {(cout.detail_machine || []).length > 0 && (
+              <DetailSection title="Détail machine (postes de charge)" icon={<Building2 size={12} />}
+                isExpanded={expandedSection === 'machine'} onToggle={() => setExpandedSection(expandedSection === 'machine' ? null : 'machine')}>
+                <DataPanel label="Détail machine">
+                <table className="odoo-table ds-dense">
+                  <thead><tr>
+                    <th>Poste</th>
+                    <th className="ds-num">Minutes</th>
+                    <th className="ds-num">Taux/h ({currencySymbol()})</th>
+                    <th className="ds-num">Total ({currencySymbol()})</th>
+                  </tr></thead>
+                  <tbody>{(cout.detail_machine || []).map((d, i) => (
+                    <tr key={i}>
+                      <td className="ds-strong">{d.name}</td>
+                      <td className="ds-num">{toNum(d.minutes)}</td>
+                      <td className="ds-num">{toNum(d.hourly_cost).toFixed(2)}</td>
                       <td className="ds-num">{toNum(d.total).toFixed(2)}</td>
                     </tr>
                   ))}</tbody>
