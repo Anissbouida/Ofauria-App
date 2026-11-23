@@ -72,3 +72,5 @@ sur son inducteur, activité réelle) · coûts variables · coûts directs · c
   du plan ; budgets annuels par centre.
 - Coût par article au sein d'un plan : réparti selon la clé du plan (poids, quantité, valeur), pas
   encore par inducteur de chaque centre.
+
+Suite du chantier : [PLAN_ACTION_COUT_DE_REVIENT.md](PLAN_ACTION_COUT_DE_REVIENT.md).
