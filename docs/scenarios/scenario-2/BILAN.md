@@ -71,7 +71,7 @@ livré a sa facture ; prix d'achat dans la grille ; bulletins tous payés.
 ## Reste à corriger avant une vraie exploitation
 
 1. **138 — BC > 5 000 DH approuvés par l'administrateur seul** : décision du 25/10 à confirmer.
-2. **124 (scénario 1) — TVA d'achat** : le code TVA par défaut se saisit maintenant sur la matière, le consommable et la catégorie, et il est proposé sur les lignes de BC ; codes validés article par article dans [TVA_ACHATS_CODES_2026.md](../../TVA_ACHATS_CODES_2026.md), à saisir par le propriétaire.
+2. **124 (scénario 1) — TVA d'achat** : le code TVA par défaut se saisit maintenant sur la matière, le consommable et la catégorie, et il est proposé sur les lignes de BC ; codes validés dans [TVA_ACHATS_CODES_2026.md](../../TVA_ACHATS_CODES_2026.md) et saisis le 22/11 sur 32 matières et 7 consommables ; restent les catégories de charges (droit administrateur) et l'huile et les fruits et légumes (texte à confirmer).
 3. **135, 136** : RIB de la société (administrateur) ; fiches Pain rond et Chebakia manquantes.
 
 ## Limites de la simulation
