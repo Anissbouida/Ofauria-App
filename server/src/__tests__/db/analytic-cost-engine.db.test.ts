@@ -260,6 +260,19 @@ describe.skipIf(!hasTestDb)('Moteur analytique du coût de revient (mig 655)', (
     expect(r2(e.lignes.reduce((t, l) => t + l.montant, 0))).toBeCloseTo(e.ecart_total, 1);
   });
 
+  it('lot F : rentabilité — seuil = charges fixes ÷ marge sur coûts variables, historique de sous-activité', async () => {
+    const { analyticCostRepository: ana } = await import('../../repositories/analytic-cost.repository.js');
+    for (const id of planIds) await cout.calculateAndSave(id, fx.userId);
+    const r = await ana.profitability(fx.storeId, MONTH, MONTH);
+    expect(r.breakEven.plansChiffres).toBeGreaterThan(0);
+    expect(r.breakEven.mscvRate).not.toBeNull();
+    // (Taux arrondi à 4 décimales dans la réponse : écart relatif < 0,1 %.)
+    expect(Math.abs(r.breakEven.seuilMensuel! - r.breakEven.fixedMonthly / r.breakEven.mscvRate!) / r.breakEven.seuilMensuel!).toBeLessThan(0.001);
+    const h = r.history.find(x => x.month === MONTH)!;
+    expect(h.units).toBeGreaterThan(0);
+    expect(h.activityVariance).toBeGreaterThan(0);   // 600 + 120 unités pour une capacité de 1 000
+  }, 60_000);
+
   it('un montant réel saisi pour le mois crée un écart sur budget, le contrôle reste à 0', async () => {
     await p().query(`INSERT INTO analytic_charge_actuals (charge_id, period, amount) VALUES ($1, $2::date, 12000)`, [chargeIds[0], `${MONTH}-01`]);
     const m = await engine.periodModel(fx.storeId, MONTH, { fresh: true });

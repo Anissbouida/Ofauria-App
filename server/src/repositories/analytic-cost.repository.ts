@@ -354,6 +354,123 @@ export const analyticCostRepository = {
         WHERE ap.store_id IS NOT DISTINCT FROM $1::uuid ORDER BY ap.period DESC LIMIT 36`, [storeId])).rows;
   },
 
+  /**
+   * Lot F : rentabilité sur une période de mois [from, to].
+   *  - par produit et par famille : ventes réelles HT − quantités vendues × coût de revient
+   *    unitaire moyen des plans chiffrés de la période (coût propre de l'article, lot A) ;
+   *  - seuil de rentabilité : charges fixes d'un mois ÷ taux de marge sur coûts variables ;
+   *  - historique 12 mois : charges, imputé, sous-activité, taux d'activité, coût unitaire ;
+   *  - éléments de simulation (ventes, coûts variables, charges fixes d'un mois moyen).
+   */
+  async profitability(storeId: string | null, from: string, to: string) {
+    const first = `${from}-01`;
+    const [ty, tm] = to.split('-').map(Number);
+    const end = tm === 12 ? `${ty + 1}-01-01` : `${ty}-${String(tm + 1).padStart(2, '0')}-01`;
+    const months = Math.max(1, (ty * 12 + tm) - (Number(from.slice(0, 4)) * 12 + Number(from.slice(5, 7))) + 1);
+    const produced = (await db.query(
+      `SELECT (it->>'product_id')::uuid AS product_id, SUM((it->>'quantity')::numeric)::float8 AS qty,
+              SUM((it->>'cout_revient')::numeric)::float8 AS revient, SUM((it->>'cout_production')::numeric)::float8 AS production,
+              SUM(COALESCE((it->>'matieres')::numeric, 0))::float8 AS matieres
+         FROM production_cout_reel pcr
+         JOIN production_plans pp ON pp.id = pcr.plan_id
+         CROSS JOIN LATERAL jsonb_array_elements(COALESCE(pcr.niveaux->'items', '[]'::jsonb)) it
+        WHERE pp.store_id IS NOT DISTINCT FROM $1::uuid AND pp.plan_date >= $2::date AND pp.plan_date < $3::date
+          AND it ? 'product_id'
+        GROUP BY 1`, [storeId, first, end])).rows as { product_id: string; qty: number; revient: number; production: number; matieres: number }[];
+    const sales = (await db.query(
+      `SELECT si.product_id, p.name, COALESCE(c.name, 'Sans famille') AS family,
+              SUM(si.quantity)::float8 AS qty, SUM(si.subtotal - COALESCE(si.tax_amount, 0))::float8 AS ca_ht
+         FROM sale_items si
+         JOIN sales s ON s.id = si.sale_id
+         JOIN products p ON p.id = si.product_id
+         LEFT JOIN categories c ON c.id = p.category_id
+        WHERE s.cancelled_at IS NULL AND s.created_at >= $2::date AND s.created_at < $3::date
+          AND ($1::uuid IS NULL OR s.store_id IS NULL OR s.store_id = $1)
+        GROUP BY si.product_id, p.name, c.name`, [storeId, first, end])).rows as { product_id: string; name: string; family: string; qty: number; ca_ht: number }[];
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const products = sales.map(sl => {
+      const pr = produced.find(x => x.product_id === sl.product_id);
+      const unit = pr && pr.qty > 0 ? pr.revient / pr.qty : null;
+      const cost = unit != null ? sl.qty * unit : null;
+      const marge = cost != null ? sl.ca_ht - cost : null;
+      return {
+        product_id: sl.product_id, name: sl.name, family: sl.family, qty_sold: sl.qty, ca_ht: r2(sl.ca_ht),
+        qty_produced: pr?.qty ?? 0, cout_revient_u: unit != null ? Math.round(unit * 10000) / 10000 : null,
+        cout_ventes: cost != null ? r2(cost) : null, marge: marge != null ? r2(marge) : null,
+        taux_marque: marge != null && sl.ca_ht > 0 ? Math.round(marge / sl.ca_ht * 10000) / 100 : null,
+      };
+    }).sort((a, b) => (a.marge == null ? 1 : 0) - (b.marge == null ? 1 : 0) || (b.marge ?? 0) - (a.marge ?? 0) || b.ca_ht - a.ca_ht);
+    const famMap = new Map<string, { family: string; ca_ht: number; ca_costed: number; cout_ventes: number; products: number; uncosted: number }>();
+    for (const pr of products) {
+      const f = famMap.get(pr.family) ?? { family: pr.family, ca_ht: 0, ca_costed: 0, cout_ventes: 0, products: 0, uncosted: 0 };
+      f.ca_ht += pr.ca_ht; f.products++;
+      if (pr.cout_ventes != null) { f.cout_ventes += pr.cout_ventes; f.ca_costed += pr.ca_ht; } else f.uncosted++;
+      famMap.set(pr.family, f);
+    }
+    const families = [...famMap.values()].map(f => ({
+      ...f, ca_ht: r2(f.ca_ht), ca_costed: r2(f.ca_costed), cout_ventes: r2(f.cout_ventes), marge: r2(f.ca_costed - f.cout_ventes),
+      taux_marque: f.ca_costed > 0 ? Math.round((f.ca_costed - f.cout_ventes) / f.ca_costed * 10000) / 100 : null,
+    })).sort((a, b) => b.ca_ht - a.ca_ht);
+
+    // Coûts variables / ventes des plans chiffrés de la période → taux de marge sur coûts variables.
+    const v = (await db.query(
+      `SELECT COALESCE(SUM((pcr.niveaux->>'ventes_ht')::numeric), 0)::float8 AS ventes,
+              COALESCE(SUM(pcr.cout_matieres + pcr.cout_emballages + pcr.cout_energie + pcr.cout_sous_traitance), 0)::float8 AS directs,
+              COALESCE(SUM((SELECT SUM((l->>'variable')::numeric) FROM jsonb_array_elements(COALESCE(pcr.detail_analytique->'lines', '[]'::jsonb)) l)), 0)::float8 AS var_charges,
+              COUNT(*)::int AS plans
+         FROM production_cout_reel pcr JOIN production_plans pp ON pp.id = pcr.plan_id
+        WHERE pp.store_id IS NOT DISTINCT FROM $1::uuid AND pp.plan_date >= $2::date AND pp.plan_date < $3::date
+          AND pcr.niveaux IS NOT NULL`, [storeId, first, end])).rows[0];
+    const variableRate = v.ventes > 0 ? (v.directs + v.var_charges) / v.ventes : null;
+    const mscvRate = variableRate != null ? 1 - variableRate : null;
+    // Charges fixes d'un mois entier (dernier mois de la période) : centres + charges directes + MO imputée.
+    const last = await periodModel(storeId, to);
+    const ratio = last.elapsedRatio > 0 ? last.elapsedRatio : 1;
+    const fixed = (last.centres.filter(c => c.kind === 'principal').reduce((t, c) => t + c.pool.budget.fixed, 0)
+      + last.direct.reduce((t, d) => t + d.budget.fixed, 0) + (last.directLabour?.imputed ?? 0)) / ratio;
+    const caTotal = sales.reduce((t, x) => t + x.ca_ht, 0);
+    const caMonthly = caTotal / months;
+    const breakEven = mscvRate && mscvRate > 0 ? fixed / mscvRate : null;
+
+    // Historique : les 12 mois jusqu'à « to ».
+    const history: { month: string; charges: number; imputed: number; activityVariance: number; activityRate: number | null; units: number; revient: number | null; coutUnitaire: number | null }[] = [];
+    for (let k = 11; k >= 0; k--) {
+      const t = ty * 12 + (tm - 1) - k;
+      const mo = `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+      const m = await periodModel(storeId, mo);
+      if (!m.plansCount) continue;
+      const prod = m.centres.find(c => c.kind === 'principal' && c.level === 'production');
+      const rev = (await db.query(
+        `SELECT COALESCE(SUM(pcr.cout_total), 0)::float8 AS revient, COUNT(*)::int AS n
+           FROM production_cout_reel pcr JOIN production_plans pp ON pp.id = pcr.plan_id
+          WHERE pp.store_id IS NOT DISTINCT FROM $1::uuid AND to_char(pp.plan_date, 'YYYY-MM') = $2`, [storeId, mo])).rows[0];
+      const fullyCosted = rev.n >= m.plansCount;
+      history.push({
+        month: mo, charges: m.totals.charges, imputed: m.totals.imputed, activityVariance: m.totals.activityVariance,
+        activityRate: prod?.activityRate ?? null, units: m.activity.units,
+        revient: fullyCosted ? r2(rev.revient) : null,
+        coutUnitaire: fullyCosted && m.activity.units > 0 ? Math.round(rev.revient / m.activity.units * 10000) / 10000 : null,
+      });
+    }
+    return {
+      from, to, months, products, families,
+      totals: {
+        ca_ht: r2(caTotal), ca_costed: r2(products.filter(x => x.cout_ventes != null).reduce((t, x) => t + x.ca_ht, 0)),
+        cout_ventes: r2(products.reduce((t, x) => t + (x.cout_ventes ?? 0), 0)),
+        marge: r2(products.reduce((t, x) => t + (x.marge ?? 0), 0)),
+        produits_sans_cout: products.filter(x => x.cout_ventes == null).length,
+      },
+      breakEven: {
+        fixedMonthly: r2(fixed), variableRate: variableRate != null ? Math.round(variableRate * 10000) / 10000 : null,
+        mscvRate: mscvRate != null ? Math.round(mscvRate * 10000) / 10000 : null,
+        seuilMensuel: breakEven != null ? r2(breakEven) : null, caMensuel: r2(caMonthly),
+        margeSecurite: breakEven != null ? r2(caMonthly - breakEven) : null,
+        plansChiffres: v.plans,
+      },
+      history,
+    };
+  },
+
   /** Recalcule le coût de tous les plans (en cours, terminés) d'un mois. */
   async recalcMonth(storeId: string | null, month: string, userId: string) {
     await this.assertOpen(storeId, month);

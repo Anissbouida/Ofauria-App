@@ -143,6 +143,11 @@ router.get('/analytique/fiche/:recipeId', authenticate, validateUuidParams('reci
     const marque = Number.isFinite(target) && target > 0 && target < 95 ? target : 30;
     return { ...s, cibleMarque: marque, prixConseille: suggestedPrice(s, marque) };
   }));
+router.get('/analytique/rentabilite', authenticate, can(A), run(async (req) => {
+  const to = monthOf(req);
+  const from = typeof req.query.from === 'string' && MONTH.test(req.query.from) && req.query.from <= to ? req.query.from : to;
+  return analyticCostRepository.profitability(store(req), from, to);
+}));
 router.get('/analytique/comptes', authenticate, can(A), run(async () => analyticCostRepository.expenseAccounts()));
 router.get('/analytique/rapprochement', authenticate, can(A), run(async (req) => analyticCostRepository.reconciliation(store(req), monthOf(req))));
 router.get('/analytique/personnel', authenticate, can(A), run(async (req) => analyticCostRepository.personnel(store(req), monthOf(req))));

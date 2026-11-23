@@ -82,6 +82,16 @@ export interface StandardCost {
   cibleMarque: number; prixConseille: number | null;
 }
 
+export interface Profitability {
+  from: string; to: string; months: number;
+  products: { product_id: string; name: string; family: string; qty_sold: number; ca_ht: number; qty_produced: number;
+              cout_revient_u: number | null; cout_ventes: number | null; marge: number | null; taux_marque: number | null }[];
+  families: { family: string; ca_ht: number; ca_costed: number; cout_ventes: number; marge: number; taux_marque: number | null; products: number; uncosted: number }[];
+  totals: { ca_ht: number; ca_costed: number; cout_ventes: number; marge: number; produits_sans_cout: number };
+  breakEven: { fixedMonthly: number; variableRate: number | null; mscvRate: number | null; seuilMensuel: number | null; caMensuel: number; margeSecurite: number | null; plansChiffres: number };
+  history: { month: string; charges: number; imputed: number; activityVariance: number; activityRate: number | null; units: number; revient: number | null; coutUnitaire: number | null }[];
+}
+
 const B = '/production-cout/analytique';
 export const analyticCostApi = {
   meta: (): Promise<AnalyticMeta> => api.get(`${B}/meta`).then(r => r.data.data),
@@ -105,6 +115,7 @@ export const analyticCostApi = {
   reconciliation: (month: string): Promise<Reconciliation[]> => api.get(`${B}/rapprochement`, { params: { month } }).then(r => r.data.data),
   standard: (recipeId: string, formatId: string | null, marque: number): Promise<StandardCost> =>
     api.get(`${B}/fiche/${recipeId}`, { params: { formatId: formatId ?? undefined, marque } }).then(r => r.data.data),
+  profitability: (from: string, to: string): Promise<Profitability> => api.get(`${B}/rentabilite`, { params: { from, month: to } }).then(r => r.data.data),
   personnel: (month: string): Promise<EmployeeCost[]> => api.get(`${B}/personnel`, { params: { month } }).then(r => r.data.data),
   setAllocations: (employeeId: string, allocations: { centerId: string; percent: number; laborType: 'direct' | 'indirect' }[]) =>
     api.put(`${B}/personnel/${employeeId}`, { allocations }).then(r => r.data.data),

@@ -11,6 +11,7 @@ import { Calculator, Plus, RefreshCw, Pencil, Power, AlertTriangle, CheckCircle2
 import SalesPageShell from '../sales/SalesPageShell';
 import { Alert, DataPanel, EmptyState, ErrorState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, LoadingState, Modal, Tabs, Toolbar } from '../../components/ds';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { Segmented } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
@@ -20,10 +21,10 @@ import { productsApi } from '../../api/products.api';
 import { useActionPermissions } from '../../hooks/useActionPermissions';
 import {
   analyticCostApi, type AnalyticMeta, type Behavior, type Centre, type CentreModel, type Charge, type ChargeInput,
-  type Driver, type EmployeeCost, type Level, type PeriodReport, type Reconciliation,
+  type Driver, type EmployeeCost, type Level, type PeriodReport, type Reconciliation, type Profitability,
 } from '../../api/analytic-cost.api';
 
-type TabKey = 'periode' | 'centres' | 'charges' | 'personnel' | 'cles';
+type TabKey = 'periode' | 'rentabilite' | 'centres' | 'charges' | 'personnel' | 'cles';
 
 const LEVEL_LABEL: Record<Level, string> = {
   approvisionnement: 'Approvisionnement', production: 'Production', administration: 'Administration', distribution: 'Distribution',
@@ -135,13 +136,14 @@ export default function AnalyticCostPage() {
       )}
       <Toolbar>
         <Tabs label="Analyse des coûts" value={tab} onChange={setTab} tabs={[
-          { key: 'periode', label: 'Période' }, { key: 'centres', label: 'Centres de coûts' }, { key: 'charges', label: 'Charges' },
+          { key: 'periode', label: 'Période' }, { key: 'rentabilite', label: 'Rentabilité' }, { key: 'centres', label: 'Centres de coûts' }, { key: 'charges', label: 'Charges' },
           { key: 'personnel', label: 'Personnel' }, { key: 'cles', label: 'Clés de répartition' },
         ]} />
       </Toolbar>
       {meta.isLoading ? <LoadingState /> : meta.isError ? <ErrorState error={meta.error} onRetry={() => meta.refetch()} /> : meta.data ? (
         <>
           {tab === 'periode' && <PeriodTab month={month} meta={meta.data} />}
+          {tab === 'rentabilite' && <ProfitabilityTab month={month} />}
           {tab === 'centres' && <CentresTab meta={meta.data} />}
           {tab === 'charges' && <ChargesTab month={month} meta={meta.data} closed={isClosed} />}
           {tab === 'personnel' && <PersonnelTab month={month} />}
@@ -843,6 +845,129 @@ function KeysTab() {
           </div>
         </Modal>
       )}
+    </>
+  );
+}
+
+// ═══ Rentabilité (lot F) ═══════════════════════════════════════════════════
+const addMonths = (m: string, k: number) => { const [y, mo] = m.split('-').map(Number); const t = y * 12 + mo - 1 + k; return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, '0')}`; };
+
+function ProfitabilityTab({ month }: { month: string }) {
+  const [span, setSpan] = useState<'1' | '3' | '6' | '12'>('3');
+  const from = addMonths(month, -(Number(span) - 1));
+  const q = useQuery({ queryKey: ['analytic', 'profitability', from, month], queryFn: () => analyticCostApi.profitability(from, month) });
+  const [vol, setVol] = useState(0);
+  const [price, setPrice] = useState(0);
+  if (q.isLoading) return <LoadingState />;
+  if (q.isError || !q.data) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
+  const r: Profitability = q.data;
+  const be = r.breakEven;
+  const vr = be.variableRate ?? 0;
+  const resultNow = be.caMensuel * (1 - vr) - be.fixedMonthly;
+  const caSim = be.caMensuel * (1 + vol / 100) * (1 + price / 100);
+  const resultSim = caSim - be.caMensuel * (1 + vol / 100) * vr - be.fixedMonthly;
+  const maxVar = Math.max(1, ...r.history.map(h => Math.abs(h.activityVariance)));
+  return (
+    <>
+      <Toolbar>
+        <Segmented label="Période analysée" value={span} onChange={setSpan}
+          options={[{ key: '1', label: '1 mois' }, { key: '3', label: '3 mois' }, { key: '6', label: '6 mois' }, { key: '12', label: '12 mois' }]} />
+        <span className="ds-muted" style={{ fontSize: 13 }}>{from} → {month}</span>
+      </Toolbar>
+      {r.totals.produits_sans_cout > 0 && (
+        <Alert tone="info">{r.totals.produits_sans_cout} produit(s) vendu(s) sans coût de revient sur la période (plans non chiffrés, ou produits achetés-revendus) :
+          leur marge n'est pas comptée. Chiffrez les plans des mois concernés (onglet Période › Recalculer).</Alert>
+      )}
+      <KpiGrid label="Rentabilité de la période">
+        <KpiCard label="Ventes HT" value={money(r.totals.ca_ht)} sub={`${r.months} mois · dont ${money(r.totals.ca_costed)} chiffrées`} />
+        <KpiCard label="Coût de revient des ventes" value={money(r.totals.cout_ventes)} sub="quantités vendues × coût de revient unitaire" />
+        <KpiCard label="Marge" value={money(r.totals.marge, { signed: true })} tone={r.totals.marge >= 0 ? 'green' : 'red'}
+          sub={r.totals.ca_costed > 0 ? `taux de marque ${pct(r.totals.marge / r.totals.ca_costed)}` : undefined} />
+        <KpiCard label="Seuil de rentabilité mensuel" value={be.seuilMensuel != null ? money(be.seuilMensuel) : '—'}
+          sub={be.mscvRate != null ? `charges fixes ${money(be.fixedMonthly)} ÷ marge sur coûts variables ${pct(be.mscvRate)}` : 'aucun plan chiffré'} />
+        <KpiCard label="Marge de sécurité" value={be.margeSecurite != null ? money(be.margeSecurite, { signed: true }) : '—'}
+          tone={be.margeSecurite != null ? (be.margeSecurite >= 0 ? 'green' : 'red') : undefined} sub={`ventes mensuelles moyennes ${money(be.caMensuel)}`} />
+      </KpiGrid>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 14, marginTop: 14 }}>
+        <DataPanel label="Marge par famille">
+          <div style={{ padding: '12px 16px 0' }}><strong>Marge par famille</strong></div>
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Famille</th><th className="ds-num">Ventes HT</th><th className="ds-num">Coût des ventes</th><th className="ds-num">Marge</th><th className="ds-num">Taux de marque</th></tr></thead>
+            <tbody>{r.families.map(f => (
+              <tr key={f.family}>
+                <td className="ds-strong">{f.family}{f.uncosted > 0 && <span className="ds-muted"> · {f.uncosted} sans coût</span>}</td>
+                <td className="ds-num">{money(f.ca_ht)}</td><td className="ds-num">{f.ca_costed > 0 ? money(f.cout_ventes) : '—'}</td>
+                <td className="ds-num">{f.ca_costed > 0 ? money(f.marge, { signed: true }) : '—'}</td><td className="ds-num">{f.taux_marque != null ? `${f.taux_marque.toLocaleString('fr-FR')} %` : '—'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </DataPanel>
+
+        <DataPanel label="Simulation" style={{ padding: 16 }}>
+          <strong>Simulation sur un mois moyen</strong>
+          <p className="ds-muted" style={{ fontSize: 12, margin: '4px 0 12px' }}>
+            Coûts variables {pct(vr)} des ventes ; charges fixes {money(be.fixedMonthly)} par mois (personnel et main-d'œuvre compris).
+          </p>
+          <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>
+            Volume vendu : {vol > 0 ? '+' : ''}{vol} %
+            <input type="range" min={-30} max={30} step={1} value={vol} onChange={e => setVol(Number(e.target.value))} aria-label="Variation du volume vendu en %" />
+          </label>
+          <label style={{ display: 'grid', gap: 4, fontSize: 13, marginTop: 8 }}>
+            Prix de vente : {price > 0 ? '+' : ''}{price} %
+            <input type="range" min={-20} max={20} step={1} value={price} onChange={e => setPrice(Number(e.target.value))} aria-label="Variation du prix de vente en %" />
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 12 }}>
+            <div className="ds-kpi"><span className="ds-kpi-label">Résultat mensuel actuel</span><span className="ds-kpi-value">{money(resultNow, { signed: true })}</span></div>
+            <div className="ds-kpi"><span className="ds-kpi-label">Résultat simulé</span><span className="ds-kpi-value" style={{ color: resultSim >= resultNow ? 'var(--ds-success)' : 'var(--ds-danger)' }}>{money(resultSim, { signed: true })}</span>
+              <span className="ds-kpi-sub">ventes {money(caSim)}</span></div>
+          </div>
+        </DataPanel>
+      </div>
+
+      <DataPanel label="Sous-activité par mois" style={{ marginTop: 14, padding: 16 }}>
+        <strong>Sous-activité et coût unitaire, 12 derniers mois</strong>
+        <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--ds-muted)', margin: '8px 0', flexWrap: 'wrap' }}>
+          <span><span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#1D4ED8', marginRight: 6 }} />Suractivité (charges absorbées en plus)</span>
+          <span><span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#C2410C', marginRight: 6 }} />Sous-activité (charges non absorbées)</span>
+        </div>
+        <table className="odoo-table ds-dense">
+          <thead><tr><th>Mois</th><th className="ds-num">Charges</th><th className="ds-num">Taux d'activité</th><th style={{ width: '34%' }}>Sous / suractivité</th><th className="ds-num">Montant</th><th className="ds-num">Coût de revient / unité</th></tr></thead>
+          <tbody>{r.history.map(h => {
+            const w = Math.round(Math.abs(h.activityVariance) / maxVar * 50);
+            const under = h.activityVariance > 0;
+            return (
+              <tr key={h.month}>
+                <td className="ds-strong">{h.month}</td><td className="ds-num">{money(h.charges)}</td><td className="ds-num">{pct(h.activityRate)}</td>
+                <td>
+                  <div style={{ display: 'flex', height: 14 }} aria-hidden="true">
+                    <div style={{ width: '50%', display: 'flex', justifyContent: 'flex-end' }}>{!under && <div style={{ width: `${w * 2}%`, background: '#1D4ED8', borderRadius: '3px 0 0 3px' }} />}</div>
+                    <div style={{ width: '50%' }}>{under && <div style={{ width: `${w * 2}%`, height: '100%', background: '#C2410C', borderRadius: '0 3px 3px 0' }} />}</div>
+                  </div>
+                </td>
+                <td className="ds-num">{money(h.activityVariance, { signed: true })}</td>
+                <td className="ds-num">{h.coutUnitaire != null ? money(h.coutUnitaire, { decimals: 4 }) : <span className="ds-muted">plans non tous chiffrés</span>}</td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      </DataPanel>
+
+      <DataPanel label="Marge par produit" style={{ marginTop: 14 }}>
+        <div style={{ padding: '12px 16px 0' }}><strong>Marge par produit</strong></div>
+        <table className="odoo-table ds-dense">
+          <thead><tr><th>Produit</th><th>Famille</th><th className="ds-num">Vendu</th><th className="ds-num">Ventes HT</th><th className="ds-num">Coût de revient / u</th><th className="ds-num">Coût des ventes</th><th className="ds-num">Marge</th><th className="ds-num">Taux de marque</th></tr></thead>
+          <tbody>{r.products.map(p => (
+            <tr key={p.product_id}>
+              <td className="ds-strong">{p.name}</td><td>{p.family}</td><td className="ds-num">{num(p.qty_sold)}</td><td className="ds-num">{money(p.ca_ht)}</td>
+              <td className="ds-num">{p.cout_revient_u != null ? money(p.cout_revient_u, { decimals: 4 }) : '—'}</td>
+              <td className="ds-num">{p.cout_ventes != null ? money(p.cout_ventes) : '—'}</td>
+              <td className="ds-num" style={{ color: p.marge != null && p.marge < 0 ? 'var(--ds-danger)' : undefined }}>{p.marge != null ? money(p.marge, { signed: true }) : '—'}</td>
+              <td className="ds-num">{p.taux_marque != null ? `${p.taux_marque.toLocaleString('fr-FR')} %` : '—'}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </DataPanel>
     </>
   );
 }
