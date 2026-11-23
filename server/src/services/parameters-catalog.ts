@@ -175,9 +175,9 @@ export const PARAMETERS: ParamDef[] = [
   {
     key: 'production.fixed_charges', domain: 'production', section: 'production',
     label: 'Charges fixes mensuelles',
-    help: 'Charges indirectes du coût de revient d\'un plan. Taux sur les matières : un pourcentage du coût matière (réglage « Charges fixes » de la production). Charges mensuelles : loyer, énergie et autres charges saisis ici, répartis sur les plans du mois au prorata de leurs matières ; ne saisissez pas ici l\'énergie déjà comptée par les usages d\'équipement.',
+    help: 'Charges indirectes du coût de revient d\'un plan. Moteur analytique (recommandé) : charges et personnel répartis par centre de coûts et imputés sur la capacité normale — paramétrage dans Production › Analyse des coûts ; les montants ci-dessous ne servent alors plus. Taux sur les matières : un pourcentage du coût matière. Charges mensuelles (ancien) : loyer, énergie et autres répartis sur les seuls plans déjà chiffrés du mois, au prorata de leurs matières.',
     fields: [
-      { name: 'method', label: 'Mode de calcul', type: 'enum', options: [{ value: 'rate', label: 'Taux sur les matières' }, { value: 'monthly', label: 'Charges mensuelles' }] },
+      { name: 'method', label: 'Mode de calcul', type: 'enum', options: [{ value: 'analytic', label: 'Moteur analytique (centres de coûts, capacité normale)' }, { value: 'rate', label: 'Taux sur les matières' }, { value: 'monthly', label: 'Charges mensuelles au prorata des matières (ancien)' }] },
       { name: 'loyer', label: 'Loyer de l\'atelier', type: 'number', unit: '¤ / mois', min: 0, max: 10_000_000 },
       { name: 'energie', label: 'Énergie (eau, électricité, gaz)', type: 'number', unit: '¤ / mois', min: 0, max: 10_000_000 },
       { name: 'autres', label: 'Autres charges fixes', type: 'number', unit: '¤ / mois', min: 0, max: 10_000_000 },

@@ -2,6 +2,7 @@ import { policyNumber, resolvePolicy } from '../services/policies.js';
 import { subcontractingRepository } from './subcontracting.repository.js';
 import { db, withTransaction } from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { imputePlan, chargedHourlyRates, type PlanImputation } from '../services/cost-engine.js';
 
 
 /**
@@ -344,7 +345,17 @@ export const productionCoutRepository = {
     const charges = await this.chargesSettings(planId);
     let coutCharges: number;
     const detailCharges: { label: string; taux: number; base: number; part: number }[] = [];
-    if (charges.method === 'monthly') {
+    let analytic: PlanImputation | null = null;
+    if (charges.method === 'analytic') {
+      // Mig 655 : MO directe pointée au coût employeur (brut + charges patronales) ÷ heures légales.
+      const rates = await chargedHourlyRates(planId);
+      for (const d of detailMO) {
+        const rate = rates.get(d.employee_id);
+        if (rate != null && rate > 0) { d.hourly_rate = rate; d.total = Math.round(d.minutes * rate / 60 * 100) / 100; }
+      }
+      coutMO = detailMO.reduce((s, d) => s + d.total, 0);
+      coutCharges = 0; // calculé plus bas, une fois les composantes directes connues
+    } else if (charges.method === 'monthly') {
       const month = await this.monthMaterials(planId);
       const base = month.others + coutMatieres;
       const share = base > 0 ? coutMatieres / base : 0;
@@ -407,7 +418,21 @@ export const productionCoutRepository = {
     if (!comps.main_oeuvre) { coutMO = 0; detailMO.length = 0; }
     if (!comps.energie) { coutEnergie = 0; detailEnergie.length = 0; }
     if (!comps.pertes) { coutPertes = 0; detailPertes.length = 0; }
-    if (!comps.charges) { coutCharges = 0; detailCharges.length = 0; }
+    if (charges.method === 'analytic' && comps.charges) {
+      // Mig 655 : charges imputées par le moteur analytique (centres, capacité normale).
+      analytic = await imputePlan(planId, {
+        matieres: coutMatieres, emballages: coutEmballages, mainOeuvre: coutMO, energie: coutEnergie,
+        machine: coutMachine, sousTraitance: coutSousTraitance, prevu: coutPrevu,
+      });
+      coutCharges = analytic.total;
+      for (const l of analytic.lines) {
+        detailCharges.push({ label: `${l.name} — ${l.driverLabel}`, taux: Math.round((l.rateFixed + l.rateVariable) * 10000) / 10000, base: l.quantity, part: l.total });
+      }
+      for (const l of analytic.directLines) {
+        detailCharges.push({ label: `${l.label} (charge directe — ${l.productName})`, taux: l.rate, base: l.quantity, part: l.total });
+      }
+    }
+    if (!comps.charges) { coutCharges = 0; detailCharges.length = 0; analytic = null; }
     // Revient = matieres + emballages + MO + energie + charges + façon (les pertes sont un « dont »).
     // Meme somme que la colonne calculee production_cout_reel.cout_total (mig 527, 584).
     const coutTotal = coutMatieres + coutEmballages + coutMO + coutEnergie + coutCharges + coutSousTraitance + coutMachine;
@@ -416,8 +441,15 @@ export const productionCoutRepository = {
       : null;
 
     const allocation = await this.allocate(planId, coutTotal);
+    const niveaux = analytic ? await this.costLevels(planId, {
+      matieres: coutMatieres, emballages: coutEmballages, mo: coutMO, energie: coutEnergie, machine: coutMachine,
+      sousTraitance: coutSousTraitance, analytic, total: coutTotal, allocation,
+    }) : null;
 
     return {
+      niveaux, analytic,
+      coutChargesAppro: analytic?.appro ?? 0, coutChargesProduction: analytic?.production ?? 0,
+      coutChargesStructure: analytic?.structure ?? 0, coutChargesDirectes: analytic?.directes ?? 0,
       coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutSousTraitance, coutMachine, coutTotal,
       detailSousTraitance, detailMachine, components: comps,
       coutPrevu, coutPrevuMixReel, ecartMix, ecartPct, chargesMethod: charges.method,
@@ -506,8 +538,67 @@ export const productionCoutRepository = {
     });
   },
 
+  /**
+   * Niveaux de coût d'un plan (mig 655) : coût d'achat, coût de production direct et
+   * complet, coût de revient complet, unitaire, prix de vente HT, marge, taux de marge et
+   * de marque — au total et par article (répartition du plan).
+   */
+  async costLevels(planId: string, c: {
+    matieres: number; emballages: number; mo: number; energie: number; machine: number; sousTraitance: number;
+    analytic: PlanImputation; total: number; allocation: { items: { plan_item_id: string; product_name: string; quantity: number; cost: number }[] };
+  }) {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const a = c.analytic;
+    const achat = r2(c.matieres + c.emballages + a.appro);
+    const productionDirect = r2(c.matieres + c.emballages + c.mo + c.energie + c.machine + c.sousTraitance + a.directes);
+    const productionComplet = r2(productionDirect + a.appro + a.production);
+    const revient = r2(productionComplet + a.structure);
+    const prices = (await db.query(
+      `SELECT ppi.id, COALESCE(ppi.actual_quantity, ppi.planned_quantity)::float8 AS qty,
+              (COALESCE(p.price, 0) / CASE WHEN p.price_includes_tax THEN 1 + COALESCE(tc.rate, 0) / 100 ELSE 1 END)::float8 AS price_ht
+         FROM production_plan_items ppi
+         JOIN products p ON p.id = ppi.product_id
+         LEFT JOIN LATERAL (SELECT t.rate FROM tax_codes t WHERE t.code = p.tax_code AND t.valid_from <= CURRENT_DATE
+                             ORDER BY t.valid_from DESC LIMIT 1) tc ON true
+        WHERE ppi.plan_id = $1 AND ppi.status <> 'cancelled'`, [planId])).rows as { id: string; qty: number; price_ht: number }[];
+    const units = prices.reduce((s, p) => s + p.qty, 0);
+    const ventes = r2(prices.reduce((s, p) => s + p.qty * p.price_ht, 0));
+    const marge = r2(ventes - revient);
+    const pct = (n: number, d: number) => (d > 0 ? Math.round(n / d * 10000) / 100 : null);
+    const prodShare = revient > 0 ? productionComplet / revient : 0;
+    const items = c.allocation.items.map(it => {
+      const p = prices.find(x => x.id === it.plan_item_id);
+      const pv = r2((p?.price_ht ?? 0) * it.quantity);
+      const cost = it.cost;
+      return {
+        plan_item_id: it.plan_item_id, product_name: it.product_name, quantity: it.quantity,
+        prix_vente_ht_u: p ? Math.round(p.price_ht * 10000) / 10000 : null,
+        cout_production_u: it.quantity > 0 ? Math.round(cost * prodShare / it.quantity * 10000) / 10000 : null,
+        cout_revient_u: it.quantity > 0 ? Math.round(cost / it.quantity * 10000) / 10000 : null,
+        cout_revient: cost, ventes_ht: pv, marge: r2(pv - cost),
+        taux_marge: pct(pv - cost, cost), taux_marque: pct(pv - cost, pv),
+      };
+    });
+    return {
+      cout_achat: achat,
+      cout_production_direct: productionDirect,
+      cout_production_complet: productionComplet,
+      cout_revient_complet: revient,
+      charges: { approvisionnement: a.appro, production: a.production, structure: a.structure, directes: a.directes },
+      unites: units,
+      cout_revient_unitaire: units > 0 ? Math.round(revient / units * 10000) / 10000 : null,
+      cout_production_unitaire: units > 0 ? Math.round(productionComplet / units * 10000) / 10000 : null,
+      ventes_ht: ventes,
+      prix_vente_ht_unitaire: units > 0 ? Math.round(ventes / units * 10000) / 10000 : null,
+      marge, marge_unitaire: units > 0 ? Math.round(marge / units * 10000) / 10000 : null,
+      taux_marge: pct(marge, revient), taux_marque: pct(marge, ventes),
+      ecart_total: Math.abs(revient - c.total) < 0.02 ? 0 : r2(revient - c.total),
+      items,
+    };
+  },
+
   /** Réglage des charges indirectes : taux sur les matières, ou charges mensuelles saisies. */
-  async chargesSettings(planId?: string): Promise<{ method: 'rate' | 'monthly'; rate: number; monthly: number }> {
+  async chargesSettings(planId?: string): Promise<{ method: 'rate' | 'monthly' | 'analytic'; rate: number; monthly: number }> {
     const r = (await db.query(
       `SELECT production_charges_method,
               COALESCE(production_charge_loyer, 0) + COALESCE(production_charge_energie, 0) + COALESCE(production_charge_autres, 0) AS monthly
@@ -523,7 +614,7 @@ export const productionCoutRepository = {
     const rate = await policyNumber('production.fixed_charges_rate', 'rate',
       plan ? { storeId: plan.store_id, workshop: plan.target_role, orderType: plan.order_type } : {});
     return {
-      method: r?.production_charges_method === 'monthly' ? 'monthly' : 'rate',
+      method: r?.production_charges_method === 'analytic' ? 'analytic' : r?.production_charges_method === 'monthly' ? 'monthly' : 'rate',
       rate,
       monthly: Number(r?.monthly ?? 0),
     };
@@ -546,7 +637,7 @@ export const productionCoutRepository = {
     const c = await this.computePlanCost(planId);
     const { coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutPrevu, coutPrevuMixReel, ecartMix, ecartPct,
       detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges, coutSousTraitance, detailSousTraitance,
-      coutMachine, detailMachine } = c;
+      coutMachine, detailMachine, coutChargesAppro, coutChargesProduction, coutChargesStructure, coutChargesDirectes, niveaux, analytic } = c;
 
     // Upsert (mig 268 : + cout_prevu_mix_reel, ecart_mix ; mig 339 : energie/pertes reels ; mig 527 : emballages)
     const result = await db.query(
@@ -556,10 +647,19 @@ export const productionCoutRepository = {
         cout_prevu, ecart_pct, cout_prevu_mix_reel, ecart_mix,
         detail_matieres, detail_main_oeuvre, detail_energie, detail_pertes,
         calculated_by, calculated_at, cout_emballages, detail_emballages, cout_sous_traitance, detail_sous_traitance,
-        cout_machine, detail_machine)
-       VALUES ($1, $2, $3, $13, $14, $4, $5, $6, $7, $11, $12, $8, $9, $15, $16, $10, NOW(), $17, $18, $19, $20, $21, $22)
+        cout_machine, detail_machine, cout_charges_appro, cout_charges_production, cout_charges_structure,
+        cout_charges_directes, detail_analytique, niveaux, methodes)
+       VALUES ($1, $2, $3, $13, $14, $4, $5, $6, $7, $11, $12, $8, $9, $15, $16, $10, NOW(), $17, $18, $19, $20, $21, $22,
+               $23, $24, $25, $26, $27, $28, $29)
        ON CONFLICT (plan_id)
        DO UPDATE SET
+         cout_charges_appro = EXCLUDED.cout_charges_appro,
+         cout_charges_production = EXCLUDED.cout_charges_production,
+         cout_charges_structure = EXCLUDED.cout_charges_structure,
+         cout_charges_directes = EXCLUDED.cout_charges_directes,
+         detail_analytique = EXCLUDED.detail_analytique,
+         niveaux = EXCLUDED.niveaux,
+         methodes = EXCLUDED.methodes,
          cout_machine = EXCLUDED.cout_machine,
          detail_machine = EXCLUDED.detail_machine,
          cout_emballages = EXCLUDED.cout_emballages,
@@ -592,7 +692,12 @@ export const productionCoutRepository = {
        coutEnergie, coutPertes,
        JSON.stringify(detailEnergie), JSON.stringify(detailPertes),
        coutEmballages, JSON.stringify(detailEmballages), coutSousTraitance, detailSousTraitance ? JSON.stringify(detailSousTraitance) : null,
-       coutMachine, JSON.stringify(detailMachine)]
+       coutMachine, JSON.stringify(detailMachine),
+       coutChargesAppro, coutChargesProduction, coutChargesStructure, coutChargesDirectes,
+       analytic ? JSON.stringify({ month: analytic.month, drivers: analytic.drivers, lines: analytic.lines, direct: analytic.directLines,
+                                    warnings: analytic.warnings }) : null,
+       niveaux ? JSON.stringify(niveaux) : null,
+       analytic ? JSON.stringify(analytic.methods) : null]
     );
     // Charges mensuelles : ce plan change la base de repartition du mois. Les autres plans
     // du mois sont re-repartis, pour que la somme des parts egale les charges saisies.

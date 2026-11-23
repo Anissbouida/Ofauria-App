@@ -37,6 +37,7 @@ import BonSortiePrelevementPage from './features/production/BonSortiePrelevement
 import ProductionDashboardPage from './features/production/ProductionDashboardPage';
 import ProductionLayout from './features/production/ProductionLayout';
 import WorkCentersPage from './features/production/WorkCentersPage';
+import AnalyticCostPage from './features/production/AnalyticCostPage';
 import DisassemblyPage from './features/production/DisassemblyPage';
 import MrpPage from './features/production/MrpPage';
 import AtelierPage from './features/production/AtelierPage';
@@ -143,6 +144,7 @@ export default function App() {
                 <Route path="/recipes" element={<RecipesPage />} />
                 <Route path="/production/costs" element={<ReportsPage fixedTab="cost" />} />
                 <Route path="/production/work-centers" element={<WorkCentersPage />} />
+                <Route path="/production/analyse-couts" element={<AnalyticCostPage />} />
                 <Route path="/production/disassembly" element={<DisassemblyPage />} />
                 <Route path="/production/mrp" element={<MrpPage />} />
                 <Route path="/production/atelier" element={<AtelierPage />} />

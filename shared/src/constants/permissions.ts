@@ -294,6 +294,7 @@ export const PERMISSIONS = {
   "production.product_lots.send_orphan_to_losses": { module: "production", label: "Product lots : envoyer orphan to pertes", defaultRoles: ["admin", "manager"] },
   "production.product_lots.send_to_losses": { module: "production", label: "Product lots : envoyer to pertes", defaultRoles: ["admin", "manager"] },
   "production.product_lots.view": { module: "production", label: "Product lots : consulter", defaultRoles: ["admin", "manager"] },
+  "production.production_cout.analytique": { module: "production", label: "Production cout : comptabilité analytique (centres, charges, personnel, période)", defaultRoles: ["admin", "manager"] },
   "production.production_cout.batch_calculate": { module: "production", label: "Production cout : batch calculate", defaultRoles: ["admin", "manager"] },
   "production.production_cout.calculate": { module: "production", label: "Production cout : calculate", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },
   "production.production_cout.equipement_usage": { module: "production", label: "Production cout : equipement usage", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },

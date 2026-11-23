@@ -7,6 +7,9 @@ import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { emptyBody } from '../validators/common.validator.js';
+import { analyticCostRepository, AnalyticError } from '../repositories/analytic-cost.repository.js';
+import type { AuthRequest } from '../middleware/auth.middleware.js';
+import type { Response } from 'express';
 import { createEquipementBody, updateEquipementBody, recordTempsTravailBody, recordEquipementUsageBody } from '../validators/production-flow.validator.js';
 
 const router = Router();
@@ -55,5 +58,76 @@ router.get('/plans/:planId/outputs-cost', authenticate, can('production.producti
 
 // ─── Charge par poste vs capacite (mig 398) — roadmap lot 3 ───
 router.get('/plans/:planId/charge', authenticate, can('production.production_cout.view'), asyncHandler(productionCoutController.getChargeByPlan));
+
+// ─── Comptabilité analytique du coût de revient (mig 655) ───
+// Paramétrage et rapport de période : gérant (les coûts salariaux y sont visibles).
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+const A = 'production.production_cout.analytique' as const;
+const store = (req: AuthRequest) => (typeof req.query.storeId === 'string' && z.string().guid().safeParse(req.query.storeId).success
+  ? req.query.storeId : req.user!.storeId) ?? null;
+const monthOf = (req: AuthRequest) => {
+  const m = typeof req.query.month === 'string' ? req.query.month : (req.body?.month as string | undefined);
+  if (m && MONTH.test(m)) return m;
+  const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+const run = (fn: (req: AuthRequest, res: Response) => Promise<unknown>, status = 200) => asyncHandler(async (req: AuthRequest, res: Response) => {
+  try { res.status(status).json({ success: true, data: await fn(req, res) }); }
+  catch (e) {
+    if (e instanceof AnalyticError) { res.status(400).json({ success: false, error: { message: e.message } }); return; }
+    throw e;
+  }
+});
+const DRIVER = z.enum(['units', 'weight_kg', 'labour_hours', 'machine_hours', 'batches', 'material_cost', 'sales_value']);
+const LEVEL = z.enum(['approvisionnement', 'production', 'administration', 'distribution']);
+const centreCreate = z.object({ code: z.string().trim().min(1).max(20), name: z.string().trim().min(1).max(120),
+  kind: z.enum(['principal', 'auxiliaire']), level: LEVEL, driver: DRIVER, parentId: z.string().guid().nullable().optional() });
+const centreUpdate = z.object({ name: z.string().trim().min(1).max(120).optional(), kind: z.enum(['principal', 'auxiliaire']).optional(),
+  level: LEVEL.optional(), driver: DRIVER.optional(), parentId: z.string().guid().nullable().optional(),
+  normalCapacity: z.number().positive().max(1e12).nullable().optional(), maxCapacity: z.number().positive().max(1e12).nullable().optional(),
+  transferBasis: z.enum(['percent', 'headcount', 'payroll']).optional(), isActive: z.boolean().optional(),
+  description: z.string().max(2000).nullable().optional(),
+  transfers: z.array(z.object({ toId: z.string().guid(), percent: z.number().min(0).max(100) })).max(50).optional() });
+const chargeBody = z.object({ label: z.string().trim().min(1).max(160),
+  nature: z.enum(['loyer', 'assurance', 'abonnement', 'amortissement', 'salaires', 'energie', 'eau', 'maintenance', 'informatique',
+    'securite', 'administratif', 'honoraires', 'transport', 'marketing', 'sous_traitance', 'consommables', 'taxes', 'autre']),
+  behavior: z.enum(['fixed', 'variable', 'semi_variable']), fixedPct: z.number().min(0).max(100).default(100),
+  assignment: z.enum(['direct', 'indirect']), costCenterId: z.string().guid().nullable().optional(),
+  allocationKeyId: z.string().guid().nullable().optional(), productId: z.string().guid().nullable().optional(),
+  normalQuantity: z.number().positive().max(1e12).nullable().optional(), monthlyAmount: z.number().min(0).max(1e11),
+  notes: z.string().max(2000).nullable().optional(), isActive: z.boolean().optional() });
+const keyBody = z.object({ name: z.string().trim().min(1).max(120),
+  lines: z.array(z.object({ centerId: z.string().guid(), percent: z.number().positive().max(100) })).min(1).max(50) });
+const allocBody = z.object({ allocations: z.array(z.object({ centerId: z.string().guid(), percent: z.number().positive().max(100),
+  laborType: z.enum(['direct', 'indirect']) })).max(20) });
+
+router.get('/analytique/meta', authenticate, can(A), run(async () => ({ ...analyticCostRepository.meta(), method: await analyticCostRepository.method() })));
+router.put('/analytique/methode', authenticate, can(A), validate(z.object({ method: z.enum(['rate', 'analytic']) })),
+  run(async (req) => analyticCostRepository.setMethod(req.body.method)));
+router.get('/analytique/periode', authenticate, can(A), run(async (req) => analyticCostRepository.period(store(req), monthOf(req))));
+router.post('/analytique/recalculer', authenticate, can(A), validate(z.object({ month: z.string().regex(MONTH) })),
+  run(async (req) => analyticCostRepository.recalcMonth(store(req), req.body.month, req.user!.userId)));
+router.get('/analytique/centres', authenticate, can(A), run(async (req) => analyticCostRepository.centres(store(req))));
+router.post('/analytique/centres', authenticate, can(A), validate(centreCreate),
+  run(async (req) => analyticCostRepository.createCentre({ ...req.body, storeId: null, userId: req.user!.userId }), 201));
+router.put('/analytique/centres/:id', authenticate, validateUuidParams('id'), can(A), validate(centreUpdate),
+  run(async (req) => analyticCostRepository.updateCentre(req.params.id as string, req.body)));
+router.get('/analytique/cles', authenticate, can(A), run(async () => analyticCostRepository.keys()));
+router.post('/analytique/cles', authenticate, can(A), validate(keyBody),
+  run(async (req) => analyticCostRepository.saveKey(null, { ...req.body, userId: req.user!.userId }), 201));
+router.put('/analytique/cles/:id', authenticate, validateUuidParams('id'), can(A), validate(keyBody),
+  run(async (req) => analyticCostRepository.saveKey(req.params.id as string, { ...req.body, userId: req.user!.userId })));
+router.get('/analytique/charges', authenticate, can(A), run(async (req) => analyticCostRepository.charges(store(req), monthOf(req))));
+router.post('/analytique/charges', authenticate, can(A), validate(chargeBody),
+  run(async (req) => analyticCostRepository.createCharge({ ...req.body, storeId: null, userId: req.user!.userId }), 201));
+router.put('/analytique/charges/:id', authenticate, validateUuidParams('id'), can(A), validate(chargeBody),
+  run(async (req) => analyticCostRepository.updateCharge(req.params.id as string, req.body)));
+router.put('/analytique/charges/:id/actif', authenticate, validateUuidParams('id'), can(A), validate(z.object({ active: z.boolean() })),
+  run(async (req) => analyticCostRepository.setChargeActive(req.params.id as string, req.body.active)));
+router.put('/analytique/charges/:id/reel', authenticate, validateUuidParams('id'), can(A),
+  validate(z.object({ month: z.string().regex(MONTH), amount: z.number().min(0).max(1e11).nullable() })),
+  run(async (req) => analyticCostRepository.setActual(req.params.id as string, req.body.month, req.body.amount, req.user!.userId)));
+router.get('/analytique/personnel', authenticate, can(A), run(async (req) => analyticCostRepository.personnel(store(req), monthOf(req))));
+router.put('/analytique/personnel/:id', authenticate, validateUuidParams('id'), can(A), validate(allocBody),
+  run(async (req) => analyticCostRepository.setAllocations(req.params.id as string, req.body.allocations)));
 
 export default router;

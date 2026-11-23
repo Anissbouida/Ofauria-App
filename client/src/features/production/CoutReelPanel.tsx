@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { money, currencySymbol } from '../../utils/money';
 import PlanCostAllocation from './PlanCostAllocation';
 import { apiErrorMessage } from '../../api/errors';
@@ -8,7 +9,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { DataPanel, LoadingState } from '../../components/ds';
 import {
   Calculator, Loader2,
-  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock, Scissors, Gauge
+  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock, Scissors, Gauge, Layers, Scale
 } from 'lucide-react';
 import './production.css';
 import { useProdTerms } from '../../hooks/useProdTerms';
@@ -33,7 +34,23 @@ interface CoutReel {
   cout_pertes: Money;
   cout_total: Money;
   cout_charges_fixes: Money;
-  detail_charges_fixes: { label: string; mensuel: Money; part: Money }[];
+  /** label + part ; taux/base (mig 527 : taux et assiette ; mig 655 : coût de l'unité d'œuvre et quantité d'inducteur). */
+  detail_charges_fixes: { label: string; taux?: Money; base?: Money; part: Money }[];
+  /** Mig 655 : charges analytiques séparées par niveau (somme = cout_charges_fixes). */
+  cout_charges_appro?: Money;
+  cout_charges_production?: Money;
+  cout_charges_structure?: Money;
+  cout_charges_directes?: Money;
+  /** Coût de production (sans charges de structure) : valorisation des lots. */
+  cout_production?: Money;
+  niveaux?: Niveaux | null;
+  methodes?: { key: string; label: string; total: number | null; note: string }[] | null;
+  detail_analytique?: {
+    month: string;
+    lines: { code: string; name: string; level: string; driverLabel: string; quantity: number; rateFixed: number; rateVariable: number; fixed: number; variable: number; total: number }[];
+    direct: { label: string; productName: string; quantity: number; rate: number; total: number }[];
+    warnings: string[];
+  } | null;
   cout_prevu: Money;
   ecart_pct: Money;
   /**
@@ -112,6 +129,19 @@ interface ChargeRow {
   overloaded: boolean;
 }
 
+interface Niveaux {
+  cout_achat: number; cout_production_direct: number; cout_production_complet: number; cout_revient_complet: number;
+  charges: { approvisionnement: number; production: number; structure: number; directes: number };
+  unites: number; cout_revient_unitaire: number | null; cout_production_unitaire: number | null;
+  ventes_ht: number; prix_vente_ht_unitaire: number | null; marge: number; marge_unitaire: number | null;
+  taux_marge: number | null; taux_marque: number | null;
+  items: { plan_item_id: string; product_name: string; quantity: number; prix_vente_ht_u: number | null; cout_production_u: number | null;
+           cout_revient_u: number | null; cout_revient: number; ventes_ht: number; marge: number; taux_marge: number | null; taux_marque: number | null }[];
+}
+
+const LEVEL_SHORT: Record<string, string> = { approvisionnement: 'Approvisionnement', production: 'Production', administration: 'Administration', distribution: 'Distribution' };
+const pctTxt = (v: number | null | undefined) => (v == null ? '—' : `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`);
+
 function toNum(v: Money): number {
   if (v == null) return 0;
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -178,6 +208,10 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
     ? toNum(cout.cout_total)
     : coutMat + coutEmballages + coutMO + coutEnergie + coutCharges + coutFacon + coutMachine;
   const coutPertes = toNum(cout?.cout_pertes);
+  // Mig 655 : coût calculé par le moteur analytique (centres, capacité normale).
+  const niveaux = cout?.niveaux ?? null;
+  const analytic = !!cout?.detail_analytique;
+  const coutStructure = toNum(cout?.cout_charges_structure);
 
   return (
     <div className="ds-panel pd-section">
@@ -235,12 +269,27 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               </div>
               <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutEnergie)}</div>
             </div>
+            {analytic ? (<>
+              <div className="odoo-stat-card" style={{ cursor: 'default' }} title="Charges d'approvisionnement + charges indirectes de production + charges directes : dans le coût de production.">
+                <div className="odoo-stat-card-label">
+                  <Building2 size={11} style={{ display: 'inline', marginRight: 4 }} />Charges de production
+                </div>
+                <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutCharges - coutStructure)}</div>
+              </div>
+              <div className="odoo-stat-card" style={{ cursor: 'default' }} title="Quote-part de l'administration et de la distribution : dans le coût de revient complet, pas dans la valeur du stock.">
+                <div className="odoo-stat-card-label">
+                  <Layers size={11} style={{ display: 'inline', marginRight: 4 }} />Charges de structure
+                </div>
+                <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutStructure)}</div>
+              </div>
+            </>) : (
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Building2 size={11} style={{ display: 'inline', marginRight: 4 }} />Charges
               </div>
               <div className="odoo-stat-card-value" style={{ fontSize: '16px' }}>{fmtMoney(coutCharges)}</div>
             </div>
+            )}
             {coutMachine > 0 && (
               <div className="odoo-stat-card" style={{ cursor: 'default' }}>
                 <div className="odoo-stat-card-label">
@@ -295,6 +344,49 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
             }}>
               <span style={{ color: 'var(--ds-muted)' }}>Prix de revient par unité ({totalQuantity} unités)</span>
               <span style={{ fontWeight: 600 }}>{money(perUnit)}</span>
+            </div>
+          )}
+
+          {/* Mig 655 : niveaux de coût et rentabilité (prix de vente HT). */}
+          {niveaux && (
+            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--ds-sep)', backgroundColor: 'var(--ds-card)', fontSize: '13px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', columnGap: 28, rowGap: 4 }}>
+                <div>
+                  {([
+                    ["Coût d'achat (matières + emballages + approvisionnement)", niveaux.cout_achat],
+                    ['Coût de production direct', niveaux.cout_production_direct],
+                    ['Coût de production complet', niveaux.cout_production_complet],
+                    ['Coût de revient complet', niveaux.cout_revient_complet],
+                  ] as [string, number][]).map(([l, v], i) => (
+                    <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontWeight: i === 3 ? 600 : 400 }}>
+                      <span style={{ color: i === 3 ? undefined : 'var(--ds-muted)' }}>{l}</span><span>{money(v)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ color: 'var(--ds-muted)' }}>Coût de revient unitaire</span><span style={{ fontWeight: 600 }}>{niveaux.cout_revient_unitaire != null ? money(niveaux.cout_revient_unitaire, { decimals: 4 }) : '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ color: 'var(--ds-muted)' }}>Prix de vente HT moyen</span><span>{niveaux.prix_vente_ht_unitaire != null ? money(niveaux.prix_vente_ht_unitaire, { decimals: 4 }) : '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ color: 'var(--ds-muted)' }}>Marge ({money(niveaux.ventes_ht)} de ventes HT)</span>
+                    <span style={{ fontWeight: 600, color: niveaux.marge < 0 ? 'var(--ds-danger)' : 'var(--ds-success)' }}>{money(niveaux.marge, { signed: true })}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ color: 'var(--ds-muted)' }} title="Marge ÷ coût de revient">Taux de marge</span><span>{pctTxt(niveaux.taux_marge)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ color: 'var(--ds-muted)' }} title="Marge ÷ prix de vente HT">Taux de marque</span><span>{pctTxt(niveaux.taux_marque)}</span>
+                  </div>
+                </div>
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--ds-muted)' }}>
+                Le stock est valorisé au coût de production ({money(niveaux.cout_production_complet)}) ; le coût de revient complet ajoute la quote-part
+                d'administration et de distribution. Charges fixes imputées sur la capacité normale : la sous-activité du mois reste en
+                écart de période (<Link to="/production/analyse-couts">Analyse des coûts</Link>).
+              </p>
             </div>
           )}
 
@@ -550,20 +642,116 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               </DetailSection>
             )}
 
-            {(cout.detail_charges_fixes || []).length > 0 && (
+            {analytic && cout.detail_analytique && (cout.detail_analytique.lines.length > 0 || cout.detail_analytique.direct.length > 0) && (
+              <DetailSection title="Charges imputées par centre (imputation rationnelle)" icon={<Building2 size={12} className="text-violet-500" />}
+                isExpanded={expandedSection === 'charges'} onToggle={() => setExpandedSection(expandedSection === 'charges' ? null : 'charges')}>
+                <DataPanel label="Charges imputées par centre">
+                <table className="odoo-table ds-dense">
+                  <thead><tr>
+                    <th>Centre</th><th>Niveau</th><th>Inducteur</th>
+                    <th className="ds-num">Quantité</th><th className="ds-num">Coût de l'unité d'œuvre</th>
+                    <th className="ds-num">Fixe</th><th className="ds-num">Variable</th><th className="ds-num">Imputé</th>
+                  </tr></thead>
+                  <tbody>
+                    {cout.detail_analytique.lines.map((d, i) => (
+                      <tr key={i}>
+                        <td className="ds-strong">{d.name} <span className="ds-muted">{d.code}</span></td>
+                        <td>{LEVEL_SHORT[d.level] ?? d.level}</td>
+                        <td>{d.driverLabel}</td>
+                        <td className="ds-num">{toNum(d.quantity).toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
+                        <td className="ds-num">{(toNum(d.rateFixed) + toNum(d.rateVariable)).toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</td>
+                        <td className="ds-num">{fmtMoney(d.fixed)}</td>
+                        <td className="ds-num">{fmtMoney(d.variable)}</td>
+                        <td className="ds-num">{fmtMoney(d.total)}</td>
+                      </tr>
+                    ))}
+                    {cout.detail_analytique.direct.map((d, i) => (
+                      <tr key={`d${i}`}>
+                        <td className="ds-strong">{d.label}</td><td>Charge directe</td><td>{d.productName}</td>
+                        <td className="ds-num">{toNum(d.quantity).toLocaleString('fr-FR')}</td>
+                        <td className="ds-num">{toNum(d.rate).toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</td>
+                        <td className="ds-num" colSpan={2} /><td className="ds-num">{fmtMoney(d.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr><td className="ds-strong" colSpan={7}>Total des charges imputées</td><td className="ds-num ds-strong">{fmtMoney(coutCharges)}</td></tr></tfoot>
+                </table>
+                </DataPanel>
+                <p className="text-[11px] text-gray-400 px-2 pt-1">
+                  Coût de l'unité d'œuvre = charges mensuelles du centre ÷ capacité normale mensuelle (mois {cout.detail_analytique.month}).
+                  Paramétrage : <Link to="/production/analyse-couts">Production › Analyse des coûts</Link>.
+                </p>
+              </DetailSection>
+            )}
+
+            {niveaux && niveaux.items.length > 0 && (
+              <DetailSection title="Coût et marge par article" icon={<Scale size={12} className="text-emerald-600" />}
+                isExpanded={expandedSection === 'marges'} onToggle={() => setExpandedSection(expandedSection === 'marges' ? null : 'marges')}>
+                <DataPanel label="Coût et marge par article">
+                <table className="odoo-table ds-dense">
+                  <thead><tr>
+                    <th>Article</th><th className="ds-num">Quantité</th><th className="ds-num">Coût de production / u</th>
+                    <th className="ds-num">Coût de revient / u</th><th className="ds-num">Prix HT / u</th>
+                    <th className="ds-num">Marge</th><th className="ds-num">Taux de marge</th><th className="ds-num">Taux de marque</th>
+                  </tr></thead>
+                  <tbody>{niveaux.items.map(it => (
+                    <tr key={it.plan_item_id}>
+                      <td className="ds-strong">{it.product_name}</td>
+                      <td className="ds-num">{toNum(it.quantity).toLocaleString('fr-FR')}</td>
+                      <td className="ds-num">{it.cout_production_u != null ? money(it.cout_production_u, { decimals: 4 }) : '—'}</td>
+                      <td className="ds-num">{it.cout_revient_u != null ? money(it.cout_revient_u, { decimals: 4 }) : '—'}</td>
+                      <td className="ds-num">{it.prix_vente_ht_u != null ? money(it.prix_vente_ht_u, { decimals: 2 }) : '—'}</td>
+                      <td className="ds-num" style={{ color: it.marge < 0 ? 'var(--ds-danger)' : undefined }}>{money(it.marge, { signed: true })}</td>
+                      <td className="ds-num">{pctTxt(it.taux_marge)}</td>
+                      <td className="ds-num">{pctTxt(it.taux_marque)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                </DataPanel>
+                <p className="text-[11px] text-gray-400 px-2 pt-1">Coût par article selon la clé de répartition du plan (section « Répartition du coût entre les articles »).</p>
+              </DetailSection>
+            )}
+
+            {(cout.methodes?.length ?? 0) > 0 && (
+              <DetailSection title="Comparaison des méthodes de calcul" icon={<Calculator size={12} className="text-sky-600" />}
+                isExpanded={expandedSection === 'methodes'} onToggle={() => setExpandedSection(expandedSection === 'methodes' ? null : 'methodes')}>
+                <DataPanel label="Comparaison des méthodes">
+                <table className="odoo-table ds-dense">
+                  <thead><tr><th>Méthode</th><th className="ds-num">Coût total</th><th className="ds-num">Coût unitaire</th><th className="ds-num">Marge / ventes HT</th><th>Lecture</th></tr></thead>
+                  <tbody>{(cout.methodes ?? []).map(m => {
+                    const units = niveaux?.unites ?? 0;
+                    const ventes = niveaux?.ventes_ht ?? 0;
+                    return (
+                      <tr key={m.key} style={m.key === 'rationnelle' ? { fontWeight: 600 } : undefined}>
+                        <td>{m.label}</td>
+                        <td className="ds-num">{m.total != null ? money(m.total) : '—'}</td>
+                        <td className="ds-num">{m.total != null && units > 0 ? money(m.total / units, { decimals: 4 }) : '—'}</td>
+                        <td className="ds-num">{m.total != null && ventes > 0 ? pctTxt((ventes - m.total) / ventes * 100) : '—'}</td>
+                        <td style={{ fontSize: 12, color: 'var(--ds-muted)', fontWeight: 400 }}>{m.note}</td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+                </DataPanel>
+              </DetailSection>
+            )}
+
+            {!analytic && (cout.detail_charges_fixes || []).length > 0 && (
               <DetailSection title="Détail charges fixes" icon={<Building2 size={12} className="text-violet-500" />}
                 isExpanded={expandedSection === 'charges'} onToggle={() => setExpandedSection(expandedSection === 'charges' ? null : 'charges')}>
                 <DataPanel label="Détail charges fixes">
                 <table className="odoo-table ds-dense">
                   <thead><tr>
                     <th>Charge</th>
-                    <th className="ds-num">Mensuel</th>
+                    <th className="ds-num">Taux</th>
+                    <th className="ds-num">Assiette</th>
                     <th className="ds-num">Quote-part</th>
                   </tr></thead>
                   <tbody>{(cout.detail_charges_fixes || []).map((d, i) => (
                     <tr key={i}>
                       <td className="ds-strong">{d.label}</td>
-                      <td className="ds-num">{fmtMoney(d.mensuel)}</td>
+                      <td className="ds-num">{d.taux != null ? `${(toNum(d.taux) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %` : '—'}</td>
+                      <td className="ds-num">{d.base != null ? fmtMoney(d.base) : '—'}</td>
                       <td className="ds-num">{fmtMoney(d.part)}</td>
                     </tr>
                   ))}</tbody>

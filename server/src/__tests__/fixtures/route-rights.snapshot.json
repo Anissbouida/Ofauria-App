@@ -1463,6 +1463,30 @@
   "manager"
  ],
  "GET /production": null,
+ "GET /production-cout/analytique/centres": [
+  "admin",
+  "manager"
+ ],
+ "GET /production-cout/analytique/charges": [
+  "admin",
+  "manager"
+ ],
+ "GET /production-cout/analytique/cles": [
+  "admin",
+  "manager"
+ ],
+ "GET /production-cout/analytique/meta": [
+  "admin",
+  "manager"
+ ],
+ "GET /production-cout/analytique/periode": [
+  "admin",
+  "manager"
+ ],
+ "GET /production-cout/analytique/personnel": [
+  "admin",
+  "manager"
+ ],
  "GET /production-cout/by-day": [
   "admin",
   "baker",
@@ -3775,6 +3799,22 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "POST /production-cout/analytique/centres": [
+  "admin",
+  "manager"
+ ],
+ "POST /production-cout/analytique/charges": [
+  "admin",
+  "manager"
+ ],
+ "POST /production-cout/analytique/cles": [
+  "admin",
+  "manager"
+ ],
+ "POST /production-cout/analytique/recalculer": [
+  "admin",
+  "manager"
+ ],
  "POST /production-cout/batch-calculate": [
   "admin",
   "manager"
@@ -5041,6 +5081,34 @@
  ],
  "PUT /printers/:id": null,
  "PUT /product-pipeline/:id/stage-data": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/analytique/centres/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/analytique/charges/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/analytique/charges/:id/actif": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/analytique/charges/:id/reel": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/analytique/cles/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/analytique/methode": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/analytique/personnel/:id": [
   "admin",
   "manager"
  ],
