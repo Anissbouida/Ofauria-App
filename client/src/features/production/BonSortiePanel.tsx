@@ -549,6 +549,7 @@ export function BonSortiePanel({
           const saveLine = () => ev && ev.ready && ligneMutation.mutate({ ligneId: line.id as string, payload: payloadOf(line, ev) });
           const lotLabel = (line.supplier_lot_number || line.lot_number) as string | null;
           const suggestedLabel = (line.suggested_lot_number as string | null) || (line.suggested_economat_lot_id ? 'sans n°' : null);
+          const weighedLots = (Array.isArray(line.weighed_lots) ? line.weighed_lots : []) as WeighedLot[];
 
           return (
             <Fragment key={line.id as string}>
@@ -559,8 +560,23 @@ export function BonSortiePanel({
                 {isMagasinier && (
                   <div className="bsi-sub">
                     {kind === 'a_ouvrir' && suggestedLabel && <>Ouvrir le lot <span style={{ fontFamily: 'ui-monospace, monospace' }}>{suggestedLabel}</span>{containerSize > 0 && <> · {line.container_type_label ? `${line.container_type_label} de ` : 'contenant de '}{fmtQty(containerSize, unit).v} {fmtQty(containerSize, unit).u}</>}</>}
-                    {kind !== 'a_ouvrir' && lotLabel && <>Lot <span style={{ fontFamily: 'ui-monospace, monospace' }}>{lotLabel}</span></>}
+                    {kind !== 'a_ouvrir' && weighedLots.length === 0 && lotLabel && <>Lot <span style={{ fontFamily: 'ui-monospace, monospace' }}>{lotLabel}</span></>}
                     {kind === 'a_ouvrir' && !suggestedLabel && <>Lot choisi automatiquement (FEFO)</>}
+                  </div>
+                )}
+                {weighedLots.length > 0 && (
+                  <div className="bsi-sub" title="Lots réellement pesés pour cette ligne (FEFO)">
+                    {weighedLots.length > 1 ? 'Lots ' : 'Lot '}
+                    {weighedLots.map((w, i) => {
+                      const q = fmtQty(Number(w.quantity) || 0, unit);
+                      return (
+                        <Fragment key={`${w.lot_id}-${i}`}>
+                          {i > 0 && ' · '}
+                          <span style={{ fontFamily: 'ui-monospace, monospace' }}>{w.lot_number || 'sans n°'}</span>
+                          {weighedLots.length > 1 && <> {q.v} {q.u}</>}
+                        </Fragment>
+                      );
+                    })}
                   </div>
                 )}
                 {isMagasinier && line.ecart_reason && <div className="bsi-sub" style={{ fontStyle: 'italic' }}>« {line.ecart_reason as string} »</div>}
@@ -798,6 +814,9 @@ export function BonSortiePanel({
   );
 }
 
+/** Lot reellement pese pour une ligne (pesee multi-lots, mig 626). */
+type WeighedLot = { lot_id: string; lot_number: string | null; quantity: number | string; expiration_date: string | null };
+
 /** Vue chef : une ligne par ingredient (un besoin pris sur plusieurs lots reste un
  *  seul ingredient pour lui), avec l'etat reel : pese, manquant, ou en preparation. */
 function aggregateForChef(lines: Line[], kinds: Map<string, LineKind>): Line[] {
@@ -819,6 +838,7 @@ function aggregateForChef(lines: Line[], kinds: Map<string, LineKind>): Line[] {
       existing.allocated_quantity = parseFloat(existing.allocated_quantity) + allocated;
       if (actual !== null) existing.actual_quantity = (existing.actual_quantity ?? 0) + actual;
       (existing._kinds as LineKind[]).push(kind);
+      if (Array.isArray(l.weighed_lots)) existing.weighed_lots = [...(Array.isArray(existing.weighed_lots) ? existing.weighed_lots : []), ...l.weighed_lots];
       if (existing.status !== 'ecart' && l.status === 'ecart') existing.status = 'ecart';
     }
   }

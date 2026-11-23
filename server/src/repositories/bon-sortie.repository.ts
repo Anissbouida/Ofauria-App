@@ -377,6 +377,16 @@ async function loadBonLines(bonId: string, storeId: string) {
                  AND il2.store_id = $2
                  AND ${lotUsableSql('il2')}
             ), 0) AS current_stock_total,
+            -- Pesee multi-lots (mig 626) : lots reellement pris par la ligne, pour l'ecran
+            -- (une ligne pesee sur deux lots n'affichait que le lot principal).
+            (SELECT json_agg(json_build_object(
+                      'lot_id', ll.ingredient_lot_id,
+                      'lot_number', COALESCE(lw.supplier_lot_number, lw.lot_number),
+                      'quantity', ll.quantity,
+                      'expiration_date', lw.expiration_date) ORDER BY ll.created_at, ll.id)
+               FROM production_bons_sortie_ligne_lots ll
+               JOIN ingredient_lots lw ON lw.id = ll.ingredient_lot_id
+              WHERE ll.ligne_id = bsl.id) AS weighed_lots,
             COALESCE((
               SELECT SUM(GREATEST(0, COALESCE(il2.pesage_quantity, 0) - COALESCE((
                 SELECT SUM(bsl2.allocated_quantity)
@@ -1268,21 +1278,26 @@ export const bonSortieRepository = {
 
       let lotId: string | null = options.overrideLotId || line.suggested_economat_lot_id;
       if (!options.overrideLotId) {
-        const suggested = lotId
-          ? await client.query(
-              `SELECT il.economat_quantity FROM ingredient_lots il WHERE il.id = $1 AND ${lotUsableSql('il')}`, [lotId])
-          : { rows: [] as Record<string, unknown>[] };
-        const suggestedQty = suggested.rows[0] ? parseFloat(suggested.rows[0].economat_quantity as string) : 0;
-        if (suggestedQty + 1e-9 < requestedQty) {
-          const fallback = await client.query(
-            `SELECT il.id FROM ingredient_lots il
-              WHERE il.ingredient_id = $1 AND il.store_id = $2 AND ${lotUsableSql('il')}
-                AND il.economat_quantity >= $3
-              ORDER BY il.expiration_date ASC NULLS LAST, il.created_at ASC
-              LIMIT 1`,
-            [line.ingredient_id, line.store_id, requestedQty],
-          );
-          if (fallback.rows[0]) lotId = fallback.rows[0].id as string;
+        // Suite du constat 141 : l'economat « libre » d'un lot exclut ce que les autres
+        // lignes ouvertes y ont promis (lotClaimsLateral, hors cette ligne). Avant, le
+        // repli prenait le premier lot dont l'economat brut couvrait la quantite, au
+        // risque d'ouvrir le sac reserve a un autre bon. Un lot choisi explicitement
+        // (overrideLotId) reste au seul controle physique de moveEconomatToPesage.
+        const candidates = await client.query(
+          `SELECT il.id, il.pesage_quantity, il.economat_quantity,
+                  claims.hard_qty, claims.soft_pesage_qty, claims.soft_economat_qty
+             FROM ingredient_lots il
+             ${lotClaimsLateral('il', '$3::uuid')}
+            WHERE il.ingredient_id = $1 AND il.store_id = $2 AND ${lotUsableSql('il')}
+              AND il.economat_quantity > 0
+            ORDER BY il.expiration_date ASC NULLS LAST, il.created_at ASC`,
+          [line.ingredient_id, line.store_id, ligneId],
+        );
+        const freeOf = (r: Record<string, any>) => lotFree(r, true).economat;
+        const suggestedRow = lotId ? candidates.rows.find(r => r.id === lotId) : undefined;
+        if (!suggestedRow || freeOf(suggestedRow) + 1e-9 < requestedQty) {
+          const fallback = candidates.rows.find(r => freeOf(r) + 1e-9 >= requestedQty);
+          if (fallback) lotId = fallback.id as string;
         }
       }
       if (!lotId) throw new Error('Aucun lot Economat a transferer (lot suggere absent)');
@@ -1896,27 +1911,28 @@ export const bonSortieRepository = {
         //     du premier click sont visibles ici, donc l'allocation est idempotente.
         // Dans une transaction Postgres, le sous-SELECT voit les INSERT/UPDATE faits
         // plus tot dans la meme boucle.
+        //
+        // Suite du constat 141 : le disponible deduit les promesses de TOUS les bons
+        // ouverts (lotClaimsLateral, ce bon compris), plus seulement celles de ce bon.
+        // Seule une ligne recyclee est exclue (sa suggestion economat ne compte pas) ;
+        // une ligne partiellement allouee garde sa promesse, sinon on la doublerait.
         const pesageLots = await client.query(
           `SELECT l.id, l.lot_number, l.expiration_date, l.first_opened_at, l.status,
-                  (l.pesage_quantity - COALESCE((
-                    SELECT SUM(bsl.allocated_quantity)
-                    FROM production_bons_sortie_lignes bsl
-                    WHERE bsl.bon_id = $3 AND bsl.ingredient_lot_id = l.id
-                      AND bsl.source_location = 'PESAGE'
-                      AND bsl.status IN ('en_attente', 'preleve', 'substitue')
-                  ), 0)) AS effective_pesage
+                  l.pesage_quantity, l.economat_quantity,
+                  claims.hard_qty, claims.soft_pesage_qty, claims.soft_economat_qty
            FROM ingredient_lots l
+           ${lotClaimsLateral('l', '$3::uuid')}
            WHERE l.ingredient_id = $1 AND l.store_id = $2
              AND ${lotUsableSql('l')} AND l.pesage_quantity > 0
            ORDER BY
              l.expiration_date ASC NULLS LAST,
              l.first_opened_at ASC NULLS FIRST, l.received_at ASC`,
-          [line.ingredient_id, storeId, bonId]
+          [line.ingredient_id, storeId, isRecyclable ? line.id : null]
         );
 
         for (const lot of pesageLots.rows) {
           if (remaining <= 0) break;
-          const effective = parseFloat(lot.effective_pesage);
+          const effective = lotFree(lot, true).pesage;
           if (effective <= 0) continue;
           // Fond de sac (meme regle qu'a la generation) : pas de ligne « a peser 0 g ».
           if (effective + 1e-9 < Math.min(remaining, Math.max(0.001, 0.05 * stillNeeded))) continue;
@@ -1940,30 +1956,26 @@ export const bonSortieRepository = {
         // transfer_required_qty des lignes ECONOMAT_REQUIRES_TRANSFER deja suggerees
         // sur ce BSI pour ce lot).
         if (remaining > 0) {
+          // Suite 141 : promesses de tous les bons ouverts deduites (hors cette ligne).
           const ecoLotsResult = await client.query(
-            `SELECT l.id, l.lot_number,
-                    (l.economat_quantity - COALESCE((
-                      SELECT SUM(bsl.transfer_required_qty)
-                      FROM production_bons_sortie_lignes bsl
-                      WHERE bsl.bon_id = $3 AND bsl.id <> $4
-                        AND bsl.suggested_economat_lot_id = l.id
-                        AND bsl.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
-                        AND bsl.status = 'en_attente'
-                    ), 0)) AS effective_economat
+            `SELECT l.id, l.lot_number, l.pesage_quantity, l.economat_quantity,
+                    claims.hard_qty, claims.soft_pesage_qty, claims.soft_economat_qty
              FROM ingredient_lots l
+             ${lotClaimsLateral('l', '$3::uuid')}
              WHERE l.ingredient_id = $1 AND l.store_id = $2
                AND ${lotUsableSql('l')} AND l.economat_quantity > 0
              ORDER BY l.expiration_date ASC NULLS LAST, l.received_at ASC`,
-            [line.ingredient_id, storeId, bonId, line.id]
+            [line.ingredient_id, storeId, isRecyclable ? line.id : null]
           );
+          for (const r of ecoLotsResult.rows) r.effective_economat = lotFree(r, true).economat;
           const totalEco = ecoLotsResult.rows.reduce(
-            (sum, r) => sum + Math.max(0, parseFloat(r.effective_economat || '0')),
+            (sum, r) => sum + Math.max(0, Number(r.effective_economat) || 0),
             0
           );
           const transferable = Math.min(totalEco, remaining);
 
           if (transferable > 0) {
-            const suggested = ecoLotsResult.rows.find(r => parseFloat(r.effective_economat || '0') > 0);
+            const suggested = ecoLotsResult.rows.find(r => Number(r.effective_economat) > 1e-9);
             if (suggested) {
               await applyAllocation({
                 sourceLocation: 'ECONOMAT_REQUIRES_TRANSFER',
