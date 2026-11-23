@@ -23,9 +23,10 @@ import { unitsRepository } from '../repositories/units.repository.js';
 import { processModelRepository } from '../repositories/process-model.repository.js';
 import { productionDocumentRepository } from '../repositories/production-document.repository.js';
 import { screenDefinitionRepository } from '../repositories/screen-definition.repository.js';
+import { setupSteps, simulateOrder, publishSetup } from '../services/production-setup.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { emptyBody } from '../validators/common.validator.js';
-import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, specializationSchema, processDraftSchema, productionDocumentSchema, screenDraftSchema, screenScopeSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
+import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, specializationSchema, processDraftSchema, productionDocumentSchema, screenDraftSchema, screenScopeSchema, setupSimulateSchema, setupPublishSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
 
 const router = Router();
 
@@ -76,6 +77,20 @@ router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'ed
 router.get('/specializations', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.specializations));
 router.get('/modules/versions-compare', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.compareVersions));
 router.put('/specializations/:code', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(specializationSchema), asyncHandler(companyController.setSpecialization));
+// Étape 11 multi-industries — assistant de configuration de la production et simulation.
+router.get('/production-setup', authenticate, authorizeSettings('company', 'view'), asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await setupSteps() });
+}));
+router.post('/production-setup/simulate', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(setupSimulateSchema), asyncHandler(async (req, res) => {
+  const user = (req as { user?: { userId: string } }).user!;
+  res.json({ success: true, data: await simulateOrder(user.userId, (req.body as { orderTypeCode?: string | null }).orderTypeCode ?? null) });
+}));
+router.post('/production-setup/publish', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(setupPublishSchema), asyncHandler(async (req, res) => {
+  const user = (req as { user?: { userId: string } }).user!;
+  const r = await publishSetup(user.userId, (req.body as { label?: string | null }).label ?? null);
+  if ('error' in r) { res.status(409).json({ success: false, error: { message: r.error, details: r.blocking } }); return; }
+  res.json({ success: true, data: r });
+}));
 // Étape 10 multi-industries — définitions d'écran (10b) et configurateur (10g).
 // Lecture résolue : tout utilisateur connecté (chaque écran la lit) ; édition : droit Paramètres.
 router.get('/screens/:key/resolved', authenticate, asyncHandler(async (req, res) => {

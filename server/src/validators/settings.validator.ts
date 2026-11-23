@@ -55,6 +55,8 @@ export const screenDraftSchema = body({
     custom_fields: z.array(obj({ key: z.string().max(60), section: z.string().max(60) })).max(60).optional(),
   }),
 });
+export const setupSimulateSchema = body({ orderTypeCode: txt(40) });
+export const setupPublishSchema = body({ label: txt(200) });
 export const specializationSchema = body({ enabled: z.boolean() });
 export const setSectorSchema = body({ code: z.string().trim().min(1, 'Secteur requis').max(40), keepAdjustments: bool });
 

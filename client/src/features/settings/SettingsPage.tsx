@@ -18,6 +18,7 @@ import WorkshopsCard from './WorkshopsCard';
 import ProcessModelsTab from './ProcessModelsTab';
 import ProductionDocumentsTab from './ProductionDocumentsTab';
 import ScreenConfiguratorTab from './ScreenConfiguratorTab';
+import ProductionSetupWizard from './ProductionSetupWizard';
 import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
@@ -213,6 +214,7 @@ function SettingsShell() {
     channels: <SalesChannelsTab />,
     production: (
       <SettingsTabs label="Réglages de production" tabs={[
+        { key: 'assistant', label: 'Assistant', content: <ProductionSetupWizard /> },
         { key: 'workshops', label: 'Ateliers', content: <WorkshopsCard /> },
         { key: 'costs', label: 'Coûts et prix',
           content: <ParametersPanel keys={['production.fixed_charges', 'production.cost_components', 'production.ledger_entries', 'production.steps_blocking', 'pricing.rounding', 'stock.negative_policy', 'stock.dlc_alerts']} /> },
