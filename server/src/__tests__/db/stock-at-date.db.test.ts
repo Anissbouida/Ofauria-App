@@ -1,6 +1,6 @@
 /**
  * G5-01 — stock matière à une date (mig 549).
- * Un article reçoit 10 il y a 5 jours, en sort 3 il y a 2 jours ; son coût passe de 10
+ * Un article reçoit 10 il y a 5 jours, en sort 3 il y a 2 jours ; le prix de son lot (donc son coût, mig 653) passe de 10
  * à 12 aujourd'hui :
  *  - aujourd'hui : 7 au coût 12 (= stock courant) ; il y a 3 jours : 10 au coût 10 ;
  *    il y a 6 jours : 0 ;
@@ -31,7 +31,9 @@ describe.skipIf(!hasTestDb)('Stock à la date (G5-01)', () => {
     await p().query(`UPDATE ingredient_lots SET pesage_quantity = 7, quantity_remaining = 7 WHERE id = $1`, [lot]);
     await p().query(`INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, store_id, ingredient_lot_id, created_at)
                      VALUES ($1, 'usage', -3, $2, $3, now() - interval '2 days')`, [ing, fx.storeId, lot]);
-    await p().query(`UPDATE ingredients SET unit_cost = 12 WHERE id = $1`, [ing]);
+    // Mig 653 : le coût matière suit le prix du lot en cours ; le coût passe à 12 par une
+    // correction du prix du lot (une écriture directe de unit_cost serait ramenée à 10).
+    await p().query(`UPDATE ingredient_lots SET unit_cost = 12 WHERE id = $1`, [lot]);
   }, 60_000);
 
   afterAll(async () => {

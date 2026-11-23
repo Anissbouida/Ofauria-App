@@ -177,13 +177,14 @@ describe.skipIf(!hasTestDb)('Parcours pilote — chiffres de bout en bout', () =
       orderTypeIds.push(orderTypeId);
     }, 60_000);
 
-    it('réception de 2 BC : 25 kg à 8 DH puis 25 kg à 10 DH → CMUP 9, stock 50 kg sur 2 lots', async () => {
+    it('réception de 2 BC : 25 kg à 8 DH puis 25 kg à 10 DH → coût au lot en cours 8, stock 50 kg sur 2 lots', async () => {
       lotAId = await receive(25, 8, 30);    // lot A : DLC J+30 (sortira en premier, FEFO)
       // 1re réception sur stock vide → coût fiche = prix reçu = 8
       expect(num((await p().query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [farineId])).rows[0].unit_cost)).toBeCloseTo(8, 4);
       lotBId = await receive(25, 10, 60);   // lot B : DLC J+60
-      // CMUP = (25 × 8 + 25 × 10) / 50 = 450 / 50 = 9
-      expect(num((await p().query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [farineId])).rows[0].unit_cost)).toBeCloseTo(9, 4);
+      // Mig 653 : coût = prix du lot en cours. A (DLC J+30) sort avant B (DLC J+60) → 8
+      // (et non plus la moyenne (25 × 8 + 25 × 10) / 50 = 9).
+      expect(num((await p().query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [farineId])).rows[0].unit_cost)).toBeCloseTo(8, 4);
       // Stock = 25 + 25 = 50 kg (inventaire synchronisé par les lots)
       expect(await ingredientStockOf(farineId)).toBeCloseTo(50, 3);
       const lots = await p().query(`SELECT id, unit_cost FROM ingredient_lots WHERE id = ANY($1::uuid[]) ORDER BY unit_cost`, [[lotAId, lotBId]]);
@@ -227,8 +228,9 @@ describe.skipIf(!hasTestDb)('Parcours pilote — chiffres de bout en bout', () =
       expect(num(pl.rows[0].backroom_qty)).toBeCloseTo(10, 3);
       expect(pl.rows[0].exp).toBe(pl.rows[0].expected_exp);
       // Coût du lot à la déclaration (pas encore de coût réel) = coût standard de la fiche
-      // au CMUP : 0,5 kg × 9 DH = 4,50 DH / pain (trigger trg_lot_cost_fill, mig 452)
-      expect(num(pl.rows[0].unit_cost)).toBeCloseTo(4.5, 4);
+      // au prix du lot en cours (A, encore 20 kg) : 0,5 kg × 8 DH = 4,00 DH / pain
+      // (trigger trg_lot_cost_fill, mig 452 ; coût matière au lot en cours, mig 653)
+      expect(num(pl.rows[0].unit_cost)).toBeCloseTo(4.0, 4);
       // Stock produit (réserve) = 10
       expect(await backroomOf(productId)).toBeCloseTo(10, 3);
     });
@@ -433,7 +435,7 @@ describe.skipIf(!hasTestDb)('Parcours pilote — chiffres de bout en bout', () =
       const v = await stockCountRepo.validate(countId, { zeroUncounted: false, userId: fx.userId });
       expect(v.error).toBeUndefined();
       expect(v.data.status).toBe('validated');
-      // Écart = 18,5 − 20 = −1,5 kg ; valeur = −1,5 × 9 (CMUP) = −13,50 DH
+      // Écart = 18,5 − 20 = −1,5 kg ; valeur = −1,5 × 9 (prix du lot P3) = −13,50 DH
       expect(num(v.data.loss_value)).toBeCloseTo(-13.5, 2);
       expect(num(v.data.gain_value)).toBeCloseTo(0, 2);
       expect(num(v.data.gap_value)).toBeCloseTo(-13.5, 2);

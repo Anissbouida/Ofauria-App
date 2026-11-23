@@ -447,6 +447,19 @@ export const ingredientRepository = {
   },
 
   async update(id: string, data: Record<string, unknown>) {
+    // Le coût d'une matière en stock est le prix du lot en cours d'utilisation (mig 653, tenu
+    // par trigger) : c'est le prix payé pour ce qu'on consomme. Tant qu'il reste un lot, une
+    // saisie sur la fiche matière ne le remplace pas (une saisie à 3,50 DH sur une farine
+    // achetée 5,42 faussait toutes les fiches qui l'emploient). Sans stock, la saisie reste un
+    // prix prévisionnel, remplacé à la première réception.
+    if (data.unitCost !== undefined) {
+      const inStock = (await db.query(
+        `SELECT 1 FROM ingredient_lots WHERE ingredient_id = $1 AND quantity_remaining > 0 AND status = 'active' LIMIT 1`, [id])).rows.length > 0;
+      if (inStock) {
+        data = { ...data };
+        delete data.unitCost;
+      }
+    }
     const mapping: Record<string, string> = {
       name: 'name', unit: 'unit', unitCost: 'unit_cost', supplier: 'supplier', allergens: 'allergens', category: 'category', categoryId: 'category_id',
       containerSize: 'container_size', containerTypeId: 'container_type_id', densiteKgL: 'densite_kg_l', poidsPieceKg: 'poids_piece_kg',

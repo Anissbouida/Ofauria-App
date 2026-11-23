@@ -1,5 +1,5 @@
 /**
- * Scénarios réalistes — domaine ACHATS (BC → envoi → réception → CMUP → facture).
+ * Scénarios réalistes — domaine ACHATS (BC → envoi → réception → coût au lot en cours → facture).
  *
  * On joue des parcours « responsable achats / magasinier » de bout en bout sur la
  * vraie base migrée (kalum_test), en appelant les repositories et le contrôleur réels.
@@ -22,7 +22,7 @@ import {
 // (généré à la migration), on le lit donc par son code.
 const SAC_SQL = `(SELECT id FROM ref_entries WHERE code = 'sac' ORDER BY created_at LIMIT 1)`;
 
-describe.skipIf(!hasTestDb)('Scénarios ACHATS (BC → réception → CMUP → facture)', () => {
+describe.skipIf(!hasTestDb)('Scénarios ACHATS (BC → réception → coût au lot en cours → facture)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
   let poRepo: typeof import('../../repositories/purchase-order.repository.js').purchaseOrderRepository;
   let poActions: typeof import('../../repositories/purchase-order-actions.repository.js').purchaseOrderActionsRepository;
@@ -374,9 +374,9 @@ describe.skipIf(!hasTestDb)('Scénarios ACHATS (BC → réception → CMUP → f
     ).rejects.toThrow(/dépassée|réceptionn/i);
   });
 
-  // ════════════════════════════ D. CMUP À LA RÉCEPTION ════════════════════════════
+  // ═══════════════════ D. COÛT À LA RÉCEPTION (prix du lot en cours, mig 653) ═══════════════════
 
-  it('D1 — CMUP : deux réceptions à prix différents donnent le coût moyen pondéré', async () => {
+  it('D1 — deux réceptions à prix différents : le coût est le prix du lot en cours (le premier reçu)', async () => {
     const p = testPool();
     // unit_cost initial volontairement « faux » (99) : la 1re réception le remplace par le prix reçu.
     const ingId = await createIngredient(fx, { name: 'Amande CMUP', unit: 'kg', unitCost: 99 });
@@ -390,14 +390,15 @@ describe.skipIf(!hasTestDb)('Scénarios ACHATS (BC → réception → CMUP → f
     const afterFirst = await p.query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [ingId]);
     expect(num(afterFirst.rows[0].unit_cost)).toBeCloseTo(10, 3);
 
-    // Réception 2 : 100 kg @ 20 → (100×10 + 100×20) / 200 = 15.
+    // Réception 2 : 100 kg @ 20. Mig 653 : coût = prix du lot en cours ; sans DLC distincte, le
+    // lot reçu le premier (10) sort en premier → 10 (et non plus la moyenne (100×10 + 100×20) / 200 = 15).
     const po2 = await createPo([{ ingredientId: ingId, quantityOrdered: 100, unitPrice: 20 }]);
     await poRepo.updateStatus(po2.id, 'envoye');
     const it2 = (await poRepo.findById(po2.id))!.items[0].id as string;
     await poRepo.confirmDelivery(po2.id, [{ itemId: it2, quantityDelivered: 100 }], fx.userId, fx.storeId);
 
     const afterSecond = await p.query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [ingId]);
-    expect(num(afterSecond.rows[0].unit_cost)).toBeCloseTo(15, 3);
+    expect(num(afterSecond.rows[0].unit_cost)).toBeCloseTo(10, 3);
 
     // Stock agrégé = 200 kg sur deux lots actifs.
     const stock = await p.query(

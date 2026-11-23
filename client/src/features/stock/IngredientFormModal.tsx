@@ -57,9 +57,14 @@ interface Props {
   rootIds?: string[];
   /** Vrai si la categorie range l'article en consommable : contenant et allergenes masques. */
   isConsumable?: (categoryId: string) => boolean;
+  /**
+   * Vrai s'il reste des lots en stock : le coût unitaire est alors le prix du lot en cours
+   * d'utilisation (mig 653), pas une saisie. Le champ passe en lecture seule.
+   */
+  costFromLots?: boolean;
 }
 
-export default function IngredientFormModal({ mode, ingredient, threshold, onClose, onSave, isLoading, title, initialName, initialSupplier, rootIds = STOCKABLE_ROOT_IDS, isConsumable }: Props) {
+export default function IngredientFormModal({ mode, ingredient, threshold, onClose, onSave, isLoading, title, initialName, initialSupplier, rootIds = STOCKABLE_ROOT_IDS, isConsumable, costFromLots = false }: Props) {
   const ing = ingredient || {};
   const { ingredient: ingTerm, ingredientLc: ingTermLc } = useProdTerms();
   const extraUnits = useExtraUnits(UNITS.map(u => u.value));
@@ -147,6 +152,8 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
       allergens: form.allergens,
     };
     if (mode === 'edit') payload.threshold = parseFloat(form.threshold) || 0;
+    // Coût tenu par les lots en stock : jamais envoyé (le serveur l'ignorerait de toute façon).
+    if (costFromLots) delete payload.unitCost;
     const cfMissing = cf.missing();
     if (cfMissing.length) { notify.error(`À renseigner : ${cfMissing.join(', ')}`); return; }
     // Enregistrés par ingredientsApi après la fiche (id connu).
@@ -209,9 +216,13 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                     </select>
                   )}
                 </Field>
-                <Field label="Coût unitaire">
+                <Field label="Coût unitaire"
+                  hint={costFromLots
+                    ? 'Prix du lot en cours d\'utilisation (contenant ouvert, sinon DLC la plus proche) : c\'est le prix payé pour la matière qu\'on consomme. Il change seul quand ce lot s\'épuise. Pour corriger le prix d\'un lot, passez par « Corrections de prix ».'
+                    : 'Prix prévisionnel tant que l\'article n\'a aucun lot en stock ; la première réception le remplacera par le prix du lot reçu.'}>
                   <Suffixed suffix={`${currencySymbol()} / ${u}`}>
                     <input type="number" step="0.01" min="0" className="ds-input" value={form.unitCost}
+                      readOnly={costFromLots} aria-readonly={costFromLots}
                       onChange={e => set('unitCost', e.target.value)} placeholder="0,00" />
                   </Suffixed>
                 </Field>

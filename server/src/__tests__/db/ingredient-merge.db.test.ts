@@ -5,7 +5,7 @@
  *  - les lignes de recette sont repointées ; dans une recette qui avait les deux fiches
  *    dans la même unité, les quantités s'additionnent ;
  *  - les lots, les mouvements et le stock passent sur la fiche gardée (40 kg) ;
- *  - le coût devient la moyenne pondérée : (30 × 10 + 10 × 12) / 40 = 10,50 ;
+ *  - le coût de la fiche gardée devient le prix du lot en cours (mig 653) : A1, 10 DH/kg ;
  *  - la fiche en trop n'existe plus, elle est archivée entière dans le journal ;
  *  - unités différentes, fiche identique, fiche inconnue : refus, rien n'est modifié.
  */
@@ -69,11 +69,11 @@ describe.skipIf(!hasTestDb)('Fusion d\'ingrédients en double (G2-03)', () => {
     expect(pv.impact.tables.recipe_format_components).toBe(3); // pas 2b-1 : lignes de la nomenclature du format
     expect(pv.impact.tables.inventory_transactions).toBe(1);
     expect(pv.impact.stock).toEqual([expect.objectContaining({ storeId: fx.storeId, source: 30, target: 10 })]);
-    expect(pv.impact).toMatchObject({ unitCostBefore: 12, unitCostAfter: 10.5 });
+    expect(pv.impact).toMatchObject({ unitCostBefore: 12, unitCostAfter: 10 });
     expect(await stock(a)).toBe(30);
   });
 
-  it('fusion : recettes, lots, mouvements et stock passent sur la fiche gardée ; coût moyen pondéré', async () => {
+  it('fusion : recettes, lots, mouvements et stock passent sur la fiche gardée ; coût au prix du lot en cours', async () => {
     const out = await merge.merge(a, b, fx.userId);
     if ('error' in out) throw new Error(out.error);
 
@@ -97,15 +97,16 @@ describe.skipIf(!hasTestDb)('Fusion d\'ingrédients en double (G2-03)', () => {
     expect(Number((await p().query(`SELECT minimum_threshold FROM inventory WHERE ingredient_id = $1 AND store_id = $2`, [b, fx.storeId])).rows[0].minimum_threshold)).toBe(5);
     expect((await p().query(`SELECT COUNT(*)::int AS n FROM ingredient_lots WHERE ingredient_id = $1`, [b])).rows[0].n).toBe(2);
 
-    // Coût moyen pondéré.
-    expect(Number((await p().query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [b])).rows[0].unit_cost)).toBe(10.5);
+    // Mig 653 : coût = prix du lot en cours. A1 et B1 sont tous deux entamés au pesage, même DLC :
+    // A1 (reçu le premier, 10 DH/kg) sort en premier → 10 (et non plus la moyenne 10,50).
+    expect(Number((await p().query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [b])).rows[0].unit_cost)).toBe(10);
 
     // Journal : la fiche retirée est archivée entière.
     const j = (await p().query(`SELECT * FROM ingredient_merges WHERE id = $1`, [out.mergeId])).rows[0];
     expect(j).toMatchObject({ source_id: a, target_id: b, merged_by: fx.userId });
     expect(j.source_snapshot).toMatchObject({ id: a, unit: 'kg' });
     expect(Number(j.unit_cost_before)).toBe(12);
-    expect(Number(j.unit_cost_after)).toBe(10.5);
+    expect(Number(j.unit_cost_after)).toBe(10); // annoncé = appliqué : prix du lot en cours (mig 653)
     expect((await merge.history(5)).some(h => h.id === out.mergeId && h.source_name.startsWith('Beurre A'))).toBe(true);
   }, 60_000);
 });

@@ -102,13 +102,18 @@ async function impactOf(source: Ingredient, target: Ingredient): Promise<MergeIm
       WHERE inv.ingredient_id IN ($1, $2)
       GROUP BY s.id, s.name ORDER BY s.name`, [source.id, target.id])).rows as MergeImpact['stock'];
 
-  // Coût moyen pondéré par les stocks. Sans stock des deux côtés : le coût de la cible,
-  // ou celui de la source si la cible n'en a pas.
-  const qs = stock.reduce((t, x) => t + Math.max(0, x.source), 0);
-  const qt = stock.reduce((t, x) => t + Math.max(0, x.target), 0);
+  // Coût après fusion = prix du lot en cours parmi les lots des deux fiches (mig 653 : même
+  // ordre que fn_ingredient_lot_cost — contenant ouvert, puis DLC, puis reçu le plus tôt).
+  // Sans lot en stock : le coût de la cible, ou celui de la source si la cible n'en a pas.
   const cs = num(source.unit_cost), ct = num(target.unit_cost);
-  let after = ct > 0 ? ct : cs;
-  if (qs + qt > 0 && cs > 0 && ct > 0) after = (qs * cs + qt * ct) / (qs + qt);
+  const lotCost = (await db.query(
+    `SELECT l.unit_cost::float AS c FROM ingredient_lots l
+      WHERE l.ingredient_id IN ($1, $2) AND l.status = 'active' AND l.quantity_remaining > 0
+        AND l.unit_cost IS NOT NULL AND l.unit_cost::text <> 'NaN' AND l.unit_cost > 0
+      ORDER BY (COALESCE(l.pesage_quantity, 0) > 0) DESC, l.expiration_date ASC NULLS LAST,
+               l.received_at ASC NULLS LAST, l.created_at ASC
+      LIMIT 1`, [source.id, target.id])).rows[0]?.c as number | undefined;
+  const after = lotCost ?? (ct > 0 ? ct : cs);
   return {
     tables, recipes, lots: tables.ingredient_lots ?? 0, purchaseOrders, stock,
     unitCostBefore: ct, unitCostAfter: Math.round(after * 10000) / 10000,
@@ -215,7 +220,7 @@ export const ingredientMergeRepository = {
           [targetId, storeId, qty, threshold]);
       }
 
-      // 6. Coût moyen pondéré de la fiche gardée.
+      // 6. Coût de la fiche gardée : prix du lot en cours (le trigger mig 653 le garantit aussi).
       if (impact.unitCostAfter !== impact.unitCostBefore) {
         await db.query(`UPDATE ingredients SET unit_cost = $2::numeric WHERE id = $1`, [targetId, impact.unitCostAfter]);
       }

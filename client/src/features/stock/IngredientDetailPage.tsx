@@ -604,6 +604,7 @@ export default function IngredientDetailPage() {
           mode="edit"
           ingredient={ingredient}
           threshold={threshold}
+          costFromLots={activeLots.length > 0}
           onClose={() => setShowEdit(false)}
           onSave={(data) => {
             if (data.threshold !== undefined) {

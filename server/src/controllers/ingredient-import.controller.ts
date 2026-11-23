@@ -250,9 +250,15 @@ export const ingredientImportController = {
       for (const row of plan.toUpdate) {
         if (!row.existingId) continue;
         try {
+          // Coût tenu par les lots tant qu'il en reste en stock (CMUP de réception) : l'import
+          // ne le remplace que pour une matière sans stock (prix prévisionnel).
           await client.query(
             `UPDATE ingredients
-             SET unit = $1, unit_cost = $2, supplier = $3, allergens = $4, category = $5
+             SET unit = $1,
+                 unit_cost = CASE WHEN EXISTS (SELECT 1 FROM ingredient_lots l WHERE l.ingredient_id = ingredients.id
+                                                  AND l.quantity_remaining > 0 AND l.status = 'active')
+                                  THEN unit_cost ELSE $2 END,
+                 supplier = $3, allergens = $4, category = $5
              WHERE id = $6`,
             [row.unit, row.unitCost, row.supplier, row.allergens, row.category, row.existingId]
           );

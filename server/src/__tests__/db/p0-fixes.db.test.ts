@@ -6,7 +6,8 @@
  *          prix de vente du catalogue quand la fiche n'a pas (encore) de composant
  *          (cout nul -> prix calcule 0). Le prix n'est (re)calcule que lorsqu'un
  *          cout reel existe, ou via un prix de vente explicite.
- *   F-009  Le CMUP (cout moyen pondere) a la reception doit se calculer sur le
+ *   F-009  (Depuis la mig 653, le coût matière est le prix du lot en cours ; à défaut de
+ *          lot, le prix reçu.) Historique : le CMUP a la reception devait se calculer sur le
  *          stock PHYSIQUE REEL (lots actifs), pas sur inventory.current_quantity
  *          qui peut avoir derive (inventaire fantome) -> cout fausse.
  *   F-037  Une vente refusee pour DLV/DDE depassee doit renvoyer une erreur 409
@@ -126,7 +127,7 @@ describe.skipIf(!hasTestDb)('Correctifs P0 — fiche technique, CMUP, DLV', () =
   });
 
   // ─────────────────────────────── F-009 ───────────────────────────────
-  it('F-009 — le CMUP ignore un inventaire fantome et retient le prix recu', async () => {
+  it('F-009 — un inventaire fantôme ne fausse pas le coût : prix du lot reçu (lot en cours)', async () => {
     const p = testPool();
     const ing = await createIngredient(fx, { name: 'Choco F009', unit: 'kg', unitCost: 12 }); // cout obsolete
     // Inventaire FANTOME : 200 affiches alors qu AUCUN lot actif n'existe.
@@ -147,7 +148,7 @@ describe.skipIf(!hasTestDb)('Correctifs P0 — fiche technique, CMUP, DLV', () =
     expect(num(after.rows[0].unit_cost)).toBeCloseTo(1.20, 2);
   });
 
-  it('F-009 — le CMUP moyenne correctement avec un stock reel anterieur', async () => {
+  it('F-009 — avec un stock réel antérieur, le coût reste le prix du lot en cours', async () => {
     const ing = await createIngredient(fx, { name: 'Sucre F009', unit: 'kg', unitCost: 2 });
     await createLot(fx, { ingredientId: ing, lotNumber: 'PRIOR', pesage: 0, economat: 100, expiresInDays: 60, unitCost: 2 });
     const { poId, poItemId } = await createSentPo(ing, 1000, 4.0);
@@ -158,8 +159,9 @@ describe.skipIf(!hasTestDb)('Correctifs P0 — fiche technique, CMUP, DLV', () =
     });
 
     const after = await testPool().query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [ing]);
-    // (100 reel x 2 + 100 recu x 4) / 200 = 3,00
-    expect(num(after.rows[0].unit_cost)).toBeCloseTo(3.0, 2);
+    // Mig 653 : coût = prix du lot en cours. PRIOR (DLC J+60, 2 DH) sort avant le lot reçu
+    // (DLC J+180, 4 DH) → 2,00 (et non plus la moyenne (100 × 2 + 100 × 4) / 200 = 3,00).
+    expect(num(after.rows[0].unit_cost)).toBeCloseTo(2.0, 2);
   });
 
   // ─────────────────────────────── F-037 ───────────────────────────────
