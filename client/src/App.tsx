@@ -29,6 +29,7 @@ import NomenclaturePage from './features/recipes/NomenclaturePage';
 import EmployeesPage from './features/employees/EmployeesPage';
 import EmployeeDetailPage from './features/employees/EmployeeDetailPage';
 import ReportsPage from './features/reports/ReportsPage';
+import OperatorStationPage from './features/production/OperatorStationPage';
 import SalesPage from './features/sales/SalesPage';
 import ProductionPage from './features/production/ProductionPage';
 import PlanDetailPage from './features/production/PlanDetailPage';
@@ -147,6 +148,8 @@ export default function App() {
                 <Route path="/production/atelier" element={<AtelierPage />} />
                 <Route path="/production/settings" element={<ProductionSettingsPage />} />
               </Route>
+              {/* Étape 10f : poste opérateur tactile plein écran. */}
+              <Route path="/production/poste" element={<OperatorStationPage />} />
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
               <Route path="/boutique" element={<JourneeBoutiquePage />} />

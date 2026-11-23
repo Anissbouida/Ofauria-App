@@ -10,6 +10,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
 import SalesPageShell from '../sales/SalesPageShell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ds';
+import { useNavigate } from 'react-router-dom';
 
 // Étape en cours renvoyée par /atelier/live (mig 399).
 interface LiveEtape {
@@ -42,6 +43,7 @@ function elapsedMinutes(e: LiveEtape, nowMs: number): number {
 }
 
 export default function AtelierPage() {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
   // Horloge locale : rafraîchit les durées affichées sans retaper le serveur.
@@ -84,6 +86,7 @@ export default function AtelierPage() {
 
   return (
     <SalesPageShell icon={Factory} parent="Production › Opérations" title="Atelier"
+      actions={<button type="button" className="odoo-btn-primary" onClick={() => navigate('/production/poste')}>Poste opérateur (tablette)</button>}
       summary={<>{!isLoading && !isError && <><b>{etapes.length}</b> étape(s) en cours · </>}Qui fait quoi, sur quel poste, en ce moment. Durées hors pauses, actualisation automatique.</>}>
 
       {isLoading && <LoadingState />}
