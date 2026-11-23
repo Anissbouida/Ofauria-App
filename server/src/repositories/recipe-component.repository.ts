@@ -147,7 +147,10 @@ export const recipeComponentRepository = {
       // sans attendre la sauvegarde.
       `SELECT id, name, unit, unit_cost, densite_kg_l FROM ingredients ORDER BY name`
     );
-    return { recipes: recipes.rows, ingredients: ingredients.rows };
+    // Étape 10c : emballages, lignes de nomenclature « emballage » (quantité par unité produite, mig 634).
+    const packaging = await db.query(
+      `SELECT id, name, unit, unit_cost FROM packaging_items WHERE is_active IS NOT FALSE ORDER BY name`);
+    return { recipes: recipes.rows, ingredients: ingredients.rows, packaging: packaging.rows };
   },
 
   // Nomenclature d'un format + finance PAR FORMAT (rendement = nb_par_defaut du format).
@@ -165,6 +168,7 @@ export const recipeComponentRepository = {
               f.poids_cuit_qty, ${unitCodeSql('f.poids_cuit_unit_id')} AS poids_cuit_unit,
               pc.nom AS contenant_nom,
               r.name AS recipe_name, r.mode_cout, r.compo_par_piece,
+              r.reference_mode, r.reference_batch_qty, r.reference_batch_unit,
               r.margin_multiplier, r.taux_main_oeuvre_dh_h, r.main_oeuvre_min,
               r.cout_energie_fournee, r.taux_frais_structure_pct, r.perte_standard_pct,
               r.yield_quantity, pdef.image_url AS product_image,
@@ -190,20 +194,24 @@ export const recipeComponentRepository = {
     if (fmt.rows.length === 0) return null;
 
     const components = await db.query(
-      `SELECT c.id, c.role, c.source_recipe_id, c.source_ingredient_id,
-              COALESCE(br.name, ing.name) AS source_name,
-              CASE WHEN c.source_recipe_id IS NOT NULL THEN 'recipe' ELSE 'ingredient' END AS source_type,
+      `SELECT c.id, c.role, c.source_recipe_id, c.source_ingredient_id, c.source_packaging_id,
+              COALESCE(br.name, ing.name, pk.name) AS source_name,
+              CASE WHEN c.source_recipe_id IS NOT NULL THEN 'recipe' WHEN c.source_packaging_id IS NOT NULL THEN 'packaging' ELSE 'ingredient' END AS source_type,
               c.quantite, c.unite, c.ordre,
               cc.cout_dh,
+              -- Étape 10c : coût d'une ligne d'emballage, pour l'affichage seulement (il est déjà
+              -- compté dans le coût d'emballage du format, mig 634 : pas dans la matière).
+              CASE WHEN c.source_packaging_id IS NOT NULL THEN ROUND(c.quantite * COALESCE(pk.unit_cost, 0), 4) END AS cout_emballage,
               -- Mig 260 : false = conversion d'unite repliee sur 1 (unites incompatibles
               -- ou densite manquante) -> cout_dh probablement faux, l'UI doit signaler.
-              cc.conversion_ok,
-              COALESCE(ing.unit::text, br.yield_unit) AS target_unit,
+              COALESCE(cc.conversion_ok, true) AS conversion_ok,
+              COALESCE(ing.unit::text, br.yield_unit, pk.unit) AS target_unit,
               -- Mig 265 (audit A5) : perte % ligne, majoration matiere consommee.
-              c.perte_pct
+              c.perte_pct, c.pct
        FROM recipe_format_components c
        LEFT JOIN recipes br ON br.id = c.source_recipe_id
        LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
+       LEFT JOIN packaging_items pk ON pk.id = c.source_packaging_id
        LEFT JOIN v_recipe_component_cost_v2 cc ON cc.component_id = c.id
        WHERE c.format_id = $1
        ORDER BY c.ordre, source_name`,

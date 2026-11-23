@@ -17,8 +17,8 @@ import SearchSelect from '../../components/ui/SearchSelect';
 
 import { LoadingState } from '../../components/ds';
 import '../production/production.css';
-interface SourceOpt { type: 'recipe' | 'ingredient'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
-interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; sourceId: string; quantite: string; unite: string; pertePct?: string }
+interface SourceOpt { type: 'recipe' | 'ingredient' | 'packaging'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
+interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient' | 'packaging'; sourceId: string; quantite: string; unite: string; pertePct?: string; /** Étape 10c : part en % du lot de référence (mode pourcentage). */ pct?: string }
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
 
 const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
@@ -87,6 +87,8 @@ function SourcePicker({ options, value, onPick }: {
   }, [q, options]);
   const recipes = filtered.filter((o) => o.type === 'recipe');
   const ingredients = filtered.filter((o) => o.type === 'ingredient');
+  // Étape 10c : emballages (quantité par unité produite, mig 634).
+  const packaging = filtered.filter((o) => o.type === 'packaging');
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((v) => !v)}
@@ -114,6 +116,13 @@ function SourcePicker({ options, value, onPick }: {
           {ingredients.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] text-gray-400">Ingrédients</div>}
           {ingredients.map((o) => (
             <button key={`ingredient:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
+              className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
+              <span>{o.name}</span><span className="text-gray-400 shrink-0">{money(o.cost)}/{o.unit}</span>
+            </button>
+          ))}
+          {packaging.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] text-gray-400">Emballages (par unité produite)</div>}
+          {packaging.map((o) => (
+            <button key={`packaging:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
               <span>{o.name}</span><span className="text-gray-400 shrink-0">{money(o.cost)}/{o.unit}</span>
             </button>
@@ -273,8 +282,14 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     return [
       ...sources.recipes.map((r) => ({ type: 'recipe' as const, id: r.id, name: r.name, unit: r.yield_unit, cost: parseFloat(r.cout_unitaire) || 0, yieldQty: parseFloat(r.yield_quantity) || 0 })),
       ...sources.ingredients.map((i) => ({ type: 'ingredient' as const, id: i.id, name: i.name, unit: i.unit, cost: parseFloat(i.unit_cost) || 0 })),
+      ...(sources.packaging ?? []).map((pk) => ({ type: 'packaging' as const, id: pk.id, name: pk.name, unit: pk.unit ?? 'u', cost: parseFloat(pk.unit_cost) || 0 })),
     ];
   }, [sources]);
+  // Étape 10c : fiche en mode pourcentage (lot de référence, mig 634) — saisie de la part de chaque ligne.
+  const fmtRef = data?.format as (Record<string, unknown> | undefined);
+  const pctMode = fmtRef?.reference_mode === 'pourcentage' && Number(fmtRef?.reference_batch_qty) > 0;
+  const refQty = Number(fmtRef?.reference_batch_qty ?? 0);
+  const refUnit = String(fmtRef?.reference_batch_unit ?? 'kg');
   const sourceMap = useMemo(() => {
     const m: Record<string, SourceOpt> = {};
     sourceOpts.forEach((o) => { m[`${o.type}:${o.id}`] = o; });
@@ -288,11 +303,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     versionRef.current = f.version ?? null;
     const nextRows: Row[] = data.components.map((c) => ({
       key: newKey(), role: c.role ?? '', type: c.source_type,
-      sourceId: c.source_recipe_id ?? c.source_ingredient_id ?? '',
+      sourceId: c.source_recipe_id ?? c.source_ingredient_id ?? c.source_packaging_id ?? '',
       quantite: parseFloat(c.quantite).toString(), unite: c.unite,
       // Mig 265 (audit A5) : perte % ligne, conservee dans l'etat pour ne pas
       // etre remise a 0 a la sauvegarde suivante. UI dediee en P2.
       pertePct: c.perte_pct != null ? String(parseFloat(String(c.perte_pct))) : '0',
+      pct: c.pct != null ? String(parseFloat(String(c.pct))) : '',
     }));
     const nextFields: EditableFields = {
       rendement: f.nb_par_defaut != null ? String(f.nb_par_defaut) : '',
@@ -605,6 +621,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           role: r.role || null,
           sourceRecipeId: r.type === 'recipe' ? r.sourceId : null,
           sourceIngredientId: r.type === 'ingredient' ? r.sourceId : null,
+          sourcePackagingId: r.type === 'packaging' ? r.sourceId : null,
+          // Étape 10c : en mode pourcentage, la quantité est recalculée au serveur depuis la part.
+          pct: pctMode && r.type !== 'packaging' && r.pct && parseFloat(r.pct.replace(',', '.')) > 0 ? parseFloat(r.pct.replace(',', '.')) : null,
           quantite: parseFloat(r.quantite), unite: r.unite, ordre: i,
           pertePct: Number.isFinite(perte) && perte > 0 ? perte : 0,
         };
@@ -757,6 +776,14 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               aria-invalid={aberrant || badQty || undefined}
               className="ds-input sm" style={{ textAlign: 'right', ...(aberrant || badQty ? { background: 'var(--ds-danger-bg)', color: 'var(--ds-danger)' } : {}) }}
               value={r.quantite} onChange={(e) => setRow(r.key, { quantite: e.target.value })} placeholder="0" />
+            {pctMode && r.type !== 'packaging' && (
+              <input type="number" step="any" min="0" max="100" aria-label="Part du lot de référence (%)" title={`Part du lot de référence (${refQty} ${refUnit})`}
+                className="ds-input sm" style={{ textAlign: 'right', marginTop: 2 }} placeholder="%"
+                value={r.pct ?? ''} onChange={(e) => {
+                  const v = e.target.value; const n = parseFloat(v.replace(',', '.'));
+                  setRow(r.key, { pct: v, ...(Number.isFinite(n) && n > 0 && refQty > 0 ? { quantite: String(Math.round(n / 100 * refQty * 10000) / 10000), unite: refUnit } : {}) });
+                }} />
+            )}
             {pp != null ? (
               <div className={`text-[10px] mt-0.5 text-right ${pp >= 1 ? 'text-red-500' : 'text-gray-400'}`} title="Fournées de la recette de base consommées par pièce">
                 {pp >= 1 && <AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />}

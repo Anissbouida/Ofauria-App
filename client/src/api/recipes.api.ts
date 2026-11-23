@@ -20,6 +20,8 @@ export interface ComponentRole {
 export interface ComponentSources {
   recipes: { id: string; name: string; yield_unit: string; yield_quantity: string; cout_unitaire: string }[];
   ingredients: { id: string; name: string; unit: string; unit_cost: string; densite_kg_l: string | null }[];
+  /** Étape 10c : emballages, lignes de nomenclature « emballage » (mig 634). */
+  packaging?: { id: string; name: string; unit: string | null; unit_cost: string }[];
 }
 
 export interface FormatComponent {
@@ -27,8 +29,13 @@ export interface FormatComponent {
   role: string | null;
   source_recipe_id: string | null;
   source_ingredient_id: string | null;
+  /** Étape 10c : ligne d'emballage (mig 634). */
+  source_packaging_id?: string | null;
+  cout_emballage?: string | null;
+  /** Étape 10c : part en % du lot de référence (mode pourcentage). */
+  pct?: string | number | null;
   source_name: string;
-  source_type: 'recipe' | 'ingredient';
+  source_type: 'recipe' | 'ingredient' | 'packaging';
   quantite: string;
   unite: string;
   ordre: number;
@@ -159,8 +166,11 @@ export interface CompositionData {
     role: string | null;
     source_recipe_id: string | null;
     source_ingredient_id: string | null;
+    source_packaging_id?: string | null;
     source_name: string;
-    source_type: 'recipe' | 'ingredient';
+    source_type: 'recipe' | 'ingredient' | 'packaging';
+    /** Étape 10c : coût d'une ligne d'emballage (affichage ; compté dans l'emballage du format). */
+    cout_emballage?: string | null;
     quantite: string;
     unite: string;
     ordre: number;
