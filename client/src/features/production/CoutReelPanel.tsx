@@ -135,6 +135,10 @@ interface Niveaux {
   unites: number; cout_revient_unitaire: number | null; cout_production_unitaire: number | null;
   ventes_ht: number; prix_vente_ht_unitaire: number | null; marge: number; marge_unitaire: number | null;
   taux_marge: number | null; taux_marque: number | null;
+  /** Lot E : écart au coût standard (fiches × quantités, charges des centres), décomposé. */
+  ecarts?: { standard: { matieres: number; emballages: number; main_oeuvre: number; charges: number; total: number };
+             reel_total: number; ecart_total: number; ecart_pct: number | null;
+             lignes: { key: string; label: string; detail: string; montant: number }[]; articles_sans_fiche: number };
   items: { plan_item_id: string; product_name: string; quantity: number; prix_vente_ht_u: number | null; cout_production_u: number | null;
            cout_revient_u: number | null; cout_revient: number; ventes_ht: number; marge: number; taux_marge: number | null; taux_marque: number | null;
            /** Lot A (mig 657) : composantes propres de l'article. */
@@ -397,7 +401,34 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
           {/* Ecart prevu vs reel, decompose (audit A10) : mix vs prix/pertes.
               N'affiche rien si le prevu n'est pas dispo (recettes sans product_id
               ou plan lance avant mig 261). */}
-          {cout.cout_prevu != null && toNum(cout.cout_prevu) > 0 && (() => {
+          {niveaux?.ecarts && (() => {
+            const e = niveaux.ecarts;
+            const color = (v: number) => v > 0.005 ? 'var(--ds-danger)' : v < -0.005 ? 'var(--ds-success)' : 'var(--ds-muted)';
+            return (
+              <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--ds-sep)', backgroundColor: 'var(--ds-card)', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
+                  title="Coût des fiches techniques × quantités produites, avec les charges des centres du mois (mêmes règles que le coût réel).">
+                  <span style={{ color: 'var(--ds-muted)' }}>Coût standard au mix produit</span>
+                  <span style={{ fontWeight: 500 }}>{money(e.standard.total)}</span>
+                </div>
+                {e.lignes.filter(l => Math.abs(l.montant) >= 0.01).map(l => (
+                  <div key={l.key} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }} title={l.detail}>
+                    <span style={{ color: 'var(--ds-muted)' }}>Écart — {l.label}</span>
+                    <span style={{ fontWeight: 500, color: color(l.montant) }}>{money(l.montant, { signed: true })}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px dashed var(--ds-sep)', fontWeight: 600 }}>
+                  <span>Écart total (réel − standard)</span>
+                  <span style={{ color: color(e.ecart_total) }}>
+                    {money(e.ecart_total, { signed: true })}{e.ecart_pct != null ? ` (${e.ecart_pct > 0 ? '+' : ''}${e.ecart_pct.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %)` : ''}
+                  </span>
+                </div>
+                {e.articles_sans_fiche > 0 && <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ds-muted)' }}>{e.articles_sans_fiche} article(s) sans fiche technique : hors du coût standard.</p>}
+              </div>
+            );
+          })()}
+
+          {!niveaux?.ecarts && cout.cout_prevu != null && toNum(cout.cout_prevu) > 0 && (() => {
             const prevu = toNum(cout.cout_prevu);
             const prevuMix = cout.cout_prevu_mix_reel != null ? toNum(cout.cout_prevu_mix_reel) : null;
             const ecartTot = coutRevient - prevu;

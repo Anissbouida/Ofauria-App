@@ -2,7 +2,7 @@ import { policyNumber, resolvePolicy } from '../services/policies.js';
 import { subcontractingRepository } from './subcontracting.repository.js';
 import { db, withTransaction } from '../config/database.js';
 import { logger } from '../utils/logger.js';
-import { imputePlan, chargedHourlyRates, type PlanImputation } from '../services/cost-engine.js';
+import { imputePlan, chargedHourlyRates, standardCost, type PlanImputation } from '../services/cost-engine.js';
 import { planItemCosts, itemHours, spread, type ItemCost } from '../services/plan-item-costs.js';
 
 
@@ -468,13 +468,16 @@ export const productionCoutRepository = {
     // Lot A (mig 657) : en mode analytique, chaque article porte son propre coût (matières de sa
     // fiche, charges selon ses unités d'œuvre) ; des parts saisies à la main restent prioritaires.
     let itemCosts: ItemCost[] | null = null;
+    let theoNeeds: Map<string, number> | null = null;
     if (analytic && allocation.applied !== 'manuelle') {
       if (!comps.main_oeuvre) { moTimedByItem.clear(); moStdByItem.clear(); }
-      itemCosts = await planItemCosts(planId, {
+      const ic = await planItemCosts(planId, {
         detailMatieres, emballages: coutEmballages, energie: coutEnergie, sousTraitance: coutSousTraitance,
         mo: { timedByItem: moTimedByItem, stdByItem: moStdByItem }, machineByItem: comps.machine ? machineByItem : new Map(),
         analytic,
       });
+      itemCosts = ic.items;
+      theoNeeds = ic.needs;
       const revs = spread(Math.round(coutTotal * 100) / 100, itemCosts.map(i => i.cout_revient));
       const sumRev = itemCosts.reduce((t, i) => t + i.cout_revient, 0);
       const sumProd = itemCosts.reduce((t, i) => t + i.cout_production, 0);
@@ -495,6 +498,14 @@ export const productionCoutRepository = {
       matieres: coutMatieres, emballages: coutEmballages, mo: coutMO, energie: coutEnergie, machine: coutMachine,
       sousTraitance: coutSousTraitance, analytic, total: coutTotal, allocation, itemCosts,
     }) : null;
+    // Lot E : écart au coût standard (mêmes charges que le réel), décomposé.
+    if (niveaux && itemCosts && itemCosts.length) {
+      (niveaux as Record<string, unknown>).ecarts = await this.standardVariance(planId, {
+        items: itemCosts, needs: theoNeeds ?? new Map(), detailMatieres,
+        reel: { matieres: coutMatieres, emballages: coutEmballages, main_oeuvre: coutMO, charges: coutCharges,
+                autres: coutEnergie + coutMachine + coutSousTraitance, total: coutTotal },
+      });
+    }
 
     return {
       niveaux, analytic,
@@ -645,6 +656,51 @@ export const productionCoutRepository = {
       taux_marge: pct(marge, revient), taux_marque: pct(marge, ventes),
       ecart_total: Math.abs(revient - c.total) < 0.02 ? 0 : r2(revient - c.total),
       items,
+    };
+  },
+
+  /**
+   * Lot E : écart entre le coût réel d'un plan et son coût standard au mix réellement produit
+   * (fiches × quantités, charges des centres du mois) : prix des matières, quantités consommées,
+   * main-d'œuvre, charges, autres composantes.
+   */
+  async standardVariance(planId: string, c: {
+    items: ItemCost[]; needs: Map<string, number>;
+    detailMatieres: { ingredient_id: string; qty: number; unit_cost: number; total: number }[];
+    reel: { matieres: number; emballages: number; main_oeuvre: number; charges: number; autres: number; total: number };
+  }) {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const plan = (await db.query(`SELECT store_id, to_char(plan_date, 'YYYY-MM') AS month FROM production_plans WHERE id = $1`, [planId])).rows[0];
+    const std = { matieres: 0, emballages: 0, main_oeuvre: 0, charges: 0 };
+    let missing = 0;
+    for (const it of c.items) {
+      if (!it.recipe_id) { missing++; continue; }
+      const s = await standardCost(it.recipe_id, { formatId: it.format_id, storeId: plan?.store_id ?? null, month: plan?.month });
+      if (!s) { missing++; continue; }
+      std.matieres += s.matiere * it.quantity;
+      std.emballages += s.emballage * it.quantity;
+      std.main_oeuvre += s.mainOeuvre * it.quantity;
+      std.charges += (s.appro + s.production + s.structure) * it.quantity;
+    }
+    const stdTotal = std.matieres + std.emballages + std.main_oeuvre + std.charges;
+    // Prix : quantités réellement consommées × (prix du lot − prix de la fiche).
+    const ids = c.detailMatieres.map(d => d.ingredient_id);
+    const fiche = ids.length ? (await db.query(`SELECT id, COALESCE(unit_cost, 0)::float8 AS u FROM ingredients WHERE id = ANY($1::uuid[])`, [ids])).rows : [];
+    const prix = c.detailMatieres.reduce((t, d) => t + d.qty * (d.unit_cost - (fiche.find(f => f.id === d.ingredient_id)?.u ?? d.unit_cost)), 0);
+    const ecartMat = c.reel.matieres - std.matieres;
+    const lignes = [
+      { key: 'prix_matieres', label: 'Prix des matières', detail: 'Quantités consommées × (prix du lot utilisé − prix de la fiche)', montant: r2(prix) },
+      { key: 'quantites', label: 'Quantités consommées et rendement', detail: 'Matières sorties au-delà (ou en deçà) de la nomenclature × quantité produite', montant: r2(ecartMat - prix) },
+      { key: 'main_oeuvre', label: 'Main-d\'œuvre', detail: 'Temps pointé ou standard comparé au temps de la gamme', montant: r2(c.reel.main_oeuvre - std.main_oeuvre) },
+      { key: 'charges', label: 'Charges des centres', detail: 'Unités d\'œuvre réelles comparées à celles des fiches', montant: r2(c.reel.charges - std.charges) },
+      { key: 'autres', label: 'Emballages, énergie, machine, façon', detail: 'Mesurés sur le plan, comparés aux emballages des fiches', montant: r2(c.reel.emballages + c.reel.autres - std.emballages) },
+    ];
+    return {
+      standard: { matieres: r2(std.matieres), emballages: r2(std.emballages), main_oeuvre: r2(std.main_oeuvre), charges: r2(std.charges), total: r2(stdTotal) },
+      reel_total: r2(c.reel.total), ecart_total: r2(c.reel.total - stdTotal),
+      ecart_pct: stdTotal > 0 ? Math.round((c.reel.total - stdTotal) / stdTotal * 10000) / 100 : null,
+      lignes, articles_sans_fiche: missing,
+      theoriques: c.needs.size,
     };
   },
 

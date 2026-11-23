@@ -620,3 +620,113 @@ export async function chargedHourlyRates(planId: string): Promise<{ byEmployee: 
   const model = await periodModel(plan.store_id, plan.month);
   return { byEmployee: new Map(model.employees.map(e => [e.id, e.hourlyRate])), directRate: model.directLabour.rate };
 }
+
+export interface StandardCost {
+  recipeId: string; formatId: string | null; formats: { id: string; label: string; pieces: number | null }[];
+  productId: string | null; productName: string | null; month: string;
+  pieces: number | null; priceHt: number | null; unitKg: number;
+  matiere: number; emballage: number;
+  labourMinutes: number | null; machineMinutes: number | null; mainOeuvre: number; directRate: number;
+  lines: { code: string; name: string; level: Level; driverLabel: string; quantity: number; rate: number; amount: number }[];
+  appro: number; production: number; structure: number;
+  coutProduction: number; coutRevient: number;
+  marge: number | null; tauxMarque: number | null; tauxMarge: number | null;
+  /** Structure proportionnelle au prix de vente (inducteur « valeur de vente ») : taux appliqué au prix. */
+  structureSalesRate: number; structureFixed: number;
+  warnings: string[];
+}
+
+/**
+ * Lot E (mig 655-657) : coût standard d'une pièce d'une fiche, avec les MÊMES charges que le
+ * coût réel — coût de l'unité d'œuvre des centres du mois × unités d'œuvre d'une pièce
+ * (1 pièce, son poids, son temps de gamme, sa valeur matières, son prix de vente HT).
+ */
+export async function standardCost(recipeId: string, opts: { formatId?: string | null; storeId?: string | null; month?: string } = {}): Promise<StandardCost | null> {
+  const now = new Date();
+  const month = opts.month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const formats = (await db.query(
+    `SELECT f.id, COALESCE(p.name, r.name) || COALESCE(' · ' || NULLIF(f.nb_par_defaut, 0)::text || ' pièces', '') AS label,
+            f.nb_par_defaut AS pieces, f.is_default, f.ordre
+       FROM recipe_formats f JOIN recipes r ON r.id = f.recipe_id LEFT JOIN products p ON p.id = COALESCE(f.product_id, r.product_id)
+      WHERE f.recipe_id = $1 AND f.is_active ORDER BY f.is_default DESC, f.ordre`, [recipeId])).rows;
+  const formatId = opts.formatId && formats.some(f => f.id === opts.formatId) ? opts.formatId : (formats[0]?.id ?? null);
+  const base = (await db.query(
+    `SELECT r.id, COALESCE(f.product_id, r.product_id) AS product_id, p.name AS product_name, f.nb_par_defaut AS pieces,
+            (COALESCE(f.prix_vente_unitaire_override, p.price) / CASE WHEN p.price_includes_tax THEN 1 + COALESCE(tc.rate, 0) / 100 ELSE 1 END)::float8 AS price_ht,
+            COALESCE(f.poids_cuit_g / 1000.0, r.piece_weight_kg, 0)::float8 AS unit_kg,
+            fc.matiere_u::float8 AS matiere_u, fc.emballage_u::float8 AS emballage_u
+       FROM recipes r
+       LEFT JOIN recipe_formats f ON f.id = $2::uuid
+       LEFT JOIN products p ON p.id = COALESCE(f.product_id, r.product_id)
+       LEFT JOIN LATERAL (SELECT t.rate FROM tax_codes t WHERE t.code = p.tax_code AND t.valid_from <= CURRENT_DATE
+                           ORDER BY t.valid_from DESC LIMIT 1) tc ON true
+       LEFT JOIN LATERAL fn_recipe_cost(r.id, $2::uuid) fc ON $2::uuid IS NOT NULL
+      WHERE r.id = $1`, [recipeId, formatId])).rows[0];
+  if (!base) return null;
+  const warnings: string[] = [];
+  let matiere = Number(base.matiere_u) || 0;
+  if (!formatId) {
+    const legacy = (await db.query(
+      `SELECT (v.total_cost / NULLIF(r.yield_quantity, 0))::float8 AS u FROM recipes r LEFT JOIN v_recipe_total_cost_v2 v ON v.id = r.id WHERE r.id = $1`, [recipeId])).rows[0];
+    matiere = Number(legacy?.u) || 0;
+  }
+  const emballage = Number(base.emballage_u) || 0;
+  // Temps de gamme d'une pièce : une fournée de batch_size pièces.
+  const std = (await db.query(
+    `SELECT SUM((o.setup_min + o.duration_min) / NULLIF(rt.batch_size, 0) + o.labor_min_per_unit / NULLIF(o.base_quantity, 0))::float8 AS labor,
+            SUM(CASE WHEN o.work_center_id IS NOT NULL THEN (o.setup_min + o.duration_min) / NULLIF(rt.batch_size, 0) ELSE 0 END
+                + o.machine_min_per_unit / NULLIF(o.base_quantity, 0))::float8 AS machine
+       FROM routings rt JOIN routing_operations o ON o.routing_id = rt.id
+      WHERE rt.id = (SELECT r2.id FROM routings r2 WHERE (r2.product_id = $1 OR r2.recipe_id = $2) AND r2.is_active ORDER BY r2.created_at DESC LIMIT 1)`,
+    [base.product_id, recipeId])).rows[0];
+  const labourMinutes = std?.labor != null ? Number(std.labor) : null;
+  const machineMinutes = std?.machine != null ? Number(std.machine) : null;
+  if (labourMinutes == null) warnings.push('Aucune gamme : la main-d\'œuvre n\'est pas comptée dans le coût standard (Production › Postes & gammes).');
+
+  const storeId = opts.storeId ?? (await db.query(`SELECT id FROM stores ORDER BY created_at LIMIT 1`)).rows[0]?.id ?? null;
+  const model = await periodModel(storeId, month);
+  const directRate = model.directLabour?.rate ?? 0;
+  const mainOeuvre = labourMinutes != null ? labourMinutes / 60 * directRate : 0;
+  const priceHt = base.price_ht != null && Number(base.price_ht) > 0 ? Number(base.price_ht) : null;
+  const pieces = base.pieces != null ? Number(base.pieces) : null;
+  const perPiece: DriverQty = {
+    units: 1, weight_kg: Number(base.unit_kg) || 0, labour_hours: (labourMinutes ?? 0) / 60, machine_hours: (machineMinutes ?? 0) / 60,
+    batches: pieces && pieces > 0 ? 1 / pieces : 0, material_cost: matiere, sales_value: priceHt ?? 0,
+  };
+  const lines: StandardCost['lines'] = [];
+  let structureSalesRate = 0, structureFixed = 0;
+  for (const c of model.centres.filter(x => x.kind === 'principal')) {
+    const rate = c.rateFixed + c.rateVariable;
+    if (rate === 0) continue;
+    const q = perPiece[c.driver];
+    const amount = rate * q;
+    const structural = c.level === 'administration' || c.level === 'distribution';
+    if (structural && c.driver === 'sales_value') structureSalesRate += rate; else if (structural) structureFixed += amount;
+    lines.push({ code: c.code, name: c.name, level: c.level, driverLabel: DRIVERS[c.driver].label, quantity: r4(q), rate: r4(rate), amount: r4(amount) });
+  }
+  if (!priceHt && structureSalesRate > 0) warnings.push('Pas de prix de vente : la part des charges de structure liée au prix n\'est pas comptée.');
+  const sum = (lv: Level[]) => lines.filter(l => lv.includes(l.level)).reduce((t, l) => t + l.amount, 0);
+  const appro = sum(['approvisionnement']), production = sum(['production']), structure = sum(['administration', 'distribution']);
+  const coutProduction = matiere + emballage + mainOeuvre + appro + production;
+  const coutRevient = coutProduction + structure;
+  const marge = priceHt != null ? priceHt - coutRevient : null;
+  return {
+    recipeId, formatId, formats: formats.map(f => ({ id: f.id, label: f.label, pieces: f.pieces != null ? Number(f.pieces) : null })),
+    productId: base.product_id, productName: base.product_name, month, pieces, priceHt, unitKg: Number(base.unit_kg) || 0,
+    matiere: r4(matiere), emballage: r4(emballage), labourMinutes: labourMinutes != null ? r4(labourMinutes) : null,
+    machineMinutes: machineMinutes != null ? r4(machineMinutes) : null, mainOeuvre: r4(mainOeuvre), directRate: r4(directRate),
+    lines, appro: r4(appro), production: r4(production), structure: r4(structure),
+    coutProduction: r4(coutProduction), coutRevient: r4(coutRevient),
+    marge: marge != null ? r4(marge) : null,
+    tauxMarque: marge != null && priceHt ? Math.round(marge / priceHt * 10000) / 100 : null,
+    tauxMarge: marge != null && coutRevient > 0 ? Math.round(marge / coutRevient * 10000) / 100 : null,
+    structureSalesRate: r4(structureSalesRate), structureFixed: r4(structureFixed),
+    warnings: [...warnings, ...model.warnings],
+  };
+}
+
+/** Prix de vente HT conseillé pour un taux de marque visé (structure liée au prix comprise). */
+export function suggestedPrice(s: Pick<StandardCost, 'coutProduction' | 'structureFixed' | 'structureSalesRate'>, tauxMarquePct: number): number | null {
+  const d = 1 - tauxMarquePct / 100 - s.structureSalesRate;
+  return d > 0 ? Math.round((s.coutProduction + s.structureFixed) / d * 100) / 100 : null;
+}

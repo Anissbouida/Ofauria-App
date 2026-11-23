@@ -1479,6 +1479,14 @@
   "admin",
   "manager"
  ],
+ "GET /production-cout/analytique/fiche/:recipeId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production-cout/analytique/meta": [
   "admin",
   "manager"

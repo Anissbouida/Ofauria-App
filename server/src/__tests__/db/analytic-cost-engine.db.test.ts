@@ -238,6 +238,28 @@ describe.skipIf(!hasTestDb)('Moteur analytique du coût de revient (mig 655)', (
     await ana.setActual(chargeIds[1], MONTH, null, fx.userId, fx.storeId);
   });
 
+  it('lot E : coût standard d\'une fiche avec les charges des centres, prix conseillé, écart réel / standard du plan', async () => {
+    const recipeId = (await p().query(`SELECT id FROM recipes WHERE product_id = $1`, [productId])).rows[0].id;
+    const s = (await engine.standardCost(recipeId, { storeId: fx.storeId, month: MONTH }))!;
+    const m = await engine.periodModel(fx.storeId, MONTH);
+    const prod = m.centres.find(c => c.code === 'PROD')!;
+    expect(s.lines.find(l => l.code === 'PROD')!.amount).toBeCloseTo(prod.rateFixed + prod.rateVariable, 4);
+    expect(s.coutProduction).toBeCloseTo(s.matiere + s.emballage + s.mainOeuvre + s.appro + s.production, 3);
+    expect(s.coutRevient).toBeCloseTo(s.coutProduction + s.structure, 3);
+    // Prix conseillé : le taux de marque obtenu à ce prix est bien le taux visé.
+    // (Marque visée choisie sous le plafond 1 − structure liée au prix, quel que soit le volume de la base de test.)
+    const formula = { ...s, structureSalesRate: Math.min(s.structureSalesRate, 0.1) };
+    const price = engine.suggestedPrice(formula, 30)!;
+    expect(price).toBeGreaterThan(0);
+    const revientAtPrice = formula.coutProduction + formula.structureFixed + formula.structureSalesRate * price;
+    expect((price - revientAtPrice) / price).toBeCloseTo(0.30, 2);
+    expect(engine.suggestedPrice(formula, 95)).toBeNull();   // marque + structure ≥ 100 % : aucun prix possible
+    const c = await cout.computePlanCost(planIds[0]);
+    const e = (c.niveaux as unknown as { ecarts: { standard: { total: number }; reel_total: number; ecart_total: number; lignes: { montant: number }[] } }).ecarts;
+    expect(r2(e.reel_total - e.standard.total)).toBe(e.ecart_total);
+    expect(r2(e.lignes.reduce((t, l) => t + l.montant, 0))).toBeCloseTo(e.ecart_total, 1);
+  });
+
   it('un montant réel saisi pour le mois crée un écart sur budget, le contrôle reste à 0', async () => {
     await p().query(`INSERT INTO analytic_charge_actuals (charge_id, period, amount) VALUES ($1, $2::date, 12000)`, [chargeIds[0], `${MONTH}-01`]);
     const m = await engine.periodModel(fx.storeId, MONTH, { fresh: true });

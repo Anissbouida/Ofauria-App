@@ -8,6 +8,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { emptyBody } from '../validators/common.validator.js';
 import { analyticCostRepository, AnalyticError } from '../repositories/analytic-cost.repository.js';
+import { standardCost, suggestedPrice } from '../services/cost-engine.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import type { Response } from 'express';
 import { createEquipementBody, updateEquipementBody, recordTempsTravailBody, recordEquipementUsageBody } from '../validators/production-flow.validator.js';
@@ -132,6 +133,16 @@ router.put('/analytique/charges/:id/actif', authenticate, validateUuidParams('id
 router.put('/analytique/charges/:id/reel', authenticate, validateUuidParams('id'), can(A),
   validate(z.object({ month: z.string().regex(MONTH), amount: z.number().min(0).max(1e11).nullable() })),
   run(async (req) => analyticCostRepository.setActual(req.params.id as string, req.body.month, req.body.amount, req.user!.userId, store(req))));
+// Lot E : coût standard d'une fiche (mêmes charges que le coût réel) et prix conseillé.
+router.get('/analytique/fiche/:recipeId', authenticate, validateUuidParams('recipeId'), can('production.production_cout.view'),
+  run(async (req) => {
+    const formatId = typeof req.query.formatId === 'string' && z.string().guid().safeParse(req.query.formatId).success ? req.query.formatId : null;
+    const target = Number(req.query.marque);
+    const s = await standardCost(req.params.recipeId as string, { formatId, storeId: store(req) });
+    if (!s) throw new AnalyticError('Fiche introuvable');
+    const marque = Number.isFinite(target) && target > 0 && target < 95 ? target : 30;
+    return { ...s, cibleMarque: marque, prixConseille: suggestedPrice(s, marque) };
+  }));
 router.get('/analytique/comptes', authenticate, can(A), run(async () => analyticCostRepository.expenseAccounts()));
 router.get('/analytique/rapprochement', authenticate, can(A), run(async (req) => analyticCostRepository.reconciliation(store(req), monthOf(req))));
 router.get('/analytique/personnel', authenticate, can(A), run(async (req) => analyticCostRepository.personnel(store(req), monthOf(req))));

@@ -25,6 +25,7 @@ export interface ItemCost {
   cout_production_u: number | null; cout_revient_u: number | null;
   ventes_ht: number; marge: number; taux_marge: number | null; taux_marque: number | null;
   labour_hours: number; labour_source: 'pointe' | 'standard' | 'aucun';
+  recipe_id: string | null; format_id: string | null;
 }
 
 export interface PlanItemCostsInput {
@@ -47,7 +48,7 @@ export function spread(total: number, weights: number[]): number[] {
   return out;
 }
 
-export async function planItemCosts(planId: string, input: PlanItemCostsInput): Promise<ItemCost[]> {
+export async function planItemCosts(planId: string, input: PlanItemCostsInput): Promise<{ items: ItemCost[]; needs: Map<string, number> }> {
   const items = (await db.query(
     `SELECT ppi.id, ppi.product_id, p.name AS product_name,
             COALESCE(ppi.actual_quantity, ppi.planned_quantity)::float8 AS qty,
@@ -73,7 +74,7 @@ export async function planItemCosts(planId: string, input: PlanItemCostsInput): 
       ORDER BY p.name`, [planId])).rows as {
         id: string; product_id: string; product_name: string; qty: number; price_ht: number; unit_kg: number;
         recipe_id: string | null; format_id: string | null; theo_mat_u: number | null }[];
-  if (!items.length) return [];
+  if (!items.length) return { items: [], needs: new Map() };
 
   // ── Matières : besoins théoriques par article et par matière ──
   const needs = items.map(() => new Map<string, number>());
@@ -128,7 +129,9 @@ export async function planItemCosts(planId: string, input: PlanItemCostsInput): 
     idx.forEach((i, k) => { direct[i] += parts[k]; });
   }
 
-  return items.map((it, i) => {
+  const allNeeds = new Map<string, number>();
+  for (const n of needs) for (const [k, v] of n) allNeeds.set(k, (allNeeds.get(k) ?? 0) + v);
+  const out = items.map((it, i) => {
     const production = r2(mat[i] + emb[i] + mo[i] + ene[i] + mach[i] + fac[i] + appro[i] + prod[i] + direct[i]);
     const revient = r2(production + struct[i]);
     const ventes = r2(it.qty * it.price_ht);
@@ -147,8 +150,10 @@ export async function planItemCosts(planId: string, input: PlanItemCostsInput): 
       taux_marque: ventes > 0 ? Math.round(marge / ventes * 10000) / 100 : null,
       labour_hours: Math.round((lh?.labour ?? 0) * 100) / 100,
       labour_source: lh?.source ?? 'aucun',
+      recipe_id: it.recipe_id, format_id: it.format_id,
     };
   });
+  return { items: out, needs: allNeeds };
 }
 
 /** Heures de chaque ligne : temps pointé s'il existe, sinon temps standard de la gamme (lot B). */

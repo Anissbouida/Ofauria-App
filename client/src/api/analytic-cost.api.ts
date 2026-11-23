@@ -71,6 +71,17 @@ export interface ChargeInput {
   monthlyAmount: number; notes?: string | null; isActive?: boolean; accountIds?: string[];
 }
 
+export interface StandardCost {
+  recipeId: string; formatId: string | null; formats: { id: string; label: string; pieces: number | null }[];
+  productName: string | null; month: string; pieces: number | null; priceHt: number | null;
+  matiere: number; emballage: number; labourMinutes: number | null; mainOeuvre: number; directRate: number;
+  lines: { code: string; name: string; level: Level; driverLabel: string; quantity: number; rate: number; amount: number }[];
+  appro: number; production: number; structure: number; coutProduction: number; coutRevient: number;
+  marge: number | null; tauxMarque: number | null; tauxMarge: number | null;
+  structureSalesRate: number; structureFixed: number; warnings: string[];
+  cibleMarque: number; prixConseille: number | null;
+}
+
 const B = '/production-cout/analytique';
 export const analyticCostApi = {
   meta: (): Promise<AnalyticMeta> => api.get(`${B}/meta`).then(r => r.data.data),
@@ -92,6 +103,8 @@ export const analyticCostApi = {
   setActual: (id: string, month: string, amount: number | null) => api.put(`${B}/charges/${id}/reel`, { month, amount }).then(r => r.data.data),
   accounts: (): Promise<{ id: string; code: string; label: string }[]> => api.get(`${B}/comptes`).then(r => r.data.data),
   reconciliation: (month: string): Promise<Reconciliation[]> => api.get(`${B}/rapprochement`, { params: { month } }).then(r => r.data.data),
+  standard: (recipeId: string, formatId: string | null, marque: number): Promise<StandardCost> =>
+    api.get(`${B}/fiche/${recipeId}`, { params: { formatId: formatId ?? undefined, marque } }).then(r => r.data.data),
   personnel: (month: string): Promise<EmployeeCost[]> => api.get(`${B}/personnel`, { params: { month } }).then(r => r.data.data),
   setAllocations: (employeeId: string, allocations: { centerId: string; percent: number; laborType: 'direct' | 'indirect' }[]) =>
     api.put(`${B}/personnel/${employeeId}`, { allocations }).then(r => r.data.data),

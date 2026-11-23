@@ -23,6 +23,7 @@ import AlternativeOfPanel from './AlternativeOfPanel';
 import SubstitutesPanel from './SubstitutesPanel';
 import RecipeOutputsPanel from './RecipeOutputsPanel';
 import RecipeRoutingPanel from './RecipeRoutingPanel';
+import RecipeAnalyticCostPanel from './RecipeAnalyticCostPanel';
 import '../production/production.css';
 import '../projects/projects.css';
 import '../sales/sales.css';
@@ -204,6 +205,8 @@ export default function NomenclaturePage() {
           <RecipeOutputsPanel recipeId={recipe.id} />
         </fieldset>
         <RecipeRoutingPanel recipeId={recipe.id} recipeName={recipe.name} />
+        {/* Lot E (mig 655-657) : coût de revient standard avec les charges des centres, prix conseillé. */}
+        <RecipeAnalyticCostPanel recipeId={recipe.id} />
         <CustomFieldsCard entity="recipe" id={recipe.id} />
         <HistoryPanel table="recipes" id={recipe.id} />
 
