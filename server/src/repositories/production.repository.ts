@@ -1350,52 +1350,20 @@ export const productionRepository = {
           // Snapshot du cout theorique par piece (mig 261, audit A6b).
           // Se fait ICI, juste apres le UPDATE : rien n'est snapshotte si le
           // UPDATE n'a pas modifie de ligne (deja in_progress, annulee).
-          // v_recipe_format_cost donne un cout par piece de CE format precis
-          // (proration ratio_poids ou nomenclature composee) ; repli sur
-          // v_recipe_total_cost_v2 pour le mode legacy (format_id NULL), divise
-          // par yield_quantity pour ramener le cout de fournee au cout piece.
-          // Sous-selects necessaires : Postgres interdit de reflarger la table
-          // cible (ppi) dans un LEFT JOIN de la clause FROM d'un UPDATE.
           // theo_snapshot_at IS NULL empeche l'ecrasement d'un snapshot existant.
           await client.query(
             `UPDATE production_plan_items ppi SET
-               -- M4-04 : fiche choisie sur la ligne (alternative), sinon fiche par défaut.
-               -- L2 (mig 409) : coût théorique figé via la fonction de coût UNIQUE
-               -- fn_recipe_cost — matière des VRAIS composants du format (perte_pct
-               -- incluse), pas une répartition au prorata du poids (fausse en multi-
-               -- formats). Repli sur coût recette / rendement pour un item sans format.
-               -- Identique à l'ancienne vue sur les données actuelles, corrige le cas
-               -- multi-formats. « complet » ajoute l'emballage (comme l'ancienne vue).
-               theo_cout_matiere_u = (
-                 SELECT CASE WHEN ppi.format_id IS NOT NULL THEN fc.matiere_u
-                             WHEN r.yield_quantity > 0 THEN vtc.total_cost / r.yield_quantity
-                             ELSE NULL END
-                 FROM recipes r
-                 LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
-                 LEFT JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON ppi.format_id IS NOT NULL
-                 WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
-                 LIMIT 1
-               ),
-               theo_cout_complet_u = (
-                 SELECT CASE WHEN ppi.format_id IS NOT NULL THEN fc.complet_u + fc.emballage_u
-                             WHEN r.yield_quantity > 0 THEN vtc.total_cost / r.yield_quantity
-                             ELSE NULL END
-                 FROM recipes r
-                 LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
-                 LEFT JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON ppi.format_id IS NOT NULL
-                 WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
-                 LIMIT 1
-               ),
-               theo_prix_u = (
-                 SELECT fc.prix_u
-                 FROM recipes r
-                 JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON true
-                 WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1)) AND ppi.format_id IS NOT NULL
-                 LIMIT 1
-               ),
+               -- Mig 656 : coût théorique figé par fn_plan_item_theo — fn_recipe_cost sur le
+               -- format de la ligne, sinon le format lié au produit, sinon le format par défaut
+               -- de la fiche (M4-04 : fiche alternative incluse). « Recette ÷ rendement »
+               -- seulement pour une fiche sans format : une fiche « compose » décrit une
+               -- fournée et yield_quantity y vaut 1 (baguette figée à 92 DH au lieu de 0,77).
+               theo_cout_matiere_u = t.matiere_u,
+               theo_cout_complet_u = t.complet_u,
+               theo_prix_u = t.prix_u,
                theo_snapshot_at = $1::timestamptz,
-               theo_source_view = CASE WHEN ppi.format_id IS NOT NULL THEN 'fn_recipe_cost'
-                                       ELSE 'v_recipe_total_cost_v2' END
+               theo_source_view = t.source
+             FROM (SELECT 1) one LEFT JOIN LATERAL fn_plan_item_theo($2::uuid) t ON true
              WHERE ppi.id = $2 AND ppi.theo_snapshot_at IS NULL`,
             [startTime, result.rows[0].id]
           );

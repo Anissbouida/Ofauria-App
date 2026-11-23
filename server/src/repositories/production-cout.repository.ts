@@ -379,28 +379,13 @@ export const productionCoutRepository = {
     // Repli legacy identique a la mig 261 pour les items sans snapshot.
     const prevuResult = await db.query(
       `SELECT
-         SUM(
-           CASE
-             WHEN ppi.theo_snapshot_at IS NOT NULL AND ppi.theo_cout_complet_u IS NOT NULL
-               THEN ppi.theo_cout_complet_u * ppi.planned_quantity
-             WHEN r.yield_quantity > 0
-               THEN COALESCE(vtc.total_cost, 0) * ppi.planned_quantity / r.yield_quantity
-             ELSE 0
-           END
-         ) AS total_prevu,
-         SUM(
-           CASE
-             WHEN ppi.theo_snapshot_at IS NOT NULL AND ppi.theo_cout_complet_u IS NOT NULL
-               THEN ppi.theo_cout_complet_u * COALESCE(ppi.actual_quantity, ppi.planned_quantity)
-             WHEN r.yield_quantity > 0
-               THEN COALESCE(vtc.total_cost, 0) * COALESCE(ppi.actual_quantity, ppi.planned_quantity) / r.yield_quantity
-             ELSE 0
-           END
-         ) AS total_prevu_mix_reel
+         SUM(COALESCE(CASE WHEN ppi.theo_snapshot_at IS NOT NULL THEN ppi.theo_cout_complet_u END, t.complet_u, 0)
+             * ppi.planned_quantity) AS total_prevu,
+         SUM(COALESCE(CASE WHEN ppi.theo_snapshot_at IS NOT NULL THEN ppi.theo_cout_complet_u END, t.complet_u, 0)
+             * COALESCE(ppi.actual_quantity, ppi.planned_quantity)) AS total_prevu_mix_reel
        FROM production_plan_items ppi
-       -- M4-04 : fiche choisie sur la ligne (alternative), sinon fiche par défaut.
-       LEFT JOIN recipes r ON r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
-       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
+       -- Mig 656 : sans coût figé, le coût théorique par le format de la fiche (fn_plan_item_theo).
+       LEFT JOIN LATERAL fn_plan_item_theo(ppi.id) t ON ppi.theo_snapshot_at IS NULL OR ppi.theo_cout_complet_u IS NULL
        WHERE ppi.plan_id = $1 AND ppi.status != 'cancelled'`,
       [planId]
     );
