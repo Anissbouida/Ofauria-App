@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import api from './client';
 import type { ProductionPlanEvent, ProductionPrintDoc, ResolvedPrintTemplate } from '@ofauria/shared';
+import { intentHeaders } from './idempotency';
 
 /** Réglage enregistré d'un gabarit d'impression (M8-04) ; null = hérité. */
 export interface PrintTemplateRow {
@@ -93,6 +94,9 @@ export type ProductionDocument = {
 
 export const productionApi = {
   documents: (): Promise<ProductionDocument[]> => api.get('/production/documents').then(r => r.data.data),
+  /** Étape 8 : réservations de matière de l'ordre (capacité « reservation_matiere »). */
+  reservations: (id: string): Promise<{ id: string; ingredient_name: string; unit: string | null; quantity: number; shortage: number; status: 'reservee' | 'consommee' | 'liberee' }[]> =>
+    api.get(`/production/${id}/reservations`).then(r => r.data.data),
   updateDocument: (key: string, data: Partial<Pick<ProductionDocument, 'enabled' | 'mandatory' | 'generation' | 'stageCode'>>): Promise<ProductionDocument> =>
     api.put(`/settings/production-documents/${key}`, data).then(r => r.data.data),
   /** Ateliers (mig 511) et ceux de l'utilisateur connecté. */
@@ -176,7 +180,7 @@ export const productionApi = {
     api.put('/production/settings', data).then(r => r.data.data),
   getById: (id: string) => api.get(`/production/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/production', data).then(r => r.data.data),
-  confirm: (id: string) => api.post(`/production/${id}/confirm`).then(r => r.data),
+  confirm: (id: string) => api.post(`/production/${id}/confirm`, {}, intentHeaders(`/production/${id}/confirm`)).then(r => r.data),
   /** Repasse un plan confirme -> draft pour permettre des modifications.
    *  Refuse si un item a deja demarre ou si le BSI a ete preleve. */
   revertToDraft: (id: string) => api.post(`/production/${id}/revert-to-draft`).then(r => r.data.data),
@@ -184,9 +188,9 @@ export const productionApi = {
    *  la dispo ingredient et repositionne le plan. itemIds omis = tous les relancables. */
   relaunch: (id: string, itemIds?: string[]) =>
     api.post(`/production/${id}/relaunch`, itemIds ? { itemIds } : {}).then(r => r.data),
-  start: (id: string) => api.post(`/production/${id}/start`).then(r => r.data.data),
+  start: (id: string) => api.post(`/production/${id}/start`, {}, intentHeaders(`/production/${id}/start`)).then(r => r.data.data),
   startItems: (id: string, itemIds: string[], startedAt?: string) =>
-    api.post(`/production/${id}/start-items`, { itemIds, startedAt }).then(r => r.data),
+    api.post(`/production/${id}/start-items`, { itemIds, startedAt }, intentHeaders(`/production/${id}/start-items`, { itemIds, startedAt })).then(r => r.data),
   /** G0-24 : `extra` porte les saisies du lancement (observations, bases, pertes), enregistrées
    *  avec la déclaration dans une seule transaction côté serveur. */
   produceItems: (id: string, items: { planItemId: string; actualQuantity: number; outputs?: { productId?: string | null; equivPieces?: number; quantity: number }[] }[], producedAt?: string,
@@ -195,10 +199,10 @@ export const productionApi = {
       bases?: { subRecipeId: string; actualQuantity: number; alreadyProduced?: boolean }[];
       losses?: { planItemId: string; quantity: number; reason: string; reasonNote?: string }[];
     }) =>
-    api.post(`/production/${id}/produce-items`, { items, producedAt, ...extra }).then(r => r.data),
+    api.post(`/production/${id}/produce-items`, { items, producedAt, ...extra }, intentHeaders(`/production/${id}/produce-items`, { items, producedAt, ...extra })).then(r => r.data),
   pendingTransfers: () => api.get('/production/transfers/pending').then(r => r.data.data),
   confirmTransferReception: (transferId: string, items: { itemId: string; qtyReceived: number; notes?: string }[]) =>
-    api.post(`/production/transfers/${transferId}/receive`, { items }).then(r => r.data),
+    api.post(`/production/transfers/${transferId}/receive`, { items }, intentHeaders(`/production/transfers/${transferId}/receive`, { items })).then(r => r.data),
   restoreItems: (id: string, itemIds: string[]) =>
     api.post(`/production/${id}/restore-items`, { itemIds }).then(r => r.data),
   requestStockVerification: (id: string, ingredientId: string, note?: string) =>
@@ -206,7 +210,7 @@ export const productionApi = {
   cancelItems: (id: string, itemIds: string[], reason?: string) =>
     api.post(`/production/${id}/cancel-items`, { itemIds, reason }).then(r => r.data),
   complete: (id: string, items: { planItemId: string; actualQuantity: number }[], completionType?: string) =>
-    api.post(`/production/${id}/complete`, { items, completionType }).then(r => r.data),
+    api.post(`/production/${id}/complete`, { items, completionType }, intentHeaders(`/production/${id}/complete`, { items, completionType })).then(r => r.data),
   analyzeSubRecipes: (id: string) => api.get(`/production/${id}/sub-recipe-analysis`).then(r => r.data.data),
   detectSemiFinished: (id: string) => api.post(`/production/${id}/detect-semi-finished`).then(r => r.data),
   remove: (id: string) => api.delete(`/production/${id}`),

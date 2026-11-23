@@ -1594,6 +1594,14 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "GET /production/:id/reservations": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/:id/serials": [
   "admin",
   "baker",

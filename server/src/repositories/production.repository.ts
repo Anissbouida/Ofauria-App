@@ -20,6 +20,7 @@ import { logger } from '../utils/logger.js';
 import { resolvePolicy } from '../services/policies.js';
 import { checkStage, engineMode } from '../services/process-engine.js';
 import { qualityControlPlanRepository } from './quality-control-plan.repository.js';
+import { materialReservationRepository } from './material-reservation.repository.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
@@ -622,6 +623,11 @@ export const productionRepository = {
 
       // La verification de disponibilite des ingredients est faite par le magasinier
       // au moment du pesage (bon de sortie), pas a la confirmation du plan.
+      // Étape 8 multi-industries : avec la capacité « réservation de matière », les besoins
+      // sont réservés dès la confirmation (la part non couverte devient un avertissement).
+      if (await sectorRepository.featureOn('reservation_matiere')) {
+        warnings.push(...await materialReservationRepository.reserveForPlan(client, planId, userId));
+      }
 
       // Update plan status and persist warnings
       await transitionPlan(client, planId, 'confirmed', { extraSet: 'confirmed_at = NOW(), warnings = $2', params: [warnings] });

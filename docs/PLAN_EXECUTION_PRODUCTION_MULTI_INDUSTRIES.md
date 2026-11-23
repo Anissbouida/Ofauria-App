@@ -460,7 +460,7 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | 5 | Livré | voir § F.5 | 639 | Bascule en actif type d'ordre par type d'ordre après une période d'ombre réelle ; actions du catalogue encore exécutées par le code existant (le moteur décide des passages, pas des effets) ; avancement à afficher sur la fiche de l'ordre (API prête, pas 10) |
 | 6 | Livré | voir § F.6 | 640 | Écran des approbations : les cinq nouveaux types apparaissent dans Paramètres › Approbations (catalogue partagé) ; gabarits des documents sans impression (fiche de pesage, rapports) à dessiner au pas 10 |
 | 7 | Livré | voir § F.7 | 641 | Écran de saisie de la règle CCP : dans Paramètres › Production (catalogue des politiques) ; écran des contrôles « avant livraison » : liste qualité existante |
-| 8 | À faire | | | |
+| 8 | Livré | voir § F.8 | 642, 643, 644 | Les ~140 lectures des zones (economat_quantity, pesage_quantity) restent un cycle : à basculer vers les emplacements puis retirer les colonnes ; écran de rangement d'un lot dans un emplacement quelconque (fonctions prêtes) |
 | 9 | À faire | | | |
 | 10 | À faire | | | |
 | 11 | À faire | | | |
@@ -600,3 +600,18 @@ Livré :
 Tests : `quality-checkpoints.db.test.ts` (4) ; `profile-coverage` vert (la nouvelle politique est livrée par un profil).
 
 Commit : les étapes 5 (5c à 5e), 6 et 7 partagent un commit, car elles touchent les mêmes fichiers (transfert, catalogue de gardes, routes de paramétrage).
+
+### F.8 — Étape 8 (2026-11-23)
+
+Jeu de référence capturé avant la première tâche (`avant-etape8`) et comparé après chacune : **zéro écart** (5 045 lots, coûts, balance, TVA, paie).
+
+Livré, une tâche par commit :
+1. Mig 642 : `stock_locations.role` (réserve, en-cours ouvert, atelier, froid positif, froid négatif, vente, quarantaine, expédition), repris du code historique puis du type ; `role_default` (un par établissement et par rôle) ; `fn_store_location(store, rôle)`. La réception range dans la réserve par défaut ; les destinations produit fini deviennent les rôles « vente » et « froid positif ». Écran Emplacements : rôle, « par défaut ». Couche « emplacements » du profil : rôle exporté.
+2. Mig 643 — **inversion** : `ingredient_lot_locations` est la table écrite (`fn_lot_move_role`, `fn_lot_take`, `fn_lot_put`, `fn_lot_clear`), les zones du lot en sont dérivées (`fn_lot_recompute_zones`). Ouverture d'un contenant (trois chemins), retour, perte, consommation au pesage, sortie du bon de sortie, ajustement, extourne et correction de réception passent par ces fonctions. Le reflet de la mig 570 applique des écarts : une part rangée dans un troisième emplacement n'est plus effacée. Commit seul, suite base complète verte (247 / 936).
+3. Plus de littéral `'PESAGE'`, `'ECONOMAT'`, `'ECONOMAT_REQUIRES_TRANSFER'`, `'MAGASIN'`, `'FRIGO'` dans le code : constantes `ZONE` / `BSI_SOURCE` (`services/stock-roles.ts`) pour les valeurs enregistrées, rôles pour les emplacements.
+4. Profil sans Pesage : capacité « pesage » éteinte → le bon de sortie sert directement la réserve (lot alloué, aucune ouverture), la pesée y puise.
+5. Mig 644 : réservation de matière à la confirmation (capacité « reservation_matiere », éteinte par défaut) : stock libre = lots utilisables moins réservations actives, part non couverte signalée, consommée au démarrage, libérée au retour en brouillon ou à l'annulation ; garde `components_reserved` sur les réservations ; bloc « Matière réservée » sur la fiche d'ordre. Idempotence sur les sept routes de mutation de la production (confirmation, démarrage, lancement, déclaration, transfert, clôture, réception d'un transfert) ; le client envoie une clé par intention (réutilisée 15 s pour une même action).
+
+Écarts assumés : les zones restent des colonnes maintenues (lectures existantes, rapports) ; les créations de lot et les anciennes fonctions SQL (`fn_stock_receipt`) écrivent encore les zones, reflétées en écarts.
+
+Tests : `magasin-generique.db.test.ts` (8 : rôles et défaut, réception en réserve, inversion, troisième emplacement, invariant global, sans pesage, réservation) ; `product-lot-locations` adapté (message par rôle).

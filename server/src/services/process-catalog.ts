@@ -90,8 +90,13 @@ export const GUARDS: Record<string, GuardDef> = {
   },
   components_reserved: {
     key: 'components_reserved', label: 'Composants réservés',
-    description: 'Les besoins de l\'ordre sont couverts par le stock disponible (réservation, étape 8).',
+    description: 'Les besoins de l\'ordre sont couverts : par ses réservations de matière si la capacité est active, sinon par le stock relevé à la confirmation.',
     async check(ctx) {
+      // Étape 8 : avec des réservations (capacité « réservation de matière »), la garde lit leur
+      // couverture ; sinon le disponible relevé à la confirmation.
+      const { materialReservationRepository } = await import('../repositories/material-reservation.repository.js');
+      const res = await materialReservationRepository.uncovered(ctx.planId, q(ctx));
+      if (res.reserved) return res.count > 0 ? `${res.count} composant(s) réservés en partie seulement.` : null;
       const r = (await q(ctx).query(
         `SELECT count(*)::int AS n FROM production_ingredient_needs WHERE plan_id = $1 AND available_quantity < needed_quantity`, [ctx.planId])).rows[0];
       return r.n > 0 ? `${r.n} composant(s) non couverts par le stock.` : null;

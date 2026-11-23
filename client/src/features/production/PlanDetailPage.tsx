@@ -116,6 +116,11 @@ export default function PlanDetailPage() {
   // Étape 6 : un document désactivé dans le registre n'est plus proposé (l'enregistrement reste).
   const { data: docRegistry = [] } = useQuery({ queryKey: ['production-documents'], queryFn: productionApi.documents, staleTime: 5 * 60_000 });
   const docOn = (key: string) => docRegistry.find(d => d.docKey === key)?.enabled !== false;
+  // Étape 8 : réservations de matière (capacité « reservation_matiere », éteinte par défaut).
+  const { data: reservations = [] } = useQuery({
+    queryKey: ['production-reservations', id], queryFn: () => productionApi.reservations(id!),
+    enabled: !!id && hasFeature('reservation_matiere'), staleTime: 30_000,
+  });
   // M1-03 : seuils et coupure d'équipe lus dans les politiques de production (atelier du plan).
   const policies = useProductionPolicies({ workshop: plan?.target_role as string | undefined, store: plan?.store_id as string | undefined });
   const [newNote, setNewNote] = useState('');
@@ -1734,6 +1739,28 @@ export default function PlanDetailPage() {
           la selection des lots est maintenant geree dans le workflow de
           transfert Economat -> Pesage (cf module Warehouse / BSI), pas ici. */}
       {ingredientNeedsBlock}
+      {reservations.length > 0 && (
+        <div className="ds-panel pd-section">
+          <div className="pd-section-head">
+            <Layers size={12} /> Matière réservée
+            <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400 }}>{reservations.filter(r => r.status === 'reservee').length} réservation(s) active(s)</span>
+          </div>
+          <table className="odoo-table">
+            <thead><tr><th>Matière</th><th className="ds-num">Réservé</th><th className="ds-num">Non couvert</th><th>État</th></tr></thead>
+            <tbody>
+              {reservations.map(r => (
+                <tr key={r.id}>
+                  <td className="ds-strong">{r.ingredient_name}</td>
+                  <td className="ds-num">{r.quantity} {r.unit ?? ''}</td>
+                  <td className="ds-num">{r.shortage > 0 ? <span style={{ color: 'var(--ds-danger, #b42318)' }}>{r.shortage} {r.unit ?? ''}</span> : '—'}</td>
+                  <td><StatusTag tone={r.status === 'reservee' ? (r.shortage > 0 ? 'blocked' : 'progress') : r.status === 'consommee' ? 'done' : 'cancelled'}
+                    label={r.status === 'reservee' ? 'Réservée' : r.status === 'consommee' ? 'Consommée' : 'Libérée'} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {showIngr && <PlanPanels tab="preparation" ctx={panelCtx} only={['no-needs']} />}
 
 

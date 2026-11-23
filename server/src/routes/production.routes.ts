@@ -29,6 +29,8 @@ import {
 import { emptyBody } from '../validators/common.validator.js';
 import { planProgress } from '../services/process-engine.js';
 import { productionDocumentRepository } from '../repositories/production-document.repository.js';
+import { materialReservationRepository } from '../repositories/material-reservation.repository.js';
+import { idempotent } from '../middleware/idempotency.middleware.js';
 import { productionSettingsSchema, saveWorkshopSchema, mrpGenerateSchema, receiveProductionTransferSchema } from '../validators/production-flow.validator.js';
 
 const id = validateUuidParams('id');
@@ -115,7 +117,7 @@ router.get('/policies/impact', authenticate, can('production.view'), asyncHandle
 router.get('/policies', authenticate, can('production.view'), asyncHandler(productionController.listPolicies));
 router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), validate(setPolicySchema), asyncHandler(productionController.setPolicy));
 router.put('/settings', authenticate, can('production.edit'), validate(productionSettingsSchema), asyncHandler(productionController.updateSettings));
-router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), can('production.receive'), validate(receiveProductionTransferSchema), asyncHandler(productionController.confirmProductionTransfer));
+router.post('/transfers/:transferId/receive', authenticate, idempotent(), validateUuidParams('transferId'), can('production.receive'), validate(receiveProductionTransferSchema), asyncHandler(productionController.confirmProductionTransfer));
 
 // M9 — sous-traitance : suivi, sous-traitant et façon, bon d'envoi des composants.
 const subcontractError = (res: import('express').Response, e: unknown) => {
@@ -148,6 +150,10 @@ router.get('/:id/summary', authenticate, id, can('production.view'), asyncHandle
 router.get('/documents', authenticate, can('production.view'), asyncHandler(async (_req, res) => {
   res.json({ success: true, data: await productionDocumentRepository.list() });
 }));
+// Étape 8 multi-industries — réservations de matière de l'ordre.
+router.get('/:id/reservations', authenticate, id, can('production.view'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await materialReservationRepository.forPlan(req.params.id as string) });
+}));
 // Étape 5 multi-industries — avancement de l'ordre sur son parcours publié.
 router.get('/:id/progress', authenticate, id, can('production.view'), asyncHandler(async (req, res) => {
   const data = await planProgress(req.params.id as string);
@@ -171,17 +177,17 @@ router.get('/:id/consumption-variance', authenticate, validateUuidParams('id'), 
   res.json({ success: true, data: await productionConsumptionRepository.variance(req.params.id as string) });
 }));
 router.put('/:id/items', authenticate, id, can('production.items'), validate(updateItemsSchema), asyncHandler(productionController.updateItems));
-router.post('/:id/confirm', authenticate, id, can('production.confirm'), validate(emptyBody), asyncHandler(productionController.confirm));
+router.post('/:id/confirm', authenticate, idempotent(), id, can('production.confirm'), validate(emptyBody), asyncHandler(productionController.confirm));
 router.post('/:id/revert-to-draft', authenticate, id, can('production.revert_to_draft'), validate(emptyBody), asyncHandler(productionController.revertToDraft));
 router.post('/:id/relaunch', authenticate, id, can('production.relaunch'), validate(relaunchSchema), asyncHandler(productionController.relaunch));
-router.post('/:id/start', authenticate, id, can('production.start'), validate(emptyBody), asyncHandler(productionController.start));
-router.post('/:id/start-items', authenticate, id, can('production.start_items'), validate(startItemsSchema), asyncHandler(productionController.startItems));
-router.post('/:id/produce-items', authenticate, id, can('production.produce_items'), validate(produceItemsSchema), asyncHandler(productionController.produceItems));
-router.post('/:id/transfer-items', authenticate, id, can('production.transfer_items'), validate(itemIdsSchema), asyncHandler(productionController.transferItems));
+router.post('/:id/start', authenticate, idempotent(), id, can('production.start'), validate(emptyBody), asyncHandler(productionController.start));
+router.post('/:id/start-items', authenticate, idempotent(), id, can('production.start_items'), validate(startItemsSchema), asyncHandler(productionController.startItems));
+router.post('/:id/produce-items', authenticate, idempotent(), id, can('production.produce_items'), validate(produceItemsSchema), asyncHandler(productionController.produceItems));
+router.post('/:id/transfer-items', authenticate, idempotent(), id, can('production.transfer_items'), validate(itemIdsSchema), asyncHandler(productionController.transferItems));
 router.post('/:id/restore-items', authenticate, id, can('production.restore_items'), validate(itemIdsSchema), asyncHandler(productionController.restoreItems));
 router.post('/:id/needs/:ingredientId/request-verification', authenticate, validateUuidParams('id', 'ingredientId'), can('production.request_verification'), validate(requestStockVerificationSchema), asyncHandler(productionController.requestStockVerification));
 router.post('/:id/cancel-items', authenticate, id, can('production.cancel_items'), validate(cancelItemsSchema), asyncHandler(productionController.cancelItems));
-router.post('/:id/complete', authenticate, id, can('production.complete'), validate(completeSchema), asyncHandler(productionController.complete));
+router.post('/:id/complete', authenticate, idempotent(), id, can('production.complete'), validate(completeSchema), asyncHandler(productionController.complete));
 router.post('/:id/detect-semi-finished', authenticate, id, can('production.detect_semi_finished'), validate(emptyBody), asyncHandler(productionController.detectSemiFinished));
 router.get('/:id/dependencies', authenticate, id, asyncHandler(productionController.getPlanDependencies));
 router.get('/:id/activities', authenticate, id, asyncHandler(productionController.getActivities));
