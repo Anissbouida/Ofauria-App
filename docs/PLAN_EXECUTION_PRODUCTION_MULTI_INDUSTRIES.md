@@ -560,3 +560,9 @@ Livré :
 Défauts trouvés en chemin (dans le code de l'étape) : capture hors transaction, identifiant de version renvoyé en texte, paramètre SQL non typé.
 
 Tests : `config-freeze.db.test.ts` (scénario E, 3) ; suite base 243 / 914 et suite unitaire vertes.
+
+### F.5 — Étape 5, jalon 5a-5b (2026-11-23, en cours)
+
+Livré : catalogue fermé `services/process-catalog.ts` (6 gardes reprenant les contrôles existants, 11 actions) ; mig 639 : `process_models` (versionnés, un seul publié par type d'ordre), `process_stages` (état technique de rattachement, gardes, actions, document, responsable, délai, condition, groupe parallèle, champs obligatoires, reprise), `process_shadow_log` ; un modèle « Parcours standard » publié par type d'ordre existant, qui reproduit le parcours actuel. Aucun changement de comportement : le moteur n'est pas encore branché.
+
+Reste pour l'étape 5 : évaluation en mode ombre au démarrage et au transfert (la garde « toutes les lignes pesées » et « contrôle conforme » ne s'appliquent que si la politique des étapes obligatoires figée sur l'ordre est active, comme aujourd'hui), politique de bascule par type d'ordre, éditeur (API puis écran), groupes parallèles et conditions.
