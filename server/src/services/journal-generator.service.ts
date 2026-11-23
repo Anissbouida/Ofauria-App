@@ -1286,20 +1286,13 @@ export async function persistEntry(
     // Provision a la volee des auxiliaires manquants. Les tiers crees apres le
     // seed (migration 179) n'avaient aucun auxiliaire : persistEntry levait
     // "Auxiliaire manquant" et l'ecriture echouait silencieusement -> facture
-    // "sans ecriture". On cree l'auxiliaire avec la meme convention de code que
-    // le seed (4411-FOUR-<6 lettres>-<4 chars id>), idempotent via ON CONFLICT.
+    // "sans ecriture".
+    // Creation deleguee a fn_ensure_supplier_auxiliary (mig 629) : meme convention de code
+    // (4411-FOUR-<6 lettres>-<4 chars id>), mais un code deja pris allonge le suffixe au lieu
+    // de laisser le tiers sans auxiliaire (ON CONFLICT DO NOTHING silencieux avant).
     const missing = supplierIds.filter(id => !auxBySupplier.has(id));
     if (missing.length) {
-      await client.query(
-        `INSERT INTO account_auxiliaries (account_id, supplier_id, code, label)
-         SELECT (SELECT id FROM accounts WHERE code = '4411'), s.id,
-           '4411-FOUR-' || UPPER(SUBSTR(REGEXP_REPLACE(s.name, '[^A-Za-z0-9]', '', 'g'), 1, 6))
-                        || '-' || SUBSTR(s.id::TEXT, 1, 4),
-           s.name
-         FROM suppliers s WHERE s.id = ANY($1::uuid[])
-         ON CONFLICT DO NOTHING`,
-        [missing]
-      );
+      await client.query(`SELECT fn_ensure_supplier_auxiliary(id) FROM unnest($1::uuid[]) AS id`, [missing]);
       const r2 = await client.query(`SELECT id, supplier_id FROM account_auxiliaries WHERE supplier_id = ANY($1::uuid[])`, [missing]);
       for (const row of r2.rows) auxBySupplier.set(row.supplier_id, row.id);
     }
@@ -1307,19 +1300,10 @@ export async function persistEntry(
   if (customerIds.length) {
     const r = await client.query(`SELECT id, customer_id FROM account_auxiliaries WHERE customer_id = ANY($1::uuid[])`, [customerIds]);
     for (const row of r.rows) auxByCustomer.set(row.customer_id, row.id);
+    // Idem clients (fn_ensure_customer_auxiliary, mig 629) : raison sociale a defaut de nom.
     const missing = customerIds.filter(id => !auxByCustomer.has(id));
     if (missing.length) {
-      await client.query(
-        `INSERT INTO account_auxiliaries (account_id, customer_id, code, label)
-         SELECT (SELECT id FROM accounts WHERE code = '3421'), c.id,
-           '3421-CLI-' || UPPER(SUBSTR(REGEXP_REPLACE(
-             COALESCE(c.first_name, '') || COALESCE(c.last_name, ''), '[^A-Za-z0-9]', '', 'g'), 1, 6))
-                       || '-' || SUBSTR(c.id::TEXT, 1, 4),
-           TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, ''))
-         FROM customers c WHERE c.id = ANY($1::uuid[])
-         ON CONFLICT DO NOTHING`,
-        [missing]
-      );
+      await client.query(`SELECT fn_ensure_customer_auxiliary(id) FROM unnest($1::uuid[]) AS id`, [missing]);
       const r2 = await client.query(`SELECT id, customer_id FROM account_auxiliaries WHERE customer_id = ANY($1::uuid[])`, [missing]);
       for (const row of r2.rows) auxByCustomer.set(row.customer_id, row.id);
     }
