@@ -1463,6 +1463,11 @@ export const bonSortieRepository = {
     const used = new Map<string, { row: Record<string, any>; taken: number; opened: number }>();
     let remaining = actualQuantity;
     const directFromReserve = !(await sectorRepository.featureOn('pesage'));
+    // Mig 654 : la règle « un lot entamé se finit avant d'en ouvrir un autre » vise les
+    // ouvertures décidées par l'opérateur. Ici, c'est la répartition FEFO automatique d'une
+    // pesée qui complète sur les lots suivants quand le lot choisi ne suffit pas (ou que ses
+    // contenants restants sont réservés à un autre bon) : elle reste permise.
+    await client.query(`SELECT set_config('kalum.multi_lot_weighing', 'on', true)`);
     const drawPass = async (strict: boolean) => {
       for (const row of candidates) {
         if (remaining <= 1e-9) return;

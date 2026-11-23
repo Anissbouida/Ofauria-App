@@ -62,7 +62,18 @@ export function TransferToPesage({ onDone, onCancel, initialIngredientId }: { on
     .filter(l => parseFloat(l.economat_quantity as string || '0') > 0)
     .map((l): Row => ({ ...l, _expired: !!l.expiration_date && String(l.expiration_date).slice(0, 10) < today }))
     .sort((a, b) => Number(a._expired) - Number(b._expired) || String(a.expiration_date || '9999').localeCompare(String(b.expiration_date || '9999')));
-  const lot = lots.find(l => l.id === lotId) || lots.find(l => !l._expired) || null;
+  // Mig 654 : on finit un lot avant d'en entamer un autre. Tant qu'un lot non périmé est entamé
+  // (stock au poste de pesée) et a encore des contenants fermés, seuls ses contenants peuvent
+  // être ouverts (le serveur refuse les autres).
+  const openLot = ((lotsResp?.data || []) as Row[]).find(l =>
+    parseFloat(l.pesage_quantity as string || '0') > 0
+    && parseFloat(l.economat_quantity as string || '0') > 0
+    && !(l.expiration_date && String(l.expiration_date).slice(0, 10) < today)) || null;
+  const blocked = (l: Row) => !!openLot && l.id !== openLot.id;
+  const lot = lots.find(l => l.id === lotId && !blocked(l))
+    || (openLot ? lots.find(l => l.id === openLot.id) : undefined)
+    || lots.find(l => !l._expired && !blocked(l)) || null;
+  const openLotLabel = openLot ? (((openLot.supplier_lot_number || openLot.lot_number) as string | null) || 'sans n°') : '';
   const eco = lot ? parseFloat(lot.economat_quantity as string || '0') : 0;
 
   const fmt = (q: number) => { const f = smartFormatQuantity(q, unit); return `${f.value.toFixed(f.unit === 'g' || f.unit === 'ml' ? 0 : 2)} ${f.unit}`; };
@@ -137,13 +148,20 @@ export function TransferToPesage({ onDone, onCancel, initialIngredientId }: { on
               : (
                 <select id="transfer-pesage-lot" value={lot?.id as string || ''} onChange={(e) => setLotId(e.target.value)} className="ds-input">
                   {lots.map(l => (
-                    <option key={l.id as string} value={l.id as string} disabled={!!l._expired}>
-                      {((l.supplier_lot_number || l.lot_number) as string | null) || 'lot sans n°'} · DLC {l.expiration_date ? format(new Date(l.expiration_date as string), 'dd/MM/yy') : '—'} · économat {fmt(parseFloat(l.economat_quantity as string))}{l._expired ? ' · périmé' : ''}
+                    <option key={l.id as string} value={l.id as string} disabled={!!l._expired || blocked(l)}>
+                      {((l.supplier_lot_number || l.lot_number) as string | null) || 'lot sans n°'} · DLC {l.expiration_date ? format(new Date(l.expiration_date as string), 'dd/MM/yy') : '—'} · économat {fmt(parseFloat(l.economat_quantity as string))}{l._expired ? ' · périmé' : blocked(l) ? ' · attend la fin du lot ouvert' : ''}
                     </option>
                   ))}
                 </select>
               )}
             </FormField>
+            {openLot && (
+              <p className="odoo-setting-help" role="status" style={{ marginTop: 6 }}>
+                Lot <strong>{openLotLabel}</strong> déjà entamé ({fmt(parseFloat(openLot.pesage_quantity as string))} au poste de pesée,
+                {' '}{fmt(parseFloat(openLot.economat_quantity as string))} encore fermé) : ouvrez ses contenants avant d'entamer un autre lot,
+                sauf s'il est périmé.
+              </p>
+            )}
           </div>
         )}
 
