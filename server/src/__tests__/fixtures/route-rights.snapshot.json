@@ -1479,6 +1479,10 @@
   "admin",
   "manager"
  ],
+ "GET /production-cout/analytique/equipements": [
+  "admin",
+  "manager"
+ ],
  "GET /production-cout/analytique/fiche/:recipeId": [
   "admin",
   "baker",
@@ -3835,6 +3839,10 @@
   "admin",
   "manager"
  ],
+ "POST /production-cout/analytique/outils": [
+  "admin",
+  "manager"
+ ],
  "POST /production-cout/analytique/recalculer": [
   "admin",
   "manager"
@@ -5132,7 +5140,19 @@
   "admin",
   "manager"
  ],
+ "PUT /production-cout/analytique/immobilisations/:id": [
+  "admin",
+  "manager"
+ ],
  "PUT /production-cout/analytique/methode": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/analytique/outils/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/analytique/outils/:id/actif": [
   "admin",
   "manager"
  ],

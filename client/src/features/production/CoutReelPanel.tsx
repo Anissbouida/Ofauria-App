@@ -49,6 +49,8 @@ interface CoutReel {
     month: string;
     lines: { code: string; name: string; level: string; driverLabel: string; quantity: number; rateFixed: number; rateVariable: number; fixed: number; variable: number; total: number }[];
     direct: { label: string; productName: string; quantity: number; rate: number; total: number }[];
+    /** Mig 660 : charges imputées par nature (amortissement, outillage, loyer, personnel…). */
+    byNature?: { nature: string; label: string; amount: number }[];
     warnings: string[];
   } | null;
   cout_prevu: Money;
@@ -715,6 +717,33 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 <p className="text-[11px] text-gray-400 px-2 pt-1">
                   Coût de l'unité d'œuvre = charges mensuelles du centre ÷ capacité normale mensuelle (mois {cout.detail_analytique.month}).
                   Paramétrage : <Link to="/production/analyse-couts">Production › Analyse des coûts</Link>.
+                </p>
+              </DetailSection>
+            )}
+
+            {analytic && cout.detail_analytique?.byNature && (
+              <DetailSection title="Charges par nature (dont amortissements et outillage)" icon={<Layers size={12} className="text-violet-500" />}
+                isExpanded={expandedSection === 'natures'} onToggle={() => setExpandedSection(expandedSection === 'natures' ? null : 'natures')}>
+                <DataPanel label="Charges par nature">
+                <table className="odoo-table ds-dense">
+                  <thead><tr><th>Nature</th><th className="ds-num">Montant imputé au plan</th><th className="ds-num">Par unité</th></tr></thead>
+                  <tbody>
+                    {['amortissement', 'outillage'].filter(n => !cout.detail_analytique!.byNature!.some(x => x.nature === n)).map(n => (
+                      <tr key={n}><td className="ds-strong">{n === 'amortissement' ? 'Amortissement des équipements' : 'Outillage et petit matériel'}</td>
+                        <td className="ds-num ds-muted">0,00 — rien au registre</td><td /></tr>
+                    ))}
+                    {cout.detail_analytique.byNature.map(n => (
+                      <tr key={n.nature}>
+                        <td className="ds-strong">{n.label}</td><td className="ds-num">{fmtMoney(n.amount)}</td>
+                        <td className="ds-num">{niveaux && niveaux.unites > 0 ? money(n.amount / niveaux.unites, { decimals: 4 }) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr><td className="ds-strong">Total des charges</td><td className="ds-num ds-strong">{fmtMoney(coutCharges)}</td><td /></tr></tfoot>
+                </table>
+                </DataPanel>
+                <p className="text-[11px] text-gray-400 px-2 pt-1">
+                  Part de chaque nature dans les centres qui imputent ce plan. Équipements immobilisés et outillage : <Link to="/production/analyse-couts">Analyse des coûts › Équipements et outils</Link>.
                 </p>
               </DetailSection>
             )}

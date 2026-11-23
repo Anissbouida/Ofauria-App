@@ -208,6 +208,7 @@ export const analyticCostRepository = {
     return rows.map(r => {
       const code = String(r.code);
       const coverage = r.charges ? 'charge'
+        : /^619/.test(code) ? 'amortissements'
         : /^617/.test(code) ? 'paie'
         : /^(611|612)/.test(code) ? 'matieres'
         : /^(63|65|67)/.test(code) ? 'hors_exploitation'
@@ -469,6 +470,75 @@ export const analyticCostRepository = {
       },
       history,
     };
+  },
+
+  // ─── Équipements (immobilisations) et outillage (mig 660) ───
+  async equipment(storeId: string | null, month: string) {
+    const period = `${month}-01`;
+    const assets = (await db.query(
+      `SELECT fa.id, fa.label, fa.acquisition_date, fa.acquisition_cost::float8 AS acquisition_cost, fa.residual_value::float8 AS residual_value,
+              fa.duration_years, fa.method, fa.status, fa.cost_center_id, c.code AS center_code, c.name AS center_name,
+              fa.product_id, p.name AS product_name, fa.analytic_excluded,
+              fn_fixed_asset_month_depreciation(fa.id, $2::date)::float8 AS month_amount,
+              (SELECT string_agg(pe.nom, ', ') FROM production_equipements pe WHERE pe.fixed_asset_id = fa.id) AS equipment_names
+         FROM fixed_assets fa
+         LEFT JOIN cost_centers c ON c.id = fa.cost_center_id
+         LEFT JOIN products p ON p.id = fa.product_id
+        WHERE ($1::uuid IS NULL OR fa.store_id IS NULL OR fa.store_id = $1) AND fa.status <> 'disposed'
+        ORDER BY fa.acquisition_date DESC, fa.label`, [storeId, period])).rows;
+    const tools = (await db.query(
+      `SELECT t.id, t.label, t.category, t.unit_cost::float8 AS unit_cost, t.quantity::float8 AS quantity, t.purchase_date, t.life_months,
+              t.cost_center_id, c.code AS center_code, c.name AS center_name, t.product_id, p.name AS product_name, t.is_active, t.notes,
+              (t.unit_cost * t.quantity / t.life_months)::float8 AS monthly_cost,
+              to_char(date_trunc('month', t.purchase_date) + make_interval(months => t.life_months) - interval '1 day', 'YYYY-MM-DD') AS end_date,
+              (date_trunc('month', t.purchase_date) <= $2::date
+                 AND $2::date < date_trunc('month', t.purchase_date) + make_interval(months => t.life_months)) AS in_use
+         FROM production_tools t
+         LEFT JOIN cost_centers c ON c.id = t.cost_center_id
+         LEFT JOIN products p ON p.id = t.product_id
+        WHERE ($1::uuid IS NULL OR t.store_id IS NULL OR t.store_id = $1)
+        ORDER BY t.is_active DESC, t.category, t.label`, [storeId, period])).rows;
+    return {
+      assets, tools,
+      totals: {
+        amortissements: Math.round(assets.filter(a => !a.analytic_excluded).reduce((t, a) => t + (a.month_amount ?? 0), 0) * 100) / 100,
+        outillage: Math.round(tools.filter(t => t.is_active && t.in_use).reduce((s2, t) => s2 + t.monthly_cost, 0) * 100) / 100,
+      },
+    };
+  },
+
+  async updateAsset(id: string, input: { costCenterId: string | null; productId: string | null; excluded: boolean }, userId: string) {
+    return withTransaction(async () => {
+      await db.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+      const r = await db.query(
+        `UPDATE fixed_assets SET cost_center_id = $2, product_id = $3, analytic_excluded = $4 WHERE id = $1 RETURNING id`,
+        [id, input.productId ? null : input.costCenterId, input.productId, input.excluded]);
+      if (!r.rows.length) throw new AnalyticError('Immobilisation introuvable');
+      invalidateCostModel();
+      return { id };
+    });
+  },
+
+  async saveTool(id: string | null, input: { label: string; category: string; unitCost: number; quantity: number; purchaseDate: string;
+    lifeMonths: number; costCenterId?: string | null; productId?: string | null; notes?: string | null; storeId?: string | null }, userId: string) {
+    const params = [input.label.trim().slice(0, 160), input.category, input.unitCost, input.quantity, input.purchaseDate, input.lifeMonths,
+      input.productId ? null : input.costCenterId ?? null, input.productId ?? null, input.notes ?? null];
+    const r = id
+      ? await db.query(
+          `UPDATE production_tools SET label = $2, category = $3, unit_cost = $4, quantity = $5, purchase_date = $6, life_months = $7,
+                  cost_center_id = $8, product_id = $9, notes = $10, updated_at = now() WHERE id = $1 RETURNING id`, [id, ...params])
+      : await db.query(
+          `INSERT INTO production_tools (label, category, unit_cost, quantity, purchase_date, life_months, cost_center_id, product_id, notes, store_id, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`, [...params, input.storeId ?? null, userId]);
+    if (!r.rows.length) throw new AnalyticError('Outil introuvable');
+    invalidateCostModel();
+    return { id: r.rows[0].id as string };
+  },
+
+  async setToolActive(id: string, active: boolean) {
+    await db.query(`UPDATE production_tools SET is_active = $2, updated_at = now() WHERE id = $1`, [id, active]);
+    invalidateCostModel();
+    return { id, active };
   },
 
   /** Recalcule le coût de tous les plans (en cours, terminés) d'un mois. */

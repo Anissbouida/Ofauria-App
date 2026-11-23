@@ -802,7 +802,7 @@ export const productionCoutRepository = {
        coutMachine, JSON.stringify(detailMachine),
        coutChargesAppro, coutChargesProduction, coutChargesStructure, coutChargesDirectes,
        analytic ? JSON.stringify({ month: analytic.month, drivers: analytic.drivers, lines: analytic.lines, direct: analytic.directLines,
-                                    warnings: analytic.warnings }) : null,
+                                    byNature: analytic.byNature, warnings: analytic.warnings }) : null,
        niveaux ? JSON.stringify(niveaux) : null,
        analytic ? JSON.stringify(analytic.methods) : null]
     );

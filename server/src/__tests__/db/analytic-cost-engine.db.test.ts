@@ -273,6 +273,46 @@ describe.skipIf(!hasTestDb)('Moteur analytique du coût de revient (mig 655)', (
     expect(h.activityVariance).toBeGreaterThan(0);   // 600 + 120 unités pour une capacité de 1 000
   }, 60_000);
 
+  it('mig 660 : amortissement d\'un four (linéaire) et outillage entrent dans les charges et se lisent par nature sur le plan', async () => {
+    const acc = Object.fromEntries((await p().query(`SELECT code, id FROM accounts WHERE code IN ('2332', '2833', '6191')`)).rows.map(r => [r.code, r.id]));
+    // Four : 120 000 DH sur 10 ans = 1 000 DH par mois ; moules : 12 × 50 DH sur 6 mois = 100 DH par mois.
+    const four = (await p().query(
+      `INSERT INTO fixed_assets (label, asset_account_id, depreciation_account_id, expense_account_id, acquisition_date, acquisition_cost, duration_years, store_id)
+       VALUES ($1, $2, $3, $4, '2025-06-10', 120000, 10, $5) RETURNING id`, [`Four ANA ${RUN}`, acc['2332'], acc['2833'], acc['6191'], fx.storeId])).rows[0].id;
+    const eq = (await p().query(
+      `INSERT INTO production_equipements (nom, type, cout_horaire, store_id, fixed_asset_id) VALUES ($1, 'four', 0, $2, $3) RETURNING id`,
+      [`Four ANA ${RUN}`, fx.storeId, four])).rows[0].id;
+    const tool = (await p().query(
+      `INSERT INTO production_tools (label, category, unit_cost, quantity, purchase_date, life_months, store_id)
+       VALUES ($1, 'moule', 50, 12, '2026-01-15', 6, $2) RETURNING id`, [`Moules ANA ${RUN}`, fx.storeId])).rows[0].id;
+    try {
+      expect(Number((await p().query(`SELECT fn_fixed_asset_month_depreciation($1, $2::date) AS d`, [four, `${MONTH}-01`])).rows[0].d)).toBe(1000);
+      engine.invalidateCostModel();
+      const m = await engine.periodModel(fx.storeId, MONTH, { fresh: true });
+      const prod = m.centres.find(c => c.code === 'PROD')!;
+      expect(r2(prod.lines.find(l => l.label === `Amortissement — Four ANA ${RUN}`)!.budget.fixed)).toBe(1000);
+      expect(r2(prod.lines.find(l => l.label === `Outillage — Moules ANA ${RUN}`)!.budget.fixed)).toBe(100);
+      expect(prod.composition!.amortissement).toBeGreaterThanOrEqual(1000);
+      expect(m.totals.control).toBe(0);
+      const c = await cout.computePlanCost(planIds[0]);
+      const natures = c.analytic!.byNature;
+      expect(natures.find(n => n.nature === 'amortissement')!.amount).toBeGreaterThan(0);
+      expect(natures.find(n => n.nature === 'outillage')!.amount).toBeGreaterThan(0);
+      expect(r2(natures.reduce((t, n) => t + n.amount, 0))).toBeCloseTo(c.coutCharges, 1);
+      // Équipement dédié à un produit : sa dotation devient une charge directe de ce produit.
+      await p().query(`UPDATE fixed_assets SET product_id = $2 WHERE id = $1`, [four, productId]);
+      engine.invalidateCostModel();
+      const m2 = await engine.periodModel(fx.storeId, MONTH, { fresh: true });
+      expect(m2.direct.find(d => d.label === `Amortissement — Four ANA ${RUN}`)).toBeTruthy();
+      expect(m2.totals.control).toBe(0);
+    } finally {
+      await p().query(`DELETE FROM production_tools WHERE id = $1`, [tool]);
+      await p().query(`DELETE FROM production_equipements WHERE id = $1`, [eq]);
+      await p().query(`DELETE FROM fixed_assets WHERE id = $1`, [four]);
+      engine.invalidateCostModel();
+    }
+  });
+
   it('un montant réel saisi pour le mois crée un écart sur budget, le contrôle reste à 0', async () => {
     await p().query(`INSERT INTO analytic_charge_actuals (charge_id, period, amount) VALUES ($1, $2::date, 12000)`, [chargeIds[0], `${MONTH}-01`]);
     const m = await engine.periodModel(fx.storeId, MONTH, { fresh: true });

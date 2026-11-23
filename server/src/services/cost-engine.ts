@@ -63,6 +63,15 @@ export const NATURE_SUGGESTIONS: Record<string, { label: string; behavior: Behav
   autre:          { label: 'Autre',                      behavior: 'fixed',         fixedPct: 100, center: 'ADM',   hint: '' },
 };
 
+/** Libellés des natures de charges, y compris celles qui ne viennent pas du référentiel. */
+export const NATURE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(NATURE_SUGGESTIONS).map(([k, v]) => [k, v.label])),
+  amortissement: 'Amortissement des équipements',
+  outillage: 'Outillage et petit matériel',
+  personnel: 'Personnel (coût employeur)',
+  mo_directe: 'MO directe imputée aux plans (déduite)',
+};
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const r4 = (n: number) => Math.round(n * 10000) / 10000;
 
@@ -75,7 +84,7 @@ export type DriverQty = Record<Driver, number>;
 const zeroDrivers = (): DriverQty => ({ units: 0, weight_kg: 0, labour_hours: 0, machine_hours: 0, batches: 0, material_cost: 0, sales_value: 0 });
 const DRIVER_KEYS = Object.keys(DRIVERS) as Driver[];
 
-export interface CentreLine { source: 'charge' | 'personnel' | 'transfer' | 'direct_labour'; label: string; budget: FV; actual: FV }
+export interface CentreLine { source: 'charge' | 'personnel' | 'transfer' | 'direct_labour' | 'amortissement' | 'outillage'; label: string; budget: FV; actual: FV; nature?: string }
 
 export interface CentreModel {
   id: string; code: string; name: string; kind: 'principal' | 'auxiliaire'; level: Level; driver: Driver;
@@ -90,10 +99,12 @@ export interface CentreModel {
   activity: number; activityRate: number | null; utilisationRate: number | null;
   rateFixed: number; rateVariable: number;
   imputed: FV; activityVariance: number; budgetVariance: number;
+  /** Mig 660 : charges du centre (après cessions) par nature — base du détail par nature d'un plan. */
+  composition?: Record<string, number>;
 }
 
 export interface DirectChargeModel {
-  id: string; label: string; productId: string; productName: string;
+  id: string; label: string; productId: string; productName: string; nature?: string;
   budget: FV; actual: FV; normalQuantity: number | null; quantitySource: string; activity: number;
   rateFixed: number; rateVariable: number; imputed: FV; activityVariance: number; budgetVariance: number;
 }
@@ -242,7 +253,7 @@ export async function periodModel(storeId: string | null, month: string, opts: {
 
   // ── Charges du référentiel ──
   const charges = (await db.query(
-    `SELECT ch.id, ch.label, ch.behavior, ch.fixed_pct::float8 AS fixed_pct, ch.assignment, ch.cost_center_id,
+    `SELECT ch.id, ch.label, ch.nature, ch.behavior, ch.fixed_pct::float8 AS fixed_pct, ch.assignment, ch.cost_center_id,
             ch.allocation_key_id, ch.product_id, p.name AS product_name, ch.normal_quantity::float8 AS normal_quantity,
             ch.monthly_amount::float8 AS budget, a.amount::float8 AS manual_actual,
             CASE WHEN $3 THEN fn_analytic_ledger_amount(ch.id, $1::uuid, $2::date)::float8 END AS ledger
@@ -265,20 +276,55 @@ export async function periodModel(storeId: string | null, month: string, opts: {
     const budget = split(ch.budget * ratio, ch.behavior, ch.fixed_pct);
     const actual = split((ch.actual ?? ch.budget) * ratio, ch.behavior, ch.fixed_pct);
     if (ch.cost_center_id && centres.has(ch.cost_center_id)) {
-      addLine(ch.cost_center_id, { source: 'charge', label: ch.label, budget, actual });
+      addLine(ch.cost_center_id, { source: 'charge', nature: ch.nature, label: ch.label, budget, actual });
     } else if (ch.allocation_key_id) {
       const lines = keyLines.filter(l => l.key_id === ch.allocation_key_id && centres.has(l.cost_center_id));
       const tot = lines.reduce((t, l) => t + l.percent, 0);
-      if (!tot) { addLine(null, { source: 'charge', label: `${ch.label} (clé vide)`, budget, actual }); warnings.push(`« ${ch.label} » : clé de répartition vide, imputée à l'administration.`); continue; }
+      if (!tot) { addLine(null, { source: 'charge', nature: ch.nature, label: `${ch.label} (clé vide)`, budget, actual }); warnings.push(`« ${ch.label} » : clé de répartition vide, imputée à l'administration.`); continue; }
       for (const l of lines) {
         const k = l.percent / tot;
-        addLine(l.cost_center_id, { source: 'charge', label: `${ch.label} (${Math.round(l.percent * 10) / 10} %)`,
+        addLine(l.cost_center_id, { source: 'charge', nature: ch.nature, label: `${ch.label} (${Math.round(l.percent * 10) / 10} %)`,
           budget: { fixed: budget.fixed * k, variable: budget.variable * k }, actual: { fixed: actual.fixed * k, variable: actual.variable * k } });
       }
     } else {
-      addLine(null, { source: 'charge', label: `${ch.label} (centre inactif)`, budget, actual });
+      addLine(null, { source: 'charge', nature: ch.nature, label: `${ch.label} (centre inactif)`, budget, actual });
       warnings.push(`« ${ch.label} » : centre inactif ou absent, imputée à l'administration.`);
     }
+  }
+
+  // ── Amortissement des équipements et outillage (mig 660) ──
+  const prodCentre = principals.find(c => c.level === 'production') ?? null;
+  const assets = (await db.query(
+    `SELECT fa.id, fa.label, fa.cost_center_id, fa.product_id, p.name AS product_name,
+            fn_fixed_asset_month_depreciation(fa.id, $2::date)::float8 AS amount,
+            EXISTS (SELECT 1 FROM production_equipements pe WHERE pe.fixed_asset_id = fa.id) AS is_equipment
+       FROM fixed_assets fa LEFT JOIN products p ON p.id = fa.product_id
+      WHERE NOT fa.analytic_excluded AND ($1::uuid IS NULL OR fa.store_id IS NULL OR fa.store_id = $1)
+        AND (fa.disposal_date IS NULL OR fa.disposal_date >= $2::date)`, [storeId, from])).rows;
+  const tools = (await db.query(
+    `SELECT t.id, t.label, t.cost_center_id, t.product_id, p.name AS product_name,
+            (t.unit_cost * t.quantity / t.life_months)::float8 AS amount
+       FROM production_tools t LEFT JOIN products p ON p.id = t.product_id
+      WHERE t.is_active AND ($1::uuid IS NULL OR t.store_id IS NULL OR t.store_id = $1)
+        AND date_trunc('month', t.purchase_date) <= $2::date
+        AND $2::date < date_trunc('month', t.purchase_date) + make_interval(months => t.life_months)`, [storeId, from])).rows;
+  for (const [rows, nature, prefix] of [[assets, 'amortissement', 'Amortissement'], [tools, 'outillage', 'Outillage']] as const) {
+    for (const a of rows) {
+      const amount = Number(a.amount) || 0;
+      if (amount <= 0) continue;
+      if (a.product_id) {
+        directRows.push({ id: a.id, label: `${prefix} — ${a.label}`, nature, behavior: 'fixed', fixed_pct: 100, assignment: 'direct',
+          product_id: a.product_id, product_name: a.product_name, normal_quantity: null, budget: amount, actual: amount });
+        continue;
+      }
+      const centre = a.cost_center_id && centres.has(a.cost_center_id) ? a.cost_center_id
+        : (nature === 'outillage' || a.is_equipment) ? (prodCentre?.id ?? null) : null;
+      addLine(centre, { source: nature, nature, label: `${prefix} — ${a.label}`,
+        budget: { fixed: amount * ratio, variable: 0 }, actual: { fixed: amount * ratio, variable: 0 } });
+    }
+  }
+  if (assets.length && charges.some(ch => ch.nature === 'amortissement')) {
+    warnings.push('Des amortissements sont saisis comme charges ET lus dans le registre des immobilisations : vérifiez qu\'ils ne sont pas comptés deux fois.');
   }
 
   // ── Personnel : coût employeur (brut + charges patronales) ──
@@ -404,6 +450,15 @@ export async function periodModel(storeId: string | null, month: string, opts: {
   };
   const bal = new Map<string, { budget: FV; actual: FV }>();
   for (const c of centres.values()) bal.set(c.id, { budget: { ...c.primary.budget }, actual: { ...c.primary.actual } });
+  // Composition des charges par nature (loyer, personnel, amortissement, outillage…), suivie à
+  // travers les cessions : le coût d'un plan se détaille ensuite par nature.
+  const natureOf = (l: CentreLine) => l.nature ?? (l.source === 'personnel' ? 'personnel' : l.source === 'direct_labour' ? 'mo_directe' : 'autre');
+  const comp = new Map<string, Map<string, number>>();
+  for (const c of centres.values()) {
+    const m = new Map<string, number>();
+    for (const l of c.lines) m.set(natureOf(l), (m.get(natureOf(l)) ?? 0) + sumFv(l.budget));
+    comp.set(c.id, m);
+  }
   const flows = new Map<string, number>();
   const auxiliaries = [...centres.values()].filter(c => c.kind === 'auxiliaire');
   const noRule = new Set<string>();
@@ -414,9 +469,12 @@ export async function periodModel(storeId: string | null, month: string, opts: {
       if (Math.abs(sumFv(b.budget)) < 0.005 && Math.abs(sumFv(b.actual)) < 0.005) continue;
       let targets = targetsOf(aux);
       if (!targets.length) { if (fallbackCentre) { targets = [{ id: fallbackCentre.id, share: 1 }]; noRule.add(aux.name); } else continue; }
+      const auxComp = comp.get(aux.id)!;
       for (const t of targets) {
         const dst = bal.get(t.id)!;
         addFv(dst.budget, b.budget, t.share); addFv(dst.actual, b.actual, t.share);
+        const dc = comp.get(t.id)!;
+        for (const [n, v] of auxComp) dc.set(n, (dc.get(n) ?? 0) + v * t.share);
         const tc = centres.get(t.id)!;
         addFv(tc.received.budget, b.budget, t.share); addFv(tc.received.actual, b.actual, t.share);
         const k = `${aux.id}>${t.id}`;
@@ -424,12 +482,16 @@ export async function periodModel(storeId: string | null, month: string, opts: {
       }
       addFv(aux.ceded.budget, b.budget); addFv(aux.ceded.actual, b.actual);
       b.budget = fv(); b.actual = fv();
+      comp.set(aux.id, new Map());
       moved = true;
     }
     if (!moved) break;
   }
   if (noRule.size) warnings.push(`Centre(s) auxiliaire(s) sans règle de cession, cédé(s) à l'administration : ${[...noRule].join(', ')}.`);
-  for (const c of centres.values()) { const b = bal.get(c.id)!; c.pool.budget = b.budget; c.pool.actual = b.actual; }
+  for (const c of centres.values()) {
+    const b = bal.get(c.id)!; c.pool.budget = b.budget; c.pool.actual = b.actual;
+    c.composition = Object.fromEntries([...(comp.get(c.id) ?? new Map())].filter(([, v]) => Math.abs(v) >= 0.005).map(([k, v]) => [k, r2(v)]));
+  }
 
   // ── Activité et capacité normale ──
   const histFrom = `${addMonths(month, -3)}-01`;
@@ -482,7 +544,7 @@ export async function periodModel(storeId: string | null, month: string, opts: {
       const rateFixed = normal && ratio > 0 ? budget.fixed / ratio / normal : 0;
       const rateVariable = normal && ratio > 0 ? budget.variable / ratio / normal : 0;
       const imputed = { fixed: rateFixed * activity, variable: rateVariable * activity };
-      direct.push({ id: ch.id, label: ch.label, productId: ch.product_id, productName: ch.product_name,
+      direct.push({ id: ch.id, label: ch.label, nature: ch.nature, productId: ch.product_id, productName: ch.product_name,
         budget, actual, normalQuantity: normal ? r4(normal) : null, quantitySource: source, activity,
         rateFixed, rateVariable, imputed,
         activityVariance: budget.fixed - imputed.fixed,
@@ -538,6 +600,8 @@ export interface PlanImputation {
   directLines: { id: string; label: string; productId: string; productName: string; quantity: number; rate: number; fixed: number; variable: number; total: number }[];
   appro: number; production: number; structure: number; directes: number; total: number;
   variableIndirect: number; variableDirect: number;
+  /** Mig 660 : charges imputées au plan détaillées par nature (amortissement, outillage, loyer, personnel…). */
+  byNature: { nature: string; label: string; amount: number }[];
   methods: { key: string; label: string; total: number | null; note: string }[];
   warnings: string[];
 }
@@ -577,6 +641,21 @@ export async function imputePlan(planId: string, directCosts: PlanDirectCosts): 
       directLines.push({ id: ch.id, label: ch.label, productId: ch.productId, productName: ch.productName, quantity: qty, rate: r4(ch.rateFixed + ch.rateVariable), fixed, variable, total: r2(fixed + variable) });
     }
   }
+  // Détail par nature : chaque ligne de centre au prorata de la composition de ce centre.
+  const natures = new Map<string, number>();
+  for (const l of lines) {
+    const c = model.centres.find(x => x.id === l.centreId);
+    const compo = c?.composition ?? {};
+    const tot = Object.values(compo).reduce((t, v) => t + v, 0);
+    if (Math.abs(tot) < 0.005) { natures.set('autre', (natures.get('autre') ?? 0) + l.total); continue; }
+    for (const [n, v] of Object.entries(compo)) natures.set(n, (natures.get(n) ?? 0) + l.total * v / tot);
+  }
+  for (const d of directLines) {
+    const n = model.direct.find(x => x.id === d.id)?.nature ?? 'autre';
+    natures.set(n, (natures.get(n) ?? 0) + d.total);
+  }
+  const byNature = [...natures].map(([nature, amount]) => ({ nature, label: NATURE_LABELS[nature] ?? nature, amount: r2(amount) }))
+    .filter(x => Math.abs(x.amount) >= 0.01).sort((a, b) => b.amount - a.amount);
   const byLevel = (lv: Level[]) => r2(lines.filter(l => lv.includes(l.level)).reduce((s, l) => s + l.total, 0));
   const appro = byLevel(['approvisionnement']);
   const production = byLevel(['production']);
@@ -610,7 +689,7 @@ export async function imputePlan(planId: string, directCosts: PlanDirectCosts): 
     { key: 'direct', label: 'Coûts directs', total: r2(directBase + directes), note: 'Matières, emballages, MO directe, énergie, machine, façon et charges directes du produit ; aucune charge indirecte.' },
   ];
   if (dc.prevu != null && dc.prevu > 0) methods.push({ key: 'standard', label: 'Coûts standards (fiches techniques)', total: r2(dc.prevu), note: 'Coût prévu figé au lancement du plan (fiches techniques).' });
-  return { month, drivers, lines, directLines, appro, production, structure, directes, total, variableIndirect, variableDirect, methods, warnings: model.warnings };
+  return { month, drivers, lines, directLines, appro, production, structure, directes, total, variableIndirect, variableDirect, byNature, methods, warnings: model.warnings };
 }
 
 /** Taux horaire chargé (coût employeur ÷ heures légales) des salariés, pour la MO directe pointée. */

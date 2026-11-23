@@ -21,10 +21,10 @@ import { productsApi } from '../../api/products.api';
 import { useActionPermissions } from '../../hooks/useActionPermissions';
 import {
   analyticCostApi, type AnalyticMeta, type Behavior, type Centre, type CentreModel, type Charge, type ChargeInput,
-  type Driver, type EmployeeCost, type Level, type PeriodReport, type Reconciliation, type Profitability,
+  type Driver, type EmployeeCost, type Level, type PeriodReport, type Reconciliation, type Profitability, type Equipment, type ToolInput,
 } from '../../api/analytic-cost.api';
 
-type TabKey = 'periode' | 'rentabilite' | 'centres' | 'charges' | 'personnel' | 'cles';
+type TabKey = 'periode' | 'rentabilite' | 'centres' | 'charges' | 'equipements' | 'personnel' | 'cles';
 
 const LEVEL_LABEL: Record<Level, string> = {
   approvisionnement: 'Approvisionnement', production: 'Production', administration: 'Administration', distribution: 'Distribution',
@@ -136,7 +136,7 @@ export default function AnalyticCostPage() {
       )}
       <Toolbar>
         <Tabs label="Analyse des coûts" value={tab} onChange={setTab} tabs={[
-          { key: 'periode', label: 'Période' }, { key: 'rentabilite', label: 'Rentabilité' }, { key: 'centres', label: 'Centres de coûts' }, { key: 'charges', label: 'Charges' },
+          { key: 'periode', label: 'Période' }, { key: 'rentabilite', label: 'Rentabilité' }, { key: 'centres', label: 'Centres de coûts' }, { key: 'charges', label: 'Charges' }, { key: 'equipements', label: 'Équipements et outils' },
           { key: 'personnel', label: 'Personnel' }, { key: 'cles', label: 'Clés de répartition' },
         ]} />
       </Toolbar>
@@ -146,6 +146,7 @@ export default function AnalyticCostPage() {
           {tab === 'rentabilite' && <ProfitabilityTab month={month} />}
           {tab === 'centres' && <CentresTab meta={meta.data} />}
           {tab === 'charges' && <ChargesTab month={month} meta={meta.data} closed={isClosed} />}
+          {tab === 'equipements' && <EquipmentTab month={month} />}
           {tab === 'personnel' && <PersonnelTab month={month} />}
           {tab === 'cles' && <KeysTab />}
         </>
@@ -544,7 +545,7 @@ function ChargesTab({ month, meta, closed }: { month: string; meta: AnalyticMeta
 }
 
 const COVERAGE: Record<Reconciliation['coverage'], string> = {
-  charge: 'Charge analytique', paie: 'Personnel (paie)', matieres: 'Matières (consommations des plans)',
+  charge: 'Charge analytique', paie: 'Personnel (paie)', matieres: 'Matières (consommations des plans)', amortissements: 'Registre des immobilisations',
   hors_exploitation: 'Hors exploitation (financier, exceptionnel, impôt)', non_rattache: 'Non rattaché',
 };
 
@@ -969,5 +970,191 @@ function ProfitabilityTab({ month }: { month: string }) {
         </table>
       </DataPanel>
     </>
+  );
+}
+
+// ═══ Équipements et outils (mig 660) ═══════════════════════════════════════
+const TOOL_CATEGORIES: Record<string, string> = { moule: 'Moules', plaque: 'Plaques et grilles', ustensile: 'Ustensiles', petit_materiel: 'Petit matériel', textile: 'Textiles (toiles, couches)', autre: 'Autre' };
+
+function EquipmentTab({ month }: { month: string }) {
+  const q = useQuery({ queryKey: ['analytic', 'equipment', month], queryFn: () => analyticCostApi.equipment(month) });
+  const centres = useQuery({ queryKey: ['analytic', 'centres'], queryFn: analyticCostApi.centres });
+  const [asset, setAsset] = useState<Equipment['assets'][number] | null>(null);
+  const [tool, setTool] = useState<Equipment['tools'][number] | 'new' | null>(null);
+  const qc = useQueryClient();
+  const toggle = useMutation({
+    mutationFn: (t: Equipment['tools'][number]) => analyticCostApi.setToolActive(t.id, !t.is_active),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['analytic'] }), onError: e => notify.error(apiErrorMessage(e)),
+  });
+  if (q.isLoading) return <LoadingState />;
+  if (q.isError || !q.data) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
+  const d = q.data;
+  const target = (x: { analytic_excluded?: boolean; product_name: string | null; center_name: string | null }, def: string) =>
+    x.analytic_excluded ? <span className="ds-muted">Hors coût de revient</span> : x.product_name ? <>Directe → {x.product_name}</> : x.center_name ?? <span className="ds-muted">{def}</span>;
+  return (
+    <>
+      <KpiGrid label="Usure des équipements et de l'outillage">
+        <KpiCard label={`Amortissements ${month}`} value={money(d.totals.amortissements)} sub={`${d.assets.length} immobilisation(s) au registre`} />
+        <KpiCard label={`Outillage ${month}`} value={money(d.totals.outillage)} sub={`${d.tools.filter(t => t.is_active && t.in_use).length} outil(s) en cours d'usage`} />
+        <KpiCard label="Total par mois" value={money(d.totals.amortissements + d.totals.outillage)} sub="intégré aux charges des centres ou des produits" />
+      </KpiGrid>
+
+      <DataPanel label="Équipements (immobilisations)" style={{ marginTop: 14 }}>
+        <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <strong>Équipements immobilisés</strong>
+          <span className="ds-muted" style={{ fontSize: 13 }}>Dotation du mois : écriture de dotation, sinon linéaire. Nouveaux biens : Comptabilité › Immobilisations.</span>
+        </div>
+        {d.assets.length === 0 ? (
+          <EmptyState bare icon={Calculator} title="Aucune immobilisation au registre"
+            text="Enregistrez le four, le pétrin, la chambre de pousse… dans Comptabilité › Immobilisations (coût, date, durée) : leur amortissement entrera dans le coût de revient." />
+        ) : (
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Bien</th><th>Acquis le</th><th className="ds-num">Coût</th><th className="ds-num">Durée</th><th className="ds-num">Dotation du mois</th><th>Affectation</th><th className="ds-actions" /></tr></thead>
+            <tbody>{d.assets.map(a => (
+              <tr key={a.id} style={{ opacity: a.analytic_excluded ? 0.6 : 1 }}>
+                <td className="ds-strong">{a.label}{a.equipment_names && <span className="ds-muted"> · {a.equipment_names}</span>}</td>
+                <td>{new Date(a.acquisition_date).toLocaleDateString('fr-FR')}</td>
+                <td className="ds-num">{money(a.acquisition_cost)}</td><td className="ds-num">{a.duration_years} ans</td>
+                <td className="ds-num">{money(a.month_amount)}</td>
+                <td>{target(a, a.equipment_names ? 'Production (équipement)' : 'Administration')}</td>
+                <td className="ds-actions"><button type="button" className="ds-icon-btn" aria-label={`Modifier l'affectation de ${a.label}`} onClick={() => setAsset(a)}><Pencil size={14} aria-hidden="true" /></button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </DataPanel>
+
+      <DataPanel label="Outillage et petit matériel" style={{ marginTop: 14 }}>
+        <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <strong>Outillage et petit matériel</strong>
+          <button type="button" className="odoo-btn-secondary" onClick={() => setTool('new')}><Plus size={13} aria-hidden="true" /> Nouvel outil</button>
+        </div>
+        {d.tools.length === 0 ? (
+          <EmptyState bare icon={Calculator} title="Aucun outil" text="Moules, plaques, cercles, poches, couteaux, toiles… : coût d'achat réparti sur leur durée d'usage." />
+        ) : (
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Outil</th><th>Catégorie</th><th className="ds-num">Coût</th><th className="ds-num">Durée d'usage</th><th className="ds-num">Coût par mois</th><th>Fin d'usage</th><th>Affectation</th><th className="ds-actions" /></tr></thead>
+            <tbody>{d.tools.map(t => (
+              <tr key={t.id} style={{ opacity: t.is_active ? 1 : 0.55 }}>
+                <td className="ds-strong">{t.label}</td><td>{TOOL_CATEGORIES[t.category] ?? t.category}</td>
+                <td className="ds-num">{money(t.unit_cost * t.quantity)}{t.quantity !== 1 && <div className="ds-muted" style={{ fontSize: 11 }}>{num(t.quantity, 2)} × {money(t.unit_cost)}</div>}</td>
+                <td className="ds-num">{t.life_months} mois</td>
+                <td className="ds-num">{t.in_use ? money(t.monthly_cost) : <span className="ds-muted">hors période</span>}</td>
+                <td>{new Date(t.end_date).toLocaleDateString('fr-FR')}</td>
+                <td>{target(t, 'Production')}</td>
+                <td className="ds-actions">
+                  <RowMenu label={`Actions sur ${t.label}`} items={[
+                    { label: 'Modifier', icon: Pencil, onSelect: () => setTool(t) },
+                    { label: t.is_active ? 'Désactiver' : 'Activer', icon: Power, onSelect: () => toggle.mutate(t) },
+                  ]} />
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </DataPanel>
+      {asset && <AssetModal asset={asset} centres={centres.data ?? []} onClose={() => setAsset(null)} />}
+      {tool && <ToolModal tool={tool === 'new' ? null : tool} centres={centres.data ?? []} onClose={() => setTool(null)} />}
+    </>
+  );
+}
+
+function useProductOptions() {
+  const { data } = useQuery({ queryKey: ['products', 'all-analytic'], queryFn: () => productsApi.list({ limit: '1000' }) });
+  const products = ((data as { data?: Record<string, unknown>[] } | undefined)?.data ?? []) as Record<string, unknown>[];
+  return useMemo(() => products.map(p => ({ id: String(p.id), label: String(p.name) })), [products]);
+}
+
+function AssetModal({ asset, centres, onClose }: { asset: Equipment['assets'][number]; centres: Centre[]; onClose: () => void }) {
+  const qc = useQueryClient();
+  const productOptions = useProductOptions();
+  const [mode, setMode] = useState<'centre' | 'product' | 'excluded'>(asset.analytic_excluded ? 'excluded' : asset.product_id ? 'product' : 'centre');
+  const [centreId, setCentreId] = useState(asset.cost_center_id ?? '');
+  const [productId, setProductId] = useState(asset.product_id ?? '');
+  const save = useMutation({
+    mutationFn: () => analyticCostApi.updateAsset(asset.id, {
+      costCenterId: mode === 'centre' ? centreId || null : null, productId: mode === 'product' ? productId || null : null, excluded: mode === 'excluded' }),
+    onSuccess: () => { notify.success('Affectation enregistrée'); qc.invalidateQueries({ queryKey: ['analytic'] }); onClose(); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  return (
+    <Modal title={`Affectation — ${asset.label}`} subtitle={`Dotation du mois : ${money(asset.month_amount)}`} onClose={onClose} width={560} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} busy={save.isPending} disabled={mode === 'product' && !productId} onSubmit={() => save.mutate()} />}>
+      <FormField label="La dotation va à" htmlFor="as-mode">
+        <select id="as-mode" className="ds-input" value={mode} onChange={e => setMode(e.target.value as typeof mode)}>
+          <option value="centre">Un centre de coûts</option><option value="product">Un produit (équipement dédié)</option><option value="excluded">Hors coût de revient</option>
+        </select>
+      </FormField>
+      {mode === 'centre' && (
+        <FormField label="Centre" htmlFor="as-centre" hint="Vide : Production si le bien est un équipement de production, sinon Administration.">
+          <select id="as-centre" className="ds-input" value={centreId} onChange={e => setCentreId(e.target.value)}>
+            <option value="">Automatique</option>{centres.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+          </select>
+        </FormField>
+      )}
+      {mode === 'product' && (
+        <FormField label="Produit" required>
+          <SearchSelect options={productOptions} value={productId} onChange={setProductId} placeholder="Choisir le produit" width="100%" ariaLabel="Produit" />
+        </FormField>
+      )}
+    </Modal>
+  );
+}
+
+function ToolModal({ tool, centres, onClose }: { tool: Equipment['tools'][number] | null; centres: Centre[]; onClose: () => void }) {
+  const qc = useQueryClient();
+  const productOptions = useProductOptions();
+  const [f, setF] = useState(() => ({
+    label: tool?.label ?? '', category: tool?.category ?? 'ustensile', unitCost: tool ? String(tool.unit_cost) : '', quantity: tool ? String(tool.quantity) : '1',
+    purchaseDate: tool?.purchase_date?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), lifeMonths: tool ? String(tool.life_months) : '12',
+    target: tool?.product_id ? 'product' : 'centre', centreId: tool?.cost_center_id ?? '', productId: tool?.product_id ?? '', notes: tool?.notes ?? '',
+  }));
+  const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF(s => ({ ...s, [k]: v }));
+  const monthly = (Number(f.unitCost) || 0) * (Number(f.quantity) || 0) / Math.max(1, Number(f.lifeMonths) || 1);
+  const save = useMutation({
+    mutationFn: () => {
+      const body: ToolInput = { label: f.label, category: f.category, unitCost: Number(f.unitCost) || 0, quantity: Number(f.quantity) || 1,
+        purchaseDate: f.purchaseDate, lifeMonths: Math.round(Number(f.lifeMonths) || 1),
+        costCenterId: f.target === 'centre' ? f.centreId || null : null, productId: f.target === 'product' ? f.productId || null : null, notes: f.notes || null };
+      return analyticCostApi.saveTool(tool?.id ?? null, body);
+    },
+    onSuccess: () => { notify.success('Outil enregistré'); qc.invalidateQueries({ queryKey: ['analytic'] }); onClose(); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  const invalid = !f.label.trim() || f.unitCost === '' || !(Number(f.quantity) > 0) || !(Number(f.lifeMonths) >= 1) || (f.target === 'product' && !f.productId);
+  return (
+    <Modal title={tool ? 'Modifier l\'outil' : 'Nouvel outil'} onClose={onClose} width={680} locked={save.isPending}
+      footer={<FormFooter onCancel={onClose} busy={save.isPending} disabled={invalid} onSubmit={() => save.mutate()} />}>
+      <div style={grid}>
+        <FormField label="Libellé" htmlFor="tl-label" required><input id="tl-label" className="ds-input" value={f.label} onChange={e => set('label', e.target.value)} placeholder="Ex. : moules à cake inox" /></FormField>
+        <FormField label="Catégorie" htmlFor="tl-cat">
+          <select id="tl-cat" className="ds-input" value={f.category} onChange={e => set('category', e.target.value)}>
+            {Object.entries(TOOL_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </FormField>
+        <FormField label="Coût unitaire HT" htmlFor="tl-cost" required><input id="tl-cost" type="number" min="0" step="any" className="ds-input" value={f.unitCost} onChange={e => set('unitCost', e.target.value)} /></FormField>
+        <FormField label="Quantité" htmlFor="tl-qty"><input id="tl-qty" type="number" min="0" step="any" className="ds-input" value={f.quantity} onChange={e => set('quantity', e.target.value)} /></FormField>
+        <FormField label="Date d'achat" htmlFor="tl-date"><input id="tl-date" type="date" className="ds-input" value={f.purchaseDate} onChange={e => set('purchaseDate', e.target.value)} /></FormField>
+        <FormField label="Durée d'usage (mois)" htmlFor="tl-life" hint="Durée après laquelle l'outil est à remplacer."><input id="tl-life" type="number" min="1" max="240" className="ds-input" value={f.lifeMonths} onChange={e => set('lifeMonths', e.target.value)} /></FormField>
+        <FormField label="Affectation" htmlFor="tl-target">
+          <select id="tl-target" className="ds-input" value={f.target} onChange={e => set('target', e.target.value)}>
+            <option value="centre">Un centre de coûts</option><option value="product">Un produit (outil dédié)</option>
+          </select>
+        </FormField>
+        {f.target === 'centre' ? (
+          <FormField label="Centre" htmlFor="tl-centre" hint="Vide : Production.">
+            <select id="tl-centre" className="ds-input" value={f.centreId} onChange={e => set('centreId', e.target.value)}>
+              <option value="">Production (automatique)</option>{centres.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+            </select>
+          </FormField>
+        ) : (
+          <FormField label="Produit" required>
+            <SearchSelect options={productOptions} value={f.productId} onChange={v => set('productId', v)} placeholder="Choisir le produit" width="100%" ariaLabel="Produit" />
+          </FormField>
+        )}
+      </div>
+      <p style={{ margin: '12px 0 0' }}>Coût mensuel : <strong>{money(monthly)}</strong> pendant {Math.max(1, Number(f.lifeMonths) || 1)} mois.</p>
+      <FormField label="Notes" htmlFor="tl-notes"><textarea id="tl-notes" className="ds-input" rows={2} value={f.notes} onChange={e => set('notes', e.target.value)} /></FormField>
+    </Modal>
   );
 }

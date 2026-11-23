@@ -148,6 +148,23 @@ router.get('/analytique/rentabilite', authenticate, can(A), run(async (req) => {
   const from = typeof req.query.from === 'string' && MONTH.test(req.query.from) && req.query.from <= to ? req.query.from : to;
   return analyticCostRepository.profitability(store(req), from, to);
 }));
+// Mig 660 : amortissement des équipements (immobilisations) et outillage.
+const toolBody = z.object({ label: z.string().trim().min(1).max(160),
+  category: z.enum(['moule', 'plaque', 'ustensile', 'petit_materiel', 'textile', 'autre']),
+  unitCost: z.number().min(0).max(1e9), quantity: z.number().positive().max(1e6),
+  purchaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), lifeMonths: z.number().int().min(1).max(240),
+  costCenterId: z.string().guid().nullable().optional(), productId: z.string().guid().nullable().optional(),
+  notes: z.string().max(2000).nullable().optional() });
+router.get('/analytique/equipements', authenticate, can(A), run(async (req) => analyticCostRepository.equipment(store(req), monthOf(req))));
+router.put('/analytique/immobilisations/:id', authenticate, validateUuidParams('id'), can(A),
+  validate(z.object({ costCenterId: z.string().guid().nullable(), productId: z.string().guid().nullable(), excluded: z.boolean() })),
+  run(async (req) => analyticCostRepository.updateAsset(req.params.id as string, req.body, req.user!.userId)));
+router.post('/analytique/outils', authenticate, can(A), validate(toolBody),
+  run(async (req) => analyticCostRepository.saveTool(null, { ...req.body, storeId: null }, req.user!.userId), 201));
+router.put('/analytique/outils/:id', authenticate, validateUuidParams('id'), can(A), validate(toolBody),
+  run(async (req) => analyticCostRepository.saveTool(req.params.id as string, req.body, req.user!.userId)));
+router.put('/analytique/outils/:id/actif', authenticate, validateUuidParams('id'), can(A), validate(z.object({ active: z.boolean() })),
+  run(async (req) => analyticCostRepository.setToolActive(req.params.id as string, req.body.active)));
 router.get('/analytique/comptes', authenticate, can(A), run(async () => analyticCostRepository.expenseAccounts()));
 router.get('/analytique/rapprochement', authenticate, can(A), run(async (req) => analyticCostRepository.reconciliation(store(req), monthOf(req))));
 router.get('/analytique/personnel', authenticate, can(A), run(async (req) => analyticCostRepository.personnel(store(req), monthOf(req))));

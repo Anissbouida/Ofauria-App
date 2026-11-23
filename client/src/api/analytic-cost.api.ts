@@ -28,7 +28,7 @@ export interface Charge {
   ledger_amount: number | null; accounts: { id: string; code: string; label: string }[];
 }
 export interface Reconciliation { id: string; code: string; label: string; amount: number; charges: string | null;
-  coverage: 'charge' | 'paie' | 'matieres' | 'hors_exploitation' | 'non_rattache' }
+  coverage: 'charge' | 'paie' | 'matieres' | 'amortissements' | 'hors_exploitation' | 'non_rattache' }
 
 export interface AnalyticKey { id: string; name: string; is_active: boolean; lines: { centerId: string; percent: number }[] }
 
@@ -92,6 +92,18 @@ export interface Profitability {
   history: { month: string; charges: number; imputed: number; activityVariance: number; activityRate: number | null; units: number; revient: number | null; coutUnitaire: number | null }[];
 }
 
+export interface Equipment {
+  assets: { id: string; label: string; acquisition_date: string; acquisition_cost: number; residual_value: number; duration_years: number;
+            method: string; status: string; cost_center_id: string | null; center_code: string | null; center_name: string | null;
+            product_id: string | null; product_name: string | null; analytic_excluded: boolean; month_amount: number; equipment_names: string | null }[];
+  tools: { id: string; label: string; category: string; unit_cost: number; quantity: number; purchase_date: string; life_months: number;
+           cost_center_id: string | null; center_code: string | null; center_name: string | null; product_id: string | null; product_name: string | null;
+           is_active: boolean; notes: string | null; monthly_cost: number; end_date: string; in_use: boolean }[];
+  totals: { amortissements: number; outillage: number };
+}
+export interface ToolInput { label: string; category: string; unitCost: number; quantity: number; purchaseDate: string; lifeMonths: number;
+  costCenterId?: string | null; productId?: string | null; notes?: string | null }
+
 const B = '/production-cout/analytique';
 export const analyticCostApi = {
   meta: (): Promise<AnalyticMeta> => api.get(`${B}/meta`).then(r => r.data.data),
@@ -116,6 +128,10 @@ export const analyticCostApi = {
   standard: (recipeId: string, formatId: string | null, marque: number): Promise<StandardCost> =>
     api.get(`${B}/fiche/${recipeId}`, { params: { formatId: formatId ?? undefined, marque } }).then(r => r.data.data),
   profitability: (from: string, to: string): Promise<Profitability> => api.get(`${B}/rentabilite`, { params: { from, month: to } }).then(r => r.data.data),
+  equipment: (month: string): Promise<Equipment> => api.get(`${B}/equipements`, { params: { month } }).then(r => r.data.data),
+  updateAsset: (id: string, b: { costCenterId: string | null; productId: string | null; excluded: boolean }) => api.put(`${B}/immobilisations/${id}`, b).then(r => r.data.data),
+  saveTool: (id: string | null, b: ToolInput) => (id ? api.put(`${B}/outils/${id}`, b) : api.post(`${B}/outils`, b)).then(r => r.data.data),
+  setToolActive: (id: string, active: boolean) => api.put(`${B}/outils/${id}/actif`, { active }).then(r => r.data.data),
   personnel: (month: string): Promise<EmployeeCost[]> => api.get(`${B}/personnel`, { params: { month } }).then(r => r.data.data),
   setAllocations: (employeeId: string, allocations: { centerId: string; percent: number; laborType: 'direct' | 'indirect' }[]) =>
     api.put(`${B}/personnel/${employeeId}`, { allocations }).then(r => r.data.data),
