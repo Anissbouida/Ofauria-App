@@ -61,7 +61,7 @@ describe.skipIf(!hasTestDb)('Bilan de santé — contrôles de cohérence (C-04)
   it('type d\'ordre sans série puis sans atelier', async () => {
     ids.orderType = (await p().query(
       `INSERT INTO production_order_types (code, label, sequence_doc_type, requires_bon_sortie, requires_weighing, consumption_mode, display_order)
-       VALUES ($1, $2, $3, false, false, 'a_la_declaration', 999) RETURNING id`,
+       VALUES ($1, $2, $3, false, false, 'a_la_declaration', -999) RETURNING id`, // en tête : la liste est bornée à 200
       [`TST_${tag}`.toUpperCase(), `Type test ${tag}`, `absente_${tag}`])).rows[0].id;
 
     const r = await rec('profile.order_type.no_sequence');

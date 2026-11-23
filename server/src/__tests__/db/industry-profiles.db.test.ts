@@ -123,7 +123,8 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
     expect(model.layers.order_types.map(t => t.code)).toEqual(expect.arrayContaining(['ORDRE_SERIE', 'SOUS_TRAITANCE']));
     const parsed = await tpl.parseConfigModel(JSON.parse(JSON.stringify(model)));
     if ('error' in parsed) throw new Error(parsed.error);
-    expect(parsed.model.layers.order_types.length).toBe(model.layers.order_types.length);
+    // L'import borne les types d'ordre à 200 (cleanLayers) ; la base de test en accumule davantage.
+    expect(parsed.model.layers.order_types.length).toBe(Math.min(model.layers.order_types.length, 200));
     expect(parsed.model.layers.policies).toEqual(model.layers.policies);
 
     const v1 = await tpl.parseConfigModel({ ...JSON.parse(JSON.stringify(model)), version: 1, layers: undefined });
