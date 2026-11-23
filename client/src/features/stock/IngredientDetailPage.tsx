@@ -32,6 +32,7 @@ import { ModulePage } from '../../components/layout/ModuleShell';
 import { SubViews } from './StockUi';
 import { Alert, Breadcrumb, EmptyState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, Modal } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
+import IngredientNutritionCard from './IngredientNutritionCard';
 
 const CATEGORY_COLORS: Record<string, string> = {
   farines: 'bg-amber-100 text-amber-700',
@@ -123,7 +124,7 @@ export default function IngredientDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'lots' | 'suppliers' | 'history'>('lots');
+  const [activeTab, setActiveTab] = useState<'lots' | 'suppliers' | 'history' | 'nutrition'>('lots');
   const [expandedLot, setExpandedLot] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
   const [showAdjust, setShowAdjust] = useState(false);
@@ -421,7 +422,11 @@ export default function IngredientDetailPage() {
         { key: 'lots', label: 'Lots et traçabilité', icon: ShieldCheck },
         { key: 'suppliers', label: 'Fournisseurs', icon: Truck },
         { key: 'history', label: 'Historique', icon: Clock },
+        { key: 'nutrition', label: 'Valeurs nutritionnelles', icon: ShieldCheck },
       ]} />
+
+      {/* ══════ VALEURS NUTRITIONNELLES (mig 634, étape 10c) ══════ */}
+      {activeTab === 'nutrition' && id && <IngredientNutritionCard ingredientId={id} />}
 
       {/* ══════ FOURNISSEURS TAB (mig 404 — Achats lot prix P1) ══════ */}
       {activeTab === 'suppliers' && id && (

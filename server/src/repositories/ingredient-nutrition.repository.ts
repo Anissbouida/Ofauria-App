@@ -6,6 +6,12 @@ import { db } from '../config/database.js';
  * ou nulle = valeur inconnue ; un objet vide = rien de connu.
  */
 export const ingredientNutritionRepository = {
+  /** Valeurs enregistrées d'une matière (écran de la fiche matière, étape 10c). */
+  async get(ingredientId: string): Promise<Record<string, number> | null | undefined> {
+    const r = (await db.query(`SELECT nutrition FROM ingredients WHERE id = $1`, [ingredientId])).rows[0];
+    return r ? (r.nutrition ?? null) : undefined;
+  },
+
   async save(ingredientId: string, nutrition: Record<string, number | null> | null): Promise<{ id: string; nutrition: unknown } | null> {
     const clean = nutrition
       ? Object.fromEntries(Object.entries(nutrition).filter(([, v]) => typeof v === 'number' && Number.isFinite(v)))

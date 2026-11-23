@@ -98,6 +98,12 @@ ingredientsRouter.get('/', authenticate, ingredientController.list);
 ingredientsRouter.get('/allergen-grid', authenticate, can('stock.ingredients.view'), asyncHandler(ingredientController.allergenGrid));
 ingredientsRouter.put('/:id/allergens', authenticate, can('stock.ingredients.allergens'), validate(ingredientAllergensSchema), asyncHandler(ingredientController.saveAllergens));
 // Mig 634 : valeurs nutritionnelles pour 100 g (étiquette des articles préemballés).
+ingredientsRouter.get('/:id/nutrition', authenticate, validateUuidParams('id'), can('stock.ingredients.view'), asyncHandler(async (req, res) => {
+  const { ingredientNutritionRepository } = await import('../repositories/ingredient-nutrition.repository.js');
+  const n = await ingredientNutritionRepository.get(String(req.params.id));
+  if (n === undefined) { res.status(404).json({ success: false, error: { message: 'Matière introuvable' } }); return; }
+  res.json({ success: true, data: n });
+}));
 ingredientsRouter.put('/:id/nutrition', authenticate, can('stock.ingredients.allergens'), validate(ingredientNutritionSchema), asyncHandler(async (req, res) => {
   const { ingredientNutritionRepository } = await import('../repositories/ingredient-nutrition.repository.js');
   const row = await ingredientNutritionRepository.save(String(req.params.id), (req.body as { nutrition: Record<string, number | null> | null }).nutrition);

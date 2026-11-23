@@ -898,6 +898,10 @@
  "GET /ingredients": null,
  "GET /ingredients/:id": null,
  "GET /ingredients/:id/conversions": null,
+ "GET /ingredients/:id/nutrition": [
+  "admin",
+  "manager"
+ ],
  "GET /ingredients/allergen-grid": [
   "admin",
   "manager"
