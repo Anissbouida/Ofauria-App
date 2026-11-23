@@ -11,7 +11,7 @@
  * La somme des articles égale toujours le coût du plan.
  */
 import { db } from '../config/database.js';
-import { collectIngredientNeedsForUnits } from '../repositories/recipe-composition.helper.js';
+import { collectIngredientNeedsForUnits, getCompositionForNeeds } from '../repositories/recipe-composition.helper.js';
 import type { PlanImputation, Driver } from './cost-engine.js';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -83,6 +83,12 @@ export async function planItemCosts(planId: string, input: PlanItemCostsInput): 
     if (!it.recipe_id || !(it.qty > 0)) continue;
     await collectIngredientNeedsForUnits(db, it.recipe_id, it.qty,
       (ing, q) => needs[i].set(ing, (needs[i].get(ing) ?? 0) + q), { formatId: it.format_id });
+    // Bases (semi-finis) de la fiche : besoin exprimé en unités de rendement de la base.
+    const comp = await getCompositionForNeeds(db, it.recipe_id, it.format_id);
+    for (const sub of comp?.subRecipes ?? []) {
+      const key = `semi:${sub.subRecipeId}`;
+      needs[i].set(key, (needs[i].get(key) ?? 0) + sub.grossQtyPerBatch * it.qty / (comp!.batchDivisor || 1));
+    }
   }
   const theoValue = items.map(it => (it.theo_mat_u ?? 0) * it.qty);
   const units = items.map(it => it.qty);

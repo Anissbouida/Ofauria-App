@@ -30,8 +30,8 @@ export const DRIVERS: Record<Driver, { label: string; unit: string }> = {
   labour_hours:  { label: 'Heures de main-d\'œuvre',  unit: 'h MO' },
   machine_hours: { label: 'Heures machine',           unit: 'h machine' },
   batches:       { label: 'Nombre de lots',           unit: 'lots' },
-  material_cost: { label: 'Valeur des matières',      unit: 'DH matières' },
-  sales_value:   { label: 'Valeur de vente HT',       unit: 'DH de vente' },
+  material_cost: { label: 'Valeur des matières',      unit: '¤ de matières' },
+  sales_value:   { label: 'Valeur de vente HT',       unit: '¤ de ventes HT' },
 };
 
 export const LEVELS: Record<Level, string> = {
@@ -588,7 +588,9 @@ export async function periodModel(storeId: string | null, month: string, opts: {
 }
 
 export interface PlanDirectCosts {
-  matieres: number; emballages: number; mainOeuvre: number; energie: number; machine: number; sousTraitance: number;
+  matieres: number;
+  /** Matières achetées (hors semi-finis, déjà chargés de l'approvisionnement dans leur propre plan). */
+  matieresAchat?: number; emballages: number; mainOeuvre: number; energie: number; machine: number; sousTraitance: number;
   prevu: number | null;
 }
 
@@ -618,8 +620,9 @@ export async function imputePlan(planId: string, directCosts: PlanDirectCosts): 
        FROM fn_plan_cost_drivers(NULL, NULL, NULL, $1)`, [planId])).rows[0] ?? {};
   const drivers = zeroDrivers();
   for (const k of DRIVER_KEYS) drivers[k] = Number(d[k]) || 0;
-  // La valeur matières du plan = celle que le calcul vient de mesurer (lots + repli).
-  drivers.material_cost = directCosts.matieres;
+  // La valeur matières du plan = celle que le calcul vient de mesurer (lots + repli), hors
+  // semi-finis : leurs matières ont déjà porté l'approvisionnement dans le plan de la base.
+  drivers.material_cost = directCosts.matieresAchat ?? directCosts.matieres;
 
   const lines: PlanImputation['lines'] = [];
   for (const c of model.centres.filter(c => c.kind === 'principal')) {

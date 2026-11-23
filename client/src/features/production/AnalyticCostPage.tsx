@@ -16,7 +16,7 @@ import { RowMenu } from '../../components/ui/RowMenu';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
-import { money } from '../../utils/money';
+import { money, currencySymbol } from '../../utils/money';
 import { productsApi } from '../../api/products.api';
 import { useActionPermissions } from '../../hooks/useActionPermissions';
 import {
@@ -36,6 +36,8 @@ const CAP_SOURCE: Record<string, string> = {
 const num = (n: number | null | undefined, d = 0) => (n == null ? '—' : n.toLocaleString('fr-FR', { maximumFractionDigits: d, minimumFractionDigits: 0 }));
 const pct = (n: number | null | undefined) => (n == null ? '—' : `${(n * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`);
 const sum = (f: { fixed: number; variable: number }) => f.fixed + f.variable;
+/** Unités d'inducteur venues du serveur : « ¤ » = devise de la société. */
+const cur = (u: string | undefined) => (u ?? '').replace(/¤/g, currencySymbol());
 const rate = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 4 });
 const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
 const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 };
@@ -212,7 +214,7 @@ function PeriodTab({ month, meta }: { month: string; meta: AnalyticMeta }) {
                     <td>{d?.label}</td>
                     <td className="ds-num">{money(c.pool.budget.fixed)}</td>
                     <td className="ds-num">{money(c.pool.budget.variable)}</td>
-                    <td className="ds-num" title={`Source : ${CAP_SOURCE[c.capacitySource]}`}>{num(c.normalCapacity)}<div className="ds-muted" style={{ fontSize: 11 }}>{d?.unit} · {CAP_SOURCE[c.capacitySource]}</div></td>
+                    <td className="ds-num" title={`Source : ${CAP_SOURCE[c.capacitySource]}`}>{num(c.normalCapacity)}<div className="ds-muted" style={{ fontSize: 11 }}>{cur(d?.unit)} · {CAP_SOURCE[c.capacitySource]}</div></td>
                     <td className="ds-num">{num(c.activity)}</td>
                     <td className="ds-num">{pct(c.activityRate)}</td>
                     <td className="ds-num">{rate(c.rateFixed + c.rateVariable)}</td>
@@ -393,7 +395,7 @@ function CentreModal({ centre, centres, meta, onClose }: { centre: Centre | null
     onSuccess: () => { notify.success('Centre enregistré'); qc.invalidateQueries({ queryKey: ['analytic'] }); onClose(); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
-  const unit = meta.drivers.find(d => d.value === f.driver)?.unit;
+  const unit = cur(meta.drivers.find(d => d.value === f.driver)?.unit);
   const invalid = !f.name.trim() || (!centre && !f.code.trim()) || (f.kind === 'auxiliaire' && f.basis === 'percent' && f.transfers.length > 0 && Math.abs(totalT - 100) > 0.01);
   return (
     <Modal title={centre ? `Centre ${centre.code}` : 'Nouveau centre de coûts'} onClose={onClose} width={720} locked={save.isPending}

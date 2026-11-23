@@ -442,7 +442,9 @@ export const analyticCostRepository = {
       if (!m.plansCount) continue;
       const prod = m.centres.find(c => c.kind === 'principal' && c.level === 'production');
       const rev = (await db.query(
-        `SELECT COALESCE(SUM(pcr.cout_total), 0)::float8 AS revient, COUNT(*)::int AS n
+        `SELECT COALESCE(SUM(pcr.cout_total) FILTER (WHERE EXISTS (SELECT 1 FROM production_plan_items x
+                                                                   WHERE x.plan_id = pp.id AND x.product_id IS NOT NULL)), 0)::float8 AS revient,
+                COUNT(*)::int AS n
            FROM production_cout_reel pcr JOIN production_plans pp ON pp.id = pcr.plan_id
           WHERE pp.store_id IS NOT DISTINCT FROM $1::uuid AND to_char(pp.plan_date, 'YYYY-MM') = $2`, [storeId, mo])).rows[0];
       const fullyCosted = rev.n >= m.plansCount;
@@ -551,7 +553,9 @@ export const analyticCostRepository = {
     const plans = (await db.query(
       `SELECT id FROM production_plans
         WHERE store_id IS NOT DISTINCT FROM $1::uuid AND plan_date >= $2::date AND plan_date < $3::date
-          AND status IN ('in_progress', 'completed') ORDER BY plan_date`, [storeId, from, to])).rows;
+          AND status IN ('in_progress', 'completed')
+        -- Les plans de bases (semi-finis) d'abord : leur coût valorise les lots consommés ensuite.
+        ORDER BY EXISTS (SELECT 1 FROM semi_finished_lots l WHERE l.production_plan_id = production_plans.id) DESC, plan_date`, [storeId, from, to])).rows;
     let calculated = 0; const failed: string[] = [];
     for (const p of plans) {
       try { await productionCoutRepository.calculateAndSave(p.id, userId); calculated++; }

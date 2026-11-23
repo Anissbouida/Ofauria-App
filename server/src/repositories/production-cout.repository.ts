@@ -214,6 +214,33 @@ export const productionCoutRepository = {
         total: parseFloat(r.total),
       });
     }
+    // Semi-finis consommés (bases : pâte feuilletée, crème pâtissière…) : un lot vaut le coût de
+    // production de son plan ÷ quantité produite ; plan non chiffré : coût de la fiche par unité
+    // de rendement. Sans cela, un croissant ne portait que ses ingrédients directs.
+    const semiResult = await db.query(
+      `SELECT l.recipe_id, r.name, l.unit, SUM(u.quantity)::float8 AS qty,
+              COALESCE(MAX(src.unit_cost), MAX(v.total_cost / NULLIF(r.yield_quantity, 0)), 0)::float8 AS unit_cost,
+              BOOL_OR(src.unit_cost IS NOT NULL) AS from_plan
+         FROM semi_finished_lot_usage u
+         JOIN semi_finished_lots l ON l.id = u.semi_finished_lot_id
+         JOIN recipes r ON r.id = l.recipe_id
+         LEFT JOIN v_recipe_total_cost_v2 v ON v.id = r.id
+         LEFT JOIN LATERAL (
+           SELECT pcr.cout_production / NULLIF((SELECT SUM(l2.quantity_produced) FROM semi_finished_lots l2
+                                                 WHERE l2.production_plan_id = l.production_plan_id), 0) AS unit_cost
+             FROM production_cout_reel pcr WHERE pcr.plan_id = l.production_plan_id AND pcr.cout_production > 0
+         ) src ON true
+        WHERE u.parent_plan_id = $1 AND u.released_at IS NULL
+        GROUP BY l.recipe_id, r.name, l.unit`, [planId]);
+    let coutSemiFinis = 0;
+    for (const r of semiResult.rows) {
+      const qty = Number(r.qty) || 0, unit = Number(r.unit_cost) || 0;
+      if (!(qty > 0)) continue;
+      const total = Math.round(qty * unit * 100) / 100;
+      coutSemiFinis += total;
+      detailMatieres.push({ ingredient_id: `semi:${r.recipe_id}`, name: `${r.name} (semi-fini${r.from_plan ? '' : ', coût fiche'})`,
+        qty, unit_cost: Math.round(unit * 10000) / 10000, total });
+    }
     const coutMatieres = detailMatieres.reduce((s, d) => s + d.total, 0);
 
     // 1b. Emballages (G0-23) — sorties d'emballage rattachees au plan, qu'elles viennent
@@ -443,7 +470,7 @@ export const productionCoutRepository = {
     if (charges.method === 'analytic' && comps.charges) {
       // Mig 655 : charges imputées par le moteur analytique (centres, capacité normale).
       analytic = await imputePlan(planId, {
-        matieres: coutMatieres, emballages: coutEmballages, mainOeuvre: coutMO, energie: coutEnergie,
+        matieres: coutMatieres, matieresAchat: coutMatieres - coutSemiFinis, emballages: coutEmballages, mainOeuvre: coutMO, energie: coutEnergie,
         machine: coutMachine, sousTraitance: coutSousTraitance, prevu: coutPrevu,
       });
       coutCharges = analytic.total;
@@ -701,9 +728,12 @@ export const productionCoutRepository = {
     }
     const stdTotal = std.matieres + std.emballages + std.main_oeuvre + std.charges;
     // Prix : quantités réellement consommées × (prix du lot − prix de la fiche).
-    const ids = c.detailMatieres.map(d => d.ingredient_id);
+    // Matières achetées seulement : un semi-fini (« semi:<fiche> ») n'a pas de prix de fiche matière ;
+    // son écart reste dans « quantités consommées ».
+    const purchased = c.detailMatieres.filter(d => !d.ingredient_id.startsWith('semi:'));
+    const ids = purchased.map(d => d.ingredient_id);
     const fiche = ids.length ? (await db.query(`SELECT id, COALESCE(unit_cost, 0)::float8 AS u FROM ingredients WHERE id = ANY($1::uuid[])`, [ids])).rows : [];
-    const prix = c.detailMatieres.reduce((t, d) => t + d.qty * (d.unit_cost - (fiche.find(f => f.id === d.ingredient_id)?.u ?? d.unit_cost)), 0);
+    const prix = purchased.reduce((t, d) => t + d.qty * (d.unit_cost - (fiche.find(f => f.id === d.ingredient_id)?.u ?? d.unit_cost)), 0);
     const ecartMat = c.reel.matieres - std.matieres;
     const lignes = [
       { key: 'prix_matieres', label: 'Prix des matières', detail: 'Quantités consommées × (prix du lot utilisé − prix de la fiche)', montant: r2(prix) },
