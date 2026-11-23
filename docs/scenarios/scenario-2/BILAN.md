@@ -62,18 +62,17 @@ livré a sa facture ; prix d'achat dans la grille ; bulletins tous payés.
 
 | N° | Correction | Commit |
 |---|---|---|
-| 141 | Lot proposé par un bon de sortie réservé (quantités promises aux autres bons déduites) | 4c0507d6 |
+| 141 | Lot proposé par un bon de sortie réservé (quantités promises aux autres bons déduites), y compris à la re-vérification et à l'ouverture depuis l'économat ; lots pesés affichés sur le bon | 4c0507d6, cec9dc33 |
 | 142 | Pesée d'une ligne sur plusieurs lots en FEFO, consommation et traçabilité par lot | b9751c40 (mig 626) |
-| 133 | Variation de stock comptabilisée à l'inventaire complet ; reprise des 5 inventaires mensuels | mig 627 |
+| 133 | Variation de stock comptabilisée à l'inventaire complet ; reprise des 5 inventaires mensuels | 146d7d2d (mig 627) |
 | 134 | Matière « non stockée » réglable depuis la fiche ; l'eau est déclarée non stockée | 93eccc3b |
-| 143 | Générateur d'écriture des pertes (comptes faux, jamais appelé) retiré | voir journal git |
+| 143 | Générateur d'écriture des pertes (comptes faux, jamais appelé) retiré | 914105da |
 
 ## Reste à corriger avant une vraie exploitation
 
 1. **138 — BC > 5 000 DH approuvés par l'administrateur seul** : décision du 25/10 à confirmer.
-2. **124 (scénario 1) — pas de TVA d'achat** : écart de TVA non bloquant sur les factures fournisseurs.
+2. **124 (scénario 1) — TVA d'achat** : le code TVA par défaut se saisit maintenant sur la matière, le consommable et la catégorie, et il est proposé sur les lignes de BC ; reste au propriétaire à choisir le code de chaque article (farine, lait, beurre, sucre brut, levure : exonérés art. 91 ; autres : 20 % ou 10 %).
 3. **135, 136** : RIB de la société (administrateur) ; fiches Pain rond et Chebakia manquantes.
-4. Suites de 141 : « Re-vérifier dispo » et l'ouverture depuis l'économat ne tiennent pas encore compte des autres bons ; l'écran du bon n'affiche pas encore le détail des lots pesés.
 
 ## Limites de la simulation
 
