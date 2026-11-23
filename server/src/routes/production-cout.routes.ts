@@ -94,7 +94,8 @@ const chargeBody = z.object({ label: z.string().trim().min(1).max(160),
   assignment: z.enum(['direct', 'indirect']), costCenterId: z.string().guid().nullable().optional(),
   allocationKeyId: z.string().guid().nullable().optional(), productId: z.string().guid().nullable().optional(),
   normalQuantity: z.number().positive().max(1e12).nullable().optional(), monthlyAmount: z.number().min(0).max(1e11),
-  notes: z.string().max(2000).nullable().optional(), isActive: z.boolean().optional() });
+  notes: z.string().max(2000).nullable().optional(), isActive: z.boolean().optional(),
+  accountIds: z.array(z.string().guid()).max(30).optional() });
 const keyBody = z.object({ name: z.string().trim().min(1).max(120),
   lines: z.array(z.object({ centerId: z.string().guid(), percent: z.number().positive().max(100) })).min(1).max(50) });
 const allocBody = z.object({ allocations: z.array(z.object({ centerId: z.string().guid(), percent: z.number().positive().max(100),
@@ -131,6 +132,8 @@ router.put('/analytique/charges/:id/actif', authenticate, validateUuidParams('id
 router.put('/analytique/charges/:id/reel', authenticate, validateUuidParams('id'), can(A),
   validate(z.object({ month: z.string().regex(MONTH), amount: z.number().min(0).max(1e11).nullable() })),
   run(async (req) => analyticCostRepository.setActual(req.params.id as string, req.body.month, req.body.amount, req.user!.userId, store(req))));
+router.get('/analytique/comptes', authenticate, can(A), run(async () => analyticCostRepository.expenseAccounts()));
+router.get('/analytique/rapprochement', authenticate, can(A), run(async (req) => analyticCostRepository.reconciliation(store(req), monthOf(req))));
 router.get('/analytique/personnel', authenticate, can(A), run(async (req) => analyticCostRepository.personnel(store(req), monthOf(req))));
 router.put('/analytique/personnel/:id', authenticate, validateUuidParams('id'), can(A), validate(allocBody),
   run(async (req) => analyticCostRepository.setAllocations(req.params.id as string, req.body.allocations)));

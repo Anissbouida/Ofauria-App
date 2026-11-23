@@ -1475,6 +1475,10 @@
   "admin",
   "manager"
  ],
+ "GET /production-cout/analytique/comptes": [
+  "admin",
+  "manager"
+ ],
  "GET /production-cout/analytique/meta": [
   "admin",
   "manager"
@@ -1484,6 +1488,10 @@
   "manager"
  ],
  "GET /production-cout/analytique/personnel": [
+  "admin",
+  "manager"
+ ],
+ "GET /production-cout/analytique/rapprochement": [
   "admin",
   "manager"
  ],

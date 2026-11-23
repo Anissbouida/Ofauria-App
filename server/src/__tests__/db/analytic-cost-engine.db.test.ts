@@ -208,6 +208,36 @@ describe.skipIf(!hasTestDb)('Moteur analytique du coût de revient (mig 655)', (
     engine.invalidateCostModel();
   }, 60_000);
 
+  it('lot D : le réel d\'un mois terminé vient du grand livre des comptes rattachés, une saisie le remplace', async () => {
+    const acc = Object.fromEntries((await p().query(`SELECT code, id FROM accounts WHERE code IN ('6181', '5141')`)).rows.map(r => [r.code, r.id]));
+    await p().query(`INSERT INTO analytic_charge_accounts (charge_id, account_id) VALUES ($1, $2)`, [chargeIds[1], acc['6181']]);
+    engine.invalidateCostModel();
+    // Rattachée mais sans écriture sur le mois : le prévisionnel s'applique.
+    let adm = (await engine.periodModel(fx.storeId, MONTH, { fresh: true })).centres.find(c => c.code === 'ADM')!;
+    const budgetLine = adm.lines.find(l => l.label === `Bureau ${RUN}`)!;
+    expect(r2(budgetLine.actual.fixed)).toBe(2000);
+    const e = (await p().query(
+      `INSERT INTO journal_entries (entry_number, journal_id, entry_date, fiscal_period_id, description, source_kind, created_by, store_id)
+       SELECT $1::text, j.id, $2::date, fn_ensure_fiscal_period($2::date), 'Fournitures de bureau', 'backfill', $3, $4 FROM journals j WHERE j.code = 'OD' RETURNING id`,
+      [`ANA-${RUN}`, `${MONTH}-15`, fx.userId, fx.storeId])).rows[0].id;
+    await p().query(
+      `INSERT INTO journal_entry_lines (journal_entry_id, line_order, account_id, debit, credit) VALUES ($1, 1, $2, 2600, 0), ($1, 2, $3, 0, 2600)`,
+      [e, acc['6181'], acc['5141']]);
+    await p().query(`UPDATE journal_entries SET status = 'posted', posted_at = now(), posted_by = $2 WHERE id = $1`, [e, fx.userId]);
+    engine.invalidateCostModel();
+    let m = await engine.periodModel(fx.storeId, MONTH, { fresh: true });
+    adm = m.centres.find(c => c.code === 'ADM')!;
+    expect(r2(adm.lines.find(l => l.label === `Bureau ${RUN}`)!.actual.fixed)).toBe(2600);
+    expect(m.totals.control).toBe(0);
+    const { analyticCostRepository: ana } = await import('../../repositories/analytic-cost.repository.js');
+    const rec = await ana.reconciliation(fx.storeId, MONTH);
+    expect(rec.find(r => r.code === '6181')).toMatchObject({ coverage: 'charge' });
+    await ana.setActual(chargeIds[1], MONTH, 2100, fx.userId, fx.storeId);
+    m = await engine.periodModel(fx.storeId, MONTH, { fresh: true });
+    expect(r2(m.centres.find(c => c.code === 'ADM')!.lines.find(l => l.label === `Bureau ${RUN}`)!.actual.fixed)).toBe(2100);
+    await ana.setActual(chargeIds[1], MONTH, null, fx.userId, fx.storeId);
+  });
+
   it('un montant réel saisi pour le mois crée un écart sur budget, le contrôle reste à 0', async () => {
     await p().query(`INSERT INTO analytic_charge_actuals (charge_id, period, amount) VALUES ($1, $2::date, 12000)`, [chargeIds[0], `${MONTH}-01`]);
     const m = await engine.periodModel(fx.storeId, MONTH, { fresh: true });

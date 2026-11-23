@@ -24,7 +24,11 @@ export interface Charge {
   cost_center_id: string | null; center_code: string | null; center_name: string | null;
   allocation_key_id: string | null; key_name: string | null; product_id: string | null; product_name: string | null;
   normal_quantity: number | null; monthly_amount: number; actual_amount: number | null; is_active: boolean; notes: string | null;
+  /** Lot D : solde du grand livre des comptes rattachés pour le mois (null = aucun compte). */
+  ledger_amount: number | null; accounts: { id: string; code: string; label: string }[];
 }
+export interface Reconciliation { id: string; code: string; label: string; amount: number; charges: string | null;
+  coverage: 'charge' | 'paie' | 'matieres' | 'hors_exploitation' | 'non_rattache' }
 
 export interface AnalyticKey { id: string; name: string; is_active: boolean; lines: { centerId: string; percent: number }[] }
 
@@ -64,7 +68,7 @@ export interface PeriodReport {
 export interface ChargeInput {
   label: string; nature: string; behavior: Behavior; fixedPct: number; assignment: 'direct' | 'indirect';
   costCenterId?: string | null; allocationKeyId?: string | null; productId?: string | null; normalQuantity?: number | null;
-  monthlyAmount: number; notes?: string | null; isActive?: boolean;
+  monthlyAmount: number; notes?: string | null; isActive?: boolean; accountIds?: string[];
 }
 
 const B = '/production-cout/analytique';
@@ -86,6 +90,8 @@ export const analyticCostApi = {
   saveCharge: (id: string | null, b: ChargeInput) => (id ? api.put(`${B}/charges/${id}`, b) : api.post(`${B}/charges`, b)).then(r => r.data.data),
   setChargeActive: (id: string, active: boolean) => api.put(`${B}/charges/${id}/actif`, { active }).then(r => r.data.data),
   setActual: (id: string, month: string, amount: number | null) => api.put(`${B}/charges/${id}/reel`, { month, amount }).then(r => r.data.data),
+  accounts: (): Promise<{ id: string; code: string; label: string }[]> => api.get(`${B}/comptes`).then(r => r.data.data),
+  reconciliation: (month: string): Promise<Reconciliation[]> => api.get(`${B}/rapprochement`, { params: { month } }).then(r => r.data.data),
   personnel: (month: string): Promise<EmployeeCost[]> => api.get(`${B}/personnel`, { params: { month } }).then(r => r.data.data),
   setAllocations: (employeeId: string, allocations: { centerId: string; percent: number; laborType: 'direct' | 'indirect' }[]) =>
     api.put(`${B}/personnel/${employeeId}`, { allocations }).then(r => r.data.data),

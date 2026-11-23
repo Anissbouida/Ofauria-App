@@ -244,12 +244,15 @@ export async function periodModel(storeId: string | null, month: string, opts: {
   const charges = (await db.query(
     `SELECT ch.id, ch.label, ch.behavior, ch.fixed_pct::float8 AS fixed_pct, ch.assignment, ch.cost_center_id,
             ch.allocation_key_id, ch.product_id, p.name AS product_name, ch.normal_quantity::float8 AS normal_quantity,
-            ch.monthly_amount::float8 AS budget, a.amount::float8 AS actual
+            ch.monthly_amount::float8 AS budget, a.amount::float8 AS manual_actual,
+            CASE WHEN $3 THEN fn_analytic_ledger_amount(ch.id, $1::uuid, $2::date)::float8 END AS ledger
        FROM analytic_charges ch
        LEFT JOIN products p ON p.id = ch.product_id
        LEFT JOIN analytic_charge_actuals a ON a.charge_id = ch.id AND a.period = $2::date
       WHERE ch.is_active AND ($1::uuid IS NULL OR ch.store_id IS NULL OR ch.store_id = $1)
-      ORDER BY ch.label`, [storeId, from])).rows;
+      ORDER BY ch.label`, [storeId, from, month < currentMonth])).rows;
+  // Lot D (mig 659) : réel = montant saisi, sinon grand livre (mois terminés), sinon prévisionnel.
+  for (const ch of charges) ch.actual = ch.manual_actual ?? ch.ledger ?? null;
   const keyLines = (await db.query(
     `SELECT key_id, cost_center_id, percent::float8 AS percent FROM analytic_key_lines`)).rows as { key_id: string; cost_center_id: string; percent: number }[];
   const split = (b: number, behavior: Behavior, fixedPct: number): FV => {

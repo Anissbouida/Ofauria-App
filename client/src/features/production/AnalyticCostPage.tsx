@@ -20,7 +20,7 @@ import { productsApi } from '../../api/products.api';
 import { useActionPermissions } from '../../hooks/useActionPermissions';
 import {
   analyticCostApi, type AnalyticMeta, type Behavior, type Centre, type CentreModel, type Charge, type ChargeInput,
-  type Driver, type EmployeeCost, type Level, type PeriodReport,
+  type Driver, type EmployeeCost, type Level, type PeriodReport, type Reconciliation,
 } from '../../api/analytic-cost.api';
 
 type TabKey = 'periode' | 'centres' | 'charges' | 'personnel' | 'cles';
@@ -501,13 +501,18 @@ function ChargesTab({ month, meta, closed }: { month: string; meta: AnalyticMeta
         <DataPanel label="Charges">
           <table className="odoo-table ds-dense">
             <thead><tr><th>Charge</th><th>Comportement</th><th>Affectation</th><th className="ds-num">Prévu / mois</th>
-              <th className="ds-num">Réel {month}</th><th className="ds-actions" /></tr></thead>
+              <th className="ds-num" title="Solde du grand livre des comptes rattachés">Réel comptable</th>
+              <th className="ds-num" title="Laissez vide pour reprendre le réel comptable (mois terminé) ou le prévu">Réel saisi {month}</th><th className="ds-actions" /></tr></thead>
             <tbody>{rows.map(c => (
               <tr key={c.id} style={{ opacity: c.is_active ? 1 : 0.55 }}>
                 <td className="ds-strong">{c.label} <span className="ds-muted">· {meta.natures.find(n => n.value === c.nature)?.label ?? c.nature}</span></td>
                 <td>{BEHAVIOR_LABEL[c.behavior]}{c.behavior === 'semi_variable' && ` (${num(c.fixed_pct)} % fixe)`}</td>
                 <td>{c.assignment === 'direct' ? <>Directe → {c.product_name}</> : c.key_name ? <>Clé « {c.key_name} »</> : <>{c.center_name}</>}</td>
                 <td className="ds-num">{money(c.monthly_amount)}</td>
+                <td className="ds-num" title={c.accounts.map(a => `${a.code} ${a.label}`).join('\n') || 'Aucun compte rattaché'}>
+                  {c.ledger_amount != null ? money(c.ledger_amount) : <span className="ds-muted">—</span>}
+                  {c.accounts.length > 0 && <div className="ds-muted" style={{ fontSize: 11 }}>{c.accounts.map(a => a.code).join(', ')}</div>}
+                </td>
                 <td className="ds-num">
                   <input type="number" min="0" step="any" className="ds-input sm" style={{ width: 120, textAlign: 'right' }}
                     aria-label={`Montant réel de ${c.label} pour ${month}`} placeholder={String(c.monthly_amount)}
@@ -530,8 +535,43 @@ function ChargesTab({ month, meta, closed }: { month: string; meta: AnalyticMeta
           </table>
         </DataPanel>
       )}
+      <ReconciliationPanel month={month} />
       {edit && <ChargeModal charge={edit === 'new' ? null : edit} meta={meta} centres={centres.data ?? []} keys={keys.data ?? []} onClose={() => setEdit(null)} />}
     </>
+  );
+}
+
+const COVERAGE: Record<Reconciliation['coverage'], string> = {
+  charge: 'Charge analytique', paie: 'Personnel (paie)', matieres: 'Matières (consommations des plans)',
+  hors_exploitation: 'Hors exploitation (financier, exceptionnel, impôt)', non_rattache: 'Non rattaché',
+};
+
+/** Lot D : chaque compte de classe 6 du mois et ce qui le couvre dans le coût de revient. */
+function ReconciliationPanel({ month }: { month: string }) {
+  const q = useQuery({ queryKey: ['analytic', 'reconciliation', month], queryFn: () => analyticCostApi.reconciliation(month) });
+  const rows = q.data ?? [];
+  const missing = rows.filter(r => r.coverage === 'non_rattache');
+  return (
+    <DataPanel label="Rapprochement avec la comptabilité" style={{ marginTop: 14 }}>
+      <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <strong>Rapprochement avec la comptabilité — {month}</strong>
+        <span className="ds-muted" style={{ fontSize: 13 }}>
+          {missing.length ? `${missing.length} compte(s) mouvementé(s) sans charge analytique : ${money(missing.reduce((t, r) => t + r.amount, 0))}` : 'Tous les comptes mouvementés sont couverts.'}
+        </span>
+      </div>
+      {q.isLoading ? <LoadingState bare /> : rows.length === 0 ? <EmptyState bare icon={Calculator} title="Aucune écriture de charge validée ce mois-ci" /> : (
+        <table className="odoo-table ds-dense">
+          <thead><tr><th>Compte</th><th className="ds-num">Solde du mois</th><th>Couvert par</th></tr></thead>
+          <tbody>{rows.map(r => (
+            <tr key={r.id}>
+              <td className="ds-strong">{r.code} <span className="ds-muted">{r.label}</span></td>
+              <td className="ds-num">{money(r.amount)}</td>
+              <td>{r.coverage === 'non_rattache' ? <StatusTag tone="late" label="Non rattaché" /> : r.coverage === 'charge' ? r.charges : COVERAGE[r.coverage]}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      )}
+    </DataPanel>
   );
 }
 
@@ -546,7 +586,10 @@ function ChargeModal({ charge, meta, centres, keys, onClose }: { charge: Charge 
     target: charge?.allocation_key_id ? 'key' : 'centre', centreId: charge?.cost_center_id ?? '', keyId: charge?.allocation_key_id ?? '',
     productId: charge?.product_id ?? '', normalQty: charge?.normal_quantity != null ? String(charge.normal_quantity) : '',
     amount: charge ? String(charge.monthly_amount) : '', notes: charge?.notes ?? '',
+    accountIds: (charge?.accounts ?? []).map(a => a.id),
   }));
+  const accountsQ = useQuery({ queryKey: ['analytic', 'accounts'], queryFn: analyticCostApi.accounts });
+  const accountOptions = (accountsQ.data ?? []).filter(a => !f.accountIds.includes(a.id)).map(a => ({ id: a.id, label: `${a.code} — ${a.label}` }));
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF(s => ({ ...s, [k]: v }));
   const suggestion = meta.natures.find(n => n.value === f.nature);
   const applyNature = (nature: string) => {
@@ -571,7 +614,7 @@ function ChargeModal({ charge, meta, centres, keys, onClose }: { charge: Charge 
         allocationKeyId: f.assignment === 'indirect' && f.target === 'key' ? f.keyId || null : null,
         productId: f.assignment === 'direct' ? f.productId || null : null,
         normalQuantity: f.assignment === 'direct' && f.normalQty ? Number(f.normalQty) : null,
-        monthlyAmount: Number(f.amount) || 0, notes: f.notes || null,
+        monthlyAmount: Number(f.amount) || 0, notes: f.notes || null, accountIds: f.accountIds,
       };
       return analyticCostApi.saveCharge(charge?.id ?? null, body);
     },
@@ -643,6 +686,24 @@ function ChargeModal({ charge, meta, centres, keys, onClose }: { charge: Charge 
             )}
           </>)}
         </div>
+      </FormSection>
+      <FormSection title="Montant réel (comptabilité)">
+        <FormField label="Comptes de charges rattachés" hint="Le réel d'un mois terminé est le solde de ces comptes au grand livre, sauf montant saisi à la main pour ce mois.">
+          <SearchSelect options={accountOptions} value="" onChange={v => v && set('accountIds', [...f.accountIds, v])} placeholder="Ajouter un compte (classe 6)" width="100%" ariaLabel="Ajouter un compte de charges" />
+        </FormField>
+        {f.accountIds.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {f.accountIds.map(id => {
+              const a = accountsQ.data?.find(x => x.id === id) ?? charge?.accounts.find(x => x.id === id);
+              return (
+                <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid var(--ds-sep)', borderRadius: 999, padding: '2px 4px 2px 10px', fontSize: 13 }}>
+                  {a ? `${a.code} ${a.label}` : id}
+                  <button type="button" className="ds-icon-btn" aria-label={`Retirer le compte ${a?.code ?? ''}`} onClick={() => set('accountIds', f.accountIds.filter(x => x !== id))}><Trash2 size={12} aria-hidden="true" /></button>
+                </span>
+              );
+            })}
+          </div>
+        )}
       </FormSection>
       <FormField label="Notes" htmlFor="ch-notes"><textarea id="ch-notes" className="ds-input" rows={2} value={f.notes} onChange={e => set('notes', e.target.value)} /></FormField>
     </Modal>

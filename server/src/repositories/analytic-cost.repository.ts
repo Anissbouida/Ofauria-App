@@ -132,7 +132,10 @@ export const analyticCostRepository = {
       `SELECT ch.id, ch.label, ch.nature, ch.behavior, ch.fixed_pct::float8 AS fixed_pct, ch.assignment, ch.cost_center_id,
               c.code AS center_code, c.name AS center_name, ch.allocation_key_id, k.name AS key_name,
               ch.product_id, p.name AS product_name, ch.normal_quantity::float8 AS normal_quantity,
-              ch.monthly_amount::float8 AS monthly_amount, a.amount::float8 AS actual_amount, ch.is_active, ch.notes, ch.store_id
+              ch.monthly_amount::float8 AS monthly_amount, a.amount::float8 AS actual_amount, ch.is_active, ch.notes, ch.store_id,
+              fn_analytic_ledger_amount(ch.id, $1::uuid, $2::date)::float8 AS ledger_amount,
+              COALESCE((SELECT json_agg(json_build_object('id', ac.id, 'code', ac.code, 'label', ac.label) ORDER BY ac.code)
+                          FROM analytic_charge_accounts x JOIN accounts ac ON ac.id = x.account_id WHERE x.charge_id = ch.id), '[]') AS accounts
          FROM analytic_charges ch
          LEFT JOIN cost_centers c ON c.id = ch.cost_center_id
          LEFT JOIN analytic_keys k ON k.id = ch.allocation_key_id
@@ -150,7 +153,7 @@ export const analyticCostRepository = {
 
   async createCharge(input: { label: string; nature: string; behavior: string; fixedPct: number; assignment: string;
     costCenterId?: string | null; allocationKeyId?: string | null; productId?: string | null; normalQuantity?: number | null;
-    monthlyAmount: number; notes?: string | null; storeId?: string | null; userId: string | null }) {
+    monthlyAmount: number; notes?: string | null; storeId?: string | null; userId: string | null; accountIds?: string[] }) {
     this.validateCharge(input);
     const direct = input.assignment === 'direct';
     const r = await db.query(
@@ -161,8 +164,56 @@ export const analyticCostRepository = {
        direct ? null : (input.allocationKeyId ? null : input.costCenterId ?? null), direct ? null : input.allocationKeyId ?? null,
        direct ? input.productId : null, direct ? input.normalQuantity ?? null : null,
        input.monthlyAmount, input.notes ?? null, input.storeId ?? null, input.userId]);
+    if (input.accountIds) await this.setChargeAccounts(r.rows[0].id, input.accountIds);
     invalidateCostModel();
     return { id: r.rows[0].id as string };
+  },
+
+  /** Lot D (mig 659) : comptes de classe 6 rattachés à une charge (remplace la liste). */
+  async setChargeAccounts(chargeId: string, accountIds: string[]) {
+    const ids = [...new Set(accountIds)];
+    const bad = ids.length ? (await db.query(
+      `SELECT count(*)::int AS n FROM accounts WHERE id = ANY($1::uuid[]) AND account_class <> 6`, [ids])).rows[0].n : 0;
+    if (bad) throw new AnalyticError('Seuls des comptes de charges (classe 6) se rattachent à une charge');
+    await db.query(`DELETE FROM analytic_charge_accounts WHERE charge_id = $1 AND NOT (account_id = ANY($2::uuid[]))`, [chargeId, ids]);
+    for (const a of ids) {
+      await db.query(`INSERT INTO analytic_charge_accounts (charge_id, account_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [chargeId, a]);
+    }
+  },
+
+  /** Comptes de charges (classe 6) proposés au rattachement. */
+  async expenseAccounts() {
+    return (await db.query(
+      `SELECT id, code, label FROM accounts WHERE account_class = 6 AND is_active ORDER BY code`)).rows;
+  },
+
+  /**
+   * Rapprochement d'un mois : chaque compte de classe 6 mouvementé, son solde, et ce qui le
+   * couvre dans le coût de revient (charge analytique, paie, consommations de matières).
+   */
+  async reconciliation(storeId: string | null, month: string) {
+    const rows = (await db.query(
+      `SELECT a.id, a.code, a.label, SUM(l.debit - l.credit)::float8 AS amount,
+              (SELECT string_agg(ch.label, ', ' ORDER BY ch.label) FROM analytic_charge_accounts x
+                 JOIN analytic_charges ch ON ch.id = x.charge_id AND ch.is_active WHERE x.account_id = a.id) AS charges
+         FROM journal_entry_lines l
+         JOIN journal_entries e ON e.id = l.journal_entry_id
+         JOIN accounts a ON a.id = l.account_id
+        WHERE a.account_class = 6 AND e.status IN ('posted', 'reversed')
+          AND e.entry_date >= $2::date AND e.entry_date < ($2::date + interval '1 month')
+          AND ($1::uuid IS NULL OR e.store_id IS NULL OR e.store_id = $1)
+        GROUP BY a.id, a.code, a.label
+       HAVING SUM(l.debit - l.credit) <> 0
+        ORDER BY a.code`, [storeId, `${month}-01`])).rows;
+    return rows.map(r => {
+      const code = String(r.code);
+      const coverage = r.charges ? 'charge'
+        : /^617/.test(code) ? 'paie'
+        : /^(611|612)/.test(code) ? 'matieres'
+        : /^(63|65|67)/.test(code) ? 'hors_exploitation'
+        : 'non_rattache';
+      return { ...r, coverage };
+    });
   },
 
   fixedPct(behavior: string, pct: number) {
@@ -171,7 +222,7 @@ export const analyticCostRepository = {
 
   async updateCharge(id: string, input: { label: string; nature: string; behavior: string; fixedPct: number; assignment: string;
     costCenterId?: string | null; allocationKeyId?: string | null; productId?: string | null; normalQuantity?: number | null;
-    monthlyAmount: number; notes?: string | null; isActive?: boolean }) {
+    monthlyAmount: number; notes?: string | null; isActive?: boolean; accountIds?: string[] }) {
     this.validateCharge(input);
     const direct = input.assignment === 'direct';
     const r = await db.query(
@@ -184,6 +235,7 @@ export const analyticCostRepository = {
        direct ? input.productId : null, direct ? input.normalQuantity ?? null : null, input.monthlyAmount, input.notes ?? null,
        input.isActive ?? null]);
     if (!r.rows.length) throw new AnalyticError('Charge introuvable');
+    if (input.accountIds) await this.setChargeAccounts(id, input.accountIds);
     invalidateCostModel();
     return { id };
   },
