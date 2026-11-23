@@ -84,7 +84,7 @@ export interface StandardCost {
 
 export interface Profitability {
   from: string; to: string; months: number;
-  products: { product_id: string; name: string; family: string; qty_sold: number; ca_ht: number; qty_produced: number;
+  products: { product_id: string; name: string; family: string; qty_sold: number | null; ca_ht: number; qty_produced: number; by_weight: boolean; weight_unknown: boolean;
               cout_revient_u: number | null; cout_ventes: number | null; marge: number | null; taux_marque: number | null }[];
   families: { family: string; ca_ht: number; ca_costed: number; cout_ventes: number; marge: number; taux_marque: number | null; products: number; uncosted: number }[];
   totals: { ca_ht: number; ca_costed: number; cout_ventes: number; marge: number; produits_sans_cout: number };

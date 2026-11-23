@@ -380,22 +380,34 @@ export const analyticCostRepository = {
         GROUP BY 1`, [storeId, first, end])).rows as { product_id: string; qty: number; revient: number; production: number; matieres: number }[];
     const sales = (await db.query(
       `SELECT si.product_id, p.name, COALESCE(c.name, 'Sans famille') AS family,
-              SUM(si.quantity)::float8 AS qty, SUM(si.subtotal - COALESCE(si.tax_amount, 0))::float8 AS ca_ht
+              -- Ventes au poids (g, kg) ramenées en pièces par le poids d'une pièce de la fiche ;
+              -- sans poids connu, la quantité en pièces reste inconnue (marge non calculée).
+              SUM(CASE WHEN lower(COALESCE(si.unit, 'unit')) IN ('g', 'kg')
+                       THEN CASE WHEN w.unit_kg > 0 THEN si.quantity * (CASE WHEN lower(si.unit) = 'g' THEN 0.001 ELSE 1 END) / w.unit_kg END
+                       ELSE si.quantity END)::float8 AS qty,
+              BOOL_OR(lower(COALESCE(si.unit, 'unit')) IN ('g', 'kg')) AS by_weight,
+              BOOL_OR(lower(COALESCE(si.unit, 'unit')) IN ('g', 'kg') AND NOT COALESCE(w.unit_kg, 0) > 0) AS weight_unknown,
+              SUM(si.subtotal - COALESCE(si.tax_amount, 0))::float8 AS ca_ht
          FROM sale_items si
          JOIN sales s ON s.id = si.sale_id
          JOIN products p ON p.id = si.product_id
          LEFT JOIN categories c ON c.id = p.category_id
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(f.poids_cuit_g / 1000.0, r.piece_weight_kg) AS unit_kg
+             FROM recipes r LEFT JOIN recipe_formats f ON f.recipe_id = r.id AND f.is_active
+            WHERE r.product_id = p.id ORDER BY r.archived_at NULLS FIRST, f.is_default DESC NULLS LAST LIMIT 1) w ON true
         WHERE s.cancelled_at IS NULL AND s.created_at >= $2::date AND s.created_at < $3::date
           AND ($1::uuid IS NULL OR s.store_id IS NULL OR s.store_id = $1)
-        GROUP BY si.product_id, p.name, c.name`, [storeId, first, end])).rows as { product_id: string; name: string; family: string; qty: number; ca_ht: number }[];
+        GROUP BY si.product_id, p.name, c.name`, [storeId, first, end])).rows as { product_id: string; name: string; family: string; qty: number | null; ca_ht: number; by_weight: boolean; weight_unknown: boolean }[];
     const r2 = (n: number) => Math.round(n * 100) / 100;
     const products = sales.map(sl => {
       const pr = produced.find(x => x.product_id === sl.product_id);
       const unit = pr && pr.qty > 0 ? pr.revient / pr.qty : null;
-      const cost = unit != null ? sl.qty * unit : null;
+      const cost = unit != null && sl.qty != null && !sl.weight_unknown ? sl.qty * unit : null;
       const marge = cost != null ? sl.ca_ht - cost : null;
       return {
         product_id: sl.product_id, name: sl.name, family: sl.family, qty_sold: sl.qty, ca_ht: r2(sl.ca_ht),
+        by_weight: sl.by_weight, weight_unknown: sl.weight_unknown,
         qty_produced: pr?.qty ?? 0, cout_revient_u: unit != null ? Math.round(unit * 10000) / 10000 : null,
         cout_ventes: cost != null ? r2(cost) : null, marge: marge != null ? r2(marge) : null,
         taux_marque: marge != null && sl.ca_ht > 0 ? Math.round(marge / sl.ca_ht * 10000) / 100 : null,

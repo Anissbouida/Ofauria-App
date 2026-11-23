@@ -878,7 +878,7 @@ function ProfitabilityTab({ month }: { month: string }) {
         <span className="ds-muted" style={{ fontSize: 13 }}>{from} → {month}</span>
       </Toolbar>
       {r.totals.produits_sans_cout > 0 && (
-        <Alert tone="info">{r.totals.produits_sans_cout} produit(s) vendu(s) sans coût de revient sur la période (plans non chiffrés, ou produits achetés-revendus) :
+        <Alert tone="info">{r.totals.produits_sans_cout} produit(s) vendu(s) sans coût de revient comparable sur la période (plans non chiffrés, produits achetés-revendus, ou vendus au poids sans poids de pièce) :
           leur marge n'est pas comptée. Chiffrez les plans des mois concernés (onglet Période › Recalculer).</Alert>
       )}
       <KpiGrid label="Rentabilité de la période">
@@ -962,7 +962,8 @@ function ProfitabilityTab({ month }: { month: string }) {
           <thead><tr><th>Produit</th><th>Famille</th><th className="ds-num">Vendu</th><th className="ds-num">Ventes HT</th><th className="ds-num">Coût de revient / u</th><th className="ds-num">Coût des ventes</th><th className="ds-num">Marge</th><th className="ds-num">Taux de marque</th></tr></thead>
           <tbody>{r.products.map(p => (
             <tr key={p.product_id}>
-              <td className="ds-strong">{p.name}</td><td>{p.family}</td><td className="ds-num">{num(p.qty_sold)}</td><td className="ds-num">{money(p.ca_ht)}</td>
+              <td className="ds-strong">{p.name}{p.weight_unknown && <div className="ds-muted" style={{ fontSize: 11 }}>vendu au poids : renseignez le poids d'une pièce sur la fiche pour comparer au coût par pièce</div>}</td>
+              <td>{p.family}</td><td className="ds-num">{p.qty_sold != null ? num(p.qty_sold) : '—'}{p.by_weight && !p.weight_unknown && <div className="ds-muted" style={{ fontSize: 11 }}>pièces (vendu au poids)</div>}</td><td className="ds-num">{money(p.ca_ht)}</td>
               <td className="ds-num">{p.cout_revient_u != null ? money(p.cout_revient_u, { decimals: 4 }) : '—'}</td>
               <td className="ds-num">{p.cout_ventes != null ? money(p.cout_ventes) : '—'}</td>
               <td className="ds-num" style={{ color: p.marge != null && p.marge < 0 ? 'var(--ds-danger)' : undefined }}>{p.marge != null ? money(p.marge, { signed: true }) : '—'}</td>
