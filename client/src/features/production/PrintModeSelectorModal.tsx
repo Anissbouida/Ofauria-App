@@ -6,7 +6,8 @@ import { notify } from '../../components/ui/InlineNotification';
 
 interface Props {
   lotData: LotLabelData;
-  onPreviewHtml: () => void;
+  /** Absent : document « Ordre de fabrication » désactivé dans le registre (étape 6). */
+  onPreviewHtml?: () => void;
   onClose: () => void;
 }
 
@@ -72,6 +73,7 @@ export default function PrintModeSelectorModal({ lotData, onPreviewHtml, onClose
             </div>
           )}
 
+          {onPreviewHtml && (
           <button
             onClick={() => { onPreviewHtml(); onClose(); }}
             disabled={printing}
@@ -85,6 +87,7 @@ export default function PrintModeSelectorModal({ lotData, onPreviewHtml, onClose
               <div className="text-xs text-gray-600 mt-0.5">Imprimer sur imprimante PDF/laser/ticket classique</div>
             </div>
           </button>
+          )}
 
           {!btSupported && (
             <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">

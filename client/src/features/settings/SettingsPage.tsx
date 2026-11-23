@@ -15,6 +15,8 @@ import PrinterSettingsCard from './PrinterSettingsCard';
 import SachetsTab from './SachetsTab';
 import SectorTab from './SectorTab';
 import WorkshopsCard from './WorkshopsCard';
+import ProcessModelsTab from './ProcessModelsTab';
+import ProductionDocumentsTab from './ProductionDocumentsTab';
 import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
@@ -214,6 +216,8 @@ function SettingsShell() {
         { key: 'costs', label: 'Coûts et prix',
           content: <ParametersPanel keys={['production.fixed_charges', 'production.steps_blocking', 'pricing.rounding', 'stock.negative_policy', 'stock.dlc_alerts']} /> },
         { key: 'markup', label: 'Majoration', content: <ProductionMarkupTab /> },
+        { key: 'process', label: 'Parcours', content: <ProcessModelsTab /> },
+        { key: 'documents', label: 'Documents', content: <ProductionDocumentsTab /> },
       ]} />
     ),
     purchasing: (

@@ -84,7 +84,17 @@ export interface ProductionSettingsInput {
   costEnabled: boolean;
 }
 
+/** Étape 6 multi-industries — registre des documents de production (mig 640). */
+export type ProductionDocument = {
+  docKey: string; label: string; description: string | null; enabled: boolean; mandatory: boolean;
+  generation: 'auto' | 'manuel'; stageCode: string | null; approvalDocType: string | null;
+  sequenceDocType: string | null; templateDocType: string | null; recordLabel: string | null; sortOrder: number;
+};
+
 export const productionApi = {
+  documents: (): Promise<ProductionDocument[]> => api.get('/production/documents').then(r => r.data.data),
+  updateDocument: (key: string, data: Partial<Pick<ProductionDocument, 'enabled' | 'mandatory' | 'generation' | 'stageCode'>>): Promise<ProductionDocument> =>
+    api.put(`/settings/production-documents/${key}`, data).then(r => r.data.data),
   /** Ateliers (mig 511) et ceux de l'utilisateur connecté. */
   workshops: (): Promise<{ workshops: Workshop[]; mine: string[] }> =>
     api.get('/production/workshops').then(r => r.data.data),

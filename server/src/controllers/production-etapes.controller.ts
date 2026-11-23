@@ -8,7 +8,7 @@ import { stockFrigoRepository } from '../repositories/stock-frigo.repository.js'
 import { productLotLocationRepository } from '../repositories/product-lot-location.repository.js';
 import { pickQtyUnit } from '../utils/qty-unit.js';
 import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema, retroPlanningSchema } from '../validators/production-etapes.validator.js';
-import { ccpStepTypes, unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
+import { ccpStepTypes, ccpClosureRefusal, unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { logger } from '../utils/logger.js';
 
@@ -45,10 +45,9 @@ export const productionEtapesController = {
       const gate = await productionEtapesRepository.ccpGate(req.params.etapeId as string);
       // Types « CCP » : référentiel production_step_types, metadata.ccp (mig 513) ;
       // garde active seulement avec l'option « Points critiques de cuisson » (mig 507).
-      if (gate && gate.type_etape && (await ccpStepTypes()).has(gate.type_etape) && gate.readings === 0
-          && await sectorRepository.featureOn('ccp_cuisson')) {
-        res.status(400).json({ success: false, error: { message: 'Étape critique (CCP) : enregistrez au moins un relevé de procédé avant de la clôturer.' } });
-        return;
+      if (gate && gate.type_etape && (await ccpStepTypes()).has(gate.type_etape) && await sectorRepository.featureOn('ccp_cuisson')) {
+        const refusal = await ccpClosureRefusal(gate);
+        if (refusal) { res.status(400).json({ success: false, error: { message: refusal } }); return; }
       }
     }
     const etape = await productionEtapesRepository.updateStatus(

@@ -26,7 +26,21 @@ export interface ProfileLayers {
   work_centers?: { name: string; hourly_cost: number; capacity_minutes_per_day: number | null }[];
   /** Emplacements types, recréés dans chaque établissement qui n'a pas ce code (C-01). */
   locations?: { code: string; name: string; type: string; temp_min: number | null; temp_max: number | null }[];
+  /**
+   * Étape 7 multi-industries : plans de contrôle rattachés à une FAMILLE d'articles, repérée par
+   * son nom (les lignes propres à un article restent dans la société). Ajoutés si la famille
+   * existe et n'a pas déjà cette caractéristique à cette étape.
+   */
+  control_plans?: ProfileControlLine[];
 }
+export interface ProfileControlLine {
+  category: string; stage: 'en_cours' | 'final' | 'avant_transfert' | 'avant_livraison'; characteristic: string;
+  char_type: 'mesure' | 'oui_non' | 'visuel'; min_value: number | null; max_value: number | null; unit: string | null;
+  frequency: 'chaque_lot' | 'un_sur_n' | 'par_quantite'; frequency_n: number | null; sample_size: number; is_blocking: boolean;
+}
+const CONTROL_STAGES = ['en_cours', 'final', 'avant_transfert', 'avant_livraison'];
+const CHAR_TYPES = ['mesure', 'oui_non', 'visuel'];
+const FREQUENCIES = ['chaque_lot', 'un_sur_n', 'par_quantite'];
 export const EMPTY_LAYERS: ProfileLayers = { order_types: [], policies: [], print_templates: [] };
 /** Types d'emplacement acceptés par stock_locations (mig 424). */
 const LOCATION_TYPES = ['sec', 'positif', 'negatif', 'pesage', 'vitrine', 'labo'];
@@ -56,7 +70,13 @@ export async function exportLayers(runner: Runner = db): Promise<ProfileLayers> 
   const locations = (await runner.query(
     `SELECT DISTINCT ON (code) code, name, type, temp_min::float8 AS temp_min, temp_max::float8 AS temp_max
        FROM stock_locations WHERE is_active AND parent_id IS NULL ORDER BY code, created_at`)).rows;
-  return { order_types: types, policies, print_templates: prints, work_centers: centers, locations };
+  const control_plans = (await runner.query(
+    `SELECT c.name AS category, l.stage, l.characteristic, l.char_type, l.min_value::float8 AS min_value, l.max_value::float8 AS max_value,
+            l.unit, l.frequency, l.frequency_n, l.sample_size, l.is_blocking
+       FROM quality_control_plan_lines l JOIN categories c ON c.id = l.product_category_id
+      WHERE l.is_active AND l.product_id IS NULL AND l.step_type_code IS NULL AND l.stage <> 'reception'
+      ORDER BY c.name, l.stage, l.created_at`)).rows;
+  return { order_types: types, policies, print_templates: prints, work_centers: centers, locations, control_plans };
 }
 
 /** Valide des couches venues d'un fichier (donnée non fiable) ; avertissements lisibles. */
@@ -129,7 +149,25 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
     seenLoc.add(code);
     locations.push({ code, name, type, temp_min: numOrNull(l.temp_min), temp_max: numOrNull(l.temp_max) });
   }
-  return { order_types, policies, print_templates, work_centers, locations };
+  const control_plans: ProfileControlLine[] = [];
+  for (const c of Array.isArray(raw.control_plans) ? raw.control_plans.slice(0, 300) : []) {
+    if (!isObj(c)) continue;
+    const category = str(c.category, 120); const characteristic = str(c.characteristic, 160);
+    const stage = String(c.stage ?? ''); const char_type = String(c.char_type ?? ''); const frequency = String(c.frequency ?? 'chaque_lot');
+    const min = numOrNull(c.min_value); const max = numOrNull(c.max_value); const n = numOrNull(c.frequency_n);
+    if (!category || !characteristic || !CONTROL_STAGES.includes(stage) || !CHAR_TYPES.includes(char_type) || !FREQUENCIES.includes(frequency)
+        || (char_type === 'mesure' && min === null && max === null) || (frequency !== 'chaque_lot' && !(n && n > 0))) {
+      warnings.push(`Ligne de plan de contrôle ignorée : ${String(c.characteristic ?? '?')}`); continue;
+    }
+    const sample = numOrNull(c.sample_size);
+    control_plans.push({
+      category, stage: stage as ProfileControlLine['stage'], characteristic, char_type: char_type as ProfileControlLine['char_type'],
+      min_value: char_type === 'mesure' ? min : null, max_value: char_type === 'mesure' ? max : null, unit: str(c.unit, 16),
+      frequency: frequency as ProfileControlLine['frequency'], frequency_n: frequency === 'chaque_lot' ? null : Math.round(n!),
+      sample_size: sample && sample > 0 ? Math.min(10000, Math.round(sample)) : 1, is_blocking: c.is_blocking === true,
+    });
+  }
+  return { order_types, policies, print_templates, work_centers, locations, control_plans };
 }
 
 /**
@@ -137,7 +175,7 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
  * seulement si le type par défaut actuel n'a encore aucun ordre (société qui démarre).
  */
 export async function applyLayers(client: Runner, layers: ProfileLayers, userId?: string | null) {
-  const out = { orderTypes: 0, policies: 0, printTemplates: 0, defaultType: false, workCenters: 0, locations: 0 };
+  const out = { orderTypes: 0, policies: 0, printTemplates: 0, defaultType: false, workCenters: 0, locations: 0, controlPlans: 0 };
   for (const t of layers.order_types) {
     const r = await client.query(
       `INSERT INTO production_order_types (code, label, description, requires_bon_sortie, requires_weighing, requires_quality_check,
@@ -187,6 +225,19 @@ export async function applyLayers(client: Runner, layers: ProfileLayers, userId?
        RETURNING id`, [l.code, l.name, l.type, l.temp_min, l.temp_max]);
     out.locations += r.rows.length;
   }
+  for (const c of layers.control_plans ?? []) {
+    const r = await client.query(
+      `INSERT INTO quality_control_plan_lines (product_category_id, stage, characteristic, char_type, min_value, max_value, unit,
+                                               frequency, frequency_n, sample_size, is_blocking, created_by)
+       SELECT cat.id, $2::varchar, $3::varchar, $4::varchar, $5::numeric, $6::numeric, $7::varchar, $8::varchar, $9::int, $10::int, $11::boolean, $12::uuid
+         FROM categories cat
+        WHERE lower(cat.name) = lower($1::text)
+          AND NOT EXISTS (SELECT 1 FROM quality_control_plan_lines l WHERE l.product_category_id = cat.id AND l.is_active
+                            AND l.stage = $2::varchar AND lower(l.characteristic) = lower($3::varchar))
+        LIMIT 1 RETURNING id`,
+      [c.category, c.stage, c.characteristic, c.char_type, c.min_value, c.max_value, c.unit, c.frequency, c.frequency_n, c.sample_size, c.is_blocking, userId ?? null]);
+    out.controlPlans += r.rows.length;
+  }
   return out;
 }
 
@@ -197,6 +248,7 @@ export function describeLayers(l: ProfileLayers): string[] {
   if (l.policies.length) items.push(`Politiques : ${l.policies.map(p => parameterByKey(p.key)?.label ?? p.key).join(', ')}`);
   if (l.print_templates.length) items.push(`Impressions : ${l.print_templates.map(t => t.title ?? PRODUCTION_PRINT_DOCS[t.doc_type].label).join(', ')}`);
   if (l.work_centers?.length) items.push(`Postes de charge : ${l.work_centers.map(w => w.name).join(', ')} (ajoutés s'ils manquent)`);
+  if (l.control_plans?.length) items.push(`Plans de contrôle : ${l.control_plans.length} ligne(s) sur ${new Set(l.control_plans.map(c => c.category)).size} famille(s) (ajoutées si la famille existe)`);
   if (l.locations?.length) items.push(`Emplacements : ${l.locations.map(x => x.name).join(', ')} (dans chaque établissement qui ne les a pas)`);
   return items;
 }

@@ -20,8 +20,10 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { legalEntityController, legalEntityCreateSchema, legalEntityUpdateSchema, legalEntityStoreSchema } from '../controllers/legal-entity.controller.js';
 import { unitsRepository } from '../repositories/units.repository.js';
+import { processModelRepository } from '../repositories/process-model.repository.js';
+import { productionDocumentRepository } from '../repositories/production-document.repository.js';
 import { emptyBody } from '../validators/common.validator.js';
-import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, specializationSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
+import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, specializationSchema, processDraftSchema, productionDocumentSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
 
 const router = Router();
 
@@ -72,6 +74,40 @@ router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'ed
 router.get('/specializations', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.specializations));
 router.get('/modules/versions-compare', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.compareVersions));
 router.put('/specializations/:code', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(specializationSchema), asyncHandler(companyController.setSpecialization));
+// Étape 6 multi-industries — documents de production pilotables (désactiver ne retire que le document).
+router.put('/production-documents/:key', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(productionDocumentSchema), asyncHandler(async (req, res) => {
+  const r = await productionDocumentRepository.update(String(req.params.key), req.body, (req as { user?: { userId?: string } }).user?.userId);
+  if ('error' in r) { res.status(404).json({ success: false, error: { message: r.error } }); return; }
+  res.json({ success: true, data: r });
+}));
+// Étape 5 multi-industries — éditeur de parcours (catalogue fermé, brouillon puis publication).
+const procErr = (res: express.Response, r: { error: string; details?: string[] }) => {
+  res.status(r.error.includes('introuvable') || r.error.includes('inconnu') ? 404 : 400).json({ success: false, error: { message: r.error, details: r.details } });
+};
+router.get('/process-models', authenticate, authorizeSettings('company', 'view'), asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: { catalog: processModelRepository.catalog(), orderTypes: await processModelRepository.overview() } });
+}));
+router.get('/process-models/shadow-log', authenticate, authorizeSettings('company', 'view'), asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await processModelRepository.shadowLog() });
+}));
+router.get('/process-models/history/:orderType', authenticate, authorizeSettings('company', 'view'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await processModelRepository.history(String(req.params.orderType)) });
+}));
+router.put('/process-models/:orderType/draft', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(processDraftSchema), asyncHandler(async (req, res) => {
+  const r = await processModelRepository.saveDraft(String(req.params.orderType), req.body, (req as { user?: { userId?: string } }).user?.userId);
+  if ('error' in r) { procErr(res, r); return; }
+  res.json({ success: true, data: r.model });
+}));
+router.post('/process-models/:id/publish', authenticate, authorizeSettings('company', 'edit'), validate(emptyBody), asyncHandler(async (req, res) => {
+  const r = await processModelRepository.publish(Number(req.params.id));
+  if ('error' in r) { procErr(res, r); return; }
+  res.json({ success: true, data: r.model });
+}));
+router.delete('/process-models/:id', authenticate, authorizeSettings('company', 'edit'), asyncHandler(async (req, res) => {
+  const r = await processModelRepository.discardDraft(Number(req.params.id));
+  if ('error' in r) { procErr(res, r); return; }
+  res.json({ success: true });
+}));
 // M8-03 — vocabulaire : termes du secteur renommés par la société (mig 583).
 // C-03 — état de configuration du profil d'industrie (une tuile par couche).
 router.get('/profile-status', authenticate, authorizeSettings('company', 'view'), asyncHandler(async (_req, res) => { res.json({ success: true, data: await profileStatus() }); }));

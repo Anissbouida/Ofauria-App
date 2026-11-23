@@ -457,9 +457,9 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | 2 bis | Livré en partie | voir § F.2 bis | 634, 635, 636 | 2b-1 (dette) en attente de la mesure en production et de la décision n° 7 ; saisie écran des lignes d'emballage, des pourcentages et de la nutrition des matières renvoyée au pas 10c (API prêtes) |
 | 3 | Livré | voir § F.3 | 637 | Retirer ROLE_CATEGORY_SLUGS et getCategoryRole (obsolètes, encore lus par 3 anciens tests) ; OuvertureTab et JourneeBoutiquePage gardent les groupes caisse et direction (non métier) |
 | 4 | Livré | voir § F.4 | 638 | Brouillon tenu côté serveur et écran de comparaison des versions (API prête) ; restauration limitée au vocabulaire et aux spécialisations pour les nouvelles couches |
-| 5 | À faire | | | |
-| 6 | À faire | | | |
-| 7 | À faire | | | |
+| 5 | Livré | voir § F.5 | 639 | Bascule en actif type d'ordre par type d'ordre après une période d'ombre réelle ; actions du catalogue encore exécutées par le code existant (le moteur décide des passages, pas des effets) ; avancement à afficher sur la fiche de l'ordre (API prête, pas 10) |
+| 6 | Livré | voir § F.6 | 640 | Écran des approbations : les cinq nouveaux types apparaissent dans Paramètres › Approbations (catalogue partagé) ; gabarits des documents sans impression (fiche de pesage, rapports) à dessiner au pas 10 |
+| 7 | Livré | voir § F.7 | 641 | Écran de saisie de la règle CCP : dans Paramètres › Production (catalogue des politiques) ; écran des contrôles « avant livraison » : liste qualité existante |
 | 8 | À faire | | | |
 | 9 | À faire | | | |
 | 10 | À faire | | | |
@@ -561,8 +561,42 @@ Défauts trouvés en chemin (dans le code de l'étape) : capture hors transactio
 
 Tests : `config-freeze.db.test.ts` (scénario E, 3) ; suite base 243 / 914 et suite unitaire vertes.
 
-### F.5 — Étape 5, jalon 5a-5b (2026-11-23, en cours)
+### F.5 — Étape 5 (2026-11-23)
 
-Livré : catalogue fermé `services/process-catalog.ts` (6 gardes reprenant les contrôles existants, 11 actions) ; mig 639 : `process_models` (versionnés, un seul publié par type d'ordre), `process_stages` (état technique de rattachement, gardes, actions, document, responsable, délai, condition, groupe parallèle, champs obligatoires, reprise), `process_shadow_log` ; un modèle « Parcours standard » publié par type d'ordre existant, qui reproduit le parcours actuel. Aucun changement de comportement : le moteur n'est pas encore branché.
+Livré :
+- 5a : catalogue fermé `services/process-catalog.ts` (6 gardes reprenant mot pour mot les contrôles existants, 11 actions, 4 conditions, états techniques).
+- 5b (mig 639) : `process_models` (versionnés, un seul publié par type d'ordre), `process_stages` (état technique de rattachement, gardes, actions, document, responsable, délai, condition, groupe parallèle, champs obligatoires, reprise), `process_shadow_log` ; un « Parcours standard » publié par type d'ordre existant, qui reproduit le parcours actuel.
+- 5c : `services/process-engine.ts` et politique `production.process_engine` (éteint par défaut, ombre, actif ; portée société, établissement, atelier, type d'ordre). Branché au démarrage (étape `fabrication`) et au transfert (étape `transfert`). Les contrôles historiques du démarrage sont regroupés dans `legacyStartChecks` : en éteint et en ombre ils décident seuls, l'ombre journalise chaque désaccord ; en actif les gardes du parcours publié décident. Les gardes « toutes les lignes pesées » et « contrôle conforme » ne s'appliquent que si la politique des étapes obligatoires figée sur l'ordre est active ; un plan de semi-fini n'a pas de garde de bon de sortie (comme aujourd'hui).
+- 5d : éditeur `repositories/process-model.repository.ts` (validation : codes, catalogue, états qui ne reculent pas, première étape brouillon, étapes en cours et terminée présentes, groupe parallèle contigu et de même état) ; routes `GET /settings/process-models`, `GET …/shadow-log`, `GET …/history/:orderType`, `PUT …/:orderType/draft`, `POST …/:id/publish`, `DELETE …/:id` ; écran Paramètres › Production › Parcours (politique, liste par type d'ordre, éditeur d'étapes en fenêtre, publication, journal de l'ombre).
+- 5e : conditions (étape sautée quand la condition est fausse, gardes ignorées) et groupes parallèles (étapes courantes ensemble) ; `GET /production/:id/progress` (avancement fait / courant / à venir / sauté).
 
-Reste pour l'étape 5 : évaluation en mode ombre au démarrage et au transfert (la garde « toutes les lignes pesées » et « contrôle conforme » ne s'appliquent que si la politique des étapes obligatoires figée sur l'ordre est active, comme aujourd'hui), politique de bascule par type d'ordre, éditeur (API puis écran), groupes parallèles et conditions.
+Écarts assumés : le moteur décide des PASSAGES ; les actions (bon de sortie, lot, coût, transfert) restent exécutées par le code existant, le catalogue les décrit. La machine à états SQL (mig 299) reste le filet de sécurité en actif.
+
+Tests : `process-engine.db.test.ts` (6 : parcours standard, éteint, ombre d'accord / en désaccord, actif, refus de l'éditeur, parcours « mécanique » à 7 étapes configuré sans code avec groupe parallèle et contrôle conditionnel) ; instantané des droits régénéré ; suite unitaire verte.
+
+### F.6 — Étape 6 (2026-11-23)
+
+Livré :
+- Mig 640 : registre `production_documents` (douze documents : ordre de fabrication, bon de sortie, fiche de pesage, fiche de suivi, fiche de contrôle, bon de transfert, bon d'entrée en stock, rapport de production, de rendement, de pertes, fiche de non-conformité, bon d'envoi en sous-traitance) avec activé, obligatoire (implique activé), génération, étape du parcours, type d'approbation, série, gabarit et « trace de ». Tous actifs, aucun obligatoire : comportement actuel.
+- Série de numéros des non-conformités (`NC-AAAA-00001`, déclencheur à la création, reprise des fiches existantes : 97 sur la base de test).
+- Approbations étendues : cinq types de pièce (`production_order`, `production_start`, `production_closure`, `lot_release`, `nonconformity`) dans le catalogue partagé, avec leurs champs de condition ; `services/production-approvals.ts` (`gateApproval` : sans règle, rien ne change ; avec règle, la demande est créée et l'action refusée en 409 `APPROVAL_PENDING` tant qu'elle attend) branché sur la confirmation, le démarrage et la clôture d'un ordre, la libération d'un lot et la clôture d'une non-conformité ; gestionnaires d'effet (confirmation, démarrage, libération, clôture de la non-conformité appliqués à l'approbation ; la clôture d'un ordre est acceptée à la tentative suivante, car elle porte les quantités saisies).
+- Routes `GET /production/documents`, `PUT /settings/production-documents/:key` ; couches de configuration capturées : documents et parcours publiés.
+- Écran : Paramètres › Production › Documents ; la fiche d'ordre ne propose plus un document désactivé (bon de sortie, fiche de suivi, aperçu de l'ordre de fabrication).
+
+Défaut trouvé et corrigé en chemin : requêtes SQL écrites dans un contrôleur et un fichier de routes (garde G3-07) déplacées dans le service.
+
+Tests : `production-documents.db.test.ts` (6, dont la règle « fiche de pesage et rapport de rendement désactivés : pesée et déclaration possibles ») ; instantané des droits régénéré.
+
+### F.7 — Étape 7 (2026-11-23)
+
+Livré :
+- Mig 641 : étapes de contrôle « avant transfert » et « avant livraison » (plan de contrôle et inspections, colonnes élargies) ; inspection rattachable à un bon de livraison ; garde `pre_transfer_checks_done` ajoutée à l'étape transfert des parcours standard (elle passe sans ligne déclarée).
+- Plan de contrôle : `generateBeforeTransfer` (un contrôle par article, créé hors de la transaction du transfert pour survivre au refus), `generateBeforeDelivery` (une fois par bon), `blockingOpen` (contrôle bloquant à faire ou non conforme). Le transfert et l'expédition d'un bon de livraison sont refusés tant qu'un contrôle bloquant n'est pas soldé ; sans ligne à ces étapes, rien ne change.
+- Plans de contrôle par famille : saisie « Porte sur : un article / une famille » à l'écran ; nouvelle couche `control_plans` du profil (export par nom de famille, validation d'un fichier non fiable, application sans doublon et seulement si la famille existe).
+- Règle du point critique paramétrable : politique `quality.ccp_rule` (au moins un relevé — défaut, comportement historique ; relevés tous conformes ; dernier relevé conforme ; nombre minimal) résolue par atelier et établissement ; le profil agroalimentaire conditionné livre « tous conformes ».
+
+Écart assumé : la livraison et le transfert gardent leurs contrôles dans les écrans qualité existants (liste des inspections à faire) ; pas d'écran dédié.
+
+Tests : `quality-checkpoints.db.test.ts` (4) ; `profile-coverage` vert (la nouvelle politique est livrée par un profil).
+
+Commit : les étapes 5 (5c à 5e), 6 et 7 partagent un commit, car elles touchent les mêmes fichiers (transfert, catalogue de gardes, routes de paramétrage).

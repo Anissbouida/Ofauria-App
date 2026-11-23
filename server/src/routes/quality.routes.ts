@@ -16,6 +16,7 @@ const ncDecisionSchema = z.object({ decision: z.enum(['accepte', 'retouche', 'de
 const ncActionSchema = z.object({ actionType: z.enum(['corrective', 'preventive']), description: z.string().trim().min(3).max(2000), responsibleId: uuidN, dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional() });
 const ncActionUpdateSchema = z.object({ status: z.enum(['a_faire', 'en_cours', 'faite']).optional(), effectivenessResult: z.enum(['efficace', 'inefficace']).nullable().optional(), effectivenessNote: z.string().trim().max(1000).nullable().optional() });
 import { z } from 'zod';
+import { ApprovalPendingError, gateLotRelease } from '../services/production-approvals.js';
 import { nonConformitySchema, qualityActiveSchema, qualityInspectionSchema, qualityTemplateSchema } from '../validators/quality.validator.js';
 
 const controlPlanLineSchema = z.object({
@@ -23,7 +24,7 @@ const controlPlanLineSchema = z.object({
   productCategoryId: z.coerce.number().int().positive().nullable().optional(),
   ingredientId: z.string().guid().nullable().optional(),
   ingredientCategoryId: z.string().guid().nullable().optional(),
-  stage: z.enum(['reception', 'en_cours', 'final']),
+  stage: z.enum(['reception', 'en_cours', 'final', 'avant_transfert', 'avant_livraison']),
   characteristic: z.string().trim().min(2).max(160),
   charType: z.enum(['mesure', 'oui_non', 'visuel']),
   minValue: z.coerce.number().finite().nullable().optional(),
@@ -78,7 +79,17 @@ router.get('/lots/pending', authenticate, can('controle.quality.view'), asyncHan
   res.json({ success: true, data: await lotReleaseRepository.listPending(user.storeId ?? null) });
 }));
 router.post('/lots/:lotId/release', authenticate, validateUuidParams('lotId'), can('controle.quality.inspections'), validate(releaseSchema), asyncHandler(async (req, res) => {
-  const user = (req as never as { user: { userId: string } }).user;
+  const user = (req as never as { user: { userId: string; storeId?: string | null } }).user;
+  // Étape 6 : la libération d'un lot peut être soumise à approbation (sans règle : inchangé).
+  try {
+    await gateLotRelease(req.params.lotId as string, user.userId, user.storeId ?? null);
+  } catch (err) {
+    if (err instanceof ApprovalPendingError) {
+      res.status(409).json({ success: false, error: { code: err.code, message: err.message, approvalRequestId: err.requestId } });
+      return;
+    }
+    throw err;
+  }
   res.json({ success: true, data: await lotReleaseRepository.releaseProductLot(req.params.lotId as string, user.userId, req.body.note ?? null) });
 }));
 // Plan de contrôle par article (M7-02).

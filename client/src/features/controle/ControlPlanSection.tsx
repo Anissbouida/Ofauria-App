@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Inbox } from 'lucide-react';
 import api from '../../api/client';
+import { categoriesApi } from '../../api/categories.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
@@ -18,12 +19,12 @@ import { EmptyState, FormSection, FormField } from '../../components/ds';
  */
 type Line = {
   id: string; stage: string; characteristic: string; char_type: string; min_value: string | null; max_value: string | null; unit: string | null;
-  frequency: string; frequency_n: number | null; sample_size: number; is_blocking: boolean; product_name: string | null; ingredient_name: string | null;
+  frequency: string; frequency_n: number | null; sample_size: number; is_blocking: boolean; product_name: string | null; ingredient_name: string | null; category_name?: string | null;
 };
-const STAGE: Record<string, string> = { reception: 'Réception', en_cours: 'En cours', final: 'Final' };
+const STAGE: Record<string, string> = { reception: 'Réception', en_cours: 'En cours', final: 'Final', avant_transfert: 'Avant transfert', avant_livraison: 'Avant livraison' };
 const FREQ: Record<string, string> = { chaque_lot: 'Chaque lot', un_sur_n: '1 lot sur N', par_quantite: 'Par quantité' };
 const TYPE: Record<string, string> = { mesure: 'Mesure', oui_non: 'Oui / non', visuel: 'Visuel' };
-const EMPTY = { stage: 'final', targetId: '', characteristic: '', charType: 'oui_non', minValue: '', maxValue: '', unit: '', frequency: 'chaque_lot', frequencyN: '', sampleSize: '1', isBlocking: false };
+const EMPTY = { stage: 'final', scope: 'article', targetId: '', characteristic: '', charType: 'oui_non', minValue: '', maxValue: '', unit: '', frequency: 'chaque_lot', frequencyN: '', sampleSize: '1', isBlocking: false };
 
 export default function ControlPlanSection() {
   const qc = useQueryClient();
@@ -35,11 +36,14 @@ export default function ControlPlanSection() {
     queryFn: () => api.get('/products', { params: { limit: 1000 } }).then(r => (r.data.data?.products ?? r.data.data ?? []) as { id: string; name: string }[]),
   });
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients-min-allergens'], queryFn: () => ingredientsApi.allergenGrid(), enabled: reception });
+  // Étape 7 multi-industries : un contrôle se rattache à un article OU à sa famille (exportable dans un profil).
+  const family = !reception && f.scope === 'famille';
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list, enabled: family });
   const num = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')));
   const save = useMutation({
     mutationFn: () => api.post('/quality/control-plan', {
       stage: f.stage, characteristic: f.characteristic, charType: f.charType,
-      ...(reception ? { ingredientId: f.targetId } : { productId: f.targetId }),
+      ...(reception ? { ingredientId: f.targetId } : family ? { productCategoryId: Number(f.targetId) } : { productId: f.targetId }),
       minValue: f.charType === 'mesure' ? num(f.minValue) : null, maxValue: f.charType === 'mesure' ? num(f.maxValue) : null,
       unit: f.unit || null, frequency: f.frequency, frequencyN: f.frequency === 'chaque_lot' ? null : num(f.frequencyN),
       sampleSize: Number(f.sampleSize) || 1, isBlocking: f.isBlocking,
@@ -65,9 +69,17 @@ export default function ControlPlanSection() {
                 {Object.entries(STAGE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </FormField>
-            <FormField label={reception ? 'Matière' : 'Article'}>
-              <SearchSelect options={(reception ? ingredients : products).map(x => ({ id: x.id, label: x.name }))} value={f.targetId}
-                onChange={v => setF({ ...f, targetId: v })} placeholder={reception ? 'Matière…' : 'Article…'} width="100%" size="md" ariaLabel={reception ? 'Matière' : 'Article'} />
+            {!reception && (
+              <FormField label="Porte sur" htmlFor="cp-scope">
+                <select id="cp-scope" className="ds-input" value={f.scope} onChange={e => setF({ ...f, scope: e.target.value, targetId: '' })}>
+                  <option value="article">Un article</option>
+                  <option value="famille">Une famille d'articles</option>
+                </select>
+              </FormField>
+            )}
+            <FormField label={reception ? 'Matière' : family ? 'Famille' : 'Article'}>
+              <SearchSelect options={(reception ? ingredients : family ? (categories as { id: number; name: string }[]).map(c => ({ id: String(c.id), name: c.name })) : products).map(x => ({ id: String(x.id), label: x.name }))} value={f.targetId}
+                onChange={v => setF({ ...f, targetId: v })} placeholder={reception ? 'Matière…' : family ? 'Famille…' : 'Article…'} width="100%" size="md" ariaLabel={reception ? 'Matière' : family ? 'Famille' : 'Article'} />
             </FormField>
             <FormField label="Caractéristique" htmlFor="cp-char" required>
               <input id="cp-char" className="ds-input" placeholder="Ex. Poids unitaire" value={f.characteristic} onChange={e => setF({ ...f, characteristic: e.target.value })} />
@@ -100,7 +112,7 @@ export default function ControlPlanSection() {
           <tbody>{lines.length === 0 ? <tr><td colSpan={6}><EmptyState bare icon={Inbox} title="Aucun contrôle planifié : aucune inspection n'est générée automatiquement" /></td></tr> : lines.map(l => (
             <tr key={l.id}>
               <td>{STAGE[l.stage]}</td>
-              <td className="ds-strong">{l.product_name ?? l.ingredient_name ?? 'Famille'}</td>
+              <td className="ds-strong">{l.product_name ?? l.ingredient_name ?? (l.category_name ? `Famille : ${l.category_name}` : 'Famille')}</td>
               <td>{l.characteristic} <span style={{ color: 'var(--ds-muted)', fontSize: '13px' }}>({TYPE[l.char_type]}{l.char_type === 'mesure' ? ` ${l.min_value ?? '−∞'} à ${l.max_value ?? '+∞'}${l.unit ? ' ' + l.unit : ''}` : ''})</span>{l.is_blocking && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="bloquant" /></span>}</td>
               <td>{FREQ[l.frequency]}{l.frequency_n ? ` (N = ${l.frequency_n})` : ''}</td>
               <td className="ds-num">{l.sample_size}</td>

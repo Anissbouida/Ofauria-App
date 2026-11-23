@@ -18,6 +18,8 @@ import { applyStockOut } from '../services/stock-anomaly.js';
 import { bomVersionRepository } from './bom-version.repository.js';
 import { logger } from '../utils/logger.js';
 import { resolvePolicy } from '../services/policies.js';
+import { checkStage, engineMode } from '../services/process-engine.js';
+import { qualityControlPlanRepository } from './quality-control-plan.repository.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
@@ -1086,73 +1088,18 @@ export const productionRepository = {
   },
 
   async start(planId: string, userId?: string) {
-    // Check if this plan has unfulfilled semi-finished dependencies
-    const depsResult = await db.query(
-      `SELECT ppd.status, r.name as sub_recipe_name
-       FROM production_plan_dependencies ppd
-       JOIN recipes r ON r.id = ppd.sub_recipe_id
-       WHERE ppd.parent_plan_id = $1 AND ppd.status NOT IN ('fulfilled', 'cancelled')`,
-      [planId]
-    );
-    if (depsResult.rows.length > 0) {
-      const pending = depsResult.rows.map((r: Record<string, unknown>) => r.sub_recipe_name as string).join(', ');
-      throw new Error(`Semi-finis en attente: ${pending}. Produisez-les d'abord.`);
+    // Étape 5 multi-industries : les contrôles historiques donnent la décision « legacy » ;
+    // le moteur de parcours (politique production.process_engine) l'observe (ombre) ou
+    // décide à sa place (actif). Éteint (défaut) : rien ne change.
+    let legacyError: Error | null = null;
+    try { await legacyStartChecks(planId); } catch (e) { legacyError = e as Error; }
+    const mode = await engineMode(planId);
+    const reasons = await checkStage(planId, 'fabrication', legacyError === null);
+    if (mode === 'actif') {
+      if (reasons.length) throw new Error(reasons[0]);
+    } else if (legacyError) {
+      throw legacyError;
     }
-
-    // La garde de statut et le verrou sont portes par transitionPlan (machine a
-    // etats, mig 299) : deux « Lancer » simultanes ne passent plus tous les deux.
-    const planInfo = await db.query(
-      `SELECT is_semi_finished_plan FROM production_plans WHERE id = $1`, [planId]
-    );
-    if (!planInfo.rows[0]) throw new Error('Plan introuvable');
-
-      // Check BSI status — production cannot start until ingredients are delivered (BSI clôturé)
-      // Semi-finished plans don't have their own BSI, so skip this check for them
-      // Type d'ordre sans bon de sortie (M2-03) : le démarrage n'attend pas de BSI clôturé.
-      const orderType = await productionOrderTypeRepository.forPlan(planId);
-      if (!planInfo.rows[0].is_semi_finished_plan && orderType.requires_bon_sortie) {
-        // Cas "plan sans ingredients" : aucun produit n'a de recette, donc rien a prelever.
-        // On bypass la verification BSI (sinon impossible de demarrer un plan legitime).
-        const needsResult = await db.query(
-          `SELECT 1 FROM production_ingredient_needs WHERE plan_id = $1 LIMIT 1`,
-          [planId]
-        );
-        const hasIngredientNeeds = needsResult.rows.length > 0;
-
-        if (hasIngredientNeeds) {
-          const bsiResult = await db.query(
-            `SELECT id, status, numero FROM production_bons_sortie
-             WHERE plan_id = $1 AND status != 'annule'
-             ORDER BY created_at DESC LIMIT 1`,
-            [planId]
-          );
-          if (bsiResult.rows.length === 0) {
-            throw new Error('Aucun bon de sortie genere. Generez le BSI avant de demarrer la production.');
-          }
-          const bsi = bsiResult.rows[0];
-          if (bsi.status !== 'cloture') {
-            const statusLabels: Record<string, string> = {
-              genere: 'genere', prelevement: 'en prelevement', verifie: 'verifie'
-            };
-            throw new Error(`Le bon de sortie ${bsi.numero} est "${statusLabels[bsi.status] || bsi.status}". Les ingredients doivent etre livres (BSI cloture) avant de demarrer la production.`);
-          }
-        }
-      }
-
-      // Étape 1 multi-industries : « pesée obligatoire » du type d'ordre, appliquée quand la
-      // politique production.enforce_declared_steps est active (sinon indicatif, historique).
-      if (!planInfo.rows[0].is_semi_finished_plan && orderType.requires_weighing
-          && await declaredStepsEnforced(planId, orderType.code)) {
-        const unweighed = await db.query(
-          `SELECT count(*)::int AS n
-             FROM production_bons_sortie_lignes l
-             JOIN production_bons_sortie b ON b.id = l.bon_id
-            WHERE b.plan_id = $1 AND b.status <> 'annule'
-              AND COALESCE(l.allocated_quantity, 0) > 0 AND l.weighed_at IS NULL`, [planId]);
-        if (unweighed.rows[0].n > 0) {
-          throw new Error(`Pesée obligatoire pour ce type d'ordre : ${unweighed.rows[0].n} ligne(s) du bon de sortie ne sont pas pesées.`);
-        }
-      }
 
     // Transition gardee (confirmed / awaiting_ingredients / ready_to_produce -> in_progress),
     // journalisee avec l'acteur. Un demarrage qui croise une cloture est refuse.
@@ -2096,6 +2043,9 @@ export const productionRepository = {
 
   // ═══ Partial Transfer: transfer produced items to store ═══
   async createTransfer(planId: string, itemIds: string[], userId: string, storeId?: string) {
+    // Étape 7 : contrôles « avant transfert » du plan de contrôle, créés HORS de la transaction
+    // (un transfert refusé garde ses contrôles à faire). Sans ligne à cette étape : rien.
+    await qualityControlPlanRepository.generateBeforeTransfer(db, planId, itemIds);
     return withTransaction(async () => {
       const client = await db.getClient();
 
@@ -2112,6 +2062,8 @@ export const productionRepository = {
       }
 
       // Étape 1 multi-industries : « contrôle qualité obligatoire » du type d'ordre.
+      // Étape 5 : décision historique observée ou remplacée par le moteur de parcours.
+      let legacyQc: string | null = null;
       const ot = await productionOrderTypeRepository.forPlan(planId, client);
       if (ot.requires_quality_check && await declaredStepsEnforced(planId, ot.code, client)) {
         const qc = await client.query(
@@ -2121,11 +2073,22 @@ export const productionRepository = {
              FROM quality_inspections WHERE plan_id = $1`, [planId]);
         const { pending, ok, ko } = qc.rows[0];
         if (pending > 0 || ko > 0 || ok === 0) {
-          throw new Error(pending > 0
+          legacyQc = pending > 0
             ? `Contrôle qualité obligatoire : ${pending} contrôle(s) en attente sur cet ordre.`
             : ko > 0 ? 'Contrôle qualité obligatoire : un contrôle est non conforme.'
-              : 'Contrôle qualité obligatoire : aucun contrôle conforme enregistré sur cet ordre.');
+              : 'Contrôle qualité obligatoire : aucun contrôle conforme enregistré sur cet ordre.';
         }
+      }
+      if (!legacyQc) {
+        const open = await qualityControlPlanRepository.blockingOpen(client, 'avant_transfert', { planId, planItemIds: itemIds });
+        if (open > 0) legacyQc = `Contrôle avant transfert : ${open} contrôle(s) bloquant(s) à faire ou non conforme(s).`;
+      }
+      const engine = await engineMode(planId, client);
+      const engineReasons = await checkStage(planId, 'transfert', legacyQc === null, client);
+      if (engine === 'actif') {
+        if (engineReasons.length) throw new Error(engineReasons[0]);
+      } else if (legacyQc) {
+        throw new Error(legacyQc);
       }
 
       // Create transfer record
@@ -3056,6 +3019,77 @@ function getISOWeek(date: Date): number {
 
 /** Politique production.enforce_declared_steps résolue pour l'ordre (type d'ordre, atelier,
  *  établissement, société). Désactivée par défaut : les drapeaux restent indicatifs. */
+/** Contrôles historiques du démarrage (semi-finis, bon de sortie, pesée obligatoire). */
+async function legacyStartChecks(planId: string): Promise<void> {
+    // Check if this plan has unfulfilled semi-finished dependencies
+    const depsResult = await db.query(
+      `SELECT ppd.status, r.name as sub_recipe_name
+       FROM production_plan_dependencies ppd
+       JOIN recipes r ON r.id = ppd.sub_recipe_id
+       WHERE ppd.parent_plan_id = $1 AND ppd.status NOT IN ('fulfilled', 'cancelled')`,
+      [planId]
+    );
+    if (depsResult.rows.length > 0) {
+      const pending = depsResult.rows.map((r: Record<string, unknown>) => r.sub_recipe_name as string).join(', ');
+      throw new Error(`Semi-finis en attente: ${pending}. Produisez-les d'abord.`);
+    }
+
+    // La garde de statut et le verrou sont portes par transitionPlan (machine a
+    // etats, mig 299) : deux « Lancer » simultanes ne passent plus tous les deux.
+    const planInfo = await db.query(
+      `SELECT is_semi_finished_plan FROM production_plans WHERE id = $1`, [planId]
+    );
+    if (!planInfo.rows[0]) throw new Error('Plan introuvable');
+
+      // Check BSI status — production cannot start until ingredients are delivered (BSI clôturé)
+      // Semi-finished plans don't have their own BSI, so skip this check for them
+      // Type d'ordre sans bon de sortie (M2-03) : le démarrage n'attend pas de BSI clôturé.
+      const orderType = await productionOrderTypeRepository.forPlan(planId);
+      if (!planInfo.rows[0].is_semi_finished_plan && orderType.requires_bon_sortie) {
+        // Cas "plan sans ingredients" : aucun produit n'a de recette, donc rien a prelever.
+        // On bypass la verification BSI (sinon impossible de demarrer un plan legitime).
+        const needsResult = await db.query(
+          `SELECT 1 FROM production_ingredient_needs WHERE plan_id = $1 LIMIT 1`,
+          [planId]
+        );
+        const hasIngredientNeeds = needsResult.rows.length > 0;
+
+        if (hasIngredientNeeds) {
+          const bsiResult = await db.query(
+            `SELECT id, status, numero FROM production_bons_sortie
+             WHERE plan_id = $1 AND status != 'annule'
+             ORDER BY created_at DESC LIMIT 1`,
+            [planId]
+          );
+          if (bsiResult.rows.length === 0) {
+            throw new Error('Aucun bon de sortie genere. Generez le BSI avant de demarrer la production.');
+          }
+          const bsi = bsiResult.rows[0];
+          if (bsi.status !== 'cloture') {
+            const statusLabels: Record<string, string> = {
+              genere: 'genere', prelevement: 'en prelevement', verifie: 'verifie'
+            };
+            throw new Error(`Le bon de sortie ${bsi.numero} est "${statusLabels[bsi.status] || bsi.status}". Les ingredients doivent etre livres (BSI cloture) avant de demarrer la production.`);
+          }
+        }
+      }
+
+      // Étape 1 multi-industries : « pesée obligatoire » du type d'ordre, appliquée quand la
+      // politique production.enforce_declared_steps est active (sinon indicatif, historique).
+      if (!planInfo.rows[0].is_semi_finished_plan && orderType.requires_weighing
+          && await declaredStepsEnforced(planId, orderType.code)) {
+        const unweighed = await db.query(
+          `SELECT count(*)::int AS n
+             FROM production_bons_sortie_lignes l
+             JOIN production_bons_sortie b ON b.id = l.bon_id
+            WHERE b.plan_id = $1 AND b.status <> 'annule'
+              AND COALESCE(l.allocated_quantity, 0) > 0 AND l.weighed_at IS NULL`, [planId]);
+        if (unweighed.rows[0].n > 0) {
+          throw new Error(`Pesée obligatoire pour ce type d'ordre : ${unweighed.rows[0].n} ligne(s) du bon de sortie ne sont pas pesées.`);
+        }
+      }
+}
+
 async function declaredStepsEnforced(
   planId: string, orderTypeCode: string,
   runner: { query: (q: string, p?: unknown[]) => Promise<{ rows: any[] }> } = db,

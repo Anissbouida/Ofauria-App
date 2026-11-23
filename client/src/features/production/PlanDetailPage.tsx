@@ -113,6 +113,9 @@ export default function PlanDetailPage() {
     queryFn: () => productionApi.printTemplates((plan?.order_type_id as string) ?? null),
     enabled: !!plan, staleTime: 5 * 60_000,
   });
+  // Étape 6 : un document désactivé dans le registre n'est plus proposé (l'enregistrement reste).
+  const { data: docRegistry = [] } = useQuery({ queryKey: ['production-documents'], queryFn: productionApi.documents, staleTime: 5 * 60_000 });
+  const docOn = (key: string) => docRegistry.find(d => d.docKey === key)?.enabled !== false;
   // M1-03 : seuils et coupure d'équipe lus dans les politiques de production (atelier du plan).
   const policies = useProductionPolicies({ workshop: plan?.target_role as string | undefined, store: plan?.store_id as string | undefined });
   const [newNote, setNewNote] = useState('');
@@ -1054,7 +1057,7 @@ export default function PlanDetailPage() {
           )}
         </>
       )}
-      {plan.status === 'completed' && (
+      {plan.status === 'completed' && docOn('fiche_suivi') && (
         <button onClick={() => printFicheProduction()} className="odoo-btn-secondary">
           <Printer size={13} /> Fiche de production
         </button>
@@ -1065,7 +1068,7 @@ export default function PlanDetailPage() {
   // Menu « Plus » : chaque entree garde ses gardes (disabled + motif en infobulle).
   type MenuItem = { key: string; label: string; icon: React.ReactNode; onClick: () => void; disabled?: boolean; title?: string; danger?: boolean; sep?: boolean };
   const menuItems: MenuItem[] = [];
-  if (['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && !isSemiFini) {
+  if (['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && !isSemiFini && docOn('bon_sortie')) {
     menuItems.push({ key: 'bsi', label: 'Bon de sortie ingrédients', icon: <Printer size={13} />, onClick: () => printBonSortieIngredients() });
   }
   // Repasse en brouillon : le serveur ne l'accepte que pour un plan au statut « confirmé »
@@ -1995,7 +1998,7 @@ export default function PlanDetailPage() {
         return (
           <PrintModeSelectorModal
             lotData={lotData}
-            onPreviewHtml={() => printProductionTicket(printChoiceItem)}
+            onPreviewHtml={docOn('ordre_fabrication') ? () => printProductionTicket(printChoiceItem) : undefined}
             onClose={() => setPrintChoiceItem(null)}
           />
         );

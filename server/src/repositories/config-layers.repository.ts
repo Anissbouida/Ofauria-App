@@ -24,6 +24,8 @@ const QUERIES: Record<string, string> = {
   work_centers: `SELECT name, hourly_cost::float8 AS hourly_cost, capacity_minutes_per_day::float8 AS capacity, is_active FROM work_centers ORDER BY name`,
   locations: `SELECT DISTINCT code, name, type FROM stock_locations WHERE parent_id IS NULL AND is_active ORDER BY code`,
   units: `SELECT code, label FROM ref_entries WHERE table_id = 'units' AND is_active ORDER BY code`,
+  production_documents: `SELECT doc_key AS code, enabled, mandatory, generation, stage_code FROM production_documents ORDER BY doc_key`,
+  process_models: `SELECT order_type_code AS code, version_no, label FROM process_models WHERE status = 'publie' ORDER BY order_type_code`,
   control_plans: `SELECT stage, count(*)::int AS lines, count(*) FILTER (WHERE is_blocking)::int AS blocking
                     FROM quality_control_plan_lines GROUP BY stage ORDER BY stage`,
 };

@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { qualityRepository, type QualityResult } from '../repositories/quality.repository.js';
+import { ApprovalPendingError, gateNonconformityClosure } from '../services/production-approvals.js';
 
 export const qualityController = {
   async listTemplates(req: AuthRequest, res: Response) {
@@ -86,6 +87,18 @@ export const qualityController = {
   },
   async updateNonConformity(req: AuthRequest, res: Response) {
     const b = req.body as Record<string, unknown>;
+    // Étape 6 : la clôture d'une non-conformité peut être soumise à approbation.
+    if (b.status === 'closed') {
+      try {
+        await gateNonconformityClosure(req.params.id, b.severity !== undefined ? String(b.severity) : undefined, req.user!.userId, req.user!.storeId ?? null);
+      } catch (err) {
+        if (err instanceof ApprovalPendingError) {
+          res.status(409).json({ success: false, error: { code: err.code, message: err.message, approvalRequestId: err.requestId } });
+          return;
+        }
+        throw err;
+      }
+    }
     const nc = await qualityRepository.updateNonConformity(req.params.id, {
       title: b.title !== undefined ? String(b.title) : undefined,
       severity: b.severity !== undefined ? String(b.severity) : undefined,

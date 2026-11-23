@@ -8,6 +8,7 @@ import { checkCredit } from '../services/credit-control.js';
 import { customerAddressRepository } from './customer-address.repository.js';
 import { customerRepository } from './customer.repository.js';
 import { netPriceOf } from '../utils/tva.js';
+import { qualityControlPlanRepository } from './quality-control-plan.repository.js';
 
 /**
  * Ventes aux professionnels (mig 352) : bon de livraison client → facture.
@@ -324,10 +325,15 @@ export const deliveryNoteRepository = {
    * figé et le crédit contrôlé (bloquant). Statut → « expédié ».
    */
   async ship(id: string, userId: string, opts: { closeRemainder?: boolean; creditOverride?: { userId: string; reason: string } | null } = {}) {
+    // Étape 7 multi-industries : contrôles « avant livraison » du plan de contrôle, créés hors
+    // de la transaction ; un contrôle bloquant non soldé arrête l'expédition. Sans ligne : rien.
+    await qualityControlPlanRepository.generateBeforeDelivery(db, id);
     return withTransaction(async () => {
       const client = await db.getClient();
       const dn = (await client.query(`SELECT * FROM delivery_notes WHERE id = $1 AND status = 'prepared' FOR UPDATE`, [id])).rows[0];
       if (!dn) throw fail(409, 'Bon de livraison introuvable ou déjà expédié');
+      const qcOpen = await qualityControlPlanRepository.blockingOpen(client, 'avant_livraison', { deliveryNoteId: id });
+      if (qcOpen > 0) throw fail(409, `Contrôle avant livraison : ${qcOpen} contrôle(s) bloquant(s) à faire ou non conforme(s).`);
       if (!dn.store_id) throw fail(400, 'Magasin expéditeur requis : les produits sortent du stock d\'un magasin');
       const items = (await client.query(`SELECT * FROM delivery_note_items WHERE delivery_note_id = $1`, [id])).rows;
       for (const line of items) {

@@ -38,6 +38,14 @@ export const documentSequenceSchema = body({
 export const parameterValueSchema = body({ value: any });
 
 /* Secteur — company.controller.setSector. */
+const stageSchema = obj({
+  code: z.string().trim().min(1).max(40), label: z.string().trim().min(1, 'Libellé requis').max(120),
+  techStatus: z.string().max(40), guards: z.array(z.string().max(60)).max(20).optional(), actions: z.array(z.string().max(60)).max(20).optional(),
+  documentKey: txt(60), responsibleRole: txt(60), delayMinutes: z.number().int().min(0).nullish(),
+  conditionKey: txt(60), parallelGroup: txt(40), requiredFields: z.array(z.string().max(60)).max(20).optional(), allowResume: z.boolean().optional(),
+});
+export const processDraftSchema = body({ label: txt(120), stages: z.array(stageSchema).min(1).max(40) });
+export const productionDocumentSchema = body({ enabled: z.boolean().optional(), mandatory: z.boolean().optional(), generation: z.enum(['auto', 'manuel']).optional(), stageCode: txt(40) });
 export const specializationSchema = body({ enabled: z.boolean() });
 export const setSectorSchema = body({ code: z.string().trim().min(1, 'Secteur requis').max(40), keepAdjustments: bool });
 

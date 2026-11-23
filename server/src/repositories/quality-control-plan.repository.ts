@@ -7,7 +7,7 @@ import { db } from '../config/database.js';
  * points dans pending_items ; elles s'exécutent dans la transaction de l'appelant.
  */
 type Q = { query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }> };
-export type Stage = 'reception' | 'en_cours' | 'final';
+export type Stage = 'reception' | 'en_cours' | 'final' | 'avant_transfert' | 'avant_livraison';
 export type PlanLineInput = {
   productId?: string | null; productCategoryId?: number | null; ingredientId?: string | null; ingredientCategoryId?: string | null;
   stage: Stage; characteristic: string; charType: 'mesure' | 'oui_non' | 'visuel';
@@ -71,9 +71,10 @@ async function createPending(q: Q, stage: Stage, title: string, items: ReturnTyp
 export const qualityControlPlanRepository = {
   async list(filter: { productId?: string | null; ingredientId?: string | null } = {}) {
     return (await db.query(
-      `SELECT l.*, p.name AS product_name, i.name AS ingredient_name
+      `SELECT l.*, p.name AS product_name, i.name AS ingredient_name, c.name AS category_name
          FROM quality_control_plan_lines l
          LEFT JOIN products p ON p.id = l.product_id LEFT JOIN ingredients i ON i.id = l.ingredient_id
+         LEFT JOIN categories c ON c.id = l.product_category_id
         WHERE l.is_active AND ($1::uuid IS NULL OR l.product_id = $1) AND ($2::uuid IS NULL OR l.ingredient_id = $2)
         ORDER BY l.stage, l.created_at`, [filter.productId ?? null, filter.ingredientId ?? null])).rows;
   },
@@ -108,6 +109,64 @@ export const qualityControlPlanRepository = {
       await q.query(`UPDATE product_lots SET status = 'pending_release' WHERE id = $1 AND status = 'active'`, [lot.id]);
     }
     return created;
+  },
+
+  /**
+   * Avant transfert (étape 7) : un contrôle par article produit à transférer, s'il a des lignes
+   * « avant_transfert » et pas encore de contrôle à cette étape. S'exécute HORS de la
+   * transaction du transfert : un transfert refusé garde le contrôle à faire.
+   */
+  async generateBeforeTransfer(q: Q, planId: string, planItemIds: string[]) {
+    if (!planItemIds.length) return [];
+    const items = (await q.query(
+      `SELECT ppi.id, ppi.product_id, ppi.actual_quantity::float8 AS qty, p.name, pp.store_id
+         FROM production_plan_items ppi JOIN products p ON p.id = ppi.product_id JOIN production_plans pp ON pp.id = ppi.plan_id
+        WHERE ppi.plan_id = $1 AND ppi.id = ANY($2::uuid[])
+          AND NOT EXISTS (SELECT 1 FROM quality_inspections qi WHERE qi.plan_item_id = ppi.id AND qi.control_stage = 'avant_transfert')`,
+      [planId, planItemIds])).rows;
+    const created: string[] = [];
+    for (const it of items) {
+      const due = await dueLines(q, await linesFor(q, 'avant_transfert', { productId: it.product_id }));
+      if (!due.length) continue;
+      created.push(await createPending(q, 'avant_transfert', `Contrôle avant transfert — ${it.name}`, toItems(due, it.qty),
+        { plan_id: planId, plan_item_id: it.id }, it.store_id));
+    }
+    return created;
+  },
+
+  /** Avant livraison (étape 7) : un contrôle par article du bon de livraison ayant des lignes « avant_livraison ». */
+  async generateBeforeDelivery(q: Q, deliveryNoteId: string) {
+    const items = (await q.query(
+      `SELECT di.product_id, sum(di.quantity)::float8 AS qty, p.name, dn.store_id, dn.number
+         FROM delivery_note_items di JOIN delivery_notes dn ON dn.id = di.delivery_note_id JOIN products p ON p.id = di.product_id
+        WHERE di.delivery_note_id = $1
+          -- Générés une seule fois par bon : tous ses articles ensemble.
+          AND NOT EXISTS (SELECT 1 FROM quality_inspections qi WHERE qi.delivery_note_id = dn.id AND qi.control_stage = 'avant_livraison')
+        GROUP BY di.product_id, p.name, dn.store_id, dn.number`, [deliveryNoteId])).rows;
+    const created: string[] = [];
+    for (const it of items) {
+      const due = await dueLines(q, await linesFor(q, 'avant_livraison', { productId: it.product_id }));
+      if (!due.length) continue;
+      created.push(await createPending(q, 'avant_livraison', `Contrôle avant livraison — ${it.name} (BL ${it.number})`, toItems(due, it.qty),
+        { delivery_note_id: deliveryNoteId }, it.store_id));
+    }
+    return created;
+  },
+
+  /**
+   * Contrôles bloquants non soldés à une étape (à faire, ou faits non conformes) — garde du
+   * transfert et de l'expédition. Un contrôle sans point bloquant n'arrête rien.
+   */
+  async blockingOpen(q: Q, stage: 'avant_transfert' | 'avant_livraison', link: { planId?: string; planItemIds?: string[]; deliveryNoteId?: string }) {
+    const r = (await q.query(
+      `SELECT count(*)::int AS n FROM quality_inspections qi
+        WHERE qi.control_stage = $1
+          AND (($2::uuid IS NOT NULL AND qi.plan_id = $2 AND ($3::uuid[] IS NULL OR qi.plan_item_id = ANY($3::uuid[])))
+               OR ($4::uuid IS NOT NULL AND qi.delivery_note_id = $4))
+          AND EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(qi.pending_items, '[]'::jsonb)) e WHERE (e->>'blocking')::boolean)
+          AND (qi.status = 'a_faire' OR (qi.status = 'faite' AND qi.conformity IS FALSE))`,
+      [stage, link.planId ?? null, link.planItemIds ?? null, link.deliveryNoteId ?? null])).rows[0];
+    return r.n as number;
   },
 
   /** Réception : chaque lot de matière créé par le bon de réception → inspection à faire. */

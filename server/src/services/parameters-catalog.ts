@@ -194,11 +194,34 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'policy' }, scopes: ['company', 'store'],
   },
   {
+    key: 'quality.ccp_rule', domain: 'production', section: 'production',
+    label: 'Règle de clôture d\'un point critique (CCP)',
+    help: 'Ce qu\'il faut pour clôturer une étape critique. « Au moins un relevé » : comportement historique. « Relevés conformes » : le nombre minimal de relevés, tous dans la tolérance. « Dernier relevé conforme » : le nombre minimal de relevés et le dernier dans la tolérance (une correction est possible).',
+    fields: [
+      { name: 'rule', label: 'Règle', type: 'enum', options: [
+        { value: 'au_moins_un', label: 'Au moins un relevé' },
+        { value: 'tous_conformes', label: 'Relevés tous conformes' },
+        { value: 'dernier_conforme', label: 'Dernier relevé conforme' },
+      ] },
+      { name: 'min_readings', label: 'Nombre minimal de relevés', type: 'number', min: 1, max: 20 },
+    ],
+    defaults: { rule: 'au_moins_un', min_readings: 1 },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
+  },
+  {
     key: 'production.enforce_declared_steps', domain: 'production', section: 'production',
     label: 'Étapes obligatoires des types d\'ordre',
     help: 'Rend effectifs les drapeaux « pesée obligatoire » et « contrôle qualité obligatoire » d\'un type d\'ordre : le démarrage attend que toutes les lignes du bon de sortie soient pesées, le transfert attend un contrôle conforme sans contrôle en attente. Désactivé : ces drapeaux restent indicatifs (comportement historique).',
     fields: [{ name: 'enabled', label: 'Appliquer les étapes obligatoires', type: 'boolean' }],
     defaults: { enabled: false },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop', 'order_type'],
+  },
+  {
+    key: 'production.process_engine', domain: 'production', section: 'production',
+    label: 'Moteur de parcours configurable',
+    help: 'Éteint : le parcours historique décide seul. Ombre : le moteur évalue le parcours publié du type d\'ordre à côté du code actuel et journalise chaque désaccord, sans jamais bloquer. Actif : les gardes du parcours publié décident (la machine à états reste le filet de sécurité). Ne passer en actif qu\'après une période d\'ombre sans désaccord.',
+    fields: [{ name: 'mode', label: 'Mode', type: 'enum', options: [{ value: 'eteint', label: 'Éteint' }, { value: 'ombre', label: 'Ombre (journal des écarts)' }, { value: 'actif', label: 'Actif' }] }],
+    defaults: { mode: 'eteint' },
     storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop', 'order_type'],
   },
   {

@@ -106,6 +106,48 @@ export const APPROVAL_DOC_TYPES = {
       allergens_added: { label: 'Allergènes ajoutés', kind: 'number' },
     },
   },
+  // Étape 6 multi-industries : approbations de production (aucune règle = aucun changement).
+  production_order: {
+    label: 'Confirmation d\'un ordre de fabrication',
+    effect: 'L\'ordre est confirmé : besoins calculés, bon de sortie généré.',
+    fields: {
+      planned_qty: { label: 'Quantité planifiée totale', kind: 'number', unit: 'u' },
+      items: { label: 'Nombre d\'articles', kind: 'number' },
+      estimated_cost: { label: 'Coût matière estimé', kind: 'number', unit: 'DH' },
+    },
+  },
+  production_start: {
+    label: 'Démarrage de la production',
+    effect: 'L\'ordre passe en cours de fabrication.',
+    fields: {
+      planned_qty: { label: 'Quantité planifiée totale', kind: 'number', unit: 'u' },
+      items: { label: 'Nombre d\'articles', kind: 'number' },
+    },
+  },
+  production_closure: {
+    label: 'Clôture d\'un ordre de fabrication',
+    effect: 'La déclaration peut être enregistrée : lots créés, coût réel calculé.',
+    fields: {
+      yield_gap_pct: { label: 'Écart au planifié (valeur absolue)', kind: 'number', unit: '%' },
+      actual_qty: { label: 'Quantité déclarée', kind: 'number', unit: 'u' },
+      partial: { label: 'Clôture partielle', kind: 'enum', options: [{ value: 'yes', label: 'Oui' }, { value: 'no', label: 'Non' }] },
+    },
+  },
+  lot_release: {
+    label: 'Libération d\'un lot de produit fini',
+    effect: 'Le lot devient disponible à la vente.',
+    fields: {
+      failed_inspections: { label: 'Contrôles non conformes', kind: 'number' },
+      quantity: { label: 'Quantité du lot', kind: 'number', unit: 'u' },
+    },
+  },
+  nonconformity: {
+    label: 'Clôture d\'une non-conformité',
+    effect: 'La non-conformité est clôturée.',
+    fields: {
+      severity: { label: 'Gravité', kind: 'enum', options: [{ value: 'low', label: 'Faible' }, { value: 'medium', label: 'Moyenne' }, { value: 'high', label: 'Élevée' }] },
+    },
+  },
   inventory_count: {
     label: 'Écart de contrôle d\'ouverture',
     effect: 'Le contrôle est validé et l\'écart répercuté sur le stock.',

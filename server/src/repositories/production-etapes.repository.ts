@@ -74,10 +74,17 @@ export const productionEtapesRepository = {
   // Une étape de type CCP (cuisson / refroidissement) exige au moins un relevé
   // avant d'être clôturée (mig 422). Renvoie { type_etape, readings } pour la garde.
   async ccpGate(etapeId: string) {
+    // Étape 7 multi-industries : la règle de clôture est paramétrable (quality.ccp_rule) ;
+    // la garde lit aussi les relevés non conformes et la conformité du dernier relevé.
     const r = await db.query(
-      `SELECT pie.type_etape,
-              (SELECT COUNT(*)::int FROM production_step_readings sr WHERE sr.etape_id = pie.id) AS readings
-         FROM production_item_etapes pie WHERE pie.id = $1`,
+      `SELECT pie.type_etape, pp.target_role AS workshop, pp.store_id,
+              (SELECT COUNT(*)::int FROM production_step_readings sr WHERE sr.etape_id = pie.id) AS readings,
+              (SELECT COUNT(*)::int FROM production_step_readings sr WHERE sr.etape_id = pie.id AND sr.conforme IS FALSE) AS non_conformes,
+              (SELECT sr.conforme FROM production_step_readings sr WHERE sr.etape_id = pie.id ORDER BY sr.mesure_a DESC NULLS LAST, sr.id DESC LIMIT 1) AS dernier_conforme
+         FROM production_item_etapes pie
+         LEFT JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+         LEFT JOIN production_plans pp ON pp.id = ppi.plan_id
+        WHERE pie.id = $1`,
       [etapeId]
     );
     return r.rows[0] ?? null;

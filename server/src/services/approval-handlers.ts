@@ -74,3 +74,31 @@ registerApprovalHandler('bom_change', {
   async onApproved(request, actorId) { await bomVersionRepository.promote(request.doc_id, actorId); },
   async onRejected(request) { await bomVersionRepository.discardDraft(request.doc_id); },
 });
+
+// Étape 6 multi-industries — approbations de production.
+registerApprovalHandler('production_order', {
+  async onApproved(request, actorId) {
+    const { productionRepository } = await import('../repositories/production.repository.js');
+    await productionRepository.confirm(request.doc_id, actorId);
+  },
+});
+registerApprovalHandler('production_start', {
+  async onApproved(request, actorId) {
+    const { productionRepository } = await import('../repositories/production.repository.js');
+    await productionRepository.start(request.doc_id, actorId);
+  },
+});
+// Clôture : la déclaration porte les quantités saisies ; l'approbation la laisse passer à la tentative suivante.
+registerApprovalHandler('production_closure', { async onApproved() { /* rien à appliquer */ } });
+registerApprovalHandler('lot_release', {
+  async onApproved(request, actorId) {
+    const { lotReleaseRepository } = await import('../repositories/lot-release.repository.js');
+    await lotReleaseRepository.releaseProductLot(request.doc_id, actorId, 'Libéré sur approbation');
+  },
+});
+registerApprovalHandler('nonconformity', {
+  async onApproved(request) {
+    const { qualityRepository } = await import('../repositories/quality.repository.js');
+    await qualityRepository.updateNonConformity(request.doc_id, { status: 'closed' });
+  },
+});

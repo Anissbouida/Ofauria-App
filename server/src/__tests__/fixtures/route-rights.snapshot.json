@@ -311,6 +311,7 @@
  "DELETE /schedules/:id": null,
  "DELETE /settings/api-keys/:id": null,
  "DELETE /settings/approval-rules/:code": null,
+ "DELETE /settings/process-models/:id": null,
  "DELETE /settings/sectors/:code": null,
  "DELETE /settings/vocabulary/:key": null,
  "DELETE /settings/webhooks/:id": null,
@@ -1585,6 +1586,14 @@
  "GET /production/:id/consumption-variance": null,
  "GET /production/:id/dependencies": null,
  "GET /production/:id/events": null,
+ "GET /production/:id/progress": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/:id/serials": [
   "admin",
   "baker",
@@ -1619,6 +1628,14 @@
   "viennoiserie"
  ],
  "GET /production/disassembly/candidates": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/documents": [
   "admin",
   "baker",
   "beldi_sale",
@@ -2465,6 +2482,9 @@
  "GET /settings/modules/versions-compare": null,
  "GET /settings/notification-rules": null,
  "GET /settings/parameters": null,
+ "GET /settings/process-models": null,
+ "GET /settings/process-models/history/:orderType": null,
+ "GET /settings/process-models/shadow-log": null,
  "GET /settings/profile-status": null,
  "GET /settings/sector": null,
  "GET /settings/sector/starter": null,
@@ -4563,6 +4583,7 @@
  "POST /settings/modules/preview": null,
  "POST /settings/modules/reset": null,
  "POST /settings/modules/versions/:id/restore": null,
+ "POST /settings/process-models/:id/publish": null,
  "POST /settings/sector/starter": null,
  "POST /settings/sectors": null,
  "POST /settings/tax-codes": null,
@@ -5268,6 +5289,8 @@
  "PUT /settings/modules/:key/rollout": null,
  "PUT /settings/notification-rules/:type": null,
  "PUT /settings/parameters/:key": null,
+ "PUT /settings/process-models/:orderType/draft": null,
+ "PUT /settings/production-documents/:key": null,
  "PUT /settings/sector": null,
  "PUT /settings/specializations/:code": null,
  "PUT /settings/tax-codes/:id": null,

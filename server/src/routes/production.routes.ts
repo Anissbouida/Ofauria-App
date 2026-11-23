@@ -27,6 +27,8 @@ import {
   createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, subcontractSetupSchema, subcontractShipSchema, disassemblySchema, screenSettingSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
 } from '../validators/production.validator.js';
 import { emptyBody } from '../validators/common.validator.js';
+import { planProgress } from '../services/process-engine.js';
+import { productionDocumentRepository } from '../repositories/production-document.repository.js';
 import { productionSettingsSchema, saveWorkshopSchema, mrpGenerateSchema, receiveProductionTransferSchema } from '../validators/production-flow.validator.js';
 
 const id = validateUuidParams('id');
@@ -139,6 +141,16 @@ router.get('/:id/sub-recipe-analysis', authenticate, id, asyncHandler(production
 // M8-05 — synthèse chiffrée de l'ordre (quantités, rendement, pertes, coût par pièce), calculée au serveur.
 router.get('/:id/summary', authenticate, id, can('production.view'), asyncHandler(async (req, res) => {
   const data = await planSummaryRepository.get(req.params.id as string);
+  if (!data) { res.status(404).json({ success: false, error: { message: 'Ordre introuvable' } }); return; }
+  res.json({ success: true, data });
+}));
+// Étape 6 multi-industries — registre des documents de production (lecture : écrans d'impression).
+router.get('/documents', authenticate, can('production.view'), asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await productionDocumentRepository.list() });
+}));
+// Étape 5 multi-industries — avancement de l'ordre sur son parcours publié.
+router.get('/:id/progress', authenticate, id, can('production.view'), asyncHandler(async (req, res) => {
+  const data = await planProgress(req.params.id as string);
   if (!data) { res.status(404).json({ success: false, error: { message: 'Ordre introuvable' } }); return; }
   res.json({ success: true, data });
 }));

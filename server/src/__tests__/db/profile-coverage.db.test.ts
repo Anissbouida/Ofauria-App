@@ -20,6 +20,7 @@ const EXCEPTIONS: Record<string, string> = {
   'production.oee_thresholds': 'Seuils de TRS propres à chaque atelier.',
   'production.forecast_history': 'Profondeur d\'historique de prévision, sans lien avec le métier.',
   'production.replenishment_history': 'Profondeur d\'historique des demandes boutique, sans lien avec le métier.',
+  'production.process_engine': 'Bascule de déploiement (éteint → ombre → actif) décidée société par société après observation ; aucun profil ne doit la livrer allumée.',
 };
 
 describe.skipIf(!hasTestDb)('Définition de fini : réglages livrés dans un profil (C-02)', () => {

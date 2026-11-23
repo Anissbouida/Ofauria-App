@@ -79,6 +79,15 @@ export const GUARDS: Record<string, GuardDef> = {
       return r.ok === 0 ? 'Contrôle qualité obligatoire : aucun contrôle conforme enregistré sur cet ordre.' : null;
     },
   },
+  pre_transfer_checks_done: {
+    key: 'pre_transfer_checks_done', label: 'Contrôles avant transfert soldés',
+    description: 'Aucun contrôle bloquant « avant transfert » à faire ou non conforme (passe si le plan de contrôle n\'en prévoit pas).',
+    async check(ctx) {
+      const { qualityControlPlanRepository } = await import('../repositories/quality-control-plan.repository.js');
+      const n = await qualityControlPlanRepository.blockingOpen(q(ctx), 'avant_transfert', { planId: ctx.planId });
+      return n > 0 ? `Contrôle avant transfert : ${n} contrôle(s) bloquant(s) à faire ou non conforme(s).` : null;
+    },
+  },
   components_reserved: {
     key: 'components_reserved', label: 'Composants réservés',
     description: 'Les besoins de l\'ordre sont couverts par le stock disponible (réservation, étape 8).',
@@ -104,6 +113,43 @@ export const ACTIONS: Record<string, ActionDef> = {
   emit_event: { key: 'emit_event', label: 'Émettre un événement', description: 'Événement métier pour les intégrations.' },
 };
 
+/**
+ * Conditions (pas 5e) : une étape conditionnelle est SAUTÉE quand sa condition est fausse
+ * pour l'ordre (ses gardes ne s'appliquent pas). Catalogue fermé, comme les gardes.
+ */
+export type ConditionDef = { key: string; label: string; check: (ctx: GuardContext) => Promise<boolean> };
+export const CONDITIONS: Record<string, ConditionDef> = {
+  has_semi_finished: {
+    key: 'has_semi_finished', label: 'L\'ordre attend des semi-finis',
+    async check(ctx) {
+      return (await q(ctx).query(`SELECT 1 FROM production_plan_dependencies WHERE parent_plan_id = $1 LIMIT 1`, [ctx.planId])).rows.length > 0;
+    },
+  },
+  has_material_needs: {
+    key: 'has_material_needs', label: 'L\'ordre consomme des matières',
+    async check(ctx) {
+      return (await q(ctx).query(`SELECT 1 FROM production_ingredient_needs WHERE plan_id = $1 LIMIT 1`, [ctx.planId])).rows.length > 0;
+    },
+  },
+  has_quality_plan: {
+    key: 'has_quality_plan', label: 'Un contrôle qualité est prévu sur l\'ordre',
+    async check(ctx) {
+      return (await q(ctx).query(`SELECT 1 FROM quality_inspections WHERE plan_id = $1 LIMIT 1`, [ctx.planId])).rows.length > 0;
+    },
+  },
+  is_customer_order: {
+    key: 'is_customer_order', label: 'Ordre lié à une commande client',
+    async check(ctx) {
+      return (await q(ctx).query(
+        `SELECT 1 FROM production_plans WHERE id = $1 AND order_id IS NOT NULL
+         UNION ALL SELECT 1 FROM production_plan_items WHERE plan_id = $1 AND order_item_id IS NOT NULL LIMIT 1`, [ctx.planId])).rows.length > 0;
+    },
+  },
+};
+
+export const TECH_STATUSES = ['draft', 'confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress', 'completed'] as const;
+
+export const isCondition = (k: string) => Object.prototype.hasOwnProperty.call(CONDITIONS, k);
 export const isGuard = (k: string) => Object.prototype.hasOwnProperty.call(GUARDS, k);
 export const isAction = (k: string) => Object.prototype.hasOwnProperty.call(ACTIONS, k);
 

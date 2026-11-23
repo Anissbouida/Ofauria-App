@@ -101,3 +101,23 @@ export const requireScrapReason = (pick: (body: any) => { code?: string | null; 
     }
     next();
   };
+
+/**
+ * Règle de clôture d'un point critique (étape 7, politique quality.ccp_rule). Renvoie le motif
+ * du refus ou null. Défaut « au moins un relevé » : comportement historique.
+ */
+export async function ccpClosureRefusal(gate: { readings: number; non_conformes: number; dernier_conforme: boolean | null; workshop?: string | null; store_id?: string | null }): Promise<string | null> {
+  const { resolvePolicy } = await import('./policies.js');
+  const pol = (await resolvePolicy<{ rule?: string; min_readings?: number }>('quality.ccp_rule',
+    { workshop: gate.workshop ?? null, storeId: gate.store_id ?? null })).value ?? {};
+  const rule = pol.rule ?? 'au_moins_un';
+  const min = Math.max(1, Math.round(Number(pol.min_readings ?? 1)));
+  if (gate.readings < (rule === 'au_moins_un' ? 1 : min)) {
+    return rule === 'au_moins_un' || min === 1
+      ? 'Étape critique (CCP) : enregistrez au moins un relevé de procédé avant de la clôturer.'
+      : `Étape critique (CCP) : ${min} relevés de procédé sont exigés avant de la clôturer (${gate.readings} enregistré(s)).`;
+  }
+  if (rule === 'tous_conformes' && gate.non_conformes > 0) return `Étape critique (CCP) : ${gate.non_conformes} relevé(s) hors tolérance ; tous doivent être conformes.`;
+  if (rule === 'dernier_conforme' && gate.dernier_conforme === false) return 'Étape critique (CCP) : le dernier relevé est hors tolérance ; corrigez puis relevez à nouveau.';
+  return null;
+}

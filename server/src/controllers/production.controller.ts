@@ -21,6 +21,7 @@ import { workshopsOf, workshopForCategorySlug, workshopLabel, listWorkshops, sav
 import { processRefs } from '../services/process-referentials.js';
 import { declareProduction, listPlanObservations } from '../services/production-declaration.js';
 import { logger } from '../utils/logger.js';
+import { ApprovalPendingError, gateApproval, planApprovalValues } from '../services/production-approvals.js';
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
  *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
@@ -47,6 +48,19 @@ async function loadOwnedPlan(req: AuthRequest, res: Response, opts: { read?: boo
 }
 
 /** Erreur métier -> 409 (transition refusée, garde de statut), autre -> 500 via asyncHandler. */
+/** Étape 6 : demande d'approbation créée ou en attente → 409 avec code et identifiant. */
+function approvalPending(res: Response, err: unknown): boolean {
+  if (!(err instanceof ApprovalPendingError)) return false;
+  res.status(409).json({ success: false, error: { code: err.code, message: err.message, approvalRequestId: err.requestId } });
+  return true;
+}
+
+async function gatePlan(docType: 'production_order' | 'production_start', planId: string, req: AuthRequest) {
+  const v = await planApprovalValues(planId);
+  await gateApproval({ docType, docId: planId, docLabel: v.label, values: { planned_qty: v.planned_qty, items: v.items, estimated_cost: v.estimated_cost },
+    userId: req.user!.userId, storeId: req.user!.storeId ?? null });
+}
+
 function conflictOrThrow(res: Response, err: unknown, fallback: string) {
   const message = err instanceof Error ? err.message : fallback;
   if (isTransitionError(err)) {
@@ -392,8 +406,10 @@ export const productionController = {
     // (double clic) est refuse en 409 comme pour start/revertToDraft.
     let warnings: string[];
     try {
+      await gatePlan('production_order', req.params.id, req);
       ({ warnings } = await productionRepository.confirm(req.params.id, req.user!.userId));
     } catch (err) {
+      if (approvalPending(res, err)) return;
       const message = err instanceof Error ? err.message : 'Erreur lors de la confirmation';
       res.status(409).json({ success: false, error: { message } });
       return;
@@ -504,10 +520,12 @@ export const productionController = {
       return;
     }
     try {
+      await gatePlan('production_start', req.params.id, req);
       await productionRepository.start(req.params.id, req.user!.userId);
       const updated = await productionRepository.findById(req.params.id);
       res.json({ success: true, data: updated });
     } catch (err) {
+      if (approvalPending(res, err)) return;
       conflictOrThrow(res, err, 'Erreur lors du demarrage');
     }
   },
@@ -751,8 +769,16 @@ export const productionController = {
     // (double clic) est refuse en 409 au lieu de deduire le stock deux fois.
     let warnings: string[];
     try {
+      const planned = (plan.items || []).reduce((a: number, it: Record<string, unknown>) => a + Number(it.planned_quantity ?? 0), 0);
+      const actual = ((bodyItems || []) as { actualQuantity?: number }[]).reduce((a, it) => a + Number(it.actualQuantity ?? 0), 0);
+      await gateApproval({
+        docType: 'production_closure', docId: req.params.id, docLabel: `Clôture ${plan.of_number ?? ''}`.trim(),
+        values: { yield_gap_pct: planned > 0 ? Math.round(Math.abs(actual - planned) / planned * 1000) / 10 : 0, actual_qty: actual, partial: completionType === 'partial' ? 'yes' : 'no' },
+        userId: req.user!.userId, storeId: req.user!.storeId ?? null,
+      });
       ({ warnings } = await productionRepository.complete(req.params.id, bodyItems || [], req.user!.userId, req.user!.storeId, completionType));
     } catch (err) {
+      if (approvalPending(res, err)) return;
       const message = err instanceof Error ? err.message : 'Erreur lors de la cloture';
       res.status(409).json({ success: false, error: { message } });
       return;

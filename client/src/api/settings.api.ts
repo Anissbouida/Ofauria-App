@@ -294,6 +294,20 @@ export interface ModuleActivation {
   rollout: { pilots: Record<string, { roles: string[]; users: string[] }>; storeDisabled: Record<string, string[]> };
 }
 
+/* Étape 5 multi-industries — parcours configurables (mig 639). */
+export type ProcessStage = {
+  id?: number; code: string; label: string; sequence?: number; techStatus: string;
+  guards: string[]; actions: string[]; documentKey: string | null; responsibleRole: string | null; delayMinutes: number | null;
+  conditionKey: string | null; parallelGroup: string | null; requiredFields: string[]; allowResume: boolean;
+};
+export type ProcessModel = { id: number; orderTypeCode: string; versionNo: number; status: 'brouillon' | 'publie' | 'archive'; label: string; publishedAt: string | null; stages: ProcessStage[] };
+export type ProcessCatalog = {
+  guards: { key: string; label: string; description: string }[]; actions: { key: string; label: string; description: string }[];
+  conditions: { key: string; label: string }[]; techStatuses: string[]; documents: string[];
+};
+export type ProcessOverview = { catalog: ProcessCatalog; orderTypes: { orderTypeCode: string; orderTypeLabel: string; versions: number; published: ProcessModel | null; draft: ProcessModel | null }[] };
+export type ShadowLogRow = { id: number; plan_id: string; of_number: string | null; transition: string; engine_allows: boolean; legacy_allows: boolean; engine_reasons: string[]; created_at: string };
+
 export const settingsApi = {
   setup: () => api.get('/settings/setup').then(r => r.data.data) as Promise<SetupOverview>,
   get: () => api.get('/settings').then(r => r.data.data) as Promise<CompanySettings>,
@@ -324,6 +338,12 @@ export const settingsApi = {
   bankAccounts: () => api.get('/settings/bank-accounts').then(r => r.data.data) as Promise<CompanyBankAccount[]>,
   saveBankAccount: (id: string | null, data: Record<string, unknown>) =>
     (id ? api.put(`/settings/bank-accounts/${id}`, data) : api.post('/settings/bank-accounts', data)).then(r => r.data.data) as Promise<CompanyBankAccount>,
+  processModels: () => api.get('/settings/process-models').then(r => r.data.data) as Promise<ProcessOverview>,
+  processShadowLog: () => api.get('/settings/process-models/shadow-log').then(r => r.data.data) as Promise<ShadowLogRow[]>,
+  saveProcessDraft: (orderType: string, data: { label?: string; stages: ProcessStage[] }) =>
+    api.put(`/settings/process-models/${orderType}/draft`, data).then(r => r.data.data) as Promise<ProcessModel>,
+  publishProcess: (id: number) => api.post(`/settings/process-models/${id}/publish`, {}).then(r => r.data.data) as Promise<ProcessModel>,
+  discardProcessDraft: (id: number) => api.delete(`/settings/process-models/${id}`).then(r => r.data),
   sector: () => api.get('/settings/sector').then(r => r.data.data) as Promise<SectorInfo>,
   /** Spécialisations (mig 633) : activer n'ajoute que ce qui manque, désactiver ne supprime rien. */
   setSpecialization: (code: string, enabled: boolean) =>
