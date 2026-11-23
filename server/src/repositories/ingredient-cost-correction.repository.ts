@@ -65,7 +65,7 @@ export const ingredientCostCorrectionRepository = {
        SELECT i.id AS "ingredientId", i.name, i.unit, COALESCE(ec.name, i.category) AS category,
               COALESCE(i.unit_cost, 0)::float8 AS "unitCost", m.median::float8 AS median,
               CASE WHEN COALESCE(i.unit_cost, 0) = 0 THEN 'sans_prix' ELSE 'aberrant' END AS reason,
-              (SELECT COUNT(DISTINCT ri.recipe_id) FROM recipe_ingredients ri WHERE ri.ingredient_id = i.id)::int AS "usedInRecipes"
+              (SELECT COUNT(DISTINCT f.recipe_id) FROM recipe_format_components c JOIN recipe_formats f ON f.id = c.format_id AND f.is_active WHERE c.source_ingredient_id = i.id)::int AS "usedInRecipes"
          FROM ingredients i
          LEFT JOIN med m ON m.category_id = i.category_id AND m.unit = i.unit
          LEFT JOIN expense_categories ec ON ec.id = i.category_id

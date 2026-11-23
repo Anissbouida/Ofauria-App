@@ -260,7 +260,9 @@ export const ingredientImportController = {
           if (row.unitCostChanged) {
             // Collecte recettes a re-cascader apres commit
             const r = await client.query(
-              `SELECT DISTINCT recipe_id FROM recipe_ingredients WHERE ingredient_id = $1`,
+              `SELECT DISTINCT f.recipe_id FROM recipe_format_components c
+                 JOIN recipe_formats f ON f.id = c.format_id AND f.is_active
+                WHERE c.source_ingredient_id = $1`,
               [row.existingId]
             );
             for (const rec of r.rows) cascadeRecipeIds.add(rec.recipe_id as string);

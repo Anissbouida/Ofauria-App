@@ -7,7 +7,7 @@
  *    temps : aucune demande en double.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, cleanupFixtures, RUN, type Fixtures } from './helpers.js';
+import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, cleanupFixtures, RUN, setComposition, type Fixtures } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Calcul des besoins (G0-27)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
@@ -40,9 +40,9 @@ describe.skipIf(!hasTestDb)('Calcul des besoins (G0-27)', () => {
     levainId = await recipe('Levain G027', true, null);
     pateId = await recipe('Pâte G027', true, null);
     recipeId = await recipe('Rec Pain G027', false, productId);
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 1, 'kg')`, [levainId, farineId]);
-    await p().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 0.2)`, [pateId, levainId]);
-    await p().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 0.5)`, [recipeId, pateId]);
+    await setComposition(levainId, { ingredients: [{ ingredientId: farineId, quantity: 1, unit: 'kg' }] });
+    await setComposition(pateId, { subRecipes: [{ subRecipeId: levainId, quantity: 0.2 }] });
+    await setComposition(recipeId, { subRecipes: [{ subRecipeId: pateId, quantity: 0.5 }] });
     // 2 kg de pâte déjà en stock.
     await p().query(`INSERT INTO semi_finished_stock (recipe_id, store_id, quantity_available, unit) VALUES ($1, $2, 2, 'kg')`, [pateId, fx.storeId]);
     // 10 pains à produire ce jour-là.
@@ -54,7 +54,6 @@ describe.skipIf(!hasTestDb)('Calcul des besoins (G0-27)', () => {
     vi.restoreAllMocks();
     await p().query(`DELETE FROM purchase_requests WHERE ingredient_id = $1`, [farineId]).catch(() => undefined);
     await p().query(`DELETE FROM semi_finished_stock WHERE store_id = $1`, [fx.storeId]).catch(() => undefined);
-    await p().query(`DELETE FROM recipe_sub_recipes WHERE recipe_id = ANY($1)`, [[recipeId, pateId]]).catch(() => undefined);
     if (fx) await cleanupFixtures(fx);
     await repos?.db.pool.end().catch(() => undefined);
     await closeTestPool();

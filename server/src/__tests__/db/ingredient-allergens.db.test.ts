@@ -10,7 +10,7 @@
  *    base, porte les allergènes des ingrédients du bas de la nomenclature.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createProductWithRecipe, cleanupFixtures, RUN, type Fixtures } from './helpers.js';
+import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createProductWithRecipe, cleanupFixtures, RUN, setComposition, type Fixtures } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Allergènes des ingrédients (G2-06)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
@@ -40,17 +40,14 @@ describe.skipIf(!hasTestDb)('Allergènes des ingrédients (G2-06)', () => {
       return id;
     };
     const pate = await base('Pâte G206'), creme = await base('Crème G206');
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 1, 'kg')`, [pate, farine]);
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 0.2, 'kg')`, [creme, amande]);
-    await p().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 1)`, [creme, pate]);
-    const prod = await createProductWithRecipe(fx, { name: 'Tarte G206', price: 20, ingredients: [{ ingredientId: eau, quantity: 0.1, unit: 'l' }] });
+    await setComposition(pate, { ingredients: [{ ingredientId: farine, quantity: 1, unit: 'kg' }] });
+    await setComposition(creme, { ingredients: [{ ingredientId: amande, quantity: 0.2, unit: 'kg' }], subRecipes: [{ subRecipeId: pate, quantity: 1 }] });
+    const prod = await createProductWithRecipe(fx, { name: 'Tarte G206', price: 20, ingredients: [] });
     productId = prod.productId;
-    await p().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 1)`, [prod.recipeId, creme]);
+    await setComposition(prod.recipeId, { ingredients: [{ ingredientId: eau, quantity: 0.1, unit: 'l' }], subRecipes: [{ subRecipeId: creme, quantity: 1 }] });
   }, 60_000);
 
   afterAll(async () => {
-    await p().query(`DELETE FROM recipe_sub_recipes WHERE sub_recipe_id = ANY($1) OR recipe_id = ANY($1)`, [bases]).catch(() => undefined);
-    await p().query(`DELETE FROM recipe_ingredients WHERE recipe_id = ANY($1)`, [bases]).catch(() => undefined);
     if (fx) await cleanupFixtures(fx);
     await p().query(`DELETE FROM recipes WHERE id = ANY($1)`, [bases]).catch(() => undefined);
     await repos?.db.pool.end().catch(() => undefined);

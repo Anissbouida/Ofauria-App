@@ -21,17 +21,22 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   hasTestDb, testPool, closeTestPool, importRepositories,
   createBaseFixtures, createIngredient, createLot, createProductWithRecipe, cleanupFixtures,
-  num, RUN, type Fixtures,
+  num, RUN, setComposition, type Fixtures,
 } from './helpers.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-/** Supprime les liens de sous-recettes des recettes du fixture (FK RESTRICT sur
- *  sub_recipe_id : il faut couper les liens avant de supprimer la base). */
+/** Supprime les liens de sous-recettes des recettes du fixture (nomenclature des formats et
+ *  miroir) : il faut couper les liens avant de supprimer la base. */
 async function unlinkSubRecipes(recipeIds: string[]) {
   if (recipeIds.length === 0) return;
   await testPool().query(
-    `DELETE FROM recipe_sub_recipes WHERE recipe_id = ANY($1::uuid[]) OR sub_recipe_id = ANY($1::uuid[])`,
+    `DELETE FROM recipe_format_components WHERE source_recipe_id = ANY($1::uuid[])
+        OR format_id IN (SELECT id FROM recipe_formats WHERE recipe_id = ANY($1::uuid[]))`,
+    [recipeIds]
+  ).catch(() => undefined);
+  await testPool().query(
+    `DELETE FROM recipe_components WHERE recipe_id = ANY($1::uuid[]) OR source_recipe_id = ANY($1::uuid[])`,
     [recipeIds]
   ).catch(() => undefined);
 }
@@ -262,18 +267,12 @@ describe.skipIf(!hasTestDb)('Scenarios production — chef & magasinier', () => 
         [`Pate C ${RUN}`]
       );
       baseRecipeId = base.rows[0].id; fx.ids.recipes.push(baseRecipeId);
-      await testPool().query(
-        `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 1, 'kg')`,
-        [baseRecipeId, beurreId]
-      );
+      await setComposition(baseRecipeId, { ingredients: [{ ingredientId: beurreId, quantity: 1, unit: 'kg' }] });
 
       // Produit « Tarte » : 0,2 kg de pate par tarte (sous-recette de base).
       const pr = await createProductWithRecipe(fx, { name: 'Tarte C', price: 10, ingredients: [] });
       productId = pr.productId; recipeId = pr.recipeId;
-      await testPool().query(
-        `INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 0.2)`,
-        [recipeId, baseRecipeId]
-      );
+      await setComposition(recipeId, { subRecipes: [{ subRecipeId: baseRecipeId, quantity: 0.2 }] });
       const inv = await testPool().query(`SELECT current_quantity FROM inventory WHERE ingredient_id = $1 AND store_id = $2`, [beurreId, fx.storeId]);
       invBeurreBefore = num(inv.rows[0]?.current_quantity);
     }, 60_000);
@@ -396,15 +395,9 @@ describe.skipIf(!hasTestDb)('Scenarios production — chef & magasinier', () => 
         [`Pate feuilletee C ${RUN}`]
       );
       const feuilId = feuil.rows[0].id as string; fx.ids.recipes.push(feuilId);
-      await testPool().query(
-        `INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 0.5)`,
-        [feuilId, baseRecipeId]
-      );
+      await setComposition(feuilId, { subRecipes: [{ subRecipeId: baseRecipeId, quantity: 0.5 }] });
       const prod2 = await createProductWithRecipe(fx, { name: 'Mille-feuille C', price: 15, ingredients: [] });
-      await testPool().query(
-        `INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 1)`,
-        [prod2.recipeId, feuilId]
-      );
+      await setComposition(prod2.recipeId, { subRecipes: [{ subRecipeId: feuilId, quantity: 1 }] });
 
       const plan2 = await repos.productionRepository.create({
         planDate: today(), type: 'daily', createdBy: fx.userId, storeId: fx.storeId,

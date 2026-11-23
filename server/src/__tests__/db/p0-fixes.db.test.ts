@@ -115,8 +115,14 @@ describe.skipIf(!hasTestDb)('Correctifs P0 — fiche technique, CMUP, DLV', () =
     fx.ids.recipes.push(rec.id);
 
     const after = await p.query(`SELECT price, cost_price FROM products WHERE id = $1`, [productId]);
-    expect(num(after.rows[0].cost_price)).toBeCloseTo(5, 2);   // 0,5 kg x 10 DH
-    expect(num(after.rows[0].price)).toBeCloseTo(15, 2);       // 5 x marge 3
+    // Pas 2b-1 : la composition vit dans le format par défaut ; le produit reçoit le coût
+    // complet de la fiche (fn_recipe_sale_pricing, mig 614 : matière 0,5 kg x 10 DH + frais
+    // indirects) et le prix = ce coût x marge 3.
+    const sp = (await p.query(`SELECT cout_piece::float AS cout, prix_piece::float AS prix FROM fn_recipe_sale_pricing($1)`, [rec.id])).rows[0];
+    expect(sp.cout).toBeGreaterThanOrEqual(5);                 // au moins la matière
+    expect(num(after.rows[0].cost_price)).toBeCloseTo(sp.cout, 2);
+    expect(num(after.rows[0].price)).toBeCloseTo(sp.prix, 2);
+    expect(num(after.rows[0].price)).toBeCloseTo(sp.cout * 3, 1); // coût x marge
   });
 
   // ─────────────────────────────── F-009 ───────────────────────────────

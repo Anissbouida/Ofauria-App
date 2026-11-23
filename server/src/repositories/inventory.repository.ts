@@ -471,8 +471,11 @@ export const ingredientRepository = {
     // When unit cost changes, cascade product price (price-only — recipe total_cost
     // n'est plus stocke ; il est calcule a la volee via v_recipe_total_cost_v2).
     if (data.unitCost !== undefined) {
+      // Pas 2b-1 : fiches qui emploient la matière, lues dans la nomenclature par format.
       const recipes = await db.query(
-        `SELECT DISTINCT recipe_id FROM recipe_ingredients WHERE ingredient_id = $1`,
+        `SELECT DISTINCT f.recipe_id FROM recipe_format_components c
+           JOIN recipe_formats f ON f.id = c.format_id AND f.is_active
+          WHERE c.source_ingredient_id = $1`,
         [id]
       );
       for (const row of recipes.rows) {
@@ -502,25 +505,8 @@ export const ingredientRepository = {
    * inventory_transactions type='waste' pour audit ONSSA.
    */
   async delete(id: string, opts: { force?: boolean } = {}): Promise<{ ok: true; wastedQty?: number } | { ok: false; reason: string; activeStock?: number }> {
-    // 1) Bloquant : recettes utilisant l'ingredient (suppression casserait les recettes)
-    const recipeUses = await db.query(
-      `SELECT COUNT(*)::int AS n, COALESCE(string_agg(DISTINCT r.name, ', ' ORDER BY r.name), '') AS names
-       FROM recipe_ingredients ri JOIN recipes r ON r.id = ri.recipe_id
-       WHERE ri.ingredient_id = $1`,
-      [id]
-    );
-    const recipeCount = recipeUses.rows[0]?.n ?? 0;
-    if (recipeCount > 0) {
-      const names = String(recipeUses.rows[0]?.names || '').split(', ').filter(Boolean).slice(0, 3).join(', ');
-      const suffix = recipeCount > 3 ? `… (${recipeCount} au total)` : '';
-      return {
-        ok: false,
-        reason: `Ingredient utilise dans ${recipeCount} recette(s) : ${names}${suffix}. Retirez-le de ces recettes avant suppression.`,
-      };
-    }
-
-    // 1 bis) Scénario 1, constat 128 — la composition actuelle des fiches (par format) n'était
-    // pas lue : une matière employée dans quatre fiches passait pour inutilisée.
+    // 1) Bloquant : fiches utilisant l'ingrédient (scénario 1, constat 128 — composition par
+    // format ; l'ancien modèle n'est plus lu depuis le pas 2b-1).
     const formatUses = await db.query(
       `SELECT COUNT(DISTINCT r.id)::int AS n, COALESCE(string_agg(DISTINCT r.name, ', ' ORDER BY r.name), '') AS names
          FROM recipe_format_components c
@@ -650,9 +636,11 @@ export const ingredientRepository = {
 
       // Bloquant : utilise dans une recette => c'est un vrai ingredient.
       const recipeUses = await client.query(
-        `SELECT COUNT(*)::int AS n, COALESCE(string_agg(DISTINCT r.name, ', ' ORDER BY r.name), '') AS names
-         FROM recipe_ingredients ri JOIN recipes r ON r.id = ri.recipe_id
-         WHERE ri.ingredient_id = $1`,
+        `SELECT COUNT(DISTINCT r.id)::int AS n, COALESCE(string_agg(DISTINCT r.name, ', ' ORDER BY r.name), '') AS names
+           FROM recipe_format_components c
+           JOIN recipe_formats f ON f.id = c.format_id
+           JOIN recipes r ON r.id = f.recipe_id
+          WHERE c.source_ingredient_id = $1`,
         [id]
       );
       const n = recipeUses.rows[0]?.n ?? 0;

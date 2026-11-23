@@ -46,7 +46,9 @@ export type MergePreview = {
 };
 
 // Tables où un simple changement d'identifiant violerait une contrainte d'unicité : traitées à part.
-const SPECIAL = new Set(['recipe_ingredients', 'product_recycle_destinations', 'stock_count_lines', 'inventory']);
+// Pas 2b-1 : l'ancien modèle de fiche n'est plus traité à part — ses lignes restantes (fiches
+// archivées) suivent la fusion comme toute autre référence (étape 4, simple changement d'identifiant).
+const SPECIAL = new Set(['product_recycle_destinations', 'stock_count_lines', 'inventory']);
 // Colonnes qui portent un identifiant d'ingrédient sans clé étrangère déclarée.
 const UNDECLARED: Ref[] = [
   { table: 'bsi_weighing_history', column: 'ingredient_id' },
@@ -87,8 +89,7 @@ async function impactOf(source: Ingredient, target: Ingredient): Promise<MergeIm
   }
   const recipes = (await db.query(
     `SELECT COUNT(DISTINCT recipe_id)::int AS n FROM (
-       SELECT recipe_id FROM recipe_ingredients WHERE ingredient_id = $1
-       UNION SELECT recipe_id FROM recipe_components WHERE source_ingredient_id = $1
+       SELECT recipe_id FROM recipe_components WHERE source_ingredient_id = $1
        UNION SELECT rf.recipe_id FROM recipe_format_components c JOIN recipe_formats rf ON rf.id = c.format_id WHERE c.source_ingredient_id = $1
      ) x`, [source.id])).rows[0].n as number;
   const purchaseOrders = (await db.query(
@@ -151,20 +152,24 @@ export const ingredientMergeRepository = {
         `SELECT store_id, ingredient_id, current_quantity, minimum_threshold FROM inventory WHERE ingredient_id IN ($1, $2)`,
         [sourceId, targetId])).rows;
 
-      // 1. Lignes de recette : même recette et même unité → les quantités s'additionnent.
-      const lines = (await db.query(
-        `SELECT id, recipe_id, quantity, COALESCE(unit, '') AS unit FROM recipe_ingredients WHERE ingredient_id = $1`, [sourceId])).rows;
-      for (const l of lines) {
-        const twin = (await db.query(
-          `SELECT id FROM recipe_ingredients WHERE recipe_id = $1 AND ingredient_id = $2 AND COALESCE(unit, '') = $3 ORDER BY id LIMIT 1`,
-          [l.recipe_id, targetId, l.unit])).rows[0];
-        if (twin) {
-          await db.query(`DELETE FROM recipe_ingredients WHERE id = $1`, [l.id]);
-          await db.query(`UPDATE recipe_ingredients SET quantity = quantity + $2::numeric WHERE id = $1`, [twin.id, l.quantity]);
-        } else {
-          await db.query(`UPDATE recipe_ingredients SET ingredient_id = $2 WHERE id = $1`, [l.id, targetId]);
-        }
-      }
+      // 1. Lignes de nomenclature (formats) : même format, même unité et même perte → une seule
+      //    ligne, quantités additionnées. Le miroir recipe_components est reconstruit par trigger
+      //    (mig 412) ; ses lignes restantes suivent l'étape 4.
+      await db.query(
+        `UPDATE recipe_format_components t
+            SET quantite = t.quantite + s.quantite, updated_at = now()
+           FROM recipe_format_components s
+          WHERE s.source_ingredient_id = $1 AND t.source_ingredient_id = $2
+            AND t.format_id = s.format_id AND t.unite = s.unite AND t.perte_pct = s.perte_pct
+            AND t.id = (SELECT min(x.id::text)::uuid FROM recipe_format_components x
+                         WHERE x.format_id = s.format_id AND x.source_ingredient_id = $2 AND x.unite = s.unite AND x.perte_pct = s.perte_pct)`,
+        [sourceId, targetId]);
+      await db.query(
+        `DELETE FROM recipe_format_components s
+          WHERE s.source_ingredient_id = $1
+            AND EXISTS (SELECT 1 FROM recipe_format_components t
+                         WHERE t.format_id = s.format_id AND t.source_ingredient_id = $2 AND t.unite = s.unite AND t.perte_pct = s.perte_pct)`,
+        [sourceId, targetId]);
 
       // 2. Destinations de recyclage : une seule par produit et par ingrédient.
       await db.query(

@@ -126,15 +126,37 @@ export async function createProductWithRecipe(fx: Fixtures, data: {
     [productId, `Recette ${data.name} ${RUN}`, data.yieldQuantity ?? 1]
   );
   const recipeId = rec.rows[0].id;
-  for (const ing of data.ingredients) {
-    await p.query(
-      `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
-      [recipeId, ing.ingredientId, ing.quantity, ing.unit ?? null]
-    );
-  }
+  // Pas 2b-1 (mig 649) : la composition s'écrit dans la nomenclature du format par défaut.
+  const { writeCompositionLines } = await import('../../repositories/composition-lines.helper.js');
+  await writeCompositionLines(p, recipeId, { ingredients: data.ingredients.map(i => ({ ingredientId: i.ingredientId, quantity: i.quantity, unit: i.unit ?? null })) });
   fx.ids.products.push(productId);
   fx.ids.recipes.push(recipeId);
   return { productId, recipeId };
+}
+
+/**
+ * Pas 2b-1 (mig 649) : composition d'une fiche dans la nomenclature du format par défaut
+ * (remplace les INSERT dans recipe_ingredients / recipe_sub_recipes / recipe_packaging).
+ * Un appel REMPLACE toute la nomenclature : passer toutes les lignes en une fois.
+ * Quantité d'une sous-recette = unités de rendement de la sous-recette (comme l'ancien modèle).
+ */
+export async function setComposition(recipeId: string, lines: {
+  ingredients?: { ingredientId: string; quantity: number; unit?: string | null }[];
+  subRecipes?: { subRecipeId: string; quantity: number }[];
+  packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
+}): Promise<string | null> {
+  const { writeCompositionLines } = await import('../../repositories/composition-lines.helper.js');
+  return writeCompositionLines(testPool(), recipeId, lines);
+}
+
+/** Change la quantité d'une ligne matière du format par défaut (ex-UPDATE recipe_ingredients). */
+export async function setIngredientQty(recipeId: string, ingredientId: string | null, quantity: number) {
+  await testPool().query(
+    `UPDATE recipe_format_components fc SET quantite = $3
+       FROM recipe_formats f
+      WHERE f.id = fc.format_id AND f.recipe_id = $1 AND f.is_default
+        AND fc.source_ingredient_id IS NOT NULL AND ($2::uuid IS NULL OR fc.source_ingredient_id = $2::uuid)`,
+    [recipeId, ingredientId, quantity]);
 }
 
 /** Nettoyage best-effort, dans l'ordre des dependances. La base est jetable : une erreur n'est pas bloquante. */

@@ -110,7 +110,7 @@ describe.skipIf(!hasTestDb)('SQL — allergenes agreges (mig 343)', () => {
     const farine = await client.query(`INSERT INTO ingredients (name, unit, unit_cost, allergens, category) VALUES ($1,'kg',10,ARRAY['gluten'],'autre') RETURNING id`, [`Farine A ${RUN}`]);
     const lait = await client.query(`INSERT INTO ingredients (name, unit, unit_cost, allergens, category) VALUES ($1,'l',8,ARRAY['lait'],'autre') RETURNING id`, [`Lait A ${RUN}`]);
     const noisette = await client.query(`INSERT INTO ingredients (name, unit, unit_cost, allergens, category) VALUES ($1,'kg',90,ARRAY['fruits_a_coque'],'autre') RETURNING id`, [`Noisette A ${RUN}`]);
-    // Creme (base, compose) <- lait ; Entremets (produit) <- creme (composant recette) + farine (legacy) ; format inactif avec noisette
+    // Creme (base, compose) <- lait ; Entremets (produit) <- creme + farine (composants recette) ; format inactif avec noisette
     const creme = await client.query(`INSERT INTO recipes (name, yield_quantity, yield_unit, mode_cout, is_base) VALUES ($1,1,'kg','compose',true) RETURNING id`, [`Creme A ${RUN}`]);
     await client.query(`INSERT INTO recipe_components (recipe_id, source_ingredient_id, quantite, unite, role) VALUES ($1,$2,500,'ml','ingredient')`, [creme.rows[0].id, lait.rows[0].id]);
     const prod = await client.query(`INSERT INTO products (name, slug, price) VALUES ($1,$2,45) RETURNING id`, [`Entremets A ${RUN}`, `entremets-a-${RUN}`]);
@@ -118,12 +118,13 @@ describe.skipIf(!hasTestDb)('SQL — allergenes agreges (mig 343)', () => {
     const parent = await client.query(`INSERT INTO recipes (product_id, name, yield_quantity, yield_unit, mode_cout) VALUES ($1,$2,1,'unit','compose') RETURNING id`, [productId, `Entremets A ${RUN}`]);
     parentId = parent.rows[0].id;
     await client.query(`INSERT INTO recipe_components (recipe_id, source_recipe_id, quantite, unite, role) VALUES ($1,$2,300,'g','base')`, [parentId, creme.rows[0].id]);
-    await client.query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1,$2,0.2,'kg')`, [parentId, farine.rows[0].id]);
+    await client.query(`INSERT INTO recipe_components (recipe_id, source_ingredient_id, quantite, unite, role) VALUES ($1,$2,0.2,'kg','ingredient')`, [parentId, farine.rows[0].id]);
     const fmtInactif = await client.query(`INSERT INTO recipe_formats (recipe_id, quantite_par_format, nb_par_defaut, is_active, is_default) VALUES ($1,800,1,false,false) RETURNING id`, [parentId]);
     await client.query(`INSERT INTO recipe_format_components (format_id, source_ingredient_id, quantite, unite, role) VALUES ($1,$2,50,'g','ingredient')`, [fmtInactif.rows[0].id, noisette.rows[0].id]);
     // La nomenclature d'un format ACTIF remplace celle de la recette (miroir
-    // trg_rf_sync_mirror) : le format porte donc aussi la base crème.
+    // trg_rf_sync_mirror) : le format porte donc aussi la base crème et la farine.
     await client.query(`INSERT INTO recipe_format_components (format_id, source_recipe_id, quantite, unite, role) VALUES ($1,$2,300,'g','base')`, [fmtInactif.rows[0].id, creme.rows[0].id]);
+    await client.query(`INSERT INTO recipe_format_components (format_id, source_ingredient_id, quantite, unite, role) VALUES ($1,$2,0.2,'kg','ingredient')`, [fmtInactif.rows[0].id, farine.rows[0].id]);
   });
   afterAll(async () => { await client.query('ROLLBACK'); client.release(); await closeTestPool(); });
 

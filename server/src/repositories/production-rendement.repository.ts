@@ -220,27 +220,25 @@ export const productionRendementRepository = {
       `SELECT ppi.contenant_id, ppi.nb_contenants, ppi.quantite_nette_cible,
               pc.quantite_theorique, pc.pertes_fixes, pc.seuil_rendement_defaut,
               pc.categories_pertes,
-              ppp.surcharge_quantite_theorique, ppp.surcharge_pertes_fixes,
-              ppp.surcharge_seuil_rendement,
               ppi.product_id, pp.store_id, pp.target_role,
               (SELECT t.code FROM production_order_types t WHERE t.id = pp.order_type_id) AS order_type
        FROM production_plan_items ppi
        JOIN production_plans pp ON pp.id = ppi.plan_id
        LEFT JOIN production_contenants pc ON pc.id = ppi.contenant_id
-       LEFT JOIN produit_profil_production ppp ON ppp.produit_id = ppi.product_id
        WHERE ppi.id = $1`,
       [planItemId]
     );
     if (!result.rows[0]) return null;
     const r = result.rows[0];
+    // 2b-1 : plus de surcharge par produit (produit_profil_production retirée) : contenant puis politique.
     // M1-03 : sans seuil sur la recette ni sur le contenant, la politique « Rendement cible »
     // (article → type d'ordre → atelier → établissement → société ; 90 % par défaut).
-    const seuil = r.surcharge_seuil_rendement ?? r.seuil_rendement_defaut
+    const seuil = r.seuil_rendement_defaut
       ?? await policyNumber('production.yield_target', 'pct', {
         productId: r.product_id, orderType: r.order_type, workshop: r.target_role, storeId: r.store_id });
     return {
-      quantiteTheorique: r.surcharge_quantite_theorique ?? r.quantite_theorique ?? 0,
-      pertesFixes: r.surcharge_pertes_fixes ?? r.pertes_fixes ?? 0,
+      quantiteTheorique: r.quantite_theorique ?? 0,
+      pertesFixes: r.pertes_fixes ?? 0,
       seuilRendement: seuil,
       nbContenants: r.nb_contenants ?? 1,
       quantiteNetteCible: r.quantite_nette_cible ?? 0,

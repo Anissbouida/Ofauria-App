@@ -7,7 +7,7 @@ import {
 // Client stub : route chaque requete SQL vers des lignes en dur, par table.
 // Les conversions fn_unit_conv sont simulees dans les colonnes qty_* (le SQL
 // reel les calcule) — le test valide la MECANIQUE : diviseurs de fournee,
-// recursion, perte standard, cycles, fallback legacy.
+// recursion, perte standard, cycles ; l'ancien modele n'est plus lu (pas 2b-1).
 
 interface StubData {
   recipes: Record<string, any>;
@@ -36,11 +36,9 @@ function makeClient(data: StubData) {
       if (text.includes('FROM recipe_components')) {
         return { rows: data.components[id] || [] };
       }
-      if (text.includes('FROM recipe_ingredients')) {
-        return { rows: data.legacyIngredients[id] || [] };
-      }
-      if (text.includes('FROM recipe_sub_recipes')) {
-        return { rows: data.legacySubs[id] || [] };
+      // Pas 2b-1 (mig 649) : l'ancien modele ne doit plus etre lu.
+      if (text.includes('FROM recipe_ingredients') || text.includes('FROM recipe_sub_recipes')) {
+        throw new Error('Ancien modele lu (recipe_ingredients / recipe_sub_recipes)');
       }
       throw new Error(`Requete non stubbee: ${text.slice(0, 80)}`);
     },
@@ -86,38 +84,34 @@ async function needsFor(client: any, recipeId: string, units: number, opts: any 
   return { acc, warnings };
 }
 
-describe('getCompositionForNeeds — mode legacy', () => {
-  it('reproduit la formule historique (qty / yield, unite de base)', async () => {
+describe('getCompositionForNeeds — ancien modele (pas 2b-1)', () => {
+  it("n'est plus lu : fiche hors mode compose = composition vide + avertissement", async () => {
     const client = makeClient({
       recipes: { r1: legacyRecipe('r1', 'Baguette', 10) },
       components: {}, formatComponents: {}, formats: {},
+      // Lignes presentes dans l'ancien modele : le stub leve si elles sont lues.
       legacyIngredients: {
         r1: [{ ingredient_id: 'farine', quantity: '5', ingredient_name: 'farine', recipe_unit: 'kg', base_unit: 'kg' }],
       },
       legacySubs: { r1: [] },
     });
     const comp = await getCompositionForNeeds(client, 'r1');
-    expect(comp?.mode).toBe('legacy');
-    expect(comp?.batchDivisor).toBe(10);
-
-    // 20 baguettes -> 5 kg / 10 x 20 = 10 kg de farine (formule historique)
-    const { acc } = await needsFor(client, 'r1', 20);
-    expect(acc.get('farine')).toBeCloseTo(10);
+    expect(comp?.isEmpty).toBe(true);
+    expect(comp?.ingredients).toHaveLength(0);
+    const { acc, warnings } = await needsFor(client, 'r1', 20);
+    expect(acc.size).toBe(0);
+    expect(warnings.some(w => w.includes('aucune composition'))).toBe(true);
   });
 
-  it('convertit g -> kg comme avant (toBaseUnit)', async () => {
+  it('garde la saisie d\'origine pour l\'affichage (420 g), la base pour les calculs', async () => {
     const client = makeClient({
-      recipes: { r1: legacyRecipe('r1', 'Brioche', 1) },
-      components: {}, formatComponents: {}, formats: {},
-      legacyIngredients: {
-        r1: [{ ingredient_id: 'sel', quantity: '420', ingredient_name: 'sel', recipe_unit: 'g', base_unit: 'kg' }],
-      },
-      legacySubs: { r1: [] },
+      recipes: { r1: composeRecipe('r1', 'Brioche', { compo_par_piece: true }) },
+      components: { r1: [ingComponent('sel', 0.42, { qty: 420, unit: 'g' })] },
+      formatComponents: {}, formats: {},
+      legacyIngredients: {}, legacySubs: {},
     });
     const { acc } = await needsFor(client, 'r1', 1);
     expect(acc.get('sel')).toBeCloseTo(0.42);
-
-    // L'affichage garde la saisie d'origine : 420 g, pas 0.42 kg.
     const comp = await getCompositionForNeeds(client, 'r1');
     expect(comp?.ingredients[0].qtyEntered).toBeCloseTo(420);
     expect(comp?.ingredients[0].unitEntered).toBe('g');
@@ -201,7 +195,7 @@ describe('getCompositionForNeeds — mode compose', () => {
     expect(acc.has('intrus')).toBe(false);
   });
 
-  it('compose sans composants -> fallback legacy, warning si tout est vide', async () => {
+  it('compose sans composants -> plus de repli sur l\'ancien modele, warning', async () => {
     const client = makeClient({
       recipes: { r1: composeRecipe('r1', 'Bascule', { yield_quantity: '5' }) },
       components: { r1: [] },
@@ -212,8 +206,8 @@ describe('getCompositionForNeeds — mode compose', () => {
       legacySubs: { r1: [] },
     });
     const { acc, warnings } = await needsFor(client, 'r1', 5);
-    expect(acc.get('oeufs')).toBeCloseTo(10);
-    expect(warnings).toHaveLength(0);
+    expect(acc.size).toBe(0);
+    expect(warnings.some(w => w.includes('aucune composition'))).toBe(true);
 
     const emptyClient = makeClient({
       recipes: { r2: composeRecipe('r2', 'Vide') },
@@ -227,29 +221,25 @@ describe('getCompositionForNeeds — mode compose', () => {
 });
 
 describe('conversion poids <-> volume (densité)', () => {
-  it('legacy : lait saisi en kg, stocké en l, converti via la densité', async () => {
+  it('compose : lait saisi en kg, stocké en l, converti (densité) par le SQL', async () => {
     const client = makeClient({
-      recipes: { r1: legacyRecipe('r1', 'Flan', 1) },
-      components: {}, formatComponents: {}, formats: {},
-      legacyIngredients: {
-        // Le chef pèse : 1.03 kg de lait ; le stock est en litres (densité 1.03 kg/L).
-        r1: [{ ingredient_id: 'lait', quantity: '1.03', ingredient_name: 'lait', recipe_unit: 'kg', base_unit: 'l', densite_kg_l: '1.03' }],
-      },
-      legacySubs: { r1: [] },
+      recipes: { r1: composeRecipe('r1', 'Flan', { compo_par_piece: true }) },
+      // Le chef pèse : 1.03 kg de lait ; le stock est en litres (densité 1.03 kg/L) -> 1 l.
+      components: { r1: [ingComponent('lait', 1, { qty: 1.03, unit: 'kg' })] },
+      formatComponents: {}, formats: {},
+      legacyIngredients: {}, legacySubs: {},
     });
     const { acc, warnings } = await needsFor(client, 'r1', 1);
     expect(acc.get('lait')).toBeCloseTo(1); // 1.03 kg / 1.03 = 1 litre
     expect(warnings).toHaveLength(0);
   });
 
-  it('legacy : sans densité, quantité prise telle quelle + warning explicite', async () => {
+  it('compose : sans densité, quantité prise telle quelle + warning explicite', async () => {
     const client = makeClient({
-      recipes: { r1: legacyRecipe('r1', 'Flan', 1) },
-      components: {}, formatComponents: {}, formats: {},
-      legacyIngredients: {
-        r1: [{ ingredient_id: 'lait', quantity: '1.2', ingredient_name: 'lait', recipe_unit: 'kg', base_unit: 'l', densite_kg_l: null }],
-      },
-      legacySubs: { r1: [] },
+      recipes: { r1: composeRecipe('r1', 'Flan', { compo_par_piece: true }) },
+      components: { r1: [ingComponent('lait', 1.2, { qty: 1.2, unit: 'kg' }, true)] },
+      formatComponents: {}, formats: {},
+      legacyIngredients: {}, legacySubs: {},
     });
     const { acc, warnings } = await needsFor(client, 'r1', 1);
     expect(acc.get('lait')).toBeCloseTo(1.2); // valeur brute, comme avant
@@ -290,18 +280,15 @@ describe('collectIngredientNeedsForUnits — garde-fous', () => {
   it('saute les sous-recettes couvertes par le stock semi-finis (skipSubRecipe)', async () => {
     const client = makeClient({
       recipes: {
-        parent: legacyRecipe('parent', 'Parent', 1),
-        creme: legacyRecipe('creme', 'Creme', 1),
+        parent: composeRecipe('parent', 'Parent', { compo_par_piece: true }),
+        creme: composeRecipe('creme', 'Creme', { yield_quantity: '1', yield_unit: 'kg' }),
       },
-      components: {}, formatComponents: {}, formats: {},
-      legacyIngredients: {
-        parent: [],
-        creme: [{ ingredient_id: 'lait', quantity: '1', ingredient_name: 'lait', recipe_unit: 'l', base_unit: 'l' }],
+      components: {
+        parent: [subComponent('creme', 2, 2, 1)],
+        creme: [ingComponent('lait', 1)],
       },
-      legacySubs: {
-        parent: [{ sub_recipe_id: 'creme', quantity: '2', name: 'Creme', is_base: true, yield_quantity: '1', yield_unit: 'kg' }],
-        creme: [],
-      },
+      formatComponents: {}, formats: {},
+      legacyIngredients: {}, legacySubs: {},
     });
     const withSkip = await needsFor(client, 'parent', 1, { skipSubRecipe: (id: string) => id === 'creme' });
     expect(withSkip.acc.size).toBe(0);

@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   hasTestDb, testPool, closeTestPool, importRepositories,
-  createBaseFixtures, createIngredient, createLot, cleanupFixtures, num, RUN, type Fixtures,
+  createBaseFixtures, createIngredient, createLot, cleanupFixtures, num, RUN, setComposition, type Fixtures,
 } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Production — semi-finis modèle B, cas limites (F-044)', () => {
@@ -35,7 +35,6 @@ describe.skipIf(!hasTestDb)('Production — semi-finis modèle B, cas limites (F
       await p.query(`DELETE FROM semi_finished_stock WHERE recipe_id = $1`, [rid]).catch(() => undefined);
       await p.query(`DELETE FROM production_plan_dependencies WHERE sub_recipe_id = $1`, [rid]).catch(() => undefined);
       await p.query(`DELETE FROM recipe_components WHERE recipe_id = $1 OR source_recipe_id = $1`, [rid]).catch(() => undefined);
-      await p.query(`DELETE FROM recipe_sub_recipes WHERE recipe_id = $1 OR sub_recipe_id = $1`, [rid]).catch(() => undefined);
     }
     await p.query(`DELETE FROM production_item_outputs WHERE plan_item_id IN (SELECT id FROM production_plan_items WHERE plan_id = ANY($1::uuid[]))`, [createdPlanIds]).catch(() => undefined);
     await p.query(`DELETE FROM production_plans WHERE store_id = $1 AND is_semi_finished_plan = true`, [fx.storeId]).catch(() => undefined);
@@ -56,7 +55,7 @@ describe.skipIf(!hasTestDb)('Production — semi-finis modèle B, cas limites (F
     );
     const id = r.rows[0].id;
     createdRecipeIds.push(id);
-    await testPool().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 1, 'kg')`, [id, ingredientId]);
+    await setComposition(id, { ingredients: [{ ingredientId, quantity: 1, unit: 'kg' }] });
     return id;
   }
 
@@ -153,8 +152,10 @@ describe.skipIf(!hasTestDb)('Production — semi-finis modèle B, cas limites (F
       [`Base c2-pate ${RUN}`]
     );
     createdRecipeIds.push(pate.rows[0].id);
-    await testPool().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 1, 'kg')`, [pate.rows[0].id, farine]);
-    await testPool().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 0.2)`, [pate.rows[0].id, levain.valueOf()]);
+    await setComposition(pate.rows[0].id, {
+      ingredients: [{ ingredientId: farine, quantity: 1, unit: 'kg' }],
+      subRecipes: [{ subRecipeId: levain.valueOf(), quantity: 0.2 }],
+    });
 
     // Produit « Pain » (legacy) : 0,5 kg Pate + 0,01 kg Sel / piece.
     const prod = await makeProduct('c2');
@@ -163,8 +164,10 @@ describe.skipIf(!hasTestDb)('Production — semi-finis modèle B, cas limites (F
       [`Rec c2 ${RUN}`, prod]
     );
     createdRecipeIds.push(rec.rows[0].id);
-    await testPool().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 0.01, 'kg')`, [rec.rows[0].id, sel]);
-    await testPool().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 0.5)`, [rec.rows[0].id, pate.rows[0].id]);
+    await setComposition(rec.rows[0].id, {
+      ingredients: [{ ingredientId: sel, quantity: 0.01, unit: 'kg' }],
+      subRecipes: [{ subRecipeId: pate.rows[0].id, quantity: 0.5 }],
+    });
 
     const farineBefore = await inv(farine);
     const levainIngBefore = await inv(levainIng);
@@ -205,8 +208,10 @@ describe.skipIf(!hasTestDb)('Production — semi-finis modèle B, cas limites (F
       [`Rec c3 ${RUN}`, tarte]
     );
     createdRecipeIds.push(rec.rows[0].id);
-    await testPool().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 0.01, 'kg')`, [rec.rows[0].id, sel]);
-    await testPool().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 0.5)`, [rec.rows[0].id, base]);
+    await setComposition(rec.rows[0].id, {
+      ingredients: [{ ingredientId: sel, quantity: 0.01, unit: 'kg' }],
+      subRecipes: [{ subRecipeId: base, quantity: 0.5 }],
+    });
 
     const farineBefore = await inv(farine);
     const planId = await confirmPlan(tarte, 10);

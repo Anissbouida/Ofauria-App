@@ -45,19 +45,9 @@ export const recipeFicheRepository = {
     );
     if (!recipe.rows[0]) return null;
 
-    const ingredients = await db.query(
-      `SELECT ing.name,
-              ri.quantity,
-              COALESCE(NULLIF(ri.unit, ''), ing.unit) AS unit,
-              ri.quantity
-                * COALESCE(ing.unit_cost, 0)
-                * fn_convert_factor(COALESCE(NULLIF(ri.unit, ''), ing.unit), ing.unit, 'ingredient', ing.id) AS cout_dh
-         FROM recipe_ingredients ri
-         JOIN ingredients ing ON ing.id = ri.ingredient_id
-        WHERE ri.recipe_id = $1
-        ORDER BY ing.name`,
-      [recipeId]
-    );
+    // Pas 2b-1 : plus de lignes « directes » hors nomenclature (ancien modèle retiré) ; toute
+    // la composition de la fiche est dans `components`. La section reste vide dans le PDF.
+    const ingredients: { rows: Array<{ name: string; quantity: number; unit: string; cout_dh: number }> } = { rows: [] };
 
     const formats = await db.query(
       `SELECT rf.id, rf.is_default, rf.nb_par_defaut, rf.nb_parts,
@@ -120,11 +110,12 @@ export const recipeFicheRepository = {
               vtc.total_cost   AS base_cost,
               bes.besoin_net,
               ing.name         AS ingredient_name,
-              ri.quantity,
-              COALESCE(NULLIF(ri.unit, ''), ing.unit) AS unit,
-              ri.quantity
+              bc.quantite      AS quantity,
+              bc.unite         AS unit,
+              bc.quantite
                 * COALESCE(ing.unit_cost, 0)
-                * fn_convert_factor(COALESCE(NULLIF(ri.unit, ''), ing.unit), ing.unit, 'ingredient', ing.id) AS cout_dh
+                * fn_convert_factor(bc.unite::text, ing.unit::text, 'ingredient', ing.id)
+                / NULLIF(1 - COALESCE(bc.perte_pct, 0) / 100, 0) AS cout_dh
          FROM sources s
          JOIN recipes br ON br.id = s.id
          LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = br.id
@@ -144,8 +135,10 @@ export const recipeFicheRepository = {
               AND rf2.recipe_id = $1
               AND ($2::uuid IS NULL OR rf2.id = $2::uuid)
          ) bes ON true
-         LEFT JOIN recipe_ingredients ri ON ri.recipe_id = br.id
-         LEFT JOIN ingredients ing ON ing.id = ri.ingredient_id
+         -- Matières de la préparation : nomenclature de son format par défaut (pas 2b-1).
+         LEFT JOIN recipe_formats bf ON bf.recipe_id = br.id AND bf.is_default AND bf.is_active
+         LEFT JOIN recipe_format_components bc ON bc.format_id = bf.id AND bc.source_ingredient_id IS NOT NULL
+         LEFT JOIN ingredients ing ON ing.id = bc.source_ingredient_id
         ORDER BY br.name, ing.name`,
       [recipeId, formatId ?? null]
     );

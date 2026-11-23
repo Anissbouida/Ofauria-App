@@ -92,7 +92,7 @@ export function requireStockUnitChange() {
       if (!unit) { next(); return; }
       const { rows } = await db.query(
         `SELECT l.unit FROM (
-           SELECT unit FROM recipe_ingredients WHERE ingredient_id = $1
+           SELECT unite AS unit FROM recipe_format_components WHERE source_ingredient_id = $1
            UNION ALL SELECT unite FROM recipe_components WHERE source_ingredient_id = $1
          ) l GROUP BY l.unit`, [req.params.id]);
       const bad = rows.map(r => r.unit as string | null).filter(u => lineUnitError(u, unit) !== null);

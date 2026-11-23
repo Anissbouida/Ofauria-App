@@ -68,8 +68,11 @@ describe.skipIf(!hasTestDb)('Recettes — archivage et versions completes', () =
     expect(num(s.recipe.total_cost)).toBeCloseTo(6, 3); // 600 g x 10 DH/kg
     expect(rows.rows[0].change_note).toBe('test capture');
     expect(rows.rows[0].changed_by).toBe(fx.userId);
-    // Les colonnes historiques restent remplies (UI existante) : ici legacy vide, compose capture a part.
-    expect(rows.rows[0].ingredients).toEqual([]);
+    // Les colonnes historiques restent remplies (UI existante) : depuis le pas 2b-1 elles
+    // reprennent les matières de la nomenclature du format par défaut, dans leur forme d'origine.
+    expect(rows.rows[0].ingredients).toHaveLength(1);
+    expect(rows.rows[0].ingredients[0]).toMatchObject({ ingredient_id: farineId, unit: 'g' });
+    expect(num(rows.rows[0].ingredients[0].quantity)).toBe(600);
   });
 
   it('une modification de nomenclature par format versionne AVANT d\'ecrire', async () => {

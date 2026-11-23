@@ -277,14 +277,12 @@ export const reportsController = {
         GROUP BY s.product_id
       ),
       recipe_live_cost AS (
+        -- Pas 2b-1 : coût de la nomenclature (vue de coût unique) au lieu de l'ancien modèle.
         SELECT rec.product_id,
-               SUM(CASE WHEN ri.unit = 'g' AND ing.unit = 'kg' THEN (ri.quantity / 1000.0) * ing.unit_cost
-                        ELSE ri.quantity * ing.unit_cost END
-               ) / NULLIF(rec.yield_quantity, 0) AS unit_cost
+               vtc.total_cost / NULLIF(rec.yield_quantity, 0) AS unit_cost
         FROM recipes rec
-        JOIN recipe_ingredients ri ON ri.recipe_id = rec.id
-        JOIN ingredients ing ON ing.id = ri.ingredient_id
-        GROUP BY rec.id, rec.product_id, rec.yield_quantity
+        JOIN v_recipe_total_cost_v2 vtc ON vtc.id = rec.id
+        WHERE rec.product_id IS NOT NULL AND vtc.total_cost > 0
       ),
       sold AS (
         SELECT p.id AS product_id, p.name, c.name AS category,
@@ -465,14 +463,12 @@ export const reportsController = {
       ),
       recipe_live_cost AS (
         -- Fallback theorique (utilise seulement si production_cout_reel n'a pas de donnees pour ce produit).
+        -- Pas 2b-1 : coût de la nomenclature (vue de coût unique) au lieu de l'ancien modèle.
         SELECT rec.product_id,
-               SUM(CASE WHEN ri.unit = 'g' AND ing.unit = 'kg' THEN (ri.quantity / 1000.0) * ing.unit_cost
-                        ELSE ri.quantity * ing.unit_cost END
-               ) / NULLIF(rec.yield_quantity, 0) AS unit_cost
+               vtc.total_cost / NULLIF(rec.yield_quantity, 0) AS unit_cost
         FROM recipes rec
-        JOIN recipe_ingredients ri ON ri.recipe_id = rec.id
-        JOIN ingredients ing ON ing.id = ri.ingredient_id
-        GROUP BY rec.id, rec.product_id, rec.yield_quantity
+        JOIN v_recipe_total_cost_v2 vtc ON vtc.id = rec.id
+        WHERE rec.product_id IS NOT NULL AND vtc.total_cost > 0
       ),
       sold AS (
         SELECT

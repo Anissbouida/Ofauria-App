@@ -720,9 +720,10 @@ export const productionCoutRepository = {
                JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
                WHERE plu.production_plan_id = pp.id
                  AND plu.ingredient_id IN (
-                   SELECT ri.ingredient_id FROM recipe_ingredients ri
-                   JOIN recipes r ON r.id = ri.recipe_id
-                   WHERE r.id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
+                   -- 2b-1 : matières de la nomenclature (miroir du format par défaut).
+                   SELECT rc.source_ingredient_id FROM recipe_components rc
+                   WHERE rc.source_ingredient_id IS NOT NULL
+                     AND rc.recipe_id = COALESCE(ppi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id LIMIT 1))
                  )
              ) item_mat ON true
              LEFT JOIN LATERAL (

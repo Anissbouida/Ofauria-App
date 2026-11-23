@@ -16,7 +16,9 @@ describe.skipIf(!hasTestDb)('Remplacement en masse et substituts (M4-05)', () =>
   const logs: string[] = [];
   const p = () => testPool();
   const qty = async (recipeId: string, ing: string) =>
-    (await p().query(`SELECT quantity FROM recipe_ingredients WHERE recipe_id = $1 AND ingredient_id = $2`, [recipeId, ing])).rows.map(r => num(r.quantity));
+    (await p().query(
+      `SELECT fc.quantite AS quantity FROM recipe_format_components fc JOIN recipe_formats f ON f.id = fc.format_id
+        WHERE f.recipe_id = $1 AND f.is_default AND fc.source_ingredient_id = $2`, [recipeId, ing])).rows.map(r => num(r.quantity));
 
   beforeAll(async () => {
     repos = await importRepositories();

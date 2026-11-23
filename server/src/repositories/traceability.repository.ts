@@ -22,8 +22,6 @@ const MAX_DEPTH = 4;
 async function recipesContaining(ingredientId: string): Promise<Set<string>> {
   const { rows } = await db.query(
     `WITH RECURSIVE r(recipe_id) AS (
-       SELECT recipe_id FROM recipe_ingredients WHERE ingredient_id = $1
-       UNION
        SELECT recipe_id FROM recipe_components WHERE source_ingredient_id = $1
        UNION
        SELECT rc.recipe_id FROM recipe_components rc JOIN r ON rc.source_recipe_id = r.recipe_id
@@ -43,8 +41,6 @@ async function ingredientsOfRecipe(recipeId: string): Promise<Set<string>> {
        SELECT rc.source_recipe_id FROM recipe_components rc JOIN r ON rc.recipe_id = r.recipe_id
         WHERE rc.source_recipe_id IS NOT NULL
      )
-     SELECT ri.ingredient_id FROM recipe_ingredients ri JOIN r ON r.recipe_id = ri.recipe_id
-     UNION
      SELECT rc.source_ingredient_id FROM recipe_components rc JOIN r ON r.recipe_id = rc.recipe_id
       WHERE rc.source_ingredient_id IS NOT NULL`,
     [recipeId],

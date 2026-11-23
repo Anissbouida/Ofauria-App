@@ -1,8 +1,8 @@
 /**
  * Re-sync products.cost_price et products.price (ou price_per_kg selon sale_unit)
- * pour toutes les recettes ayant un produit lie. A executer apres la mig 174
- * (deduplication recipe_ingredients) car les anciens cost_price ont ete calcules
- * avec un cout matiere double (doublons d'ingredients).
+ * pour toutes les recettes ayant un produit lie, depuis la vue de cout unique
+ * (v_recipe_total_cost_v2). Outil ponctuel : ecrit a l'origine apres la mig 174
+ * (dedoublonnage des lignes de l'ancien modele de fiche, retire au pas 2b-1).
  *
  * Usage : npx tsx server/src/scripts/resync-recipe-product-prices.ts
  */

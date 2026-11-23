@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   hasTestDb, testPool, closeTestPool, importRepositories,
-  createBaseFixtures, createIngredient, createLot, cleanupFixtures, num, RUN, type Fixtures,
+  createBaseFixtures, createIngredient, createLot, cleanupFixtures, num, RUN, setComposition, type Fixtures,
 } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Nomenclature fantôme (M9)', () => {
@@ -30,7 +30,7 @@ describe.skipIf(!hasTestDb)('Nomenclature fantôme (M9)', () => {
       `INSERT INTO recipes (name, is_base, is_phantom, product_id, yield_quantity, yield_unit, mode_cout)
        VALUES ($1, true, true, NULL, 1, 'kg', 'ratio_poids') RETURNING id`, [`Pate ph ${RUN}`])).rows[0].id;
     fx.ids.recipes.push(pateRecipeId);
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 1, 'kg')`, [pateRecipeId, farineId]);
+    await setComposition(pateRecipeId, { ingredients: [{ ingredientId: farineId, quantity: 1, unit: 'kg' }] });
     baguetteId = (await p().query(
       `INSERT INTO products (name, slug, price, sale_type, sale_unit) VALUES ($1, $2, 3, 'jour', 'unit') RETURNING id`,
       [`Baguette ph ${RUN}`, `baguette-ph-${RUN}`.toLowerCase()])).rows[0].id;
@@ -39,13 +39,14 @@ describe.skipIf(!hasTestDb)('Nomenclature fantôme (M9)', () => {
       `INSERT INTO recipes (name, is_base, product_id, yield_quantity, yield_unit, mode_cout)
        VALUES ($1, false, $2, 1, 'unit', 'ratio_poids') RETURNING id`, [`Rec Baguette ph ${RUN}`, baguetteId])).rows[0].id;
     fx.ids.recipes.push(baguetteRecipeId);
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 0.01, 'kg')`, [baguetteRecipeId, selId]);
-    await p().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 0.5)`, [baguetteRecipeId, pateRecipeId]);
+    await setComposition(baguetteRecipeId, {
+      ingredients: [{ ingredientId: selId, quantity: 0.01, unit: 'kg' }],
+      subRecipes: [{ subRecipeId: pateRecipeId, quantity: 0.5 }],
+    });
   }, 60_000);
 
   afterAll(async () => {
     await p().query(`DELETE FROM production_plan_dependencies WHERE sub_recipe_id = $1`, [pateRecipeId]).catch(() => undefined);
-    await p().query(`DELETE FROM recipe_sub_recipes WHERE recipe_id = $1`, [baguetteRecipeId]).catch(() => undefined);
     if (fx) await cleanupFixtures(fx);
     await repos?.db.pool.end().catch(() => undefined);
     await closeTestPool();

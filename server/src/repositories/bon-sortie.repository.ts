@@ -692,72 +692,9 @@ export const bonSortieRepository = {
         }
       }
 
-      // ─── Phase Emballages : ajouter les lignes BSI emballages ───
-      // Pour chaque item du plan, on regarde la recette → recipe_packaging et
-      // on calcule le besoin emballage au prorata de la qty produite. Une seule
-      // ligne BSI par packaging_id, agregant les besoins de toutes les recettes.
-      const planItemsResult = await client.query(
-        `SELECT pi.product_id, pi.planned_quantity, r.id as recipe_id, r.yield_quantity
-         FROM production_plan_items pi
-         LEFT JOIN recipes r ON r.id = COALESCE(pi.alt_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = pi.product_id LIMIT 1))
-         WHERE pi.plan_id = $1 AND r.id IS NOT NULL`,
-        [planId]
-      );
-
-      const packagingNeedsMap = new Map<string, { qty: number; name: string; format: string | null; unit: string; unit_cost: number }>();
-      for (const planItem of planItemsResult.rows) {
-        const yieldQty = parseFloat(planItem.yield_quantity) || 1;
-        const itemQty = parseFloat(planItem.planned_quantity);
-        const pkResult = await client.query(
-          `SELECT rp.packaging_id, rp.quantity, rp.unit,
-                  pi.name, pi.format, pi.unit as base_unit, pi.unit_cost
-           FROM recipe_packaging rp
-           JOIN packaging_items pi ON pi.id = rp.packaging_id
-           WHERE rp.recipe_id = $1`,
-          [planItem.recipe_id]
-        );
-        for (const pk of pkResult.rows) {
-          const needed = (parseFloat(pk.quantity) / yieldQty) * itemQty;
-          const existing = packagingNeedsMap.get(pk.packaging_id) || {
-            qty: 0, name: pk.name, format: pk.format, unit: pk.unit || pk.base_unit, unit_cost: parseFloat(pk.unit_cost),
-          };
-          existing.qty += needed;
-          packagingNeedsMap.set(pk.packaging_id, existing);
-        }
-      }
-
-      // Ajouter les lignes packaging au BSI (status='en_attente' ou 'rupture' selon stock)
-      for (const [packagingId, need] of packagingNeedsMap) {
-        const stockResult = await client.query(
-          `SELECT COALESCE(stock_quantity, 0) as stock FROM packaging_store_stock
-           WHERE packaging_id = $1 AND store_id = $2`,
-          [packagingId, storeId]
-        );
-        const available = parseFloat(stockResult.rows[0]?.stock || '0');
-        const allocated = Math.min(available, need.qty);
-        const isRupture = allocated < need.qty;
-
-        const lineResult = await client.query(
-          `INSERT INTO production_bons_sortie_lignes
-             (bon_id, ingredient_id, packaging_id, needed_quantity, allocated_quantity, unit, status, notes)
-           VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)
-           RETURNING *`,
-          [
-            bon.id, packagingId, need.qty, allocated, need.unit,
-            isRupture ? 'rupture' : 'en_attente',
-            isRupture ? `⚠ Stock insuffisant : ${available.toFixed(2)} dispo / ${need.qty.toFixed(2)} besoin` : null,
-          ]
-        );
-
-        lines.push({
-          ...lineResult.rows[0],
-          packaging_name: need.name,
-          packaging_format: need.format,
-          ingredient_name: need.name,  // alias pour compat UI existante
-          ingredient_unit: need.unit,
-          is_packaging: true,
-        });
-      }
+      // 2b-1 : les emballages de l'ancien modèle (recipe_packaging) ne donnent plus de lignes
+      // au bon de sortie. Les lignes d'emballage de la nomenclature du format (mig 634) n'y
+      // figurent pas : elles sortent du stock à la déclaration de production.
 
       // 5. Link bon to plan
       await client.query(

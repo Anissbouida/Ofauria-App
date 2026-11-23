@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   hasTestDb, testPool, closeTestPool, importRepositories,
-  createBaseFixtures, createProductWithRecipe, cleanupFixtures, RUN, type Fixtures,
+  createBaseFixtures, createProductWithRecipe, cleanupFixtures, RUN, setComposition, type Fixtures,
 } from './helpers.js';
 
 const num = (v: unknown) => parseFloat(String(v));
@@ -30,7 +30,8 @@ describe.skipIf(!hasTestDb)('Production — emballages consommés une fois (G0-2
     packagingId = (await p().query(
       `INSERT INTO packaging_items (name, unit, unit_cost, category) VALUES ($1, 'piece', 0.2, 'autre') RETURNING id`, [`Boîte G022 ${RUN}`])).rows[0].id;
     await p().query(`INSERT INTO packaging_store_stock (packaging_id, store_id, stock_quantity) VALUES ($1, $2, 500)`, [packagingId, fx.storeId]);
-    await p().query(`INSERT INTO recipe_packaging (recipe_id, packaging_id, quantity) VALUES ($1, $2, 1)`, [pr.recipeId, packagingId]);
+    // Pas 2b-1 : l'emballage est une ligne « emballage » de la nomenclature du format par défaut.
+    await setComposition(pr.recipeId, { packaging: [{ packagingId, quantity: 1 }] });
 
     const plan = await repos.productionRepository.create({
       planDate: new Date().toISOString().slice(0, 10), type: 'daily', createdBy: fx.userId, storeId: fx.storeId,
@@ -46,7 +47,7 @@ describe.skipIf(!hasTestDb)('Production — emballages consommés une fois (G0-2
   }, 60_000);
 
   afterAll(async () => {
-    await p().query(`DELETE FROM recipe_packaging WHERE packaging_id = $1`, [packagingId]).catch(() => undefined);
+    await p().query(`DELETE FROM recipe_format_components WHERE source_packaging_id = $1`, [packagingId]).catch(() => undefined);
     await p().query(`DELETE FROM packaging_stock_transactions WHERE packaging_id = $1`, [packagingId]).catch(() => undefined);
     await p().query(`DELETE FROM packaging_store_stock WHERE packaging_id = $1`, [packagingId]).catch(() => undefined);
     if (fx) await cleanupFixtures(fx);
@@ -61,7 +62,8 @@ describe.skipIf(!hasTestDb)('Production — emballages consommés une fois (G0-2
     const m = await moves();
     expect(m).toHaveLength(1);
     expect(m[0].q).toBe(-100);
-    expect(m[0].note).toMatch(/^Production: /);
+    // Pas 2b-1 : la sortie vient des lignes « emballage » du format (mig 634), libellé du format.
+    expect(m[0].note).toMatch(/^Emballage du format : /);
   }, 60_000);
 
   it('le plan déjà produit ne reconsomme rien à la clôture', async () => {

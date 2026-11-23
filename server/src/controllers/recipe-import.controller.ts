@@ -348,17 +348,23 @@ async function buildPlan(parsed: ParsedRecipesWorkbook): Promise<RecipePlan> {
 
     // Charge la composition existante depuis la DB
     const existingIngRes = await db.query(
-      `SELECT ri.ingredient_id, ri.quantity, ri.unit, ing.name AS ingredient_name
-       FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
-       WHERE ri.recipe_id = $1`,
+      // Pas 2b-1 : composition actuelle = nomenclature du format par défaut.
+      `SELECT c.source_ingredient_id AS ingredient_id, c.quantite AS quantity, c.unite AS unit, ing.name AS ingredient_name
+       FROM recipe_format_components c JOIN recipe_formats f ON f.id = c.format_id AND f.is_default AND f.is_active
+       JOIN ingredients ing ON ing.id = c.source_ingredient_id
+       WHERE f.recipe_id = $1 ORDER BY c.ordre`,
       [dbRecipe.id]
     );
     const existingSubRes = await db.query(
-      `SELECT sub_recipe_id, quantity FROM recipe_sub_recipes WHERE recipe_id = $1`,
+      `SELECT c.source_recipe_id AS sub_recipe_id, c.quantite AS quantity
+       FROM recipe_format_components c JOIN recipe_formats f ON f.id = c.format_id AND f.is_default AND f.is_active
+       WHERE f.recipe_id = $1 AND c.source_recipe_id IS NOT NULL ORDER BY c.ordre`,
       [dbRecipe.id]
     );
     const existingPkgRes = await db.query(
-      `SELECT packaging_id, quantity, unit FROM recipe_packaging WHERE recipe_id = $1`,
+      `SELECT c.source_packaging_id AS packaging_id, c.quantite AS quantity, c.unite AS unit
+       FROM recipe_format_components c JOIN recipe_formats f ON f.id = c.format_id AND f.is_default AND f.is_active
+       WHERE f.recipe_id = $1 AND c.source_packaging_id IS NOT NULL ORDER BY c.ordre`,
       [dbRecipe.id]
     );
 
@@ -518,30 +524,30 @@ async function buildExportPayload(filter: 'all' | 'base' | 'product'): Promise<R
 
   // Ingredients
   const ingRes = await db.query(
-    `SELECT ri.recipe_id, ri.quantity, COALESCE(ri.unit, ing.unit) AS unit, ing.name AS ingredient_name
-     FROM recipe_ingredients ri
-     JOIN ingredients ing ON ing.id = ri.ingredient_id
-     WHERE ri.recipe_id = ANY($1::uuid[])
+    `SELECT f.recipe_id, c.quantite AS quantity, c.unite AS unit, ing.name AS ingredient_name
+     FROM recipe_format_components c JOIN recipe_formats f ON f.id = c.format_id AND f.is_default AND f.is_active
+     JOIN ingredients ing ON ing.id = c.source_ingredient_id
+     WHERE f.recipe_id = ANY($1::uuid[])
      ORDER BY ing.name`,
     [recipeIds]
   );
 
   // Sous-recettes
   const subRes = await db.query(
-    `SELECT rsr.recipe_id, rsr.quantity, sr.name AS sub_recipe_name
-     FROM recipe_sub_recipes rsr
-     JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-     WHERE rsr.recipe_id = ANY($1::uuid[])
+    `SELECT f.recipe_id, c.quantite AS quantity, sr.name AS sub_recipe_name
+     FROM recipe_format_components c JOIN recipe_formats f ON f.id = c.format_id AND f.is_default AND f.is_active
+     JOIN recipes sr ON sr.id = c.source_recipe_id
+     WHERE f.recipe_id = ANY($1::uuid[])
      ORDER BY sr.name`,
     [recipeIds]
   );
 
   // Emballages
   const pkgRes = await db.query(
-    `SELECT rp.recipe_id, rp.quantity, rp.unit, pi.name AS packaging_name
-     FROM recipe_packaging rp
-     JOIN packaging_items pi ON pi.id = rp.packaging_id
-     WHERE rp.recipe_id = ANY($1::uuid[])
+    `SELECT f.recipe_id, c.quantite AS quantity, c.unite AS unit, pi.name AS packaging_name
+     FROM recipe_format_components c JOIN recipe_formats f ON f.id = c.format_id AND f.is_default AND f.is_active
+     JOIN packaging_items pi ON pi.id = c.source_packaging_id
+     WHERE f.recipe_id = ANY($1::uuid[])
      ORDER BY pi.name`,
     [recipeIds]
   );

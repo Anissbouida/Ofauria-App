@@ -1,14 +1,9 @@
-import { convertQuantity } from '../utils/units.js';
-
 // Source unique de la nomenclature pour le calcul des BESOINS de production
 // (confirmation de plan / BSI, deduction stock, detection semi-finis, analyse).
 //
-// Probleme resolu : les recettes en mode 'compose' stockent leur composition dans
-// recipe_components / recipe_format_components, et la sauvegarde de la composition
-// du format par defaut VIDE recipe_ingredients + recipe_sub_recipes (voir
-// recipe-component.repository.replaceForFormat). Tous les calculs de besoins qui
-// ne lisent que les tables legacy voient donc une recette composee comme VIDE :
-// plan confirme sans besoins, sans BSI, sans plans semi-finis.
+// Les recettes en mode 'compose' stockent leur composition dans recipe_components /
+// recipe_format_components. Pas 2b-1 : l'ancien modèle (lignes à plat) n'est plus lu ;
+// une fiche sans nomenclature a une composition vide.
 //
 // Semantique alignee sur v_recipe_total_cost_v2 (migration 205) :
 // - composant ingredient : quantite * fn_unit_conv(unite, ing.unit)  → unite de base
@@ -145,54 +140,14 @@ export async function getCompositionForNeeds(
         isEmpty: false,
       };
     }
-    // Compose sans composants (mode bascule mais compo jamais saisie) :
-    // on retombe sur le legacy s'il existe encore — meme logique que findChildren.
+    // Compose sans composants (mode bascule mais compo jamais saisie) : composition vide.
   }
 
-  // Mode legacy (ratio_poids) ou fallback compose-vide.
-  const ings = await client.query(
-    `SELECT ri.ingredient_id, ri.quantity, ing.name AS ingredient_name,
-            COALESCE(NULLIF(ri.unit, ''), ing.unit) AS recipe_unit,
-            ing.unit AS base_unit, ing.densite_kg_l
-       FROM recipe_ingredients ri
-       JOIN ingredients ing ON ing.id = ri.ingredient_id
-      WHERE ri.recipe_id = $1`,
-    [recipeId]
-  );
-  const subs = await client.query(
-    `SELECT rsr.sub_recipe_id, rsr.quantity, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.yield_quantity, r.yield_unit
-       FROM recipe_sub_recipes rsr
-       JOIN recipes r ON r.id = rsr.sub_recipe_id
-      WHERE rsr.recipe_id = $1`,
-    [recipeId]
-  );
+  // Pas 2b-1 : l'ancien modèle n'est plus lu. Une fiche hors mode composé, ou composée
+  // sans aucun composant, n'a pas de composition (le type garde 'legacy' pour les appelants).
   return {
     recipeId, recipeName: rec.name, mode: 'legacy', source: 'legacy', batchDivisor: yieldQty,
-    ingredients: ings.rows.map((ri: any) => {
-      const densite = ri.densite_kg_l != null ? parseFloat(ri.densite_kg_l) : null;
-      const conv = convertQuantity(parseFloat(ri.quantity), ri.recipe_unit, ri.base_unit, densite);
-      return {
-        ingredientId: ri.ingredient_id,
-        name: ri.ingredient_name,
-        unit: ri.base_unit,
-        qtyPerBatch: conv.value,
-        qtyEntered: parseFloat(ri.quantity),
-        unitEntered: ri.recipe_unit,
-        conversionUncertain: conv.uncertain,
-      };
-    }),
-    subRecipes: subs.rows.map((sub: any) => ({
-      subRecipeId: sub.sub_recipe_id,
-      name: sub.name,
-      isBase: sub.is_base === true,
-      isPhantom: sub.is_phantom === true,
-      yieldUnit: sub.yield_unit || 'unit',
-      yieldQuantity: parseFloat(sub.yield_quantity) > 0 ? parseFloat(sub.yield_quantity) : 1,
-      // Le legacy ne modelise pas la perte : net = brut.
-      netQtyPerBatch: parseFloat(sub.quantity),
-      grossQtyPerBatch: parseFloat(sub.quantity),
-    })),
-    isEmpty: ings.rows.length === 0 && subs.rows.length === 0,
+    ingredients: [], subRecipes: [], isEmpty: true,
   };
 }
 

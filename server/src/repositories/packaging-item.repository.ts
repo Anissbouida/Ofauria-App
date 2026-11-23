@@ -2,6 +2,8 @@ import type { PoolClient } from 'pg';
 import { db, withTransaction } from '../config/database.js';
 import { capitalizeFirst } from '../utils/text.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
+import { ensureDefaultFormat } from './composition-lines.helper.js';
+import { unitIdSql } from '../utils/qty-unit.js';
 
 /**
  * Packaging items — emballages : caissettes, boites, sachets, etiquettes, films...
@@ -11,7 +13,7 @@ import { applyStockOut } from '../services/stock-anomaly.js';
  *   - Pas de FEFO (pas de chrono d'expiration)
  *   - Stock simple par store (packaging_store_stock)
  *   - Mouvements traces dans packaging_stock_transactions (journal flat)
- *   - Cout integre a recipe.total_cost via recipe_packaging
+ *   - Cout integre a la fiche via les lignes « emballage » de la nomenclature du format (mig 634)
  */
 
 export interface PackagingItem {
@@ -250,42 +252,53 @@ export const packagingItemRepository = {
   },
 
   // ─── Liens recettes ──────────────────────────────────────────────────
+  // 2b-1 : les emballages d'une fiche sont des lignes « emballage » (source_packaging_id) de la
+  // nomenclature du format par défaut (mig 634) ; l'ancien modèle (recipe_packaging) n'est plus
+  // lu ni écrit.
   async findByRecipe(recipeId: string) {
     const result = await db.query(
-      `SELECT rp.*, pi.name as packaging_name, pi.format, pi.unit_cost,
-              COALESCE(rp.unit, pi.unit) as unit, pi.unit as base_unit, pi.category
-       FROM recipe_packaging rp
-       JOIN packaging_items pi ON pi.id = rp.packaging_id
-       WHERE rp.recipe_id = $1
+      `SELECT c.id, f.recipe_id, c.source_packaging_id AS packaging_id, c.quantite AS quantity,
+              pi.name as packaging_name, pi.format, pi.unit_cost,
+              COALESCE(NULLIF(c.unite, ''), pi.unit) as unit, pi.unit as base_unit, pi.category
+       FROM recipe_format_components c
+       JOIN recipe_formats f ON f.id = c.format_id AND f.is_default
+       JOIN packaging_items pi ON pi.id = c.source_packaging_id
+       WHERE f.recipe_id = $1
        ORDER BY pi.name`,
       [recipeId]
     );
     return result.rows;
   },
 
+  /** Remplace les seules lignes d'emballage du format par défaut (créé au besoin). */
   async upsertRecipeLinks(
     client: PoolClient,
     recipeId: string,
     items: { packagingId: string; quantity: number; unit?: string | null; notes?: string | null }[]
   ) {
-    // Strategie : DELETE + INSERT (consistant avec recipe_ingredients)
-    await client.query(`DELETE FROM recipe_packaging WHERE recipe_id = $1`, [recipeId]);
+    const formatId = await ensureDefaultFormat(client, recipeId);
+    await client.query(
+      `DELETE FROM recipe_format_components WHERE format_id = $1 AND source_packaging_id IS NOT NULL`, [formatId]);
+    let ordre = Number((await client.query(
+      `SELECT COALESCE(MAX(ordre) + 1, 0) AS n FROM recipe_format_components WHERE format_id = $1`, [formatId])).rows[0].n);
     for (const it of items) {
       await client.query(
-        `INSERT INTO recipe_packaging (recipe_id, packaging_id, quantity, unit, notes)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [recipeId, it.packagingId, it.quantity, it.unit ?? null, it.notes ?? null]
+        `INSERT INTO recipe_format_components
+           (format_id, role, source_packaging_id, quantite, unite, unit_id, perte_pct, ordre)
+         VALUES ($1, 'emballage', $2, $3, $4::varchar, ${unitIdSql('$4::varchar')}, 0, $5)`,
+        [formatId, it.packagingId, it.quantity, it.unit || 'unit', ordre++]
       );
     }
   },
 
-  /** Calcule le cout emballages total d'une recette (somme qty * unit_cost). */
+  /** Calcule le cout emballages total d'une recette (somme qty * unit_cost) — format par défaut. */
   async computeRecipePackagingCost(client: PoolClient | typeof db, recipeId: string): Promise<number> {
     const result = await client.query(
-      `SELECT COALESCE(SUM(rp.quantity * pi.unit_cost), 0) as total_cost
-       FROM recipe_packaging rp
-       JOIN packaging_items pi ON pi.id = rp.packaging_id
-       WHERE rp.recipe_id = $1`,
+      `SELECT COALESCE(SUM(c.quantite * pi.unit_cost), 0) as total_cost
+       FROM recipe_format_components c
+       JOIN recipe_formats f ON f.id = c.format_id AND f.is_default
+       JOIN packaging_items pi ON pi.id = c.source_packaging_id
+       WHERE f.recipe_id = $1`,
       [recipeId]
     );
     return parseFloat(result.rows[0].total_cost);
@@ -294,7 +307,9 @@ export const packagingItemRepository = {
   /** Recettes qui utilisent un packaging (utile pour cascade prix). */
   async findRecipesByPackaging(packagingId: string): Promise<string[]> {
     const result = await db.query(
-      `SELECT DISTINCT recipe_id FROM recipe_packaging WHERE packaging_id = $1`,
+      `SELECT DISTINCT f.recipe_id
+         FROM recipe_format_components c JOIN recipe_formats f ON f.id = c.format_id
+        WHERE c.source_packaging_id = $1`,
       [packagingId]
     );
     return result.rows.map(r => r.recipe_id);

@@ -7,7 +7,7 @@
  *  - approuvée : la version 2 devient active ; refusée : le brouillon est retiré.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createProductWithRecipe, cleanupFixtures, RUN, type Fixtures } from './helpers.js';
+import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createProductWithRecipe, cleanupFixtures, RUN, setIngredientQty, type Fixtures } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Approbation d\'une modification de nomenclature (M4-03)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
@@ -50,7 +50,7 @@ describe.skipIf(!hasTestDb)('Approbation d\'une modification de nomenclature (M4
   });
 
   it('coût doublé : brouillon en attente, impact calculé ; approuvée → active', async () => {
-    await p().query(`UPDATE recipe_ingredients SET quantity = 1.0 WHERE recipe_id = $1`, [recipeId]);
+    await setIngredientQty(recipeId, null, 1.0);
     const r = await act(recipeId, { reason: 'Recette plus riche' }, manager) as { pending?: boolean; version_no: number; impact: { cost_change_pct: number; open_orders: number } };
     expect(r).toMatchObject({ pending: true, version_no: 2 });
     expect(r.impact.cost_change_pct).toBeCloseTo(100, 0);
@@ -63,7 +63,7 @@ describe.skipIf(!hasTestDb)('Approbation d\'une modification de nomenclature (M4
   });
 
   it('refusée : le brouillon est retiré, la fiche garde ses modifications', async () => {
-    await p().query(`UPDATE recipe_ingredients SET quantity = 2.0 WHERE recipe_id = $1`, [recipeId]);
+    await setIngredientQty(recipeId, null, 2.0);
     expect(await act(recipeId, { reason: 'Encore plus' }, manager)).toMatchObject({ pending: true, version_no: 3 });
     await approvals.decide(await pendingRequest(), { userId: fx.userId, role: 'admin' }, 'reject', 'Trop cher');
     const list = await bom.list(recipeId);

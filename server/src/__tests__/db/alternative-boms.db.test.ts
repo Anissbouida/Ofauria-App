@@ -8,7 +8,7 @@
  *  - une fiche d'un autre produit ne peut pas être choisie.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createLot, createProductWithRecipe, cleanupFixtures, num, RUN, type Fixtures } from './helpers.js';
+import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createLot, createProductWithRecipe, cleanupFixtures, num, RUN, setComposition, type Fixtures } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Plusieurs nomenclatures par article (M4-04)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
@@ -35,7 +35,7 @@ describe.skipIf(!hasTestDb)('Plusieurs nomenclatures par article (M4-04)', () =>
     other = o.recipeId;
     altRecipe = (await p().query(`INSERT INTO recipes (name, yield_quantity, yield_unit) VALUES ($1, 1, 'unit') RETURNING id`, [`Pain M404 alternative ${RUN}`])).rows[0].id;
     fx.ids.recipes.push(altRecipe);
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 0.3, 'kg')`, [altRecipe, flour]);
+    await setComposition(altRecipe, { ingredients: [{ ingredientId: flour, quantity: 0.3, unit: 'kg' }] });
     await rf.setAlternative(altRecipe, productId, 'alternative');
   }, 60_000);
 

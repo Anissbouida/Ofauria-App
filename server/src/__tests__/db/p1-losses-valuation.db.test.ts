@@ -56,7 +56,9 @@ describe.skipIf(!hasTestDb)('Pertes — valorisation au cout matieres (F-020/F-0
     );
     expect(num(r.rows[0]?.unit_cost)).toBeCloseTo(4, 3);
     // La source est la recette (pas la fiche produit a 0, pas le prix).
-    expect(r.rows[0]?.cost_source).toBe('recette');
+    // Pas 2b-1 : la composition vit dans le format par défaut, la source est donc « format »
+    // (coût de la fiche par format) — toujours la fiche, jamais cost_price ni le prix.
+    expect(r.rows[0]?.cost_source).toBe('format');
   });
 
   it('le helper renvoie le cout matieres, filet cost_price, jamais le prix de vente', async () => {

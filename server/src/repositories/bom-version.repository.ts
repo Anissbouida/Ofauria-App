@@ -214,8 +214,8 @@ export const bomVersionRepository = {
         }
         // Bases et sous-ensembles de ces fiches (contenu rejoué compris), pas encore vus.
         const children = (await client.query(
-          `SELECT sub_recipe_id AS id FROM recipe_sub_recipes WHERE recipe_id = ANY($1::uuid[])
-           UNION SELECT source_recipe_id FROM recipe_components WHERE recipe_id = ANY($1::uuid[]) AND source_recipe_id IS NOT NULL
+          // Pas 2b-1 : nomenclature composée seulement (miroir + formats), plus l'ancien modèle.
+          `SELECT source_recipe_id AS id FROM recipe_components WHERE recipe_id = ANY($1::uuid[]) AND source_recipe_id IS NOT NULL
            UNION SELECT fc.source_recipe_id FROM recipe_format_components fc JOIN recipe_formats f ON f.id = fc.format_id
                   WHERE f.recipe_id = ANY($1::uuid[]) AND fc.source_recipe_id IS NOT NULL`, [frontier])).rows
           .map(r => r.id as string);

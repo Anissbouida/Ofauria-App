@@ -276,10 +276,12 @@ export const productionRepository = {
     let recipeIngredients: Record<string, unknown>[] = [];
     if (depOfResult.rows.length > 0 && depOfResult.rows[0].sub_recipe_id) {
       const riResult = await db.query(
-        `SELECT ri.ingredient_id, ing.name as ingredient_name, ri.quantity, COALESCE(NULLIF(ri.unit, ''), ing.unit) as unit, ing.unit as base_unit
-         FROM recipe_ingredients ri
-         JOIN ingredients ing ON ing.id = ri.ingredient_id
-         WHERE ri.recipe_id = $1
+        // 2b-1 : matières de la nomenclature (miroir du format par défaut), mêmes colonnes.
+        `SELECT rc.source_ingredient_id AS ingredient_id, ing.name as ingredient_name, rc.quantite AS quantity,
+                COALESCE(NULLIF(rc.unite, ''), ing.unit) as unit, ing.unit as base_unit
+         FROM recipe_components rc
+         JOIN ingredients ing ON ing.id = rc.source_ingredient_id
+         WHERE rc.recipe_id = $1
          ORDER BY ing.name`,
         [depOfResult.rows[0].sub_recipe_id]
       );
@@ -472,41 +474,9 @@ export const productionRepository = {
         [planId]
       );
 
-      // Enrich items with calcul inverse (for direct plans without contenant info)
-      const itemProductIds = itemsResult.rows.map((r: Record<string, unknown>) => r.product_id);
-      const profilesResult = await client.query(
-        `SELECT pp.produit_id, pp.contenant_id,
-                COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique) as quantite_theorique,
-                COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes) as pertes_fixes,
-                (COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique) - COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes)) as quantite_nette_cible
-         FROM produit_profil_production pp
-         JOIN production_contenants pc ON pc.id = pp.contenant_id
-         WHERE pp.produit_id = ANY($1)`,
-        [itemProductIds]
-      );
-      const profileMap: Record<string, { contenantId: string; qnc: number; qt: number }> = {};
-      for (const row of profilesResult.rows) {
-        profileMap[row.produit_id] = { contenantId: row.contenant_id, qnc: parseFloat(row.quantite_nette_cible), qt: parseFloat(row.quantite_theorique) };
-      }
-
-      for (const item of itemsResult.rows) {
-        if (item.contenant_id) continue; // Already enriched (from acknowledge)
-        const profile = profileMap[item.product_id as string];
-        if (profile && profile.qnc > 0) {
-          const plannedQty = Number(item.planned_quantity);
-          const nbContenants = Math.ceil(plannedQty / profile.qnc);
-          const effectiveQty = nbContenants * profile.qnc;
-          const surplus = effectiveQty - plannedQty;
-          await client.query(
-            `UPDATE production_plan_items
-             SET contenant_id = $1, nb_contenants = $2, quantite_nette_cible = $3, quantite_brute_totale = $4, surplus_frigo = $5,
-                 planned_quantity = $6
-             WHERE id = $7`,
-            [profile.contenantId, nbContenants, profile.qnc, nbContenants * profile.qt, surplus, effectiveQty, item.id]
-          );
-          item.planned_quantity = effectiveQty;
-        }
-      }
+      // 2b-1 : l'enrichissement « calcul inverse » lisait le profil de production par produit
+      // (produit_profil_production), table jamais remplie : retiré. Les lignes issues d'une
+      // commande gardent le contenant posé à l'accusé de réception.
 
       // Calculate ingredient needs per ingredient per product.
       // La nomenclature est resolue par le helper (legacy OU compose) : les
@@ -592,7 +562,7 @@ export const productionRepository = {
       // F-016 — Les ingredients non stockes (eau au robinet…) sont exclus des
       // besoins : sinon chaque plan genere une ligne BSI en RUPTURE et « A
       // commander » propose d'en acheter. Leur cout matieres reste porte par les
-      // vues de cout (recipe_ingredients), seul le flux stock/achat les ignore.
+      // vues de cout (nomenclature), seul le flux stock/achat les ignore.
       const nonStockeIds = new Set<string>();
       if (ingredientIds.length > 0) {
         const ns = await client.query(
@@ -1240,41 +1210,8 @@ export const productionRepository = {
           }
         }
 
-        // ─── Phase Emballages : consommation packaging du plan ───
-        // Pour chaque item produit, on consomme les emballages de la recette
-        // au prorata de actual_quantity / yield_quantity.
-        if (storeId) {
-          const packagingNeeds = await client.query(
-            `SELECT rp.packaging_id, rp.quantity, pi.name, pi.unit_cost
-             FROM recipe_packaging rp
-             JOIN packaging_items pi ON pi.id = rp.packaging_id
-             WHERE rp.recipe_id = $1`,
-            [recipe.id]
-          );
-          for (const pk of packagingNeeds.rows) {
-            const pkConsumption = (parseFloat(pk.quantity) / parseFloat(recipe.yield_quantity)) * parseFloat(item.actual_quantity);
-            if (pkConsumption <= 0) continue;
-            await client.query('SAVEPOINT pk_consume');
-            try {
-              await packagingItemRepository.adjustStock(client, {
-                packagingId: pk.packaging_id,
-                storeId,
-                change: -pkConsumption,
-                type: 'consumption',
-                referenceId: planId,
-                referenceType: 'production_plan',
-                unitCost: parseFloat(pk.unit_cost),
-                note: `Production: ${item.product_name} x${item.actual_quantity}`,
-                performedBy: userId,
-              });
-              await client.query('RELEASE SAVEPOINT pk_consume');
-            } catch (pkErr) {
-              await client.query('ROLLBACK TO SAVEPOINT pk_consume');
-              logger.error({ err: pkErr }, `[packaging consumption] erreur pour ${pk.name}:`);
-              warnings.push(`Stock emballage insuffisant: ${pk.name} (besoin ${pkConsumption.toFixed(2)})`);
-            }
-          }
-        }
+        // 2b-1 : la consommation des emballages de l'ancien modèle (recipe_packaging) est
+        // retirée ; les lignes d'emballage du format sortent à la déclaration (produceItems).
       }
 
       // Update product stock (finished goods) based on actual production — store-isolated
@@ -1688,39 +1625,8 @@ export const productionRepository = {
             }
           }
 
-          // Emballages : au prorata produit / rendement, comme dans complete().
-          // Quand un BSI existe, ils ont ete consommes au prelevement (bon-sortie) : ce bloc
-          // est alors saute avec les ingredients (bsiAlreadyDeducted2).
-          // G0-22 : UN SEUL bloc. Un second, sans point de sauvegarde, consommait les memes
-          // emballages une deuxieme fois (notes « Production partielle: »). Un plan de
-          // semi-finis n'emballe rien.
-          if (storeId && !isSemiFinishedPlan && recipe.yield_quantity && parseFloat(recipe.yield_quantity) > 0) {
-            const packagingNeeds = await client.query(
-              `SELECT rp.packaging_id, rp.quantity, pi.name, pi.unit_cost
-                 FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
-                WHERE rp.recipe_id = $1`,
-              [recipe.id]
-            );
-            for (const pk of packagingNeeds.rows) {
-              const pkConsumption = (parseFloat(pk.quantity) / parseFloat(recipe.yield_quantity)) * parseFloat(item.actual_quantity);
-              if (pkConsumption <= 0) continue;
-              await client.query('SAVEPOINT pk_consume');
-              try {
-                await packagingItemRepository.adjustStock(client, {
-                  packagingId: pk.packaging_id, storeId, change: -pkConsumption, type: 'consumption',
-                  referenceId: planId, referenceType: 'production_plan',
-                  unitCost: pk.unit_cost != null ? parseFloat(pk.unit_cost) : null,
-                  note: `Production: ${item.product_name} x${item.actual_quantity}`, performedBy: userId,
-                });
-                await client.query('RELEASE SAVEPOINT pk_consume');
-              } catch (pkErr) {
-                await client.query('ROLLBACK TO SAVEPOINT pk_consume');
-                logger.error({ err: pkErr }, `[packaging consumption] erreur pour ${pk.name}:`);
-                warnings.push(`Stock emballage : ${pk.name} non consomme (besoin ${pkConsumption.toFixed(2)})`);
-              }
-            }
-          }
-
+          // 2b-1 : les emballages de l'ancien modèle (recipe_packaging) ne sont plus lus ; les
+          // lignes d'emballage de la nomenclature du format sortent juste en dessous, une fois.
         }
 
         // Étape 2 bis (mig 634) : lignes d'EMBALLAGE de la nomenclature du format, en quantité
@@ -2465,8 +2371,7 @@ export const productionRepository = {
       [planId]
     );
 
-    // For each item, find sub-recipes — via le helper, pour couvrir les deux
-    // modes de nomenclature (legacy recipe_sub_recipes ET compose).
+    // For each item, find sub-recipes — via le helper (nomenclature du format).
     const baseMap = new Map<string, {
       subRecipeId: string;
       subRecipeName: string;

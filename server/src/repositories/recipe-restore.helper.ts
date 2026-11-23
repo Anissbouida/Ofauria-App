@@ -2,8 +2,10 @@
  * Restauration d'une version de recette (mig 346).
  *
  * Re-applique la capture complete (`recipe_versions.snapshot`) : champs de la
- * recette, etapes, frais indirects, ingredients et sous-recettes legacy,
- * composants du miroir, formats et leur nomenclature, emballages.
+ * recette, etapes, frais indirects, composants du miroir, formats et leur
+ * nomenclature. Pas 2b-1 : les lignes à plat d'une version de l'ancien modèle
+ * (ingredients, sous-recettes, emballages) sont versées dans la nomenclature du
+ * format par défaut, jamais plus dans les tables de l'ancien modèle.
  *
  * Regles :
  *  - une NOUVELLE version de l'etat courant est posee AVANT de toucher quoi que
@@ -20,6 +22,10 @@
 import { db } from '../config/database.js';
 import { snapshotRecipeVersion } from './recipe-version.helper.js';
 import { recipeComponentRepository } from './recipe-component.repository.js';
+import {
+  hasCompositionLines, writeCompositionLines,
+  type LineIngredient, type LinePackaging, type LineSubRecipe,
+} from './composition-lines.helper.js';
 
 type Row = Record<string, any>;
 
@@ -96,24 +102,20 @@ export async function restoreRecipeVersion(recipeId: string, versionNumber: numb
         [recipeId, r.piece_weight_qty, r.piece_weight_unit]);
     }
 
-    // 3. Legacy : ingredients et sous-recettes.
-    await client.query(`DELETE FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId]);
-    for (const ing of snapshot.ingredients) {
+    // 3. Lignes à plat de l'ancien modèle (versions capturées avant le pas 2b-1) : elles
+    //    ne sont plus réécrites dans l'ancien modèle ; on les garde pour l'étape 6, qui les
+    //    verse dans la nomenclature du format par défaut si la version n'en porte aucune.
+    const flatIngredients: LineIngredient[] = [];
+    for (const ing of snapshot.ingredients ?? []) {
       const ok = await client.query(`SELECT 1 FROM ingredients WHERE id = $1`, [ing.ingredient_id]);
       if (!ok.rows[0]) { warnings.push(`Ingredient disparu ignore : ${ing.ingredient_name || ing.ingredient_id}`); continue; }
-      await client.query(
-        `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
-        [recipeId, ing.ingredient_id, ing.quantity, ing.unit ?? null]
-      );
+      flatIngredients.push({ ingredientId: ing.ingredient_id, quantity: Number(ing.quantity), unit: ing.unit ?? null });
     }
-    await client.query(`DELETE FROM recipe_sub_recipes WHERE recipe_id = $1`, [recipeId]);
-    for (const sr of snapshot.sub_recipes) {
+    const flatSubRecipes: LineSubRecipe[] = [];
+    for (const sr of snapshot.sub_recipes ?? []) {
       const ok = await client.query(`SELECT 1 FROM recipes WHERE id = $1`, [sr.sub_recipe_id]);
       if (!ok.rows[0]) { warnings.push(`Sous-recette disparue ignoree : ${sr.sub_recipe_name || sr.sub_recipe_id}`); continue; }
-      await client.query(
-        `INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, $3)`,
-        [recipeId, sr.sub_recipe_id, sr.quantity]
-      );
+      flatSubRecipes.push({ subRecipeId: sr.sub_recipe_id, quantity: Number(sr.quantity) });
     }
 
     // 4. Miroir compose.
@@ -196,15 +198,25 @@ export async function restoreRecipeVersion(recipeId: string, versionNumber: numb
     );
     if ((deactivated.rowCount ?? 0) > 0) warnings.push(`${deactivated.rowCount} format(s) absent(s) de la version desactive(s)`);
 
-    // 6. Emballages.
-    await client.query(`DELETE FROM recipe_packaging WHERE recipe_id = $1`, [recipeId]);
+    // 6. Emballages à plat, puis versement des lignes à plat (pas 2b-1) : une version de
+    //    l'ancien modèle n'a aucune nomenclature de format ; ses lignes deviennent celle du
+    //    format par défaut. Une version qui porte déjà une nomenclature de format la garde
+    //    telle quelle (ses lignes à plat, s'il en reste, sont ignorées).
+    const flatPackaging: LinePackaging[] = [];
     for (const pk of snapshot.packaging ?? []) {
       const ok = await client.query(`SELECT 1 FROM packaging_items WHERE id = $1`, [pk.packaging_id]);
       if (!ok.rows[0]) { warnings.push(`Emballage disparu ignore : ${pk.packaging_name || pk.packaging_id}`); continue; }
-      await client.query(
-        `INSERT INTO recipe_packaging (recipe_id, packaging_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
-        [recipeId, pk.packaging_id, pk.quantity, pk.unit ?? null]
-      );
+      flatPackaging.push({ packagingId: pk.packaging_id, quantity: Number(pk.quantity), unit: pk.unit ?? null });
+    }
+    const flat = { ingredients: flatIngredients, subRecipes: flatSubRecipes, packaging: flatPackaging };
+    const snapshotHasBom = snapshot.formats.some(f => (f.components || []).length > 0);
+    if (hasCompositionLines(flat)) {
+      if (snapshotHasBom) {
+        warnings.push(`Lignes de l'ancien modele ignorees : la version porte deja une nomenclature de format`);
+      } else {
+        await writeCompositionLines(client, recipeId, flat, userId);
+        warnings.push(`Composition de l'ancien modele versee dans la nomenclature du format par defaut`);
+      }
     }
 
     await client.query('COMMIT');

@@ -11,7 +11,7 @@
  *  - produit sans fiche technique : non imprimable ; produit inconnu : null.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createProductWithRecipe, cleanupFixtures, RUN, type Fixtures } from './helpers.js';
+import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createProductWithRecipe, cleanupFixtures, RUN, setComposition, type Fixtures } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Données de l\'étiquette réglementaire (G2-09)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
@@ -38,13 +38,12 @@ describe.skipIf(!hasTestDb)('Données de l\'étiquette réglementaire (G2-09)', 
       return id;
     };
     const pate = await base('Pâte G209'), creme = await base('Crème G209');
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 1, 'kg')`, [pate, farine]);
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 0.2, 'kg')`, [creme, amande]);
-    await p().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 1)`, [creme, pate]);
-    ({ productId, recipeId } = await createProductWithRecipe(fx, { name: 'Tarte G209', price: 20, shelfLifeDays: 2, ingredients: [{ ingredientId: eau, quantity: 0.1, unit: 'l' }] }));
-    await p().query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 1)`, [recipeId, creme]);
-    formatId = (await p().query(
-      `INSERT INTO recipe_formats (recipe_id, quantite_par_format, is_active, is_default, poids_cru_g, poids_cuit_g) VALUES ($1, 1, true, true, 500, 450) RETURNING id`, [recipeId])).rows[0].id;
+    await setComposition(pate, { ingredients: [{ ingredientId: farine, quantity: 1, unit: 'kg' }] });
+    await setComposition(creme, { ingredients: [{ ingredientId: amande, quantity: 0.2, unit: 'kg' }], subRecipes: [{ subRecipeId: pate, quantity: 1 }] });
+    ({ productId, recipeId } = await createProductWithRecipe(fx, { name: 'Tarte G209', price: 20, shelfLifeDays: 2, ingredients: [] }));
+    // Pas 2b-1 : composition dans la nomenclature du format par défaut, qui porte aussi les poids.
+    formatId = (await setComposition(recipeId, { ingredients: [{ ingredientId: eau, quantity: 0.1, unit: 'l' }], subRecipes: [{ subRecipeId: creme, quantity: 1 }] }))!;
+    await p().query(`UPDATE recipe_formats SET poids_cru_g = 500, poids_cuit_g = 450 WHERE id = $1`, [formatId]);
     bareProductId = (await p().query(
       `INSERT INTO products (name, slug, price, sale_type) VALUES ($1, $2, 1, 'jour') RETURNING id`, [`Nu G209 ${RUN}`, `nu-g209-${RUN}`])).rows[0].id;
     fx.ids.products.push(bareProductId);
@@ -52,8 +51,8 @@ describe.skipIf(!hasTestDb)('Données de l\'étiquette réglementaire (G2-09)', 
 
   afterAll(async () => {
     await p().query(`DELETE FROM recipe_formats WHERE id = $1`, [formatId]).catch(() => undefined);
-    await p().query(`DELETE FROM recipe_sub_recipes WHERE sub_recipe_id = ANY($1) OR recipe_id = ANY($1)`, [bases]).catch(() => undefined);
-    await p().query(`DELETE FROM recipe_ingredients WHERE recipe_id = ANY($1)`, [bases]).catch(() => undefined);
+    await p().query(`DELETE FROM recipe_format_components WHERE format_id IN (SELECT id FROM recipe_formats WHERE recipe_id = ANY($1))`, [bases]).catch(() => undefined);
+    await p().query(`DELETE FROM recipe_formats WHERE recipe_id = ANY($1)`, [bases]).catch(() => undefined);
     if (fx) await cleanupFixtures(fx);
     await p().query(`DELETE FROM recipes WHERE id = ANY($1)`, [bases]).catch(() => undefined);
     await repos?.db.pool.end().catch(() => undefined);

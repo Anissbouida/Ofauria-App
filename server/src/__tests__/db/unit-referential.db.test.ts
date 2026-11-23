@@ -4,7 +4,7 @@
  * l'unité de stock est refusée (fn_unit_conv ne convertit que masse et volume).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { hasTestDb, testPool, closeTestPool, importRepositories } from './helpers.js';
+import { hasTestDb, testPool, closeTestPool, importRepositories, setComposition } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Unités libres', () => {
   let units: typeof import('../../services/unit-referential.js');
@@ -23,7 +23,9 @@ describe.skipIf(!hasTestDb)('Unités libres', () => {
   });
 
   afterAll(async () => {
-    await p().query(`DELETE FROM recipe_ingredients WHERE ingredient_id IN (SELECT id FROM ingredients WHERE name LIKE 'U515 %')`).catch(() => undefined);
+    await p().query(`DELETE FROM recipe_format_components WHERE source_ingredient_id IN (SELECT id FROM ingredients WHERE name LIKE 'U515 %')`).catch(() => undefined);
+    await p().query(`DELETE FROM recipe_components WHERE source_ingredient_id IN (SELECT id FROM ingredients WHERE name LIKE 'U515 %')`).catch(() => undefined);
+    await p().query(`DELETE FROM recipe_formats WHERE recipe_id IN (SELECT id FROM recipes WHERE name = 'U515 fiche')`).catch(() => undefined);
     await p().query(`DELETE FROM recipes WHERE name = 'U515 fiche'`).catch(() => undefined);
     await p().query(`DELETE FROM ingredients WHERE name LIKE 'U515 %'`).catch(() => undefined);
     await repos?.db.pool.end().catch(() => undefined);
@@ -55,7 +57,7 @@ describe.skipIf(!hasTestDb)('Unités libres', () => {
   it('changer l\'unité de stock d\'une matière utilisée en grammes vers le mètre est refusé', async () => {
     const ing = (await p().query(`INSERT INTO ingredients (name, unit, unit_cost) VALUES ('U515 tôle', 'kg', 14) RETURNING id`)).rows[0].id;
     const rec = (await p().query(`INSERT INTO recipes (name) VALUES ('U515 fiche') RETURNING id`)).rows[0].id;
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 500, 'g')`, [rec, ing]);
+    await setComposition(rec, { ingredients: [{ ingredientId: ing, quantity: 500, unit: 'g' }] });
 
     const guard = units.requireStockUnitChange();
     expect((await run(guard, { unit: 'm' }, { id: ing })).code).toBe(400);

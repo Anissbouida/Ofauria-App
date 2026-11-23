@@ -103,20 +103,18 @@ export async function computeSourcingAndCreatePlan(
   }
 
   // 3) Profil contenant (calcul inverse)
-  //    Hierarchie : produit_profil_production (surcharge) puis recette
+  //    Contenant de la recette (2b-1 : la surcharge par produit, jamais remplie, est retirée).
   const profileResult = await client.query(
     `SELECT p.id AS produit_id,
-            COALESCE(pp.contenant_id, r.contenant_id) AS contenant_id,
-            COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique) AS quantite_theorique,
-            COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes) AS pertes_fixes,
-            (COALESCE(pp.surcharge_quantite_theorique, pc.quantite_theorique)
-             - COALESCE(pp.surcharge_pertes_fixes, pc.pertes_fixes)) AS quantite_nette_cible
+            r.contenant_id AS contenant_id,
+            pc.quantite_theorique AS quantite_theorique,
+            pc.pertes_fixes AS pertes_fixes,
+            (pc.quantite_theorique - pc.pertes_fixes) AS quantite_nette_cible
      FROM products p
-     LEFT JOIN produit_profil_production pp ON pp.produit_id = p.id
      LEFT JOIN recipes r ON r.product_id = p.id
-     LEFT JOIN production_contenants pc ON pc.id = COALESCE(pp.contenant_id, r.contenant_id)
+     LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
      WHERE p.id = ANY($1)
-       AND COALESCE(pp.contenant_id, r.contenant_id) IS NOT NULL`,
+       AND r.contenant_id IS NOT NULL`,
     [productIds]
   );
   const profileMap: Record<string, { contenantId: string; quantiteNetteCible: number; quantiteTheorique: number }> = {};

@@ -220,46 +220,9 @@ export const recipeComponentRepository = {
 
     const f = fmt.rows[0];
 
-    // FALLBACK legacy : si le format par défaut n'a aucun composant mais que la recette
-    // a une composition legacy (recipe_ingredients / recipe_sub_recipes), on l'affiche
-    // (lecture). À la 1re sauvegarde, elle devient une vraie BOM (cf replaceForFormat).
-    let componentRows = components.rows;
-    if (componentRows.length === 0 && f.mode_cout !== 'compose') {
-      const subs = await db.query(
-        `SELECT NULL::uuid AS id, NULL AS role, rsr.sub_recipe_id AS source_recipe_id, NULL::uuid AS source_ingredient_id,
-                sr.name AS source_name, 'recipe' AS source_type, rsr.quantity AS quantite, sr.yield_unit AS unite,
-                CASE WHEN COALESCE(sr.yield_quantity, 0) > 0
-                     THEN rsr.quantity / sr.yield_quantity * COALESCE(vtc.total_cost, 0) ELSE 0 END AS cout_dh,
-                -- Legacy : unite composant = yield_unit sous-recette, conversion toujours OK.
-                true AS conversion_ok,
-                sr.yield_unit AS target_unit,
-                0::numeric AS perte_pct
-         FROM recipe_sub_recipes rsr
-         JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-         LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = rsr.sub_recipe_id
-         WHERE rsr.recipe_id = $1 ORDER BY sr.name`,
-        [recipeId]
-      );
-      const ings = await db.query(
-        `SELECT NULL::uuid AS id, NULL AS role, NULL::uuid AS source_recipe_id, ri.ingredient_id AS source_ingredient_id,
-                ing.name AS source_name, 'ingredient' AS source_type, ri.quantity AS quantite, COALESCE(ri.unit, ing.unit) AS unite,
-                ri.quantity * fn_convert_factor(COALESCE(ri.unit, ing.unit)::text, ing.unit::text, 'ingredient', ing.id) * COALESCE(ing.unit_cost, 0) AS cout_dh,
-                -- Legacy : idem, applique fn_unit_conv_ok sur le meme couple, incluant
-                -- la validation par densite si un croisement poids↔volume est en jeu.
-                (fn_unit_conv_ok(COALESCE(ri.unit, ing.unit), ing.unit::text)
-                 OR (((lower(COALESCE(ri.unit, ing.unit)) IN ('g','kg','mg') AND lower(ing.unit::text) IN ('ml','cl','dl','l'))
-                      OR (lower(COALESCE(ri.unit, ing.unit)) IN ('ml','cl','dl','l') AND lower(ing.unit::text) IN ('g','kg','mg')))
-                     AND ing.densite_kg_l IS NOT NULL))
-                  AS conversion_ok,
-                ing.unit::text AS target_unit,
-                0::numeric AS perte_pct
-         FROM recipe_ingredients ri
-         JOIN ingredients ing ON ing.id = ri.ingredient_id
-         WHERE ri.recipe_id = $1 ORDER BY ing.name`,
-        [recipeId]
-      );
-      componentRows = [...subs.rows, ...ings.rows].map((c, i) => ({ ...c, ordre: i }));
-    }
+    // Pas 2b-1 : plus de repli sur l'ancien modèle — la composition d'un format est sa
+    // nomenclature, et rien d'autre.
+    const componentRows = components.rows;
 
     // Matière = somme des composants DE CE FORMAT (pas v_recipe_total_cost_v2).
     const matiere = componentRows.reduce((s: number, c: { cout_dh: string | null }) => s + (c.cout_dh ? parseFloat(c.cout_dh) : 0), 0);
@@ -395,14 +358,8 @@ export const recipeComponentRepository = {
 
       // Le miroir recipe_components (lu par v_recipe_total_cost_v2) est désormais
       // reconstruit automatiquement par trigger (mig 412) depuis les composants du
-      // format par défaut — plus de resynchronisation à la main ici.
-      // Sur le format par défaut, on finalise la bascule legacy → composé : la compo
-      // vit dans la nomenclature, on purge recipe_ingredients/recipe_sub_recipes
-      // (sinon double comptage du coût).
-      if (isDefault && data.components.length > 0) {
-        await client.query(`DELETE FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId]);
-        await client.query(`DELETE FROM recipe_sub_recipes WHERE recipe_id = $1`, [recipeId]);
-      }
+      // format par défaut — plus de resynchronisation à la main ici. L'ancien modèle
+      // n'est plus écrit (2b-1) : plus de purge à faire.
 
       // Dès qu'une nomenclature existe, la recette passe en mode composé.
       if (data.components.length > 0) {
@@ -521,9 +478,9 @@ export const recipeComponentRepository = {
     return this.findComposition(recipeId);
   },
 
-  // Enfants directs d'une recette, pour le dépliage en arbre (lecture seule).
-  // Privilégie la nomenclature (recipe_components) ; sinon retombe sur le legacy
-  // (recipe_ingredients + recipe_sub_recipes) afin que les recettes de base se déplient.
+  // Enfants directs d'une recette, pour le dépliage en arbre (lecture seule) :
+  // la nomenclature (miroir recipe_components du format par défaut). Pas 2b-1 : plus de
+  // repli sur l'ancien modèle.
   async findChildren(recipeId: string) {
     // Audit A7 : costed_on_default_format = true quand le composant est
     // une sous-recette qui a plusieurs formats actifs. v_recipe_total_cost_v2 ne
@@ -546,36 +503,7 @@ export const recipeComponentRepository = {
        ORDER BY c.ordre, source_name`,
       [recipeId]
     );
-    if (comps.rows.length > 0) return comps.rows.map(toChild);
-
-    const subs = await db.query(
-      `SELECT sr.name AS source_name, rsr.sub_recipe_id AS source_recipe_id,
-              NULL::uuid AS source_ingredient_id, 'recipe' AS source_type,
-              rsr.quantity AS quantite, sr.yield_unit AS unite, NULL AS role,
-              CASE WHEN COALESCE(sr.yield_quantity, 0) > 0
-                   THEN rsr.quantity / sr.yield_quantity * COALESCE(vtc.total_cost, 0) ELSE 0 END AS cout_dh,
-              ((SELECT COUNT(*) FROM recipe_formats f WHERE f.recipe_id = rsr.sub_recipe_id AND f.is_active) > 1
-              ) AS costed_on_default_format
-       FROM recipe_sub_recipes rsr
-       JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = rsr.sub_recipe_id
-       WHERE rsr.recipe_id = $1
-       ORDER BY sr.name`,
-      [recipeId]
-    );
-    const ings = await db.query(
-      `SELECT ing.name AS source_name, NULL::uuid AS source_recipe_id,
-              ri.ingredient_id AS source_ingredient_id, 'ingredient' AS source_type,
-              ri.quantity AS quantite, COALESCE(ri.unit, ing.unit) AS unite, NULL AS role,
-              ri.quantity * fn_convert_factor(COALESCE(ri.unit, ing.unit)::text, ing.unit::text, 'ingredient', ing.id) * COALESCE(ing.unit_cost, 0) AS cout_dh,
-              false AS costed_on_default_format
-       FROM recipe_ingredients ri
-       JOIN ingredients ing ON ing.id = ri.ingredient_id
-       WHERE ri.recipe_id = $1
-       ORDER BY ing.name`,
-      [recipeId]
-    );
-    return [...subs.rows, ...ings.rows].map(toChild);
+    return comps.rows.map(toChild);
   },
 
   // Détection de cycle pour la composition (recipe_components) AVANT insertion.
@@ -589,13 +517,13 @@ export const recipeComponentRepository = {
     const runner = client ?? db;
     const res = await runner.query(
       `WITH RECURSIVE edges AS (
-         SELECT r.id AS parent, rsr.sub_recipe_id AS child
-         FROM recipes r JOIN recipe_sub_recipes rsr ON rsr.recipe_id = r.id
-         WHERE r.mode_cout <> 'compose'
-         UNION ALL
-         SELECT r.id, rc.source_recipe_id
-         FROM recipes r JOIN recipe_components rc ON rc.recipe_id = r.id AND rc.source_recipe_id IS NOT NULL
-         WHERE r.mode_cout = 'compose'
+         -- Pas 2b-1 : arêtes de la nomenclature (formats actifs + miroir), plus l'ancien modèle.
+         SELECT f.recipe_id AS parent, rfc.source_recipe_id AS child
+         FROM recipe_format_components rfc JOIN recipe_formats f ON f.id = rfc.format_id AND f.is_active
+         WHERE rfc.source_recipe_id IS NOT NULL
+         UNION
+         SELECT rc.recipe_id, rc.source_recipe_id
+         FROM recipe_components rc WHERE rc.source_recipe_id IS NOT NULL
        ),
        walk AS (
          SELECT c AS root, c AS node, 0 AS depth FROM unnest($2::uuid[]) AS c

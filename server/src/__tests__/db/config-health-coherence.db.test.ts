@@ -4,7 +4,7 @@
  * Les données créées portent un suffixe aléatoire et sont supprimées à la fin.
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
-import { hasTestDb, testPool, closeTestPool, importRepositories } from './helpers.js';
+import { hasTestDb, testPool, closeTestPool, importRepositories, setComposition } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Bilan de santé — contrôles de cohérence (C-04)', () => {
   let health: typeof import('../../services/config-health.js');
@@ -38,7 +38,9 @@ describe.skipIf(!hasTestDb)('Bilan de santé — contrôles de cohérence (C-04)
     if (ids.wc) await q(`DELETE FROM work_centers WHERE id = $1`, ids.wc);
     if (ids.recipe) {
       await q(`DELETE FROM bom_versions WHERE recipe_id = $1`, ids.recipe);
-      await q(`DELETE FROM recipe_ingredients WHERE recipe_id = $1`, ids.recipe);
+      await q(`DELETE FROM recipe_format_components WHERE format_id IN (SELECT id FROM recipe_formats WHERE recipe_id = $1)`, ids.recipe);
+      await q(`DELETE FROM recipe_components WHERE recipe_id = $1`, ids.recipe);
+      await q(`DELETE FROM recipe_formats WHERE recipe_id = $1`, ids.recipe);
       await q(`DELETE FROM recipes WHERE id = $1`, ids.recipe);
     }
     if (ids.ingredient) {
@@ -104,7 +106,7 @@ describe.skipIf(!hasTestDb)('Bilan de santé — contrôles de cohérence (C-04)
     ids.ingredient = (await p().query(
       `INSERT INTO ingredients (name, unit, unit_cost) VALUES ($1, 'kg', 10) RETURNING id`, [`Matière ${tag}`])).rows[0].id;
     ids.recipe = (await p().query(`INSERT INTO recipes (name) VALUES ($1) RETURNING id`, [`0 Fiche ${tag}`])).rows[0].id; // « 0 » : en tête de la liste bornée (ITEM_LIMIT), quel que soit le volume de la base de test
-    await p().query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 3, 'unit')`, [ids.recipe, ids.ingredient]);
+    await setComposition(ids.recipe, { ingredients: [{ ingredientId: ids.ingredient, quantity: 3, unit: 'unit' }] });
 
     const r = await rec('profile.unit.not_convertible');
     expect(r?.severity).toBe('blocking');

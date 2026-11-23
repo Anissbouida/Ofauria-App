@@ -1,6 +1,7 @@
 import { policyNumber } from '../services/policies.js';
 import { db, withTransaction } from '../config/database.js';
 import { snapshotRecipeVersion } from './recipe-version.helper.js';
+import { writeCompositionLines } from './composition-lines.helper.js';
 import { convertWeight, pickQtyUnit, unitIdSql, type WeightUnit } from '../utils/qty-unit.js';
 import {
   yieldInSellingUnit,
@@ -70,8 +71,6 @@ export const recipeRepository = {
                   WHERE c2.source_recipe_id = r.id
                  UNION
                  SELECT c3.recipe_id FROM recipe_components c3 WHERE c3.source_recipe_id = r.id
-                 UNION
-                 SELECT s3.recipe_id FROM recipe_sub_recipes s3 WHERE s3.sub_recipe_id = r.id
                ) u WHERE parent <> r.id) AS utilisee_par,
               vfs.nb_formats AS formats_nb,
               vfs.perte_pct AS formats_perte_pct,
@@ -94,9 +93,7 @@ export const recipeRepository = {
               dfc.id IS NOT NULL AND dfc.nom ILIKE '%assemblage%' AS rendement_a_definir,
               -- Composition vide = aucune ligne (scénario 1, constat 107), et non plus « coût nul » :
               -- un ingrédient sans prix n'est pas une composition vide (constat 108).
-              NOT EXISTS (SELECT 1 FROM recipe_format_components fc JOIN recipe_formats ff ON ff.id = fc.format_id WHERE ff.recipe_id = r.id)
-                AND NOT EXISTS (SELECT 1 FROM recipe_ingredients li WHERE li.recipe_id = r.id)
-                AND NOT EXISTS (SELECT 1 FROM recipe_sub_recipes ls WHERE ls.recipe_id = r.id) AS compo_vide,
+              NOT EXISTS (SELECT 1 FROM recipe_format_components fc JOIN recipe_formats ff ON ff.id = fc.format_id WHERE ff.recipe_id = r.id) AS compo_vide,
               COALESCE((
                 SELECT jsonb_agg(jsonb_build_object(
                   'id', rf.id,
@@ -163,9 +160,7 @@ export const recipeRepository = {
               r.mode_cout, r.perte_standard_pct, r.pieces_par_fournee, r.compo_par_piece,
               r.created_at, r.updated_at,
               vtc.total_cost,
-              NOT EXISTS (SELECT 1 FROM recipe_format_components fc JOIN recipe_formats ff ON ff.id = fc.format_id WHERE ff.recipe_id = r.id)
-                AND NOT EXISTS (SELECT 1 FROM recipe_ingredients li WHERE li.recipe_id = r.id)
-                AND NOT EXISTS (SELECT 1 FROM recipe_sub_recipes ls WHERE ls.recipe_id = r.id) AS compo_vide,
+              NOT EXISTS (SELECT 1 FROM recipe_format_components fc JOIN recipe_formats ff ON ff.id = fc.format_id WHERE ff.recipe_id = r.id) AS compo_vide,
               vtw.total_weight_kg,
               vfs.poids_utilise_kg AS formats_poids_utilise_kg,
               vfs.perte_kg AS formats_perte_kg,
@@ -197,40 +192,10 @@ export const recipeRepository = {
     );
     if (!recipeResult.rows[0]) return null;
 
-    const ingredientsResult = await db.query(
-      `SELECT ri.*, ing.name as ingredient_name, COALESCE(ri.unit, ing.unit) as unit, ing.unit as ingredient_base_unit, ing.unit_cost
-       FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
-       WHERE ri.recipe_id = $1
-       ORDER BY ri.id`,
-      [id]
-    );
-
-    // sub_total_cost / sub_total_weight_kg : valeurs directes de la sous-recette
-    // (vues v_recipe_direct_cost_v2 / v_recipe_direct_weight_kg). Le frontend divise
-    // par sub_yield_quantity pour obtenir cout/poids par unite de rendement.
-    const subRecipesResult = await db.query(
-      `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
-              sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
-              sr.yield_unit as sub_yield_unit,
-              vdc.direct_cost AS sub_total_cost,
-              vdw.direct_weight_kg AS sub_total_weight_kg
-       FROM recipe_sub_recipes rsr
-       JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-       LEFT JOIN v_recipe_direct_cost_v2 vdc ON vdc.id = sr.id
-       LEFT JOIN v_recipe_direct_weight_kg vdw ON vdw.id = sr.id
-       WHERE rsr.recipe_id = $1`,
-      [id]
-    );
-
-    // Fetch packaging
-    const packagingResult = await db.query(
-      `SELECT rp.id, rp.packaging_id, rp.quantity, rp.unit, rp.notes,
-              pi.name as packaging_name, pi.format, pi.unit_cost, pi.unit as base_unit, pi.category
-       FROM recipe_packaging rp
-       JOIN packaging_items pi ON pi.id = rp.packaging_id
-       WHERE rp.recipe_id = $1`,
-      [id]
-    );
+    // Pas 2b-1 : l'ancien modèle (lignes à plat, sous-recettes, emballages par recette)
+    // n'est plus lu. La composition vit dans `composition` (miroir du format par défaut)
+    // et dans la nomenclature des formats ; les clés historiques restent, vides, pour ne
+    // pas casser la forme de la réponse (elles l'étaient déjà pour toute fiche composée).
 
     // Formats de production : poids, nb, ventilation cout matiere/MO/energie/structure
     const formatsResult = await db.query(
@@ -291,12 +256,6 @@ export const recipeRepository = {
            -- Priorite 3 : le miroir du format par defaut (mig 205).
            SELECT c.recipe_id, c.quantite, c.unite, 3
              FROM recipe_components c WHERE c.source_recipe_id = $1
-           UNION ALL
-           -- Priorite 4 : le lien legacy. Sa quantite est une FRACTION de fournee,
-           -- pas une masse : elle n'a pas d'unite, d'ou le NULL. On ne l'affiche
-           -- que si aucune des deux sources ci-dessus ne couvre le parent.
-           SELECT s.recipe_id, s.quantity, NULL, 4
-             FROM recipe_sub_recipes s WHERE s.sub_recipe_id = $1
          ) u
          JOIN recipes p ON p.id = u.parent
         WHERE u.parent <> $1
@@ -304,8 +263,7 @@ export const recipeRepository = {
       [id]
     );
     // Un meme parent remonte par plusieurs chemins : on garde la PREMIERE ligne,
-    // donc la mieux classee — sans quoi la fiche afficherait « 2.11 » (fraction
-    // legacy) la ou la nomenclature dit « 2110 g ».
+    // donc la mieux classee (format par defaut avant un autre format, puis le miroir).
     const usedBy: Record<string, unknown>[] = [];
     const vus = new Set<string>();
     for (const row of usedByResult.rows as Record<string, unknown>[]) {
@@ -317,10 +275,10 @@ export const recipeRepository = {
 
     return {
       ...recipeResult.rows[0],
-      ingredients: ingredientsResult.rows,
-      sub_recipes: subRecipesResult.rows,
+      ingredients: [],
+      sub_recipes: [],
       composition: compositionResult.rows,
-      packaging: packagingResult.rows,
+      packaging: [],
       formats: formatsResult.rows,
       used_by: usedBy,
     };
@@ -354,33 +312,7 @@ export const recipeRepository = {
     if (!recipeResult.rows[0]) return null;
 
     const recipeId = recipeResult.rows[0].id;
-    const ingredientsResult = await db.query(
-      `SELECT ri.*, ing.name as ingredient_name, COALESCE(ri.unit, ing.unit) as unit, ing.unit as ingredient_base_unit, ing.unit_cost
-       FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
-       WHERE ri.recipe_id = $1
-       ORDER BY ri.id`,
-      [recipeId]
-    );
-    const subRecipesResult = await db.query(
-      `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
-              sr.name as sub_recipe_name, sr.yield_quantity as sub_yield_quantity,
-              sr.yield_unit as sub_yield_unit,
-              vdc.direct_cost AS sub_total_cost
-       FROM recipe_sub_recipes rsr
-       JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-       LEFT JOIN v_recipe_direct_cost_v2 vdc ON vdc.id = sr.id
-       WHERE rsr.recipe_id = $1`,
-      [recipeId]
-    );
-    const packagingResult = await db.query(
-      `SELECT rp.id, rp.packaging_id, rp.quantity, rp.unit, rp.notes,
-              pi.name as packaging_name, pi.format, pi.unit_cost, pi.unit as base_unit, pi.category
-       FROM recipe_packaging rp
-       JOIN packaging_items pi ON pi.id = rp.packaging_id
-       WHERE rp.recipe_id = $1`,
-      [recipeId]
-    );
-
+    // Pas 2b-1 : ancien modèle non lu (clés historiques renvoyées vides, voir findById).
     const formatsResult = await db.query(
       `SELECT rf.id, rf.contenant_id, rf.quantite_par_format, rf.quantite_par_format_unite, rf.nb_par_defaut,
               rf.cout_emballage_unitaire, rf.ordre, rf.is_active,
@@ -400,9 +332,9 @@ export const recipeRepository = {
 
     return {
       ...recipeResult.rows[0],
-      ingredients: ingredientsResult.rows,
-      sub_recipes: subRecipesResult.rows,
-      packaging: packagingResult.rows,
+      ingredients: [],
+      sub_recipes: [],
+      packaging: [],
       formats: formatsResult.rows,
     };
   },
@@ -486,8 +418,8 @@ export const recipeRepository = {
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
           const srResult = await client.query(
-            `SELECT vdc.direct_cost AS total_cost, vdc.yield_quantity
-             FROM v_recipe_direct_cost_v2 vdc WHERE vdc.id = $1`, [sr.subRecipeId]
+            `SELECT COALESCE(vtc.total_cost, 0) AS total_cost, r.yield_quantity
+             FROM recipes r LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id WHERE r.id = $1`, [sr.subRecipeId]
           );
           if (srResult.rows[0]) {
             const costPerUnit = parseFloat(srResult.rows[0].total_cost) / (srResult.rows[0].yield_quantity || 1);
@@ -538,13 +470,6 @@ export const recipeRepository = {
         await client.query(`UPDATE recipes SET is_phantom = true WHERE id = $1`, [recipeId]);
       }
 
-      for (const ing of data.ingredients) {
-        await client.query(
-          `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
-          [recipeId, ing.ingredientId, ing.quantity, ing.unit || null]
-        );
-      }
-
       // Cycle detection for sub-recipes
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
@@ -552,25 +477,6 @@ export const recipeRepository = {
           if (hasCycle) {
             throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
           }
-        }
-      }
-
-      if (data.subRecipes && data.subRecipes.length > 0) {
-        for (const sr of data.subRecipes) {
-          await client.query(
-            `INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, $3)`,
-            [recipeId, sr.subRecipeId, sr.quantity]
-          );
-        }
-      }
-
-      // Insert recipe_packaging links
-      if (data.packaging && data.packaging.length > 0) {
-        for (const pk of data.packaging) {
-          await client.query(
-            `INSERT INTO recipe_packaging (recipe_id, packaging_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
-            [recipeId, pk.packagingId, pk.quantity, pk.unit ?? null]
-          );
         }
       }
 
@@ -595,6 +501,15 @@ export const recipeRepository = {
           );
         }
       }
+
+      // Pas 2b-1 : des lignes « à plat » reçues par l'API (import, données de départ,
+      // anciens appels) vont dans la nomenclature du format par défaut, jamais plus dans
+      // l'ancien modèle.
+      await writeCompositionLines(client, recipeId, {
+        ingredients: data.ingredients ?? [],
+        subRecipes: data.subRecipes ?? [],
+        packaging: data.packaging ?? [],
+      }, data.changedBy ?? null);
 
       await this.syncProductPrice(
         client,
@@ -809,8 +724,8 @@ export const recipeRepository = {
       if (data.subRecipes && data.subRecipes.length > 0) {
         for (const sr of data.subRecipes) {
           const srResult = await client.query(
-            `SELECT vdc.direct_cost AS total_cost, vdc.yield_quantity
-             FROM v_recipe_direct_cost_v2 vdc WHERE vdc.id = $1`, [sr.subRecipeId]
+            `SELECT COALESCE(vtc.total_cost, 0) AS total_cost, r.yield_quantity
+             FROM recipes r LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id WHERE r.id = $1`, [sr.subRecipeId]
           );
           if (srResult.rows[0]) {
             const costPerUnit = parseFloat(srResult.rows[0].total_cost) / (srResult.rows[0].yield_quantity || 1);
@@ -868,45 +783,11 @@ export const recipeRepository = {
          data.temperaturePateCibleC ?? null, data.hydratationPct ?? null, pieceWeight?.unit ?? 'kg']
       );
 
-      // Re-insert ingredients — UNIQUEMENT si fournis (édition unifiée : le formulaire
-      // ne les envoie pas pour un produit composé → la composition de l'éditeur reste intacte).
-      if (data.ingredients !== undefined) {
-        await client.query('DELETE FROM recipe_ingredients WHERE recipe_id = $1', [id]);
-        for (const ing of data.ingredients) {
-          await client.query(
-            `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
-            [id, ing.ingredientId, ing.quantity, ing.unit || null]
-          );
-        }
-      }
-
-      // Re-insert sub-recipes — idem, uniquement si fournies.
-      if (data.subRecipes !== undefined) {
-        await client.query('DELETE FROM recipe_sub_recipes WHERE recipe_id = $1', [id]);
-        for (const sr of data.subRecipes) {
-          const hasCycle = await this.detectCycle(sr.subRecipeId, id, client);
-          if (hasCycle) {
-            throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
-          }
-        }
-        for (const sr of data.subRecipes) {
-          await client.query(
-            `INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, $3)`,
-            [id, sr.subRecipeId, sr.quantity]
-          );
-        }
-      }
-
-      // Re-insert recipe_packaging — UNIQUEMENT si la cle packaging est fournie.
-      // Un payload partiel (metadonnees) qui ne la porte pas ne doit pas vider les
-      // emballages existants (meme logique que ingredients/subRecipes ci-dessus).
-      if (data.packaging !== undefined) {
-        await client.query('DELETE FROM recipe_packaging WHERE recipe_id = $1', [id]);
-        for (const pk of data.packaging) {
-          await client.query(
-            `INSERT INTO recipe_packaging (recipe_id, packaging_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
-            [id, pk.packagingId, pk.quantity, pk.unit ?? null]
-          );
+      // Sous-recettes reçues à plat : refus d'un cycle avant toute écriture.
+      for (const sr of data.subRecipes ?? []) {
+        const hasCycle = await this.detectCycle(sr.subRecipeId, id, client);
+        if (hasCycle) {
+          throw new Error(`Référence circulaire détectée: la sous-recette créerait un cycle`);
         }
       }
 
@@ -987,6 +868,16 @@ export const recipeRepository = {
         );
       }
 
+      // Pas 2b-1 : des lignes « à plat » fournies ET non vides remplacent la nomenclature
+      // du format par défaut (jamais plus l'ancien modèle). Le formulaire envoie
+      // `ingredients: []` : un tableau vide ou une clé absente ne touche à rien, la
+      // composition gérée par l'éditeur reste intacte.
+      await writeCompositionLines(client, id, {
+        ingredients: data.ingredients ?? [],
+        subRecipes: data.subRecipes ?? [],
+        packaging: data.packaging ?? [],
+      }, data.changedBy ?? null);
+
       await this.syncProductPrice(
         client,
         currentRecipe?.product_id || null,
@@ -1026,7 +917,11 @@ export const recipeRepository = {
   /** When a packaging price changes, propagate price changes to products. */
   async recalcOnPackagingChange(packagingId: string) {
     const recipes = await db.query(
-      `SELECT DISTINCT recipe_id FROM recipe_packaging WHERE packaging_id = $1`,
+      // Pas 2b-1 : l'emballage est une ligne de nomenclature (mig 634), plus recipe_packaging.
+      `SELECT DISTINCT f.recipe_id
+         FROM recipe_format_components rfc
+         JOIN recipe_formats f ON f.id = rfc.format_id AND f.is_active
+        WHERE rfc.source_packaging_id = $1`,
       [packagingId]
     );
     for (const row of recipes.rows) {
@@ -1050,15 +945,10 @@ export const recipeRepository = {
     if (visited.has(subRecipeId)) return; // prevent infinite loop
     visited.add(subRecipeId);
 
-    // Remonte vers les recettes parentes par TOUS les modèles de composition :
-    // ancien modèle (recipe_sub_recipes) ET modèle composé (recipe_components miroir
-    // + recipe_format_components). Sans les deux derniers, changer le coût d'une base
-    // ne resynchronisait pas le prix des produits qui l'utilisent via la nomenclature
-    // composée (propagation limitée à l'ancien modèle — corrigé, L2).
+    // Remonte vers les recettes parentes par la nomenclature composée (miroir
+    // recipe_components + recipe_format_components). L'ancien modèle n'est plus lu (2b-1).
     const parents = await db.query(
-      `SELECT recipe_id FROM recipe_sub_recipes WHERE sub_recipe_id = $1
-       UNION
-       SELECT recipe_id FROM recipe_components WHERE source_recipe_id = $1
+      `SELECT recipe_id FROM recipe_components WHERE source_recipe_id = $1
        UNION
        SELECT f.recipe_id
          FROM recipe_format_components rfc
@@ -1102,14 +992,24 @@ export const recipeRepository = {
     // descendant chain, adding the edge recipeId -> subRecipeId would close a loop.
     // Accepts an optional transaction client so the check sees uncommitted DELETEs
     // performed earlier in the same update transaction.
+    // Pas 2b-1 : arêtes de la nomenclature composée (format actif + miroir), plus l'ancien modèle.
+    if (recipeId === subRecipeId) return true;
     const runner = client ?? db;
     const result = await runner.query(
-      `WITH RECURSIVE chain AS (
-         SELECT sub_recipe_id FROM recipe_sub_recipes WHERE recipe_id = $1
-         UNION ALL
-         SELECT rsr.sub_recipe_id
-         FROM recipe_sub_recipes rsr
-         JOIN chain c ON c.sub_recipe_id = rsr.recipe_id
+      `WITH RECURSIVE edges AS (
+         SELECT f.recipe_id AS parent, rfc.source_recipe_id AS child
+           FROM recipe_format_components rfc
+           JOIN recipe_formats f ON f.id = rfc.format_id AND f.is_active
+          WHERE rfc.source_recipe_id IS NOT NULL
+         UNION
+         SELECT rc.recipe_id, rc.source_recipe_id FROM recipe_components rc WHERE rc.source_recipe_id IS NOT NULL
+       ), chain AS (
+         SELECT child AS sub_recipe_id, 1 AS depth FROM edges WHERE parent = $1
+         UNION
+         SELECT e.child, c.depth + 1
+         FROM edges e
+         JOIN chain c ON c.sub_recipe_id = e.parent
+         WHERE c.depth < 20
        )
        SELECT 1 FROM chain WHERE sub_recipe_id = $2 LIMIT 1`,
       [subRecipeId, recipeId]
@@ -1222,9 +1122,7 @@ export const recipeRepository = {
       `SELECT r.id, r.name, SUM(a.cnt)::int AS occurrences,
               (SELECT b.version_no FROM bom_versions b WHERE b.recipe_id = r.id AND b.status = 'active') AS active_version
        FROM (
-         SELECT recipe_id, count(*) cnt FROM recipe_ingredients WHERE ingredient_id = $1 GROUP BY recipe_id
-         UNION ALL
-         SELECT recipe_id, count(*) FROM recipe_components WHERE source_ingredient_id = $1 GROUP BY recipe_id
+         SELECT recipe_id, count(*) cnt FROM recipe_components WHERE source_ingredient_id = $1 GROUP BY recipe_id
          UNION ALL
          SELECT rf.recipe_id, count(*) FROM recipe_format_components rfc
            JOIN recipe_formats rf ON rf.id = rfc.format_id
@@ -1277,26 +1175,23 @@ export const recipeRepository = {
         return { rows_count: ids.length, recipes_count: scope ? ids.length : 0, log_id: log.id as string, recipe_ids: [] as string[], mode };
       }
 
-      const ri = (await db.query(
-        `SELECT id::text FROM recipe_ingredients WHERE ingredient_id = $1 AND ($2::uuid[] IS NULL OR recipe_id = ANY($2::uuid[]))`,
-        [sourceId, scope])).rows.map(r => r.id as string);
+      // Pas 2b-1 : seule la nomenclature par format est remplacée (le miroir suit par trigger).
       const rfc = (await db.query(
         `SELECT rfc.id::text FROM recipe_format_components rfc JOIN recipe_formats rf ON rf.id = rfc.format_id
           WHERE rfc.source_ingredient_id = $1 AND ($2::uuid[] IS NULL OR rf.recipe_id = ANY($2::uuid[]))`,
         [sourceId, scope])).rows.map(r => r.id as string);
-      if (ri.length + rfc.length === 0) return { rows_count: 0, recipes_count: 0, log_id: null, recipe_ids: [] as string[], mode };
-      await db.query(`UPDATE recipe_ingredients SET ingredient_id = $2, quantity = quantity * $3::numeric WHERE id::text = ANY($1::text[])`, [ri, targetId, ratio]);
+      if (rfc.length === 0) return { rows_count: 0, recipes_count: 0, log_id: null, recipe_ids: [] as string[], mode };
       // Le miroir recipe_components est resynchronisé automatiquement par trigger
       // (mig 412) à la mise à jour de recipe_format_components ci-dessous.
       await db.query(
         `UPDATE recipe_format_components SET source_ingredient_id = $2, quantite = quantite * $3::numeric, updated_at = NOW() WHERE id::text = ANY($1::text[])`,
         [rfc, targetId, ratio]);
       const recipeIds = (await db.query(
-        `SELECT recipe_id::text AS id FROM recipe_ingredients WHERE id::text = ANY($1::text[])
-         UNION SELECT rf.recipe_id::text FROM recipe_format_components rfc JOIN recipe_formats rf ON rf.id = rfc.format_id WHERE rfc.id::text = ANY($2::text[])`,
-        [ri, rfc])).rows.map(r => r.id as string);
-      const affected = { recipe_ingredients: ri, recipe_format_components: rfc };
-      const rowsCount = ri.length + rfc.length;
+        `SELECT DISTINCT rf.recipe_id::text AS id FROM recipe_format_components rfc JOIN recipe_formats rf ON rf.id = rfc.format_id WHERE rfc.id::text = ANY($1::text[])`,
+        [rfc])).rows.map(r => r.id as string);
+      // La clé recipe_ingredients reste dans le journal (vide) pour la forme des anciens journaux.
+      const affected = { recipe_ingredients: [] as string[], recipe_format_components: rfc };
+      const rowsCount = rfc.length;
       const log = (await db.query(
         `INSERT INTO recipe_bulk_replace_log (source_ingredient_id, target_ingredient_id, affected, recipes_count, rows_count, performed_by, mode, ratio, recipe_ids)
          VALUES ($1, $2, $3, $4, $5, $6, 'replace', $7::numeric, $8::uuid[]) RETURNING id`,
@@ -1322,19 +1217,16 @@ export const recipeRepository = {
       if (log.mode === 'substitute') {
         restored = (await db.query(`DELETE FROM recipe_line_substitutes WHERE id = ANY($1::uuid[])`, [log.substitute_ids ?? []])).rowCount ?? 0;
       } else {
-        const a = log.affected as { recipe_ingredients?: string[]; recipe_components?: string[]; recipe_format_components?: string[] };
+        const a = log.affected as { recipe_format_components?: string[] };
         const S = log.source_ingredient_id, T = log.target_ingredient_id, ratio = Number(log.ratio ?? 1);
-        const r1 = await db.query(
-          `UPDATE recipe_ingredients SET ingredient_id = $1, quantity = quantity / $4::numeric WHERE id::text = ANY($3::text[]) AND ingredient_id = $2`,
-          [S, T, a.recipe_ingredients ?? [], ratio]);
         // Le miroir recipe_components est resynchronisé par trigger (mig 412) au revert
-        // de recipe_format_components ci-dessous ; a.recipe_components (anciens logs) est
-        // désormais ignoré.
+        // de recipe_format_components ci-dessous ; les clés recipe_components et
+        // recipe_ingredients des anciens journaux sont ignorées (ancien modèle retiré, 2b-1).
         const r3 = await db.query(
           `UPDATE recipe_format_components SET source_ingredient_id = $1, quantite = quantite / $4::numeric, updated_at = NOW()
             WHERE id::text = ANY($3::text[]) AND source_ingredient_id = $2`,
           [S, T, a.recipe_format_components ?? [], ratio]);
-        restored = (r1.rowCount ?? 0) + (r3.rowCount ?? 0);
+        restored = r3.rowCount ?? 0;
       }
       await db.query(`UPDATE recipe_bulk_replace_log SET reverted_at = NOW(), reverted_by = $2 WHERE id = $1`, [logId, userId]);
       return { ok: true as const, restored };

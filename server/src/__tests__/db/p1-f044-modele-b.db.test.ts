@@ -19,7 +19,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import {
   hasTestDb, testPool, closeTestPool, importRepositories,
-  createBaseFixtures, createIngredient, createLot, cleanupFixtures, num, RUN, type Fixtures,
+  createBaseFixtures, createIngredient, createLot, cleanupFixtures, num, RUN, setComposition, type Fixtures,
 } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Production — semi-finis modèle B (F-044)', () => {
@@ -48,7 +48,7 @@ describe.skipIf(!hasTestDb)('Production — semi-finis modèle B (F-044)', () =>
     );
     pateRecipeId = pate.rows[0].id;
     fx.ids.recipes.push(pateRecipeId);
-    await p.query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 1, 'kg')`, [pateRecipeId, farineId]);
+    await setComposition(pateRecipeId, { ingredients: [{ ingredientId: farineId, quantity: 1, unit: 'kg' }] });
 
     // Produit « Baguette » + recette : 0,5 kg de Pâte (base) + 0,01 kg de Sel (direct).
     const prod = await p.query(
@@ -64,8 +64,10 @@ describe.skipIf(!hasTestDb)('Production — semi-finis modèle B (F-044)', () =>
     );
     baguetteRecipeId = brec.rows[0].id;
     fx.ids.recipes.push(baguetteRecipeId);
-    await p.query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 0.01, 'kg')`, [baguetteRecipeId, selId]);
-    await p.query(`INSERT INTO recipe_sub_recipes (recipe_id, sub_recipe_id, quantity) VALUES ($1, $2, 0.5)`, [baguetteRecipeId, pateRecipeId]);
+    await setComposition(baguetteRecipeId, {
+      ingredients: [{ ingredientId: selId, quantity: 0.01, unit: 'kg' }],
+      subRecipes: [{ subRecipeId: pateRecipeId, quantity: 0.5 }],
+    });
 
     const inv = await p.query(`SELECT current_quantity FROM inventory WHERE ingredient_id = $1 AND store_id = $2`, [farineId, fx.storeId]);
     farineBefore = num(inv.rows[0]?.current_quantity);
@@ -79,7 +81,6 @@ describe.skipIf(!hasTestDb)('Production — semi-finis modèle B (F-044)', () =>
     await p.query(`DELETE FROM semi_finished_transactions WHERE recipe_id = $1`, [pateRecipeId]).catch(() => undefined);
     await p.query(`DELETE FROM semi_finished_stock WHERE recipe_id = $1`, [pateRecipeId]).catch(() => undefined);
     await p.query(`DELETE FROM production_plan_dependencies WHERE sub_recipe_id = $1`, [pateRecipeId]).catch(() => undefined);
-    await p.query(`DELETE FROM recipe_sub_recipes WHERE recipe_id = $1`, [baguetteRecipeId]).catch(() => undefined);
     // Plans fils (is_semi_finished_plan) du store créés par la détection.
     await p.query(`DELETE FROM production_plan_items WHERE base_recipe_id = $1`, [pateRecipeId]).catch(() => undefined);
     await p.query(`DELETE FROM production_plans WHERE store_id = $1 AND is_semi_finished_plan = true`, [fx.storeId]).catch(() => undefined);

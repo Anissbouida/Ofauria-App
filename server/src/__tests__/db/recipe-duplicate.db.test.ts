@@ -21,7 +21,7 @@ describe.skipIf(!hasTestDb)('Dupliquer une fiche entière (constat 109)', () => 
     farine = await createIngredient(fx, { name: 'Farine C109', unit: 'kg', unitCost: 6 });
     const sel = await createIngredient(fx, { name: 'Sel C109', unit: 'kg', unitCost: 2 });
     const made = await createProductWithRecipe(fx, { name: 'Baguette C109', price: 3, shelfLifeDays: null,
-      ingredients: [{ ingredientId: farine, quantity: 1, unit: 'kg' }] });
+      ingredients: [] }); // composition posée ci-dessous dans le format par défaut (pas 2b-1)
     sourceId = made.recipeId;
     await p().query(`UPDATE recipes SET etapes = $2, margin_multiplier = 2.4, main_oeuvre_min = 45 WHERE id = $1`,
       [sourceId, JSON.stringify([{ nom: 'Pétrissage', duree_min: 15 }])]);

@@ -2,6 +2,7 @@ import { db, withTransaction } from '../config/database.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { healthReport } from './config-health.js';
 import { BSI_SOURCE } from './stock-roles.js';
+import { writeCompositionLines } from '../repositories/composition-lines.helper.js';
 
 /**
  * Assistant de configuration de la production et simulation (plan d'exécution
@@ -96,7 +97,11 @@ export async function simulateOrder(userId: string, orderTypeCode?: string | nul
            VALUES ($1, 'SIMULATION', 50, 50, 2, CURRENT_DATE + 30, $2, 'active', 50, 0) RETURNING id`, [ingId, store.id])).rows[0].id;
         productId = (await db.query(`INSERT INTO products (name, slug, price, sale_type) VALUES ('Article de simulation', 'simulation-' || gen_random_uuid(), 10, 'jour') RETURNING id`)).rows[0].id;
         const recipeId = (await db.query(`INSERT INTO recipes (product_id, name, yield_quantity, yield_unit, mode_cout) VALUES ($1, 'Fiche de simulation', 1, 'unit', 'ratio_poids') RETURNING id`, [productId])).rows[0].id;
-        await db.query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, 0.5, 'kg')`, [recipeId, ingId]);
+        // Pas 2b-1 : composition dans la nomenclature du format par défaut (seul modèle lu).
+        // Client emprunté à la transaction de simulation (withTransaction) : même connexion.
+        const c = await db.getClient();
+        try { await writeCompositionLines(c, recipeId, { ingredients: [{ ingredientId: ingId, quantity: 0.5, unit: 'kg' }] }, userId); }
+        finally { c.release(); }
         return `Matière (50 kg), article et fiche (0,5 kg par article) créés pour la simulation${ot ? ` — type d'ordre « ${ot.label} »` : ''}.`;
       }, undefined);
       steps[steps.length - 1].stock = await stockOf(lotId);

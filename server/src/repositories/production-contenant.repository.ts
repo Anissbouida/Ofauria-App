@@ -119,14 +119,7 @@ export const productionContenantRepository = {
   },
 
   async deactivateContenant(id: string) {
-    // Check no active profiles reference this contenant
-    const check = await db.query(
-      `SELECT COUNT(*) as cnt FROM produit_profil_production WHERE contenant_id = $1`,
-      [id]
-    );
-    if (parseInt(check.rows[0].cnt) > 0) {
-      throw new Error(`Ce contenant est utilise par ${check.rows[0].cnt} produit(s). Detachez-les avant de desactiver.`);
-    }
+    // 2b-1 : plus de profil produit à vérifier (produit_profil_production retirée).
     return this.updateContenant(id, { is_active: false });
   },
 
@@ -140,16 +133,15 @@ export const productionContenantRepository = {
    * par 3 format(s) ») au lieu d'une violation de contrainte brute, et (b)
    * decider du repli sur la desactivation sans avoir a parser une erreur PG.
    *
-   * Le referentiel a deux chemins vers le contenant (formats de recette d'un
-   * cote, profil produit de l'autre) : les deux sont verifies, plus les plans
-   * de production et le stock semi-fini qui l'historisent.
+   * Le referentiel pointe le contenant depuis les formats de recette et les
+   * recettes (le profil produit a ete retire en 2b-1), plus les plans de
+   * production et le stock semi-fini qui l'historisent.
    */
   async findContenantBlockers(id: string): Promise<string[]> {
     const usage = await db.query(
       `SELECT
          (SELECT COUNT(*) FROM recipe_formats            WHERE contenant_id = $1)        AS formats,
          (SELECT COUNT(*) FROM recipes                   WHERE contenant_id = $1)        AS recettes,
-         (SELECT COUNT(*) FROM produit_profil_production WHERE contenant_id = $1)        AS produits,
          (SELECT COUNT(*) FROM production_plan_items     WHERE contenant_id = $1)        AS plans,
          (SELECT COUNT(*) FROM stock_semifini_frigo      WHERE source_contenant_id = $1) AS stock`,
       [id]
@@ -158,7 +150,6 @@ export const productionContenantRepository = {
     const blockers: string[] = [];
     if (Number(u.formats) > 0) blockers.push(`${u.formats} format(s) de recette`);
     if (Number(u.recettes) > 0) blockers.push(`${u.recettes} recette(s)`);
-    if (Number(u.produits) > 0) blockers.push(`${u.produits} profil(s) produit`);
     if (Number(u.plans) > 0) blockers.push(`${u.plans} ligne(s) de plan`);
     if (Number(u.stock) > 0) blockers.push(`${u.stock} lot(s) de stock semi-fini`);
     return blockers;
@@ -179,138 +170,35 @@ export const productionContenantRepository = {
   },
 
   // ───────── PROFILS PRODUIT ─────────
+  // 2b-1 : le profil de production par produit (produit_profil_production, surcharges du
+  // contenant) appartient à l'ancien modèle de fiche ; la table n'a jamais été remplie
+  // (vide en développement comme en production). Le contenant et ses valeurs se règlent sur
+  // le format de la fiche. Les routes restent pour les écrans existants : lecture = aucun
+  // profil, écriture refusée avec un message, suppression sans effet.
 
-  async findProfileByProductId(productId: string) {
-    const result = await db.query(
-      `SELECT pp.*,
-              c.nom as contenant_nom, c.type_production, c.unite_lancement,
-              c.quantite_theorique as contenant_quantite_theorique,
-              c.pertes_fixes as contenant_pertes_fixes,
-              c.quantite_nette_cible as contenant_quantite_nette_cible,
-              c.poids_kg as contenant_poids_kg,
-              c.seuil_rendement_defaut as contenant_seuil_rendement,
-              c.etapes_defaut as contenant_etapes_defaut,
-              c.categories_pertes as contenant_categories_pertes
-       FROM produit_profil_production pp
-       JOIN production_contenants c ON c.id = pp.contenant_id
-       WHERE pp.produit_id = $1`,
-      [productId]
-    );
-    if (!result.rows[0]) return null;
-
-    const row = result.rows[0];
-
-    // Fusionner surcharges avec valeurs par defaut du contenant
-    return {
-      id: row.id,
-      produit_id: row.produit_id,
-      contenant_id: row.contenant_id,
-      contenant_nom: row.contenant_nom,
-      type_production: row.type_production,
-      unite_lancement: row.unite_lancement,
-      poids_kg: row.contenant_poids_kg,
-      notes: row.notes,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      // Valeurs effectives (surcharge ou defaut contenant)
-      quantite_theorique: row.surcharge_quantite_theorique ?? row.contenant_quantite_theorique,
-      pertes_fixes: row.surcharge_pertes_fixes ?? row.contenant_pertes_fixes,
-      quantite_nette_cible:
-        (row.surcharge_quantite_theorique ?? row.contenant_quantite_theorique) -
-        (row.surcharge_pertes_fixes ?? row.contenant_pertes_fixes),
-      seuil_rendement: row.surcharge_seuil_rendement ?? row.contenant_seuil_rendement,
-      categories_pertes: row.contenant_categories_pertes,
-      // Etapes fusionnees
-      etapes: this.mergeEtapes(row.contenant_etapes_defaut, row.etapes_surcharges),
-      // Surcharges brutes (pour l'edition)
-      surcharges: {
-        quantite_theorique: row.surcharge_quantite_theorique,
-        pertes_fixes: row.surcharge_pertes_fixes,
-        seuil_rendement: row.surcharge_seuil_rendement,
-        etapes: row.etapes_surcharges,
-      },
-    };
+  async findProfileByProductId(_productId: string): Promise<null> {
+    return null;
   },
 
-  mergeEtapes(contenantEtapes: unknown[], surcharges: unknown[]): unknown[] {
-    if (!surcharges || !Array.isArray(surcharges) || surcharges.length === 0) {
-      return contenantEtapes || [];
-    }
-    const base = Array.isArray(contenantEtapes) ? [...contenantEtapes] : [];
-    const surchargeMap = new Map<number, Record<string, unknown>>();
-    for (const s of surcharges as Record<string, unknown>[]) {
-      if (s.ordre !== undefined) surchargeMap.set(s.ordre as number, s);
-    }
-
-    // Override matching steps, append new ones
-    const merged = base.map((step: unknown) => {
-      const s = step as Record<string, unknown>;
-      const override = surchargeMap.get(s.ordre as number);
-      if (override) {
-        surchargeMap.delete(s.ordre as number);
-        return { ...s, ...override, _surcharge: true };
-      }
-      return { ...s, _surcharge: false };
-    });
-
-    // Append extra steps from surcharges
-    for (const extra of surchargeMap.values()) {
-      merged.push({ ...extra, _surcharge: true });
-    }
-
-    return merged.sort((a: unknown, b: unknown) =>
-      ((a as Record<string, number>).ordre || 0) - ((b as Record<string, number>).ordre || 0)
-    );
-  },
-
-  async upsertProfile(productId: string, data: {
+  async upsertProfile(_productId: string, _data: {
     contenant_id: string;
     surcharge_quantite_theorique?: number | null;
     surcharge_pertes_fixes?: number | null;
     surcharge_seuil_rendement?: number | null;
     etapes_surcharges?: unknown[];
     notes?: string | null;
-  }) {
-    const result = await db.query(
-      `INSERT INTO produit_profil_production
-        (produit_id, contenant_id, surcharge_quantite_theorique, surcharge_pertes_fixes, surcharge_seuil_rendement, etapes_surcharges, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (produit_id) DO UPDATE SET
-        contenant_id = EXCLUDED.contenant_id,
-        surcharge_quantite_theorique = EXCLUDED.surcharge_quantite_theorique,
-        surcharge_pertes_fixes = EXCLUDED.surcharge_pertes_fixes,
-        surcharge_seuil_rendement = EXCLUDED.surcharge_seuil_rendement,
-        etapes_surcharges = EXCLUDED.etapes_surcharges,
-        notes = EXCLUDED.notes,
-        updated_at = NOW()
-       RETURNING *`,
-      [productId, data.contenant_id,
-       data.surcharge_quantite_theorique ?? null,
-       data.surcharge_pertes_fixes ?? null,
-       data.surcharge_seuil_rendement ?? null,
-       JSON.stringify(data.etapes_surcharges || []),
-       data.notes ?? null]
-    );
-    return this.findProfileByProductId(productId);
+  }): Promise<never> {
+    const err = new Error('Le profil de production par produit n\'existe plus : réglez le contenant et ses quantités sur le format de la fiche technique.') as Error & { statusCode?: number };
+    err.statusCode = 410;
+    throw err;
   },
 
-  async deleteProfile(productId: string) {
-    await db.query(
-      `DELETE FROM produit_profil_production WHERE produit_id = $1`,
-      [productId]
-    );
+  async deleteProfile(_productId: string): Promise<void> {
+    // Rien à supprimer (voir plus haut).
   },
 
-  async findProductsByContenantId(contenantId: string) {
-    const result = await db.query(
-      `SELECT pp.produit_id, p.name as product_name, p.price, pp.created_at
-       FROM produit_profil_production pp
-       JOIN products p ON p.id = pp.produit_id
-       WHERE pp.contenant_id = $1
-       ORDER BY p.name`,
-      [contenantId]
-    );
-    return result.rows;
+  async findProductsByContenantId(_contenantId: string): Promise<{ produit_id: string; product_name: string; price: string; created_at: string }[]> {
+    return [];
   },
 
   // ───────── LABELS ─────────

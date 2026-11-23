@@ -6,7 +6,7 @@
  *  - une version figée ne peut plus être modifiée ; activer sans changement est refusé.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createProductWithRecipe, cleanupFixtures, type Fixtures } from './helpers.js';
+import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createProductWithRecipe, cleanupFixtures, setIngredientQty, type Fixtures } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Versions de nomenclature (M4-01)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
@@ -37,9 +37,13 @@ describe.skipIf(!hasTestDb)('Versions de nomenclature (M4-01)', () => {
   });
 
   it('modifier la fiche : modification non activée, écarts listés', async () => {
-    await p().query(`UPDATE recipe_ingredients SET quantity = 0.6 WHERE recipe_id = $1 AND ingredient_id = $2`, [recipeId, flour]);
+    await setIngredientQty(recipeId, flour, 0.6);
     expect((await bom.list(recipeId)).pendingChanges).toBe(true);
-    expect(await bom.pendingDiff(recipeId)).toEqual([expect.objectContaining({ section: 'Ingrédients', change: 'quantite', before: '0.5 kg', after: '0.6 kg' })]);
+    // Nouveau modèle (pas 2b-1) : l'écart apparaît dans le miroir de la fiche et dans le format par défaut.
+    expect(await bom.pendingDiff(recipeId)).toEqual([
+      expect.objectContaining({ section: 'Composants', change: 'quantite', before: '0.5 kg', after: '0.6 kg' }),
+      expect.objectContaining({ section: 'Format 1 (défaut)', change: 'quantite', before: '0.5 kg', after: '0.6 kg' }),
+    ]);
   });
 
   it('activer la version 2 rend la 1 obsolète ; la 1 reste figée', async () => {
@@ -49,7 +53,7 @@ describe.skipIf(!hasTestDb)('Versions de nomenclature (M4-01)', () => {
     const v1 = list.find((v: { version_no: number }) => v.version_no === 1);
     expect(v1).toMatchObject({ status: 'obsolete' });
     expect(v1.valid_to < v2.valid_from).toBe(true);
-    expect(await bom.compare(recipeId, 1, 2)).toHaveLength(1);
+    expect(await bom.compare(recipeId, 1, 2)).toHaveLength(2); // miroir + format par défaut
     await expect(p().query(`UPDATE bom_versions SET snapshot = '{}'::jsonb WHERE recipe_id = $1 AND version_no = 1`, [recipeId])).rejects.toThrow(/VERSION_FIGEE/);
     await expect(p().query(`UPDATE bom_versions SET status = 'active', valid_to = NULL WHERE recipe_id = $1 AND version_no = 1`, [recipeId])).rejects.toThrow(/VERSION_FIGEE|uq_bom_versions_one_active/);
   });

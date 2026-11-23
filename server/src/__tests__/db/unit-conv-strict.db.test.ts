@@ -15,7 +15,9 @@ describe.skipIf(!hasTestDb)('Conversion d\'unité stricte (G0-26)', () => {
     return v === null ? null : parseFloat(v);
   };
   const issues = async () => (await p().query(
-    `SELECT ingredient_id, line_unit, stock_unit FROM v_impossible_unit_conversions WHERE recipe_id = $1 ORDER BY line_unit`, [recipeId])).rows;
+    // Pas 2b-1 : la fiche vit dans la nomenclature du format par défaut ET dans son miroir
+    // (recipe_components) ; la vue lit les deux, une ligne y figure donc une fois par source.
+    `SELECT DISTINCT ingredient_id, line_unit, stock_unit FROM v_impossible_unit_conversions WHERE recipe_id = $1 ORDER BY line_unit`, [recipeId])).rows;
 
   beforeAll(async () => {
     fx = await createBaseFixtures();

@@ -66,7 +66,7 @@ describe.skipIf(!hasTestDb)('Fusion d\'ingrédients en double (G2-03)', () => {
     expect(pv.blocker).toBeNull();
     expect(pv.impact.recipes).toBe(2);
     expect(pv.impact.lots).toBe(1);
-    expect(pv.impact.tables.recipe_ingredients).toBe(3);
+    expect(pv.impact.tables.recipe_format_components).toBe(3); // pas 2b-1 : lignes de la nomenclature du format
     expect(pv.impact.tables.inventory_transactions).toBe(1);
     expect(pv.impact.stock).toEqual([expect.objectContaining({ storeId: fx.storeId, source: 30, target: 10 })]);
     expect(pv.impact).toMatchObject({ unitCostBefore: 12, unitCostAfter: 10.5 });
@@ -79,15 +79,18 @@ describe.skipIf(!hasTestDb)('Fusion d\'ingrédients en double (G2-03)', () => {
 
     // La fiche en trop n'existe plus ; plus aucune référence.
     expect((await p().query(`SELECT 1 FROM ingredients WHERE id = $1`, [a])).rows).toHaveLength(0);
-    for (const [table, col] of [['recipe_ingredients', 'ingredient_id'], ['ingredient_lots', 'ingredient_id'], ['inventory', 'ingredient_id'], ['inventory_transactions', 'ingredient_id']]) {
+    for (const [table, col] of [['recipe_format_components', 'source_ingredient_id'], ['recipe_components', 'source_ingredient_id'], ['ingredient_lots', 'ingredient_id'], ['inventory', 'ingredient_id'], ['inventory_transactions', 'ingredient_id']]) {
       expect((await p().query(`SELECT COUNT(*)::int AS n FROM ${table} WHERE ${col} = $1`, [a])).rows[0].n).toBe(0);
     }
 
     // Recette aux deux fiches : 0,2 kg + 0,3 kg = 0,5 kg sur une ligne ; la ligne en grammes est repointée telle quelle.
     const both = (await p().query(
-      `SELECT quantity::float AS q, unit FROM recipe_ingredients WHERE recipe_id = $1 AND ingredient_id = $2 ORDER BY unit`, [recipeBoth, b])).rows;
+      `SELECT fc.quantite::float AS q, fc.unite AS unit FROM recipe_format_components fc JOIN recipe_formats f ON f.id = fc.format_id
+        WHERE f.recipe_id = $1 AND f.is_default AND fc.source_ingredient_id = $2 ORDER BY fc.unite`, [recipeBoth, b])).rows;
     expect(both).toEqual([{ q: 50, unit: 'g' }, { q: 0.5, unit: 'kg' }]);
-    expect((await p().query(`SELECT quantity::float AS q FROM recipe_ingredients WHERE recipe_id = $1 AND ingredient_id = $2`, [recipeOnlyA, b])).rows).toEqual([{ q: 0.1 }]);
+    expect((await p().query(
+      `SELECT fc.quantite::float AS q FROM recipe_format_components fc JOIN recipe_formats f ON f.id = fc.format_id
+        WHERE f.recipe_id = $1 AND f.is_default AND fc.source_ingredient_id = $2`, [recipeOnlyA, b])).rows).toEqual([{ q: 0.1 }]);
 
     // Stock : 30 + 10 = 40 kg, seuil le plus haut ; les deux lots sont sur la fiche gardée.
     expect(await stock(b)).toBe(40);

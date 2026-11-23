@@ -27,7 +27,9 @@ export const recipeSubstituteRepository = {
          JOIN ingredients io ON io.id = s.ingredient_id
          JOIN ingredients isub ON isub.id = s.substitute_ingredient_id
         WHERE s.recipe_id = $1
-           OR (s.recipe_id IS NULL AND s.ingredient_id IN (SELECT ingredient_id FROM recipe_ingredients WHERE recipe_id = $1))
+           OR (s.recipe_id IS NULL AND s.ingredient_id IN (SELECT c.source_ingredient_id FROM recipe_format_components c
+                                                        JOIN recipe_formats f ON f.id = c.format_id AND f.is_active
+                                                       WHERE f.recipe_id = $1 AND c.source_ingredient_id IS NOT NULL))
         ORDER BY io.name, s.priority, isub.name`, [recipeId]);
     return r.rows;
   },

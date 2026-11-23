@@ -63,7 +63,7 @@ export const ingredientAllergensRepository = {
     const rows = (await db.query(
       `SELECT i.id, i.name, COALESCE(ec.name, i.category) AS category, i.allergens, i.allergen_traces,
               i.allergens_reviewed_at, NULLIF(trim(concat_ws(' ', u.first_name, u.last_name)), '') AS reviewed_by_name,
-              (SELECT COUNT(DISTINCT ri.recipe_id) FROM recipe_ingredients ri WHERE ri.ingredient_id = i.id)::int AS used_in_recipes
+              (SELECT COUNT(DISTINCT f.recipe_id) FROM recipe_format_components c JOIN recipe_formats f ON f.id = c.format_id AND f.is_active WHERE c.source_ingredient_id = i.id)::int AS used_in_recipes
          FROM ingredients i
          LEFT JOIN expense_categories ec ON ec.id = i.category_id
          LEFT JOIN users u ON u.id = i.allergens_reviewed_by

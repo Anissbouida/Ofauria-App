@@ -7,7 +7,7 @@
  *    (rejouée dans un point de sauvegarde, mig 593) et la fiche courante reste intacte.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createLot, createProductWithRecipe, cleanupFixtures, num, type Fixtures } from './helpers.js';
+import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createLot, createProductWithRecipe, cleanupFixtures, num, setIngredientQty, type Fixtures } from './helpers.js';
 
 describe.skipIf(!hasTestDb)('Version figée sur l\'ordre (M4-02)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
@@ -50,7 +50,7 @@ describe.skipIf(!hasTestDb)('Version figée sur l\'ordre (M4-02)', () => {
   });
 
   it('fiche passée en version 2 : l\'ordre garde la version 1 et le signale', async () => {
-    await p().query(`UPDATE recipe_ingredients SET quantity = 0.6 WHERE recipe_id = $1`, [recipeId]);
+    await setIngredientQty(recipeId, null, 0.6);
     await bom.activate(recipeId, { reason: 'Version 2' }, fx.userId);
     expect(num((await p().query(`SELECT needed_quantity FROM production_ingredient_needs WHERE plan_id = $1 AND ingredient_id = $2`, [planId, flour])).rows[0].needed_quantity)).toBeCloseTo(5, 3);
     const plan = await repos.productionRepository.findById(planId);
@@ -58,13 +58,13 @@ describe.skipIf(!hasTestDb)('Version figée sur l\'ordre (M4-02)', () => {
   });
 
   it('fiche modifiée sans activation : besoins de la version en vigueur, fiche courante intacte', async () => {
-    await p().query(`UPDATE recipe_ingredients SET quantity = 0.7 WHERE recipe_id = $1`, [recipeId]);
+    await setIngredientQty(recipeId, null, 0.7);
     const id = await newPlan();
     const { warnings } = await repos.productionRepository.confirm(id, fx.userId);
     expect(warnings.join(' ')).toMatch(/sans nouvelle version active : besoins calculés sur la version en vigueur \([^)]*Pain M402[^)]* v2\)/);
     // Version 2 = 0,6 kg/pièce → 6 kg pour 10, pas 7 kg (copie de travail).
     expect(num((await p().query(`SELECT needed_quantity FROM production_ingredient_needs WHERE plan_id = $1 AND ingredient_id = $2`, [id, flour])).rows[0].needed_quantity)).toBeCloseTo(6, 3);
-    expect(num((await p().query(`SELECT quantity FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId])).rows[0].quantity)).toBeCloseTo(0.7, 3);
+    expect(num((await p().query(`SELECT fc.quantite AS quantity FROM recipe_format_components fc JOIN recipe_formats f ON f.id = fc.format_id WHERE f.recipe_id = $1 AND f.is_default`, [recipeId])).rows[0].quantity)).toBeCloseTo(0.7, 3);
     expect((await bom.list(recipeId)).pendingChanges).toBe(true);
   });
 });

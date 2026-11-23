@@ -4,6 +4,7 @@ import { invalidateWorkshops } from './workshops.js';
 import { invalidateProcessRefs } from './process-referentials.js';
 import { applyLayers, cleanLayers, describeLayers, type ProfileLayers } from './industry-profile.js';
 import { invalidatePolicies } from './policies.js';
+import { writeCompositionLines, type LineIngredient } from '../repositories/composition-lines.helper.js';
 
 /**
  * Données de départ par secteur (phase 9.3, enrichi au lot P7 du plan Production générique).
@@ -156,16 +157,17 @@ async function loadDemo(client: Client, d: NonNullable<StarterPack['demo']>): Pr
     `INSERT INTO recipes (product_id, name, yield_quantity, yield_unit, total_cost)
      VALUES ($1, $2, 1, 'unit', $3) RETURNING id`,
     [product.rows[0].id, d.productName, cost]);
+  const lines: LineIngredient[] = [];
   for (const m of d.materials) {
     // Matière réutilisée si elle existe déjà sous ce nom (rejeu après suppression de l'article).
     const found = await client.query(`SELECT id FROM ingredients WHERE name = $1 LIMIT 1`, [m.name]);
     const ingredientId = found.rows[0]?.id ?? (await client.query(
       `INSERT INTO ingredients (name, unit, unit_cost) VALUES ($1, $2, $3) RETURNING id`,
       [m.name, m.unit, m.unitCost])).rows[0].id;
-    await client.query(
-      `INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
-      [recipe.rows[0].id, ingredientId, m.quantity, m.unit]);
+    lines.push({ ingredientId, quantity: m.quantity, unit: m.unit });
   }
+  // Pas 2b-1 : composition dans la nomenclature du format par défaut (seul modèle lu).
+  await writeCompositionLines(client, recipe.rows[0].id, { ingredients: lines });
   return 1;
 }
 

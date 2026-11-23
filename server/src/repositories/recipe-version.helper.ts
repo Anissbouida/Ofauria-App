@@ -5,7 +5,8 @@
  * d'ecriture : formulaire recette (recipe.repository.update), nomenclature par
  * format (recipe-component.repository.replaceForFormat), leviers financiers
  * (updateFinance). Avant, seul le formulaire versionnait, et seulement le
- * modele legacy : une recette composee avait des versions vides.
+ * modele legacy : une recette composee avait des versions vides. Pas 2b-1 :
+ * l'ancien modele n'est plus lu (voir plus bas).
  *
  * Les colonnes historiques de recipe_versions restent alimentees (l'UI les
  * lit) ; la capture complete va dans `snapshot` (JSONB).
@@ -29,15 +30,23 @@ export async function snapshotRecipeVersion(
   const recipe = rec.rows[0];
   if (!recipe) return null;
 
-  const [ingredients, subRecipes, components, formats, packaging] = await Promise.all([
+  // Pas 2b-1 : l'ancien modèle n'est plus lu. Les colonnes historiques `ingredients` et
+  // `sub_recipes` (affichées par l'historique) reprennent la nomenclature du format par
+  // défaut, dans leur forme d'origine ; dans `snapshot`, les clés à plat restent vides —
+  // la composition y est portée par `formats[].components` (la restauration la relit là).
+  const [ingredients, subRecipes, components, formats] = await Promise.all([
     q.query(
-      `SELECT ri.ingredient_id, ing.name AS ingredient_name, ri.quantity, COALESCE(ri.unit, ing.unit) AS unit
-       FROM recipe_ingredients ri JOIN ingredients ing ON ing.id = ri.ingredient_id
-       WHERE ri.recipe_id = $1 ORDER BY ing.name`, [recipeId]),
+      `SELECT fc.source_ingredient_id AS ingredient_id, ing.name AS ingredient_name, fc.quantite AS quantity, fc.unite AS unit
+       FROM recipe_format_components fc
+       JOIN recipe_formats f ON f.id = fc.format_id AND f.is_default AND f.is_active
+       JOIN ingredients ing ON ing.id = fc.source_ingredient_id
+       WHERE f.recipe_id = $1 ORDER BY fc.ordre, ing.name`, [recipeId]),
     q.query(
-      `SELECT rsr.sub_recipe_id, sr.name AS sub_recipe_name, rsr.quantity
-       FROM recipe_sub_recipes rsr JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-       WHERE rsr.recipe_id = $1 ORDER BY sr.name`, [recipeId]),
+      `SELECT fc.source_recipe_id AS sub_recipe_id, sr.name AS sub_recipe_name, fc.quantite AS quantity
+       FROM recipe_format_components fc
+       JOIN recipe_formats f ON f.id = fc.format_id AND f.is_default AND f.is_active
+       JOIN recipes sr ON sr.id = fc.source_recipe_id
+       WHERE f.recipe_id = $1 ORDER BY fc.ordre, sr.name`, [recipeId]),
     q.query(
       `SELECT c.role, c.source_recipe_id, br.name AS source_recipe_name,
               c.source_ingredient_id, ing.name AS source_ingredient_name,
@@ -65,10 +74,6 @@ export async function snapshotRecipeVersion(
                 WHERE fc.format_id = f.id
               ), '[]'::json) AS components
        FROM recipe_formats f WHERE f.recipe_id = $1 ORDER BY f.ordre`, [recipeId]),
-    q.query(
-      `SELECT rp.packaging_id, pi.name AS packaging_name, rp.quantity, rp.unit
-       FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
-       WHERE rp.recipe_id = $1`, [recipeId]),
   ]);
 
   const snapshot = {
@@ -87,11 +92,11 @@ export async function snapshotRecipeVersion(
       total_cost: recipe.computed_total_cost,
     },
     etapes: recipe.etapes ?? [],
-    ingredients: ingredients.rows,
-    sub_recipes: subRecipes.rows,
+    ingredients: [],
+    sub_recipes: [],
     components: components.rows,
     formats: formats.rows,
-    packaging: packaging.rows,
+    packaging: [],
   };
 
   const next = await q.query(

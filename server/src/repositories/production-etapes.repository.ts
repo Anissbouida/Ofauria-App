@@ -96,14 +96,13 @@ export const productionEtapesRepository = {
   },
 
   // ─── Initialize étapes for a plan item (called at startItems time) ───
-  // Copies steps from recipe.etapes or produit_profil_production.etapes_surcharges
+  // Copies steps from recipe.etapes (2b-1 : la surcharge par produit, jamais remplie, est retirée)
   async initializeForItem(planItemId: string, client?: import('pg').PoolClient) {
     const q = client || db;
-    // Get the item's product + contenant + profile
+    // Get the item's product + contenant
     const itemResult = await q.query(
       `SELECT ppi.id, ppi.product_id, ppi.base_recipe_id, ppi.contenant_id,
-              r.etapes AS recipe_etapes,
-              ppp.etapes_surcharges
+              r.etapes AS recipe_etapes
        FROM production_plan_items ppi
        -- Recette de l'article : celle du semi-fini (base_recipe_id) ou celle du
        -- PRODUIT (lien direct ou par format). Avant, seule la 1re branche existait :
@@ -118,7 +117,6 @@ export const productionEtapesRepository = {
           ORDER BY (r0.id = COALESCE(ppi.alt_recipe_id, ppi.base_recipe_id)) DESC NULLS LAST, (r0.product_id = ppi.product_id) DESC NULLS LAST
           LIMIT 1
        ) r ON true
-       LEFT JOIN produit_profil_production ppp ON ppp.produit_id = ppi.product_id
        WHERE ppi.id = $1`,
       [planItemId]
     );
@@ -129,10 +127,7 @@ export const productionEtapesRepository = {
     // M5-02/M5-03 : opérations de la gamme quand l'atelier lit la gamme.
     const fromRouting = await initializeFromRouting(q, planItemId);
     if (fromRouting) return fromRouting;
-    // Priority: product profile overrides > recipe steps
-    const etapes = (item.etapes_surcharges && item.etapes_surcharges.length > 0)
-      ? item.etapes_surcharges
-      : (item.recipe_etapes || []);
+    const etapes = item.recipe_etapes || [];
 
     if (!etapes || etapes.length === 0) return [];
 

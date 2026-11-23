@@ -13,7 +13,8 @@ describe.skipIf(!hasTestDb)('Données de départ par secteur', () => {
   const p = () => testPool();
   afterAll(async () => {
     const q = (sql: string) => p().query(sql).catch(() => undefined);
-    await q(`DELETE FROM recipe_ingredients WHERE recipe_id IN (SELECT r.id FROM recipes r JOIN products pr ON pr.id = r.product_id WHERE pr.slug = 'starter-demo-etagere')`);
+    await q(`DELETE FROM recipe_format_components WHERE format_id IN (SELECT f.id FROM recipe_formats f JOIN recipes r ON r.id = f.recipe_id JOIN products pr ON pr.id = r.product_id WHERE pr.slug = 'starter-demo-etagere')`);
+    await q(`DELETE FROM recipe_formats WHERE recipe_id IN (SELECT r.id FROM recipes r JOIN products pr ON pr.id = r.product_id WHERE pr.slug = 'starter-demo-etagere')`);
     await q(`DELETE FROM recipes WHERE product_id IN (SELECT id FROM products WHERE slug = 'starter-demo-etagere')`);
     await q(`DELETE FROM products WHERE slug = 'starter-demo-etagere'`);
     await q(`DELETE FROM ingredients WHERE name LIKE '%(démo)'`);
@@ -49,8 +50,10 @@ describe.skipIf(!hasTestDb)('Données de départ par secteur', () => {
     expect(r1.workshops).toBe(hadWorkshops > 0 ? 0 : 1);
 
     const demo = (await p().query(
-      `SELECT pr.item_kind, r.total_cost::float AS cost, count(ri.id)::int AS lines
-         FROM products pr JOIN recipes r ON r.product_id = pr.id JOIN recipe_ingredients ri ON ri.recipe_id = r.id
+      `SELECT pr.item_kind, r.total_cost::float AS cost, count(fc.id)::int AS lines
+         FROM products pr JOIN recipes r ON r.product_id = pr.id
+         JOIN recipe_formats f ON f.recipe_id = r.id AND f.is_default
+         JOIN recipe_format_components fc ON fc.format_id = f.id AND fc.source_ingredient_id IS NOT NULL
         WHERE pr.slug = 'starter-demo-etagere' GROUP BY pr.item_kind, r.total_cost`)).rows[0];
     expect(demo).toEqual({ item_kind: 'manufactured', cost: 6.5 * 14 + 4 * 22 + 24 * 0.3 + 0.4 * 90, lines: 4 });
 

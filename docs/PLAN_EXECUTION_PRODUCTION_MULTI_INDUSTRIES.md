@@ -454,7 +454,7 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | 0 | Livré | d9bc5d4f | 631 | Mesure en production à passer (`diagnose-multi-industries.sql`) |
 | 1 | Livré | voir § F.1 | 632 | Gardes de capacité branchées sur 6 familles de routes ; les autres capacités du socle restent déclaratives jusqu'à leur étape (8, 2 bis) |
 | 2 | Livré | voir § F.2 | 633 | Relecture métier des profils « À valider » ; liste des spécialisations à confirmer (décision n° 5) |
-| 2 bis | Livré en partie | voir § F.2 bis | 634, 635, 636 | 2b-1 (dette) en attente de la mesure en production et de la décision n° 7 ; saisie écran des lignes d'emballage, des pourcentages et de la nutrition des matières renvoyée au pas 10c (API prêtes) |
+| 2 bis | Livré en partie | voir § F.2 bis | 634, 635, 636, 649 | 2b-1 livré (mig 649) sauf la suppression des tables, après un cycle d'observation ; saisie écran des lignes d'emballage, des pourcentages et de la nutrition des matières renvoyée au pas 10c (API prêtes) |
 | 3 | Livré | voir § F.3 | 637 | Retirer ROLE_CATEGORY_SLUGS et getCategoryRole (obsolètes, encore lus par 3 anciens tests) ; OuvertureTab et JourneeBoutiquePage gardent les groupes caisse et direction (non métier) |
 | 4 | Livré | voir § F.4 | 638 | Brouillon tenu côté serveur et écran de comparaison des versions (API prête) ; restauration limitée au vocabulaire et aux spécialisations pour les nouvelles couches |
 | 5 | Livré | voir § F.5 | 639 | Bascule en actif type d'ordre par type d'ordre après une période d'ombre réelle ; actions du catalogue encore exécutées par le code existant (le moteur décide des passages, pas des effets) ; avancement à afficher sur la fiche de l'ordre (API prête, pas 10) |
@@ -533,8 +533,21 @@ Livré :
 
 Défauts trouvés et corrigés : mig 634 lisait une colonne absente de `recipe_components` dans une fonction partagée (mig 636) ; le miroir de composition aurait rejeté toute nomenclature contenant un emballage (mig 635) ; un test du bilan de santé dépendait du volume de la base de test (liste bornée à 200).
 
+2b-1 (mig 649, livré le 2026-11-23 après décision n° 7) :
+- **Mesure en production** (lecture seule, base à la mig 505) : `recipe_sub_recipes`, `recipe_packaging`, `produit_profil_production` vides ; `recipe_ingredients` = 33 lignes, toutes sur 8 recettes de base archivées le 24/10 (Crème pâtissière, Pâte sucrée, Pâte à choux, Biscuit Joconde, Ganache chocolat noir, Glaçage rocher, Crémeux citron × 2), chacune doublée d'une base active du même nom dans le nouveau modèle. **19 lignes de nomenclature de 10 fiches actives** (Amandine, Basbousa, Tarte aux amandes, Opéra noisette, Tarte chocolat, Sablé framboise, Tarte aux pommes individuelle, Tarte banane individuelle carrée, Barre / entremets caramel) pointaient encore vers ces bases archivées : retirer l'ancien modèle tel quel leur aurait fait perdre coût et allergènes.
+- **Décision (utilisateur) : repointer vers les bases actives.** La mig 649 repointe toute ligne vers l'unique base active homonyme dotée d'une nomenclature (quantité et unité inchangées ; miroir par trigger). Rejoué en lecture seule sur la production : 8 bases, 19 lignes de format, 17 lignes de miroir. Le coût de ces 10 produits change (il suit désormais les fiches techniques actives).
+- Vues de coût, poids, explosion, allergènes, contrôles d'unités et santé des prix sans l'ancien modèle (mêmes colonnes, résultat identique pour toute fiche sans ligne ancienne) ; `v_recipe_direct_cost(_v2)` / `v_recipe_direct_weight_kg` / `v_recipe_total_weight_kg` gardées à 0 (des vues en dépendent) ; instantané de nomenclature avec clés ancien modèle vides ; restauration et anti-cycle sans l'ancien modèle.
+- Les quatre tables passent **en lecture seule** (trigger ; suppression et repointage des références `*_id` permis, pour la fusion de matières).
+- Code : plus aucune lecture ni écriture de l'ancien modèle (≈ 30 fichiers). Les lignes « à plat » encore reçues par l'API (création/modification de fiche, import, données de départ, simulation, restauration d'une ancienne version) s'écrivent dans la nomenclature du format par défaut (`composition-lines.helper.ts`). Profil de production par produit (`/contenants/products/:id`) : lecture vide, écriture refusée (410) ; aucun écran ne l'affichait.
+- Tests : aides `setComposition` / `setIngredientQty` ; 26 fichiers convertis.
+
+Écarts au plan, assumés :
+- `recipe_versions` **n'est pas** passée en lecture seule : c'est l'historique automatique pris avant chaque modification (5 appelants), `bom_versions` ne contient que les versions publiées à la main. La figer ferait perdre cet historique ; elle reste écrite, sans l'ancien modèle.
+- Les tables ne sont pas supprimées : archivage (DROP) après un cycle d'observation en production, comme l'impose le plan. Les vues de première génération restent (elles ont des appelants : `v_recipe_total_cost` alimente les vues de coût par format).
+
+À signaler (données de production, non corrigé) : plusieurs des 19 lignes repointées ont des quantités suspectes — Crème pâtissière à 1 g dans l'Amandine, Biscuit Joconde à 2,11 g et lignes en double (même nombre en g et en kg) dans l'Opéra noisette et la Tarte chocolat. À revoir par le chef dans l'éditeur de fiche.
+
 Non fait, et pourquoi :
-- 2b-1 (retrait de l'ancien modèle des vues, archivage) : la mesure en production n'a pas pu être faite d'ici, la décision n° 7 est attendue, et le plan impose un cycle d'observation. De plus, les aides de test (`createProductWithRecipe`) s'appuient encore sur `recipe_ingredients`.
 - Saisie à l'écran des lignes d'emballage, des pourcentages et des valeurs nutritionnelles des matières : les API sont prêtes et testées ; l'éditeur de nomenclature (1 334 lignes) doit d'abord être découpé en panneaux (pas 10c).
 
 Tests : `fiche-generique.db.test.ts` (5) ; suite base 242 fichiers / 911 tests verts ; suite unitaire verte ; compilation serveur et client propre.
