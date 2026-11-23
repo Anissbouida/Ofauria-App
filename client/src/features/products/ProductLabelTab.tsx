@@ -7,6 +7,7 @@ import PrintOverlay from '../../components/PrintOverlay';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { DataPanel } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Étiquette réglementaire d'un produit (G2-09) : dénomination, ingrédients par poids
@@ -71,6 +72,7 @@ const label: React.CSSProperties = { display: 'block', fontSize: '12px', fontWei
 
 export default function ProductLabelTab({ productId }: { productId: string }) {
   const qc = useQueryClient();
+  const { ingredient, ingredients } = useProdTerms();
   const { data, isLoading } = useQuery({ queryKey: ['product-label', productId], queryFn: () => productsApi.labelData(productId) });
   const [form, setForm] = useState({ legalName: '', storageConditions: '', labelMentions: '' });
   const [printing, setPrinting] = useState<string | null>(null);
@@ -135,12 +137,12 @@ export default function ProductLabelTab({ productId }: { productId: string }) {
             <style>{LABEL_CSS}</style>
             <div style={{ maxWidth: 420, background: '#fff' }} dangerouslySetInnerHTML={{ __html: labelHtml(data) }} />
           </>
-        ) : <div style={{ color: 'var(--ds-muted)', fontSize: '0.85rem' }}>Aucun ingrédient à afficher.</div>}
+        ) : <div style={{ color: 'var(--ds-muted)', fontSize: '0.85rem' }}>{ingredients} : rien à afficher.</div>}
       </div>
 
       {data.ingredients.length > 0 && (
         <DataPanel><table className="odoo-table ds-dense">
-          <thead><tr><th style={{ textAlign: 'left' }}>Ingrédient</th><th className="ds-num">Part du poids</th><th style={{ textAlign: 'left' }}>Allergènes</th></tr></thead>
+          <thead><tr><th style={{ textAlign: 'left' }}>{ingredient}</th><th className="ds-num">Part du poids</th><th style={{ textAlign: 'left' }}>Allergènes</th></tr></thead>
           <tbody>
             {data.ingredients.map(i => (
               <tr key={i.ingredientId}>

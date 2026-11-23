@@ -36,6 +36,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import { ModuleShell, ModulePage, type ModuleView } from '../../components/layout/ModuleShell';
 import { ListToolbar, FilterChips } from '../sales/ListTemplate';
 import { SortSelect, SubViews, PagerFoot, SectionTitle, StockHeaderSlot } from './StockUi';
@@ -121,6 +122,7 @@ export default function StockPage() {
   const { settings } = useSettings();
   const { user } = useAuth();
   const { hasModule, hasFeature } = usePermissions();
+  const { ingredient, ingredients, ingredientLc, ingredientsLc } = useProdTerms();
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
   // Admin/gerant uniquement : actions de gestion en masse (import/export ingredients).
   const canManageIngredients = ['admin', 'manager'].includes(user?.role || '');
@@ -257,7 +259,7 @@ export default function StockPage() {
 
   const addIngredientMutation = useMutation({
     mutationFn: ingredientsApi.create,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['inventory'] }); setShowAddIngredient(false); notify.success('Ingrédient ajouté'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['inventory'] }); setShowAddIngredient(false); notify.success(`${ingredient} : création enregistrée`); },
   });
 
   // Fournisseurs distincts presents dans l'inventaire (pour le filtre dedie).
@@ -413,7 +415,7 @@ export default function StockPage() {
   const currentView = views.find(v => v.key === currentKey);
   const toHandle = situationCounts.expired + situationCounts.rupture + situationCounts.low + situationCounts.expiring;
   const pageSummary = econoTab === 'stock' && zone === 'scelle'
-    ? `${totalItems} ingrédient${totalItems > 1 ? 's' : ''} · ${toHandle} à traiter`
+    ? `${totalItems} ${totalItems > 1 ? ingredientsLc : ingredientLc} · ${toHandle} à traiter`
     : PAGE_LEADS[currentKey];
 
   return (
@@ -423,7 +425,7 @@ export default function StockPage() {
         <div ref={setHeaderSlot} style={{ display: 'flex', gap: 8, alignItems: 'center' }} />
         {econoTab === 'stock' && zone === 'scelle' && canManageIngredients && (
           <>
-            <button onClick={() => setShowImport(true)} className="odoo-btn-secondary" title="Importer des ingrédients depuis un fichier Excel">
+            <button onClick={() => setShowImport(true)} className="odoo-btn-secondary" title={`Importer des ${ingredientsLc} depuis un fichier Excel`}>
               <Upload size={14} /> Importer
             </button>
             <button
@@ -441,7 +443,7 @@ export default function StockPage() {
               }}
               disabled={exportLoading}
               className="odoo-btn-secondary"
-              title="Exporter tous les ingrédients avec leur stock vers Excel"
+              title={`Exporter les ${ingredientsLc} avec leur stock vers Excel`}
             >
               <Download size={14} /> {exportLoading ? 'Export…' : 'Exporter'}
             </button>
@@ -666,17 +668,17 @@ export default function StockPage() {
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : filteredInventory.length === 0 ? (
         hasActiveFilters
-          ? <NoResultState text="Aucun ingrédient ne correspond aux filtres." onReset={resetFilters} />
-          : <EmptyState icon={Package} title="Aucun ingrédient"
-              text="Les ingrédients créés ou importés apparaîtront ici avec leur stock." />
+          ? <NoResultState text="Aucun résultat ne correspond aux filtres." onReset={resetFilters} />
+          : <EmptyState icon={Package} title={`${ingredients} : liste vide`}
+              text={`Les ${ingredientsLc} apparaîtront ici avec leur stock dès leur création ou leur import.`} />
       ) : (
       <DataPanel footer={<PagerFoot page={page} total={filteredInventory.length} onPage={setPage}
-          note={`${filteredInventory.length} ingrédient${filteredInventory.length > 1 ? 's' : ''}${hasActiveFilters ? ' (filtré)' : ''} sur ${totalItems}`} />}>
+          note={`${filteredInventory.length} ${filteredInventory.length > 1 ? ingredientsLc : ingredientLc}${hasActiveFilters ? ' (filtre actif)' : ''} sur ${totalItems}`} />}>
         <table className="odoo-table">
           <thead>
             <tr>
               <th style={{ width: 24 }}></th>
-              <SortHeader col="name">Ingrédient</SortHeader>
+              <SortHeader col="name">{ingredient}</SortHeader>
               <SortHeader col="category" className="hidden sm:table-cell">Catégorie</SortHeader>
               <SortHeader col="supplier" className="hidden md:table-cell">Fournisseur</SortHeader>
               <SortHeader col="price" className="hidden md:table-cell" align="right">Dernier prix</SortHeader>
@@ -877,7 +879,7 @@ function KanbanView({ items, onSelect }: {
 
   if (items.length === 0) {
     return (
-      <EmptyState icon={Package} title="Aucun ingrédient trouvé" text="Changez de situation ou effacez les filtres." />
+      <EmptyState icon={Package} title="Aucun résultat" text="Changez de situation ou effacez les filtres." />
     );
   }
 

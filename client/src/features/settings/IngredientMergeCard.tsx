@@ -9,6 +9,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { DataPanel, FormField, LoadingState, SectionHeader } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Fusion de deux fiches du même ingrédient (G2-03). On choisit la fiche en trop et la fiche
@@ -30,6 +31,7 @@ const fmt = (n: number, digits = 2) => n.toLocaleString('fr-FR', { maximumFracti
 
 export default function IngredientMergeCard() {
   const qc = useQueryClient();
+  const { ingredients: ingsTerm } = useProdTerms();
   const confirm = useConfirm();
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
@@ -69,8 +71,8 @@ export default function IngredientMergeCard() {
   const rows = preview ? Object.entries(preview.impact.tables).sort((a, b) => b[1] - a[1]) : [];
 
   return (
-    <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 14 }} aria-label="Fusionner deux fiches du même ingrédient">
-      <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><GitMerge size={16} aria-hidden="true" /> Fusionner deux fiches du même ingrédient</span>} />
+    <section className="ds-panel" style={{ padding: '16px 18px', display: 'grid', gap: 14 }} aria-label={`${ingsTerm} : fusionner deux fiches en double`}>
+      <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><GitMerge size={16} aria-hidden="true" /> {ingsTerm} : fusionner deux fiches en double</span>} />
       <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--ds-muted)' }}>
         Les recettes, les lots, les bons de commande et le stock de la fiche en trop passent sur la fiche gardée ; son coût devient la moyenne
         des deux, pondérée par les stocks. Les deux fiches doivent avoir la même unité.

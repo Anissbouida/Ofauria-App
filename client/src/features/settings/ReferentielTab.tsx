@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { referentielApi } from '../../api/referentiel.api';
 import { usePermissions } from '../../context/PermissionsContext';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import { DataPanel, EmptyState, FormField, FormFooter, HeaderActions, LoadingState, Modal, NoResultState, SearchBar, SectionHeader, TableFooter, Toolbar } from '../../components/ds';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
@@ -67,6 +68,7 @@ export default function ReferentielTab() {
 /* ─── Liste des tables ─── */
 
 function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
+  const { ingredientsLc } = useProdTerms();
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const { data, isLoading } = useQuery({ queryKey: ['ref-dashboard'], queryFn: referentielApi.dashboard });
@@ -80,7 +82,7 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
   const filtered = tables.filter(t => !q || String(t.label).toLowerCase().includes(q) || String(t.description || '').toLowerCase().includes(q));
   const domainOf = (id: string) => DOMAINS.find(d => d.tableIds.includes(id))?.key ?? 'other';
   const sections = [...DOMAINS, { key: 'other', label: 'Autres', icon: Database, tableIds: [] }]
-    .map(d => ({ ...d, tables: filtered.filter(t => domainOf(String(t.id)) === d.key) }))
+    .map(d => ({ ...d, label: d.key === 'products' ? `Produits et ${ingredientsLc}` : d.label, tables: filtered.filter(t => domainOf(String(t.id)) === d.key) }))
     .filter(s => s.tables.length > 0);
 
   return (

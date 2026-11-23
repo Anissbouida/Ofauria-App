@@ -9,6 +9,7 @@ import { AlertTriangle, Wallet, FileWarning, Package } from 'lucide-react';
 import { reportsApi } from '../../api/reports.api';
 import { ListKpi } from '../sales/ListTemplate';
 import { DataPanel } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
 const dh = (v: number) => money(v || 0, { decimals: 0 });
@@ -47,6 +48,7 @@ type Props = {
 
 export default function ReportsOverview(p: Props) {
   const { chartData, salesLoading, periodTotals, productData, lossStats, startDate, endDate } = p;
+  const { ingredients } = useProdTerms();
 
   // Période précédente (même durée, juste avant) pour les évolutions.
   const spanDays = Math.max(1, Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86400000) + 1);
@@ -101,7 +103,7 @@ export default function ReportsOverview(p: Props) {
 
   // Alertes décisionnelles.
   const alerts: { tone: 'o' | 'r' | 'x'; icon: typeof AlertTriangle; text: string }[] = [];
-  if (p.d.lowStockCount > 0) alerts.push({ tone: 'o', icon: Package, text: `${p.d.lowStockCount} ingrédient(s) en stock bas` });
+  if (p.d.lowStockCount > 0) alerts.push({ tone: 'o', icon: Package, text: `${ingredients} en stock bas : ${p.d.lowStockCount}` });
   if (cost && cost.foodCostPct > cost.targets.foodCostPctMax) alerts.push({ tone: 'r', icon: AlertTriangle, text: `Coût matière ${pct(cost.foodCostPct)} au-dessus de la cible (${pct(cost.targets.foodCostPctMax)})` });
   if (cost && cost.primeCostPct > cost.targets.primeCostPctMax) alerts.push({ tone: 'r', icon: AlertTriangle, text: `Prime cost ${pct(cost.primeCostPct)} au-dessus de la cible (${pct(cost.targets.primeCostPctMax)})` });
   if (fin && fin.pipeline.uncashedChecks.overdue > 0) alerts.push({ tone: 'r', icon: Wallet, text: `Chèques échus non encaissés : ${dh(fin.pipeline.uncashedChecks.overdue)}` });

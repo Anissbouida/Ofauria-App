@@ -27,6 +27,7 @@ import {
   PageHeader, SearchBar, SectionHeader, Segmented, TableFooter, Toolbar,
 } from '../../components/ds';
 import { money, currencySymbol } from '../../utils/money';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Achats › Appels d'offres (mig 360) : articles à acheter envoyés à plusieurs
@@ -149,6 +150,7 @@ type DraftItem = RfqItemInput & { key: string; label: string };
 
 function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: () => void; onSaved?: (id: string) => void }) {
   const qc = useQueryClient();
+  const { ingredient: ingTerm, ingredientLc: ingTermLc } = useProdTerms();
   const [title, setTitle] = useState(rfq?.title ?? '');
   const [neededBy, setNeededBy] = useState(rfq?.needed_by?.slice(0, 10) ?? '');
   const [deadline, setDeadline] = useState(rfq?.response_deadline?.slice(0, 10) ?? '');
@@ -164,9 +166,9 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
   const { data: packaging = [] } = useQuery({ queryKey: ['packaging-items', 'rfq'], queryFn: () => packagingApi.list({ activeOnly: true }) });
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers', 'active'], queryFn: suppliersApi.listActive });
   const options = useMemo(() => [
-    ...(ingredients as Record<string, any>[]).map(i => ({ id: `ing:${i.id}`, label: i.name, sublabel: `Ingrédient · ${i.unit ?? ''}` })),
+    ...(ingredients as Record<string, any>[]).map(i => ({ id: `ing:${i.id}`, label: i.name, sublabel: `${ingTerm} · ${i.unit ?? ''}` })),
     ...(packaging as Record<string, any>[]).map(p => ({ id: `pk:${p.id}`, label: p.name, sublabel: `Consommable · ${p.unit ?? ''}` })),
-  ], [ingredients, packaging]);
+  ], [ingredients, packaging, ingTerm]);
   const locked = !!rfq && rfq.status !== 'draft';
 
   const addItem = (id: string) => {
@@ -214,7 +216,7 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
           <FormSection title={<>Articles demandés<span className="ds-req" aria-hidden="true"> *</span></>}>
             {!locked && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <SearchSelect options={options} value={pick} onChange={addItem} placeholder="Ajouter un ingrédient ou un consommable" width={360} ariaLabel="Ajouter un ingrédient ou un consommable" />
+                <SearchSelect options={options} value={pick} onChange={addItem} placeholder={`Ajouter : ${ingTermLc} ou consommable`} width={360} ariaLabel={`Ajouter : ${ingTermLc} ou consommable`} />
                 <span style={{ ...muted, fontSize: 13 }}>ou</span>
                 <input className="ds-input sm" aria-label="Service ou matériel (désignation libre)" value={freeLabel} onChange={e => setFreeLabel(e.target.value)} placeholder="Service / matériel (désignation libre)" style={{ width: 260 }} onKeyDown={e => { if (e.key === 'Enter') addFree(); }} />
                 <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={addFree} disabled={!freeLabel.trim()}><Plus size={13} aria-hidden="true" /> Ajouter</button>

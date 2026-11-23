@@ -24,6 +24,7 @@ import SalesPageShell from '../sales/SalesPageShell';
 import { applyScreenDefinition } from '@ofauria/shared';
 import { useScreenDefinition } from '../../hooks/useScreenDefinition';
 import { settingsApi } from '../../api/settings.api';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /** Étape 10e : sections du tableau de bord (ordre du code) et rapports du profil. */
 const DASH_SECTIONS = ['blocked-alert', 'kpis', 'relaunch', 'cost-split', 'yield', 'cost-per-day', 'reports'];
@@ -38,6 +39,7 @@ const REPORT_LINKS: Record<string, { label: string; to: string }> = {
 
 export default function ProductionDashboardPage() {
   const { user } = useAuth();
+  const T = useProdTerms();
   const storeId = user?.storeId || '';
   // M1-03 : seuils d'affichage du rendement moyen lus dans les politiques de production.
   const policies = useProductionPolicies({ store: storeId || undefined });
@@ -218,7 +220,7 @@ export default function ProductionDashboardPage() {
                               onClick={async () => {
                                 const detail = nb > 0
                                   ? `${nb} article(s) annulé(s) ou en attente repassent en production, et les besoins seront recalculés.`
-                                  : 'Les besoins en ingrédients et le bon de sortie seront recalculés depuis les recettes actuelles.';
+                                  : `Les besoins en ${T.ingredientsLc} et le bon de sortie seront recalculés depuis les ${T.recipesLc} actuelles.`;
                                 if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
                                   relaunchMutation.mutate(p.id as string);
                                 }

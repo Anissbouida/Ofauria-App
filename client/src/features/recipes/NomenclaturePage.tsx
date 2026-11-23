@@ -124,7 +124,7 @@ export default function NomenclaturePage() {
           </>} />
         {(recipe as { compo_vide?: boolean }).compo_vide && (
           <StatusBanner tone="danger" icon={AlertTriangle} title="Fiche incomplète : aucun composant">
-            Cette fiche n'a encore aucun ingrédient ni préparation de base : son coût est inconnu et elle ne peut pas servir en production. Complète la composition ci-dessous.
+            Cette fiche n'a encore aucune ligne ({T.ingredientsLc} ou préparations de base) : son coût est inconnu et elle ne peut pas servir en production. Complète la composition ci-dessous.
           </StatusBanner>
         )}
         {(() => {
@@ -136,7 +136,7 @@ export default function NomenclaturePage() {
             <StatusBanner tone="warning" icon={AlertTriangle} title="Coût de revient incomplet">
               Le coût affiché est plus bas ou faux tant que ces lignes ne sont pas réglées :{' '}
               {gaps.map((g) => `${g.composant} (${motif[g.motif] ?? g.motif}${g.via ? `, via ${g.via}` : ''})`).join(' ; ')}.
-              {' '}Renseigne le prix de l'ingrédient (achat ou fiche ingrédient), sa densité, ou complète la préparation.
+              {' '}Renseigne le prix (achat ou fiche {T.ingredientLc}), la densité, ou complète la préparation.
             </StatusBanner>
           );
         })()}
@@ -189,7 +189,7 @@ export default function NomenclaturePage() {
                   allergens.map((a) => <StatusTag key={a} tone="blocked" icon={AlertTriangle} label={allergenLabel(a)} />)
                 ) : (
                   <span style={{ fontSize: 14, color: 'var(--ds-muted)' }}>
-                    Aucun allergène déclaré sur les ingrédients de cette nomenclature. Vérifiez que les fiches ingrédients sont renseignées.
+                    Aucun allergène déclaré sur les {T.ingredientsLc} de cette nomenclature. Vérifiez que les fiches {T.ingredientsLc} sont renseignées.
                   </span>
                 )}
               </div>

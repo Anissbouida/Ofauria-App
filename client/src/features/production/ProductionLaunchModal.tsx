@@ -496,7 +496,7 @@ export default function ProductionLaunchModal({
             Aucune base partagee détectée
           </p>
           <p className="text-gray-500 text-sm mt-1">
-            Les ingrédients seront deduits directement des recettes des produits finis.
+            Les besoins en {T.ingredientsLc} sont calculés directement depuis les {T.recipesLc} des produits finis.
           </p>
         </div>
       );
@@ -1035,7 +1035,7 @@ export default function ProductionLaunchModal({
                 <div className="rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
                   <div className="px-5 py-3 bg-emerald-50 border-b border-emerald-200 flex items-center gap-2">
                     <Scale size={18} className="text-emerald-600" />
-                    <span className="font-bold text-emerald-800">Ingrédients ({ingredients.length})</span>
+                    <span className="font-bold text-emerald-800">{T.ingredients} ({ingredients.length})</span>
                   </div>
                   <div className="divide-y divide-gray-100">
                     {ingredients.map((ing, idx) => (
@@ -1063,7 +1063,7 @@ export default function ProductionLaunchModal({
                       <div key={(c.id as string) || idx} className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50">
                         <span className="text-base font-medium text-gray-900 flex items-center gap-2">
                           <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${c.type === 'recipe' ? 'bg-indigo-50 text-indigo-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                            {c.type === 'recipe' ? 'Préparation' : 'Ingrédient'}
+                            {c.type === 'recipe' ? 'Préparation' : T.ingredient}
                           </span>
                           {c.name as string}
                           {c.role && <span className="text-xs text-gray-400">· {c.role as string}</span>}
@@ -1181,7 +1181,7 @@ export default function ProductionLaunchModal({
             <div className="rounded-xl border border-gray-100 overflow-hidden">
               <div className="px-3 py-2 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
                 <Scale size={13} className="text-emerald-600" />
-                <span className="font-semibold text-emerald-800 text-xs ">Ingrédients ({ingredients.length})</span>
+                <span className="font-semibold text-emerald-800 text-xs ">{T.ingredients} ({ingredients.length})</span>
               </div>
               <div className="divide-y divide-gray-50">
                 {ingredients.map((ing, idx) => (
@@ -1349,7 +1349,7 @@ export default function ProductionLaunchModal({
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2 flex-wrap">
           <Scale size={14} className="text-gray-500" />
           <span className="text-xs font-semibold text-gray-700 ">
-            {stepIngredients ? 'À peser pour cette étape' : `Recette · ${ingredients.length} ingrédient${ingredients.length > 1 ? 's' : ''}`}
+            {stepIngredients ? 'À peser pour cette étape' : `${T.recipe} · ${ingredients.length} ${ingredients.length > 1 ? T.ingredientsLc : T.ingredientLc}`}
           </span>
           {scaled && (
             <span className="text-xs text-gray-500">
@@ -1384,7 +1384,7 @@ export default function ProductionLaunchModal({
         {stepIngredients && (ingredients.length > stepIngredients.length || subRecipesData.length > 0) && (
           <details className="border-t border-gray-200 group">
             <summary className="px-3 py-2 flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-50 list-none">
-              <Layers size={13} className="text-gray-500" /> Toute la recette ({ingredients.length} ingrédient{ingredients.length > 1 ? 's' : ''}{subRecipesData.length > 0 ? `, ${subRecipesData.length} sous-recette${subRecipesData.length > 1 ? 's' : ''}` : ''})
+              <Layers size={13} className="text-gray-500" /> Toute la recette ({ingredients.length} {ingredients.length > 1 ? T.ingredientsLc : T.ingredientLc}{subRecipesData.length > 0 ? `, ${subRecipesData.length} sous-recette${subRecipesData.length > 1 ? 's' : ''}` : ''})
               <span className="ml-auto text-gray-400 group-open:hidden">afficher</span>
               <span className="ml-auto text-gray-400 hidden group-open:inline">masquer</span>
             </summary>

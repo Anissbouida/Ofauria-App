@@ -10,6 +10,7 @@ import { currencySymbol } from '../../utils/money';
 import '../sales/ListTemplate';
 import { SectionTitle } from './StockUi';
 import { DataPanel, EmptyState, LoadingState, TableFooter } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Prix à revoir (G2-04) : ingrédients sans prix, ou dont le prix s'écarte fortement de la
@@ -24,6 +25,7 @@ const shortDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { d
 
 export default function PriceCorrectionsCard() {
   const qc = useQueryClient();
+  const { ingredient, ingredients } = useProdTerms();
   const { data: suspects = [], isLoading } = useQuery({ queryKey: ['cost-suspects'], queryFn: ingredientsApi.costSuspects });
   const { data: history = [] } = useQuery({ queryKey: ['cost-corrections'], queryFn: ingredientsApi.costCorrections });
   const [editing, setEditing] = useState<{ id: string; cost: string; reason: string } | null>(null);
@@ -47,18 +49,18 @@ export default function PriceCorrectionsCard() {
   return (
     <div className="stk-stack">
       <StatusBanner tone={suspects.length > 0 ? 'warning' : 'info'} icon={Tag} title="Prix à revoir">
-        Ingrédients sans prix, ou dont le prix est plus de cinq fois au-dessus ou au-dessous de la médiane de leur catégorie.
+        {ingredients} sans prix, ou dont le prix est plus de cinq fois au-dessus ou au-dessous de la médiane de leur catégorie.
         La correction proposée est le prix moyen des trois dernières réceptions ; elle est enregistrée avec son motif.
       </StatusBanner>
 
       {isLoading && <LoadingState label="Recherche des prix à revoir…" />}
-      {!isLoading && suspects.length === 0 && <EmptyState icon={Tag} title="Aucun prix à revoir" text="Chaque ingrédient a un prix cohérent avec sa catégorie." />}
+      {!isLoading && suspects.length === 0 && <EmptyState icon={Tag} title="Aucun prix à revoir" text="Chaque article a un prix cohérent avec sa catégorie." />}
 
       {suspects.length > 0 && (
         <DataPanel label="Prix à revoir" footer={<TableFooter note={`${suspects.length} prix à revoir`} />}>
           <table className="odoo-table">
             <thead><tr>
-              <th>Ingrédient</th>
+              <th>{ingredient}</th>
               <th>Constat</th>
               <th className="ds-num">Prix actuel</th>
               <th className="ds-num">Médiane de la catégorie</th>
@@ -124,7 +126,7 @@ export default function PriceCorrectionsCard() {
           <SectionTitle>Dernières corrections</SectionTitle>
           <DataPanel label="Dernières corrections" footer={<TableFooter note={`${Math.min(history.length, 10)} dernière${Math.min(history.length, 10) > 1 ? 's' : ''} correction${Math.min(history.length, 10) > 1 ? 's' : ''}`} />}>
             <table className="odoo-table">
-              <thead><tr><th>Date</th><th>Ingrédient</th><th className="ds-num">Avant</th><th className="ds-num">Après</th><th>Motif</th><th>Par</th></tr></thead>
+              <thead><tr><th>Date</th><th>{ingredient}</th><th className="ds-num">Avant</th><th className="ds-num">Après</th><th>Motif</th><th>Par</th></tr></thead>
               <tbody>
                 {history.slice(0, 10).map(h => (
                   <tr key={h.id}>

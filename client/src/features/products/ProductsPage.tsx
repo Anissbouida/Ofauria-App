@@ -36,6 +36,7 @@ import ExpiredProductLotsBanner from './ExpiredProductLotsBanner';
 import type { ProfileFormData } from './ProductionProfileTab';
 import { mapLoyverseCsv } from './loyverse-csv';
 import { recipeSalePricing, recipeYieldLabel } from './recipeUnitCost';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 type ViewMode = 'grid' | 'table';
 
@@ -776,6 +777,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
   // Fetch all recipes (pas de fiches techniques sans le module, ex. secteur négoce)
   const { hasModule } = usePermissions();
+  const { ingredientLc } = useProdTerms();
   const { data: allRecipes = [] } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list, enabled: hasModule('recipes') });
   const allRecipesList = allRecipes as Record<string, any>[];
   // Codes TVA : lus ici (avant l'effet de prix) pour porter le prix HT de la fiche en TTC.
@@ -1646,7 +1648,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                           </div>
                           <div>
                             <span className="text-sm font-semibold text-gray-900">Valorisable en production</span>
-                            <p className="text-xs text-gray-400">Réutilisé comme ingrédient en production (chapelure, pudding…).</p>
+                            <p className="text-xs text-gray-400">Réutilisé comme {ingredientLc} en production (chapelure, pudding…).</p>
                           </div>
                         </div>
                         <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isRecyclable ? 'bg-cyan-500' : 'bg-gray-300'}`}
@@ -1799,6 +1801,7 @@ function PricingTiersPanel({ productId }: { productId: string }) {
 // Le POS et la page Invendus consomment ces destinations.
 function RecycleDestinationsPanel({ productId }: { productId: string }) {
   const queryClient = useQueryClient();
+  const { ingredient, ingredientLc } = useProdTerms();
   const { data: existingDests = [] } = useQuery({
     queryKey: ['product-recycle-destinations', productId],
     queryFn: () => productsApi.listRecycleDestinations(productId),
@@ -1879,16 +1882,16 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
       </div>
 
       {rows.length === 0 && (
-        <p style={{ fontSize: '12px', color: 'var(--ds-muted)', fontStyle: 'italic' }}>Aucune destination. Ajoutez au moins un ingrédient cible pour rendre la valorisation opérationnelle.</p>
+        <p style={{ fontSize: '12px', color: 'var(--ds-muted)', fontStyle: 'italic' }}>Aucune destination. Ajoutez au moins une destination ({ingredientLc} cible) pour rendre la valorisation opérationnelle.</p>
       )}
 
       {rows.length > 0 && (
         <DataPanel label="Destinations de valorisation"><table className="odoo-table ds-dense">
-          <thead><tr><th>Ingrédient cible</th><th>Libellé</th><th className="ds-num" style={{ width: 90 }}>Rendement</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th>{ingredient} cible</th><th>Libellé</th><th className="ds-num" style={{ width: 90 }}>Rendement</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
           <tbody>
             {rows.map((row, idx) => (
               <tr key={idx}>
-                <td><SearchSelect ariaLabel="Ingrédient cible" placeholder="— Ingrédient cible —" width="100%" size="md" value={row.ingredientId} onChange={(id) => updateRow(idx, { ingredientId: id })} options={ingredientOptions.map(opt => ({ id: String(opt.id), label: `${opt.name}${opt.unit ? ` (${opt.unit})` : ''}` }))} /></td>
+                <td><SearchSelect ariaLabel={`${ingredient} cible`} placeholder={`— ${ingredient} cible —`} width="100%" size="md" value={row.ingredientId} onChange={(id) => updateRow(idx, { ingredientId: id })} options={ingredientOptions.map(opt => ({ id: String(opt.id), label: `${opt.name}${opt.unit ? ` (${opt.unit})` : ''}` }))} /></td>
                 <td><input type="text" value={row.label} onChange={(e) => updateRow(idx, { label: e.target.value })} placeholder="Libellé (ex: Vers chapelure)" aria-label={`Libellé de la destination ${idx + 1}`} className="ds-input sm" /></td>
                 <td className="ds-num"><input type="number" step="0.01" min="0.01" max="2" value={row.yieldRatio} onChange={(e) => updateRow(idx, { yieldRatio: e.target.value })} className="ds-input sm" style={{ textAlign: 'right' }} aria-label={`Rendement de la destination ${idx + 1}`} title="Rendement : 1.0 = 100 %, 0.7 = 30 % de perte au séchage" /></td>
                 <td className="ds-actions"><button type="button" onClick={() => removeRow(idx)} className="ds-icon-btn" title="Supprimer" aria-label={`Supprimer la destination ${idx + 1}`}><Trash2 size={14} /></button></td>

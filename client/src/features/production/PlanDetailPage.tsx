@@ -224,7 +224,7 @@ export default function PlanDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
       if (result?.data) {
         setBonNotNeededReason(null);
-        notify.success('Bon de sortie généré — procédez au prélèvement des ingrédients');
+        notify.success(`Bon de sortie généré — procédez au prélèvement des ${T.ingredientsLc}`);
         // Lots hors DLC ecartes de l'allocation (mig 339) : le chef doit le savoir
         // pour deroger explicitement depuis le bon de sortie s'il le juge utile.
         const skipped = (result.data as { expired_lots_skipped?: { ingredient_name: string; lot_number: string }[] }).expired_lots_skipped;
@@ -233,7 +233,7 @@ export default function PlanDetailPage() {
           notify(`${skipped.length} lot(s) a DLC depassee ecarte(s) : ${liste}. Derogation possible depuis le bon de sortie.`, { icon: '⚠️', duration: 9000 });
         }
       } else {
-        const reason = result?.reason || `Aucun ingrédient à prélever pour ce plan (produits sans ${T.recipeLc}).`;
+        const reason = result?.reason || `Rien à prélever pour ce plan (produits sans ${T.recipeLc}).`;
         setBonNotNeededReason(reason);
         notify(reason, { icon: '\u2139\ufe0f', duration: 6000 });
       }
@@ -271,7 +271,7 @@ export default function PlanDetailPage() {
     onSuccess: (andStart) => {
       queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
       queryClient.invalidateQueries({ queryKey: ['production', id] });
-      notify.success(andStart ? 'Réception acceptée — production démarrée' : 'Réception acceptée — ingrédients livrés, vous pouvez démarrer la production');
+      notify.success(andStart ? 'Réception acceptée — production démarrée' : `Réception des ${T.ingredientsLc} acceptée — vous pouvez démarrer la production`);
     },
     onError: (e: any) => notify.error(apiErrorMessage(e, 'Erreur')),
   });
@@ -619,7 +619,7 @@ export default function PlanDetailPage() {
     <div className="ds-panel pd-section">
       <div className="pd-section-head">
         <Beaker size={12} /> {isMagasinier ? `Besoins en ${sectorLabel('ingredients', 'Ingrédients').toLowerCase()}` : `${sectorLabel('ingredients', 'Ingrédients')} nécessaires`}
-        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400 }}>{needs.length} ingrédient(s)</span>
+        <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400 }}>{needs.length} {T.ingredientLc}(s)</span>
         {isMagasinier && (
           <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
             {insufficientNeeds.length > 0 && (
@@ -644,7 +644,7 @@ export default function PlanDetailPage() {
         <thead>
           <tr>
             <th style={{ width: 24 }}></th>
-            <th>Ingrédient</th>
+            <th>{T.ingredient}</th>
             {isMagasinier && <th>Disponibilité</th>}
             <th className="ds-num">Besoin</th>
             {isMagasinier && <th className="ds-num">Dispo</th>}
@@ -1094,7 +1094,7 @@ export default function PlanDetailPage() {
         ? 'Au moins un produit a deja demarre — annulez d\'abord les items en cours'
         : bsiActive ? 'Le bon de sortie a deja ete preleve — annulez d\'abord le BSI' : 'Repasser en brouillon pour modifier le plan',
       onClick: async () => {
-        if (await confirmDialog('Le bon de sortie sera annulé et les besoins en ingrédients recalculés à la prochaine confirmation.', { title: 'Repasser le plan en brouillon ?', confirmLabel: 'Repasser en brouillon' })) {
+        if (await confirmDialog(`Le bon de sortie sera annulé et les besoins en ${T.ingredientsLc} recalculés à la prochaine confirmation.`, { title: 'Repasser le plan en brouillon ?', confirmLabel: 'Repasser en brouillon' })) {
           revertMutation.mutate();
         }
       },
@@ -1117,7 +1117,7 @@ export default function PlanDetailPage() {
     ].filter(Boolean).join(' + ');
     const lignes = [
       total > 0 ? `• ${total} article(s) (${detail}) repassent en production` : null,
-      canRecompute ? `• besoins en ingrédients et bon de sortie recalculés depuis les ${T.recipesLc} actuelles` : null,
+      canRecompute ? `• besoins en ${T.ingredientsLc} et bon de sortie recalculés depuis les ${T.recipesLc} actuelles` : null,
     ].filter(Boolean).join('\n');
     menuItems.push({
       key: 'relaunch', sep: menuItems.length > 0 && !menuItems.some(m => m.key === 'revert'),
@@ -1176,8 +1176,8 @@ export default function PlanDetailPage() {
   const kpis: Kpi[] = plan.status === 'in_progress' ? [
     { label: 'Avancement', icon: <TrendingUp size={11} />, value: `${producedCount} / ${totalActive}`, sub: `${progressPct} % des articles`, tone: progressPct >= 100 ? 'ok' : undefined, bar: progressPct },
     { label: 'Pièces produites', icon: <CheckCircle2 size={11} />, value: String(qtyDone), sub: `sur ${qtyPlanned} prévue${qtyPlanned > 1 ? 's' : ''}` },
-    { label: 'Liste d\'attente', icon: <Clock size={11} />, value: String(waitingCount), sub: waitingCount > 0 ? 'ingrédients insuffisants' : 'aucun article', tone: waitingCount > 0 ? 'warn' : undefined },
-    { label: 'Ingrédients', icon: <Layers size={11} />, value: bsiTag?.label || '—', sub: activeBon ? (activeBon.numero as string) : undefined, tone: bsiCloture ? 'ok' : undefined },
+    { label: 'Liste d\'attente', icon: <Clock size={11} />, value: String(waitingCount), sub: waitingCount > 0 ? 'stock insuffisant' : 'aucun article', tone: waitingCount > 0 ? 'warn' : undefined },
+    { label: T.ingredients, icon: <Layers size={11} />, value: bsiTag?.label || '—', sub: activeBon ? (activeBon.numero as string) : undefined, tone: bsiCloture ? 'ok' : undefined },
   ] : plan.status === 'completed' ? (() => {
     const pct = summary?.quantities.donePct ?? 0;
     return [
@@ -1197,7 +1197,7 @@ export default function PlanDetailPage() {
     ] as Kpi[];
   })() : [
     { label: 'Quantité prévue', icon: <Package size={11} />, value: String(qtyPlanned), sub: `${items.length} article${items.length > 1 ? 's' : ''}` },
-    { label: 'Ingrédients', icon: <Layers size={11} />, value: String(needs.length),
+    { label: T.ingredients, icon: <Layers size={11} />, value: String(needs.length),
       sub: isMagasinier && insufficientNeeds.length > 0 ? `${insufficientNeeds.length} insuffisant(s)` : 'à prélever',
       tone: isMagasinier && insufficientNeeds.length > 0 ? 'bad' : undefined },
     { label: 'Bon de sortie', icon: <Truck size={11} />,
@@ -1213,18 +1213,18 @@ export default function PlanDetailPage() {
   type Todo = { tone: 'info' | 'warning' | 'success' | 'danger'; icon: typeof CheckCircle; title: string; text?: string; action?: React.ReactNode };
   const todos: Todo[] = [];
   if (bonNotNeeded || (plan.status !== 'draft' && !isSemiFini && needs.length === 0)) {
-    todos.push({ tone: 'danger', icon: AlertTriangle, title: 'Préparation bloquée : aucun besoin en ingrédients calculé',
+    todos.push({ tone: 'danger', icon: AlertTriangle, title: `Préparation bloquée : aucun besoin en ${T.ingredientsLc} calculé`,
       text: `Ajoutez une ${T.recipeLc} aux produits concernés, puis « Relancer » (menu Plus) pour recalculer les besoins.` });
   } else if (['confirmed', 'awaiting_ingredients'].includes(plan.status) && activeBon && !['pret', 'cloture'].includes(activeBon.status as string)) {
-    todos.push({ tone: 'info', icon: Truck, title: `Préparation des ingrédients par le magasinier — ${bsiTag?.label}`,
-      text: `Bon de sortie ${activeBon.numero as string}. Vous serez notifié quand les ingrédients seront prêts.`,
+    todos.push({ tone: 'info', icon: Truck, title: `Préparation des ${T.ingredientsLc} par le magasinier — ${bsiTag?.label}`,
+      text: `Bon de sortie ${activeBon.numero as string}. Vous serez notifié quand la préparation sera prête.`,
       action: <button className="odoo-btn-secondary" onClick={() => setPlanTab('ingredients')}><Eye size={13} /> Voir le bon</button> });
   }
   if (canShowStart && hasPendingDeps) {
     todos.push({ tone: 'warning', icon: Lock, title: `Semi-finis en attente (${depsFulfilled} / ${deps.length})`,
       text: 'La production ne peut pas démarrer tant que les semi-finis ne sont pas disponibles.' });
   } else if (canShowStart && isChef) {
-    todos.push({ tone: 'success', icon: Play, title: 'Ingrédients livrés — la production peut démarrer',
+    todos.push({ tone: 'success', icon: Play, title: `${T.ingredients} — livraison reçue, la production peut démarrer`,
       action: <button className="odoo-btn-primary" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}><Play size={13} /> Démarrer la production</button> });
   }
   if (plan.status === 'in_progress' && !isSemiFini && rendementsMissing.length > 0) {
@@ -1235,7 +1235,7 @@ export default function PlanDetailPage() {
   if (plan.status === 'in_progress') {
     const left = totalActive - producedCount;
     todos.push({ tone: 'info', icon: Factory, title: left > 0 ? `${left} article(s) restent à produire` : 'Tous les articles sont produits',
-      text: waitingCount > 0 ? `${waitingCount} article(s) en liste d'attente (ingrédients insuffisants).` : undefined,
+      text: waitingCount > 0 ? `${waitingCount} article(s) en liste d'attente (stock insuffisant).` : undefined,
       action: <button className="odoo-btn-secondary" onClick={() => setPlanTab('production')}><Factory size={13} /> Ouvrir la production</button> });
   }
   if (plan.status === 'completed' && !isSemiFini && rendementsMissing.length > 0) {
@@ -1320,7 +1320,7 @@ export default function PlanDetailPage() {
           const steps: { label: string; detail: string | null }[] = [
             { label: planStatusTag('draft').label, detail: plan.created_by_name ? (plan.created_by_name as string) : null },
             { label: planStatusTag('confirmed').label, detail: null },
-            ...(isSemiFini ? [] : [{ label: 'Ingrédients', detail: bsiLabel }]),
+            ...(isSemiFini ? [] : [{ label: T.ingredients, detail: bsiLabel }]),
             { label: planStatusTag('ready_to_produce').label, detail: null },
             { label: planStatusTag('in_progress').label, detail: totalActive > 0 ? `${producedCount} / ${totalActive} produit${totalActive > 1 ? 's' : ''}` : null },
             { label: planStatusTag('completed').label, detail: plan.status === 'completed' ? (plan.completion_type === 'partial' ? 'Clôture partielle' : 'Clôture complète') : null },
@@ -1377,8 +1377,8 @@ export default function PlanDetailPage() {
         <div>
           <StatusBanner tone={missing.length > 0 ? 'warning' : 'success'} icon={CheckCircle}
             title={missing.length > 0
-              ? `Ingrédients prêts — ${missing.length} manquant${missing.length > 1 ? 's' : ''} signalé${missing.length > 1 ? 's' : ''} par le magasinier`
-              : 'Ingrédients prêts — confirmer ou refuser la réception'}
+              ? `Préparation prête — ${missing.length} manquant${missing.length > 1 ? 's' : ''} signalé${missing.length > 1 ? 's' : ''} par le magasinier`
+              : 'Préparation prête — confirmer ou refuser la réception'}
             actions={!bannerRejecting ? (
               <>
                 <button onClick={() => setBannerRejecting(true)} className="ds-btn-danger">
@@ -1517,13 +1517,13 @@ export default function PlanDetailPage() {
               {/* Recipe ingredients */}
               {recipeIngredients.length > 0 && (
                 <>
-                  <SectionHeader title={<><Scale size={12} /> Ingrédients</>}
+                  <SectionHeader title={<><Scale size={12} /> {T.ingredients}</>}
                     note={<>×{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit}</>} />
-                  <DataPanel label="Ingrédients de la recette">
+                  <DataPanel label={`${T.ingredients} de la ${T.recipeLc}`}>
                   <table className="odoo-table">
                     <thead>
                       <tr>
-                        <th>Ingrédient</th>
+                        <th>{T.ingredient}</th>
                         <th className="ds-num">Quantité</th>
                       </tr>
                     </thead>
@@ -1558,11 +1558,11 @@ export default function PlanDetailPage() {
           production deja demarree) ; Couts qu'une fois la production demarree. */}
       {hasTabs && (() => {
         const nextStepHint = bonNotNeeded
-          ? `Production bloquée : aucun besoin en ingrédients calculé (${T.recipeLc} manquante)`
+          ? `Production bloquée : aucun besoin en ${T.ingredientsLc} calculé (${T.recipeLc} manquante)`
           : !activeBon
           ? 'Production : après la génération et la clôture du bon de sortie'
           : activeBon.status === 'pret'
-            ? 'Production : après confirmation de la réception des ingrédients'
+            ? `Production : après confirmation de la réception des ${T.ingredientsLc}`
             : 'Production : après la clôture du bon de sortie par le magasinier';
         const ingrBadge = bsiCloture
           ? <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>&#10003;</span>
@@ -1583,7 +1583,7 @@ export default function PlanDetailPage() {
             <button type="button" onClick={() => setPlanTab('ingredients')}
               role="tab" aria-selected={effectiveTab === 'ingredients'} className={effectiveTab === 'ingredients' ? 'active' : ''}>
               <Truck size={13} />
-              <span>Ingrédients</span>
+              <span>{T.ingredients}</span>
               {ingrBadge}
             </button>
             {productionTabVisible ? (
@@ -1631,16 +1631,16 @@ export default function PlanDetailPage() {
           <div className="plan-synth-grid">
             <div className="ds-panel pd-section plan-phase">
               <div className="pd-section-head">
-                <Truck size={12} /> Ingrédients
+                <Truck size={12} /> {T.ingredients}
                 {bsiTag && <span style={{ marginLeft: 'auto' }}><StatusTag tone={bsiCloture ? 'done' : bsiTag.tone} icon={bsiTag.icon} label={bsiTag.label} /></span>}
               </div>
               <ul className="plan-phase-list">
-                <li>{needs.length} ingrédient{needs.length > 1 ? 's' : ''} à prélever</li>
+                <li>{needs.length} {needs.length > 1 ? T.ingredientsLc : T.ingredientLc} à prélever</li>
                 {activeBon && <li>Bon de sortie {activeBon.numero as string}</li>}
                 {lotUsage.length > 0 && <li>{lotUsage.length} lot{lotUsage.length > 1 ? 's' : ''} utilisé{lotUsage.length > 1 ? 's' : ''}{nearestDlc ? `, DLC la plus proche le ${format(nearestDlc, 'dd/MM/yyyy')}` : ''}</li>}
-                {isMagasinier && insufficientNeeds.length > 0 && <li style={{ color: 'var(--ds-danger)' }}>{insufficientNeeds.length} ingrédient(s) insuffisant(s)</li>}
+                {isMagasinier && insufficientNeeds.length > 0 && <li style={{ color: 'var(--ds-danger)' }}>{insufficientNeeds.length} {T.ingredientLc}(s) en stock insuffisant</li>}
               </ul>
-              <button type="button" className="plan-phase-link" onClick={() => setPlanTab('ingredients')}>Voir les ingrédients →</button>
+              <button type="button" className="plan-phase-link" onClick={() => setPlanTab('ingredients')}>Voir les {T.ingredientsLc} →</button>
             </div>
             <div className="ds-panel pd-section plan-phase">
               <div className="pd-section-head">
@@ -1657,7 +1657,7 @@ export default function PlanDetailPage() {
               </ul>
               {productionTabVisible
                 ? <button type="button" className="plan-phase-link" onClick={() => setPlanTab('production')}>Voir la production →</button>
-                : <span className="plan-phase-hint"><Lock size={11} /> Ouvert après la livraison des ingrédients</span>}
+                : <span className="plan-phase-hint"><Lock size={11} /> Ouvert après la livraison des {T.ingredientsLc}</span>}
             </div>
             {costsTabVisible && (
               <div className="ds-panel pd-section plan-phase">
@@ -1697,9 +1697,9 @@ export default function PlanDetailPage() {
       {showIngr && bonNotNeeded && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && (
         <div>
           <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun bon de sortie à préparer — préparation bloquée">
-            {bonNotNeededReason || `Aucun ingrédient à prélever (produits sans ${T.recipeLc} ou sans composition).`}
+            {bonNotNeededReason || `Rien à prélever (produits sans ${T.recipeLc} ou sans composition).`}
             <div style={{ marginTop: 4 }}>
-              La production ne peut pas démarrer sans transfert d'ingrédients. Ajoutez une recette aux produits
+              La production ne peut pas démarrer sans transfert des {T.ingredientsLc}. Ajoutez une recette aux produits
               de ce plan, puis utilisez « Relancer le plan » pour recalculer les besoins et générer le bon de sortie.
             </div>
           </StatusBanner>
@@ -1842,7 +1842,7 @@ export default function PlanDetailPage() {
               <div className="odoo-alert warning">
                 <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
                 <span>
-                  Ces articles ne peuvent pas être produits : ingrédients insuffisants.
+                  Ces articles ne peuvent pas être produits : stock insuffisant.
                   {plan.status === 'in_progress' && ' La production ne peut pas être terminée tant que des articles sont en attente.'}
                 </span>
               </div>
@@ -2057,6 +2057,7 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
   const needed = parseFloat(need.needed_quantity as string) || 0;
   const available = parseFloat(need.available_quantity as string) || 0;
   const deficit = Math.max(0, needed - available);
+  const T = useProdTerms();
   const [note, setNote] = useState('');
 
   const submit = (e: React.FormEvent) => {
@@ -2072,7 +2073,7 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
         <form onSubmit={submit} className="space-y-4">
           <div className="bg-gray-50 rounded-xl p-3 space-y-1.5 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-gray-500">Ingrédient</span>
+              <span className="text-gray-500">{T.ingredient}</span>
               <span className="font-semibold text-gray-900">{need.ingredient_name as string}</span>
             </div>
             <div className="flex items-center justify-between">
@@ -2088,7 +2089,7 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
           </div>
 
           <Alert tone="info" icon={Info}>
-            Le responsable stock va vérifier physiquement l'ingrédient et marquer "OK" s'il est disponible.
+            Le responsable stock va vérifier physiquement le stock et marquer "OK" s'il est disponible.
             Après confirmation, vous pourrez restaurer l'article en attente.
           </Alert>
 

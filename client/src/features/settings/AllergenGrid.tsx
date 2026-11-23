@@ -9,6 +9,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { DataPanel, EmptyState } from '../../components/ds';
 import { apiErrorMessage } from '../../api/errors';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Allergènes des ingrédients, en grille (G2-06) : une ligne par ingrédient, une colonne par
@@ -40,6 +41,7 @@ const initial = (r: AllergenGridRow): Draft => {
 
 export default function AllergenGrid() {
   const qc = useQueryClient();
+  const { ingredient, ingredientsLc } = useProdTerms();
   const { data: rows = [], isLoading } = useQuery({ queryKey: ['allergen-grid'], queryFn: () => ingredientsApi.allergenGrid() });
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [onlyMissing, setOnlyMissing] = useState(true);
@@ -80,16 +82,16 @@ export default function AllergenGrid() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <StatusBanner tone={missing === 0 ? 'success' : 'info'} icon={ShieldAlert} title="Allergènes des ingrédients">
+      <StatusBanner tone={missing === 0 ? 'success' : 'info'} icon={ShieldAlert} title={`Allergènes des ${ingredientsLc}`}>
         {missing === 0
-          ? `Les ${rows.length} ingrédients sont renseignés.`
-          : `${missing} ingrédient${missing > 1 ? 's' : ''} sur ${rows.length} ${missing > 1 ? 'ne sont pas renseignés' : 'n\'est pas renseigné'}. Cliquez sur une case : C = contient, T = traces, vide = absent. Les cases déjà cochées d'une fiche non renseignée sont une proposition ; rien n'est enregistré avant « Valider ».`}
+          ? `Les ${rows.length} fiches sont renseignées.`
+          : `${missing} fiche${missing > 1 ? 's' : ''} sur ${rows.length} ${missing > 1 ? 'ne sont pas renseignées' : 'n\'est pas renseignée'}. Cliquez sur une case : C = contient, T = traces, vide = absent. Les cases déjà cochées d'une fiche non renseignée sont une proposition ; rien n'est enregistré avant « Valider ».`}
       </StatusBanner>
 
       <div className="prj-toolbar">
         <label className="prj-search" style={{ maxWidth: 360 }}>
           <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
-          <input type="search" placeholder="Filtrer par nom ou catégorie" aria-label="Filtrer les ingrédients"
+          <input type="search" placeholder="Filtrer par nom ou catégorie" aria-label={`Filtrer les ${ingredientsLc}`}
             value={search} onChange={e => { setSearch(e.target.value); setLimit(PAGE); }} />
         </label>
         <FilterChips label="Fiches affichées" value={onlyMissing ? 'missing' : 'all'} onChange={k => { setOnlyMissing(k === 'missing'); setLimit(PAGE); }} chips={[
@@ -102,10 +104,10 @@ export default function AllergenGrid() {
       {shown.length === 0 && <EmptyState icon={ShieldAlert} title="Aucune fiche à afficher" text="Changez le filtre ou la recherche." />}
 
       {shown.length > 0 && (
-        <DataPanel label="Allergènes par ingrédient">
+        <DataPanel label={`Allergènes par ${ingredient.toLowerCase()}`}>
           <table className="odoo-table ds-dense" style={{ width: '100%' }}>
             <thead><tr>
-              <th style={{ textAlign: 'left', minWidth: 200, position: 'sticky', left: 0, background: 'var(--ds-card)', zIndex: 1 }}>Ingrédient</th>
+              <th style={{ textAlign: 'left', minWidth: 200, position: 'sticky', left: 0, background: 'var(--ds-card)', zIndex: 1 }}>{ingredient}</th>
               {ALLERGENS.map(a => (
                 <th key={a.code} title={a.label} style={{ textAlign: 'center', fontSize: '0.68rem', padding: '6px 2px', minWidth: 46, whiteSpace: 'normal', lineHeight: 1.1 }}>{a.short}</th>
               ))}
@@ -149,7 +151,7 @@ export default function AllergenGrid() {
                     <td className="ds-actions" style={{ whiteSpace: 'nowrap' }}>
                       {(dirty || !r.reviewed) && (
                         <button type="button" className={`${dirty || proposed ? 'odoo-btn-primary' : 'odoo-btn-secondary'} ds-btn-sm`} disabled={save.isPending}
-                          title={Object.values(d).every(s => s === 'absent') ? 'Déclare que cet ingrédient ne contient aucun allergène' : 'Enregistre cette ligne'}
+                          title={Object.values(d).every(s => s === 'absent') ? 'Déclare cette fiche sans allergène' : 'Enregistre cette ligne'}
                           onClick={() => save.mutate({ id: r.id, draft: d })}>
                           {Object.values(d).every(s => s === 'absent') ? 'Aucun allergène' : 'Valider'}
                         </button>

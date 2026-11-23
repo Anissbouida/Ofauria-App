@@ -25,6 +25,7 @@ import { textIncludes } from '../../utils/searchText';
 import { apiErrorMessage } from '../../api/errors';
 import { applyScreenDefinition } from '@ofauria/shared';
 import { useScreenDefinition } from '../../hooks/useScreenDefinition';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 type ActiveTab = 'product' | 'base' | 'contenants';
 type ViewMode = 'grid' | 'list';
@@ -73,6 +74,7 @@ export default function RecipesPage() {
     searchRecipes: sectorLabel('search_recipes', 'Rechercher une recette ou un produit...'),
     searchBase: sectorLabel('search_base_preps', 'Rechercher une préparation de base...'),
   };
+  const { ingredients, ingredientLc, ingredientsLc } = useProdTerms();
   const isAdmin = user?.role === 'admin';
   // Constat 111 : seuls les boutons permis sont montrés, et un refus s'affiche.
   const { can } = useActionPermissions();
@@ -346,7 +348,7 @@ export default function RecipesPage() {
         title: activeTab === 'base' ? 'Aucune préparation de base' : 'Aucune recette produit fini',
         hint: activeTab === 'base'
           ? 'Les préparations de base (pâtes, crèmes, garnitures) sont les briques réutilisées par les produits finis.'
-          : 'Une recette produit fini se compose de préparations de base et d’ingrédients, format par format.',
+          : `Composition d’une recette produit fini : préparations de base et ${ingredientsLc}, format par format.`,
         action: 'create' as const,
       };
 
@@ -382,9 +384,9 @@ export default function RecipesPage() {
             <button type="button"
               onClick={() => setShowReplace(true)}
               className="odoo-btn-secondary"
-              title="Remplacer un ingrédient par un autre sur toutes les recettes"
+              title={`${ingredients} : remplacer ou substituer sur toutes les recettes`}
             >
-              <Repeat size={13} aria-hidden="true" /> Remplacer un ingrédient
+              <Repeat size={13} aria-hidden="true" /> Remplacer : {ingredientLc}
             </button>
             <button type="button"
               onClick={() => setShowImport(true)}
@@ -580,7 +582,7 @@ export default function RecipesPage() {
                     frais de structure ne sont ajoutés que dans l'éditeur de composition.
                     Les libellés le disent, sinon la marge d'ici contredit celle de là-bas. */}
                 {show('cost') && <SortHeader label={`${isBaseTab ? T.batchCost : 'Coût matière'} (${currencySymbol()})`} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
-                  title="Ingrédients, emballages et préparations de base. Hors main d'œuvre, énergie et frais de structure." />}
+                  title={`${ingredients}, emballages et préparations de base. Hors main d'œuvre, énergie et frais de structure.`} />}
                 {show('unit_cost') && <SortHeader label={isBaseTab ? `Coût par kg net (${currencySymbol()}/kg)` : `Coût matière par unité (${currencySymbol()})`} sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                   title={isBaseTab
                     ? "Coût de la fournée rapporté au kilo réellement utilisable. Normalisé au kg pour que deux préparations soient comparables, quelle que soit l'unité de leur rendement."
@@ -627,7 +629,7 @@ export default function RecipesPage() {
                 // Indicateur d'ÉTAT (santé donnée) : vide → rouge, rendement à définir → ambre, sinon vert.
                 // Composition vide : signalée aussi sur une préparation de base (constat 107).
                 const dotTitle = r.compo_vide ? 'Fiche incomplète : aucun composant'
-                  : r.cout_incomplet ? 'Coût de revient incomplet : ingrédient sans prix, conversion douteuse ou préparation vide (détail sur la fiche)'
+                  : r.cout_incomplet ? `Coût de revient incomplet : ${ingredientLc} sans prix, conversion douteuse ou préparation vide (détail sur la fiche)`
                   : r.is_base ? T.base
                   : r.rendement_a_definir ? 'Rendement à définir (contenant non assigné)'
                   : 'OK';

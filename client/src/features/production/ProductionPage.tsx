@@ -258,7 +258,7 @@ function ProductionPlansView() {
         onSelect: async () => {
           const detail = nb > 0
             ? `${nb} article(s) annulé(s) ou en attente repassent en production, et les besoins seront recalculés.`
-            : 'Les besoins en ingrédients et le bon de sortie seront recalculés depuis les recettes actuelles.';
+            : `Les besoins en ${sectorLabel('ingredients', 'Ingrédients').toLowerCase()} et le bon de sortie seront recalculés depuis les ${sectorLabel('recipes', 'Recettes').toLowerCase()} actuelles.`;
           if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
             relaunchMutation.mutate(p.id as string);
           }

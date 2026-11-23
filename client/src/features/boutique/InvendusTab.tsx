@@ -16,6 +16,7 @@ import { ListToolbar } from '../sales/ListTemplate';
 import { StageChips, Segmented, Panel, PagerFoot } from '../controle/KlUi';
 import { Dot, EmptyRow, Loading, inputStyle, muted, n0, n2, toNum } from './shared';
 import { DataPanel, KpiCard, KpiGrid, LoadingState, SectionHeader } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Invendus de fin de journée (ex-écran /unsold) : compter le reste, accepter ou
@@ -57,6 +58,7 @@ export default function InvendusTab() {
 
 function DecisionPanel() {
   const queryClient = useQueryClient();
+  const { ingredientLc } = useProdTerms();
   const { getLabel } = useReferentiel('unsold_destinations');
   const destLabel = (d: string) => getLabel(d) || DEST[d as Destination]?.label || d;
   const [search, setSearch] = useState('');
@@ -315,7 +317,7 @@ function DecisionPanel() {
                               <Detail label="DLC" value={`${p.shelf_life_days || '—'} jour(s)`} />
                               <Detail label="Exposition max" value={`${p.display_life_hours || '—'} h`} />
                               <Detail label="Remises en vitrine" value={`${p.reexposition_count || 0} / ${p.max_reexpositions || 0}`} />
-                              <Detail label="Valorisable" value={p.is_recyclable ? `Oui → ${p.recycle_ingredient_name || 'ingrédient'}` : 'Non'} />
+                              <Detail label="Valorisable" value={p.is_recyclable ? `Oui → ${p.recycle_ingredient_name || ingredientLc}` : 'Non'} />
                               <Detail label="Coût unitaire" value={`${money(unitCost)}`} />
                               {p.expires_at && <Detail label="Expiration" value={format(new Date(p.expires_at), 'dd MMM yyyy HH:mm', { locale: fr })}
                                 danger={new Date(p.expires_at) <= new Date()} />}

@@ -16,6 +16,7 @@ import '../sales/ListTemplate';
 import { bonStatusTag } from '../production/status';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { Alert, DataPanel, EmptyState, ErrorState, FormField, FormFooter, LoadingState, Modal, TableFooter } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 type TransferModalPayload = {
   ligneId: string;
@@ -42,6 +43,7 @@ type TransferModalPayload = {
 export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 'transfers-tab' | 'compact' }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const { ingredient } = useProdTerms();
   const [transferringAll, setTransferringAll] = useState(false);
   // Modale de confirmation : permet au magasinier d'ajuster qty + saisir une note avant transfert.
   // Reproduit le geste existant du module Economat (OpenContainerModal).
@@ -210,7 +212,7 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
           <table className="odoo-table">
             <thead>
               <tr>
-                <th>Ingrédient</th>
+                <th>{ingredient}</th>
                 <th className="ds-num">À ouvrir</th>
                 <th>Lot suggéré</th>
                 <th className="ds-num">Dispo en réserve</th>
@@ -406,7 +408,7 @@ function BsiTransferModal({ payload, onClose, onConfirm, isLoading }: {
               Lot à transférer<span className="ds-req" aria-hidden="true"> *</span> {lotsLoading && <Loader2 size={11} className="inline animate-spin ml-1" />}
             </span>
             {economatLots.length === 0 && !lotsLoading && (
-              <Alert tone="danger">Aucun lot en réserve pour cet ingrédient.</Alert>
+              <Alert tone="danger">Aucun lot en réserve pour cette ligne.</Alert>
             )}
             {economatLots.length > 0 && (
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">

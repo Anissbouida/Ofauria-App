@@ -11,6 +11,7 @@ import { ListToolbar, ListEmpty } from '../sales/ListTemplate';
 import { StageChips, Panel, PagerFoot, PageLoading } from './KlUi';
 import { NoResultState } from '../../components/ds';
 import { money } from '../../utils/money';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Contrôle & Qualité › Production : toutes les anomalies de fabrication au même
@@ -33,6 +34,7 @@ const ACTION: Record<Kind, string> = {
 
 export default function ProductionControl({ range, periodText }: { range: Record<string, string>; periodText: string }) {
   const navigate = useNavigate();
+  const T = useProdTerms();
   const [kind, setKind] = useState<Kind | ''>('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -78,7 +80,7 @@ export default function ProductionControl({ range, periodText }: { range: Record
       />
 
 
-      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher un produit, un ingrédient, un bon, un motif...">
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder={`Rechercher : produit, ${T.ingredientLc}, bon, motif...`}>
         {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
         {(kind || search) && (
           <button type="button" onClick={() => { setKind(''); setSearchInput(''); setSearch(''); }} className="ds-btn-ghost ds-btn-sm">

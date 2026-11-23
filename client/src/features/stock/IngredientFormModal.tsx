@@ -14,6 +14,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { currencySymbol } from '../../utils/money';
 import { FormField, FormFooter, FormSection, Modal } from '../../components/ds';
 import PurchaseTaxCodeSelect from '../../components/purchasing/PurchaseTaxCodeSelect';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /*
  * Formulaire unique de creation / modification d'un ingredient.
@@ -60,6 +61,7 @@ interface Props {
 
 export default function IngredientFormModal({ mode, ingredient, threshold, onClose, onSave, isLoading, title, initialName, initialSupplier, rootIds = STOCKABLE_ROOT_IDS, isConsumable }: Props) {
   const ing = ingredient || {};
+  const { ingredient: ingTerm, ingredientLc: ingTermLc } = useProdTerms();
   const extraUnits = useExtraUnits(UNITS.map(u => u.value));
   const [form, setForm] = useState({
     name: (ing.name as string) || initialName || '',
@@ -154,17 +156,17 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
 
   return (
     <Modal
-      title={title || (mode === 'create' ? 'Nouvel ingrédient' : "Modifier l'ingrédient")}
+      title={title || (mode === 'create' ? `Nouvelle fiche ${ingTermLc}` : `Modifier la fiche ${ingTermLc}`)}
       subtitle={mode === 'edit' ? (ing.name as string) : undefined}
       aside={isConsumable && form.categoryId ? (
         <span className={`odoo-tag ${consumable ? 'odoo-tag-purple' : 'odoo-tag-green'}`} style={{ fontSize: '11px' }}>
-          {consumable ? 'Consommable' : 'Ingrédient'}
+          {consumable ? 'Consommable' : ingTerm}
         </span>
       ) : undefined}
       onClose={onClose} locked={isLoading} width={640}
       footer={
         <FormFooter onCancel={onClose} busy={isLoading} onSubmit={() => formRef.current?.requestSubmit()}
-          submitLabel={isLoading ? 'Enregistrement…' : mode === 'create' ? (title ? 'Créer et ajouter' : "Créer l'ingrédient") : 'Enregistrer'}>
+          submitLabel={isLoading ? 'Enregistrement…' : mode === 'create' ? (title ? 'Créer et ajouter' : 'Créer la fiche') : 'Enregistrer'}>
           {submitted && hasErrors && (
             <span role="alert" style={{ fontSize: 12, fontWeight: 600, color: 'var(--ds-danger)' }}>Complétez les champs signalés.</span>
           )}
@@ -175,7 +177,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
 
             {/* ── Identification ── */}
             <Section icon={<Package size={13} />} title="Identification">
-              <Field label={title ? "Nom de l'article" : "Nom de l'ingrédient"} required error={err('name')}>
+              <Field label={title ? "Nom de l'article" : `Nom (${ingTermLc})`} required error={err('name')}>
                 <input className="ds-input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Ex : Farine T55" autoFocus />
               </Field>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: '0.75rem' }}>
@@ -216,7 +218,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
               </div>
               {(form.unit === 'l' || form.unit === 'ml') && (
                 <Field label="Masse volumique (kg/L)"
-                  hint="Permet les recettes saisies au poids pour un ingrédient stocké en volume. Ex : 1,03 lait · 0,92 huile · 1 eau.">
+                  hint="Permet les recettes saisies au poids pour un article stocké en volume. Ex : 1,03 lait · 0,92 huile · 1 eau.">
                   <input type="number" step="0.001" min="0" className="ds-input" value={form.densiteKgL}
                     onChange={e => set('densiteKgL', e.target.value)} placeholder="ex 1.03" style={{ maxWidth: 180 }} />
                 </Field>
@@ -272,7 +274,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
 
             {/* ── Conditionnement ── */}
             {!consumable && <Section icon={<Boxes size={13} />} title="Conditionnement"
-              aside="Comment l'ingrédient arrive du fournisseur">
+              aside="Comment l'article arrive du fournisseur">
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 <Chip active={!form.containerTypeId} onClick={() => setForm(f => ({ ...f, containerTypeId: '', containerSize: '' }))}>
                   En vrac / aucun

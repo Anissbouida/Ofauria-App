@@ -11,6 +11,7 @@ import {
   ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock, Scissors, Gauge
 } from 'lucide-react';
 import './production.css';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 interface CoutReelPanelProps {
   planId: string;
@@ -119,6 +120,7 @@ function toNum(v: Money): number {
 
 export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantity, perUnit }: CoutReelPanelProps) {
   const queryClient = useQueryClient();
+  const T = useProdTerms();
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   const { data: cout, isLoading } = useQuery<CoutReel | null>({
@@ -335,7 +337,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 )}
                 {ecartPrix != null && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
-                    title="Ce qui reste de l'écart après avoir absorbé le mix : sur/sous-consommation matière + pertes + variation de prix des ingrédients.">
+                    title={`Ce qui reste de l'écart après avoir absorbé le mix : sur/sous-consommation matière + pertes + variation de prix des ${T.ingredientsLc}.`}>
                     <span style={{ color: 'var(--ds-muted)' }}>Écart prix / pertes</span>
                     <span style={{ fontWeight: 500, color: color(ecartPrix) }}>
                       {money(ecartPrix, { signed: true })}
@@ -384,7 +386,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 <DataPanel label="Détail matières">
                 <table className="odoo-table ds-dense">
                   <thead><tr>
-                    <th>Ingrédient</th>
+                    <th>{T.ingredient}</th>
                     <th className="ds-num">Qte</th>
                     <th className="ds-num">PU ({currencySymbol()})</th>
                     <th className="ds-num">Total ({currencySymbol()})</th>

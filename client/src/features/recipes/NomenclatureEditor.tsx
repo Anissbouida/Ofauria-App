@@ -73,6 +73,7 @@ function signature(rows: Row[], f: EditableFields): string {
 function SourcePicker({ options, value, onPick }: {
   options: SourceOpt[]; value: SourceOpt | null; onPick: (o: SourceOpt) => void;
 }) {
+  const terms = useProdTerms();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -113,7 +114,7 @@ function SourcePicker({ options, value, onPick }: {
               <span>{o.name}</span><span className="text-gray-400 shrink-0">{money(o.cost)}/{o.unit}</span>
             </button>
           ))}
-          {ingredients.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] text-gray-400">Ingrédients</div>}
+          {ingredients.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] text-gray-400">{terms.ingredients}</div>}
           {ingredients.map((o) => (
             <button key={`ingredient:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
@@ -203,7 +204,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   /** Fiche d'un autre atelier (constat 106) : consultation et impression seulement. */
   readOnly?: boolean }) {
   // M8-03 : terme du lot de fabrication selon le secteur (« fournée » en boulangerie).
-  const bLc = useProdTerms().batch.toLowerCase();
+  const PT = useProdTerms();
+  const bLc = PT.batch.toLowerCase();
   const qc = useQueryClient();
   const confirm = useConfirm();
   // Cru / cuit : option « Contenants cru / cuit » (mig 507). Éteinte, la perte reste
@@ -613,7 +615,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         throw new Error(`Quantité nulle, négative ou manquante : ${[...new Set(badQtyRows.map(lineName))].join(', ')}. Saisis une quantité supérieure à 0 ou supprime la ligne.`);
       }
       const filled = rows.filter((r) => r.type && r.sourceId);
-      if (!filled.length) throw new Error('Composition vide : ajoute au moins un ingrédient ou une préparation de base avant d\'enregistrer.');
+      if (!filled.length) throw new Error(`Composition vide : ajoute au moins une ligne (${PT.ingredientLc} ou préparation de base) avant d'enregistrer.`);
       const components = filled.map((r, i) => {
         // Mig 265 (audit A5) : envoie la perte % ligne pour majorer matiere et besoins.
         const perte = r.pertePct != null && r.pertePct !== '' ? parseFloat(r.pertePct.replace(',', '.')) : 0;
@@ -1023,7 +1025,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 <AlertTriangle size={15} className="shrink-0" />
                 <span>
                   <strong>{badConversionCount} conversion{badConversionCount > 1 ? 's' : ''} d'unité douteuse{badConversionCount > 1 ? 's' : ''}</strong>
-                  {' — '}le coût affiché est peut-être faux. Choisis une unité de la même famille que la source (g/kg/mg entre elles, ml/cl/dl/l entre elles), ou renseigne la densité de l'ingrédient pour un croisement poids ↔ volume.
+                  {' — '}le coût affiché est peut-être faux. Choisis une unité de la même famille que la source (g/kg/mg entre elles, ml/cl/dl/l entre elles), ou renseigne la densité sur la fiche {PT.ingredientLc} pour un croisement poids ↔ volume.
                 </span>
               </div>
             )}
@@ -1043,7 +1045,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-[13px] text-amber-800">
                 <AlertTriangle size={15} className="shrink-0" />
                 <span>
-                  <strong>Coût incomplet</strong> — {noPriceNames.join(', ')} {noPriceNames.length > 1 ? "n'ont" : "n'a"} pas de prix et {noPriceNames.length > 1 ? 'comptent' : 'compte'} pour zéro : le coût de revient ci-dessous est trop bas. Renseigne le prix de l'ingrédient (achat ou fiche ingrédient).
+                  <strong>Coût incomplet</strong> — {noPriceNames.join(', ')} {noPriceNames.length > 1 ? "n'ont" : "n'a"} pas de prix et {noPriceNames.length > 1 ? 'comptent' : 'compte'} pour zéro : le coût de revient ci-dessous est trop bas. Renseigne le prix (achat ou fiche {PT.ingredientLc}).
                 </span>
               </div>
             )}

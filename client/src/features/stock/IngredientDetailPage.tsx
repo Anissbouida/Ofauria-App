@@ -33,6 +33,7 @@ import { SubViews } from './StockUi';
 import { Alert, Breadcrumb, EmptyState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, Modal } from '../../components/ds';
 import { RowMenu } from '../../components/ui/RowMenu';
 import IngredientNutritionCard from './IngredientNutritionCard';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 const CATEGORY_COLORS: Record<string, string> = {
   farines: 'bg-amber-100 text-amber-700',
@@ -124,6 +125,7 @@ export default function IngredientDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { ingredient: ingTerm, ingredientLc } = useProdTerms();
   const [activeTab, setActiveTab] = useState<'lots' | 'suppliers' | 'history' | 'nutrition'>('lots');
   const [expandedLot, setExpandedLot] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
@@ -189,7 +191,7 @@ export default function IngredientDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['recipe'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setShowEdit(false);
-      notify.success('Ingrédient mis à jour');
+      notify.success(`${ingTerm} : modifications enregistrées`);
     },
   });
 
@@ -219,8 +221,8 @@ export default function IngredientDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       notify.success(
         wasted > 0
-          ? `Ingrédient supprimé (${wasted.toFixed(2)} unité(s) jetée(s))`
-          : 'Ingrédient supprimé'
+          ? `${ingTerm} : suppression effectuée (${wasted.toFixed(2)} unité(s) jetée(s))`
+          : `${ingTerm} : suppression effectuée`
       );
       setShowDelete(false);
       navigate('/stock');
@@ -312,7 +314,7 @@ export default function IngredientDetailPage() {
   if (!item && !ingredient) {
     return (
       <div className="prj sal-page">
-        <EmptyState icon={Package} title="Ingrédient introuvable" text="Il a peut-être été supprimé ou converti en consommable."
+        <EmptyState icon={Package} title={`${ingTerm} : fiche introuvable`} text="La fiche a peut-être été supprimée ou convertie en consommable."
           action={<button type="button" onClick={() => navigate('/stock')} className="odoo-btn-secondary">Retour au stock</button>} />
       </div>
     );
@@ -365,7 +367,7 @@ export default function IngredientDetailPage() {
         {canManage && (
           <RowMenu label="Autres actions" items={[
             { label: 'Convertir en consommable', icon: Boxes, onSelect: () => { setConvertCategoryId(''); setShowConvert(true); } },
-            { label: 'Supprimer l\'ingrédient', icon: Trash2, danger: true, onSelect: () => setShowDelete(true) },
+            { label: 'Supprimer la fiche', icon: Trash2, danger: true, onSelect: () => setShowDelete(true) },
           ]} />
         )}
       </div>
@@ -629,14 +631,14 @@ export default function IngredientDetailPage() {
       )}
 
       {showDelete && (
-        <Modal title="Supprimer l'ingrédient" subtitle={ingredientName} onClose={() => setShowDelete(false)} locked={deleteIngredientMutation.isPending} width={480}
+        <Modal title={`Supprimer la fiche ${ingredientLc}`} subtitle={ingredientName} onClose={() => setShowDelete(false)} locked={deleteIngredientMutation.isPending} width={480}
           footer={
             <div className="ds-form-foot">
               <span className="ds-grow" />
               <button type="button" onClick={() => setShowDelete(false)} className="odoo-btn-secondary" disabled={deleteIngredientMutation.isPending}>Annuler</button>
               {qty > 0 ? (
                 <button type="button" onClick={() => deleteIngredientMutation.mutate({ force: true })} disabled={deleteIngredientMutation.isPending}
-                  className="ds-btn-danger solid" title="Jette le stock restant et supprime l'ingrédient">
+                  className="ds-btn-danger solid" title="Jette le stock restant et supprime la fiche">
                   <Trash2 size={13} /> {deleteIngredientMutation.isPending ? 'Suppression…' : 'Forcer la suppression'}
                 </button>
               ) : (
@@ -664,7 +666,7 @@ export default function IngredientDetailPage() {
             onSubmit={() => { if (!convertCategoryId) { notify.error('Choisissez une catégorie'); return; } convertMutation.mutate(); }} />}>
           <p style={{ fontSize: '13px', color: 'var(--ds-ink)', marginBottom: '0.75rem' }}>
             <strong>{ingredientName}</strong> sera déplacé vers l'onglet <strong>Consommables</strong> avec la catégorie choisie.
-            {qty > 0 && <> Son stock (<strong>{qty.toFixed(2)} {unit}</strong>) est transféré.</>} La ligne ingrédient est ensuite supprimée.
+            {qty > 0 && <> Son stock (<strong>{qty.toFixed(2)} {unit}</strong>) est transféré.</>} La fiche {ingredientLc} est ensuite supprimée.
             {' '}Bloqué si l'article est utilisé dans une recette.
           </p>
           <FormSection title="Consommable">

@@ -5,6 +5,7 @@ import { Modal, FormSection, FormField, FormFooter, KpiGrid, KpiCard, Alert, Dat
 import { ingredientsApi } from '../../api/inventory.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { currencySymbol } from '../../utils/money';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 interface PreviewRow {
   sourceRow: number;
@@ -38,6 +39,7 @@ interface CommitResult {
 }
 
 export default function IngredientImportModal({ onClose }: { onClose: () => void }) {
+  const { ingredients, ingredientsLc } = useProdTerms();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [result, setResult] = useState<CommitResult | null>(null);
@@ -96,8 +98,8 @@ export default function IngredientImportModal({ onClose }: { onClose: () => void
 
   return (
     <Modal
-      title="Importer des ingrédients"
-      subtitle="Ingrédients › Importer depuis Excel"
+      title={`Importer des ${ingredientsLc}`}
+      subtitle={`${ingredients} › Importer depuis Excel`}
       onClose={onClose}
       locked={busy}
       width={896}
@@ -120,7 +122,7 @@ export default function IngredientImportModal({ onClose }: { onClose: () => void
         {!result && (
           <FormSection title="Fichier">
             <FormField label="Fichier Excel (.xlsx)" htmlFor="ingredient-import-file" required
-              hint={<>Colonnes attendues : <code>Nom | Catégorie | Unité | Coût ({currencySymbol()}) | Fournisseur | Allergenes</code>. Les ingrédients existants (meme nom) seront mis à jour, les nouveaux crees. Toute modification du coût cascade automatiquement sur les recettes liées.</>}>
+              hint={<>Colonnes attendues : <code>Nom | Catégorie | Unité | Coût ({currencySymbol()}) | Fournisseur | Allergenes</code>. Une ligne dont le nom existe déjà met à jour la fiche ; les autres lignes créent une fiche. Toute modification du coût cascade automatiquement sur les recettes liées.</>}>
               <div className="flex items-center gap-3 flex-wrap">
                 <input id="ingredient-import-file" type="file" accept=".xlsx" onChange={onFileChange} className="text-sm" />
                 {file && (

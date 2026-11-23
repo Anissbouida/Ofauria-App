@@ -7,6 +7,7 @@ import { settingsApi } from '../../api/settings.api';
 import ImportSection from './ImportSection';
 import { notify } from '../../components/ui/InlineNotification';
 import { DataPanel, LoadingState, SectionHeader } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Paramètres › Données (audit Paramètres, lot 7) : import guidé (modèle, aperçu
@@ -37,6 +38,7 @@ const EVENT_LABELS = { config_export: 'Export de la configuration', data_export:
 
 export default function DataTab() {
   const queryClient = useQueryClient();
+  const { ingredients, ingredientsLc } = useProdTerms();
   const { data: status, isLoading } = useQuery({ queryKey: ['data-status'], queryFn: settingsApi.dataStatus });
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -74,7 +76,7 @@ export default function DataTab() {
           <div style={{ flex: '1 1 260px', display: 'grid', gap: 6, alignContent: 'start' }}>
             <div style={{ fontSize: '14px' }}><strong>Données de base</strong> (classeur Excel)</div>
             <div style={{ fontSize: '13px', color: 'var(--ds-muted)' }}>
-              Produits, ingrédients, fournisseurs, clients, personnel, établissements : une feuille chacun. Contient des données personnelles.
+              Produits, {ingredientsLc}, fournisseurs, clients, personnel, établissements : une feuille chacun. Contient des données personnelles.
             </div>
             <button type="button" className="odoo-btn-secondary" style={{ justifySelf: 'start' }} disabled={busy !== null} onClick={() => doExport('export/base', 'Export des données')}>
               {busy === 'export/base' ? 'Export…' : 'Exporter les données'}
@@ -95,7 +97,7 @@ export default function DataTab() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {Object.entries(status.counts).filter(([, v]) => v !== null).map(([k, v]) => (
-            <span key={k} className="odoo-tag odoo-tag-grey" style={{ fontVariantNumeric: 'tabular-nums' }}>{COUNT_LABELS[k] ?? k} : {v}</span>
+            <span key={k} className="odoo-tag odoo-tag-grey" style={{ fontVariantNumeric: 'tabular-nums' }}>{k === 'ingredients' ? ingredients : COUNT_LABELS[k] ?? k} : {v}</span>
           ))}
         </div>
         {status.exports.length > 0 && (

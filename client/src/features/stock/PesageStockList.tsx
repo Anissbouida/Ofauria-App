@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, Fragment } from 'react';
 import { PesageLotActions } from './PesageLotActions';
 import { LotMovementModal } from './LotMovementModal';
 import { TransferToPesage } from './TransferToPesage';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { ListToolbar, FilterChips } from '../sales/ListTemplate';
@@ -56,6 +57,8 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
   /** Magasinier / admin / gérant : peut ouvrir un contenant de la réserve. */
   canOpen?: boolean;
 }) {
+  const { ingredient, ingredientLc, ingredientsLc } = useProdTerms();
+  const plural = (n: number) => (n > 1 ? ingredientsLc : ingredientLc);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [situation, setSituation] = useState<Situation | ''>('');
@@ -136,7 +139,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
     <div className="stk-stack">
       {counts.expired > 0 && situation !== 'expired' && (
         <StatusBanner tone="danger" icon={AlertTriangle}
-          title={`${counts.expired} ingrédient${counts.expired > 1 ? 's' : ''} avec un lot périmé au poste de pesée`}
+          title={`${counts.expired} ${plural(counts.expired)} avec un lot périmé au poste de pesée`}
           actions={<button type="button" className="odoo-btn-secondary" onClick={() => setSituation('expired')}>Les afficher</button>}>
           Un lot périmé n'est plus servi aux bons de sortie : déclarez la perte pour le sortir du stock.
         </StatusBanner>
@@ -151,7 +154,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
         </HeaderActions>
       )}
 
-      <ChipsRow summary={`${rows.length} ingrédient${rows.length > 1 ? 's' : ''} ouvert${rows.length > 1 ? 's' : ''} · ${totalToHandle} à traiter`}>
+      <ChipsRow summary={`${rows.length} ${plural(rows.length)} en contenant ouvert · ${totalToHandle} à traiter`}>
         <FilterChips label="Poste de pesée · contenants ouverts" value={situation} onChange={k => setSituation(k as Situation | '')} chips={[
           { key: '', label: 'Tous', count: rows.length },
           ...SITUATIONS.map(x => ({
@@ -161,7 +164,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
         ]} />
       </ChipsRow>
 
-      <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un ingrédient…">
+      <ListToolbar search={search} onSearch={setSearch} placeholder={`${ingredient} : rechercher par nom…`}>
         <SortSelect<SortKey> value={sortBy} onChange={setSortBy} options={[
           { key: 'urgency', label: 'par urgence' },
           { key: 'dlc', label: 'par DLC' },
@@ -181,14 +184,14 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
         <EmptyState icon={Beaker} title="Aucun contenant ouvert au poste de pesée."
           text="Ils s'ouvrent au moment de la pesée d'un bon, ou à l'avance avec « Ouvrir un contenant »." />
       ) : filtered.length === 0 ? (
-        <NoResultState text="Aucun ingrédient ne correspond aux filtres." onReset={() => { setSearch(''); setSituation(''); }} />
+        <NoResultState text="Aucun résultat ne correspond aux filtres." onReset={() => { setSearch(''); setSituation(''); }} />
       ) : (
         <DataPanel footer={<PagerFoot page={page} total={filtered.length} onPage={setPage}
-            note={`${filtered.length} ingrédient${filtered.length > 1 ? 's' : ''} au poste de pesée · cliquez une ligne pour voir ses contenants`} />}>
+            note={`${filtered.length} ${plural(filtered.length)} au poste de pesée · cliquez une ligne pour voir ses contenants`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
-                <th>Ingrédient</th>
+                <th>{ingredient}</th>
                 <th className="ds-num">Au pesage</th>
                 <th className="ds-num">Autonomie</th>
                 <th>Contenants ouverts</th>

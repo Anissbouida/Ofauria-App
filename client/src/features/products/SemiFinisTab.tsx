@@ -419,7 +419,7 @@ function SemiFiniRow({
                   <p style={emptyTxt}>Chargement…</p>
                 ) : (((fullRecipe as Record<string, any>).ingredients as Record<string, any>[] ?? []).length === 0 &&
                      ((fullRecipe as Record<string, any>).sub_recipes as Record<string, any>[] ?? []).length === 0) ? (
-                  <p style={emptyTxt}>Aucun ingrédient défini</p>
+                  <p style={emptyTxt}>Composition vide</p>
                 ) : (
                   <DataPanel><table className="odoo-table ds-dense">
                     <tbody>

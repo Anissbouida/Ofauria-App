@@ -15,6 +15,7 @@ import { DataPanel, EmptyState, ErrorState, HeaderActions, HeaderSlotContext, Lo
 import MrpPhasedView from './MrpPhasedView';
 import MasterScheduleView from './MasterScheduleView';
 import { useAuth } from '../../context/AuthContext';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const tomorrow = () => addDays(new Date().toISOString().slice(0, 10), 1);
@@ -58,6 +59,7 @@ export default function MrpPage() {
 function DayView({ date, setDate }: { date: string; setDate: (d: string) => void }) {
   // M8-06 : « vitrine » réservé à l'option du même nom (boulangerie).
   const showcase = usePermissions().hasFeature('vitrine');
+  const T = useProdTerms();
   const qc = useQueryClient();
   const confirm = useConfirm();
   const navigate = useNavigate();
@@ -183,9 +185,9 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
                 {genPR.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <ShoppingCart size={14} aria-hidden="true" />} Générer les demandes d'achat
               </button>
             </SectionHeader>
-            <DataPanel label="Besoins en matières à acheter" footer={<TableFooter note={`${short.length} ingrédient(s) manquant(s)`} />}>
+            <DataPanel label="Besoins en matières à acheter" footer={<TableFooter note={`${short.length} ${T.ingredientLc}(s) à commander`} />}>
               <table className="odoo-table">
-                <thead><tr><th>Ingrédient</th><th className="ds-num">Besoin</th><th className="ds-num">En stock</th><th className="ds-num">Seuil</th><th className="ds-num">À commander</th><th className="ds-num">Coût estimé</th></tr></thead>
+                <thead><tr><th>{T.ingredient}</th><th className="ds-num">Besoin</th><th className="ds-num">En stock</th><th className="ds-num">Seuil</th><th className="ds-num">À commander</th><th className="ds-num">Coût estimé</th></tr></thead>
                 <tbody>
                   {short.map(r => (
                     <tr key={r.ingredient_id}>
@@ -202,7 +204,7 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
             </DataPanel>
             <p style={note}>
               Matières nécessaires pour produire le net ci-dessus (explosion des recettes sur tous les niveaux), défalquées du stock.
-              Manquant = besoin + seuil de sécurité − stock. {covered > 0 ? `${covered} ingrédient(s) couvert(s) par le stock.` : ''} La quantité commandée est arrondie au contenant.
+              Manquant = besoin + seuil de sécurité − stock. {covered > 0 ? `Déjà en stock : ${covered} ${T.ingredientLc}(s).` : ''} La quantité commandée est arrondie au contenant.
             </p>
           </div>
         );

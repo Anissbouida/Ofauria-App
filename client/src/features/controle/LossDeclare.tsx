@@ -6,6 +6,7 @@ import { ingredientLotsApi } from '../../api/inventory.api';
 import { Modal, DataPanel, LoadingState, NoResultState } from '../../components/ds';
 import { ProductLossDeclareModal } from '../accounting/LossesTab';
 import { LotMovementModal, type LotMovementLot } from '../stock/LotMovementModal';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Déclaration UNIQUE d'une perte depuis Contrôle & Qualité : on choisit d'abord ce
@@ -82,6 +83,7 @@ function KindCard({ icon: Icon, title, text, onClick }: { icon: typeof Trash2; t
 
 /** Choix du lot concerné : seuls les lots actifs avec du stock (réserve ou pesage). */
 function LotPicker({ onPick }: { onPick: (lot: LotMovementLot) => void }) {
+  const T = useProdTerms();
   const [input, setInput] = useState('');
   const [search, setSearch] = useState('');
   useEffect(() => {
@@ -102,8 +104,8 @@ function LotPicker({ onPick }: { onPick: (lot: LotMovementLot) => void }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div className="odoo-search-panel" style={{ margin: 0 }}>
         <Search size={14} style={{ color: 'var(--ds-muted)', flexShrink: 0 }} />
-        <input type="text" value={input} onChange={e => setInput(e.target.value)} autoFocus aria-label="Rechercher un ingrédient"
-          placeholder="Ingrédient, n° de lot fournisseur, fournisseur..." className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />
+        <input type="text" value={input} onChange={e => setInput(e.target.value)} autoFocus aria-label={`Rechercher : ${T.ingredientLc}`}
+          placeholder={`${T.ingredient}, n° de lot fournisseur, fournisseur...`} className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />
         {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--ds-muted)' }} />}
       </div>
       {isLoading ? (
@@ -114,7 +116,7 @@ function LotPicker({ onPick }: { onPick: (lot: LotMovementLot) => void }) {
         <DataPanel label="Lots en stock">
         <table className="odoo-table ds-dense">
           <thead>
-            <tr><th>Ingrédient · lot</th><th>DLC</th><th className="ds-num">Réserve</th><th className="ds-num">Pesage</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr>
+            <tr><th>{T.ingredient} · lot</th><th>DLC</th><th className="ds-num">{T.reserveZone}</th><th className="ds-num">{T.weighingZone}</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr>
           </thead>
           <tbody>
             {lots.map(l => {

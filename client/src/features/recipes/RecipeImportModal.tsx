@@ -8,6 +8,7 @@ import { Alert, DataPanel, FormField, FormFooter, FormSection, KpiCard, KpiGrid,
 import { recipesApi } from '../../api/recipes.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 interface PreviewRow {
   sourceRow: number;
@@ -59,6 +60,7 @@ interface CommitResult {
 }
 
 export default function RecipeImportModal({ onClose }: { onClose: () => void }) {
+  const { ingredients, ingredientsLc } = useProdTerms();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [result, setResult] = useState<CommitResult | null>(null);
@@ -148,7 +150,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                   <p><strong>Emballages</strong> : Recette | Emballage | Quantité | Unité</p>
                   <p className="pt-1">
                     Les recettes existantes (meme nom) seront mises à jour, les nouvelles créées.
-                    Les <strong>ingrédients</strong> et <strong>produits</strong> absents seront <strong>auto-crees</strong>
+                    Les <strong>{ingredientsLc}</strong> et <strong>produits</strong> absents seront <strong>auto-crees</strong>
                     (coût/prix = 0) — a compléter après. Les unités non standards (ex: "cadre") sont acceptees.
                     Les <strong>emballages</strong> doivent déjà exister.
                   </p>
@@ -165,20 +167,20 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                 <KpiCard label="À créer" value={String(preview.summary.toCreate)} />
                 <KpiCard label="À mettre à jour" value={String(preview.summary.toUpdate)} />
                 <KpiCard label="Inchangées" value={String(preview.summary.unchanged)} />
-                <KpiCard label="Ingrédients auto-créés" value={String(preview.summary.ingredientsToCreate)} />
+                <KpiCard label={`${ingredients} à créer`} value={String(preview.summary.ingredientsToCreate)} />
                 <KpiCard label="Produits auto-créés" value={String(preview.summary.productsToCreate)} />
               </KpiGrid>
 
               {preview.ingredientsToCreate.length > 0 && (
                 <details open>
                   <summary className="ds-subhead" style={{ cursor: 'pointer', marginBottom: 8 }}>
-                    Ingrédients absents de l'économat ({preview.ingredientsToCreate.length}) — seront auto-crees
+                    {ingredients} hors économat ({preview.ingredientsToCreate.length}) — création automatique
                   </summary>
                   <p className="ds-field-hint" style={{ marginBottom: 8 }}>
                     Coût = 0 {currencySymbol()}, catégorie = "autre", unité = celle du fichier.
                     A compléter après dans l'économat.
                   </p>
-                  <DataPanel label="Ingrédients à créer" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  <DataPanel label={`${ingredients} à créer`} style={{ maxHeight: 200, overflowY: 'auto' }}>
                     <table className="odoo-table ds-dense">
                       <thead><tr><th>Nom</th><th>Unité</th><th className="ds-num">1re apparition (ligne)</th></tr></thead>
                       <tbody>
@@ -277,7 +279,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                 </div>
                 {result.ingredientsCreated > 0 && (
                   <div className="text-sm mt-1">
-                    {result.ingredientsCreated} ingrédient(s) auto-créé(s) — compléter les coûts dans l'économat.
+                    Créations automatiques ({ingredientsLc}) : {result.ingredientsCreated} — compléter les coûts dans l'économat.
                   </div>
                 )}
                 {result.productsCreated > 0 && (
@@ -304,6 +306,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
 }
 
 function PreviewTable({ rows, kind }: { rows: PreviewRow[]; kind: 'create' | 'update' }) {
+  const { ingredients } = useProdTerms();
   const visible = rows.slice(0, 200);
   return (
     <DataPanel label={kind === 'create' ? 'Recettes à créer' : 'Recettes à mettre à jour'}
@@ -316,7 +319,7 @@ function PreviewTable({ rows, kind }: { rows: PreviewRow[]; kind: 'create' | 'up
             <th>Type</th>
             <th>Produit</th>
             <th className="ds-num">Rendement</th>
-            <th className="ds-num">Ingrédients</th>
+            <th className="ds-num">{ingredients}</th>
             <th className="ds-num">Sous-recettes</th>
             <th className="ds-num">Emballages</th>
             {kind === 'update' && <th>Champs modifiés</th>}

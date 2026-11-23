@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity } from '../../utils/units';
 import { containerOf } from '../../utils/container';
 import { FormField, FormFooter, FormSection } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 type Row = Record<string, any>;
 
@@ -21,6 +22,7 @@ type Row = Record<string, any>;
  */
 export function TransferToPesage({ onDone, onCancel, initialIngredientId }: { onDone?: () => void; /** Dans une fenêtre : affiche Annuler dans le pied. */ onCancel?: () => void; initialIngredientId?: string | null }) {
   const queryClient = useQueryClient();
+  const { ingredient: ingTerm, reserveZone } = useProdTerms();
   const [search, setSearch] = useState('');
   const [ingredientId, setIngredientId] = useState<string | null>(initialIngredientId ?? null);
   useEffect(() => { if (initialIngredientId) { setIngredientId(initialIngredientId); setLotId(null); } }, [initialIngredientId]);
@@ -94,21 +96,21 @@ export function TransferToPesage({ onDone, onCancel, initialIngredientId }: { on
 
   return (
     <div>
-    <FormSection title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><PackageOpen size={14} aria-hidden="true" /> Ingrédient, lot et quantité à ouvrir</span>}>
+    <FormSection title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><PackageOpen size={14} aria-hidden="true" /> {ingTerm}, lot et quantité à ouvrir</span>}>
       <div className="transfer-pesage-form">
         {/* 1. Ingrédient */}
         <div className="transfer-pesage-field" style={{ position: 'relative', minWidth: 260 }}>
-          <FormField label="Ingrédient" htmlFor="transfer-pesage-search" required>
+          <FormField label={ingTerm} htmlFor="transfer-pesage-search" required>
           {ingredient ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <strong>{ingredient.name as string}</strong>
-              <button type="button" className="odoo-btn-secondary" onClick={() => { setIngredientId(null); setLotId(null); setSearch(''); }} title="Changer d'ingrédient" aria-label="Changer d'ingrédient"><X size={12} /></button>
+              <button type="button" className="odoo-btn-secondary" onClick={() => { setIngredientId(null); setLotId(null); setSearch(''); }} title="Changer la sélection" aria-label="Changer la sélection"><X size={12} /></button>
             </div>
           ) : (
             <>
               <div className="odoo-search-panel" style={{ margin: 0 }}>
                 <Search size={14} style={{ color: 'var(--ds-muted)', flexShrink: 0 }} />
-                <input id="transfer-pesage-search" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un ingrédient…" className="odoo-search-input" autoFocus />
+                <input id="transfer-pesage-search" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={`${ingTerm} : rechercher par nom…`} className="odoo-search-input" autoFocus />
               </div>
               {matches.length > 0 && (
                 <ul className="transfer-pesage-matches">
@@ -131,7 +133,7 @@ export function TransferToPesage({ onDone, onCancel, initialIngredientId }: { on
           <div className="transfer-pesage-field" style={{ minWidth: 300 }}>
             <FormField label="Lot en économat (FEFO)" htmlFor="transfer-pesage-lot" required>
             {lotsLoading ? <Loader2 size={14} className="animate-spin" />
-              : lots.length === 0 ? <span className="bsi-muted">Rien en économat pour cet ingrédient.</span>
+              : lots.length === 0 ? <span className="bsi-muted">Rien en {reserveZone.toLowerCase()} pour cette sélection.</span>
               : (
                 <select id="transfer-pesage-lot" value={lot?.id as string || ''} onChange={(e) => setLotId(e.target.value)} className="ds-input">
                   {lots.map(l => (

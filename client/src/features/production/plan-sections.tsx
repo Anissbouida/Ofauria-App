@@ -7,6 +7,7 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import type { ProductionPlanEvent } from '@ofauria/shared';
 import { planStatusTag, bonStatusTag } from './status';
 import './production.css';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Sections d'affichage pur de la fiche plan, sorties de PlanDetailPage (lot 4) :
@@ -60,6 +61,7 @@ export function PlanJournal({ events }: { events: ProductionPlanEvent[] }) {
 }
 
 export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] }) {
+  const T = useProdTerms();
   const productionLotUsage = usage;
   if (productionLotUsage.length === 0) return null;
   return (
@@ -67,7 +69,7 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
       <div className="pd-section-head">
         <Layers size={12} /> Traçabilité des lots
         <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-          {(productionLotUsage as Record<string, any>[]).length} lot(s) d'ingrédients utilisé(s)
+          {(productionLotUsage as Record<string, any>[]).length} lot(s) utilisé(s) — {T.ingredientsLc}
         </span>
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -75,7 +77,7 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
           <thead>
             <tr>
               <th style={{ width: 24 }}></th>
-              <th>Ingrédient</th>
+              <th>{T.ingredient}</th>
               <th>Lot interne</th>
               <th>Lot fournisseur</th>
               <th>Fournisseur</th>

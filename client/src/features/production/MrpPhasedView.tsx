@@ -9,6 +9,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Production › Plan directeur › Besoins phasés (G5-04).
@@ -20,13 +21,14 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
  */
 const nf = (v: number) => (Number(v) || 0).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
 const day = (d: string) => format(new Date(`${d}T00:00:00`), 'EEE dd/MM', { locale: fr });
-const KIND = { product: 'Produit', base: 'Base', ingredient: 'Ingrédient' } as const;
 const ACTION = { avancer: 'Avancer', retarder: 'Retarder', annuler: 'Annuler' } as const;
 const key = (p: MrpPhasedProposal) => `${p.key}|${p.needDate}`;
 
 export default function MrpPhasedView({ from }: { from: string }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const T = useProdTerms();
+  const KIND = { product: 'Produit', base: 'Base', ingredient: T.ingredient } as const;
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['mrp-phased', from], queryFn: () => productionApi.mrpPhased(from) });
   const [kind, setKind] = useState<'all' | 'product' | 'base' | 'ingredient'>('all');
   const [picked, setPicked] = useState<Set<string>>(new Set());

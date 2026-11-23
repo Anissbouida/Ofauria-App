@@ -7,6 +7,7 @@ import { Alert, DataPanel, FormField, FormFooter, FormSection, LoadingState, Mod
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 type Mode = 'replace' | 'substitute';
 
@@ -20,6 +21,7 @@ type Mode = 'replace' | 'substitute';
  */
 export default function BulkReplaceModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const { ingredient, ingredients, ingredientLc } = useProdTerms();
   const [source, setSource] = useState('');
   const [target, setTarget] = useState('');
   const [mode, setMode] = useState<Mode>('replace');
@@ -91,21 +93,21 @@ export default function BulkReplaceModal({ onClose }: { onClose: () => void }) {
     : allRecipes ? 'Déclarer pour toutes les fiches' : `Déclarer (${selected.length} fiche${selected.length > 1 ? 's' : ''})`;
 
   return (
-    <Modal title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Repeat size={18} aria-hidden="true" /> Remplacer ou substituer un ingrédient</span>}
+    <Modal title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Repeat size={18} aria-hidden="true" /> {ingredients} : remplacer ou substituer</span>}
       onClose={onClose} width={720} locked={apply.isPending}
       footer={<FormFooter onCancel={onClose} cancelLabel="Fermer" submitLabel={applyLabel} busy={apply.isPending}
         disabled={!canPreview || !preview.data || !canApply} onSubmit={() => apply.mutate()} />}>
-          <FormSection title="Ingrédients">
+          <FormSection title={ingredients}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 180 }}>
-              <FormField label="Ingrédient actuel" required>
-                <SearchSelect options={ingOptions} value={source} onChange={setSource} placeholder="Choisir…" width="100%" size="md" ariaLabel="Ingrédient actuel" />
+              <FormField label={`${ingredient} à remplacer`} required>
+                <SearchSelect options={ingOptions} value={source} onChange={setSource} placeholder="Choisir…" width="100%" size="md" ariaLabel={`${ingredient} à remplacer`} />
               </FormField>
             </div>
             <ArrowRight size={18} aria-hidden="true" style={{ color: 'var(--ds-muted)', marginBottom: 11 }} />
             <div style={{ flex: 1, minWidth: 180 }}>
-              <FormField label="Nouvel ingrédient" required>
-                <SearchSelect options={ingOptions.filter(o => o.id !== source)} value={target} onChange={setTarget} placeholder="Choisir…" width="100%" size="md" ariaLabel="Nouvel ingrédient" />
+              <FormField label={`${ingredient} de remplacement`} required>
+                <SearchSelect options={ingOptions.filter(o => o.id !== source)} value={target} onChange={setTarget} placeholder="Choisir…" width="100%" size="md" ariaLabel={`${ingredient} de remplacement`} />
               </FormField>
             </div>
           </div>
@@ -181,7 +183,7 @@ export default function BulkReplaceModal({ onClose }: { onClose: () => void }) {
                   </table>
                 </DataPanel>
               ) : (
-                <div style={{ fontSize: '0.85rem', color: 'var(--ds-muted)' }}>Cet ingrédient n'est utilisé dans aucune fiche.</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--ds-muted)' }}>Aucune fiche n'utilise cette référence.</div>
               )}
               {mode === 'replace' && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
@@ -214,7 +216,7 @@ export default function BulkReplaceModal({ onClose }: { onClose: () => void }) {
                         <td className="ds-actions">
                           {!l.reverted_at && (
                             <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={revert.isPending}
-                              title={l.mode === 'substitute' ? 'Retirer les substituts créés' : 'Restaurer l\'ingrédient et les quantités'} onClick={() => revert.mutate(l.id)}>
+                              title={l.mode === 'substitute' ? 'Retirer les substituts créés' : `Restaurer : ${ingredientLc} et quantités d'origine`} onClick={() => revert.mutate(l.id)}>
                               <Undo2 size={12} aria-hidden="true" /> Annuler
                             </button>
                           )}

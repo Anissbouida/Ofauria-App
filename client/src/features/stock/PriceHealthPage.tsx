@@ -10,6 +10,7 @@ import { ModulePage } from '../../components/layout/ModuleShell';
 import { ListKpi } from '../sales/ListTemplate';
 import { FullPageBar } from './StockUi';
 import { DataPanel, EmptyState, KpiGrid, LoadingState, TableFooter } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 
 /**
@@ -19,6 +20,7 @@ import { DataPanel, EmptyState, KpiGrid, LoadingState, TableFooter } from '../..
  */
 export default function PriceHealthPage() {
   const navigate = useNavigate();
+  const { ingredient, ingredientLc } = useProdTerms();
   const { data, isLoading } = useQuery({ queryKey: ['price-health'], queryFn: inventoryApi.priceHealth });
   const rows = data?.rows ?? [];
   // G0-26 : conversions d'unité impossibles (calculées aujourd'hui avec un facteur 1).
@@ -32,7 +34,7 @@ export default function PriceHealthPage() {
 
       <StatusBanner tone="info" icon={ShieldAlert} title="Contrôle des prix d'achat (catalogue)">
         Repère les prix suspects : prix manquant, ou écart fort entre le coût catalogue (CMUP) et le coût réel des lots en stock
-        — souvent une erreur d'unité (ex. prix saisi au kg au lieu du g). À corriger sur la fiche de l'ingrédient. Le CMUP sert à la valorisation du stock.
+        — souvent une erreur d'unité (ex. prix saisi au kg au lieu du g). À corriger sur la fiche {ingredientLc}. Le CMUP sert à la valorisation du stock.
       </StatusBanner>
 
       {isLoading && <LoadingState label="Analyse des prix…" />}
@@ -52,7 +54,7 @@ export default function PriceHealthPage() {
         <DataPanel label="Anomalies de prix" footer={<TableFooter note={`${rows.length} anomalie${rows.length > 1 ? 's' : ''} · cliquez une ligne pour ouvrir la fiche et corriger le prix`} />}>
           <table className="odoo-table">
             <thead><tr>
-              <th>Ingrédient</th><th>Anomalie</th>
+              <th>{ingredient}</th><th>Anomalie</th>
               <th className="ds-num">Coût catalogue</th>
               <th className="ds-num">Coût lot réel</th>
               <th className="ds-num">Divergence (%)</th>

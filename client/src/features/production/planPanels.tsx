@@ -32,7 +32,7 @@ const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
   ),
   'no-needs': c => (
     <div>
-      <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun besoin en ingrédients calculé — préparation bloquée">
+      <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun besoin calculé — préparation bloquée">
         Les produits de ce plan n'ont pas de {c.recipeLc ?? 'recette'} (ou leur composition est vide) : aucun bon de sortie
         ne peut être généré et l'étape Production reste fermée.
         {c.isChef && ` Ajoutez une ${c.recipeLc ?? 'recette'} aux produits concernés, puis utilisez « Relancer » pour recalculer les besoins (ou revenez en brouillon pour retirer le produit).`}

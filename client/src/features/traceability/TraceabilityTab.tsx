@@ -15,6 +15,7 @@ import { ListKpi } from '../sales/ListTemplate';
 import { Panel, SectionTitle, PageLoading } from '../controle/KlUi';
 import { Breadcrumb, DataPanel, EmptyState, NoResultState } from '../../components/ds';
 import { useConfirm, usePrompt } from '../../components/ui/ConfirmDialog';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Contrôle & Qualité › Traçabilité & rappels (mig 316).
@@ -42,9 +43,12 @@ const RecallStatusTag = ({ status }: { status: RecallStatus }) => (
   <StatusTag tone={RECALL_TONE[status]?.tone ?? 'draft'} icon={RECALL_TONE[status]?.icon} label={RECALL_STATUS_LABELS[status]} />
 );
 
+/** « de » élidé devant voyelle : lots d'ingrédients, lots de matières. */
+const de = (w: string) => (/^[aeiouyhéèêàâîôû]/i.test(w) ? `d'${w}` : `de ${w}`);
+
 function CertaintyTag({ c }: { c?: Certainty }) {
   return c === 'certain'
-    ? <StatusTag tone="blocked" label="certain" title="La recette contient l'ingrédient" />
+    ? <StatusTag tone="blocked" label="certain" title="La recette contient l'article du lot" />
     : <StatusTag tone="todo" label="possible" title="Même production, composition non prouvée" />;
 }
 
@@ -64,6 +68,7 @@ export default function TraceabilityTab() {
 function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: (id: string) => void }) {
   const [input, setInput] = useState('');
   const [term, setTerm] = useState('');
+  const { ingredient, ingredientLc } = useProdTerms();
   const { data: hits = [], isFetching } = useQuery({
     queryKey: ['trace-search', term], queryFn: () => traceabilityApi.search(term), enabled: term.length >= 2,
   });
@@ -74,7 +79,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
       <form className="prj-toolbar" onSubmit={e => { e.preventDefault(); setTerm(input.trim()); }}>
         <label className="prj-search" style={{ maxWidth: 560 }}>
           <Search size={15} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />
-          <input type="search" value={input} onChange={e => setInput(e.target.value)} placeholder="N° de lot interne ou fournisseur, ingrédient, produit…"
+          <input type="search" value={input} onChange={e => setInput(e.target.value)} placeholder={`N° de lot interne ou fournisseur, ${ingredientLc}, produit…`}
             aria-label="Rechercher un lot" />
         </label>
         <button type="submit" className="odoo-btn-primary" disabled={input.trim().length < 2}>Rechercher</button>
@@ -89,7 +94,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
             <tbody>
               {hits.map(h => (
                 <tr key={`${h.kind}-${h.id}`} style={{ cursor: 'pointer' }} onClick={() => onPick(h)}>
-                  <td><span className={`odoo-tag ${h.kind === 'ingredient_lot' ? 'odoo-tag-blue' : 'odoo-tag-purple'}`}>{h.kind === 'ingredient_lot' ? 'Ingrédient' : 'Produit fini'}</span></td>
+                  <td><span className={`odoo-tag ${h.kind === 'ingredient_lot' ? 'odoo-tag-blue' : 'odoo-tag-purple'}`}>{h.kind === 'ingredient_lot' ? ingredient : 'Produit fini'}</span></td>
                   <td className="ds-ref">
                     {h.lot_number}{h.supplier_lot_number && <div style={{ color: 'var(--ds-muted)', fontWeight: 400 }}>fourn. {h.supplier_lot_number}</div>}
                   </td>
@@ -279,7 +284,7 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
         </Panel>
       )}
       <p className="klc-note">
-        « certain » : la recette du produit contient l'ingrédient. « possible » : même production, composition non prouvée (la consommation est enregistrée par plan, pas par produit).
+        « certain » : la recette du produit contient l'article du lot. « possible » : même production, composition non prouvée (la consommation est enregistrée par plan, pas par produit).
         Le détail des ventes par ticket n'existe que depuis {data.traceStart ? d(data.traceStart) : 'la mise en service de la traçabilité'} ; avant, seuls les totaux par lot sont connus.
       </p>
     </>
@@ -294,6 +299,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 
 function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () => void; onRecall: (id: string) => void; onLot: (id: string) => void }) {
   const { data, isLoading } = useQuery({ queryKey: ['trace-backward', id], queryFn: () => traceabilityApi.backward(id) });
+  const { ingredient, ingredientLc, ingredientsLc } = useProdTerms();
   if (isLoading || !data) return <Loading />;
   const { lot } = data;
   return (
@@ -306,16 +312,16 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
         <Stat label="Produit le" value={d(lot.produced_at)} sub={`DLC ${d(lot.expires_at)} · ${lot.store_name ?? ''}`} />
         <Stat label="Quantité" value={`${q(lot.remaining_qty)} / ${q(lot.quantity_total)}`} sub="en stock / produit" />
         <Stat label="Vendu" value={q(lot.sold_qty)} sub={`${lot.sales_count} ticket(s) tracé(s)`} />
-        <Stat label="Lots d'ingrédients" value={String(data.ingredientLots.length)} sub="utilisés par la production" />
+        <Stat label={`Lots ${de(ingredientsLc)}`} value={String(data.ingredientLots.length)} sub="utilisés par la production" />
       </div>
       <div><CustomFieldsCard entity="product_lot" id={id} /></div>
       <QualityPanel filter={{ productLotId: id }} links={{ productLotId: id }} title={`Contrôle lot ${lot.lot_number}`} />
       {data.ingredientLots.length === 0 ? (
-        <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun lot d'ingrédient rattaché">La production n'a pas enregistré de prélèvement par lot (bon de sortie non pesé).</StatusBanner>
+        <StatusBanner tone="warning" icon={AlertTriangle} title={`Aucun lot ${de(ingredientLc)} rattaché`}>La production n'a pas enregistré de prélèvement par lot (bon de sortie non pesé).</StatusBanner>
       ) : (
-        <Panel title="Lots d'ingrédients utilisés" hint={`${data.ingredientLots.length}`}>
+        <Panel title={`Lots ${de(ingredientsLc)} utilisés`} hint={`${data.ingredientLots.length}`}>
           <table className="odoo-table">
-            <thead><tr><th>Ingrédient</th><th>Lot</th><th>Lien</th><th>Fournisseur</th><th>DLC</th><th className="ds-num">Utilisé</th><th>Voie</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
+            <thead><tr><th>{ingredient}</th><th>Lot</th><th>Lien</th><th>Fournisseur</th><th>DLC</th><th className="ds-num">Utilisé</th><th>Voie</th><th className="ds-actions"><span className="ds-sr-only">Actions</span></th></tr></thead>
             <tbody>{data.ingredientLots.map((l, i) => (
               <tr key={`${l.id}-${i}`}>
                 <td className="ds-strong">{l.ingredient_name}</td>
@@ -339,6 +345,7 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
 
 function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
   const qc = useQueryClient();
+  const { ingredient, ingredientsLc } = useProdTerms();
   const { data: r, isLoading } = useQuery({ queryKey: ['recall', id], queryFn: () => traceabilityApi.recall(id) });
   const confirm = useConfirm();
   const askReason = usePrompt();
@@ -387,7 +394,7 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
 
       {r.status === 'open' && (
         <StatusBanner tone="orange" icon={ShieldAlert} title="Périmètre identifié, rien n'est encore bloqué">
-          Vérifiez la liste puis bloquez : les lots d'ingrédients passent en quarantaine, les lots produits sont retirés de la vente (hors FEFO).
+          Vérifiez la liste puis bloquez : les lots {de(ingredientsLc)} passent en quarantaine, les lots produits sont retirés de la vente (hors FEFO).
         </StatusBanner>
       )}
       {r.status === 'blocked' && (
@@ -402,7 +409,7 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
           <thead><tr><th>Type</th><th>Article</th><th>Lot</th><th>Lien</th><th>Magasin</th><th className="ds-num">Vendu</th><th className="ds-num">En stock</th><th>Statut</th><th>Destination</th></tr></thead>
           <tbody>{r.items.map(i => (
             <tr key={i.id} className={(i.current_remaining ?? 0) > 0 && !i.disposition ? 'row-warning' : undefined}>
-              <td>{i.item_kind === 'ingredient_lot' ? 'Ingrédient' : i.item_kind === 'semi_finished_lot' ? 'Semi-fini' : 'Produit fini'}</td>
+              <td>{i.item_kind === 'ingredient_lot' ? ingredient : i.item_kind === 'semi_finished_lot' ? 'Semi-fini' : 'Produit fini'}</td>
               <td className="ds-strong">{i.label}</td>
               <td className="ds-ref">{i.lot_number ?? '—'}</td>
               <td><CertaintyTag c={i.certainty} /></td>

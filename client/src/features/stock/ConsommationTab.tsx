@@ -13,6 +13,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ListKpi } from '../sales/ListTemplate';
 import { SubViews, HeaderActions } from './StockUi';
 import { EmptyState, KpiGrid, LoadingState } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Deux vues complementaires sur les matieres, basculables :
@@ -81,6 +82,7 @@ function exportCSV(filename: string, headers: string[], rows: string[][]) {
 }
 
 export default function ConsommationTab() {
+  const { ingredient } = useProdTerms();
   const now = new Date();
   const [view, setView] = useState<'sorties' | 'entrees'>('entrees');
   const [periodMode, setPeriodMode] = useState<'mois' | 'custom'>('mois');
@@ -310,7 +312,7 @@ export default function ConsommationTab() {
           Cette vue montre les matières <strong>physiquement consommées</strong>
           (sorties de stock). Indépendante du paiement des fournisseurs. Utile pour comprendre où va ton budget
           matières, repérer tes pertes, optimiser tes achats. Le coût est calculé avec le prix unitaire courant de
-          chaque ingrédient.
+          chaque article.
         </StatusBanner>
       )}
 
@@ -451,7 +453,7 @@ export default function ConsommationTab() {
                   <div className="ds-scroll" style={{ borderTop: '1px solid var(--ds-hair)' }}><table className="odoo-table">
                     <thead>
                       <tr>
-                        <th style={{ width: '30%' }}>Ingrédient</th>
+                        <th style={{ width: '30%' }}>{ingredient}</th>
                         <th className="ds-num">Quantité sortie</th>
                         <th className="ds-num">Coût unitaire{` (${currencySymbol()})`}</th>
                         <th className="ds-num">Production{` (${currencySymbol()})`}</th>

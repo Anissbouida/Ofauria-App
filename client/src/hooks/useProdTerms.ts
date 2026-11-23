@@ -9,6 +9,11 @@ export function useProdTerms() {
   const { sectorLabel, hasFeature } = usePermissions();
   const recipe = sectorLabel('recipe', 'Recette');
   const recipes = sectorLabel('recipes', 'Recettes');
+  // Matière consommée (étape 10d, mig 647) : « Ingrédient » en alimentaire, « Matière » ailleurs.
+  // Le genre change selon le secteur : n'écrire ces termes que dans des tournures sans accord
+  // (titre, libellé suivi de « : », pluriel avec des/les/ces), jamais après un/une/nouvel/aucun.
+  const ingredient = sectorLabel('ingredient', 'Ingrédient');
+  const ingredients = sectorLabel('ingredients', 'Ingrédients');
   return {
     batchMode: hasFeature('mode_fournee'),
     recipe, recipes,
@@ -18,5 +23,10 @@ export function useProdTerms() {
     basePrep: sectorLabel('base_prep', 'Préparation de base'),
     batch: sectorLabel('batch', 'Fournée'),
     plan: sectorLabel('production_plan', 'Plan de production'),
+    ingredient, ingredients,
+    ingredientLc: ingredient.toLowerCase(),
+    ingredientsLc: ingredients.toLowerCase(),
+    weighingZone: sectorLabel('weighing_zone', 'Pesage'),
+    reserveZone: sectorLabel('reserve_zone', 'Économat'),
   };
 }

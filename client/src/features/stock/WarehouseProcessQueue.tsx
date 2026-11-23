@@ -17,6 +17,7 @@ import {
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { DataPanel, EmptyState, LoadingState, NoResultState, TableFooter } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * File active du Pesage, presentee comme un processus :
@@ -46,7 +47,7 @@ const STEP_OF_STATUS: Record<string, Exclude<ProcessStep, 'all'>> = {
 
 const STEPS: { key: Exclude<ProcessStep, 'all'>; label: string; hint: string; icon: typeof Truck }[] = [
   { key: 'recue', label: 'Demande reçue', hint: 'À prendre en charge', icon: Inbox },
-  { key: 'preparation', label: 'Préparation & pesée', hint: 'Pesée des ingrédients', icon: Scale },
+  { key: 'preparation', label: 'Préparation & pesée', hint: 'Pesée des lignes du bon', icon: Scale },
   { key: 'pret', label: 'Prêt à remettre', hint: 'Attente du chef', icon: CheckCircle },
 ];
 
@@ -224,6 +225,7 @@ export function WarehouseBonWorkspace({
   onOpen: (bonId: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const { ingredientsLc } = useProdTerms();
   const queueRow = queue.find(b => b.id === bonId);
 
   // Le plan_id vient de la file ; si la demande en est sortie (remise au chef),
@@ -300,7 +302,7 @@ export function WarehouseBonWorkspace({
         : 'En attente du magasinier',
     },
     {
-      label: 'Pesée des ingrédients',
+      label: `Pesée des ${ingredientsLc}`,
       done: rank >= 2, current: rank === 1,
       detail: lines.length > 0 ? `${weighed} / ${lines.length} ligne${lines.length > 1 ? 's' : ''} pesée${weighed > 1 ? 's' : ''}` : null,
     },

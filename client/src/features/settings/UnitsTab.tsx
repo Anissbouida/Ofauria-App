@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { DataPanel, ErrorState } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Paramètres › Unités de mesure (M3-01).
@@ -23,6 +24,7 @@ const TABLE: Record<string, string> = {
 };
 
 export default function UnitsTab() {
+  const { ingredients } = useProdTerms();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['settings-units'],
     queryFn: () => api.get('/settings/units').then(r => r.data.data as { units: Unit[]; unmatched: Unmatched[] }),
@@ -64,7 +66,7 @@ export default function UnitsTab() {
           <table className="odoo-table">
             <thead><tr><th>Fiches</th><th>Unité saisie</th><th className="ds-num">Lignes</th><th>Exemple</th></tr></thead>
             <tbody>{data.unmatched.map(m => (
-              <tr key={`${m.table_name}|${m.unit}`}><td>{TABLE[m.table_name] ?? m.table_name}</td><td className="ds-ref">{m.unit}</td>
+              <tr key={`${m.table_name}|${m.unit}`}><td>{m.table_name === 'ingredients' ? ingredients : TABLE[m.table_name] ?? m.table_name}</td><td className="ds-ref">{m.unit}</td>
                 <td className="ds-num">{m.lines}</td><td>{m.example}</td></tr>
             ))}</tbody>
           </table>

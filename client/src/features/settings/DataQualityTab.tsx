@@ -10,6 +10,7 @@ import FormatWeightsGrid from './FormatWeightsGrid';
 import AllergenGrid from './AllergenGrid';
 import { SettingsTabs } from './SettingsPrimitives';
 import { DataPanel, LoadingState } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 
 /**
  * Paramètres › Qualité des données (G2-02) : complétude des fiches (formats, ingrédients,
@@ -52,6 +53,7 @@ function Items({ indicator }: { indicator: DataQualityIndicator }) {
 }
 
 export default function DataQualityTab() {
+  const { ingredients } = useProdTerms();
   const { data, isLoading } = useQuery({ queryKey: ['data-quality'], queryFn: settingsApi.dataQuality });
   const [open, setOpen] = useState<string | null>(null);
 
@@ -123,7 +125,7 @@ export default function DataQualityTab() {
     <div className="odoo-scope">
       <SettingsTabs label="Qualité des données" tabs={[
         { key: 'controls', label: 'Contrôles', content: controls },
-        { key: 'duplicates', label: 'Ingrédients en double', content: <IngredientMergeCard /> },
+        { key: 'duplicates', label: `${ingredients} en double`, content: <IngredientMergeCard /> },
         { key: 'weights', label: 'Poids des formats', content: <FormatWeightsGrid /> },
         { key: 'allergens', label: 'Allergènes', content: <AllergenGrid /> },
       ]} />

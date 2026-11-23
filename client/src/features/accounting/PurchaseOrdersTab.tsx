@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, Fragment, type CSSProperties } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi, newIdempotencyKey } from '../../api/purchase-orders.api';
 import { supplierScoreApi, STANDING_TAG } from '../../api/supplier-score.api';
@@ -1114,6 +1115,7 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
 }) {
   const confirmConvert = useConfirm();
   const queryClient = useQueryClient();
+  const { ingredientLc: ingTermLc, ingredientsLc: ingsTermLc } = useProdTerms();
   const { resolve, tagClass, kindOf } = useStockCategories();
   const [editing, setEditing] = useState(false);
   const [selectedId, setSelectedId] = useState('');
@@ -1136,7 +1138,7 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
         if (!(await confirmConvert(
           `Cette catégorie (${catName}) transforme l'article en consommable.\n\n` +
           `Le stock sera transféré vers les Consommables, et l'article sera retiré ` +
-          `des ingrédients ainsi que des lignes de BC non facturées.`,
+          `des ${ingsTermLc} ainsi que des lignes de BC non facturées.`,
           { title: 'Convertir en consommable', confirmLabel: 'Convertir', danger: true },
         ))) { setSaving(false); return; }
         const resp = await ingredientsApi.convertToConsumable(refId, selectedId);
@@ -1144,7 +1146,7 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
         notify.success('Article converti en consommable');
       } else {
         notify.error(kind === 'consumable'
-          ? 'Reclasser un consommable en ingrédient se fait depuis l\'Économat (Consommables)'
+          ? `Reclasser un consommable en ${ingTermLc} se fait depuis l'Économat (Consommables)`
           : 'Cette catégorie change le type de l\'article : faites la conversion depuis l\'Économat');
         setSaving(false);
         return;
@@ -1212,6 +1214,7 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
 /* ═══ Create PO Modal ═══ */
 function CreatePOModal({ onClose }: { onClose: () => void }) {
   const confirmLeave = useConfirm();
+  const { ingredient: ingTerm, ingredientLc: ingTermLc } = useProdTerms();
   const [createIdemKey] = useState(newIdempotencyKey);
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState('');
@@ -1328,13 +1331,13 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     }]);
     setShowNewIngredient(false);
     setSearchIngredient('');
-    notify.success(`${kind === 'consumable' ? 'Consommable' : 'Ingrédient'} "${created.name}" créé et ajouté`);
+    notify.success(`Fiche créée et ajoutée — ${kind === 'consumable' ? 'Consommable' : ingTerm} « ${created.name} »`);
   };
 
   const createIngredientMutation = useMutation({
     mutationFn: ingredientsApi.create,
     onSuccess: onProductCreated('ingredient'),
-    onError: () => notify.error('Erreur lors de la création de l\'ingrédient'),
+    onError: () => notify.error(`Erreur lors de la création de la fiche ${ingTermLc}`),
   });
   const createConsumableMutation = useMutation({
     mutationFn: packagingApi.create,
@@ -2688,6 +2691,7 @@ type POLine = {
 
 function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const { ingredient: ingTerm } = useProdTerms();
   const { data: po, isLoading } = useQuery({
     queryKey: ['purchase-orders', poId],
     queryFn: () => purchaseOrdersApi.getById(poId),
@@ -2855,7 +2859,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                               </span>
                             ) : (
                               <SearchSelect
-                                ariaLabel="Ingrédient"
+                                ariaLabel={ingTerm}
                                 placeholder="— Choisir —"
                                 width="100%"
                                 size="md"

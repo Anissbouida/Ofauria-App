@@ -20,6 +20,7 @@ import '../projects/projects.css';
 import '../sales/sales.css';
 
 import { EmptyState, LoadingState } from '../../components/ds';
+import { useProdTerms } from '../../hooks/useProdTerms';
 /**
  * Panneau du bon de sortie (demande d'ingredients d'un plan de production).
  *
@@ -78,7 +79,7 @@ function lineTarget(l: Line, kind: LineKind): number {
 
 /** Statut d'une ligne en étiquette commune (StatusTag) : ton choisi par le sens. */
 const KIND_TAG: Record<LineKind, { label: string; tone: StatusTone; icon?: LucideIcon; title: string }> = {
-  pese:         { label: 'Pesé',          tone: 'done',                         title: 'Ingrédient pesé et prêt' },
+  pese:         { label: 'Pesé',          tone: 'done',                         title: 'Poids saisi, prêt à remettre' },
   a_peser:      { label: 'À peser',       tone: 'todo',    icon: Scale,         title: 'Le stock est au pesage : saisissez le poids' },
   a_ouvrir:     { label: 'À ouvrir',      tone: 'todo',    icon: PackageOpen,   title: 'Le stock est en économat : pesez, le contenant est ouvert automatiquement' },
   manquant:     { label: 'Manquant',      tone: 'blocked',                      title: 'Rien en stock (pesage ni économat) : commandez, ou remettez le bon en signalant le manquant' },
@@ -131,6 +132,7 @@ export function BonSortiePanel({
 }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const T = useProdTerms();
 
   // Saisie locale par ligne : poids reel + motif + lot choisi + contenants ouverts.
   // Jamais pre-remplie avec la cible : c'est la mesure qui entre dans le systeme.
@@ -340,7 +342,7 @@ export function BonSortiePanel({
   const remettre = async () => {
     if (manquants === 0) { markReadyMutation.mutate(false); return; }
     const names = manquantLines.map((l) => l.ingredient_name as string).join(', ');
-    const ok = await confirm(`${manquants} ingrédient${manquants > 1 ? 's' : ''} manquant${manquants > 1 ? 's' : ''} : ${names}.\n\nRemettre le bon au chef en signalant ${manquants > 1 ? 'ces manquants' : 'ce manquant'} ? Il décidera de produire sans, ou de refuser la réception.`,
+    const ok = await confirm(`En manque (${manquants}) : ${names}.\n\nRemettre le bon au chef en signalant ${manquants > 1 ? 'ces manquants' : 'ce manquant'} ? Il décidera de produire sans, ou de refuser la réception.`,
       { title: 'Remettre avec des manquants', confirmLabel: 'Remettre au chef' },
     );
     if (ok) markReadyMutation.mutate(true);
@@ -351,7 +353,7 @@ export function BonSortiePanel({
   );
 
   if (!bon) return (
-    <EmptyState icon={Package} title="Aucun bon de sortie pour ce plan" text="Le bon de sortie est créé à la confirmation du plan, quand des ingrédients sont à préparer." />
+    <EmptyState icon={Package} title="Aucun bon de sortie pour ce plan" text={`Le bon de sortie est créé à la confirmation du plan, quand des ${T.ingredientsLc} sont à préparer.`} />
   );
 
   const isClosed = bon.status === 'cloture';
@@ -401,7 +403,7 @@ export function BonSortiePanel({
               <div className="prj-hero-meta">
                 <span>Bon de sortie</span>
                 {bon.generated_at && <span>Demandé le {format(new Date(bon.generated_at as string), 'dd/MM/yyyy à HH:mm')}{bon.generated_by_name ? ` par ${bon.generated_by_name as string}` : ''}</span>}
-                <span>{totalLines} ingrédient{totalLines > 1 ? 's' : ''}</span>
+                <span>{totalLines} {totalLines > 1 ? T.ingredientsLc : T.ingredientLc}</span>
               </div>
             </div>
           </div>
@@ -417,11 +419,11 @@ export function BonSortiePanel({
               Prendre en charge
             </button>
           }>
-          Le chef attend que vous prépariez les ingrédients.
+          Le chef attend que vous prépariez les {T.ingredientsLc}.
         </StatusBanner>
       ) : (
         <StatusBanner tone="neutral" icon={Truck} title="En attente de prise en charge">
-          Le magasinier a été notifié pour préparer les ingrédients.
+          Le magasinier a été notifié pour préparer les {T.ingredientsLc}.
         </StatusBanner>
       ))}
 
@@ -438,7 +440,7 @@ export function BonSortiePanel({
               )}
               <button onClick={remettre}
                 disabled={markReadyMutation.isPending || restant > 0 || totalLines === 0}
-                title={restant > 0 ? `${restant} ingrédient${restant > 1 ? 's' : ''} encore à peser` : manquants > 0 ? 'Remettre en signalant les manquants' : 'Remettre les ingrédients au chef'}
+                title={restant > 0 ? `${restant} ${restant > 1 ? T.ingredientsLc : T.ingredientLc} encore à peser` : manquants > 0 ? 'Remettre en signalant les manquants' : `Remettre les ${T.ingredientsLc} au chef`}
                 className="odoo-btn-primary">
                 {markReadyMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
                 {manquants > 0 ? `Remettre avec ${manquants} manquant${manquants > 1 ? 's' : ''}` : 'Remettre au chef'}
@@ -447,13 +449,13 @@ export function BonSortiePanel({
           ) : undefined}>
           {isMagasinier ? (
             restant > 0
-              ? <>Reste <strong>{restant}</strong> ingrédient{restant > 1 ? 's' : ''} à peser
+              ? <>Reste <strong>{restant}</strong> {restant > 1 ? T.ingredientsLc : T.ingredientLc} à peser
                   {aOuvrir > 0 && <> (dont {aOuvrir} à ouvrir depuis l'économat)</>}
                   {manquants > 0 && <>, <strong>{manquants}</strong> manquant{manquants > 1 ? 's' : ''}</>}.</>
               : manquants > 0
-                ? <>Tout ce qui est en stock est pesé. <strong>{manquants}</strong> ingrédient{manquants > 1 ? 's' : ''} manquant{manquants > 1 ? 's' : ''} : commandez-{manquants > 1 ? 'les' : 'le'} ou remettez le bon en le signalant au chef.</>
-                : <>Tous les ingrédients sont pesés : remettez le bon au chef.</>
-          ) : 'Le magasinier prépare les ingrédients. Vous serez notifié dès qu\'ils sont prêts.'}
+                ? <>Tout ce qui est en stock est pesé. En manque : <strong>{manquants}</strong> {manquants > 1 ? T.ingredientsLc : T.ingredientLc} — à commander, ou remettez le bon en le signalant au chef.</>
+                : <>Pesée terminée : remettez le bon au chef.</>
+          ) : `Le magasinier prépare les ${T.ingredientsLc}. Vous serez notifié dès que la préparation sera prête.`}
           {bon.chef_reject_reason && (
             <div className="status-banner-note danger"><strong>Refus précédent :</strong> {bon.chef_reject_reason as string}</div>
           )}
@@ -461,7 +463,7 @@ export function BonSortiePanel({
       )}
 
       {bon.status === 'pret' && (
-        <StatusBanner tone="success" icon={CheckCircle} title={missingAtDelivery.length > 0 ? `Ingrédients prêts — ${missingAtDelivery.length} manquant${missingAtDelivery.length > 1 ? 's' : ''} signalé${missingAtDelivery.length > 1 ? 's' : ''}` : 'Ingrédients prêts à récupérer'}>
+        <StatusBanner tone="success" icon={CheckCircle} title={missingAtDelivery.length > 0 ? `Préparation prête — ${missingAtDelivery.length} manquant${missingAtDelivery.length > 1 ? 's' : ''} signalé${missingAtDelivery.length > 1 ? 's' : ''}` : 'Préparation prête à récupérer'}>
           {isChef && variant === 'inline'
             ? 'Vérifiez les quantités, puis confirmez ou refusez la réception depuis le bandeau en haut de la page.'
             : `En attente de la réception par ${(bon.generated_by_name as string) || 'le chef'}.`}
@@ -470,9 +472,9 @@ export function BonSortiePanel({
       )}
 
       {isClosed && (
-        <StatusBanner tone="success" icon={CheckCircle} title="Ingrédients livrés">
+        <StatusBanner tone="success" icon={CheckCircle} title={`${T.ingredients} — livraison faite`}>
           {missingAtDelivery.length > 0
-            ? <>Livré avec {missingAtDelivery.length} ingrédient{missingAtDelivery.length > 1 ? 's' : ''} manquant{missingAtDelivery.length > 1 ? 's' : ''}.</>
+            ? <>Livré avec {missingAtDelivery.length} manquant{missingAtDelivery.length > 1 ? 's' : ''}.</>
             : 'La production peut démarrer.'}
           {missingList}
         </StatusBanner>
@@ -484,7 +486,7 @@ export function BonSortiePanel({
           <div className="bsi-lines-toolbar">
             <div className="bsi-lines-progress">
               <span className="bsi-lines-progress-label">
-                <strong>{pesees}</strong> / {totalLines} ingrédient{totalLines > 1 ? 's' : ''} pesé{pesees > 1 ? 's' : ''}
+                Pesée : <strong>{pesees}</strong> / {totalLines} {totalLines > 1 ? T.ingredientsLc : T.ingredientLc}
                 {manquants > 0 && <> · <span style={{ color: 'var(--ds-danger)' }}>{manquants} manquant{manquants > 1 ? 's' : ''}</span></>}
               </span>
               <div className="bsi-lines-progress-track">
@@ -517,7 +519,7 @@ export function BonSortiePanel({
           <thead>
             <tr>
               <th style={{ width: 28 }}></th>
-              <th>Ingrédient</th>
+              <th>{T.ingredient}</th>
               <th>État</th>
               <th className="ds-num">Demandé</th>
               {isMagasinier && <th className="ds-num">Plage tolérée</th>}
