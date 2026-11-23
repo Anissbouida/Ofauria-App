@@ -38,6 +38,7 @@ export const documentSequenceSchema = body({
 export const parameterValueSchema = body({ value: any });
 
 /* Secteur — company.controller.setSector. */
+export const specializationSchema = body({ enabled: z.boolean() });
 export const setSectorSchema = body({ code: z.string().trim().min(1, 'Secteur requis').max(40), keepAdjustments: bool });
 
 /* Modules / options — readAdjustments : { modules: { clé: true|false|null }, features: { … } }. */

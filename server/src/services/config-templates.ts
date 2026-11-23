@@ -5,6 +5,17 @@ import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { exportLayers, cleanLayers, type ProfileLayers } from './industry-profile.js';
+import { specializationRepository } from '../repositories/specialization.repository.js';
+
+/** v3 : ne garde que les spécialisations du catalogue ; signale les autres. */
+async function knownSpecializations(raw: unknown, warnings: string[]): Promise<string[]> {
+  if (!Array.isArray(raw)) return [];
+  const known = new Set((await specializationRepository.list()).map(s => s.code));
+  const asked = raw.filter((x): x is string => typeof x === 'string').slice(0, 50);
+  const unknown = asked.filter(x => !known.has(x));
+  if (unknown.length) warnings.push(`Spécialisations inconnues ignorées : ${unknown.slice(0, 10).join(', ')}`);
+  return [...new Set(asked.filter(x => known.has(x)))];
+}
 
 /**
  * Modèles de configuration (plan Production générique, lot P10, mig 517).
@@ -22,8 +33,10 @@ import { exportLayers, cleanLayers, type ProfileLayers } from './industry-profil
  */
 
 const FORMAT = 'kalum.config';
-/** v2 (C-01, mig 586) : + couches production (types d'ordre, politiques, impressions). v1 reste accepté. */
-const VERSION = 2;
+/** v2 (C-01, mig 586) : + couches production (types d'ordre, politiques, impressions).
+ *  v3 (étape 2 multi-industries, mig 633) : + spécialisations ; le secteur enregistré HÉRITE
+ *  de son secteur de base (écarts seulement). v1 et v2 restent acceptés. */
+const VERSION = 3;
 
 type Ref = { code: string; label: string; metadata?: Record<string, unknown> };
 export type ConfigModel = {
@@ -39,6 +52,8 @@ export type ConfigModel = {
   report_keys: string[];
   starter: { units: Ref[]; stepTypes: Ref[]; equipmentTypes: Ref[] };
   layers: ProfileLayers;
+  /** v3 : spécialisations actives (codes du catalogue). */
+  specializations?: string[];
 };
 
 const REF_TABLES = { units: 'units', stepTypes: 'production_step_types', equipmentTypes: 'production_equipment_types' } as const;
@@ -68,6 +83,7 @@ export async function exportCurrentConfig(name?: string): Promise<ConfigModel> {
     report_keys: act.sector.report_keys ?? [],
     starter: { units, stepTypes, equipmentTypes },
     layers,
+    specializations: await specializationRepository.active(),
   };
 }
 
@@ -111,7 +127,7 @@ export type ParsedModel = { model: ConfigModel; warnings: string[] };
 /** Valide et nettoie un modèle (fichier importé ou export courant). */
 export async function parseConfigModel(raw: unknown): Promise<ParsedModel | { error: string }> {
   if (!isObj(raw) || raw.format !== FORMAT) return { error: 'Ce fichier n\'est pas un modèle de configuration Kalum' };
-  if (raw.version !== 1 && raw.version !== VERSION) return { error: `Version de modèle non prise en charge : ${String(raw.version)}` };
+  if (raw.version !== 1 && raw.version !== 2 && raw.version !== VERSION) return { error: `Version de modèle non prise en charge : ${String(raw.version)}` };
   const name = str(raw.name, 120);
   if (!name) return { error: 'Le modèle n\'a pas de nom' };
   const warnings: string[] = [];
@@ -166,6 +182,8 @@ export async function parseConfigModel(raw: unknown): Promise<ParsedModel | { er
       starter: { units: cleanRefs('units', st.units), stepTypes: cleanRefs('stepTypes', st.stepTypes), equipmentTypes: cleanRefs('equipmentTypes', st.equipmentTypes) },
       // v1 : pas de couches production (valeurs actuelles conservées au chargement).
       layers: cleanLayers(raw.layers, warnings),
+      // v3 : spécialisations connues seulement.
+      specializations: await knownSpecializations(raw.specializations, warnings),
     },
     warnings,
   };
@@ -211,10 +229,22 @@ export async function saveModelAsSector(raw: unknown, userId?: string | null): P
     const used = new Set(taken.map(r => r.code as string));
     let code = root;
     for (let i = 2; used.has(code); i++) code = `${root}_${i}`;
+    // Mig 633 : héritage vivant — le secteur enregistré ne garde que ses écarts au secteur
+    // de base (listes complètes conservées un cycle, comme pour les profils livrés).
+    const base = model.base_sector ? await sectorRepository.pack(model.base_sector) : null;
+    const minus = (a: string[], b: string[]) => [...new Set(a.filter(x => !b.includes(x)))].sort();
+    const inh = base ? {
+      add_modules: minus(model.modules, base.modules), remove_modules: minus(base.modules, model.modules),
+      add_features: minus(model.features, base.features ?? []), remove_features: minus(base.features ?? [], model.features),
+    } : { add_modules: [], remove_modules: [], add_features: [], remove_features: [] };
+    const starter = { ...model.starter, specializations: model.specializations ?? [] };
     await client.query(
-      `INSERT INTO sector_packs (code, label, enabled_modules, features, home_route, report_keys, is_default, is_custom, base_sector, starter, created_by, profile)
-       VALUES ($1, $2, $3, $4, $5, $6, false, true, $7, $8, $9, $10::jsonb)`,
-      [code, model.name, model.modules, model.features, model.home_route, model.report_keys, model.base_sector, JSON.stringify(model.starter), userId ?? null, JSON.stringify(model.layers)]);
+      `INSERT INTO sector_packs (code, label, enabled_modules, features, home_route, report_keys, is_default, is_custom, base_sector, starter, created_by, profile,
+                                 inherits, add_modules, remove_modules, add_features, remove_features, family, status)
+       VALUES ($1, $2, $3, $4, $5, $6, false, true, $7::text, $8, $9, $10::jsonb, $11, $12, $13, $14, $15,
+               COALESCE((SELECT family FROM sector_packs WHERE code = $7::text), 'personnalise'), 'disponible')`,
+      [code, model.name, model.modules, model.features, model.home_route, model.report_keys, model.base_sector, JSON.stringify(starter), userId ?? null, JSON.stringify(model.layers),
+        !!base, inh.add_modules, inh.remove_modules, inh.add_features, inh.remove_features]);
     for (const [k, v] of Object.entries(model.labels)) {
       await client.query(`INSERT INTO sector_labels (sector_pack, label_key, label_value) VALUES ($1, $2, $3)`, [code, k, v]);
     }

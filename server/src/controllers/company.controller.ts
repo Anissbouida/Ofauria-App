@@ -6,6 +6,7 @@ import { taxScaleRepository } from '../repositories/payroll-config.repository.js
 import { activeCountryCode, countryPackOverview } from '../services/country-pack.js';
 import { ribKeyValid } from '../services/salary-transfer.js';
 import { sectorRepository, type Activation, type AdjustmentChanges } from '../repositories/sector.repository.js';
+import { specializationRepository } from '../repositories/specialization.repository.js';
 import { impactPreview } from '../services/module-impact.js';
 import { loadSectorStarter, sectorStarterPreview } from '../services/sector-starter.service.js';
 import { healthReport, dismissRecommendation, restoreDismissed } from '../services/config-health.js';
@@ -95,7 +96,37 @@ export const companyController = {
     // applique aux menus.
     const current = { ...act.sector, modules: [...mine.modules], features: [...mine.features] };
     const adjusted = Object.keys(act.moduleOverrides).length + Object.keys(act.featureOverrides).length;
-    res.json({ success: true, data: { current, labels, adjusted, available: available.map(s => ({ code: s.code, label: s.label, isCustom: !!s.is_custom })) } });
+    const byCode = new Map(available.map(s => [s.code, s]));
+    const specializations = await specializationRepository.list();
+    res.json({ success: true, data: {
+      current, labels, adjusted,
+      // Mig 633 : famille, parent, état et chaîne d'héritage pour le choix du profil.
+      available: available.map(s => ({
+        code: s.code, label: s.label, isCustom: !!s.is_custom, family: s.family ?? null, status: s.status ?? 'disponible',
+        description: s.description ?? null, baseSector: s.base_sector ?? null, inherits: !!s.inherits,
+        lineage: (s.lineage ?? [s.code]).map(c => ({ code: c, label: byCode.get(c)?.label ?? c })),
+        modulesCount: s.modules.length, featuresCount: (s.features ?? []).length,
+      })),
+      specializations: specializations.filter(sp => sp.offered || sp.enabled).map(sp => ({
+        code: sp.code, label: sp.label, description: sp.description, enabled: sp.enabled, offered: sp.offered,
+      })),
+    } });
+  },
+
+  /** Spécialisations proposées par le profil courant (mig 633). */
+  async specializations(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await specializationRepository.list() });
+  },
+
+  /** Active ou désactive une spécialisation. Activer n'ajoute que ce qui manque ; désactiver ne supprime rien. */
+  async setSpecialization(req: AuthRequest, res: Response) {
+    const enabled = (req.body ?? {}).enabled === true;
+    const code = String(req.params.code ?? '');
+    const r = enabled
+      ? await specializationRepository.enable(code, req.user?.userId)
+      : await specializationRepository.disable(code);
+    if ('error' in r) { bad(res, r.error, r.error.includes('inconnue') ? 404 : 400); return; }
+    res.json({ success: true, data: { result: r, specializations: await specializationRepository.list() } });
   },
 
   /** Écran « Secteur et modules » (mig 507) : préréglage, écarts, catalogue des

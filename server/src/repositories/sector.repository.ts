@@ -27,7 +27,13 @@ import { NO_VISIBLE_CHANGE, describeDiff, diffActivation, type ActivationState, 
  * rôles / utilisateurs) ou fermé pour certains établissements. Les modules visibles
  * d'un utilisateur = forUser(user) ; la société garde le module actif.
  */
-export type SectorPack = { code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[]; is_custom?: boolean };
+export type SectorPack = {
+  code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[]; is_custom?: boolean;
+  /** Héritage vivant (mig 633) : parent, regroupement et état affichés dans le choix du profil. */
+  base_sector?: string | null; inherits?: boolean; family?: string | null; status?: string; description?: string | null; sort_order?: number;
+  /** Chaîne des parents, de la racine au profil lui-même (codes). */
+  lineage?: string[];
+};
 
 /** Capacité du catalogue (options mig 507, catalogue étendu mig 632). */
 export type FeatureDef = {
@@ -65,9 +71,55 @@ const EMPTY_ROLLOUT: ModuleRollout = { pilots: {}, storeDisabled: {} };
 const mapPack = (r: Record<string, any>): SectorPack => ({
   code: r.code, label: r.label, modules: r.modules ?? [], is_default: r.is_default,
   home_route: r.home_route ?? null, report_keys: r.report_keys ?? [], features: r.features ?? [], is_custom: r.is_custom ?? false,
+  base_sector: r.base_sector ?? null, inherits: r.inherits ?? false, family: r.family ?? null,
+  status: r.status ?? 'disponible', description: r.description ?? null, sort_order: r.sort_order ?? 100,
 });
 
-const PACK_COLUMNS = `sp.code, sp.label, sp.enabled_modules AS modules, sp.is_default, sp.home_route, sp.report_keys, sp.features, sp.is_custom`;
+const PACK_COLUMNS = `sp.code, sp.label, sp.enabled_modules AS modules, sp.is_default, sp.home_route, sp.report_keys, sp.features, sp.is_custom,
+  sp.base_sector, sp.inherits, sp.add_modules, sp.remove_modules, sp.add_features, sp.remove_features,
+  sp.family, sp.status, sp.description, sp.sort_order`;
+
+/** Profondeur maximale d'héritage (garde-fou contre une chaîne anormale). */
+const MAX_LINEAGE = 8;
+
+/**
+ * Héritage vivant (étape 2 multi-industries, mig 633). Un profil qui hérite a pour modules et
+ * options ceux de son parent, résolus récursivement, plus ses ajouts, moins ses retraits.
+ * Un profil qui n'hérite pas (racine, secteur personnalisé d'avant la mig 633) garde ses
+ * listes complètes. Cycle ou parent introuvable : on s'arrête au dernier profil valide.
+ */
+function resolvePacks(rows: Record<string, any>[]): Map<string, SectorPack> {
+  const raw = new Map(rows.map(r => [r.code as string, r]));
+  const out = new Map<string, SectorPack>();
+  const resolve = (code: string, seen: string[]): SectorPack | null => {
+    if (out.has(code)) return out.get(code)!;
+    const r = raw.get(code);
+    if (!r) return null;
+    const own = mapPack(r);
+    let pack: SectorPack = { ...own, lineage: [code] };
+    if (r.inherits && r.base_sector && !seen.includes(r.base_sector) && seen.length < MAX_LINEAGE) {
+      const parent = resolve(r.base_sector, [...seen, code]);
+      if (parent) {
+        const minus = (a: string[], b: string[]) => a.filter(x => !b.includes(x));
+        pack = {
+          ...own,
+          modules: [...new Set(minus([...parent.modules, ...(r.add_modules ?? [])], r.remove_modules ?? []))].sort(),
+          features: [...new Set(minus([...(parent.features ?? []), ...(r.add_features ?? [])], r.remove_features ?? []))].sort(),
+          lineage: [...(parent.lineage ?? [parent.code]), code],
+        };
+      }
+    }
+    out.set(code, pack);
+    return pack;
+  };
+  for (const code of raw.keys()) resolve(code, []);
+  return out;
+}
+
+async function allPacks(): Promise<Map<string, SectorPack>> {
+  const { rows } = await db.query(`SELECT ${PACK_COLUMNS} FROM sector_packs sp`);
+  return resolvePacks(rows);
+}
 
 // Les modules effectifs sont lus à chaque requête par la garde serveur : cache court,
 // vidé à chaque changement. Plusieurs instances serveur : le délai borne l'écart.
@@ -188,26 +240,53 @@ async function syncOverrides(client: PoolClient, table: string, key: string, bef
 export const sectorRepository = {
   /** Tous les secteurs disponibles. */
   async list(): Promise<SectorPack[]> {
-    const { rows } = await db.query(`SELECT ${PACK_COLUMNS} FROM sector_packs sp ORDER BY sp.is_default DESC, sp.label`);
-    return rows.map(mapPack);
+    const packs = [...(await allPacks()).values()];
+    return packs.sort((a, b) => (a.sort_order ?? 100) - (b.sort_order ?? 100)
+      || Number(b.is_default) - Number(a.is_default) || a.label.localeCompare(b.label, 'fr'));
   },
 
   async pack(code: string): Promise<SectorPack | null> {
-    const { rows } = await db.query(`SELECT ${PACK_COLUMNS} FROM sector_packs sp WHERE sp.code = $1`, [code]);
-    return rows[0] ? mapPack(rows[0]) : null;
+    return (await allPacks()).get(code) ?? null;
+  },
+
+  /**
+   * Couches « production » d'un profil, héritées (mig 633) : du plus ancien parent au
+   * profil, un type d'ordre (même code), une politique (même clé), un gabarit (même
+   * document), un poste (même nom) ou un emplacement (même code) de l'enfant l'emporte.
+   */
+  async resolvedProfile(code: string): Promise<Record<string, unknown> | null> {
+    const pack = await this.pack(code);
+    if (!pack) return null;
+    const chain = pack.inherits ? (pack.lineage ?? [code]) : [code];
+    const { rows } = await db.query(`SELECT code, profile FROM sector_packs WHERE code = ANY($1::text[])`, [chain]);
+    const byCode = new Map(rows.map(r => [r.code as string, (r.profile ?? null) as Record<string, unknown> | null]));
+    const layers = chain.map(c => byCode.get(c)).filter((p): p is Record<string, unknown> => !!p);
+    if (!layers.length) return null;
+    const mergeBy = (key: string, id: string) => {
+      const m = new Map<string, unknown>();
+      for (const l of layers) for (const item of (Array.isArray(l[key]) ? l[key] as Record<string, unknown>[] : [])) {
+        m.set(String(item[id] ?? '').toLowerCase(), item);
+      }
+      return [...m.values()];
+    };
+    return {
+      order_types: mergeBy('order_types', 'code'),
+      policies: mergeBy('policies', 'key'),
+      print_templates: mergeBy('print_templates', 'doc_type'),
+      work_centers: mergeBy('work_centers', 'name'),
+      locations: mergeBy('locations', 'code'),
+    };
   },
 
   /** Secteur courant de la société (préréglage, sans les ajustements). Repli sur le
    *  pack par défaut si company_settings.sector_pack est vide ou pointe un code inconnu. */
   async current(): Promise<SectorPack> {
-    const { rows } = await db.query(
-      `SELECT ${PACK_COLUMNS}
-         FROM company_settings cs
-         JOIN sector_packs sp ON sp.code = cs.sector_pack
-        WHERE cs.id = 1`);
-    if (rows[0]) return mapPack(rows[0]);
-    const { rows: def } = await db.query(`SELECT ${PACK_COLUMNS} FROM sector_packs sp ORDER BY sp.is_default DESC LIMIT 1`);
-    return def[0] ? mapPack(def[0]) : { code: 'boulangerie', label: 'Boulangerie / Pâtisserie', modules: [], is_default: true, features: [] };
+    const packs = await allPacks();
+    const { rows } = await db.query(`SELECT sector_pack FROM company_settings WHERE id = 1`);
+    const mine = rows[0]?.sector_pack ? packs.get(rows[0].sector_pack) : undefined;
+    if (mine) return mine;
+    const def = [...packs.values()].find(p => p.is_default) ?? [...packs.values()][0];
+    return def ?? { code: 'boulangerie', label: 'Boulangerie / Pâtisserie', modules: [], is_default: true, features: [] };
   },
 
   /** Termes effectifs (phase 9.1) : ceux du secteur, puis ceux renommés par la société (mig 583). */
@@ -239,14 +318,17 @@ export const sectorRepository = {
 
   /** Termes du secteur seul (préréglage), sans les renommages de la société. */
   async sectorLabels(code: string): Promise<Record<string, string>> {
-    // M8-03 : un secteur personnalisé hérite des libellés de son secteur de base, puis les surcharge.
+    // M8-03 puis mig 633 : un profil hérite des libellés de TOUTE sa chaîne de parents
+    // (base_sector, du plus ancien au plus proche), puis les surcharge.
+    const packs = await allPacks();
+    const chain: string[] = [];
+    for (let c: string | null | undefined = code; c && !chain.includes(c) && chain.length < MAX_LINEAGE; c = packs.get(c)?.base_sector) {
+      chain.unshift(c);
+    }
     const { rows } = await db.query(
-      `SELECT l.label_key, l.label_value, (l.sector_pack = $1) AS own
-         FROM sector_labels l
-        WHERE l.sector_pack = $1 OR l.sector_pack = (SELECT base_sector FROM sector_packs WHERE code = $1)
-        ORDER BY own`, [code]);
+      `SELECT sector_pack, label_key, label_value FROM sector_labels WHERE sector_pack = ANY($1::text[])`, [chain]);
     const map: Record<string, string> = {};
-    for (const r of rows) map[r.label_key] = r.label_value;
+    for (const c of chain) for (const r of rows) if (r.sector_pack === c) map[r.label_key] = r.label_value;
     return map;
   },
 

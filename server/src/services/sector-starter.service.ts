@@ -99,6 +99,8 @@ export type StarterResult = {
   orderTypes: number;
   policies: number;
   printTemplates: number;
+  /** Spécialisations activées (modèle v3, mig 633). */
+  specializations?: number;
 };
 
 type Client = Awaited<ReturnType<typeof db.getClient>>;
@@ -174,10 +176,16 @@ async function loadDemo(client: Client, d: NonNullable<StarterPack['demo']>): Pr
 export async function starterPackFor(sectorCode: string): Promise<StarterPack> {
   const { rows } = await db.query(`SELECT starter, profile, is_custom, base_sector FROM sector_packs WHERE code = $1`, [sectorCode]);
   const row = rows[0];
-  const layers = cleanLayers(row?.profile ?? {}, []);
+  // Mig 633 : couches héritées de toute la chaîne de parents (l'enfant l'emporte).
+  const { sectorRepository } = await import('../repositories/sector.repository.js');
+  const layers = cleanLayers((await sectorRepository.resolvedProfile(sectorCode)) ?? row?.profile ?? {}, []);
   if (STARTER[sectorCode]) return { ...STARTER[sectorCode], layers };
   // Profil de référence livré (mig 586) : données de départ de son secteur de base + ses couches.
-  if (row && !row.is_custom && row.base_sector && STARTER[row.base_sector]) return { ...STARTER[row.base_sector], layers };
+  // Mig 633 : le plus proche parent de la chaîne qui a des données de départ livrées.
+  if (row && !row.is_custom) {
+    const lineage = (await sectorRepository.pack(sectorCode))?.lineage ?? [];
+    for (const c of [...lineage].reverse()) if (STARTER[c]) return { ...STARTER[c], layers };
+  }
   const st = (row?.is_custom ? row.starter ?? {} : {}) as { units?: StarterRef[]; stepTypes?: StarterRef[]; equipmentTypes?: StarterRef[] };
   return { categories: [], units: st.units ?? [], stepTypes: st.stepTypes ?? [], equipmentTypes: st.equipmentTypes ?? [], layers };
 }
@@ -214,6 +222,18 @@ export async function loadSectorStarter(sectorCode: string, userId?: string): Pr
     invalidateProcessRefs();
     // Politiques du profil écrites hors de setPolicy (applyLayers) : vider le cache des politiques.
     invalidatePolicies();
+  }
+  // Modèle v3 (mig 633) : spécialisations du secteur enregistré, activées sans rien écraser.
+  const sp = await db.query(`SELECT starter->'specializations' AS s FROM sector_packs WHERE code = $1 AND is_custom`, [sectorCode]);
+  const wanted = Array.isArray(sp.rows[0]?.s) ? (sp.rows[0].s as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+  if (wanted.length) {
+    const { specializationRepository } = await import('../repositories/specialization.repository.js');
+    const active = new Set(await specializationRepository.active());
+    for (const code of wanted) {
+      if (active.has(code)) continue;
+      const r = await specializationRepository.enable(code, userId);
+      if (!('error' in r)) result.specializations = (result.specializations ?? 0) + 1;
+    }
   }
   return result;
 }

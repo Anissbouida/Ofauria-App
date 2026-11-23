@@ -199,7 +199,14 @@ export interface SectorInfo {
   labels?: Record<string, string>;
   /** Nombre d'ajustements (modules + options) par rapport au préréglage. */
   adjusted?: number;
-  available: { code: string; label: string; isCustom?: boolean }[];
+  /** Profils proposés. Mig 633 : famille, état, parent et chaîne d'héritage. */
+  available: {
+    code: string; label: string; isCustom?: boolean; family?: string | null; status?: string; description?: string | null;
+    baseSector?: string | null; inherits?: boolean; lineage?: { code: string; label: string }[];
+    modulesCount?: number; featuresCount?: number;
+  }[];
+  /** Spécialisations proposées par le profil courant (ou déjà actives). */
+  specializations?: { code: string; label: string; description: string | null; enabled: boolean; offered: boolean }[];
 }
 
 /** Aperçu d'impact d'un brouillon de modules / options (mig 508, lot P0b). */
@@ -318,6 +325,9 @@ export const settingsApi = {
   saveBankAccount: (id: string | null, data: Record<string, unknown>) =>
     (id ? api.put(`/settings/bank-accounts/${id}`, data) : api.post('/settings/bank-accounts', data)).then(r => r.data.data) as Promise<CompanyBankAccount>,
   sector: () => api.get('/settings/sector').then(r => r.data.data) as Promise<SectorInfo>,
+  /** Spécialisations (mig 633) : activer n'ajoute que ce qui manque, désactiver ne supprime rien. */
+  setSpecialization: (code: string, enabled: boolean) =>
+    api.put(`/settings/specializations/${code}`, { enabled }).then(r => r.data.data) as Promise<{ result: { workshops?: number; stepTypes?: number; features?: string[] } }>,
   setSector: (code: string, keepAdjustments = true) =>
     api.put('/settings/sector', { code, keepAdjustments }).then(r => r.data.data) as Promise<{ code: string; label: string; modules: string[] }>,
   sectorStarter: (sector?: string) => api.get('/settings/sector/starter', { params: sector ? { sector } : {} }).then(r => r.data.data) as Promise<{ sector: string; preview: { categories: string[]; items: string[] } }>,

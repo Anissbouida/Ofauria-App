@@ -453,7 +453,7 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 |---|---|---|---|---|
 | 0 | Livré | d9bc5d4f | 631 | Mesure en production à passer (`diagnose-multi-industries.sql`) |
 | 1 | Livré | voir § F.1 | 632 | Gardes de capacité branchées sur 6 familles de routes ; les autres capacités du socle restent déclaratives jusqu'à leur étape (8, 2 bis) |
-| 2 | À faire | | | |
+| 2 | Livré | voir § F.2 | 633 | Relecture métier des profils « À valider » ; liste des spécialisations à confirmer (décision n° 5) |
 | 2 bis | À faire | | | |
 | 3 | À faire | | | |
 | 4 | À faire | | | |
@@ -505,3 +505,16 @@ Décisions appliquées (recommandation du plan, § E) : n° 9 — l'onglet s'app
 Défaut évité en chemin : la nouvelle règle refusait d'activer une option dont le module est éteint (régression signalée par le test d'activation) ; corrigé, l'écart est gardé et prend effet au rallumage du module, comme avant.
 
 Tests : `capabilities.db.test.ts` (8) ; suite base 240 fichiers / 900 tests verts ; suite unitaire verte ; compilation serveur et client propre.
+
+### F.2 — Étape 2 (2026-11-23)
+
+Livré :
+- Mig 633 : `sector_packs.inherits` + écarts (`add_/remove_modules`, `add_/remove_features`), `family`, `status`, `description`, `sort_order` ; famille racine `agroalimentaire` (socle de fabrication + Contrôle & Qualité, HACCP, congélation) et profil `agro_conditionne` (couches production reprises du profil process) ; `boulangerie` devient enfant d'`agroalimentaire` ; `process`, `discret`, `atelier` convertis en écarts. La migration vérifie elle-même que chaque profil converti redonne exactement ses anciennes listes. `process` relibellé « cosmétique, chimie ».
+- Résolution récursive unique (`sector.repository`) pour modules, options, libellés (toute la chaîne) et couche `profile` (`resolvedProfile` : l'enfant l'emporte par code, clé, document, nom) ; données de départ prises chez le plus proche parent qui en a.
+- Spécialisations : `sector_specializations`, `company_specializations`, `specialization.repository` (activer = atelier, types d'étape et capacités manquants seulement ; désactiver = rien n'est supprimé), routes `GET /settings/specializations`, `PUT /settings/specializations/:code`. Sept spécialisations livrées ; pour Ofauria, les cinq qui correspondent à ses ateliers sont actives sans rien créer.
+- Modèle `kalum.config` v3 : spécialisations exportées et réimportées ; un secteur enregistré HÉRITE de son secteur de base (écarts seulement) ; v1 et v2 acceptés.
+- Écran Secteur : profils groupés par famille avec état (Actuel, À valider, Personnalisé), chaîne « Hérite de », bloc Spécialisations (pastilles cumulables). Vérifié dans l'application.
+
+Tests : `inheritance.db.test.ts` (6) ; tests des modèles passés en v3 ; instantané des droits régénéré (2 routes ajoutées) ; suite base 241 fichiers / 906 tests verts ; suite unitaire verte ; configuration effective de la base de dev identique avant / après.
+
+Écart assumé : la base de test garde deux comptes de vérification désactivés (`gerant.test`, `admin.test`) : leur suppression est bloquée par des bulletins de paie de test.

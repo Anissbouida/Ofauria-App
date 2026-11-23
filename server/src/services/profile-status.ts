@@ -21,7 +21,7 @@ export async function profileStatus(): Promise<{ sector: { code: string; label: 
   const layers: ProfileLayer[] = [];
   const batchMode = act.features.has('mode_fournee');
 
-  layers.push({ key: 'modules', label: 'Modules et options', state: 'configured',
+  layers.push({ key: 'modules', label: 'Modules et capacités', state: 'configured',
     detail: `${act.modules.size} modules, ${act.features.size} option(s)`, to: '/settings?page=sector' });
   const overrides = await count(`SELECT count(*) FROM company_label_overrides`);
   layers.push({ key: 'vocabulary', label: 'Vocabulaire',

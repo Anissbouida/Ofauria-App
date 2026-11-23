@@ -34,6 +34,14 @@ const EMPTY: Draft = { modules: {}, features: {} };
 
 
 /** Écarts au préréglage une fois le brouillon appliqué (null = retour au préréglage). */
+/** Familles de profils (mig 633) : un profil hérite de sa famille. */
+const FAMILIES: { key: string; label: string; hint: string }[] = [
+  { key: 'agroalimentaire', label: 'Agroalimentaire', hint: 'Lots, dates limites, allergènes, HACCP, rappel' },
+  { key: 'industrie', label: 'Industrie', hint: 'Nomenclatures, gammes, postes, formulations' },
+  { key: 'sans_fabrication', label: 'Sans fabrication', hint: 'Achat, stock, vente' },
+  { key: 'personnalise', label: 'Profils personnalisés', hint: 'Enregistrés depuis cette installation ; héritent de leur secteur de base' },
+];
+
 function mergeOverrides(base: Record<string, boolean>, changes: Record<string, boolean | null>, pack: readonly string[]) {
   const out: Record<string, boolean> = { ...base };
   for (const [k, v] of Object.entries(changes)) {
@@ -272,6 +280,20 @@ export default function SectorTab() {
     setModules(Object.fromEntries([m, ...dependents].map(k => [k, false])));
   };
 
+  const currentLineage = sector?.available.find(s => s.code === sector.current.code)?.lineage ?? [];
+  const specMut = useMutation({
+    mutationFn: ({ code, enabled }: { code: string; enabled: boolean }) => settingsApi.setSpecialization(code, enabled),
+    onSuccess: (data, v) => {
+      refresh();
+      qc.invalidateQueries({ queryKey: ['module-activation'] });
+      const r = data.result ?? {};
+      const added = [r.workshops ? `${r.workshops} atelier` : null, r.stepTypes ? `${r.stepTypes} type(s) d'étape` : null,
+        r.features?.length ? `${r.features.length} capacité(s)` : null].filter(Boolean);
+      notify.success(v.enabled ? `Spécialisation activée${added.length ? ` : ${added.join(', ')} ajouté(s)` : ''}` : 'Spécialisation désactivée (rien n\'est supprimé)');
+    },
+    onError: (e: unknown) => notify.error((e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Action impossible'),
+  });
+
   const chooseSector = async (code: string, label: string) => {
     if (code === sector?.current.code) return;
     if (dirtyCount) { notify.warning('Enregistrez ou annulez vos changements de modules avant de changer de secteur'); return; }
@@ -346,31 +368,55 @@ export default function SectorTab() {
       <ProfileStatusPanel />
       <SettingsSection
         title="Secteur d'activité"
-        description="Le secteur est un préréglage : il choisit les modules et options de départ. Vous ajustez ensuite chaque module dans l'onglet « Modules et options ». Changer de secteur ne supprime aucune donnée."
+        description="Le secteur est un préréglage : il hérite de sa famille et choisit les modules et capacités de départ. Vous ajustez ensuite chaque module dans l'onglet « Modules et capacités ». Changer de secteur ne supprime aucune donnée."
         columns={1}
       >
-        <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
-          {sector?.available.map(s => {
-            const on = s.code === sector.current.code;
+        <div style={{ display: 'grid', gap: 14, maxWidth: 760 }}>
+          {currentLineage.length > 1 && (
+            <p className="odoo-setting-help" style={{ margin: 0 }}>
+              Hérite de : {currentLineage.slice(0, -1).map(l => l.label).join(' › ')}
+            </p>
+          )}
+          {FAMILIES.map(fam => {
+            const items = (sector?.available ?? []).filter(s => (s.family ?? (s.isCustom ? 'personnalise' : 'sans_fabrication')) === fam.key);
+            if (!items.length) return null;
             return (
-              <div key={s.code} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
-              <button type="button" onClick={() => chooseSector(s.code, s.label)} disabled={busy}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.7rem 0.9rem',
-                  borderRadius: 12, textAlign: 'left', cursor: on ? 'default' : 'pointer',
-                  border: `1px solid ${on ? 'var(--ds-accent)' : 'var(--ds-sep)'}`,
-                  background: on ? 'var(--ds-tint)' : 'var(--ds-card)', color: 'var(--ds-ink)' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: on ? 600 : 400 }}>
-                  <Layers size={15} /> {s.label}
-                  {s.isCustom && <span className="odoo-tag" style={{ fontWeight: 400 }}>Personnalisé</span>}
-                </span>
-                {on && <StatusTag tone="done" icon={Check} label="Actuel" />}
-              </button>
-              {s.isCustom && !on && (
-                <button type="button" className="ds-btn-danger" title="Supprimer ce secteur personnalisé" aria-label={`Supprimer ${s.label}`}
-                  disabled={busy || sectorDeleteMut.isPending} onClick={() => deleteSector(s.code, s.label)} style={{ padding: '0 12px' }}>
-                  <Trash2 size={14} aria-hidden="true" />
-                </button>
-              )}
+              <div key={fam.key} style={{ display: 'grid', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                  <strong style={{ fontSize: 14, color: 'var(--ds-ink)' }}>{fam.label}</strong>
+                  <span className="odoo-setting-help" style={{ margin: 0 }}>{fam.hint}</span>
+                </div>
+                <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+                  {items.map(s => {
+                    const on = s.code === sector!.current.code;
+                    return (
+                      <div key={s.code} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
+                        <button type="button" onClick={() => chooseSector(s.code, s.label)} disabled={busy}
+                          style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '0.7rem 0.9rem', minHeight: 62,
+                            borderRadius: 12, textAlign: 'left', cursor: on ? 'default' : 'pointer',
+                            border: `1px solid ${on ? 'var(--ds-accent)' : 'var(--ds-sep)'}`,
+                            background: on ? 'var(--ds-tint)' : 'var(--ds-card)', color: 'var(--ds-ink)' }}>
+                          <Layers size={15} aria-hidden="true" />
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', fontWeight: on ? 600 : 500 }}>{s.label}</span>
+                            {s.description && <span className="odoo-setting-help" style={{ display: 'block', margin: 0 }}>{s.description}</span>}
+                          </span>
+                          {on
+                            ? <StatusTag tone="done" icon={Check} label="Actuel" />
+                            : s.isCustom ? <StatusTag tone="draft" label="Personnalisé" />
+                              : s.status === 'a_valider' ? <StatusTag tone="todo" label="À valider" />
+                                : s.status === 'sur_demande' ? <StatusTag tone="draft" label="Sur demande" /> : null}
+                        </button>
+                        {s.isCustom && !on && (
+                          <button type="button" className="ds-btn-danger" title="Supprimer ce secteur personnalisé" aria-label={`Supprimer ${s.label}`}
+                            disabled={busy || sectorDeleteMut.isPending} onClick={() => deleteSector(s.code, s.label)} style={{ padding: '0 12px' }}>
+                            <Trash2 size={14} aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
@@ -382,6 +428,25 @@ export default function SectorTab() {
           )}
         </div>
       </SettingsSection>
+      {(sector?.specializations ?? []).length > 0 && (
+        <SettingsSection
+          title="Spécialisations"
+          description="Plusieurs choix possibles. Chacune apporte son atelier, ses types d'étape et ses capacités ; seuls les éléments absents sont créés. Désactiver une spécialisation ne supprime rien."
+          columns={1}
+        >
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {(sector?.specializations ?? []).map(sp => (
+              <button key={sp.code} type="button" aria-pressed={sp.enabled} title={sp.description ?? undefined}
+                disabled={busy || specMut.isPending || (!sp.offered && !sp.enabled)}
+                className={sp.enabled ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+                onClick={() => specMut.mutate({ code: sp.code, enabled: !sp.enabled })}
+                style={{ borderRadius: 999, minHeight: 40 }}>
+                {sp.label}
+              </button>
+            ))}
+          </div>
+        </SettingsSection>
+      )}
       {!!starter?.preview.items.length && (
         <SettingsSection
           title="Données de départ"

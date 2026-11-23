@@ -21,7 +21,7 @@ import { validate, validateUuidParams } from '../middleware/validate.middleware.
 import { legalEntityController, legalEntityCreateSchema, legalEntityUpdateSchema, legalEntityStoreSchema } from '../controllers/legal-entity.controller.js';
 import { unitsRepository } from '../repositories/units.repository.js';
 import { emptyBody } from '../validators/common.validator.js';
-import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
+import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, specializationSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
 
 const router = Router();
 
@@ -69,6 +69,8 @@ router.put('/parameters/:key', authenticate, jsonParser, validate(parameterValue
 // hors secteur côté client) ; PUT réservé à la direction (droit « Société »).
 router.get('/sector', authenticate, asyncHandler(companyController.sector));
 router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(setSectorSchema), asyncHandler(companyController.setSector));
+router.get('/specializations', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.specializations));
+router.put('/specializations/:code', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(specializationSchema), asyncHandler(companyController.setSpecialization));
 // M8-03 — vocabulaire : termes du secteur renommés par la société (mig 583).
 // C-03 — état de configuration du profil d'industrie (une tuile par couche).
 router.get('/profile-status', authenticate, authorizeSettings('company', 'view'), asyncHandler(async (_req, res) => { res.json({ success: true, data: await profileStatus() }); }));

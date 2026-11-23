@@ -119,7 +119,7 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
 
   it('modèle v2 : export → import conserve les couches ; v1 accepté ; couche invalide filtrée', async () => {
     const model = await tpl.exportCurrentConfig('C01 round trip');
-    expect(model.version).toBe(2);
+    expect(model.version).toBe(3); // v3 (mig 633) : + spécialisations, couches inchangées
     expect(model.layers.order_types.map(t => t.code)).toEqual(expect.arrayContaining(['ORDRE_SERIE', 'SOUS_TRAITANCE']));
     const parsed = await tpl.parseConfigModel(JSON.parse(JSON.stringify(model)));
     if ('error' in parsed) throw new Error(parsed.error);
