@@ -426,9 +426,9 @@ export const productionCoutRepository = {
        WHERE ppi.plan_id = $1 AND ppi.status != 'cancelled'`,
       [planId]
     );
-    const coutPrevu = parseFloat(prevuResult.rows[0]?.total_prevu) || null;
-    const coutPrevuMixReel = parseFloat(prevuResult.rows[0]?.total_prevu_mix_reel) || null;
-    const ecartMix = coutPrevu != null && coutPrevuMixReel != null
+    let coutPrevu = parseFloat(prevuResult.rows[0]?.total_prevu) || null;
+    let coutPrevuMixReel = parseFloat(prevuResult.rows[0]?.total_prevu_mix_reel) || null;
+    let ecartMix = coutPrevu != null && coutPrevuMixReel != null
       ? Math.round((coutPrevu - coutPrevuMixReel) * 100) / 100
       : null;
     // M9 : façon du sous-traitant (prix unitaire × quantité reçue), 0 hors sous-traitance.
@@ -458,7 +458,7 @@ export const productionCoutRepository = {
     // Revient = matieres + emballages + MO + energie + charges + façon (les pertes sont un « dont »).
     // Meme somme que la colonne calculee production_cout_reel.cout_total (mig 527, 584).
     const coutTotal = coutMatieres + coutEmballages + coutMO + coutEnergie + coutCharges + coutSousTraitance + coutMachine;
-    const ecartPct = coutPrevu && coutPrevu > 0
+    let ecartPct = coutPrevu && coutPrevu > 0
       ? Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100
       : null;
 
@@ -505,6 +505,20 @@ export const productionCoutRepository = {
         reel: { matieres: coutMatieres, emballages: coutEmballages, main_oeuvre: coutMO, charges: coutCharges,
                 autres: coutEnergie + coutMachine + coutSousTraitance, total: coutTotal },
       });
+      // Le prévu enregistré devient le coût standard complet (mêmes charges que le réel) :
+      // au mix prévu (quantités planifiées) et au mix réel ; l'écart du bandeau suit.
+      const ec = (niveaux as Record<string, unknown>).ecarts as { standard: { total: number }; standard_prevu: number };
+      if (ec.standard_prevu > 0) {
+        coutPrevu = ec.standard_prevu;
+        coutPrevuMixReel = ec.standard.total;
+        ecartMix = Math.round((coutPrevu - coutPrevuMixReel) * 100) / 100;
+        ecartPct = Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100;
+      }
+      if (analytic) {
+        const standard = { key: 'standard', label: 'Coûts standards (fiches + charges des centres)', total: ec.standard.total,
+          note: 'Fiches techniques × quantités produites, temps de gamme et charges des centres du mois : la référence de l\'écart.' };
+        analytic.methods = [...analytic.methods.filter(m => m.key !== 'standard'), standard];
+      }
     }
 
     return {
@@ -672,11 +686,14 @@ export const productionCoutRepository = {
     const r2 = (n: number) => Math.round(n * 100) / 100;
     const plan = (await db.query(`SELECT store_id, to_char(plan_date, 'YYYY-MM') AS month FROM production_plans WHERE id = $1`, [planId])).rows[0];
     const std = { matieres: 0, emballages: 0, main_oeuvre: 0, charges: 0 };
-    let missing = 0;
+    let missing = 0, stdPrevu = 0;
+    const planned = new Map((await db.query(
+      `SELECT id, planned_quantity::float8 AS q FROM production_plan_items WHERE plan_id = $1`, [planId])).rows.map(x => [x.id as string, Number(x.q) || 0]));
     for (const it of c.items) {
       if (!it.recipe_id) { missing++; continue; }
       const s = await standardCost(it.recipe_id, { formatId: it.format_id, storeId: plan?.store_id ?? null, month: plan?.month });
       if (!s) { missing++; continue; }
+      stdPrevu += (s.matiere + s.emballage + s.mainOeuvre + s.appro + s.production + s.structure) * (planned.get(it.plan_item_id) ?? it.quantity);
       std.matieres += s.matiere * it.quantity;
       std.emballages += s.emballage * it.quantity;
       std.main_oeuvre += s.mainOeuvre * it.quantity;
@@ -697,6 +714,7 @@ export const productionCoutRepository = {
     ];
     return {
       standard: { matieres: r2(std.matieres), emballages: r2(std.emballages), main_oeuvre: r2(std.main_oeuvre), charges: r2(std.charges), total: r2(stdTotal) },
+      standard_prevu: r2(stdPrevu),
       reel_total: r2(c.reel.total), ecart_total: r2(c.reel.total - stdTotal),
       ecart_pct: stdTotal > 0 ? Math.round((c.reel.total - stdTotal) / stdTotal * 10000) / 100 : null,
       lignes, articles_sans_fiche: missing,
