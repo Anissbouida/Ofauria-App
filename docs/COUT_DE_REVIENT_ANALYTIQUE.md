@@ -64,13 +64,34 @@ sur son inducteur, activité réelle) · coûts variables · coûts directs · c
   onglet Coûts d'un plan (niveaux, charges par centre, marges par article, méthodes)
 - Test : `server/src/__tests__/db/analytic-cost-engine.db.test.ts`
 
+## Livré ensuite (2026-11-23, mig 656-660)
+
+- **Coût prévu par format** (mig 656) : une ligne de plan sans format figeait coût de fournée ÷ 1 ;
+  1 491 coûts prévus refigés.
+- **Lot A — coût propre de chaque article** (mig 657) : matières de sa fiche rapprochées des
+  consommations, charges selon ses propres unités d'œuvre ; lots valorisés au coût de production de
+  l'article.
+- **Lot B — temps standard des gammes** (mig 657) : heures MO et machine sans pointage ; MO directe
+  au taux chargé moyen ; heures payées / imputées / non productives.
+- **Lot C — clôture mensuelle** (mig 658) : taux figés, recalcul et saisie refusés, réouverture
+  motivée, journal d'audit.
+- **Lot D — réel comptable** (mig 659) : comptes de classe 6 par charge, rapprochement du mois.
+- **Lot E — coût standard et prix conseillé** : mêmes charges que le réel ; écart réel / standard
+  décomposé (prix, quantités, MO, charges, autres) ; panneau dans la fiche technique.
+- **Lot F — rentabilité** : marge par produit et famille sur les ventes réelles, seuil de
+  rentabilité, sous-activité sur 12 mois, simulation volume / prix.
+- **Amortissements et outillage** (mig 660) : registre des immobilisations (dotation du mois) et
+  registre de l'outillage, vers un centre ou un produit dédié ; charges d'un plan détaillées par
+  nature.
+- **Semi-finis** : un lot de base vaut le coût de production de son plan ; le plan qui le consomme
+  l'intègre à ses matières.
+
 ## Pas encore couvert
 
-- Montants réels repris automatiquement du grand livre (classe 6 ventilée par centre, mig 428) :
-  aujourd'hui saisis par mois dans l'onglet Charges.
-- Inducteurs « nombre de commandes », « surface », « consommation énergétique mesurée » au niveau
-  du plan ; budgets annuels par centre.
-- Coût par article au sein d'un plan : réparti selon la clé du plan (poids, quantité, valeur), pas
-  encore par inducteur de chaque centre.
+- Données à saisir par l'entreprise : montants des charges, surfaces, capacités, affectation du
+  personnel, immobilisations, outillage, gammes, poids des pièces, codes TVA des produits.
+- Produits vendus au poids sans poids de pièce (cornes de gazelle) : marge non calculée.
+- Compléments du lot G (inducteurs « commandes », « énergie mesurée », budgets annuels par centre,
+  choix de la méthode enregistrée).
 
 Suite du chantier : [PLAN_ACTION_COUT_DE_REVIENT.md](PLAN_ACTION_COUT_DE_REVIENT.md).

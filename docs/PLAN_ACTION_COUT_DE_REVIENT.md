@@ -1,5 +1,11 @@
 # Plan d'action — coût de revient analytique
 
+> **Avancement au 2026-11-23** — fait : 1.1 (bug de code, pas de données : mig 656), 1.7 (novembre
+> recalculé, contrôle équilibré), décisions 2.1 (unités, faute de poids), 2.2 (temps standard),
+> 2.3 (oui), 2.5 (refigé), 2.6 (clôture), lots A à F, amortissements et outillage (mig 660),
+> valorisation des semi-finis. Restent à l'entreprise : 1.2 à 1.6 et 2.4 (données qu'elle seule
+> connaît), puis la phase 4 (mise en production).
+
 Établi le 2026-11-23, après la livraison du moteur analytique (mig 655, commit `f516a096`).
 Conception du moteur : [COUT_DE_REVIENT_ANALYTIQUE.md](COUT_DE_REVIENT_ANALYTIQUE.md).
 
