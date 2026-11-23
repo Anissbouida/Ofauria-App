@@ -50,6 +50,21 @@ export const SCREEN_CATALOG: ScreenDef[] = [
     },
   },
   {
+    // Étape 10e : tableau de bord de production, par profil et par rôle.
+    key: 'production.dashboard', label: 'Tableau de bord de production',
+    kinds: {
+      sections: [
+        { key: 'blocked-alert', label: 'Alerte : ordres à relancer', locked: 'Alerte de blocage.' },
+        { key: 'kpis', label: 'Chiffres de la période' },
+        { key: 'relaunch', label: 'Ordres à relancer' },
+        { key: 'cost-split', label: 'Répartition des coûts' },
+        { key: 'yield', label: 'Rendement par produit' },
+        { key: 'cost-per-day', label: 'Coûts par jour' },
+        { key: 'reports', label: 'Rapports du profil' },
+      ],
+    },
+  },
+  {
     key: 'recipes.list', label: 'Liste des fiches techniques',
     kinds: {
       columns: [

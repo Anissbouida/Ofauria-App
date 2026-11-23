@@ -76,4 +76,12 @@ describe.skipIf(!hasTestDb)('Étape 10 — définitions d\'écran', () => {
     const bad = await repo.saveDraft(SCREEN, { type: 'company', id: '' }, { custom_fields: [{ key: 'x', section: 'nulle_part' }] });
     expect(bad.details.join(' ')).toMatch(/Section inconnue/);
   });
+
+  it('10e : un responsable de production et un gérant n\'ont pas le même tableau de bord', async () => {
+    const keys = ['blocked-alert', 'kpis', 'relaunch', 'cost-split', 'yield', 'cost-per-day', 'reports'];
+    const chef = applyScreenDefinition('production.dashboard', 'sections', keys, await repo.resolve('production.dashboard', { lineage, role: 'responsable_production' }));
+    const gerant = applyScreenDefinition('production.dashboard', 'sections', keys, await repo.resolve('production.dashboard', { lineage, role: 'manager' }));
+    expect(gerant).toEqual(keys);
+    expect(chef).toEqual(['blocked-alert', 'relaunch', 'yield', 'kpis']);
+  });
 });

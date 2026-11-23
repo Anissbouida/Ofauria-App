@@ -21,6 +21,20 @@ import { Alert, DataPanel, KpiCard, KpiGrid, LoadingState, EmptyState, Segmented
 import { format, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import SalesPageShell from '../sales/SalesPageShell';
+import { applyScreenDefinition } from '@ofauria/shared';
+import { useScreenDefinition } from '../../hooks/useScreenDefinition';
+import { settingsApi } from '../../api/settings.api';
+
+/** Étape 10e : sections du tableau de bord (ordre du code) et rapports du profil. */
+const DASH_SECTIONS = ['blocked-alert', 'kpis', 'relaunch', 'cost-split', 'yield', 'cost-per-day', 'reports'];
+const REPORT_LINKS: Record<string, { label: string; to: string }> = {
+  sales: { label: 'Analyse des ventes', to: '/reports?tab=overview' },
+  margins: { label: 'Marges par produit', to: '/reports?tab=margins' },
+  builder: { label: 'Rapports personnalisés', to: '/reports?tab=builder' },
+  menu: { label: 'Menu engineering', to: '/reports?tab=menu' },
+  costs: { label: 'Coûts de production', to: '/production/costs' },
+};
+
 
 export default function ProductionDashboardPage() {
   const { user } = useAuth();
@@ -100,6 +114,13 @@ export default function ProductionDashboardPage() {
     return money(n);
   };
 
+  // Étape 10e : tableau de bord par profil et par rôle (définition « production.dashboard »).
+  const dashDef = useScreenDefinition('production.dashboard');
+  const dashOrder = applyScreenDefinition('production.dashboard', 'sections', DASH_SECTIONS, dashDef);
+  const dashShow = (k: string) => dashOrder.includes(k);
+  const dashPos = (k: string) => { const i = dashOrder.indexOf(k); return i < 0 ? 99 : i; };
+  const { data: sectorInfo } = useQuery({ queryKey: ['sector'], queryFn: settingsApi.sector, staleTime: 5 * 60_000, retry: false });
+  const reportKeys = (sectorInfo?.current?.report_keys ?? []).filter(k => REPORT_LINKS[k]);
   const isLoading = loadingRendement || loadingCout;
 
   const avgRend = rendementStats?.avg_rendement ? parseFloat(rendementStats.avg_rendement) : null;
@@ -130,14 +151,18 @@ export default function ProductionDashboardPage() {
       {isLoading && <LoadingState />}
 
       {!isLoading && (
-        <>
+        // Étape 10e : sections ordonnées et masquables par profil, société et rôle (définition d'écran).
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div data-dash="blocked-alert" style={{ order: dashPos('blocked-alert') }} hidden={!dashShow('blocked-alert')}>
           {/* ═══ Alerte : plans bloqués ═══ */}
           {blockedPlans.length > 0 && (
             <Alert tone="warning" icon={AlertTriangle}>
               {blockedPlans.length} plan{blockedPlans.length > 1 ? 's' : ''} à relancer : articles annulés ou en attente, ou plan confirmé sur un référentiel incomplet.
             </Alert>
           )}
+          </div>
 
+          <div data-dash="kpis" style={{ order: dashPos('kpis') }} hidden={!dashShow('kpis')}>
           {/* ═══ Chiffres de la période ═══ */}
           <KpiGrid label="Chiffres de la période">
             <KpiCard label="Rendement moyen" aside={<Scale size={13} aria-hidden="true" />}
@@ -156,12 +181,14 @@ export default function ProductionDashboardPage() {
               tone={parseFloat(coutStats?.avg_ecart_pct || '0') <= 5 ? 'green' : 'red'}
               sub="Prévu contre réel" />
           </KpiGrid>
+          </div>
 
           {noData && (
             <EmptyState icon={BarChart3} title="Aucune production sur la période"
               text="Les rendements et les coûts apparaissent dès qu'un plan de production est terminé." />
           )}
 
+          <div data-dash="relaunch" style={{ order: dashPos('relaunch') }} hidden={!dashShow('relaunch')}>
           {/* ═══ Plans à relancer : tableau standard des listes « à traiter » ═══ */}
           {blockedPlans.length > 0 && (
             <section>
@@ -210,7 +237,9 @@ export default function ProductionDashboardPage() {
               </DataPanel>
             </section>
           )}
+          </div>
 
+          <div data-dash="cost-split" style={{ order: dashPos('cost-split') }} hidden={!dashShow('cost-split')}>
           {/* ═══ Repartition des couts ═══ */}
           {coutStats && (
             <section>
@@ -227,7 +256,9 @@ export default function ProductionDashboardPage() {
               </div>
             </section>
           )}
+          </div>
 
+          <div data-dash="yield" style={{ order: dashPos('yield') }} hidden={!dashShow('yield')}>
           {/* ═══ Rendement par produit ═══ */}
           {rendementByProduct.length > 0 && (
             <section>
@@ -267,7 +298,9 @@ export default function ProductionDashboardPage() {
               </DataPanel>
             </section>
           )}
+          </div>
 
+          <div data-dash="cost-per-day" style={{ order: dashPos('cost-per-day') }} hidden={!dashShow('cost-per-day')}>
           {/* ═══ Coûts par jour ═══ */}
           {coutByDay.length > 0 && (
             <section>
@@ -300,7 +333,24 @@ export default function ProductionDashboardPage() {
               </DataPanel>
             </section>
           )}
-        </>
+          </div>
+
+          {/* Rapports du profil (report_keys) : raccourcis vers les analyses prévues pour le métier. */}
+          {reportKeys.length > 0 && (
+            <div data-dash="reports" style={{ order: dashPos('reports') }} hidden={!dashShow('reports')}>
+              <section>
+                <SectionHeader title="Rapports" note="Analyses prévues pour votre métier" />
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {reportKeys.map(k => (
+                    <button key={k} type="button" className="odoo-btn-secondary" onClick={() => navigate(REPORT_LINKS[k]?.to ?? '/reports')}>
+                      {REPORT_LINKS[k]?.label ?? k}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </div>
+          )}
+        </div>
       )}
     </SalesPageShell>
   );
