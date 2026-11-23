@@ -46,6 +46,15 @@ const stageSchema = obj({
 });
 export const processDraftSchema = body({ label: txt(120), stages: z.array(stageSchema).min(1).max(40) });
 export const productionDocumentSchema = body({ enabled: z.boolean().optional(), mandatory: z.boolean().optional(), generation: z.enum(['auto', 'manuel']).optional(), stageCode: txt(40) });
+const screenRow = obj({ key: z.string().max(60), visible: z.boolean(), order: z.number().finite() });
+export const screenScopeSchema = body({ scopeType: z.enum(['profile', 'company', 'role']).optional(), scopeId: txt(60) });
+export const screenDraftSchema = body({
+  scopeType: z.enum(['profile', 'company', 'role']).optional(), scopeId: txt(60),
+  definition: obj({
+    columns: z.array(screenRow).max(60).optional(), sections: z.array(screenRow).max(60).optional(), filters: z.array(screenRow).max(60).optional(),
+    custom_fields: z.array(obj({ key: z.string().max(60), section: z.string().max(60) })).max(60).optional(),
+  }),
+});
 export const specializationSchema = body({ enabled: z.boolean() });
 export const setSectorSchema = body({ code: z.string().trim().min(1, 'Secteur requis').max(40), keepAdjustments: bool });
 

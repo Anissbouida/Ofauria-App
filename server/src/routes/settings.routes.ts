@@ -25,7 +25,7 @@ import { productionDocumentRepository } from '../repositories/production-documen
 import { screenDefinitionRepository } from '../repositories/screen-definition.repository.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 import { emptyBody } from '../validators/common.validator.js';
-import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, specializationSchema, processDraftSchema, productionDocumentSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
+import { addTaxRateSchema, bankAccountSchema, configAssistantSchema, configModelPreviewSchema, createApiKeySchema, createApprovalRuleSchema, createSectorSchema, createWebhookSchema, specializationSchema, processDraftSchema, productionDocumentSchema, screenDraftSchema, screenScopeSchema, dataImportSchema, documentSequenceSchema, documentTemplateSchema, moduleAdjustmentsSchema, moduleRolloutSchema, notificationRuleSchema, parameterValueSchema, setSectorSchema, updateApprovalRuleSchema, updateCompanySettingsSchema, updateTaxCodeSchema, webhookActiveSchema } from '../validators/settings.validator.js';
 
 const router = Router();
 
@@ -95,18 +95,18 @@ const screenScope = (b: Record<string, unknown>) => ({
   type: (['profile', 'company', 'role'].includes(String(b.scopeType)) ? String(b.scopeType) : 'company') as 'profile' | 'company' | 'role',
   id: String(b.scopeId ?? ''),
 });
-router.put('/screens/:key/draft', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(async (req, res) => {
+router.put('/screens/:key/draft', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(screenDraftSchema), asyncHandler(async (req, res) => {
   const b = (req.body ?? {}) as Record<string, unknown>;
   const r = await screenDefinitionRepository.saveDraft(String(req.params.key), screenScope(b), (b.definition ?? {}) as never, (req as { user?: { userId?: string } }).user?.userId);
   if ('error' in r) { res.status(400).json({ success: false, error: { message: r.error, details: r.details } }); return; }
   res.json({ success: true, data: r.definition });
 }));
-router.post('/screens/:key/publish', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(async (req, res) => {
+router.post('/screens/:key/publish', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(screenScopeSchema), asyncHandler(async (req, res) => {
   const r = await screenDefinitionRepository.publish(String(req.params.key), screenScope((req.body ?? {}) as Record<string, unknown>));
   if ('error' in r) { res.status(400).json({ success: false, error: { message: r.error } }); return; }
   res.json({ success: true, data: r });
 }));
-router.post('/screens/:key/reset', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(async (req, res) => {
+router.post('/screens/:key/reset', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(screenScopeSchema), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await screenDefinitionRepository.reset(String(req.params.key), screenScope((req.body ?? {}) as Record<string, unknown>)) });
 }));
 // Étape 6 multi-industries — documents de production pilotables (désactiver ne retire que le document).
