@@ -82,6 +82,12 @@ export const productionOrderTypeRepository = {
         WHERE t.id = COALESCE((SELECT order_type_id FROM production_plans WHERE id = $1),
                               (SELECT id FROM production_order_types WHERE is_default LIMIT 1))`, [planId]);
     if (!r.rows[0]) throw new Error('Type d\'ordre introuvable');
+    // Étape 4 multi-industries : réglages figés sur l'ordre à sa confirmation (exec_snapshot).
+    const frozen = (await runner.query(`SELECT exec_snapshot->'order_type' AS ot FROM production_plans WHERE id = $1`, [planId])).rows[0]?.ot;
+    if (frozen && typeof frozen === 'object') {
+      const keep = ['requires_bon_sortie', 'requires_weighing', 'requires_quality_check', 'consumption_mode', 'is_subcontracting'];
+      return { ...r.rows[0], ...Object.fromEntries(keep.filter(k => k in frozen).map(k => [k, frozen[k]])) };
+    }
     return r.rows[0];
   },
 

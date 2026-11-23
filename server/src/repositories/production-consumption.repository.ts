@@ -19,7 +19,7 @@ export const productionConsumptionRepository = {
   async manualIssue(planId: string, input: { ingredientId: string; quantity: number; note?: string | null }, userId: string) {
     return withTransaction(async () => {
       const plan = (await db.query(
-        `SELECT pp.id, pp.store_id, pp.status, t.consumption_mode FROM production_plans pp
+        `SELECT pp.id, pp.store_id, pp.status, COALESCE(pp.exec_snapshot->'order_type'->>'consumption_mode', t.consumption_mode) AS consumption_mode FROM production_plans pp
            LEFT JOIN production_order_types t ON t.id = pp.order_type_id WHERE pp.id = $1`, [planId])).rows[0];
       if (!plan) throw new Error('Ordre introuvable');
       if (plan.consumption_mode !== 'manuel') throw new Error('Sorties manuelles réservées aux types d\'ordre en consommation manuelle');

@@ -623,6 +623,9 @@ export const productionRepository = {
 
       // Update plan status and persist warnings
       await transitionPlan(client, planId, 'confirmed', { extraSet: 'confirmed_at = NOW(), warnings = $2', params: [warnings] });
+      // Étape 4 multi-industries : réglages d'exécution figés pour cet ordre (une configuration
+      // publiée ensuite ne le modifie plus).
+      await freezeExecSnapshot(client, planId);
 
       // Assign lot numbers (LOT-AAMMJJ-NNN) to plan items
       const planDateResult = await client.query(`SELECT plan_date, store_id FROM production_plans WHERE id = $1`, [planId]);
@@ -1198,7 +1201,8 @@ export const productionRepository = {
       // M6-01 : type d'ordre en consommation « manuelle » → aucune sortie automatique
       // (matières ni emballages, même bloc unique G0-22) : les sorties se saisissent sur l'ordre.
       const modeRow = await client.query(
-        `SELECT t.consumption_mode FROM production_plans pp LEFT JOIN production_order_types t ON t.id = pp.order_type_id WHERE pp.id = $1`, [planId]);
+        `SELECT COALESCE(pp.exec_snapshot->'order_type'->>'consumption_mode', t.consumption_mode) AS consumption_mode
+           FROM production_plans pp LEFT JOIN production_order_types t ON t.id = pp.order_type_id WHERE pp.id = $1`, [planId]);
       const manualConsumption = modeRow.rows[0]?.consumption_mode === 'manuel';
       const bsiAlreadyDeducted = bsiDeductedResult.rows.length > 0 || manualConsumption;
 
@@ -1634,7 +1638,8 @@ export const productionRepository = {
       // un semi-fini, qui n'en a pas), jamais via le parent.
       // M6-01 : type d'ordre en consommation « manuelle » → aucune sortie automatique des matières.
       const modeRow2 = await client.query(
-        `SELECT t.consumption_mode FROM production_plans pp LEFT JOIN production_order_types t ON t.id = pp.order_type_id WHERE pp.id = $1`, [planId]);
+        `SELECT COALESCE(pp.exec_snapshot->'order_type'->>'consumption_mode', t.consumption_mode) AS consumption_mode
+           FROM production_plans pp LEFT JOIN production_order_types t ON t.id = pp.order_type_id WHERE pp.id = $1`, [planId]);
       const bsiAlreadyDeducted2 = (!isSemiFinishedPlan && bsiDeductedResult2.rows.length > 0) || modeRow2.rows[0]?.consumption_mode === 'manuel';
 
       // Deduct ingredients for produced items
@@ -3055,8 +3060,45 @@ async function declaredStepsEnforced(
   planId: string, orderTypeCode: string,
   runner: { query: (q: string, p?: unknown[]) => Promise<{ rows: any[] }> } = db,
 ): Promise<boolean> {
-  const p = (await runner.query(`SELECT store_id, target_role FROM production_plans WHERE id = $1`, [planId])).rows[0];
+  const p = (await runner.query(`SELECT store_id, target_role, exec_snapshot FROM production_plans WHERE id = $1`, [planId])).rows[0];
+  const frozen = p?.exec_snapshot?.policies?.['production.enforce_declared_steps'];
+  if (frozen && typeof frozen === 'object') return (frozen as { enabled?: boolean }).enabled === true;
   const pol = await resolvePolicy<{ enabled?: boolean }>('production.enforce_declared_steps',
     { orderType: orderTypeCode, workshop: p?.target_role ?? null, storeId: p?.store_id ?? null });
   return pol.value?.enabled === true;
+}
+
+/** Politiques figées sur un ordre à sa confirmation (étape 4 multi-industries). */
+const FROZEN_POLICIES = ['production.enforce_declared_steps', 'production.steps_source', 'production.cost_allocation_key', 'quality.auto_release'];
+
+/**
+ * Fige sur l'ordre les réglages qui pilotent son exécution : drapeaux du type d'ordre,
+ * politiques résolues pour son type d'ordre, son atelier et son établissement, version de
+ * configuration en vigueur. Lu ensuite par forPlan, la consommation et les gardes.
+ */
+async function freezeExecSnapshot(client: { query: (q: string, p?: unknown[]) => Promise<{ rows: any[] }> }, planId: string): Promise<void> {
+  const t = (await client.query(
+    `SELECT t.code, t.requires_bon_sortie, t.requires_weighing, t.requires_quality_check, t.consumption_mode,
+            COALESCE(t.is_subcontracting, false) AS is_subcontracting, pp.store_id, pp.target_role
+       FROM production_plans pp
+       JOIN production_order_types t ON t.id = COALESCE(pp.order_type_id, (SELECT id FROM production_order_types WHERE is_default LIMIT 1))
+      WHERE pp.id = $1`, [planId])).rows[0];
+  if (!t) return;
+  const policies: Record<string, unknown> = {};
+  for (const key of FROZEN_POLICIES) {
+    try {
+      policies[key] = (await resolvePolicy(key, { orderType: t.code, workshop: t.target_role ?? null, storeId: t.store_id ?? null })).value;
+    } catch { /* politique absente du catalogue : non figée */ }
+  }
+  const snapshot = {
+    order_type: {
+      code: t.code, requires_bon_sortie: t.requires_bon_sortie, requires_weighing: t.requires_weighing,
+      requires_quality_check: t.requires_quality_check, consumption_mode: t.consumption_mode, is_subcontracting: t.is_subcontracting,
+    },
+    policies,
+    frozen_at: new Date().toISOString(),
+  };
+  await client.query(
+    `UPDATE production_plans SET exec_snapshot = $2::jsonb, config_version_id = (SELECT max(id) FROM config_versions) WHERE id = $1`,
+    [planId, JSON.stringify(snapshot)]);
 }

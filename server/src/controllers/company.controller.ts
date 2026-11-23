@@ -113,6 +113,15 @@ export const companyController = {
     } });
   },
 
+  /** Étape 4 : écarts entre deux versions de configuration (?a=&b=). */
+  async compareVersions(req: AuthRequest, res: Response) {
+    const a = Number(req.query.a); const b = Number(req.query.b);
+    if (!Number.isInteger(a) || !Number.isInteger(b)) { bad(res, 'Deux versions sont requises (a, b)'); return; }
+    const r = await sectorRepository.compareVersions(a, b);
+    if ('error' in r) { bad(res, r.error, 404); return; }
+    res.json({ success: true, data: r });
+  },
+
   /** Spécialisations proposées par le profil courant (mig 633). */
   async specializations(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await specializationRepository.list() });

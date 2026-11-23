@@ -456,7 +456,7 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | 2 | Livré | voir § F.2 | 633 | Relecture métier des profils « À valider » ; liste des spécialisations à confirmer (décision n° 5) |
 | 2 bis | Livré en partie | voir § F.2 bis | 634, 635, 636 | 2b-1 (dette) en attente de la mesure en production et de la décision n° 7 ; saisie écran des lignes d'emballage, des pourcentages et de la nutrition des matières renvoyée au pas 10c (API prêtes) |
 | 3 | Livré | voir § F.3 | 637 | Retirer ROLE_CATEGORY_SLUGS et getCategoryRole (obsolètes, encore lus par 3 anciens tests) ; OuvertureTab et JourneeBoutiquePage gardent les groupes caisse et direction (non métier) |
-| 4 | À faire | | | |
+| 4 | Livré | voir § F.4 | 638 | Brouillon tenu côté serveur et écran de comparaison des versions (API prête) ; restauration limitée au vocabulaire et aux spécialisations pour les nouvelles couches |
 | 5 | À faire | | | |
 | 6 | À faire | | | |
 | 7 | À faire | | | |
@@ -547,3 +547,16 @@ Livré :
 Écart assumé : `ROLE_CATEGORY_SLUGS` et `getCategoryRole` restent dans `shared`, marqués obsolètes ; le code métier ne les lit plus (les ateliers portent la correspondance depuis la mig 511), mais trois anciens tests unitaires les vérifient encore.
 
 Tests : suite base 242 / 911 et suite unitaire vertes ; configuration effective de la base de dev identique hormis les deux champs ajoutés aux ateliers.
+
+### F.4 — Étape 4 (2026-11-23)
+
+Livré :
+- Mig 638 : `production_plans.exec_snapshot` et `.config_version_id` ; reprise des ordres ouverts (aucun sur la base de dev) ; `config_versions.status` et `.published_at`.
+- À la confirmation, l'ordre fige les drapeaux de son type d'ordre et quatre politiques résolues pour lui (étapes obligatoires, source des étapes, clé de répartition du coût, libération automatique) ainsi que la version de configuration en vigueur. `forPlan`, les deux lectures du mode de consommation, la consommation manuelle, la sous-traitance et la garde des étapes obligatoires lisent l'instantané, avec repli sur la valeur vivante pour un ordre plus ancien.
+- Chaque version de configuration capture aussi neuf couches (vocabulaire, spécialisations, types d'ordre, ateliers, impressions, postes, emplacements, unités, plans de contrôle) ; comparaison de deux versions (`GET /settings/modules/versions-compare?a=&b=`) ; la restauration remet aussi le vocabulaire et les spécialisations.
+
+Écarts assumés : le brouillon reste tenu par l'écran (pas encore côté serveur) ; types d'ordre, ateliers et autres couches se rétablissent dans leur propre écran (la restauration en masse contournerait leurs contrôles, dont le refus de modifier un type d'ordre utilisé par des ordres en cours) ; écran de comparaison à faire (API prête).
+
+Défauts trouvés en chemin (dans le code de l'étape) : capture hors transaction, identifiant de version renvoyé en texte, paramètre SQL non typé.
+
+Tests : `config-freeze.db.test.ts` (scénario E, 3) ; suite base 243 / 914 et suite unitaire vertes.

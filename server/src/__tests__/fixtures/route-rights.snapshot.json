@@ -2462,6 +2462,7 @@
  "GET /settings/modules/health": null,
  "GET /settings/modules/onboarding": null,
  "GET /settings/modules/versions": null,
+ "GET /settings/modules/versions-compare": null,
  "GET /settings/notification-rules": null,
  "GET /settings/parameters": null,
  "GET /settings/profile-status": null,

@@ -19,7 +19,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 async function planWithType(planId: string, runner: Runner = db) {
   const r = await runner.query(
     `SELECT p.id, p.status, p.subcontractor_id, p.subcontract_unit_fee, p.subcontract_status, p.subcontract_received_at,
-            COALESCE(t.is_subcontracting, false) AS is_subcontracting, s.name AS subcontractor_name
+            COALESCE((p.exec_snapshot->'order_type'->>'is_subcontracting')::boolean, t.is_subcontracting, false) AS is_subcontracting, s.name AS subcontractor_name
        FROM production_plans p
        LEFT JOIN production_order_types t ON t.id = p.order_type_id
        LEFT JOIN suppliers s ON s.id = p.subcontractor_id

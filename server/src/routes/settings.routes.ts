@@ -70,6 +70,7 @@ router.put('/parameters/:key', authenticate, jsonParser, validate(parameterValue
 router.get('/sector', authenticate, asyncHandler(companyController.sector));
 router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(setSectorSchema), asyncHandler(companyController.setSector));
 router.get('/specializations', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.specializations));
+router.get('/modules/versions-compare', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.compareVersions));
 router.put('/specializations/:code', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(specializationSchema), asyncHandler(companyController.setSpecialization));
 // M8-03 — vocabulaire : termes du secteur renommés par la société (mig 583).
 // C-03 — état de configuration du profil d'industrie (une tuile par couche).
