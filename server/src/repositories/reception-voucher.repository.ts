@@ -642,13 +642,13 @@ export const receptionVoucherRepository = {
         }
         // Le lot reçoit son numéro interne LI-AAMMJJ-NNNNN par défaut (mig 308).
         const lotRes = await client.query(
-          // location_id : emplacement physique d'entrée = Économat du magasin
-          // (épic labo L1, mig 424/425). La zone LOGIQUE (economat_quantity) reste
-          // inchangée : le BSI n'est pas impacté.
+          // location_id : emplacement physique d'entrée = réserve par défaut de l'établissement
+          // (étape 8 multi-industries, mig 642 ; Économat pour Ofauria). La zone LOGIQUE
+          // (economat_quantity) reste inchangée : le BSI n'est pas impacté.
           `INSERT INTO ingredient_lots (ingredient_id, reception_voucher_item_id, supplier_id, supplier_lot_number,
             quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost, manufactured_date, expiration_date, received_at, store_id, status, location_id)
            VALUES ($1, $2, $3, $4, $5, $5, $5, 0, $6, $7, $8, CURRENT_DATE, $9, $10,
-             (SELECT id FROM stock_locations WHERE store_id = $9 AND code = 'ECONOMAT' AND is_active LIMIT 1))
+             fn_store_location($9::uuid, 'reserve'))
            RETURNING id, lot_number`,
           [item.ingredientId, rviId, po.supplier_id, item.supplierLotNumber || null,
            item.quantityReceived, effectiveCost, item.manufacturedDate || null, item.expirationDate || null,

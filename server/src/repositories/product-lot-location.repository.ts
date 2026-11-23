@@ -11,9 +11,11 @@ import { db, withTransaction } from '../config/database.js';
  */
 
 export type Destination = 'magasin' | 'frigo';
-const DEST: Record<Destination, { code: string; label: string }> = {
-  magasin: { code: 'MAGASIN', label: 'Magasin' },
-  frigo: { code: 'FRIGO', label: 'Frigo' },
+// Étape 8 multi-industries : la destination est un RÔLE d'emplacement (vente, froid positif) ;
+// l'emplacement par défaut du rôle dans l'établissement est choisi (MAGASIN / FRIGO pour Ofauria).
+const DEST: Record<Destination, { role: string; label: string }> = {
+  magasin: { role: 'vente', label: 'Vente (magasin, vitrine)' },
+  frigo: { role: 'froid_positif', label: 'Froid positif (frigo)' },
 };
 
 export class LocationError extends Error {
@@ -26,7 +28,7 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
 export const productLotLocationRepository = {
   /**
    * Emplacement de destination d'un établissement : celui choisi (actif, du même
-   * établissement ou commun), sinon celui de code MAGASIN / FRIGO.
+   * établissement ou commun), sinon l'emplacement par défaut du rôle (vente / froid positif).
    */
   async resolveDestination(storeId: string, dest: Destination, locationId?: string | null) {
     if (locationId) {
@@ -37,10 +39,10 @@ export const productLotLocationRepository = {
       return r.rows[0] as { id: string; code: string; name: string };
     }
     const r = await db.query(
-      `SELECT id, code, name FROM stock_locations WHERE store_id = $1 AND code = $2 AND is_active`, [storeId, DEST[dest].code]);
+      `SELECT id, code, name FROM stock_locations WHERE id = fn_store_location($1::uuid, $2::text)`, [storeId, DEST[dest].role]);
     if (!r.rows[0]) {
       throw new LocationError(
-        `Aucun emplacement « ${DEST[dest].label} » (code ${DEST[dest].code}) pour cet établissement : créez-le dans Stock › Emplacements, ou choisissez un emplacement de destination.`,
+        `Aucun emplacement de rôle « ${DEST[dest].label} » pour cet établissement : créez-le dans Stock › Emplacements, ou choisissez un emplacement de destination.`,
         409);
     }
     return r.rows[0] as { id: string; code: string; name: string };

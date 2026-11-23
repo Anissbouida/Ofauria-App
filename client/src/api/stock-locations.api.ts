@@ -19,6 +19,9 @@ export interface StockLocation {
   capacite_valeur: number | string | null;
   is_active: boolean;
   lot_count: number;
+  /** Étape 8 multi-industries (mig 642) : rôle métier et emplacement par défaut de ce rôle. */
+  role?: string;
+  role_default?: boolean;
 }
 
 export interface StockLocationInput {
@@ -26,6 +29,8 @@ export interface StockLocationInput {
   code: string;
   name: string;
   type: string;
+  role?: string;
+  roleDefault?: boolean;
   parentId?: string | null;
   equipementId?: string | null;
   tempMin?: number | null;

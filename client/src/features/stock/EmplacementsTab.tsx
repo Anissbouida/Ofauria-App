@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Plus, Pencil, Trash2, Thermometer, X, Snowflake, Package, Loader2 } from 'lucide-react';
 import { stockLocationsApi, type StockLocation, type StockLocationInput } from '../../api/stock-locations.api';
+import { STOCK_LOCATION_ROLES, roleOfLocationType } from '@ofauria/shared';
 import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -84,7 +85,7 @@ export default function EmplacementsTab() {
         <table className="odoo-table">
           <thead>
             <tr>
-              <th>Code</th><th>Nom</th><th>Type</th><th>Sonde / enceinte</th>
+              <th>Code</th><th>Nom</th><th>Type</th><th>Rôle</th><th>Sonde / enceinte</th>
               <th>Plage de température (°C)</th><th className="ds-num">Capacité</th><th>Emplacement parent</th>
               <th className="ds-num">Lots</th><th className="ds-actions">Actions</th>
             </tr>
@@ -98,6 +99,8 @@ export default function EmplacementsTab() {
                   <td><span className="ds-ref">{l.code}</span></td>
                   <td className="ds-strong">{l.name}</td>
                   <td><span className={TYPE_BADGE[l.type] || 'odoo-tag'}>{TYPE_LABELS[l.type] || l.type}</span></td>
+                  <td>{l.role ? (STOCK_LOCATION_ROLES as Record<string, { label: string }>)[l.role]?.label ?? l.role : '—'}
+                    {l.role_default && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }} title="Emplacement utilisé par défaut pour ce rôle">Par défaut</span>}</td>
                   <td className="text-gray-600">{l.equipement_nom ? <span className="inline-flex items-center gap-1"><Snowflake size={11} className="text-sky-500" />{l.equipement_nom}</span> : '—'}</td>
                   <td className="tabular-nums">
                     {tMin != null || tMax != null ? (
@@ -142,7 +145,7 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
   onSave: (data: StockLocationInput) => void;
 }) {
   const [f, setF] = useState<StockLocationInput>(initial ? {
-    code: initial.code, name: initial.name, type: initial.type,
+    code: initial.code, name: initial.name, type: initial.type, role: initial.role, roleDefault: initial.role_default,
     parentId: initial.parent_id, equipementId: initial.equipement_id,
     tempMin: num(initial.temp_min), tempMax: num(initial.temp_max),
     capaciteUnite: initial.capacite_unite, capaciteValeur: num(initial.capacite_valeur),
@@ -164,9 +167,18 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
           <FormField label="Nom" htmlFor="loc-name" required error={tried && !f.name.trim() ? 'Saisissez le nom de l\'emplacement.' : undefined}>
             <input id="loc-name" value={f.name} onChange={e => set({ name: e.target.value })} className={inp} placeholder="Chambre négative" aria-invalid={tried && !f.name.trim() || undefined} /></FormField>
           <FormField label="Type" htmlFor="loc-type">
-            <select id="loc-type" value={f.type} onChange={e => set({ type: e.target.value })} className={inp}>
+            <select id="loc-type" value={f.type} onChange={e => set({ type: e.target.value, ...(initial ? {} : { role: roleOfLocationType(e.target.value) }) })} className={inp}>
               {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select></FormField>
+          {/* Étape 8 multi-industries : le rôle dit à quoi sert l'emplacement (réception, pesée, vente…). */}
+          <FormField label="Rôle" htmlFor="loc-role" hint={(STOCK_LOCATION_ROLES as Record<string, { help: string }>)[f.role ?? roleOfLocationType(f.type)]?.help}>
+            <select id="loc-role" value={f.role ?? roleOfLocationType(f.type)} onChange={e => set({ role: e.target.value })} className={inp}>
+              {Object.entries(STOCK_LOCATION_ROLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select></FormField>
+          <label className="col-span-2" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={!!f.roleDefault} onChange={e => set({ roleDefault: e.target.checked })} />
+            Emplacement par défaut pour ce rôle dans l'établissement
+          </label>
           <FormField label="Enceinte (sonde HACCP)">
             <SearchSelect value={f.equipementId != null ? String(f.equipementId) : ''} onChange={id => set({ equipementId: id || null })}
               placeholder="— aucune —" width="100%" size="md" ariaLabel="Enceinte (sonde HACCP)"

@@ -13,6 +13,7 @@ export * from './constants/production-contenant.js';
 export * from './constants/modules.js';
 export * from './constants/module-activation.js';
 export * from './constants/capabilities.js';
+export * from './constants/stock-roles.js';
 export * from './constants/shifts.js';
 export * from './constants/settings-sections.js';
 export * from './constants/approvals.js';

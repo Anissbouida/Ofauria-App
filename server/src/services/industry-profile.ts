@@ -1,6 +1,6 @@
 import { db } from '../config/database.js';
 import { parameterByKey, validateParameter } from './parameters-catalog.js';
-import { PRODUCTION_PRINT_DOCS, type ProductionPrintDoc } from '@ofauria/shared';
+import { PRODUCTION_PRINT_DOCS, STOCK_LOCATION_ROLE_KEYS, type ProductionPrintDoc } from '@ofauria/shared';
 
 /**
  * Couches « production » d'un profil d'industrie (C-01, mig 586) : ce qui rend un secteur
@@ -25,7 +25,7 @@ export interface ProfileLayers {
   /** Postes de charge types, repérés par leur nom (C-01). */
   work_centers?: { name: string; hourly_cost: number; capacity_minutes_per_day: number | null }[];
   /** Emplacements types, recréés dans chaque établissement qui n'a pas ce code (C-01). */
-  locations?: { code: string; name: string; type: string; temp_min: number | null; temp_max: number | null }[];
+  locations?: { code: string; name: string; type: string; temp_min: number | null; temp_max: number | null; role?: string | null }[];
   /**
    * Étape 7 multi-industries : plans de contrôle rattachés à une FAMILLE d'articles, repérée par
    * son nom (les lignes propres à un article restent dans la société). Ajoutés si la famille
@@ -68,7 +68,7 @@ export async function exportLayers(runner: Runner = db): Promise<ProfileLayers> 
        FROM work_centers WHERE is_active ORDER BY lower(name), created_at`)).rows;
   // Un code d'emplacement par modèle (le premier établissement qui le porte fait foi).
   const locations = (await runner.query(
-    `SELECT DISTINCT ON (code) code, name, type, temp_min::float8 AS temp_min, temp_max::float8 AS temp_max
+    `SELECT DISTINCT ON (code) code, name, type, role, temp_min::float8 AS temp_min, temp_max::float8 AS temp_max
        FROM stock_locations WHERE is_active AND parent_id IS NULL ORDER BY code, created_at`)).rows;
   const control_plans = (await runner.query(
     `SELECT c.name AS category, l.stage, l.characteristic, l.char_type, l.min_value::float8 AS min_value, l.max_value::float8 AS max_value,
@@ -147,7 +147,9 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
     const code = str(l.code, 30)?.toUpperCase(); const name = str(l.name, 120); const type = String(l.type ?? '');
     if (!code || !/^[A-Z0-9_-]{1,30}$/.test(code) || !name || !LOCATION_TYPES.includes(type) || seenLoc.has(code)) { warnings.push(`Emplacement ignoré : ${String(l.code)}`); continue; }
     seenLoc.add(code);
-    locations.push({ code, name, type, temp_min: numOrNull(l.temp_min), temp_max: numOrNull(l.temp_max) });
+    // Étape 8 : rôle de l'emplacement (déduit du type par la base s'il est absent ou inconnu).
+    const role = typeof l.role === 'string' && (STOCK_LOCATION_ROLE_KEYS as string[]).includes(l.role) ? l.role : null;
+    locations.push({ code, name, type, temp_min: numOrNull(l.temp_min), temp_max: numOrNull(l.temp_max), role });
   }
   const control_plans: ProfileControlLine[] = [];
   for (const c of Array.isArray(raw.control_plans) ? raw.control_plans.slice(0, 300) : []) {
@@ -219,10 +221,10 @@ export async function applyLayers(client: Runner, layers: ProfileLayers, userId?
   }
   for (const l of layers.locations ?? []) {
     const r = await client.query(
-      `INSERT INTO stock_locations (store_id, code, name, type, temp_min, temp_max, is_active)
-       SELECT s.id, $1::text, $2::text, $3::text, $4::numeric, $5::numeric, true FROM stores s
+      `INSERT INTO stock_locations (store_id, code, name, type, temp_min, temp_max, is_active, role)
+       SELECT s.id, $1::text, $2::text, $3::text, $4::numeric, $5::numeric, true, $6::varchar FROM stores s
         WHERE s.is_active AND NOT EXISTS (SELECT 1 FROM stock_locations x WHERE x.store_id = s.id AND x.code = $1::text)
-       RETURNING id`, [l.code, l.name, l.type, l.temp_min, l.temp_max]);
+       RETURNING id`, [l.code, l.name, l.type, l.temp_min, l.temp_max, l.role ?? null]);
     out.locations += r.rows.length;
   }
   for (const c of layers.control_plans ?? []) {

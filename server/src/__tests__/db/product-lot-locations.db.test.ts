@@ -51,8 +51,9 @@ describe.skipIf(!hasTestDb)('Produits finis par emplacement (M6-02)', () => {
   it('sans emplacement défini : message clair, rien de rangé', async () => {
     const r = await apply(30, 5);
     expect(r.moved).toEqual([]);
-    expect(r.warnings.join(' ')).toMatch(/Aucun emplacement « Magasin » \(code MAGASIN\).*Stock › Emplacements/);
-    expect(r.warnings.join(' ')).toMatch(/Aucun emplacement « Frigo »/);
+    // Étape 8 multi-industries : destination par RÔLE d'emplacement (vente, froid positif).
+    expect(r.warnings.join(' ')).toMatch(/Aucun emplacement de rôle « Vente \(magasin, vitrine\) ».*Stock › Emplacements/);
+    expect(r.warnings.join(' ')).toMatch(/Aucun emplacement de rôle « Froid positif \(frigo\) »/);
     expect(await split()).toEqual({});
   });
 

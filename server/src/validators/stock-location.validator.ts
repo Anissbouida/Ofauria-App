@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { STOCK_LOCATION_ROLE_KEYS } from '@ofauria/shared';
 
 // Règles inchangées ; messages en français (plan pilote, étape 3).
 const LOCATION_TYPES = ['sec', 'positif', 'negatif', 'pesage', 'vitrine', 'labo'] as const;
@@ -11,6 +12,9 @@ export const createStockLocationSchema = z.object({
   code: z.string({ error: 'Code requis' }).min(1, 'Code requis').max(30, 'Code trop long (30 caractères)'),
   name: z.string({ error: 'Nom requis' }).min(1, 'Nom requis').max(120, 'Nom trop long (120 caractères)'),
   type: z.enum(LOCATION_TYPES, { error: 'Type d\'emplacement inconnu' }),
+  // Étape 8 multi-industries : rôle métier (déduit du type s'il est absent) et emplacement par défaut du rôle.
+  role: z.enum(STOCK_LOCATION_ROLE_KEYS as [string, ...string[]], { error: 'Rôle d\'emplacement inconnu' }).optional(),
+  roleDefault: z.boolean().optional(),
   parentId: optId,
   equipementId: optId,
   tempMin: optNum,

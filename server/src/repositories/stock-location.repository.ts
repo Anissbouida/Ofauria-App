@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 
 // Référentiel d'emplacements de stock (épic labo L1, mig 424).
 // La plage de température affichée hérite de l'équipement lié quand l'emplacement
@@ -15,7 +15,19 @@ export type StockLocationInput = {
   tempMax?: number | null;
   capaciteUnite?: string | null;
   capaciteValeur?: number | null;
+  /** Étape 8 : rôle métier (déduit du type si absent) ; emplacement par défaut de ce rôle. */
+  role?: string | null;
+  roleDefault?: boolean;
 };
+
+/** Un seul emplacement par défaut par établissement et par rôle : le nouveau remplace l'ancien. */
+async function claimRoleDefault(id: string) {
+  await db.query(
+    `UPDATE stock_locations o SET role_default = false
+       FROM stock_locations n
+      WHERE n.id = $1 AND o.id <> n.id AND o.store_id IS NOT DISTINCT FROM n.store_id AND o.role = n.role AND o.role_default`, [id]);
+  await db.query(`UPDATE stock_locations SET role_default = true WHERE id = $1`, [id]);
+}
 
 export const stockLocationRepository = {
   async list(storeId?: string | null, includeInactive = false) {
@@ -48,16 +60,24 @@ export const stockLocationRepository = {
   },
 
   async create(data: StockLocationInput) {
-    const r = await db.query(
-      `INSERT INTO stock_locations
-         (store_id, code, name, type, parent_id, equipement_id, temp_min, temp_max, capacite_unite, capacite_valeur)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING *`,
-      [data.storeId ?? null, data.code, data.name, data.type, data.parentId ?? null,
-       data.equipementId ?? null, data.tempMin ?? null, data.tempMax ?? null,
-       data.capaciteUnite ?? null, data.capaciteValeur ?? null]
-    );
-    return r.rows[0];
+    return withTransaction(async () => {
+      const r = await db.query(
+        `INSERT INTO stock_locations
+           (store_id, code, name, type, parent_id, equipement_id, temp_min, temp_max, capacite_unite, capacite_valeur, role)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         RETURNING *`,
+        [data.storeId ?? null, data.code, data.name, data.type, data.parentId ?? null,
+         data.equipementId ?? null, data.tempMin ?? null, data.tempMax ?? null,
+         data.capaciteUnite ?? null, data.capaciteValeur ?? null, data.role ?? null]
+      );
+      // Premier emplacement de son rôle dans l'établissement, ou demandé : il devient celui par défaut.
+      const row = r.rows[0];
+      const has = (await db.query(
+        `SELECT 1 FROM stock_locations WHERE id <> $1 AND store_id IS NOT DISTINCT FROM $2 AND role = $3 AND role_default AND is_active`,
+        [row.id, row.store_id, row.role])).rows.length > 0;
+      if (data.roleDefault || !has) await claimRoleDefault(row.id);
+      return (await db.query(`SELECT * FROM stock_locations WHERE id = $1`, [row.id])).rows[0];
+    });
   },
 
   // Mise à jour partielle (COALESCE) : un champ absent reste inchangé ; les liens
@@ -74,13 +94,15 @@ export const stockLocationRepository = {
          temp_max = $8,
          capacite_unite = $9,
          capacite_valeur = $10,
+         role = COALESCE($11, role),
          updated_at = NOW()
        WHERE id = $1 RETURNING *`,
       [id, data.code ?? null, data.name ?? null, data.type ?? null,
        data.parentId ?? null, data.equipementId ?? null, data.tempMin ?? null,
-       data.tempMax ?? null, data.capaciteUnite ?? null, data.capaciteValeur ?? null]
+       data.tempMax ?? null, data.capaciteUnite ?? null, data.capaciteValeur ?? null, data.role ?? null]
     );
-    return r.rows[0] ?? null;
+    if (r.rows[0] && data.roleDefault) await claimRoleDefault(id);
+    return r.rows[0] ? (await db.query(`SELECT * FROM stock_locations WHERE id = $1`, [id])).rows[0] : null;
   },
 
   // Désactivation douce : refusée s'il reste des lots actifs sur l'emplacement.
@@ -105,7 +127,7 @@ export const stockLocationRepository = {
   /** Quantités par emplacement de l'établissement : total, nombre de lots. */
   async stockByLocation(storeId: string | null) {
     return (await db.query(
-      `SELECT sl.id, sl.code, sl.name, sl.type, COALESCE(SUM(ll.quantity), 0)::float8 AS quantity,
+      `SELECT sl.id, sl.code, sl.name, sl.type, sl.role, sl.role_default, COALESCE(SUM(ll.quantity), 0)::float8 AS quantity,
               COUNT(ll.ingredient_lot_id) FILTER (WHERE ll.quantity > 0)::int AS lots
          FROM stock_locations sl
          LEFT JOIN ingredient_lot_locations ll ON ll.location_id = sl.id

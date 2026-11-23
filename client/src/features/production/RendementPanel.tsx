@@ -101,8 +101,11 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
     queryFn: () => stockLocationsApi.list(storeId ?? undefined),
     enabled: !!recordingItem,
   });
-  const destinations = locations.filter(l => l.is_active && l.type !== 'pesage');
-  const hasCode = (code: string) => destinations.some(l => l.code === code);
+  const destinations = locations.filter(l => l.is_active && (l.role ?? l.type) !== 'en_cours_ouvert' && l.type !== 'pesage');
+  // Étape 8 multi-industries : la destination par défaut est l'emplacement par défaut du RÔLE
+  // (vente / froid positif), plus un code figé ; repli sur le code historique pour un ancien serveur.
+  const defaultFor = (role: string, legacyCode: string) =>
+    destinations.find(l => l.role === role && l.role_default) ?? destinations.find(l => l.role === role) ?? destinations.find(l => l.code === legacyCode);
 
   const { data: rendements = [], isLoading } = useQuery<Rendement[]>({
     queryKey: ['production-rendement', planId],
@@ -290,24 +293,27 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                   {/* M6-02 : emplacements de destination (le lot y est rangé, mouvement tracé). */}
                   {destinations.length === 0 ? (
                     <div className="text-[11px] text-amber-700">
-                      Aucun emplacement de stock pour cet établissement : le lot ne sera pas rangé. Créez « Magasin » (code MAGASIN) et « Frigo » (code FRIGO) dans Stock › Emplacements.
+                      Aucun emplacement de stock pour cet établissement : le lot ne sera pas rangé. Créez un emplacement de rôle « Vente » et un de rôle « Froid positif » dans Stock › Emplacements.
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
-                      {([['magasin_location_id', 'Emplacement magasin', 'MAGASIN', formData.vers_magasin],
-                         ['frigo_location_id', 'Emplacement frigo', 'FRIGO', formData.vers_frigo]] as const).map(([key, label, code, qty]) => (
+                      {([['magasin_location_id', 'Emplacement magasin', 'vente', 'MAGASIN', formData.vers_magasin],
+                         ['frigo_location_id', 'Emplacement frigo', 'froid_positif', 'FRIGO', formData.vers_frigo]] as const).map(([key, label, role, code, qty]) => {
+                        const def = defaultFor(role, code);
+                        return (
                         <div key={key}>
                           <label className="text-[10px] font-bold text-gray-500 ">{label}</label>
                           <select value={formData[key]} onChange={e => setFormData(f => ({ ...f, [key]: e.target.value }))}
                             className="w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white">
-                            <option value="">{hasCode(code) ? `Par défaut (${code})` : `— Aucun emplacement ${code} —`}</option>
+                            <option value="">{def ? `Par défaut (${def.name})` : '— Aucun emplacement par défaut —'}</option>
                             {destinations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.code})</option>)}
                           </select>
-                          {qty > 0 && !formData[key] && !hasCode(code) && (
+                          {qty > 0 && !formData[key] && !def && (
                             <div className="text-[10px] text-amber-700 mt-0.5">Choisissez un emplacement, sinon ces {qty} ne seront pas rangés.</div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
