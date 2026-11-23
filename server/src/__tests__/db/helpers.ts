@@ -55,15 +55,20 @@ export interface Fixtures {
   ids: { ingredients: string[]; products: string[]; recipes: string[]; plans: string[] };
 }
 
+/** Compteur d'appels : un fichier peut poser plusieurs jeux de donnees (un par bloc),
+ *  l'e-mail doit rester unique meme si le nettoyage du bloc precedent a echoue. */
+let fixtureSeq = 0;
+
 export async function createBaseFixtures(): Promise<Fixtures> {
   const p = testPool();
+  const seq = ++fixtureSeq;
   const store = await p.query(
     `INSERT INTO stores (name, city) VALUES ($1, 'Test') RETURNING id`, [`Magasin test ${RUN}`]
   );
   const user = await p.query(
     `INSERT INTO users (email, password_hash, first_name, last_name, role, store_id)
      VALUES ($1, 'x', 'Test', 'Chef', 'admin', $2) RETURNING id`,
-    [`chef-${RUN}@test.local`, store.rows[0].id]
+    [`chef-${RUN}-${seq}@test.local`, store.rows[0].id]
   );
   return {
     storeId: store.rows[0].id,

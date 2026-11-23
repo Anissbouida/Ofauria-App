@@ -10,7 +10,7 @@ import { getLocalNow } from '../utils/timezone.js';
 import { productionEtapesRepository } from './production-etapes.repository.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
-import { setActor, setReason, transitionPlan, transitionBon, withActor } from '../services/production-state.js';
+import { setActor, setReason, transitionPlan, transitionBon, withActor, PLAN_TRANSITIONS, type PlanStatus } from '../services/production-state.js';
 import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe-composition.helper.js';
 import { cutProducedQuantity } from '@ofauria/shared';
 import { sectorRepository } from './sector.repository.js';
@@ -992,8 +992,22 @@ export const productionRepository = {
         } else if (wasStarted) {
           newStatus = 'in_progress';
         }
-      } else if (wasStarted) {
-        warnings.push('Preparation reconstruite : le plan repasse en amont du cycle (confirme / en attente des ingredients).');
+      } else {
+        if (wasStarted) {
+          warnings.push('Preparation reconstruite : le plan repasse en amont du cycle (confirme / en attente des ingredients).');
+        }
+        // confirm() n'accepte qu'un brouillon (verrou mig 338) : on y ramene le plan,
+        // en passant par « confirme » quand le retour direct n'est pas une transition
+        // autorisee (in_progress, completed).
+        newStatus = 'draft';
+        if (planStatus !== 'draft' && !PLAN_TRANSITIONS[planStatus as PlanStatus]?.includes('draft')) {
+          await transitionPlan(client, planId, 'confirmed');
+          await transitionPlan(client, planId, 'draft', {
+            extraSet: 'completed_at = NULL, completion_type = NULL, cancelled_at = NULL, cancellation_reason = NULL, warnings = $2',
+            params: [warnings.length > 0 ? warnings : null],
+          });
+          newStatus = planStatus; // deja positionne : on saute la transition ci-dessous
+        }
       }
 
       const relaunchSet = 'completed_at = NULL, completion_type = NULL, cancelled_at = NULL, cancellation_reason = NULL, warnings = $2';

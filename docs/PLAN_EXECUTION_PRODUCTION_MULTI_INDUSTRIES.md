@@ -465,3 +465,24 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 | 10 | À faire | | | |
 | 11 | À faire | | | |
 | 12 | À faire | | | |
+
+### F.0 — Étape 0 (2026-11-23)
+
+Livré :
+- `npm run ref:capture|ref:compare` (jeu de référence, 7 familles) et `npm run config:snapshot|config:compare` (`scripts/effective-config-snapshot.ts` : secteur, modules, options, libellés fusionnés, politiques, types d'ordre, ateliers, et capacités dès l'étape 1).
+- Scénario A : `__tests__/db/scenario-a-boulangerie.db.test.ts` (Économat → Pesage, plan, bon de sortie pesé, déclaration, coût réel, transfert avec manquant, journal exact des transitions).
+- Scénarios `scenarios-production` et `scenarios-stock` réécrits (fichiers `.wip` retirés) : 43 tests.
+- `scripts/diagnose-multi-industries.sql` (lecture seule) pour la mesure en production.
+
+Défauts trouvés et corrigés :
+1. Aide de test : e-mail du jeu de données identique pour tous les blocs d'un fichier (collision dès le deuxième bloc).
+2. **Relance d'un plan confirmé** (`productionRepository.relaunch`) : échouait toujours quand le bon de sortie n'était pas encore prélevé, car elle rappelait `confirm()`, qui n'accepte plus qu'un brouillon (verrou mig 338). Le plan repasse désormais en brouillon avant la reconfirmation.
+3. **Lot de produit fini périmé noté « épuisé »** (mig 631) : le déclencheur `fn_product_lot_invariant` réécrivait le statut `expired` posé par la péremption automatique.
+
+Écart assumé : le scénario « semi-finis » a été réécrit selon la règle actuelle (modèle B, F-044 : la pâte devient un plan fils qui consomme la matière ; le parent ne la porte plus), qui avait changé depuis son écriture.
+
+Mesures sur la base de dev (simulation) : tables de l'ancien modèle de fiche toutes vides ; 26 fiches sur 27 en mode composé ; aucun poids cru/cuit, aucune pièce par fournée ; rôle vide sur les 133 lignes de nomenclature par format ; un seul type d'ordre (`PLAN_JOUR`, pesée déclarée obligatoire, contrôle non) avec 2 439 ordres.
+
+Constat hors chantier : la base de dev a été basculée sur le secteur « fabrication » le 2026-11-23 à 02:02 UTC depuis l'écran (version de configuration n° 4), avant le début de ce travail. Non modifié.
+
+Tests : suite base 239 fichiers / 892 tests verts ; suite unitaire verte ; compilation serveur propre.

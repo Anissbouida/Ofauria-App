@@ -297,7 +297,10 @@ describe.skipIf(!hasTestDb)('Scenarios production — chef & magasinier', () => 
       if (fx) await cleanupFixtures(fx);
     });
 
-    it('confirm : les besoins du parent incluent la matiere de la base (2 kg beurre pour 10 tartes)', async () => {
+    // Modele B (F-044) : confirm() detecte les bases AVANT de calculer les besoins.
+    // La pate devient un plan fils ; le parent ne developpe plus la base en matieres
+    // (sinon double comptage) et c'est la production du plan fils qui consomme le beurre.
+    it('confirm : la pate devient un plan fils, le parent ne porte pas le beurre', async () => {
       const plan = await repos.productionRepository.create({
         planDate: today(), type: 'daily', createdBy: fx.userId, storeId: fx.storeId,
         items: [{ productId, plannedQuantity: 10 }],
@@ -311,33 +314,35 @@ describe.skipIf(!hasTestDb)('Scenarios production — chef & magasinier', () => 
         `SELECT needed_quantity FROM production_ingredient_needs WHERE plan_id = $1 AND ingredient_id = $2`,
         [planId, beurreId]
       );
-      // 10 tartes x 0,2 kg de pate x 1 kg beurre/kg pate = 2 kg.
-      expect(needs.rows).toHaveLength(1);
-      expect(num(needs.rows[0].needed_quantity)).toBeCloseTo(2, 3);
-    });
+      expect(needs.rows).toHaveLength(0);
 
-    it('detection : un plan fils (semi-fini) est cree pour la pate (2 kg a produire)', async () => {
-      const det = await repos.productionRepository.detectAndCreateSemiFinishedPlans(planId, fx.userId);
-      expect(det.dependencyPlanIds).toHaveLength(1);
-      const dep = det.dependencies.find((d) => d.subRecipeName.includes('Pate C'));
-      expect(dep).toBeDefined();
-      expect(dep!.needed).toBeCloseTo(2, 2);
-      expect(dep!.fromStock).toBeCloseTo(0, 2);
-      expect(dep!.toProduce).toBeCloseTo(2, 2);
-
+      // 10 tartes x 0,2 kg de pate = 2 kg de pate a produire.
       const dbDep = await testPool().query(
-        `SELECT status, dependency_plan_id FROM production_plan_dependencies WHERE parent_plan_id = $1 AND sub_recipe_id = $2`,
+        `SELECT status, dependency_plan_id, quantity_needed, quantity_to_produce
+           FROM production_plan_dependencies WHERE parent_plan_id = $1 AND sub_recipe_id = $2`,
         [planId, baseRecipeId]
       );
+      expect(dbDep.rows).toHaveLength(1);
       expect(dbDep.rows[0].status).toBe('pending');
-      expect(dbDep.rows[0].dependency_plan_id).toBe(det.dependencyPlanIds[0]);
+      expect(dbDep.rows[0].dependency_plan_id).not.toBeNull();
+      expect(num(dbDep.rows[0].quantity_needed)).toBeCloseTo(2, 2);
+      expect(num(dbDep.rows[0].quantity_to_produce)).toBeCloseTo(2, 2);
+    });
+
+    it('detection idempotente : un second appel ne cree pas de nouveau plan fils', async () => {
+      const det = await repos.productionRepository.detectAndCreateSemiFinishedPlans(planId, fx.userId);
+      expect(det.dependencyPlanIds).toHaveLength(0);
+      const deps = await testPool().query(
+        `SELECT COUNT(*)::int AS n FROM production_plan_dependencies WHERE parent_plan_id = $1`, [planId]
+      );
+      expect(deps.rows[0].n).toBe(1);
     });
 
     it('start du parent refuse tant que le semi-fini n est pas produit', async () => {
       await expect(repos.productionRepository.start(planId, fx.userId)).rejects.toThrow(/[Ss]emi-finis? en attente/);
     });
 
-    it('matiere consommee UNE SEULE fois : la production du plan fils ne rededuit pas le beurre', async () => {
+    it('matiere consommee UNE SEULE fois : la production du plan fils deduit le beurre (100 -> 98)', async () => {
       const dep = await testPool().query(
         `SELECT dependency_plan_id FROM production_plan_dependencies WHERE parent_plan_id = $1 AND sub_recipe_id = $2`,
         [planId, baseRecipeId]
@@ -345,47 +350,45 @@ describe.skipIf(!hasTestDb)('Scenarios production — chef & magasinier', () => 
       const childPlanId = dep.rows[0].dependency_plan_id as string;
       const childItem = await testPool().query(`SELECT id FROM production_plan_items WHERE plan_id = $1`, [childPlanId]);
 
-      const invBeforeChild = num((await testPool().query(
-        `SELECT current_quantity FROM inventory WHERE ingredient_id = $1 AND store_id = $2`, [beurreId, fx.storeId]
-      )).rows[0].current_quantity);
-
+      await repos.productionRepository.confirm(childPlanId, fx.userId);
       await repos.productionRepository.start(childPlanId, fx.userId);
       await repos.productionRepository.produceItems(childPlanId, [{ planItemId: childItem.rows[0].id, actualQuantity: 2 }], fx.userId, fx.storeId);
 
-      // Le beurre est porte par le BSI du PARENT (genere a la confirmation) : le
-      // plan fils ne le deduit pas une seconde fois.
+      // Plan fils sans bon de sortie : la matiere de la pate sort a la declaration,
+      // 2 kg de pate x 1 kg de beurre par kg = 2 kg, une seule fois.
       const invAfterChild = num((await testPool().query(
         `SELECT current_quantity FROM inventory WHERE ingredient_id = $1 AND store_id = $2`, [beurreId, fx.storeId]
       )).rows[0].current_quantity);
-      expect(invAfterChild).toBeCloseTo(invBeforeChild, 3);
+      expect(invAfterChild).toBeCloseTo(invBeurreBefore - 2, 3);
 
       // Le semi-fini a bien ete produit (stock + lot de pate).
       const sfStock = await testPool().query(
         `SELECT quantity_available FROM semi_finished_stock WHERE recipe_id = $1 AND store_id = $2`, [baseRecipeId, fx.storeId]
       );
-      expect(num(sfStock.rows[0].quantity_available)).toBeCloseTo(2, 3);
+      // Modele B : les 2 kg produits pour le parent lui sont aussitot affectes (stock
+      // disponible a 0, lot de pate rattache au parent par semi_finished_lot_usage).
+      expect(num(sfStock.rows[0].quantity_available)).toBeCloseTo(0, 3);
+      const usage = await testPool().query(
+        `SELECT COALESCE(SUM(quantity), 0) AS q FROM semi_finished_lot_usage WHERE parent_plan_id = $1`, [planId]
+      );
+      expect(num(usage.rows[0].q)).toBeCloseTo(2, 3);
       const dependencyNow = await testPool().query(
         `SELECT status FROM production_plan_dependencies WHERE parent_plan_id = $1 AND sub_recipe_id = $2`, [planId, baseRecipeId]
       );
       expect(dependencyNow.rows[0].status).toBe('fulfilled');
     });
 
-    it('le beurre est finalement deduit UNE fois, via le BSI du parent (100 -> 98)', async () => {
-      // Le BSI du parent (genere a la confirmation) contient le beurre de la base.
-      const bon = (await repos.bonSortieRepository.findByPlan(planId))[0];
-      const beurreLines = (bon.lines as Record<string, unknown>[]).filter((l) => l.ingredient_id === beurreId);
-      expect(beurreLines.length).toBeGreaterThan(0);
-      expect(beurreLines.reduce((s, l) => s + num(l.allocated_quantity), 0)).toBeCloseTo(2, 3);
-
-      await runBsiChain(planId, fx.userId);
+    it('le parent ne porte toujours aucun beurre : pas de seconde deduction possible', async () => {
+      const bons = await repos.bonSortieRepository.findByPlan(planId);
+      const beurreLines = bons.flatMap((b: Record<string, unknown>) => (b.lines as Record<string, unknown>[]) ?? [])
+        .filter((l) => l.ingredient_id === beurreId);
+      expect(beurreLines).toHaveLength(0);
       const inv = await testPool().query(`SELECT current_quantity FROM inventory WHERE ingredient_id = $1 AND store_id = $2`, [beurreId, fx.storeId]);
-      // Deduction unique de 2 kg sur toute la chaine (parent BSI), pas 4.
       expect(num(inv.rows[0].current_quantity)).toBeCloseTo(invBeurreBefore - 2, 3);
-      const lot = await testPool().query(`SELECT pesage_quantity FROM ingredient_lots WHERE id = $1`, [lotBeurreId]);
-      expect(num(lot.rows[0].pesage_quantity)).toBeCloseTo(98, 3);
+      expect(lotBeurreId).toBeTruthy();
     });
 
-    it('base imbriquee : les besoins descendent recursivement dans une base de base', async () => {
+    it('base imbriquee : le plan fils de la base descend recursivement dans la base de base', async () => {
       // « Pate feuilletee » (base) contient 0,5 kg de « Pate C » (base) par kg.
       const feuil = await testPool().query(
         `INSERT INTO recipes (product_id, name, yield_quantity, yield_unit, mode_cout, is_base)
@@ -410,12 +413,28 @@ describe.skipIf(!hasTestDb)('Scenarios production — chef & magasinier', () => 
       fx.ids.plans.push(plan2.id);
       await repos.productionRepository.confirm(plan2.id, fx.userId);
 
-      // 4 mille-feuilles x 1 kg feuilletee x 0,5 kg pate x 1 kg beurre = 2 kg beurre.
-      const needs = await testPool().query(
-        `SELECT needed_quantity FROM production_ingredient_needs WHERE plan_id = $1 AND ingredient_id = $2`, [plan2.id, beurreId]
+      // La feuilletee (base directe) devient un plan fils de 4 kg.
+      const dep = await testPool().query(
+        `SELECT dependency_plan_id, quantity_to_produce FROM production_plan_dependencies WHERE parent_plan_id = $1 AND sub_recipe_id = $2`,
+        [plan2.id, feuilId]
       );
-      expect(needs.rows).toHaveLength(1);
-      expect(num(needs.rows[0].needed_quantity)).toBeCloseTo(2, 3);
+      expect(dep.rows).toHaveLength(1);
+      expect(num(dep.rows[0].quantity_to_produce)).toBeCloseTo(4, 2);
+      const childPlanId = dep.rows[0].dependency_plan_id as string;
+      const childItem = await testPool().query(`SELECT id FROM production_plan_items WHERE plan_id = $1`, [childPlanId]);
+
+      const invBefore = num((await testPool().query(
+        `SELECT current_quantity FROM inventory WHERE ingredient_id = $1 AND store_id = $2`, [beurreId, fx.storeId]
+      )).rows[0].current_quantity);
+      await repos.productionRepository.confirm(childPlanId, fx.userId);
+      await repos.productionRepository.start(childPlanId, fx.userId);
+      await repos.productionRepository.produceItems(childPlanId, [{ planItemId: childItem.rows[0].id, actualQuantity: 4 }], fx.userId, fx.storeId);
+
+      // 4 kg feuilletee x 0,5 kg pate x 1 kg beurre = 2 kg beurre, descendus recursivement.
+      const invAfter = num((await testPool().query(
+        `SELECT current_quantity FROM inventory WHERE ingredient_id = $1 AND store_id = $2`, [beurreId, fx.storeId]
+      )).rows[0].current_quantity);
+      expect(invAfter).toBeCloseTo(invBefore - 2, 3);
     });
 
     it('recette composee : la composition (recipe_components) alimente les besoins', async () => {
