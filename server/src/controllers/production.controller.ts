@@ -23,6 +23,7 @@ import { declareProduction, listPlanObservations } from '../services/production-
 import { logger } from '../utils/logger.js';
 import { ApprovalPendingError, gateApproval, planApprovalValues } from '../services/production-approvals.js';
 import { postProductionEntry } from '../services/production-ledger.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
  *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
@@ -60,6 +61,15 @@ async function gatePlan(docType: 'production_order' | 'production_start', planId
   const v = await planApprovalValues(planId);
   await gateApproval({ docType, docId: planId, docLabel: v.label, values: { planned_qty: v.planned_qty, items: v.items, estimated_cost: v.estimated_cost },
     userId: req.user!.userId, storeId: req.user!.storeId ?? null });
+}
+
+/** Étape 10d : titre de la notification de fin de fabrication, au vocabulaire du secteur. */
+async function productionDoneTitle(): Promise<string> {
+  try {
+    const act = await sectorRepository.activation();
+    const labels = await sectorRepository.labels(act.sector.code);
+    return labels.notif_production_done ?? 'Production terminee';
+  } catch { return 'Production terminee'; }
 }
 
 function conflictOrThrow(res: Response, err: unknown, fallback: string) {
@@ -578,7 +588,7 @@ export const productionController = {
           targetRole: 'manager',
           storeId: req.user!.storeId,
           type: 'production_completed',
-          title: 'Production terminee',
+          title: await productionDoneTitle(),
           message: `Le plan de production a été automatiquement termine — tous les articles ont été produits.`,
           referenceType: 'production_plan',
           referenceId: req.params.id,
@@ -644,7 +654,7 @@ export const productionController = {
           targetRole: 'manager',
           storeId: req.user!.storeId,
           type: 'production_completed',
-          title: 'Production terminee',
+          title: await productionDoneTitle(),
           message: `Le plan de production a été complete — tous les articles ont été recus.`,
           referenceType: 'production_plan',
           referenceId: result.planId,
@@ -819,7 +829,7 @@ export const productionController = {
       targetRole: 'manager',
       storeId: req.user!.storeId,
       type: 'production_completed',
-      title: 'Production terminee',
+      title: await productionDoneTitle(),
       message: `Le plan de production du ${updated?.plan_date?.toString().slice(0, 10)} a été termine${updated?.order_number ? ` (Commande ${updated.order_number})` : ''}`,
       referenceType: 'production_plan',
       referenceId: req.params.id,
@@ -829,7 +839,7 @@ export const productionController = {
       targetRole: 'admin',
       storeId: req.user!.storeId,
       type: 'production_completed',
-      title: 'Production terminee',
+      title: await productionDoneTitle(),
       message: `Le plan de production du ${updated?.plan_date?.toString().slice(0, 10)} a été termine${updated?.order_number ? ` (Commande ${updated.order_number})` : ''}`,
       referenceType: 'production_plan',
       referenceId: req.params.id,

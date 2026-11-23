@@ -618,7 +618,7 @@ export default function PlanDetailPage() {
     && (!activeBon || (isMagasinier && insufficientNeeds.length > 0))) ? (
     <div className="ds-panel pd-section">
       <div className="pd-section-head">
-        <Beaker size={12} /> {isMagasinier ? 'Besoins en ingrédients' : 'Ingrédients nécessaires'}
+        <Beaker size={12} /> {isMagasinier ? `Besoins en ${sectorLabel('ingredients', 'Ingrédients').toLowerCase()}` : `${sectorLabel('ingredients', 'Ingrédients')} nécessaires`}
         <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400 }}>{needs.length} ingrédient(s)</span>
         {isMagasinier && (
           <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1077,7 +1077,7 @@ export default function PlanDetailPage() {
   type MenuItem = { key: string; label: string; icon: React.ReactNode; onClick: () => void; disabled?: boolean; title?: string; danger?: boolean; sep?: boolean };
   const menuItems: MenuItem[] = [];
   if (['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && !isSemiFini && docOn('bon_sortie')) {
-    menuItems.push({ key: 'bsi', label: 'Bon de sortie ingrédients', icon: <Printer size={13} />, onClick: () => printBonSortieIngredients() });
+    menuItems.push({ key: 'bsi', label: sectorLabel('doc_bon_sortie', 'Bon de sortie ingrédients'), icon: <Printer size={13} />, onClick: () => printBonSortieIngredients() });
   }
   // Repasse en brouillon : le serveur ne l'accepte que pour un plan au statut « confirmé »
   // (et vérifie qu'aucun article n'a démarré ni le bon de sortie été prélevé). Le menu ne

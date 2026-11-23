@@ -4,6 +4,7 @@ import { sectorRepository, type Activation, type AdjustmentChanges } from '../re
 import { configHealthRepository, ITEM_LIMIT, QUALITY_RELEASE_PERMISSION, type HealthFinding, type HealthItem } from '../repositories/config-health.repository.js';
 import { seedPermissions } from './permissions.js';
 import { logger } from '../utils/logger.js';
+import { BAKERY_TERMS, VOCABULARY_KEYS } from '@ofauria/shared';
 
 /**
  * Bilan de santé de la configuration (plan Production générique, lot P8).
@@ -153,14 +154,16 @@ const profileChecks: Check[] = [
   {
     key: 'profile.vocabulary.bakery_terms',
     run: async ({ act }) => {
-      // Hors option « saisie par fournée », un terme absent du secteur s'affiche avec sa valeur de repli (boulangerie).
-      if (!act.modules.has('production') || featureOn(act, 'mode_fournee')) return null;
-      const labels = await sectorRepository.labels(act.sector.code);
-      const missing = ['production_plan', 'recipe', 'batch', 'base_preps'].filter(k => !labels[k]);
-      if (!missing.length) return null;
+      // Étape 10d : hors profil boulangerie, aucun terme de boulangerie dans le vocabulaire
+      // résolu (secteur + société + repli), ni dans les titres des documents de production.
+      if (!act.modules.has('production')) return null;
+      const lineage = (act.sector as { lineage?: string[] }).lineage ?? [act.sector.code];
+      if (lineage.includes('boulangerie') || featureOn(act, 'mode_fournee')) return null;
+      const found = await bakeryTermsOutsideBakery(act.sector.code);
+      if (!found.length) return null;
       return {
         tone: 'suggestion', module: 'production', title: 'Termes de boulangerie encore affichés',
-        detail: `${missing.length} terme(s) de production n'ont pas de valeur pour ce secteur et s'affichent avec le terme de boulangerie (plan de production, recette, fournée…).`,
+        detail: `${found.length} libellé(s) contiennent un terme de boulangerie : ${found.slice(0, 6).map(f => `« ${f.value} »`).join(', ')}${found.length > 6 ? '…' : ''}.`,
         action: { kind: 'link', label: 'Ajuster le vocabulaire', to: '/settings?page=sector' },
       };
     },
@@ -405,4 +408,26 @@ export async function dismissRecommendation(key: string, userId?: string | null)
 export async function restoreDismissed(): Promise<void> {
   // Les listes de mise en route masquées (clés onboarding.*, P9) ne sont pas concernées.
   await db.query(`UPDATE config_health_dismissals SET dismissed_until = now() WHERE dismissed_until > now() AND check_key NOT LIKE 'onboarding.%'`);
+}
+
+/**
+ * Libellés qui contiennent un terme de boulangerie (étape 10d) : vocabulaire résolu pour le
+ * secteur (valeur de la société, du secteur et de ses parents, sinon le repli), titres des
+ * documents de production (registre et gabarits d'impression).
+ */
+export async function bakeryTermsOutsideBakery(sectorCode: string): Promise<{ source: string; key: string; value: string }[]> {
+  const labels = await sectorRepository.labels(sectorCode);
+  const overrides = Object.fromEntries((await db.query(`SELECT label_key, label_value FROM company_label_overrides`)).rows
+    .map((r: { label_key: string; label_value: string }) => [r.label_key, r.label_value]));
+  const hit = (v: string | null | undefined) => !!v && BAKERY_TERMS.some(t => v.toLowerCase().includes(t));
+  const out: { source: string; key: string; value: string }[] = [];
+  for (const k of VOCABULARY_KEYS) {
+    const value = overrides[k.key] ?? labels[k.key] ?? k.fallback;
+    if (hit(value)) out.push({ source: 'vocabulaire', key: k.key, value });
+  }
+  const docs = await db.query(
+    `SELECT 'document' AS source, doc_key AS key, label AS value FROM production_documents WHERE enabled
+      UNION ALL SELECT 'impression', doc_type, title FROM document_templates WHERE category = 'production' AND title IS NOT NULL`);
+  for (const d of docs.rows as { source: string; key: string; value: string }[]) if (hit(d.value)) out.push(d);
+  return out;
 }
