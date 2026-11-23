@@ -451,7 +451,7 @@ Attributs et variantes (taille, couleur, modèle, collection), matrice de saisie
 
 | Étape | État | Commit | Migrations | Reste |
 |---|---|---|---|---|
-| 0 | À faire | | | |
+| 0 | Livré | d9bc5d4f | 631 | Mesure en production à passer (`diagnose-multi-industries.sql`) |
 | 1 | À faire | | | |
 | 2 | À faire | | | |
 | 2 bis | À faire | | | |
