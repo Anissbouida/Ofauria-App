@@ -154,11 +154,10 @@ const profileChecks: Check[] = [
   {
     key: 'profile.vocabulary.bakery_terms',
     run: async ({ act }) => {
-      // Étape 10d : hors profil boulangerie, aucun terme de boulangerie dans le vocabulaire
-      // résolu (secteur + société + repli), ni dans les titres des documents de production.
-      if (!act.modules.has('production')) return null;
-      const lineage = (act.sector as { lineage?: string[] }).lineage ?? [act.sector.code];
-      if (lineage.includes('boulangerie') || featureOn(act, 'mode_fournee')) return null;
+      // Étape 10d : sans la capacité « saisie par fournée » (métier de la boulangerie), aucun
+      // terme de boulangerie dans le vocabulaire résolu (secteur + société + repli), ni dans les
+      // titres des documents de production. Jamais de test sur le code du secteur (C-07).
+      if (!act.modules.has('production') || featureOn(act, 'mode_fournee')) return null;
       const found = await bakeryTermsOutsideBakery(act.sector.code);
       if (!found.length) return null;
       return {
