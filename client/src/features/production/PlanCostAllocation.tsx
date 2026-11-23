@@ -16,7 +16,7 @@ type Allocation = {
   total: number; key: string; applied: string; fallback: string | null; source: string;
   items: { plan_item_id: string; product_name: string; quantity: number; basis: number; share_pct: number; cost: number; unit_cost: number | null; manual_pct: number | null }[];
 };
-const KEY: Record<string, string> = { poids: 'Poids produit', quantite: 'Quantité produite', valeur_de_vente: 'Valeur de vente', manuelle: 'Parts saisies' };
+const KEY: Record<string, string> = { poids: 'Poids produit', quantite: 'Quantité produite', valeur_de_vente: 'Valeur de vente', manuelle: 'Parts saisies', analytique: 'Coût propre de chaque article (matières de sa fiche, charges selon ses unités d\'œuvre)' };
 
 export default function PlanCostAllocation({ planId, canEdit }: { planId: string; canEdit: boolean }) {
   const qc = useQueryClient();

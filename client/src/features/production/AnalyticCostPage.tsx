@@ -195,6 +195,25 @@ function PeriodTab({ month, meta }: { month: string; meta: AnalyticMeta }) {
         </table>
       </DataPanel>
 
+      <DataPanel label="Main-d'œuvre directe" style={{ marginTop: 14, padding: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <strong>Main-d'œuvre directe du mois</strong>
+          <span className="ds-muted" style={{ fontSize: 13 }}>Taux horaire chargé moyen : {money(p.directLabour.rate)}</span>
+        </div>
+        <KpiGrid label="Heures de main-d'œuvre directe">
+          <KpiCard label="Heures payées" value={`${num(p.directLabour.paidHours)} h`} sub="salariés en MO directe × heures légales, à date" />
+          <KpiCard label="Heures pointées" value={`${num(p.directLabour.timedHours, 1)} h`} sub="étapes terminées" />
+          <KpiCard label="Heures standard" value={`${num(p.directLabour.standardHours, 1)} h`} sub="gammes, lignes non pointées" />
+          <KpiCard label="Heures non productives" value={`${num(p.directLabour.unproductiveHours)} h`}
+            sub={p.directLabour.paidHours > 0 ? `${pct(p.directLabour.unproductiveHours / p.directLabour.paidHours)} des heures payées` : undefined}
+            tone={p.directLabour.paidHours > 0 && p.directLabour.unproductiveHours / p.directLabour.paidHours > 0.3 ? 'orange' : undefined} />
+        </KpiGrid>
+        <p className="ds-muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+          MO imputée aux plans : {money(p.directLabour.imputed)}. Le reste du salaire de la MO directe reste dans son centre et suit l'inducteur du centre.
+          {p.directLabour.standardHours === 0 && p.directLabour.timedHours === 0 && ' Aucune gamme ni aucun pointage : créez les gammes dans Production › Postes & gammes.'}
+        </p>
+      </DataPanel>
+
       {aux.length > 0 && (
         <DataPanel label="Centres auxiliaires" style={{ marginTop: 14 }}>
           <table className="odoo-table ds-dense">

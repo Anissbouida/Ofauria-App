@@ -3,6 +3,7 @@ import { subcontractingRepository } from './subcontracting.repository.js';
 import { db, withTransaction } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { imputePlan, chargedHourlyRates, type PlanImputation } from '../services/cost-engine.js';
+import { planItemCosts, itemHours, spread, type ItemCost } from '../services/plan-item-costs.js';
 
 
 /**
@@ -346,14 +347,50 @@ export const productionCoutRepository = {
     let coutCharges: number;
     const detailCharges: { label: string; taux: number; base: number; part: number }[] = [];
     let analytic: PlanImputation | null = null;
+    const moTimedByItem = new Map<string, number>(), moStdByItem = new Map<string, number>(), machineByItem = new Map<string, number>();
     if (charges.method === 'analytic') {
       // Mig 655 : MO directe pointée au coût employeur (brut + charges patronales) ÷ heures légales.
       const rates = await chargedHourlyRates(planId);
       for (const d of detailMO) {
-        const rate = rates.get(d.employee_id);
+        const rate = rates.byEmployee.get(d.employee_id);
         if (rate != null && rate > 0) { d.hourly_rate = rate; d.total = Math.round(d.minutes * rate / 60 * 100) / 100; }
       }
+      const timedRows = (await db.query(
+        `SELECT pie.plan_item_id, e.id AS employee_id, SUM(pie.duree_reelle_min)::float8 AS minutes
+           FROM production_item_etapes pie
+           JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+           JOIN employees e ON e.user_id = pie.completed_by
+          WHERE ppi.plan_id = $1 AND pie.status = 'completed' AND pie.duree_reelle_min IS NOT NULL
+          GROUP BY pie.plan_item_id, e.id`, [planId])).rows;
+      for (const t of timedRows) {
+        const rate = rates.byEmployee.get(t.employee_id) ?? 0;
+        moTimedByItem.set(t.plan_item_id, (moTimedByItem.get(t.plan_item_id) ?? 0) + t.minutes / 60 * rate);
+      }
+      // Lot B (mig 657) : lignes sans pointage → temps standard de la gamme × taux chargé moyen de la MO directe.
+      const hrs = await itemHours(planId);
+      let stdMinutes = 0;
+      for (const [itemId, h] of hrs) {
+        if (h.stdLabour > 0 && rates.directRate > 0) {
+          moStdByItem.set(itemId, Math.round(h.stdLabour * rates.directRate * 100) / 100);
+          stdMinutes += h.stdLabour * 60;
+        }
+      }
+      if (stdMinutes > 0) {
+        const total = Math.round([...moStdByItem.values()].reduce((a, b) => a + b, 0) * 100) / 100;
+        detailMO.push({ employee_id: 'standard', name: 'Temps standard des gammes (lignes non pointées)',
+          minutes: Math.round(stdMinutes), hourly_rate: Math.round(rates.directRate * 100) / 100, total });
+      }
       coutMO = detailMO.reduce((s, d) => s + d.total, 0);
+      if (comps.machine) {
+        const mrows = (await db.query(
+          `SELECT pie.plan_item_id, SUM(pie.duree_reelle_min * wc.hourly_cost / 60.0)::float8 AS total
+             FROM production_item_etapes pie
+             JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+             JOIN work_centers wc ON wc.id = pie.work_center_id
+            WHERE ppi.plan_id = $1 AND pie.status = 'completed' AND pie.duree_reelle_min IS NOT NULL
+            GROUP BY pie.plan_item_id`, [planId])).rows;
+        for (const m of mrows) machineByItem.set(m.plan_item_id, m.total);
+      }
       coutCharges = 0; // calculé plus bas, une fois les composantes directes connues
     } else if (charges.method === 'monthly') {
       const month = await this.monthMaterials(planId);
@@ -425,10 +462,38 @@ export const productionCoutRepository = {
       ? Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100
       : null;
 
-    const allocation = await this.allocate(planId, coutTotal);
+    type Alloc = { key: string; applied: string; fallback: string | null; source: unknown;
+      items: ({ plan_item_id: string; product_name: string; quantity: number; cost: number } & Record<string, unknown>)[] };
+    let allocation: Alloc = await this.allocate(planId, coutTotal);
+    // Lot A (mig 657) : en mode analytique, chaque article porte son propre coût (matières de sa
+    // fiche, charges selon ses unités d'œuvre) ; des parts saisies à la main restent prioritaires.
+    let itemCosts: ItemCost[] | null = null;
+    if (analytic && allocation.applied !== 'manuelle') {
+      if (!comps.main_oeuvre) { moTimedByItem.clear(); moStdByItem.clear(); }
+      itemCosts = await planItemCosts(planId, {
+        detailMatieres, emballages: coutEmballages, energie: coutEnergie, sousTraitance: coutSousTraitance,
+        mo: { timedByItem: moTimedByItem, stdByItem: moStdByItem }, machineByItem: comps.machine ? machineByItem : new Map(),
+        analytic,
+      });
+      const revs = spread(Math.round(coutTotal * 100) / 100, itemCosts.map(i => i.cout_revient));
+      const sumRev = itemCosts.reduce((t, i) => t + i.cout_revient, 0);
+      const sumProd = itemCosts.reduce((t, i) => t + i.cout_production, 0);
+      allocation = {
+        key: 'analytique', applied: 'analytique', fallback: null, source: allocation.source,
+        items: itemCosts.map((ic, k) => ({
+          plan_item_id: ic.plan_item_id, product_name: ic.product_name, quantity: ic.quantity,
+          basis: ic.cout_revient,
+          share: sumRev > 0 ? Math.round(ic.cout_revient / sumRev * 1e10) / 1e10 : 0,
+          production_share: sumProd > 0 ? Math.round(ic.cout_production / sumProd * 1e10) / 1e10 : 0,
+          share_pct: sumRev > 0 ? Math.round(ic.cout_revient / sumRev * 100000) / 1000 : 0,
+          cost: revs[k], unit_cost: ic.quantity > 0 ? Math.round(revs[k] / ic.quantity * 10000) / 10000 : null,
+          manual_pct: null,
+        })),
+      };
+    }
     const niveaux = analytic ? await this.costLevels(planId, {
       matieres: coutMatieres, emballages: coutEmballages, mo: coutMO, energie: coutEnergie, machine: coutMachine,
-      sousTraitance: coutSousTraitance, analytic, total: coutTotal, allocation,
+      sousTraitance: coutSousTraitance, analytic, total: coutTotal, allocation, itemCosts,
     }) : null;
 
     return {
@@ -531,6 +596,7 @@ export const productionCoutRepository = {
   async costLevels(planId: string, c: {
     matieres: number; emballages: number; mo: number; energie: number; machine: number; sousTraitance: number;
     analytic: PlanImputation; total: number; allocation: { items: { plan_item_id: string; product_name: string; quantity: number; cost: number }[] };
+    itemCosts?: ItemCost[] | null;
   }) {
     const r2 = (n: number) => Math.round(n * 100) / 100;
     const a = c.analytic;
@@ -551,7 +617,7 @@ export const productionCoutRepository = {
     const marge = r2(ventes - revient);
     const pct = (n: number, d: number) => (d > 0 ? Math.round(n / d * 10000) / 100 : null);
     const prodShare = revient > 0 ? productionComplet / revient : 0;
-    const items = c.allocation.items.map(it => {
+    const items = c.itemCosts ? c.itemCosts : c.allocation.items.map(it => {
       const p = prices.find(x => x.id === it.plan_item_id);
       const pv = r2((p?.price_ht ?? 0) * it.quantity);
       const cost = it.cost;

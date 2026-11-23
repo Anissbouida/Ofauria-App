@@ -50,6 +50,7 @@ export interface PeriodReport {
   employees: EmployeeCost[];
   transfers: { from: string; to: string; amount: number }[];
   activity: Record<Driver, number>; plansCount: number; timedLabour: number;
+  directLabour: { rate: number; paidHours: number; timedHours: number; standardHours: number; imputed: number; unproductiveHours: number };
   totals: { charges: number; actual: number; budget: number; imputed: number; activityVariance: number; budgetVariance: number; control: number };
   warnings: string[];
   method: 'rate' | 'monthly' | 'analytic';

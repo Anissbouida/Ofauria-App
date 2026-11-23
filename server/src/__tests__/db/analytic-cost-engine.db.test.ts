@@ -6,7 +6,10 @@
  *  - un plan reçoit taux × ses unités d'œuvre, taux = charges ÷ capacité NORMALE ;
  *  - ses charges ne dépendent pas des autres plans chiffrés du mois ;
  *  - la sous-activité reste en écart de période, et imputé + écarts = charges (contrôle à 0) ;
- *  - les charges de structure sont dans le coût de revient, pas dans le coût de production.
+ *  - les charges de structure sont dans le coût de revient, pas dans le coût de production ;
+ *  - lot A (mig 657) : chaque article porte ses propres matières et charges, somme = plan ;
+ *  - lot B (mig 657) : sans pointage, la gamme donne le temps standard, valorisé au taux
+ *    horaire chargé de la main-d'œuvre directe.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createProductWithRecipe, cleanupFixtures, RUN, type Fixtures } from './helpers.js';
@@ -125,6 +128,60 @@ describe.skipIf(!hasTestDb)('Moteur analytique du coût de revient (mig 655)', (
     expect(m.totals.control).toBe(0);
     expect(m.totals.activityVariance).toBeGreaterThan(0);
     expect(r2(m.totals.imputed + m.totals.activityVariance + m.totals.budgetVariance)).toBe(m.totals.charges);
+  });
+
+  it('lot A : un article à matière chère porte cette matière ; la somme des articles égale le plan', async () => {
+    const beurre = await createIngredient(fx, { name: 'Beurre ANA', unit: 'kg', unitCost: 100 });
+    const { productId: brioche } = await createProductWithRecipe(fx, { name: 'Brioche ANA', price: 20, ingredients: [{ ingredientId: beurre, quantity: 0.05 }] });
+    const id = await plan(25, 100, 10);   // 100 pains : 10 kg de farine à 10 DH
+    await p().query(
+      `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity, actual_quantity, status) VALUES ($1, $2, 20, 20, 'produced')`,
+      [id, brioche]);
+    await p().query(
+      `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, production_plan_id, store_id) VALUES ($1, 'production', -1, $2, $3)`,
+      [beurre, id, fx.storeId]);
+    engine.invalidateCostModel();
+    const c = await cout.computePlanCost(id);
+    const items = (c.niveaux as { items: { product_name: string; matieres: number; cout_revient: number; cout_revient_u: number }[] }).items;
+    const pain = items.find(i => i.product_name.startsWith('Pain ANA'))!;
+    const bri = items.find(i => i.product_name.startsWith('Brioche ANA'))!;
+    expect(pain.matieres).toBe(100);          // la farine, toute au pain
+    expect(bri.matieres).toBe(100);           // le beurre (1 kg à 100 DH), tout à la brioche
+    // Matières par pièce : 1 DH pour le pain, 5 DH pour la brioche (et non une moyenne commune).
+    expect(r2(pain.matieres / 100)).toBe(1);
+    expect(r2(bri.matieres / 20)).toBe(5);
+    expect(r2(items.reduce((t, i) => t + i.cout_revient, 0))).toBe(r2(c.coutTotal));
+    expect(c.allocation.key).toBe('analytique');
+    const shares = c.allocation.items as unknown as { share: number; production_share: number }[];
+    expect(r2(shares.reduce((t, x) => t + x.share, 0))).toBe(1);
+    expect(r2(shares.reduce((t, x) => t + x.production_share, 0))).toBe(1);
+  });
+
+  it('lot B : la gamme donne le temps standard d\'une ligne non pointée, valorisé au taux chargé de la MO directe', async () => {
+    const emp = (await p().query(
+      `INSERT INTO employees (first_name, last_name, role, hire_date, monthly_salary, store_id, is_active)
+       VALUES ('Boulanger', $1, 'baker', '2025-01-01', 3820, $2, true) RETURNING id`, [`ANA ${RUN}`, fx.storeId])).rows[0].id;
+    await p().query(`INSERT INTO employee_cost_allocations (employee_id, cost_center_id, percent, labor_type) VALUES ($1, $2, 100, 'direct')`, [emp, prodCentre.id]);
+    const routing = (await p().query(
+      `INSERT INTO routings (name, product_id, batch_size, is_active) VALUES ($1, $2, 100, true) RETURNING id`, [`Gamme ANA ${RUN}`, productId])).rows[0].id;
+    await p().query(`INSERT INTO routing_operations (routing_id, sequence, operation_name, duration_min) VALUES ($1, 1, 'Façonnage', 60)`, [routing]);
+    try {
+      engine.invalidateCostModel();
+      const c = await cout.computePlanCost(planIds[0]);   // 100 pièces = 1 fournée = 60 min
+      const std = c.detailMO.find(d => d.employee_id === 'standard')!;
+      expect(std.minutes).toBe(60);
+      const m = await engine.periodModel(fx.storeId, MONTH, { fresh: true });
+      expect(std.hourly_rate).toBe(r2(m.directLabour.rate));
+      expect(c.coutMO).toBe(std.total);
+      expect(m.directLabour.standardHours).toBeGreaterThan(0);
+      expect(m.totals.control).toBe(0);
+    } finally {
+      await p().query(`DELETE FROM routing_operations WHERE routing_id = $1`, [routing]);
+      await p().query(`DELETE FROM routings WHERE id = $1`, [routing]);
+      await p().query(`DELETE FROM employee_cost_allocations WHERE employee_id = $1`, [emp]);
+      await p().query(`DELETE FROM employees WHERE id = $1`, [emp]);
+      engine.invalidateCostModel();
+    }
   });
 
   it('un montant réel saisi pour le mois crée un écart sur budget, le contrôle reste à 0', async () => {

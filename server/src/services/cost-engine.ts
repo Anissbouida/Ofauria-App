@@ -110,6 +110,8 @@ export interface PeriodModel {
   transfers: { from: string; to: string; amount: number }[];
   activity: DriverQty; plansCount: number;
   timedLabour: number;
+  /** Lot B : main-d'œuvre directe du mois (heures payées, pointées, standard, non productives). */
+  directLabour: { rate: number; paidHours: number; timedHours: number; standardHours: number; imputed: number; unproductiveHours: number };
   totals: { charges: number; actual: number; budget: number; imputed: number; activityVariance: number; budgetVariance: number; control: number };
   warnings: string[];
   computedAt: string;
@@ -330,6 +332,38 @@ export async function periodModel(storeId: string | null, month: string, opts: {
       budget: { fixed: -amount, variable: 0 }, actual: { fixed: -amount, variable: 0 } });
   }
 
+  // Lot B (mig 657) : temps standard des gammes pour les lignes sans pointage, valorisé au
+  // taux horaire chargé moyen de la main-d'œuvre directe ; il sort lui aussi des centres.
+  let directCost = 0, paidHours = 0;
+  const directByCentre = new Map<string, number>();
+  for (const e of employees) for (const a of e.allocations) {
+    if (a.laborType !== 'direct') continue;
+    const tot = e.allocations.reduce((t, x) => t + x.percent, 0) || 100;
+    const k = a.percent / tot;
+    directCost += e.budget * k; paidHours += legalHours * k;
+    directByCentre.set(a.centerId, (directByCentre.get(a.centerId) ?? 0) + e.budget * k);
+  }
+  const directRate = paidHours > 0 ? directCost / paidHours : 0;
+  const timedHours = timed.reduce((t, x) => t + Number(x.minutes) / 60, 0);
+  const stdHours = Number((await db.query(
+    `SELECT COALESCE(SUM(s.labor_min), 0)::float8 / 60 AS h
+       FROM production_plan_items ppi
+       JOIN production_plans pp ON pp.id = ppi.plan_id
+       CROSS JOIN LATERAL fn_plan_item_std_minutes(ppi.id) s
+      WHERE pp.store_id IS NOT DISTINCT FROM $1::uuid AND pp.plan_date >= $2::date AND pp.plan_date < $3::date
+        AND pp.status IN ('in_progress', 'completed') AND ppi.status <> 'cancelled'
+        AND NOT EXISTS (SELECT 1 FROM production_item_etapes pie
+                         WHERE pie.plan_item_id = ppi.id AND pie.status = 'completed' AND pie.duree_reelle_min > 0)`,
+    [storeId, from, to])).rows[0].h) || 0;
+  const stdLabour = stdHours * directRate;
+  if (stdLabour > 0 && directCost > 0) {
+    for (const [centreId, cost] of directByCentre) {
+      const amount = stdLabour * cost / directCost;
+      addLine(centreId, { source: 'direct_labour', label: 'Temps standard des gammes imputé en MO directe',
+        budget: { fixed: -amount, variable: 0 }, actual: { fixed: -amount, variable: 0 } });
+    }
+  }
+
   // ── Répartition secondaire : cessions des auxiliaires ──
   const transferRules = (await db.query(
     `SELECT from_center_id, to_center_id, percent::float8 AS percent FROM cost_center_transfers`)).rows as { from_center_id: string; to_center_id: string; percent: number }[];
@@ -453,6 +487,11 @@ export async function periodModel(storeId: string | null, month: string, opts: {
     centres: [...centres.values()], direct, employees,
     transfers: [...flows].map(([k, amount]) => { const [f, t] = k.split('>'); return { from: f, to: t, amount: r2(amount) }; }).filter(x => Math.abs(x.amount) >= 0.01),
     activity: cur.q, plansCount: cur.n, timedLabour: r2(timedLabour),
+    directLabour: {
+      rate: r4(directRate), paidHours: r2(paidHours * ratio), timedHours: r2(timedHours), standardHours: r2(stdHours),
+      imputed: r2(timedLabour + stdLabour),
+      unproductiveHours: r2(Math.max(0, paidHours * ratio - timedHours - stdHours)),
+    },
     totals: {
       charges: r2(chargesStart), actual: r2(actualTotal), budget: r2(budgetTotal), imputed: r2(imputedTotal),
       activityVariance: r2(avTotal), budgetVariance: r2(bvTotal),
@@ -476,7 +515,7 @@ export interface PlanImputation {
   drivers: DriverQty;
   lines: { centreId: string; code: string; name: string; level: Level; driver: Driver; driverLabel: string; quantity: number;
            rateFixed: number; rateVariable: number; fixed: number; variable: number; total: number }[];
-  directLines: { id: string; label: string; productName: string; quantity: number; rate: number; fixed: number; variable: number; total: number }[];
+  directLines: { id: string; label: string; productId: string; productName: string; quantity: number; rate: number; fixed: number; variable: number; total: number }[];
   appro: number; production: number; structure: number; directes: number; total: number;
   variableIndirect: number; variableDirect: number;
   methods: { key: string; label: string; total: number | null; note: string }[];
@@ -515,7 +554,7 @@ export async function imputePlan(planId: string, directCosts: PlanDirectCosts): 
       const qty = Number(q.find(x => x.product_id === ch.productId)?.qty ?? 0);
       if (!qty) continue;
       const fixed = r2(ch.rateFixed * qty), variable = r2(ch.rateVariable * qty);
-      directLines.push({ id: ch.id, label: ch.label, productName: ch.productName, quantity: qty, rate: r4(ch.rateFixed + ch.rateVariable), fixed, variable, total: r2(fixed + variable) });
+      directLines.push({ id: ch.id, label: ch.label, productId: ch.productId, productName: ch.productName, quantity: qty, rate: r4(ch.rateFixed + ch.rateVariable), fixed, variable, total: r2(fixed + variable) });
     }
   }
   const byLevel = (lv: Level[]) => r2(lines.filter(l => lv.includes(l.level)).reduce((s, l) => s + l.total, 0));
@@ -555,9 +594,9 @@ export async function imputePlan(planId: string, directCosts: PlanDirectCosts): 
 }
 
 /** Taux horaire chargé (coût employeur ÷ heures légales) des salariés, pour la MO directe pointée. */
-export async function chargedHourlyRates(planId: string): Promise<Map<string, number>> {
+export async function chargedHourlyRates(planId: string): Promise<{ byEmployee: Map<string, number>; directRate: number }> {
   const plan = (await db.query(`SELECT store_id, to_char(plan_date, 'YYYY-MM') AS month FROM production_plans WHERE id = $1`, [planId])).rows[0];
-  if (!plan) return new Map();
+  if (!plan) return { byEmployee: new Map(), directRate: 0 };
   const model = await periodModel(plan.store_id, plan.month);
-  return new Map(model.employees.map(e => [e.id, e.hourlyRate]));
+  return { byEmployee: new Map(model.employees.map(e => [e.id, e.hourlyRate])), directRate: model.directLabour.rate };
 }

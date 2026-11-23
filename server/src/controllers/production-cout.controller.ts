@@ -113,6 +113,11 @@ export const productionCoutController = {
   async getAllocation(req: AuthRequest, res: Response) {
     const planId = req.params.planId as string;
     const saved = await productionCoutRepository.findByPlan(planId);
+    // Lot A (mig 657) : coût propre de chaque article, enregistré par le calcul analytique.
+    if (saved?.detail_repartition?.key === 'analytique') {
+      res.json({ success: true, data: { total: Number(saved.cout_total), ...saved.detail_repartition } });
+      return;
+    }
     const total = saved?.cout_total != null ? Number(saved.cout_total) : (await productionCoutRepository.computePlanCost(planId)).coutTotal;
     res.json({ success: true, data: { total, ...(await productionCoutRepository.allocate(planId, total)) } });
   },

@@ -136,7 +136,10 @@ interface Niveaux {
   ventes_ht: number; prix_vente_ht_unitaire: number | null; marge: number; marge_unitaire: number | null;
   taux_marge: number | null; taux_marque: number | null;
   items: { plan_item_id: string; product_name: string; quantity: number; prix_vente_ht_u: number | null; cout_production_u: number | null;
-           cout_revient_u: number | null; cout_revient: number; ventes_ht: number; marge: number; taux_marge: number | null; taux_marque: number | null }[];
+           cout_revient_u: number | null; cout_revient: number; ventes_ht: number; marge: number; taux_marge: number | null; taux_marque: number | null;
+           /** Lot A (mig 657) : composantes propres de l'article. */
+           matieres?: number; main_oeuvre?: number; charges_appro?: number; charges_production?: number; charges_structure?: number;
+           charges_directes?: number; labour_hours?: number; labour_source?: 'pointe' | 'standard' | 'aucun' }[];
 }
 
 const LEVEL_SHORT: Record<string, string> = { approvisionnement: 'Approvisionnement', production: 'Production', administration: 'Administration', distribution: 'Distribution' };
@@ -212,6 +215,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
   const niveaux = cout?.niveaux ?? null;
   const analytic = !!cout?.detail_analytique;
   const coutStructure = toNum(cout?.cout_charges_structure);
+  const perItem = !!niveaux?.items.some(i => i.matieres != null);
 
   return (
     <div className="ds-panel pd-section">
@@ -690,7 +694,9 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 <DataPanel label="Coût et marge par article">
                 <table className="odoo-table ds-dense">
                   <thead><tr>
-                    <th>Article</th><th className="ds-num">Quantité</th><th className="ds-num">Coût de production / u</th>
+                    <th>Article</th><th className="ds-num">Quantité</th>
+                    {perItem && <><th className="ds-num">Matières</th><th className="ds-num">M.O.</th><th className="ds-num">Charges</th></>}
+                    <th className="ds-num">Coût de production / u</th>
                     <th className="ds-num">Coût de revient / u</th><th className="ds-num">Prix HT / u</th>
                     <th className="ds-num">Marge</th><th className="ds-num">Taux de marge</th><th className="ds-num">Taux de marque</th>
                   </tr></thead>
@@ -698,6 +704,11 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                     <tr key={it.plan_item_id}>
                       <td className="ds-strong">{it.product_name}</td>
                       <td className="ds-num">{toNum(it.quantity).toLocaleString('fr-FR')}</td>
+                      {perItem && <>
+                        <td className="ds-num">{fmtMoney(it.matieres)}</td>
+                        <td className="ds-num" title={it.labour_source === 'standard' ? 'Temps standard de la gamme' : it.labour_source === 'pointe' ? 'Temps pointé' : 'Aucun temps connu'}>{fmtMoney(it.main_oeuvre)}</td>
+                        <td className="ds-num">{fmtMoney(toNum(it.charges_appro) + toNum(it.charges_production) + toNum(it.charges_structure) + toNum(it.charges_directes))}</td>
+                      </>}
                       <td className="ds-num">{it.cout_production_u != null ? money(it.cout_production_u, { decimals: 4 }) : '—'}</td>
                       <td className="ds-num">{it.cout_revient_u != null ? money(it.cout_revient_u, { decimals: 4 }) : '—'}</td>
                       <td className="ds-num">{it.prix_vente_ht_u != null ? money(it.prix_vente_ht_u, { decimals: 2 }) : '—'}</td>
@@ -708,7 +719,9 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                   ))}</tbody>
                 </table>
                 </DataPanel>
-                <p className="text-[11px] text-gray-400 px-2 pt-1">Coût par article selon la clé de répartition du plan (section « Répartition du coût entre les articles »).</p>
+                <p className="text-[11px] text-gray-400 px-2 pt-1">{perItem
+                  ? 'Coût propre de chaque article : matières de sa fiche (rapprochées des consommations réelles), main-d\'œuvre de ses étapes ou de sa gamme, charges des centres selon ses unités d\'œuvre. Emballages, énergie et façon du plan au prorata des quantités.'
+                  : 'Coût par article selon la clé de répartition du plan (section « Répartition du coût entre les articles »).'}</p>
               </DetailSection>
             )}
 
