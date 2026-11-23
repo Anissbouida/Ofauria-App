@@ -4,6 +4,7 @@ import { strictContainerQty } from '../services/container-rule.js';
 import type { PoolClient } from 'pg';
 import { currencySymbol } from '../services/currency.js';
 import { logger } from '../utils/logger.js';
+import { ZONE } from '../services/stock-roles.js';
 
 export const ingredientLotRepository = {
   /** List lots with filters */
@@ -206,7 +207,7 @@ export const ingredientLotRepository = {
       await client.query(
         `INSERT INTO ingredient_stock_zone_transfers
            (ingredient_lot_id, store_id, from_zone, to_zone, quantity, reason, transferred_by)
-         VALUES ($1, $2, 'PESAGE', 'ECONOMAT', $3, $4, $5)`,
+         VALUES ($1, $2, '${ZONE.opened}', '${ZONE.reserve}', $3, $4, $5)`,
         [lot.id, lot.store_id, quantity, reason || 'Retour en reserve', userId]);
       // Étape 8 : mouvement écrit sur les emplacements (source), zones du lot recalculées.
       await client.query(`SELECT fn_lot_move_role($1::uuid, 'en_cours_ouvert', 'reserve', $2::numeric, 'retour', $3::uuid)`, [lot.id, quantity, userId]);
@@ -250,7 +251,7 @@ export const ingredientLotRepository = {
       await client.query(
         `INSERT INTO ingredient_stock_zone_transfers
            (ingredient_lot_id, store_id, from_zone, to_zone, quantity, container_count, container_type_id, reason, transferred_by)
-         VALUES ($1, $2, 'ECONOMAT', 'PESAGE', $3, $4, $5, $6, $7)`,
+         VALUES ($1, $2, '${ZONE.reserve}', '${ZONE.opened}', $3, $4, $5, $6, $7)`,
         [lot.id, lot.store_id, quantity, containerCount, options.containerTypeId || lot.container_type_id || null,
          options.reason || 'Mise au pesage (preparation)', userId]);
       // Étape 8 : ouverture = mouvement réserve → en-cours ouvert sur les emplacements.

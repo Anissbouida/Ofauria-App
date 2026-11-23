@@ -5,6 +5,8 @@ import type { PoolClient } from 'pg';
 import { packagingItemRepository } from './packaging-item.repository.js';
 import { setActor, setReason, transitionPlan, transitionBon, withActor } from '../services/production-state.js';
 import { roundUpForLot } from '../services/container-rule.js';
+import { BSI_SOURCE, ZONE, type BsiSource } from '../services/stock-roles.js';
+import { sectorRepository } from './sector.repository.js';
 
 type BonRow = Record<string, any>;
 
@@ -47,7 +49,7 @@ const lotClaimsLateral = (alias: string, excludeLine: string) => `
           FROM production_bons_sortie_lignes cl
           JOIN production_bons_sortie cb ON cb.id = cl.bon_id
          WHERE cl.ingredient_lot_id = ${alias}.id
-           AND cl.source_location = 'PESAGE'
+           AND cl.source_location = '${BSI_SOURCE.opened}'
            AND cl.status IN ('en_attente', 'preleve', 'substitue', 'ecart')
            AND cb.status IN ${OPEN_BON_STATUSES}
            AND NOT EXISTS (SELECT 1 FROM production_bons_sortie_ligne_lots x WHERE x.ligne_id = cl.id)
@@ -56,7 +58,7 @@ const lotClaimsLateral = (alias: string, excludeLine: string) => `
           FROM production_bons_sortie_lignes cl
           JOIN production_bons_sortie cb ON cb.id = cl.bon_id
          WHERE cl.suggested_economat_lot_id = ${alias}.id
-           AND cl.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
+           AND cl.source_location = '${BSI_SOURCE.toOpen}'
            AND cl.status = 'en_attente'
            AND cb.status IN ${OPEN_BON_STATUSES}
       ) c
@@ -121,7 +123,7 @@ async function moveEconomatToPesage(
     `INSERT INTO ingredient_stock_zone_transfers
        (ingredient_lot_id, store_id, from_zone, to_zone, quantity, container_count, container_type_id,
         bon_sortie_id, bon_sortie_ligne_id, plan_production_id, reason, transferred_by)
-     VALUES ($1, $2, 'ECONOMAT', 'PESAGE', $3, $4, $5, $6, $7, $8, $9, $10)`,
+     VALUES ($1, $2, '${ZONE.reserve}', '${ZONE.opened}', $3, $4, $5, $6, $7, $8, $9, $10)`,
     [lot.id, params.storeId, params.qty, params.containerCount || null, params.containerTypeId || null,
      params.bonId || null, params.ligneId || null, params.planId || null, params.reason || null, params.userId]
   );
@@ -350,7 +352,7 @@ async function loadBonLines(bonId: string, storeId: string) {
             -- (allocated = 0 tant que le contenant n'est pas ouvert) la cible est la
             -- quantite a transferer.
             fn_weighing_tolerance(bsl.ingredient_id,
-              CASE WHEN bsl.source_location = 'ECONOMAT_REQUIRES_TRANSFER' THEN COALESCE(bsl.transfer_required_qty, bsl.needed_quantity)
+              CASE WHEN bsl.source_location = '${BSI_SOURCE.toOpen}' THEN COALESCE(bsl.transfer_required_qty, bsl.needed_quantity)
                    WHEN bsl.status = 'rupture' AND bsl.allocated_quantity <= 0 THEN bsl.needed_quantity
                    ELSE bsl.allocated_quantity END,
               bsl.unit) AS tolerance_qty,
@@ -364,7 +366,7 @@ async function loadBonLines(bonId: string, storeId: string) {
                     FROM production_bons_sortie_lignes bsl2
                    WHERE bsl2.bon_id = bsl.bon_id
                      AND bsl2.ingredient_lot_id = il2.id
-                     AND bsl2.source_location = 'PESAGE'
+                     AND bsl2.source_location = '${BSI_SOURCE.opened}'
                      AND bsl2.status IN ('en_attente', 'preleve', 'substitue')
                 ), 0))
                 + GREATEST(0, COALESCE(il2.economat_quantity, 0) - COALESCE((
@@ -372,7 +374,7 @@ async function loadBonLines(bonId: string, storeId: string) {
                     FROM production_bons_sortie_lignes bsl2
                    WHERE bsl2.bon_id = bsl.bon_id
                      AND bsl2.suggested_economat_lot_id = il2.id
-                     AND bsl2.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
+                     AND bsl2.source_location = '${BSI_SOURCE.toOpen}'
                      AND bsl2.status = 'en_attente'
                 ), 0))
               )
@@ -397,7 +399,7 @@ async function loadBonLines(bonId: string, storeId: string) {
                   FROM production_bons_sortie_lignes bsl2
                  WHERE bsl2.bon_id = bsl.bon_id
                    AND bsl2.ingredient_lot_id = il2.id
-                   AND bsl2.source_location = 'PESAGE'
+                   AND bsl2.source_location = '${BSI_SOURCE.opened}'
                    AND bsl2.status IN ('en_attente', 'preleve', 'substitue')
               ), 0)))
                 FROM ingredient_lots il2
@@ -503,6 +505,8 @@ export const bonSortieRepository = {
       //                avant de marquer le BSI pret.
       //    - Étape 3 : Pesage + Economat insuffisants → ligne RUPTURE.
       const lines = [];
+      // Étape 8 : la capacité « pesage » (étape 1) décide s'il existe une zone d'en-cours ouvert.
+      const directFromReserve = !(await sectorRepository.featureOn('pesage'));
       for (const need of needsResult.rows) {
         const neededQty = parseFloat(need.needed_quantity);
         let remaining = neededQty;
@@ -575,7 +579,7 @@ export const bonSortieRepository = {
             `INSERT INTO production_bons_sortie_lignes
                (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
                 unit, status, source_location, notes, derogation_dlc)
-             VALUES ($1, $2, $3, $4, $5, $6, 'en_attente', 'PESAGE', $7, $8)
+             VALUES ($1, $2, $3, $4, $5, $6, 'en_attente', '${BSI_SOURCE.opened}', $7, $8)
              RETURNING *`,
             [bon.id, need.ingredient_id, lot.id, take, take, need.ingredient_unit || 'kg',
              `[Pesage] ouvert ${lot.first_opened_at ? new Date(lot.first_opened_at).toLocaleDateString('fr-FR') : ''}${isExpired ? ' — ⚠ DLC depassee (derogation)' : ''}`,
@@ -624,16 +628,27 @@ export const bonSortieRepository = {
             const lotEconomat = lotFree(lot, true).economat;
             const take = Math.min(lotEconomat, remaining);
             if (take <= 1e-9) continue;
-            const lineResult = await client.query(
-              `INSERT INTO production_bons_sortie_lignes
-                 (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
-                  unit, status, source_location, suggested_economat_lot_id, transfer_required_qty, notes)
-               VALUES ($1, $2, NULL, $3, 0, $4, 'en_attente', 'ECONOMAT_REQUIRES_TRANSFER', $5, $6, $7)
-               RETURNING *`,
-              [bon.id, need.ingredient_id, take, need.ingredient_unit || 'kg',
-               lot.id, take,
-               `Transfert requis : ${take.toFixed(2)} ${need.ingredient_unit || 'kg'} depuis Economat (lot ${lot.lot_number})`]
-            );
+            // Étape 8 multi-industries : sans la capacité « pesage », pas de zone d'en-cours
+            // ouvert — la ligne est servie DIRECTEMENT depuis la réserve (lot alloué, aucune
+            // ouverture de contenant) ; la sortie du stock puise dans la réserve du lot.
+            const lineResult = directFromReserve
+              ? await client.query(
+                `INSERT INTO production_bons_sortie_lignes
+                   (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
+                    unit, status, source_location, notes)
+                 VALUES ($1, $2, $3, $4, $4, $5, 'en_attente', '${BSI_SOURCE.opened}', $6)
+                 RETURNING *`,
+                [bon.id, need.ingredient_id, lot.id, take, need.ingredient_unit || 'kg',
+                 `[Réserve] sortie directe (lot ${lot.lot_number})`])
+              : await client.query(
+                `INSERT INTO production_bons_sortie_lignes
+                   (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
+                    unit, status, source_location, suggested_economat_lot_id, transfer_required_qty, notes)
+                 VALUES ($1, $2, NULL, $3, 0, $4, 'en_attente', '${BSI_SOURCE.toOpen}', $5, $6, $7)
+                 RETURNING *`,
+                [bon.id, need.ingredient_id, take, need.ingredient_unit || 'kg',
+                 lot.id, take,
+                 `Transfert requis : ${take.toFixed(2)} ${need.ingredient_unit || 'kg'} depuis Economat (lot ${lot.lot_number})`]);
 
             lines.push({
               ...lineResult.rows[0],
@@ -642,7 +657,7 @@ export const bonSortieRepository = {
               lot_number: lot.lot_number,
               supplier_lot_number: lot.supplier_lot_number,
               expiration_date: lot.expiration_date,
-              stock_source: 'economat_transfer_required',
+              stock_source: directFromReserve ? 'reserve_direct' : 'economat_transfer_required',
             });
 
             remaining -= take;
@@ -992,7 +1007,7 @@ export const bonSortieRepository = {
                  WHERE bsl2.bon_id = bsl.bon_id
                    AND bsl2.id <> bsl.id
                    AND bsl2.ingredient_id = bsl.ingredient_id
-                   AND bsl2.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
+                   AND bsl2.source_location = '${BSI_SOURCE.toOpen}'
                    AND bsl2.status = 'en_attente'
               ), 0) AS economat_available_total
        FROM production_bons_sortie_lignes bsl
@@ -1004,7 +1019,7 @@ export const bonSortieRepository = {
        LEFT JOIN ingredient_lots il ON il.id = bsl.suggested_economat_lot_id
        WHERE ($1::uuid IS NULL OR bs.store_id = $1)
          AND bs.status IN ('genere', 'preparation', 'preparation_partielle', 'pret')
-         AND bsl.source_location = 'ECONOMAT_REQUIRES_TRANSFER'
+         AND bsl.source_location = '${BSI_SOURCE.toOpen}'
          AND bsl.status = 'en_attente'
        ORDER BY pp.plan_date ASC NULLS LAST, bs.numero ASC, ing.name ASC`,
       [useStoreFilter ? storeId : null]
@@ -1128,9 +1143,9 @@ export const bonSortieRepository = {
     }
     const blockersResult = await client.query(
       `SELECT
-         COUNT(*) FILTER (WHERE source_location = 'ECONOMAT_REQUIRES_TRANSFER' AND status = 'en_attente')::int AS pending_transfers,
+         COUNT(*) FILTER (WHERE source_location = '${BSI_SOURCE.toOpen}' AND status = 'en_attente')::int AS pending_transfers,
          COUNT(*) FILTER (WHERE status = 'rupture')::int AS rupture_lines,
-         COUNT(*) FILTER (WHERE status = 'en_attente' AND source_location IS DISTINCT FROM 'ECONOMAT_REQUIRES_TRANSFER')::int AS waiting_lines
+         COUNT(*) FILTER (WHERE status = 'en_attente' AND source_location IS DISTINCT FROM '${BSI_SOURCE.toOpen}')::int AS waiting_lines
        FROM production_bons_sortie_lignes
        WHERE bon_id = $1 AND status != 'annule' AND ingredient_id IS NOT NULL`,
       [bonId]
@@ -1221,7 +1236,7 @@ export const bonSortieRepository = {
                   FROM production_bons_sortie_lignes bsl2
                  WHERE bsl2.bon_id = $3 AND bsl2.id <> $4
                    AND bsl2.ingredient_lot_id = il.id
-                   AND bsl2.source_location = 'PESAGE'
+                   AND bsl2.source_location = '${BSI_SOURCE.opened}'
                    AND bsl2.status IN ('en_attente', 'preleve', 'substitue', 'ecart')
               ), 0)) AS pesage_free,
               ${lotExpiredSql('il')} AS is_expired,
@@ -1269,7 +1284,7 @@ export const bonSortieRepository = {
       if (!['genere', 'preparation', 'preparation_partielle'].includes(line.bon_status)) {
         throw new Error(`Bon de sortie au statut "${line.bon_status}" : plus de transfert possible.`);
       }
-      if (line.source_location !== 'ECONOMAT_REQUIRES_TRANSFER' || line.status !== 'en_attente') {
+      if (line.source_location !== BSI_SOURCE.toOpen || line.status !== 'en_attente') {
         throw new Error(`Cette ligne n'attend pas de transfert (source actuelle : ${line.source_location})`);
       }
 
@@ -1321,7 +1336,7 @@ export const bonSortieRepository = {
         `UPDATE production_bons_sortie_lignes
          SET ingredient_lot_id = $1,
              allocated_quantity = $2,
-             source_location = 'PESAGE',
+             source_location = '${BSI_SOURCE.opened}',
              transferred_at = NOW(),
              transferred_by = $3,
              notes = $4,
@@ -1416,7 +1431,7 @@ export const bonSortieRepository = {
     if (!Number.isFinite(actualQuantity) || actualQuantity < 0) throw new Error('Quantite pesee invalide');
 
     const unit = line.unit || 'kg';
-    const isOpening = line.source_location === 'ECONOMAT_REQUIRES_TRANSFER';
+    const isOpening = line.source_location === BSI_SOURCE.toOpen;
     const isRupture = line.line_status === 'rupture' && !line.ingredient_lot_id;
     // Cible de la pesee : l'allocation ; pour une ligne a ouvrir ou en rupture
     // (allocated = 0), le besoin de la ligne.
@@ -1510,6 +1525,7 @@ export const bonSortieRepository = {
     const containerSize = line.container_size != null ? parseFloat(line.container_size) : 0;
     const used = new Map<string, { row: Record<string, any>; taken: number; opened: number }>();
     let remaining = actualQuantity;
+    const directFromReserve = !(await sectorRepository.featureOn('pesage'));
     const drawPass = async (strict: boolean) => {
       for (const row of candidates) {
         if (remaining <= 1e-9) return;
@@ -1522,7 +1538,9 @@ export const bonSortieRepository = {
         let take = Math.min(remaining, pesageLeft + economatLeft);
         if (take <= 1e-9) continue;
         const shortfall = take - pesageLeft;
-        if (shortfall > 1e-9) {
+        // Étape 8 : sans zone d'en-cours ouvert (capacité « pesage » éteinte), la pesée puise
+        // directement dans la réserve du lot : aucune ouverture de contenant.
+        if (shortfall > 1e-9 && !directFromReserve) {
           // Il faut ouvrir : des contenants entiers quand l'ingredient en a, sinon le manque.
           // Quantite / nombre de contenants saisis : pour la premiere ouverture du lot principal.
           const userOpening = isPrimary && u.opened === 0;
@@ -1640,7 +1658,7 @@ export const bonSortieRepository = {
               ecart_reason      = $9,
               ingredient_lot_id = $11,
               allocated_quantity = $12,
-              source_location   = 'PESAGE',
+              source_location   = '${BSI_SOURCE.opened}',
               transferred_at    = CASE WHEN $13::numeric > 0 THEN NOW() ELSE transferred_at END,
               transferred_by    = CASE WHEN $13::numeric > 0 THEN $6 ELSE transferred_by END,
               updated_at        = NOW()
@@ -1844,10 +1862,10 @@ export const bonSortieRepository = {
         // n'est pas encore servi (allocated=0), donc on peut la basculer en PESAGE
         // si du stock pesage est apparu (transfert deja fait via Economat).
         const isRecyclable = line.status === 'rupture'
-          || (line.status === 'en_attente' && line.source_location === 'ECONOMAT_REQUIRES_TRANSFER');
+          || (line.status === 'en_attente' && line.source_location === BSI_SOURCE.toOpen);
 
         const applyAllocation = async (params: {
-          sourceLocation: 'PESAGE' | 'ECONOMAT_REQUIRES_TRANSFER';
+          sourceLocation: BsiSource;
           lotId: string | null;
           suggestedEcoLotId: string | null;
           qty: number;
@@ -1855,12 +1873,12 @@ export const bonSortieRepository = {
         }) => {
           const { sourceLocation, lotId, suggestedEcoLotId, qty, note } = params;
           if (!firstUpdateDone && isRecyclable) {
-            if (sourceLocation === 'PESAGE') {
+            if (sourceLocation === BSI_SOURCE.opened) {
               await client.query(
                 `UPDATE production_bons_sortie_lignes
                  SET ingredient_lot_id = $1,
                      needed_quantity = $2, allocated_quantity = $2,
-                     status = 'en_attente', source_location = 'PESAGE',
+                     status = 'en_attente', source_location = '${BSI_SOURCE.opened}',
                      suggested_economat_lot_id = NULL, transfer_required_qty = NULL,
                      notes = COALESCE(notes, '') || ' | ' || $3,
                      updated_at = NOW()
@@ -1872,7 +1890,7 @@ export const bonSortieRepository = {
                 `UPDATE production_bons_sortie_lignes
                  SET ingredient_lot_id = NULL,
                      needed_quantity = $1, allocated_quantity = 0,
-                     status = 'en_attente', source_location = 'ECONOMAT_REQUIRES_TRANSFER',
+                     status = 'en_attente', source_location = '${BSI_SOURCE.toOpen}',
                      suggested_economat_lot_id = $2, transfer_required_qty = $1,
                      notes = COALESCE(notes, '') || ' | ' || $3,
                      updated_at = NOW()
@@ -1882,12 +1900,12 @@ export const bonSortieRepository = {
             }
             firstUpdateDone = true;
           } else {
-            if (sourceLocation === 'PESAGE') {
+            if (sourceLocation === BSI_SOURCE.opened) {
               await client.query(
                 `INSERT INTO production_bons_sortie_lignes
                    (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
                     unit, status, source_location, notes)
-                 VALUES ($1, $2, $3, $4, $4, $5, 'en_attente', 'PESAGE', $6)`,
+                 VALUES ($1, $2, $3, $4, $4, $5, 'en_attente', '${BSI_SOURCE.opened}', $6)`,
                 [bonId, line.ingredient_id, lotId, qty, line.ingredient_unit || 'kg', note]
               );
             } else {
@@ -1895,7 +1913,7 @@ export const bonSortieRepository = {
                 `INSERT INTO production_bons_sortie_lignes
                    (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
                     unit, status, source_location, suggested_economat_lot_id, transfer_required_qty, notes)
-                 VALUES ($1, $2, NULL, $3, 0, $4, 'en_attente', 'ECONOMAT_REQUIRES_TRANSFER', $5, $3, $6)`,
+                 VALUES ($1, $2, NULL, $3, 0, $4, 'en_attente', '${BSI_SOURCE.toOpen}', $5, $3, $6)`,
                 [bonId, line.ingredient_id, qty, line.ingredient_unit || 'kg', suggestedEcoLotId, note]
               );
             }
@@ -1942,7 +1960,7 @@ export const bonSortieRepository = {
           if (effective + 1e-9 < Math.min(remaining, Math.max(0.001, 0.05 * stillNeeded))) continue;
           const take = Math.min(effective, remaining);
           await applyAllocation({
-            sourceLocation: 'PESAGE',
+            sourceLocation: BSI_SOURCE.opened,
             lotId: lot.id,
             suggestedEcoLotId: null,
             qty: take,
@@ -1982,7 +2000,7 @@ export const bonSortieRepository = {
             const suggested = ecoLotsResult.rows.find(r => Number(r.effective_economat) > 1e-9);
             if (suggested) {
               await applyAllocation({
-                sourceLocation: 'ECONOMAT_REQUIRES_TRANSFER',
+                sourceLocation: BSI_SOURCE.toOpen,
                 lotId: null,
                 suggestedEcoLotId: suggested.id,
                 qty: transferable,

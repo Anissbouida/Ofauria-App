@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { withActor } from '../services/production-state.js';
+import { BSI_SOURCE } from '../services/stock-roles.js';
 
 /**
  * Substituts d'article (M4-05). Un composant de fiche (recipe_id) — ou de toutes les
@@ -97,7 +98,7 @@ export const recipeSubstituteRepository = {
             original_ingredient_id = COALESCE(original_ingredient_id, ingredient_id),
             original_needed_quantity = COALESCE(original_needed_quantity, needed_quantity),
             ingredient_id = $2, unit = $3, needed_quantity = $4::numeric,
-            source_location = CASE WHEN $6::boolean THEN 'PESAGE' ELSE 'ECONOMAT_REQUIRES_TRANSFER' END,
+            source_location = CASE WHEN $6::boolean THEN '${BSI_SOURCE.opened}' ELSE '${BSI_SOURCE.toOpen}' END,
             ingredient_lot_id = CASE WHEN $6::boolean THEN $5::uuid ELSE NULL END,
             allocated_quantity = CASE WHEN $6::boolean THEN $4::numeric ELSE 0 END,
             suggested_economat_lot_id = CASE WHEN $6::boolean THEN NULL ELSE $5::uuid END,
