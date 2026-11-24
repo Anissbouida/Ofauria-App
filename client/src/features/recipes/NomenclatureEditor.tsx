@@ -22,7 +22,11 @@ interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient' | 
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
 
 const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
-const COLS = '52px 150px minmax(0,1fr) 116px 84px 76px 36px';
+// Colonnes : poignée, nature, composant, quantité saisie, unité, quantité convertie
+// (fournée ↔ pièce, calculée), perte, retrait.
+const COLS = '52px 132px minmax(0,1fr) 108px 80px 120px 72px 36px';
+/** Quantité calculée affichée dans l'unité saisie (420 g reste en g) : 2 décimales, 3 sous 1. */
+const fmtQty = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: Math.abs(v) < 1 ? 3 : 2 });
 const MASS: Record<string, number> = { g: 1, kg: 1000, mg: 0.001 };
 const VOL: Record<string, number> = { ml: 1, cl: 10, dl: 100, l: 1000 };
 function conv(from: string, to: string): number {
@@ -446,6 +450,15 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     ? (rendementKgNum != null && rendementKgNum > 0 ? rendementKgNum : 1)
     : Math.max(1, parseInt(rendement) || 1);
   const uniteTxt: 'pièce' | 'kg' = enKg ? 'kg' : 'pièce';
+  // Quantité vue sur l'autre base : saisie par pièce → pour toute la fournée (× rendement) ;
+  // saisie par fournée → pour une pièce (÷ rendement). Sans objet pour un rendement en kg.
+  const showOther = !enKg && rendementNum > 0;
+  const otherLabel = compoParPiece ? `Pour la ${bLc} (×${rendementNum})` : 'Par pièce';
+  const otherQty = (q: string) => {
+    const v = parseFloat(q.replace(',', '.'));
+    if (!Number.isFinite(v) || v <= 0) return null;
+    return compoParPiece ? v * rendementNum : v / rendementNum;
+  };
   const partsNum = Math.max(1, parseInt(parts) || 1);
   const poidsBrutG = rows.reduce((s, r) => { const eq = baseEquiv(r); return s + (eq ? eq.val : 0); }, 0);
   const perteNum = Math.min(99.99, Math.max(0, np(perte) ?? 0));
@@ -669,6 +682,15 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             {extraUnits.map((u) => <option key={u.code} value={u.code} title={u.label}>{u.code}</option>)}
             {![...UNITES, ...extraUnits.map(u => u.code)].includes(r.unite) && <option value={r.unite}>{r.unite}</option>}
           </select>
+          {(() => {
+            const o = showOther ? otherQty(r.quantite) : null;
+            return (
+              <div className="fx-ro" style={{ justifyContent: 'flex-end', color: o == null ? 'var(--ds-muted)' : undefined }}
+                title={compoParPiece ? `Quantité pour toute la ${bLc} : quantité par pièce × ${rendementNum}` : `Quantité pour une pièce : quantité par ${bLc} ÷ ${rendementNum}`}>
+                {o == null ? '—' : <span>{fmtQty(o)} <span style={{ color: 'var(--ds-muted)' }}>{r.unite}</span></span>}
+              </div>
+            );
+          })()}
           <input type="number" step="any" min="0" max="99"
             aria-label="Perte de la ligne en pourcentage"
             title="Perte sur cette ligne (%) : majore la matière consommée (mig 265)"
@@ -885,6 +907,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="fx-row fx-th" style={{ gridTemplateColumns: COLS }}>
                 <span /><span>Nature</span><span>Composant</span>
                 <span style={{ textAlign: 'right' }}>{compoParPiece ? 'Quantité / pièce' : `Quantité / ${bLc}`}</span><span>Unité</span>
+                <span style={{ textAlign: 'right' }} title="Calculé depuis la quantité saisie et le rendement du format">{showOther ? otherLabel : ''}</span>
                 <span style={{ textAlign: 'right' }} title="Perte sur la ligne : majore la matière consommée">Perte (%)</span>
                 <span />
               </div>
@@ -894,11 +917,13 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               )}
               {rows.length > 0 && (() => {
                 const [tv, tu] = splitW(poidsBrutG);
+                const [ov, ou] = splitW(compoParPiece ? poidsBrutG * rendementNum : poidsBrutG / rendementNum);
                 return (
                   <div className="fx-row fx-total" style={{ gridTemplateColumns: COLS }}>
                     <span /><span />
                     <span>Total {compoParPiece ? 'par pièce' : `par ${bLc}`}</span>
                     <span style={{ textAlign: 'right' }}>{tv}</span><span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>{tu}</span>
+                    <span style={{ textAlign: 'right', paddingRight: 10 }}>{showOther ? <>{ov} <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>{ou}</span></> : null}</span>
                     <span /><span />
                   </div>
                 );
