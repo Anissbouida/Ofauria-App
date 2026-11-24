@@ -224,7 +224,7 @@ export default function NomenclaturePage() {
               {tab === 'ingredients' && <ExplosionSection recipeId={recipe.id} defaultOpen />}
               {tab === 'versions' && <>
                 <VersionsSection recipeId={recipe.id} defaultOpen />
-                <HistoryPanel table="recipes" id={recipe.id} />
+                <HistoryPanel table="recipes" id={recipe.id} defaultOpen />
               </>}
             </div>
           </section>

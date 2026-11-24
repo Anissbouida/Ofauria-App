@@ -212,7 +212,10 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   // (409) si quelqu'un a modifié la composition entre-temps.
   const versionRef = useRef<string | null>(null);
 
-  const { data: roles = [] } = useQuery({ queryKey: ['component-roles'], queryFn: recipesApi.componentRoles, staleTime: 3e5 });
+  // Nature de la ligne (mig 634/636) : la base la déduit de la source (matière, semi-fini,
+  // emballage) et remplace tout autre rôle saisi. Elle s'affiche donc sans être choisie.
+  const natureOf = (t: Row['type']) =>
+    t === 'recipe' ? PT.basePrep : t === 'packaging' ? 'Emballage' : t === 'ingredient' ? PT.ingredient : null;
   // Prix des matières : relus à chaque ouverture de la fiche. Avec un cache de 5 min, un prix
   // changé sur la fiche matière (ou par une réception, une correction de prix) restait l'ancien
   // dans le coût calculé ici tant que la page n'était pas rechargée.
@@ -510,7 +513,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         // Mig 265 (audit A5) : envoie la perte % ligne pour majorer matiere et besoins.
         const perte = r.pertePct != null && r.pertePct !== '' ? parseFloat(r.pertePct.replace(',', '.')) : 0;
         return {
-          role: r.role || null,
+          // Rôle laissé à la base, qui le déduit de la source : renvoyer l'ancien rôle d'une ligne
+          // dont on a changé la source (semi-fini → matière) faisait échouer l'enregistrement.
+          role: null,
           sourceRecipeId: r.type === 'recipe' ? r.sourceId : null,
           sourceIngredientId: r.type === 'ingredient' ? r.sourceId : null,
           sourcePackagingId: r.type === 'packaging' ? r.sourceId : null,
@@ -622,12 +627,10 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               </button>
             ) : <span style={{ width: 22 }} />}
           </div>
-          <select className="ds-input sm" value={r.role} onChange={(e) => setRow(r.key, { role: e.target.value })} title="Rôle du composant" aria-label="Rôle du composant">
-            <option value="">Sans rôle</option>
-            {roles.map((ro) => <option key={ro.code} value={ro.code}>{ro.label}</option>)}
-            {/* M8-06 : rôle d'un autre secteur déjà saisi sur la ligne — conservé et affiché. */}
-            {r.role && !roles.some(ro => ro.code === r.role) && <option value={r.role}>{r.role}</option>}
-          </select>
+          <span title="Nature déduite du composant choisi"
+            style={{ fontSize: 13, paddingTop: 9, color: natureOf(r.type) ? 'var(--ds-ink-2, var(--ds-ink))' : 'var(--ds-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {natureOf(r.type) ?? '—'}
+          </span>
           <div style={{ minWidth: 0 }}>
             <SourcePicker options={sourceOpts} value={src ?? null}
               onPick={(o) => setRow(r.key, { type: o.type, sourceId: o.id, unite: o.unit === 'unit' ? r.unite : o.unit })} />
@@ -880,7 +883,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             {/* Défilement horizontal sur écran étroit : les colonnes fixes gardent la grille lisible. */}
             <div className="fx-grid">
               <div className="fx-row fx-th" style={{ gridTemplateColumns: COLS }}>
-                <span /><span>Rôle</span><span>Composant</span>
+                <span /><span>Nature</span><span>Composant</span>
                 <span style={{ textAlign: 'right' }}>{compoParPiece ? 'Quantité / pièce' : `Quantité / ${bLc}`}</span><span>Unité</span>
                 <span style={{ textAlign: 'right' }} title="Perte sur la ligne : majore la matière consommée">Perte (%)</span>
                 <span />

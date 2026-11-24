@@ -1066,7 +1066,6 @@ export default function ProductionLaunchModal({
                             {c.type === 'recipe' ? 'Préparation' : T.ingredient}
                           </span>
                           {c.name as string}
-                          {c.role && <span className="text-xs text-gray-400">· {c.role as string}</span>}
                         </span>
                         <span className="text-base text-gray-700 font-mono font-semibold">
                           {parseFloat(c.quantite as string).toFixed(2)} {c.unite as string}

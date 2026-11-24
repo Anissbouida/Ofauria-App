@@ -268,7 +268,7 @@ export const recipeController = {
             .map(c => ({
               role: (c.role as string) || null,
               sourceName: (c.source_name as string) || '—',
-              sourceType: c.source_type as 'recipe' | 'ingredient',
+              sourceType: c.source_type as 'recipe' | 'ingredient' | 'packaging',
               quantite: num(c.quantite),
               unite: (c.unite as string) || 'g',
               pertePct: num(c.perte_pct),

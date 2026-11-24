@@ -36,7 +36,7 @@ const BOTTOM = PH - 55;
 export interface FicheComponent {
   role: string | null;
   sourceName: string;
-  sourceType: 'recipe' | 'ingredient';
+  sourceType: 'recipe' | 'ingredient' | 'packaging';
   quantite: number;
   unite: string;
   pertePct: number;
@@ -501,7 +501,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     sectionTitle('Nomenclature par format');
 
     const cCols = [
-      { w: 90, label: 'Rôle', align: 'left' as const },
+      { w: 90, label: 'Nature', align: 'left' as const },
       { w: 265, label: 'Composant', align: 'left' as const },
       { w: 95, label: 'Quantité', align: 'right' as const },
       { w: 65, label: 'Perte', align: 'right' as const },
@@ -528,8 +528,9 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
         // Une conversion d'unite impossible fausse la quantité à sortir : on le signale sur
         // la ligne plutot que de laisser lire un chiffre faux (cf. mig 260).
         const vals = [
-          c.role || '—',
-          c.sourceName + (c.sourceType === 'ingredient' ? '  (ingrédient)' : ''),
+          // Nature déduite de la source (mig 634/636), plus le code de rôle brut (« semi_fini »).
+          c.sourceType === 'recipe' ? 'Préparation de base' : c.sourceType === 'packaging' ? 'Emballage' : 'Ingrédient',
+          c.sourceName,
           c.conversionOk ? qty(c.quantite, c.unite) : `${qty(c.quantite, c.unite)}  (!)`,
           c.pertePct > 0 ? `${n(c.pertePct, 1)} %` : '—',
         ];
