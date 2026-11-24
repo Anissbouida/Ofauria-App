@@ -86,3 +86,21 @@
 .pd-cost .odoo-table tfoot td:last-child { padding-right: 12px !important; }
 .pd-cost .odoo-table.pd-cost-items td:first-child { white-space: normal; }
 .pd-cost .odoo-table tr.ds-muted td { color: var(--ds-muted); }
+
+/* ── Section « Méthode de calcul » : explication du mécanisme avec les chiffres réels ── */
+.pd-method-panel { padding: 0; }
+.pd-method-summary { list-style: none; cursor: pointer; }
+.pd-method-summary::-webkit-details-marker { display: none; }
+.pd-method-summary::after { content: '⌄'; margin-left: 4px; color: var(--ds-muted); font-size: 16px; line-height: 1; }
+.pd-method-panel[open] .pd-method-summary::after { content: '⌃'; }
+.pd-method { padding: 6px 20px 18px; max-width: 900px; }
+.pd-method-step { padding: 14px 0; border-top: 1px solid var(--ds-hair); }
+.pd-method-step:first-child { border-top: 0; }
+.pd-method-step h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; color: var(--ds-ink); }
+.pd-method-step p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ds-body); }
+.pd-method-note { margin-top: 10px; background: var(--ds-tint); border-radius: 10px; padding: 10px 14px; font-size: 13px; line-height: 1.55; color: var(--ds-body); }
+.pd-method-formula { list-style: none; margin: 12px 0 0; padding: 0; }
+.pd-method-formula li { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 7px 0; border-bottom: 1px solid var(--ds-hair); font-size: 13px; }
+.pd-method-formula li:last-child { border-bottom: 0; font-weight: 600; color: var(--ds-ink); }
+.pd-method-formula .f-calc { color: var(--ds-muted); }
+.pd-method-formula .f-res { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ds-ink); }
