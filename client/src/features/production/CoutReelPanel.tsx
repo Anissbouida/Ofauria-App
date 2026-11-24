@@ -8,7 +8,7 @@ import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { Alert, EmptyState, LoadingState, Segmented, Tabs } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
-import { AlertTriangle, Calculator, Info, Layers, Loader2, RefreshCw, Scale } from 'lucide-react';
+import { AlertTriangle, Calculator, Layers, Loader2, RefreshCw, Scale } from 'lucide-react';
 import './production.css';
 import { useProdTerms } from '../../hooks/useProdTerms';
 
@@ -1014,100 +1014,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
           </div>
         )}
       </section>
-
-      {/* ── 4. Méthode de calcul : comment ce coût est obtenu, étape par étape ── */}
-      <CostMethodExplainer cout={cout} niveaux={niveaux} />
     </div>
-  );
-}
-
-/**
- * Méthode de calcul : explique le mécanisme du coût (imputation rationnelle) avec les chiffres
- * réels du plan. Répond à « comment le calcul est fait en arrière ». Dépliable, ouverte par défaut.
- */
-function CostMethodExplainer({ cout, niveaux }: { cout: CoutReel; niveaux: Niveaux | null }) {
-  const da = cout.detail_analytique ?? null;
-  const coutCharges = toNum(cout.cout_charges_fixes);
-  return (
-    <details className="ds-panel pd-section pd-method-panel" open>
-      <summary className="pd-section-head pd-method-summary">
-        <Info size={14} aria-hidden="true" /> Méthode de calcul
-        <span className="pd-cost-note">{da ? 'Comment ce coût est obtenu, étape par étape' : 'Coût réel du plan'}</span>
-      </summary>
-      <div className="pd-method">
-        {!da ? (
-          <div className="pd-method-step">
-            <p>Le coût de revient additionne les consommations réelles du plan — matières au prix du lot utilisé,
-              emballages, main-d'œuvre et énergie déclarées — puis applique un taux de frais généraux au coût des
-              matières. Activez la comptabilité analytique (<Link to="/production/analyse-couts">Production › Analyse des
-              coûts</Link>) pour un calcul par centre de coûts et par article.</p>
-          </div>
-        ) : (
-          <>
-            <div className="pd-method-step">
-              <h4>Étape 1 — Coûts directs, mesurés sur le plan</h4>
-              <p>Chaque consommation est prise à son coût réel. Les matières sont valorisées au prix du lot réellement
-                sorti du stock — le plus proche de sa date limite, lot entamé d'abord. Un produit semi-fini vaut le coût
-                de production du plan qui l'a fabriqué. Main-d'œuvre, énergie, emballages et sous-traitance sont comptés
-                lorsqu'ils sont déclarés.</p>
-            </div>
-            <div className="pd-method-step">
-              <h4>Étape 2 — Taux d'imputation de chaque centre de coûts</h4>
-              <p>Un centre de coûts regroupe ses charges du mois (personnel, loyer, énergie, amortissements…) et reçoit
-                la quote-part des centres auxiliaires, puis fixe son taux.</p>
-              <div className="pd-method-note">Taux = charges mensuelles du centre ÷ <strong>capacité normale</strong> du
-                mois ({da.month}). On divise par la capacité normale, pas par l'activité réelle : un mois creux ne gonfle
-                donc pas le coût des produits — la part non absorbée (sous-activité) reste en écart sur volume. C'est
-                l'imputation rationnelle.</div>
-            </div>
-            <div className="pd-method-step">
-              <h4>Étape 3 — Frais généraux imputés au plan</h4>
-              <p>Chaque centre impute : <strong>taux × quantité d'inducteur</strong> consommée par le plan.</p>
-              <ul className="pd-method-formula">
-                {da.lines.map((d, i) => (
-                  <li key={i}>
-                    <span><strong>{d.name}</strong> <span className="f-calc">{qf(toNum(d.rateFixed) + toNum(d.rateVariable), 4)} × {qf(d.quantity)} · {d.driverLabel}</span></span>
-                    <span className="f-res">{money(d.total)}</span>
-                  </li>
-                ))}
-                {da.direct.map((d, i) => (
-                  <li key={`d${i}`}>
-                    <span><strong>{d.label}</strong> <span className="f-calc">frais direct · {d.productName}</span></span>
-                    <span className="f-res">{money(d.total)}</span>
-                  </li>
-                ))}
-                <li><span><strong>Total des frais généraux imputés</strong></span><span className="f-res">{money(coutCharges)}</span></li>
-              </ul>
-            </div>
-            <div className="pd-method-step">
-              <h4>Étape 4 — Niveaux de coût</h4>
-              <p>Les coûts s'empilent du plus brut au plus complet. Le stock est valorisé au coût de production ;
-                l'administration et la commercialisation ne s'ajoutent qu'ensuite.</p>
-              {niveaux && (
-                <ul className="pd-method-formula">
-                  <li><span>Coût d'achat <span className="f-calc">matières + approvisionnement</span></span><span className="f-res">{money(niveaux.cout_achat)}</span></li>
-                  <li><span>Coût de production <span className="f-calc">+ frais de production — valeur du stock</span></span><span className="f-res">{money(niveaux.cout_production_complet)}</span></li>
-                  <li><span>Coût de revient complet <span className="f-calc">+ administration + commercialisation</span></span><span className="f-res">{money(niveaux.cout_revient_complet)}</span></li>
-                </ul>
-              )}
-            </div>
-            <div className="pd-method-step">
-              <h4>Étape 5 — Du plan à chaque article</h4>
-              <p>Les matières sont réparties entre les articles au prorata du besoin de leur nomenclature (consommation
-                réelle rapprochée des fiches). Les frais généraux suivent les inducteurs propres de chaque article :
-                quantité produite, valeur de ses matières, valeur de sa vente. La somme des articles égale toujours le
-                coût du plan.</p>
-            </div>
-            <div className="pd-method-step">
-              <h4>Étape 6 — Marge et écart au standard</h4>
-              <p>Marge nette = chiffre d'affaires HT − coût de revient complet. L'écart compare le coût réel au coût
-                standard (fiches techniques × quantités produites, mêmes taux de centres) et le décompose en écart sur
-                prix des matières, sur quantité consommée et sur charges des centres.</p>
-            </div>
-          </>
-        )}
-      </div>
-    </details>
   );
 }
 
