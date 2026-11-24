@@ -218,6 +218,9 @@ export const recipesApi = {
     /** total_qty en unité de stock ; display_qty/display_unit dans l'unité saisie sur les fiches. */
     lines: { ingredient_id: string; ingredient_name: string; unit: string; total_qty: number; display_qty?: number; display_unit?: string; rolled_cost: number }[];
     total_cost: number;
+    /** Préparations de base consommées par la production (premier niveau) : quantité sur la même
+     *  base que les lignes (une pièce ou une fournée), dans l'unité de la base, et stock disponible. */
+    bases?: { recipe_id: string; name: string; unit: string; qty: number; stock: number }[];
     /** Base des quantités : une pièce, ou une fournée du format par défaut (pièces ou kg). */
     basis?: { par_piece: boolean; nb_par_defaut: number | null; rendement_kg: number | null } | null;
   }),

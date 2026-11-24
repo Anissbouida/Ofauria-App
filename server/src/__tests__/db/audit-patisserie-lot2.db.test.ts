@@ -158,6 +158,23 @@ describe.skipIf(!hasTestDb)('Audit pâtisserie — lot 2 fournées entières', (
     expect(res.lotAdjustments).toHaveLength(1);
   });
 
+  it('fiche › ingrédients à plat : préparations de base consommées, avec leur stock', async () => {
+    const { recipeRepository } = await import('../../repositories/recipe.repository.js');
+    // 1,5 kg de crème en stock dans l'établissement du test.
+    await p().query(
+      `INSERT INTO semi_finished_stock (recipe_id, store_id, quantity_available, unit) VALUES ($1, $2, 1.5, 'kg')
+       ON CONFLICT (recipe_id, store_id) DO UPDATE SET quantity_available = 1.5`, [creme, fx.storeId]);
+    const res = await recipeRepository.getExplosion(operaRecipe, fx.storeId);
+    // La fiche opéra consomme 2,4 kg de crème par cadre : c'est la base qui sort du stock,
+    // pas le lait qu'elle contient (qui reste listé dans les matières à plat).
+    expect(res.bases).toEqual([{ recipe_id: creme, name: expect.stringContaining('Crème a2'), unit: 'kg', qty: 2.4, stock: 1.5 }]);
+    expect(res.lines.some(l => l.ingredient_id === lait)).toBe(true);
+    // Un autre établissement ne voit pas ce stock.
+    const other = await recipeRepository.getExplosion(operaRecipe, '00000000-0000-0000-0000-000000000001');
+    expect(other.bases[0].stock).toBe(0);
+    await p().query(`UPDATE semi_finished_stock SET quantity_available = 0 WHERE recipe_id = $1`, [creme]);
+  });
+
   it('C-23 : dupliquer un format garde le rendement au kilo et la règle de lot', async () => {
     const { recipeComponentRepository } = await import('../../repositories/recipe-component.repository.js');
     const src = (await p().query(

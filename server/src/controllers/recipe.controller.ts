@@ -57,7 +57,7 @@ export const recipeController = {
     res.json({ success: true, data: { ...recipe, workshop_code: workshop, workshop_label: workshop ? await workshopLabel(workshop) : null, can_edit: canEdit } });
   },
   async getExplosion(req: AuthRequest, res: Response) {
-    const data = await recipeRepository.getExplosion(req.params.id as string);
+    const data = await recipeRepository.getExplosion(req.params.id as string, req.user?.storeId ?? null);
     res.json({ success: true, data });
   },
   async getByProductId(req: AuthRequest, res: Response) {

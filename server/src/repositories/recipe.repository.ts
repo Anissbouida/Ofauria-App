@@ -11,6 +11,7 @@ import {
   type SellingUnit,
 } from '../utils/units.js';
 import { logger } from '../utils/logger.js';
+import { getCompositionForNeeds } from './recipe-composition.helper.js';
 
 // Unit conversion factors to a common base (kg for weight, l for volume)
 const UNIT_TO_BASE: Record<string, { base: string; factor: number }> = {
@@ -1088,7 +1089,7 @@ export const recipeRepository = {
   },
 
   // Explosion à plat (mig 400) : ingrédients élémentaires roulés sur tous les niveaux.
-  async getExplosion(recipeId: string) {
+  async getExplosion(recipeId: string, storeId?: string | null) {
     const result = await db.query(
       `SELECT ingredient_id, ingredient_name, unit,
               -- 6 décimales : arrondir à 3 en kg AVANT la conversion faisait 1,45 g de sel → « 1 g ».
@@ -1141,8 +1142,32 @@ export const recipeRepository = {
                              WHERE recipe_id = r.id AND is_active ORDER BY is_default DESC, ordre LIMIT 1) f ON true
         WHERE r.id = $1`, [recipeId])).rows[0];
     const total = Math.round(lines.reduce((s, x) => s + x.rolled_cost, 0) * 100) / 100;
+    // Préparations de base consommées (2026-11-24) : la production ne sort pas les matières
+    // d'une base, elle consomme la base elle-même (stock de semi-finis) ; ses matières sortent
+    // quand la base est fabriquée. La fiche dit donc quelles bases, combien, et ce qu'il y a
+    // en stock. Premier niveau seulement, bases stockées (un sous-ensemble fantôme n'a pas de stock).
+    const comp = await getCompositionForNeeds(db, recipeId, null);
+    const baseSubs = (comp?.subRecipes ?? []).filter(s => s.isBase && !s.isPhantom && !s.conversionImpossible);
+    const stockById = new Map<string, number>(baseSubs.length === 0 ? [] : (await db.query(
+      `SELECT recipe_id, COALESCE(SUM(quantity_available), 0)::float8 AS qty
+         FROM semi_finished_stock
+        WHERE recipe_id = ANY($1::uuid[]) AND ($2::uuid IS NULL OR store_id = $2::uuid)
+          AND (expires_at IS NULL OR expires_at > NOW())
+        GROUP BY recipe_id`, [baseSubs.map(s => s.subRecipeId), storeId ?? null])).rows
+      .map(r => [r.recipe_id as string, Number(r.qty)]));
+    const basesById = new Map<string, { recipe_id: string; name: string; unit: string; qty: number; stock: number }>();
+    for (const s of baseSubs) {
+      const cur = basesById.get(s.subRecipeId);
+      if (cur) cur.qty = Math.round((cur.qty + s.netQtyPerBatch) * 1e6) / 1e6;
+      else basesById.set(s.subRecipeId, {
+        recipe_id: s.subRecipeId, name: s.name, unit: s.yieldUnit,
+        qty: Math.round(s.netQtyPerBatch * 1e6) / 1e6,
+        stock: Math.round((stockById.get(s.subRecipeId) ?? 0) * 1000) / 1000,
+      });
+    }
     return {
       lines, total_cost: total,
+      bases: [...basesById.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr')),
       basis: basis ? {
         par_piece: basis.compo_par_piece === true,
         nb_par_defaut: basis.nb_par_defaut != null ? Number(basis.nb_par_defaut) : null,
