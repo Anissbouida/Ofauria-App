@@ -45,19 +45,19 @@ export default function SubstitutesPanel({ recipeId }: { recipeId: string }) {
         <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setAdding(a => !a)}>{adding ? 'Fermer' : 'Ajouter'}</button>
       </div>
       <div style={{ padding: '0.5rem 1rem', display: 'grid', gap: 8 }}>
-        {subs.length === 0 && !adding && <span className="text-xs text-gray-500">Aucun substitut : en cas de rupture, le bon de sortie ne propose que d'autres lots du même article.</span>}
+        {subs.length === 0 && !adding && <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Aucun substitut : en cas de rupture, le bon de sortie ne propose que d'autres lots du même article.</span>}
         {subs.length > 0 && (
-          <table className="odoo-table">
-            <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Article</th><th className="text-left px-2">Remplacé par</th><th className="text-right px-2">Ratio</th><th className="text-right px-2">Priorité</th><th className="text-left px-2">Validité</th><th className="text-left px-2">Portée</th><th /></tr></thead>
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Article</th><th>Remplacé par</th><th className="ds-num">Ratio</th><th className="ds-num">Priorité</th><th>Validité</th><th>Portée</th><th /></tr></thead>
             <tbody>{subs.map(s => (
-              <tr key={s.id} className="border-t border-gray-100">
-                <td className="px-2 py-1">{s.ingredient_name}</td>
-                <td className="px-2">{s.substitute_name}</td>
-                <td className="text-right px-2">{Number(s.ratio).toLocaleString('fr-FR')}</td>
-                <td className="text-right px-2">{s.priority}</td>
-                <td className="px-2">{s.valid_from || s.valid_to ? `${s.valid_from?.slice(0, 10) ?? '…'} → ${s.valid_to?.slice(0, 10) ?? '…'}` : 'Permanente'}</td>
-                <td className="px-2">{s.is_global ? 'Toutes les fiches' : 'Cette fiche'}</td>
-                <td className="px-2 text-right"><button type="button" className="bsi-link-btn" aria-label={`Retirer ${s.substitute_name}`} onClick={() => remove.mutate(s.id)}><Trash2 size={12} /></button></td>
+              <tr key={s.id}>
+                <td>{s.ingredient_name}</td>
+                <td>{s.substitute_name}</td>
+                <td className="ds-num">{Number(s.ratio).toLocaleString('fr-FR')}</td>
+                <td className="ds-num">{s.priority}</td>
+                <td>{s.valid_from || s.valid_to ? `${s.valid_from?.slice(0, 10) ?? '…'} → ${s.valid_to?.slice(0, 10) ?? '…'}` : 'Permanente'}</td>
+                <td>{s.is_global ? 'Toutes les fiches' : 'Cette fiche'}</td>
+                <td className="ds-num"><button type="button" className="bsi-link-btn" aria-label={`Retirer ${s.substitute_name}`} onClick={() => remove.mutate(s.id)}><Trash2 size={12} /></button></td>
               </tr>
             ))}</tbody>
           </table>
@@ -66,11 +66,11 @@ export default function SubstitutesPanel({ recipeId }: { recipeId: string }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <SearchSelect options={options} value={form.ingredientId} onChange={v => setForm(f => ({ ...f, ingredientId: v }))} placeholder="Article d'origine…" width={220} ariaLabel="Article d'origine" />
             <SearchSelect options={options.filter(o => o.id !== form.ingredientId)} value={form.substituteIngredientId} onChange={v => setForm(f => ({ ...f, substituteIngredientId: v }))} placeholder="Substitut…" width={220} ariaLabel="Substitut" />
-            <label className="text-xs">Ratio <input className="ds-input sm" style={{ width: 60 }} value={form.ratio} onChange={e => setForm(f => ({ ...f, ratio: e.target.value }))} /></label>
-            <label className="text-xs">Priorité <input className="ds-input sm" style={{ width: 44 }} value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value.replace(/\D/g, '') }))} /></label>
-            <label className="text-xs">Du <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={form.validFrom} onChange={e => setForm(f => ({ ...f, validFrom: e.target.value }))} /></label>
-            <label className="text-xs">au <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={form.validTo} onChange={e => setForm(f => ({ ...f, validTo: e.target.value }))} /></label>
-            <label className="text-xs"><input type="checkbox" checked={form.allRecipes} onChange={e => setForm(f => ({ ...f, allRecipes: e.target.checked }))} /> Toutes les fiches</label>
+            <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Ratio <input className="ds-input sm" style={{ width: 60 }} value={form.ratio} onChange={e => setForm(f => ({ ...f, ratio: e.target.value }))} /></label>
+            <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Priorité <input className="ds-input sm" style={{ width: 44 }} value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value.replace(/\D/g, '') }))} /></label>
+            <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Du <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={form.validFrom} onChange={e => setForm(f => ({ ...f, validFrom: e.target.value }))} /></label>
+            <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>au <input type="date" className="ds-input sm" style={{ width: 'auto' }} value={form.validTo} onChange={e => setForm(f => ({ ...f, validTo: e.target.value }))} /></label>
+            <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={form.allRecipes} onChange={e => setForm(f => ({ ...f, allRecipes: e.target.checked }))} /> Toutes les fiches</label>
             <button type="button" className="odoo-btn-primary" disabled={!form.ingredientId || !form.substituteIngredientId || !ratioOk || !form.priority || create.isPending} onClick={() => create.mutate()}>Enregistrer</button>
           </div>
         )}

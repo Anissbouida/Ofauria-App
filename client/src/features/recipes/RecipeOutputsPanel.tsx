@@ -49,17 +49,17 @@ export default function RecipeOutputsPanel({ recipeId }: { recipeId: string }) {
         <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setAdding(a => !a)}>{adding ? 'Fermer' : 'Ajouter'}</button>
       </div>
       <div style={{ padding: '0.5rem 1rem', display: 'grid', gap: 8 }}>
-        {outs.length === 0 && !adding && <span className="text-xs text-gray-500">Une seule sortie : le produit de la fiche. La coupe reste possible à la déclaration.</span>}
+        {outs.length === 0 && !adding && <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Une seule sortie : le produit de la fiche. La coupe reste possible à la déclaration.</span>}
         {outs.length > 0 && (
-          <table className="odoo-table">
-            <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Produit</th><th className="text-left px-2">Type</th><th className="text-right px-2">Prévu / pièce</th><th className="text-right px-2">Clé de coût</th><th /></tr></thead>
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>Produit</th><th>Type</th><th className="ds-num">Prévu / pièce</th><th className="ds-num">Clé de coût</th><th /></tr></thead>
             <tbody>{outs.map(o => (
-              <tr key={o.id} className="border-t border-gray-100">
-                <td className="px-2 py-1">{o.product_name}</td>
-                <td className="px-2">{TYPE[o.output_type] ?? o.output_type}</td>
-                <td className="text-right px-2">{o.quantity_per_unit != null ? Number(o.quantity_per_unit).toLocaleString('fr-FR') : '—'}</td>
-                <td className="text-right px-2">{o.output_type === 'co_produit' ? `${Number(o.equiv_pieces).toLocaleString('fr-FR')} pièces` : `${money(Number(o.fixed_unit_value))} l'unité (déduit)`}</td>
-                <td className="px-2 text-right"><button type="button" className="bsi-link-btn" aria-label={`Retirer ${o.product_name}`} onClick={() => remove.mutate(o.id)}><Trash2 size={12} /></button></td>
+              <tr key={o.id}>
+                <td>{o.product_name}</td>
+                <td>{TYPE[o.output_type] ?? o.output_type}</td>
+                <td className="ds-num">{o.quantity_per_unit != null ? Number(o.quantity_per_unit).toLocaleString('fr-FR') : '—'}</td>
+                <td className="ds-num">{o.output_type === 'co_produit' ? `${Number(o.equiv_pieces).toLocaleString('fr-FR')} pièces` : `${money(Number(o.fixed_unit_value))} l'unité (déduit)`}</td>
+                <td className="ds-num"><button type="button" className="bsi-link-btn" aria-label={`Retirer ${o.product_name}`} onClick={() => remove.mutate(o.id)}><Trash2 size={12} /></button></td>
               </tr>
             ))}</tbody>
           </table>
@@ -71,9 +71,9 @@ export default function RecipeOutputsPanel({ recipeId }: { recipeId: string }) {
               {Object.entries(TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
             {form.outputType === 'co_produit'
-              ? <label className="text-xs">Vaut <input className="ds-input sm" style={{ width: 60 }} value={form.equivPieces} onChange={e => setForm(f => ({ ...f, equivPieces: e.target.value }))} /> pièces</label>
-              : <label className="text-xs">Valeur unitaire <input className="ds-input sm" style={{ width: 70 }} value={form.fixedUnitValue} onChange={e => setForm(f => ({ ...f, fixedUnitValue: e.target.value }))} /></label>}
-            <label className="text-xs">Prévu par pièce <input className="ds-input sm" style={{ width: 60 }} value={form.quantityPerUnit} onChange={e => setForm(f => ({ ...f, quantityPerUnit: e.target.value }))} /></label>
+              ? <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Vaut <input className="ds-input sm" style={{ width: 60 }} value={form.equivPieces} onChange={e => setForm(f => ({ ...f, equivPieces: e.target.value }))} /> pièces</label>
+              : <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Valeur unitaire <input className="ds-input sm" style={{ width: 70 }} value={form.fixedUnitValue} onChange={e => setForm(f => ({ ...f, fixedUnitValue: e.target.value }))} /></label>}
+            <label style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>Prévu par pièce <input className="ds-input sm" style={{ width: 60 }} value={form.quantityPerUnit} onChange={e => setForm(f => ({ ...f, quantityPerUnit: e.target.value }))} /></label>
             <button type="button" className="odoo-btn-primary" disabled={!form.productId || !keyOk || save.isPending} onClick={() => save.mutate()}>Enregistrer</button>
           </div>
         )}

@@ -21,17 +21,17 @@ export default function RecipeRoutingPanel({ recipeId, recipeName }: { recipeId:
         <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setEditing(routing ? routing.id : 'new')}>{routing ? 'Modifier la gamme' : 'Créer la gamme'}</button>
       </div>
       <div style={{ padding: '0.5rem 1rem' }}>
-        {!routing ? <span className="text-xs text-gray-500">Aucune gamme : l'atelier suit les étapes de la fiche.</span> : (
-          <table className="odoo-table">
-            <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">#</th><th className="text-left px-2">Opération</th><th className="text-left px-2">Type</th><th className="text-left px-2">Poste</th><th className="text-right px-2">MO prévue (min)</th><th className="text-right px-2">Machine (min)</th></tr></thead>
+        {!routing ? <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Aucune gamme : l'atelier suit les étapes de la fiche.</span> : (
+          <table className="odoo-table ds-dense">
+            <thead><tr><th>#</th><th>Opération</th><th>Type</th><th>Poste</th><th className="ds-num">MO prévue (min)</th><th className="ds-num">Machine (min)</th></tr></thead>
             <tbody>{routing.operations.map(o => (
-              <tr key={o.id} className="border-t border-gray-100">
-                <td className="px-2 py-1">{o.sequence}</td>
-                <td className="px-2">{o.operation_name}{o.is_blocking ? ' · bloquante' : ''}{o.control_point ? <div className="text-gray-500">{o.control_point}</div> : null}</td>
-                <td className="px-2">{OP_TYPE_LABELS[o.op_type ?? 'execution']}</td>
-                <td className="px-2">{o.work_center_name ?? '—'}</td>
-                <td className="text-right px-2">{(o.planned_labor_min ?? o.duration_min).toLocaleString('fr-FR')}</td>
-                <td className="text-right px-2">{(o.planned_machine_min ?? 0).toLocaleString('fr-FR')}</td>
+              <tr key={o.id}>
+                <td>{o.sequence}</td>
+                <td>{o.operation_name}{o.is_blocking ? ' · bloquante' : ''}{o.control_point ? <div style={{ color: 'var(--ds-muted)', fontSize: 12 }}>{o.control_point}</div> : null}</td>
+                <td>{OP_TYPE_LABELS[o.op_type ?? 'execution']}</td>
+                <td>{o.work_center_name ?? '—'}</td>
+                <td className="ds-num">{(o.planned_labor_min ?? o.duration_min).toLocaleString('fr-FR')}</td>
+                <td className="ds-num">{(o.planned_machine_min ?? 0).toLocaleString('fr-FR')}</td>
               </tr>
             ))}</tbody>
           </table>

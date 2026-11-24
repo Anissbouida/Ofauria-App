@@ -12,9 +12,9 @@ import '../production/production.css';
  * Quantités seulement (2026-11-24) : le coût de chaque ingrédient se lit dans le coût
  * standard de l'article (Production › Coûts standard), plus sur la fiche technique.
  */
-export default function ExplosionSection({ recipeId }: { recipeId: string }) {
+export default function ExplosionSection({ recipeId, defaultOpen = false }: { recipeId: string; defaultOpen?: boolean }) {
   const { ingredient, ingredients, ingredientsLc } = useProdTerms();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const { data, isLoading } = useQuery({
     queryKey: ['recipe-explosion', recipeId],
     queryFn: () => recipesApi.explosion(recipeId),

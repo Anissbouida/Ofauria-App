@@ -21,8 +21,8 @@ type Version = {
  * (snapshot). On peut revenir à n'importe laquelle. Réintégré dans l'éditeur
  * unifié (L3) — cette fonction n'était plus accessible que depuis un écran mort.
  */
-export default function VersionsSection({ recipeId }: { recipeId: string }) {
-  const [open, setOpen] = useState(false);
+export default function VersionsSection({ recipeId, defaultOpen = false }: { recipeId: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const qc = useQueryClient();
   const confirm = useConfirm();
 
