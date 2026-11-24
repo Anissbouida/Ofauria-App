@@ -211,8 +211,11 @@ export const recipesApi = {
   getById: (id: string) => api.get(`/recipes/${id}`).then(r => r.data.data),
   // Explosion à plat (mig 400) — roadmap lot 5
   explosion: (id: string) => api.get(`/recipes/${id}/explosion`).then(r => r.data.data as {
-    lines: { ingredient_id: string; ingredient_name: string; unit: string; total_qty: number; rolled_cost: number }[];
+    /** total_qty en unité de stock ; display_qty/display_unit dans l'unité saisie sur les fiches. */
+    lines: { ingredient_id: string; ingredient_name: string; unit: string; total_qty: number; display_qty?: number; display_unit?: string; rolled_cost: number }[];
     total_cost: number;
+    /** Base des quantités : une pièce, ou une fournée du format par défaut (pièces ou kg). */
+    basis?: { par_piece: boolean; nb_par_defaut: number | null; rendement_kg: number | null } | null;
   }),
 
   // Remplacement de composant en masse A→B, annulable (mig 401) ; outil de mise à jour des

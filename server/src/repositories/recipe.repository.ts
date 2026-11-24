@@ -1095,15 +1095,56 @@ export const recipeRepository = {
        ORDER BY rolled_cost DESC NULLS LAST, ingredient_name`,
       [recipeId]
     );
-    const lines = result.rows.map(r => ({
-      ingredient_id: r.ingredient_id,
-      ingredient_name: r.ingredient_name,
-      unit: r.unit,
-      total_qty: r.total_qty != null ? parseFloat(r.total_qty) : 0,
-      rolled_cost: r.rolled_cost != null ? parseFloat(r.rolled_cost) : 0,
-    }));
+    // Unité d'affichage = celle SAISIE sur les fiches de l'arbre quand toutes les lignes de
+    // l'ingrédient l'emploient (40 g de fromage restait « 0,04 kg », l'unité de stock) ;
+    // sinon l'unité de stock du cumul.
+    const entered = new Map<string, { unit: string; factor: number }>((await db.query(
+      `WITH RECURSIVE tree(id) AS (
+         SELECT $1::uuid
+         UNION
+         SELECT rc.source_recipe_id FROM recipe_components rc JOIN tree t ON rc.recipe_id = t.id
+          WHERE rc.source_recipe_id IS NOT NULL
+       ), u AS (
+         SELECT rc.source_ingredient_id AS ingredient_id, array_agg(DISTINCT lower(rc.unite)) AS units
+           FROM recipe_components rc JOIN tree t ON rc.recipe_id = t.id
+          WHERE rc.source_ingredient_id IS NOT NULL
+          GROUP BY rc.source_ingredient_id
+       )
+       SELECT u.ingredient_id, u.units[1] AS unit,
+              fn_convert_factor(i.unit::text, u.units[1]::text, 'ingredient', i.id) AS factor
+         FROM u JOIN ingredients i ON i.id = u.ingredient_id
+        WHERE cardinality(u.units) = 1 AND u.units[1] IS DISTINCT FROM lower(i.unit)`, [recipeId])).rows
+      .filter(r => r.factor != null && Number(r.factor) > 0)
+      .map(r => [r.ingredient_id as string, { unit: r.unit as string, factor: Number(r.factor) }]));
+    const lines = result.rows.map(r => {
+      const total = r.total_qty != null ? parseFloat(r.total_qty) : 0;
+      const e = entered.get(r.ingredient_id);
+      return {
+        ingredient_id: r.ingredient_id,
+        ingredient_name: r.ingredient_name,
+        unit: r.unit,
+        total_qty: total,
+        display_qty: e ? Math.round(total * e.factor * 1000) / 1000 : total,
+        display_unit: e ? e.unit : r.unit,
+        rolled_cost: r.rolled_cost != null ? parseFloat(r.rolled_cost) : 0,
+      };
+    });
+    // Base des quantités : la composition décrit une pièce, ou une fournée du format par défaut.
+    const basis = (await db.query(
+      `SELECT r.compo_par_piece, f.nb_par_defaut, f.rendement_unite, f.rendement_kg
+         FROM recipes r
+         LEFT JOIN LATERAL (SELECT nb_par_defaut, rendement_unite, rendement_kg FROM recipe_formats
+                             WHERE recipe_id = r.id AND is_active ORDER BY is_default DESC, ordre LIMIT 1) f ON true
+        WHERE r.id = $1`, [recipeId])).rows[0];
     const total = Math.round(lines.reduce((s, x) => s + x.rolled_cost, 0) * 100) / 100;
-    return { lines, total_cost: total };
+    return {
+      lines, total_cost: total,
+      basis: basis ? {
+        par_piece: basis.compo_par_piece === true,
+        nb_par_defaut: basis.nb_par_defaut != null ? Number(basis.nb_par_defaut) : null,
+        rendement_kg: basis.rendement_unite === 'kg' && basis.rendement_kg != null ? Number(basis.rendement_kg) : null,
+      } : null,
+    };
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
