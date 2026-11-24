@@ -30,26 +30,34 @@ export default function ConsumptionPanel({ planId, mode, canEdit }: { planId: st
   const qty = Number(form.quantity.replace(',', '.'));
 
   return (
-    <div className="ds-panel pd-section" style={{ margin: '1rem' }}>
-      <div className="pd-section-head"><Scale size={13} /> Consommation des matières {manual && <span className="text-xs text-gray-500">— sorties manuelles</span>}</div>
-      <div style={{ padding: '0.5rem 1rem', display: 'grid', gap: 8 }}>
+    <div className="ds-panel pd-section">
+      <div className="pd-section-head">
+        <Scale size={12} aria-hidden="true" /> Consommation des matières
+        <span style={{ color: 'var(--ds-muted)', fontSize: 13, fontWeight: 400 }}>{manual ? 'sorties manuelles' : 'nomenclature appliquée aux quantités produites, face aux sorties réelles'}</span>
+      </div>
+      <div style={{ display: 'grid', gap: 8 }}>
         {data.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table ds-dense">
-            <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Matière</th><th className="text-right px-2">Théorique</th><th className="text-right px-2">Réel</th><th className="text-right px-2">Écart</th></tr></thead>
-            <tbody>{data.map(r => (
-              <tr key={r.ingredient_id} className="border-t border-gray-100">
-                <td className="px-2 py-1">{r.name}</td>
-                <td className="text-right px-2">{r.theoretical.toLocaleString('fr-FR')} {r.unit}</td>
-                <td className="text-right px-2">{r.actual.toLocaleString('fr-FR')} {r.unit}</td>
-                <td className={`text-right px-2 ${Math.abs(r.variance_pct ?? 0) > 5 ? 'text-orange-700 font-semibold' : ''}`}>
-                  {r.variance > 0 ? '+' : ''}{r.variance.toLocaleString('fr-FR')} {r.unit}{r.variance_pct != null ? ` (${r.variance_pct > 0 ? '+' : ''}${r.variance_pct} %)` : ''}
-                </td>
-              </tr>
-            ))}</tbody>
+            <thead><tr><th>Matière</th><th className="ds-num">Théorique</th><th className="ds-num">Réel</th><th className="ds-num">Écart</th></tr></thead>
+            <tbody>{data.map(r => {
+              const strong = Math.abs(r.variance_pct ?? 0) > 5;
+              return (
+                <tr key={r.ingredient_id}>
+                  <td className="ds-strong">{r.name}</td>
+                  <td className="ds-num">{r.theoretical.toLocaleString('fr-FR')} <span style={{ color: 'var(--ds-muted)' }}>{r.unit}</span></td>
+                  <td className="ds-num">{r.actual.toLocaleString('fr-FR')} <span style={{ color: 'var(--ds-muted)' }}>{r.unit}</span></td>
+                  <td className="ds-num" style={strong ? { color: 'var(--ds-warning)', fontWeight: 600 } : undefined}>
+                    {r.variance > 0 ? '+' : ''}{r.variance.toLocaleString('fr-FR')} {r.unit}{r.variance_pct != null ? ` (${r.variance_pct > 0 ? '+' : ''}${r.variance_pct} %)` : ''}
+                  </td>
+                </tr>
+              );
+            })}</tbody>
           </table>
+          </div>
         )}
         {manual && canEdit && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '4px 16px 14px' }}>
             <SearchSelect options={ingredients.map(i => ({ id: i.id, label: i.name }))} value={form.ingredientId} onChange={v => setForm(f => ({ ...f, ingredientId: v }))} placeholder="Matière…" width={240} ariaLabel="Matière sortie" />
             <input className="ds-input sm" style={{ width: 90 }} inputMode="decimal" placeholder="Quantité" aria-label="Quantité sortie" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
             <input className="ds-input sm" style={{ width: 200 }} placeholder="Note (optionnel)" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />

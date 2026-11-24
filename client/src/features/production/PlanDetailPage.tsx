@@ -1437,121 +1437,6 @@ export default function PlanDetailPage() {
       {/* Bloc "Semi-finis requis" retire de cet emplacement — desormais rendu dans la zone Production
           via la variable semiFinishedDepsBlock pour qu'il apparaisse sous les onglets. */}
 
-      {/* ══════════════ SEMI-FINI DEDICATED INTERFACE ══════════════ */}
-      {isSemiFini && (() => {
-        const deps = plan.dependency_of as Record<string, any>[];
-        const dep = deps[0]; // Primary dependency
-        const recipeName = dep.sub_recipe_name as string;
-        const qtyNeeded = parseFloat(dep.quantity_needed as string || dep.quantity_to_produce as string || '0');
-        const yieldQty = parseFloat(dep.yield_quantity as string || '1');
-        const yieldUnit = dep.yield_unit as string || 'kg';
-        const instructions = dep.instructions as string || '';
-        const parentPlanId = dep.parent_plan_id as string;
-        const parentShortId = dep.parent_short_id as string || parentPlanId.slice(0, 8);
-        const parentNotes = dep.parent_notes as string || '';
-        const recipeIngredients = (plan.recipe_ingredients || []) as Record<string, any>[];
-        const multiplier = yieldQty > 0 ? qtyNeeded / yieldQty : 1;
-
-        // Find the corresponding item for this semi-fini
-        const sfItem = (plan.items as Record<string, any>[] || []).find(
-          (it: Record<string, any>) => it.status === 'pending' || it.status === 'in_progress' || it.status === 'completed'
-        );
-        const actualQty = sfItem ? parseFloat(sfItem.actual_quantity as string || '0') : 0;
-        const itemStatus = sfItem?.status as string || 'pending';
-
-        return (
-          <>
-            {/* ── Parent plan section ── */}
-            <div className="ds-panel pd-section">
-              <div className="pd-section-head" style={{ justifyContent: 'space-between' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <Layers size={12} /> Plan parent · #{parentShortId.toUpperCase()} — {format(new Date(dep.parent_plan_date as string), 'dd MMM yyyy', { locale: fr })}
-                </span>
-                <button onClick={() => navigate(`/production/${parentPlanId}`)} className="odoo-btn-secondary ds-btn-sm">
-                  <Eye size={11} /> Voir
-                </button>
-              </div>
-              <div style={{ padding: '0.625rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', backgroundColor: 'var(--ds-card)', fontSize: '12px' }}>
-                {(() => {
-                  const t = planStatusTag(dep.parent_status as string);
-                  return <StatusTag tone={t.tone} icon={t.icon} label={t.label} />;
-                })()}
-                {parentNotes && <span style={{ color: 'var(--ds-muted)' }}>{parentNotes}</span>}
-              </div>
-            </div>
-
-            {/* ── Semi-fini production section ── */}
-            <div className="ds-panel pd-section">
-              <div className="pd-section-head">
-                <Beaker size={12} /> {recipeName} — Préparation de base
-              </div>
-              <div className="odoo-smart-button-row" style={{ borderBottom: '1px solid var(--ds-sep)' }}>
-                <div className="odoo-smart-button">
-                  <div className="odoo-smart-button-value">{qtyNeeded.toFixed(2)}</div>
-                  <div className="odoo-smart-button-label">À produire ({yieldUnit})</div>
-                </div>
-                <div className="odoo-smart-button">
-                  <div className="odoo-smart-button-value" style={{ color: actualQty > 0 ? 'var(--ds-success)' : undefined }}>{actualQty.toFixed(2)}</div>
-                  <div className="odoo-smart-button-label">Produit ({yieldUnit})</div>
-                </div>
-                <div className="odoo-smart-button">
-                  <div className="odoo-smart-button-value" style={{
-                    color: itemStatus === 'completed' ? 'var(--ds-success)' : actualQty > 0 ? 'var(--ds-warning)' : undefined
-                  }}>
-                    {itemStatus === 'completed' ? '100%' : qtyNeeded > 0 ? `${Math.round(actualQty / qtyNeeded * 100)}%` : '0%'}
-                  </div>
-                  <div className="odoo-smart-button-label">Progression</div>
-                </div>
-              </div>
-
-              {/* Recipe instructions */}
-              {instructions && (
-                <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--ds-sep)', backgroundColor: 'var(--ds-card)' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ds-accent)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <BookOpen size={11} /> Instructions
-                  </div>
-                  <p style={{ fontSize: '13px', color: 'var(--ds-ink)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{instructions}</p>
-                </div>
-              )}
-
-              {/* Recipe ingredients */}
-              {recipeIngredients.length > 0 && (
-                <>
-                  <SectionHeader title={<><Scale size={12} /> {T.ingredients}</>}
-                    note={<>×{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit}</>} />
-                  <DataPanel label={`${T.ingredients} de la ${T.recipeLc}`}>
-                  <table className="odoo-table">
-                    <thead>
-                      <tr>
-                        <th>{T.ingredient}</th>
-                        <th className="ds-num">Quantité</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recipeIngredients.map((ri, idx) => {
-                        const baseQty = parseFloat(ri.quantity as string || '0');
-                        const scaledQty = baseQty * multiplier;
-                        const unit = ri.unit as string || ri.base_unit as string || '';
-                        return (
-                          <tr key={idx} style={{ cursor: 'default' }}>
-                            <td className="ds-strong">{ri.ingredient_name as string}</td>
-                            <td className="ds-num">
-                              <strong>{scaledQty.toFixed(3)}</strong>
-                              <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 2 }}>{unit}</span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  </DataPanel>
-                </>
-              )}
-            </div>
-          </>
-        );
-      })()}
-
       {/* ══════════════ ONGLETS (un seul niveau, par sujet) ══════════════ */}
       {/* Pas d'onglets en 'draft' ni pour un plan semi-fini (tout est affiche).
           Production n'apparait qu'une fois la preparation terminee (BSI cloture ou
@@ -1619,6 +1504,121 @@ export default function PlanDetailPage() {
       {/* ══════════════ CORPS : contenu de l'onglet + volet notes/journal ══════════════ */}
       <div className="plan-body">
       <div className="plan-main">
+
+      {/* ══════════════ PLAN SEMI-FINI (2026-11-24, Design System) ══════════════ */}
+      {/* Même gabarit que les autres plans : contenu dans la colonne principale, notes et
+          journal à droite. Le plan parent est rappelé en bandeau, la préparation en panneau
+          (besoin, stock, à produire, produit) avec les ingrédients à peser. */}
+      {isSemiFini && (() => {
+        const deps = plan.dependency_of as Record<string, any>[];
+        const dep = deps[0]; // dépendance principale
+        const recipeName = dep.sub_recipe_name as string;
+        const qtyNeeded = parseFloat(dep.quantity_needed as string || '0');
+        const qtyFromStock = parseFloat(dep.quantity_from_stock as string || '0');
+        // Ce plan fabrique la part non couverte par le stock : les ingrédients s'y rapportent.
+        const qtyToProduce = parseFloat(dep.quantity_to_produce as string || '') || qtyNeeded;
+        const yieldQty = parseFloat(dep.yield_quantity as string || '1');
+        const yieldUnit = dep.yield_unit as string || 'kg';
+        const instructions = dep.instructions as string || '';
+        const parentPlanId = dep.parent_plan_id as string;
+        const parentShortId = dep.parent_short_id as string || parentPlanId.slice(0, 8);
+        const parentNotes = dep.parent_notes as string || '';
+        const recipeIngredients = (plan.recipe_ingredients || []) as Record<string, any>[];
+        const multiplier = yieldQty > 0 ? qtyToProduce / yieldQty : 1;
+        // Ligne du semi-fini : « produced » est le statut d'une ligne fabriquée (il manquait,
+        // d'où « Produit 0,00 » et « 0 % » sur un plan terminé).
+        const sfItem = (plan.items as Record<string, any>[] || []).find(
+          (it: Record<string, any>) => ['pending', 'in_progress', 'produced', 'completed'].includes(it.status as string)
+        );
+        const actualQty = sfItem ? parseFloat(sfItem.actual_quantity as string || '0') : 0;
+        const done = ['produced', 'completed'].includes(sfItem?.status as string);
+        const pct = done ? 100 : qtyToProduce > 0 ? Math.min(100, Math.round(actualQty / qtyToProduce * 100)) : 0;
+        const fq = (v: number, d = 2) => v.toLocaleString('fr-FR', { maximumFractionDigits: d });
+        const parentTag = planStatusTag(dep.parent_status as string);
+
+        return (
+          <>
+            <Alert tone="info" icon={Layers}
+              action={<button type="button" onClick={() => navigate(`/production/${parentPlanId}`)} className="odoo-btn-secondary ds-btn-sm"><Eye size={12} /> Voir le plan</button>}>
+              Préparé pour le plan <strong>#{parentShortId.toUpperCase()}</strong> du {format(new Date(dep.parent_plan_date as string), 'd MMM yyyy', { locale: fr })}
+              {parentNotes ? <> · {parentNotes}</> : null}
+              <span style={{ marginLeft: 8, display: 'inline-flex', verticalAlign: 'middle' }}><StatusTag tone={parentTag.tone} icon={parentTag.icon} label={parentTag.label} /></span>
+            </Alert>
+
+            <div className="ds-panel pd-section">
+              <div className="pd-section-head">
+                <Beaker size={12} /> {recipeName}
+                <span style={{ color: 'var(--ds-muted)', fontSize: 13, fontWeight: 400 }}>{T.basePrep.toLowerCase()}</span>
+                <span style={{ marginLeft: 'auto' }}>
+                  <StatusTag tone={done ? 'done' : actualQty > 0 ? 'progress' : 'todo'} label={done ? 'Produit' : actualQty > 0 ? `${pct} %` : 'À produire'} />
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', borderBottom: '1px solid var(--ds-hair)' }}>
+                {[
+                  { label: 'Besoin du plan parent', value: qtyNeeded },
+                  { label: 'Pris en stock', value: qtyFromStock, muted: qtyFromStock <= 0 },
+                  { label: 'À produire', value: qtyToProduce, strong: true },
+                  { label: `Produit · ${pct} %`, value: actualQty, ok: done },
+                ].map((k, i) => (
+                  <div key={k.label} style={{ padding: '12px 16px', borderLeft: i ? '1px solid var(--ds-hair)' : undefined }}>
+                    <div style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{k.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: k.ok ? 'var(--ds-success)' : k.muted ? 'var(--ds-muted)' : 'var(--ds-ink)' }}>
+                      {k.muted ? '—' : fq(k.value)} {!k.muted && <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ds-muted)' }}>{yieldUnit}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {instructions && (
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--ds-hair)' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ds-ink)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <BookOpen size={12} aria-hidden="true" /> Instructions
+                  </div>
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--ds-body)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>{instructions}</p>
+                </div>
+              )}
+
+              {recipeIngredients.length > 0 ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '12px 16px 4px' }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)' }}><Scale size={12} aria-hidden="true" /> {T.ingredients} à peser</span>
+                    <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>
+                      {fq(qtyToProduce)} {yieldUnit} = {fq(multiplier, 2)} × la {T.recipeLc} ({fq(yieldQty)} {yieldUnit})
+                    </span>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="odoo-table ds-dense" aria-label={`${T.ingredients} à peser pour ${recipeName}`}>
+                      <thead><tr>
+                        <th>{T.ingredient}</th>
+                        <th className="ds-num">Pour la {T.recipeLc}</th>
+                        <th className="ds-num">À peser</th>
+                      </tr></thead>
+                      <tbody>
+                        {recipeIngredients.map((ri, idx) => {
+                          const baseQty = parseFloat(ri.quantity as string || '0');
+                          const unit = ri.unit as string || ri.base_unit as string || '';
+                          // Unité saisie sur la fiche conservée ; arrondi adapté à l'unité.
+                          const dec = ['g', 'ml', 'mg'].includes(unit) ? 0 : unit === 'unit' ? 1 : 3;
+                          return (
+                            <tr key={(ri.ingredient_id as string) ?? idx}>
+                              <td className="ds-strong">{ri.ingredient_name as string}</td>
+                              <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>{fq(baseQty, 3)} {unit}</td>
+                              <td className="ds-num"><strong>{fq(baseQty * multiplier, dec)}</strong> <span style={{ color: 'var(--ds-muted)' }}>{unit}</span></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <EmptyState bare icon={Scale} title={`${T.ingredients} : aucune ligne`} text={`La ${T.recipeLc} de ${recipeName} n'a pas de composition matière.`} />
+              )}
+            </div>
+          </>
+        );
+      })()}
+
 
       {/* ══════════════ SYNTHESE ══════════════ */}
       {showSynth && (
