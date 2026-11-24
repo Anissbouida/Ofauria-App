@@ -68,10 +68,15 @@ export async function getCompositionForNeeds(
   const recResult = await client.query(
     `SELECT r.id, r.name, r.yield_quantity, r.yield_unit, r.mode_cout,
             r.compo_par_piece, r.pieces_par_fournee,
-            (SELECT rf.nb_par_defaut FROM recipe_formats rf
-              WHERE rf.recipe_id = r.id AND rf.is_active = true
-              ORDER BY rf.is_default DESC, rf.ordre LIMIT 1) AS default_format_nb
-     FROM recipes r WHERE r.id = $1`,
+            df.nb_par_defaut AS default_format_nb,
+            CASE WHEN df.rendement_unite = 'kg' AND df.rendement_kg > 0 THEN df.rendement_kg END AS default_format_kg
+     FROM recipes r
+     LEFT JOIN LATERAL (
+       SELECT rf.nb_par_defaut, rf.rendement_unite, rf.rendement_kg FROM recipe_formats rf
+        WHERE rf.recipe_id = r.id AND rf.is_active = true
+        ORDER BY rf.is_default DESC, rf.ordre LIMIT 1
+     ) df ON true
+     WHERE r.id = $1`,
     [recipeId]
   );
   if (!recResult.rows[0]) return null;
@@ -84,12 +89,16 @@ export async function getCompositionForNeeds(
     let rows: any[] = [];
     let source: RecipeComposition['source'] = 'recipe_components';
     let formatNb: number | null = null;
+    // Mig 613 : format au kilo → la fournée donne rendement_kg kilos ; nb_par_defaut y est
+    // un reste sans valeur (5 pour une « Bassine 5 kg » qui rend 2,9 kg).
+    let formatKg: number | null = null;
 
     if (formatId) {
       // Le format doit appartenir a la recette : un format_id etranger sur un
       // item de plan ne doit pas injecter la composition d'une autre recette.
       const fmt = await client.query(
-        `SELECT nb_par_defaut FROM recipe_formats WHERE id = $1 AND recipe_id = $2`,
+        `SELECT nb_par_defaut, CASE WHEN rendement_unite = 'kg' AND rendement_kg > 0 THEN rendement_kg END AS rendement_kg
+           FROM recipe_formats WHERE id = $1 AND recipe_id = $2`,
         [formatId, recipeId]
       );
       if (fmt.rows[0]) {
@@ -98,19 +107,26 @@ export async function getCompositionForNeeds(
           rows = fmtRows.rows;
           source = 'recipe_format_components';
           formatNb = parseInt(fmt.rows[0].nb_par_defaut);
+          formatKg = fmt.rows[0].rendement_kg != null ? parseFloat(fmt.rows[0].rendement_kg) : null;
         }
       }
     }
     if (rows.length === 0) {
       rows = (await client.query(componentQuery('recipe_components', 'recipe_id'), [recipeId])).rows;
       source = 'recipe_components';
+      // recipe_components est le miroir du format par défaut : son rendement kilo s'applique.
+      formatKg = rec.default_format_kg != null ? parseFloat(rec.default_format_kg) : null;
     }
 
     if (rows.length > 0) {
-      // Diviseur : la compo decrit 1 piece, ou 1 fournee de `rendement` pieces.
+      // Diviseur : la compo decrit 1 piece, ou 1 fournee de `rendement` pieces — ou de
+      // `rendement_kg` kilos pour un format au kilo (mig 613). Sans ce cas, 7 kg de crème
+      // pâtissière (fournée de 2,9 kg, format « Bassine 5 kg ») comptaient 7/5 = 1,4 fournée
+      // au lieu de 2,41 : besoins, sorties de stock et théorique sous-estimés de 42 %.
       let batchDivisor = 1;
       if (rec.compo_par_piece !== true) {
-        const rendement = (formatNb && formatNb > 0 ? formatNb : null)
+        const rendement = (formatKg && formatKg > 0 ? formatKg : null)
+          ?? (formatNb && formatNb > 0 ? formatNb : null)
           ?? (rec.pieces_par_fournee && parseInt(rec.pieces_par_fournee) > 0 ? parseInt(rec.pieces_par_fournee) : null)
           ?? (rec.default_format_nb && parseInt(rec.default_format_nb) > 0 ? parseInt(rec.default_format_nb) : null)
           ?? yieldQty;

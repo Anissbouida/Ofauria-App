@@ -71,6 +71,18 @@ describe.skipIf(!hasTestDb)('Rendement kilo d\'une préparation de base', () => 
     expect(Number(c.cout_dh)).toBeCloseTo(0.06 * 12.5, 4);
   });
 
+  it('les besoins d\'une quantité en kilos se divisent par le rendement kilo, pas par nb_par_defaut', async () => {
+    // Format au kilo : fournée de 10 kg de farine qui rend 8 kg ; nb_par_defaut reste à 10
+    // (valeur sans objet, comme « Bassine 5 kg » qui rend 2,9 kg). 16 kg = 2 fournées.
+    const { collectIngredientNeedsForUnits } = await import('../../repositories/recipe-composition.helper.js');
+    for (const formatId of [null, baseFormatId]) {
+      const needs = new Map<string, number>();
+      await collectIngredientNeedsForUnits(repos.db as never, baseId, 16,
+        (id, q) => needs.set(id, (needs.get(id) ?? 0) + q), { formatId });
+      expect(needs.get(farine)).toBeCloseTo(20, 4);
+    }
+  });
+
   it('une base en pièces garde son rendement recette', async () => {
     const { id, formatId } = await newBase('Base pièces');
     await p().query(`UPDATE recipes SET yield_quantity = 5 WHERE id = $1`, [id]);

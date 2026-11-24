@@ -53,7 +53,9 @@ export const productionConsumptionRepository = {
   async variance(planId: string) {
     const items = (await db.query(
       `SELECT ppi.id, ppi.product_id, ppi.format_id, ppi.actual_quantity, ppi.alt_recipe_id,
-              COALESCE(ppi.alt_recipe_id, (SELECT r.id FROM recipes r WHERE r.product_id = ppi.product_id LIMIT 1)) AS recipe_id
+              -- Ligne de plan semi-fini : pas d'article, la recette est base_recipe_id (sinon
+              -- le théorique restait à 0 sur toutes les matières).
+              COALESCE(ppi.alt_recipe_id, (SELECT r.id FROM recipes r WHERE r.product_id = ppi.product_id LIMIT 1), ppi.base_recipe_id) AS recipe_id
          FROM production_plan_items ppi WHERE ppi.plan_id = $1 AND ppi.actual_quantity > 0`, [planId])).rows;
     const theo = new Map<string, number>();
     // M4-02 : théorique sur la version de nomenclature en vigueur à la date du plan, dans une
