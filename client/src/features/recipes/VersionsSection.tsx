@@ -11,7 +11,9 @@ import '../production/production.css';
 type Version = {
   version_number: number;
   change_note?: string | null;
+  /** L'API renvoie created_at ; changed_at gardé pour compatibilité. */
   changed_at?: string;
+  created_at?: string;
   changed_by_name?: string | null;
 };
 
@@ -79,7 +81,7 @@ export default function VersionsSection({ recipeId, defaultOpen = false }: { rec
             <ErrorState bare error={error} title="L'historique n'a pas pu être chargé" />
           )}
           {!isLoading && !isError && versions.length === 0 && (
-            <EmptyState bare icon={History} title="Aucune version enregistrée" text="Une version est créée à chaque modification de la composition ou de la finance." />
+            <EmptyState bare icon={History} title="Aucune version enregistrée" text="Une version est créée à chaque modification de la composition." />
           )}
           {!isLoading && !isError && versions.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
@@ -97,7 +99,7 @@ export default function VersionsSection({ recipeId, defaultOpen = false }: { rec
                   {versions.map((v) => (
                     <tr key={v.version_number}>
                       <td className="ds-num ds-strong">{v.version_number}</td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(v.changed_at)}</td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(v.changed_at ?? v.created_at)}</td>
                       <td>{v.changed_by_name || '—'}</td>
                       <td style={{ color: 'var(--ds-muted)' }}>{v.change_note || '—'}</td>
                       <td className="ds-actions">
@@ -117,7 +119,7 @@ export default function VersionsSection({ recipeId, defaultOpen = false }: { rec
             </div>
           )}
           <p style={{ fontSize: '0.72rem', color: 'var(--ds-muted)', padding: '6px 2px 0' }}>
-            Chaque modification de composition ou de finance, et chaque restauration, crée une version. Restaurer remplace l'état actuel.
+            Chaque modification de composition, et chaque restauration, crée une version. Restaurer remplace l'état actuel.
           </p>
         </div>
       )}
