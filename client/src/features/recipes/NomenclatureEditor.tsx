@@ -453,7 +453,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   // Quantité vue sur l'autre base : saisie par pièce → pour toute la fournée (× rendement) ;
   // saisie par fournée → pour une pièce (÷ rendement). Sans objet pour un rendement en kg.
   const showOther = !enKg && rendementNum > 0;
-  const otherLabel = compoParPiece ? `Pour la ${bLc} (×${rendementNum})` : 'Par pièce';
+  const otherLabel = compoParPiece ? `${PT.batch} ×${rendementNum}` : 'Par pièce';
   const otherQty = (q: string) => {
     const v = parseFloat(q.replace(',', '.'));
     if (!Number.isFinite(v) || v <= 0) return null;
@@ -464,7 +464,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const perteNum = Math.min(99.99, Math.max(0, np(perte) ?? 0));
   const poidsCuitG = poidsBrutG * (1 - perteNum / 100);
   // Sépare valeur et unité pour aligner la colonne unité dans la carte rendement.
-  const splitW = (g: number): [string, string] => g <= 0 ? ['—', ''] : g >= 1000 ? [(g / 1000).toFixed(g >= 10000 ? 1 : 2), 'kg'] : [String(Math.round(g)), 'g'];
+  const splitW = (g: number): [string, string] => {
+    if (g <= 0) return ['—', ''];
+    if (g < 1000) return [String(Math.round(g)), 'g'];
+    const d = g >= 10000 ? 1 : 2;
+    return [(g / 1000).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d }), 'kg'];
+  };
 
   // Remonte les données techniques du format actif au parent (indicateurs de la fiche).
   const poidsPieceG = poidsBrutG > 0 ? (compoParPiece ? poidsBrutG : poidsBrutG / rendementNum) : null;
