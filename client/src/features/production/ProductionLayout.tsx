@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 
-type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | 'haccp' | 'replenishment' | 'costs' | 'analytic' | 'recipes' | 'workcenters' | 'settings' | 'disassembly';
+type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | 'haccp' | 'replenishment' | 'costs' | 'analytic' | 'recipes' | 'cost-settings' | 'workcenters' | 'settings' | 'disassembly';
 
 /**
  * Module Production : ses écrans sont des pages distinctes (plans, tableau de bord,
@@ -39,6 +39,8 @@ export default function ProductionLayout() {
     // Mig 655 : comptabilité analytique (centres, charges, personnel, sous-activité) — gérant.
     { key: 'analytic', label: 'Analyse des coûts', icon: Calculator, section: 'reports', href: '/production/analyse-couts', hidden: !hasModule('production') || !canEdit('production') },
     { key: 'recipes', label: sectorLabel('recipes', 'Fiches techniques'), icon: ChefHat, section: 'setup', href: '/recipes', hidden: !hasModule('recipes') },
+    // 2026-11-24 : tout le paramétrage du coût (mode, centres, charges, personnel, clés, équipements).
+    { key: 'cost-settings', label: 'Coût de revient', icon: Calculator, section: 'setup', href: '/production/cout-de-revient', hidden: !hasModule('production') || !canEdit('production') },
     { key: 'workcenters', label: 'Postes & gammes', icon: Cog, section: 'setup', href: '/production/work-centers', hidden: !hasModule('production') },
     { key: 'settings', label: 'Paramétrage', icon: SlidersHorizontal, section: 'setup', href: '/production/settings', hidden: !isProductionRole },
   ];

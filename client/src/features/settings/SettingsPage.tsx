@@ -1,7 +1,7 @@
 import { currencySymbol } from '../../utils/money';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSettings } from '../../context/SettingsContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { allowedSettingsSections } from '@ofauria/shared';
@@ -216,8 +216,12 @@ function SettingsShell() {
       <SettingsTabs label="Réglages de production" tabs={[
         { key: 'assistant', label: 'Assistant', content: <ProductionSetupWizard /> },
         { key: 'workshops', label: 'Ateliers', content: <WorkshopsCard /> },
-        { key: 'costs', label: 'Coûts et prix',
-          content: <ParametersPanel keys={['production.fixed_charges', 'production.cost_components', 'production.ledger_entries', 'production.steps_blocking', 'pricing.rounding', 'stock.negative_policy', 'stock.dlc_alerts']} /> },
+        { key: 'costs', label: 'Prix et règles',
+          content: <>
+            <PageNote>Le coût de revient (mode de calcul, composantes, centres de coûts, charges) se paramètre dans
+              {' '}<Link to="/production/cout-de-revient">Production › Paramétrage › Coût de revient</Link>.</PageNote>
+            <ParametersPanel keys={['production.steps_blocking', 'pricing.rounding', 'stock.negative_policy', 'stock.dlc_alerts']} />
+          </> },
         { key: 'markup', label: 'Majoration', content: <ProductionMarkupTab /> },
         { key: 'process', label: 'Parcours', content: <ProcessModelsTab /> },
         { key: 'documents', label: 'Documents', content: <ProductionDocumentsTab /> },

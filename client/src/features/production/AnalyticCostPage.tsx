@@ -1,13 +1,14 @@
 /**
  * Analyse des coûts (mig 655) — comptabilité analytique du coût de revient.
  *
- * Onglets : Période (absorption des charges, sous-activité, contrôle d'équilibre),
- * Centres (inducteurs, capacités, cessions), Charges (fixes / variables × directes /
- * indirectes, prévu et réel), Personnel (coût employeur par centre), Clés (% par centre).
+ * Lecture (2026-11-24) : Période (absorption des charges, sous-activité, contrôle d'équilibre,
+ * clôture) et Rentabilité. Le paramétrage (centres, charges, personnel, clés, équipements) est
+ * dans Production › Paramétrage › Coût de revient, qui réutilise les onglets exportés ici.
  */
 import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calculator, Plus, RefreshCw, Pencil, Power, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Trash2, Lock, Unlock, Printer } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Calculator, Plus, RefreshCw, SlidersHorizontal, Pencil, Power, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Trash2, Lock, Unlock, Printer } from 'lucide-react';
 import SalesPageShell from '../sales/SalesPageShell';
 import { Alert, DataPanel, EmptyState, ErrorState, FormField, FormFooter, FormSection, KpiCard, KpiGrid, LoadingState, Modal, Tabs, Toolbar } from '../../components/ds';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -24,7 +25,7 @@ import {
   type Driver, type EmployeeCost, type Level, type PeriodReport, type Reconciliation, type Profitability, type Equipment, type ToolInput,
 } from '../../api/analytic-cost.api';
 
-type TabKey = 'periode' | 'rentabilite' | 'centres' | 'charges' | 'equipements' | 'personnel' | 'cles';
+type TabKey = 'periode' | 'rentabilite';
 
 const LEVEL_LABEL: Record<Level, string> = {
   approvisionnement: 'Approvisionnement', production: 'Production', administration: 'Administration', distribution: 'Distribution',
@@ -109,6 +110,7 @@ export default function AnalyticCostPage() {
             <Lock size={14} aria-hidden="true" /> {close.isPending ? 'Clôture en cours…' : 'Clôturer le mois'}
           </button>
         )}
+        <Link to="/production/cout-de-revient" className="odoo-btn-secondary"><SlidersHorizontal size={14} aria-hidden="true" /> Paramétrer</Link>
         {isClosed && (<>
           <button type="button" className="odoo-btn-secondary" onClick={() => window.print()}><Printer size={14} aria-hidden="true" /> Imprimer le rapport</button>
           <button type="button" className="odoo-btn-secondary" onClick={() => setReopening(true)}><Unlock size={14} aria-hidden="true" /> Rouvrir</button>
@@ -134,23 +136,18 @@ export default function AnalyticCostPage() {
           action={<button type="button" className="odoo-btn-primary" disabled={setMethod.isPending} onClick={() => setMethod.mutate('analytic')}>Activer le moteur analytique</button>}>
           Le coût de revient utilise encore un taux forfaitaire sur les matières. Le moteur analytique répartit les charges par centre
           et sur la capacité normale de production : une baisse d'activité n'alourdit plus le coût des produits.
+          {' '}Le mode se règle aussi dans <Link to="/production/cout-de-revient?tab=methode">Paramétrage › Coût de revient</Link>.
         </Alert>
       )}
       <Toolbar>
         <Tabs label="Analyse des coûts" value={tab} onChange={setTab} tabs={[
-          { key: 'periode', label: 'Période' }, { key: 'rentabilite', label: 'Rentabilité' }, { key: 'centres', label: 'Centres de coûts' }, { key: 'charges', label: 'Charges' }, { key: 'equipements', label: 'Équipements et outils' },
-          { key: 'personnel', label: 'Personnel' }, { key: 'cles', label: 'Clés de répartition' },
+          { key: 'periode', label: 'Période' }, { key: 'rentabilite', label: 'Rentabilité' },
         ]} />
       </Toolbar>
       {meta.isLoading ? <LoadingState /> : meta.isError ? <ErrorState error={meta.error} onRetry={() => meta.refetch()} /> : meta.data ? (
         <>
           {tab === 'periode' && <PeriodTab month={month} meta={meta.data} />}
           {tab === 'rentabilite' && <ProfitabilityTab month={month} />}
-          {tab === 'centres' && <CentresTab meta={meta.data} />}
-          {tab === 'charges' && <ChargesTab month={month} meta={meta.data} closed={isClosed} />}
-          {tab === 'equipements' && <EquipmentTab month={month} />}
-          {tab === 'personnel' && <PersonnelTab month={month} />}
-          {tab === 'cles' && <KeysTab />}
         </>
       ) : null}
     </SalesPageShell>
@@ -325,7 +322,7 @@ function CentreDetail({ c, name, transfers }: { c: CentreModel; name: (id: strin
 }
 
 // ═══ Centres ═══════════════════════════════════════════════════════════════
-function CentresTab({ meta }: { meta: AnalyticMeta }) {
+export function CentresTab({ meta }: { meta: AnalyticMeta }) {
   const q = useQuery({ queryKey: ['analytic', 'centres'], queryFn: analyticCostApi.centres });
   const [edit, setEdit] = useState<Centre | 'new' | null>(null);
   const qc = useQueryClient();
@@ -470,7 +467,7 @@ function CentreModal({ centre, centres, meta, onClose }: { centre: Centre | null
 }
 
 // ═══ Charges ═══════════════════════════════════════════════════════════════
-function ChargesTab({ month, meta, closed }: { month: string; meta: AnalyticMeta; closed: boolean }) {
+export function ChargesTab({ month, meta, closed }: { month: string; meta: AnalyticMeta; closed: boolean }) {
   const q = useQuery({ queryKey: ['analytic', 'charges', month], queryFn: () => analyticCostApi.charges(month) });
   const centres = useQuery({ queryKey: ['analytic', 'centres'], queryFn: analyticCostApi.centres });
   const keys = useQuery({ queryKey: ['analytic', 'keys'], queryFn: analyticCostApi.keys });
@@ -718,7 +715,7 @@ function ChargeModal({ charge, meta, centres, keys, onClose }: { charge: Charge 
 // ═══ Personnel ═════════════════════════════════════════════════════════════
 const SOURCE_LABEL: Record<EmployeeCost['source'], string> = { payroll: 'paie du mois', last_payroll: 'dernière paie', estimate: 'estimé (salaire + charges)' };
 
-function PersonnelTab({ month }: { month: string }) {
+export function PersonnelTab({ month }: { month: string }) {
   const q = useQuery({ queryKey: ['analytic', 'personnel', month], queryFn: () => analyticCostApi.personnel(month) });
   const centres = useQuery({ queryKey: ['analytic', 'centres'], queryFn: analyticCostApi.centres });
   const [edit, setEdit] = useState<EmployeeCost | null>(null);
@@ -790,7 +787,7 @@ function AllocationModal({ emp, centres, onClose }: { emp: EmployeeCost; centres
 }
 
 // ═══ Clés de répartition ═══════════════════════════════════════════════════
-function KeysTab() {
+export function KeysTab() {
   const q = useQuery({ queryKey: ['analytic', 'keys'], queryFn: analyticCostApi.keys });
   const centres = useQuery({ queryKey: ['analytic', 'centres'], queryFn: analyticCostApi.centres });
   const [edit, setEdit] = useState<{ id: string | null; name: string; lines: { centerId: string; percent: string }[] } | null>(null);
@@ -979,7 +976,7 @@ function ProfitabilityTab({ month }: { month: string }) {
 // ═══ Équipements et outils (mig 660) ═══════════════════════════════════════
 const TOOL_CATEGORIES: Record<string, string> = { moule: 'Moules', plaque: 'Plaques et grilles', ustensile: 'Ustensiles', petit_materiel: 'Petit matériel', textile: 'Textiles (toiles, couches)', autre: 'Autre' };
 
-function EquipmentTab({ month }: { month: string }) {
+export function EquipmentTab({ month }: { month: string }) {
   const q = useQuery({ queryKey: ['analytic', 'equipment', month], queryFn: () => analyticCostApi.equipment(month) });
   const centres = useQuery({ queryKey: ['analytic', 'centres'], queryFn: analyticCostApi.centres });
   const [asset, setAsset] = useState<Equipment['assets'][number] | null>(null);

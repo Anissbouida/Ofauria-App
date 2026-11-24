@@ -99,7 +99,7 @@ export const PARAMETERS: ParamDef[] = [
   {
     key: 'production.fixed_charges_rate', domain: 'production', section: 'production',
     label: 'Taux de charges fixes',
-    help: 'Part de charges indirectes ajoutée au coût matière d\'un plan (mode « Taux sur les matières »). Le taux de la société se règle dans Production › Paramétrage ; ici, un établissement, un atelier ou un type d\'ordre peut avoir le sien.',
+    help: 'Part de charges indirectes ajoutée au coût matière d\'un plan (mode « Taux sur les matières »). Le taux de la société se règle dans Production › Paramétrage › Coût de revient ; ici, un établissement, un atelier ou un type d\'ordre peut avoir le sien.',
     fields: [{ name: 'rate', label: 'Taux de charges fixes', type: 'number', unit: '× matières', min: 0, max: 5 }],
     defaults: { rate: 0.40 },
     storage: { kind: 'policy' }, scopes: ['store', 'workshop', 'order_type'],
@@ -175,7 +175,7 @@ export const PARAMETERS: ParamDef[] = [
   {
     key: 'production.fixed_charges', domain: 'production', section: 'production',
     label: 'Charges fixes mensuelles',
-    help: 'Charges indirectes du coût de revient d\'un plan. Moteur analytique (recommandé) : charges et personnel répartis par centre de coûts et imputés sur la capacité normale — paramétrage dans Production › Analyse des coûts ; les montants ci-dessous ne servent alors plus. Taux sur les matières : un pourcentage du coût matière. Charges mensuelles (ancien) : loyer, énergie et autres répartis sur les seuls plans déjà chiffrés du mois, au prorata de leurs matières.',
+    help: 'Charges indirectes du coût de revient d\'un plan. Moteur analytique (recommandé) : charges et personnel répartis par centre de coûts et imputés sur la capacité normale — paramétrage dans Production › Paramétrage › Coût de revient ; les montants ci-dessous ne servent alors plus. Taux sur les matières : un pourcentage du coût matière. Charges mensuelles (ancien) : loyer, énergie et autres répartis sur les seuls plans déjà chiffrés du mois, au prorata de leurs matières.',
     fields: [
       { name: 'method', label: 'Mode de calcul', type: 'enum', options: [{ value: 'analytic', label: 'Moteur analytique (centres de coûts, capacité normale)' }, { value: 'rate', label: 'Taux sur les matières' }, { value: 'monthly', label: 'Charges mensuelles au prorata des matières (ancien)' }] },
       { name: 'loyer', label: 'Loyer de l\'atelier', type: 'number', unit: '¤ / mois', min: 0, max: 10_000_000 },

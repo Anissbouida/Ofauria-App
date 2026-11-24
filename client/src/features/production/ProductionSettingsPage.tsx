@@ -55,7 +55,7 @@ export default function ProductionSettingsPage() {
 
   const save = useMutation({
     mutationFn: () => productionApi.updateSettings({
-      chargesFixesPct: (Number(form!.chargesFixesPct) || 0) / 100,
+      // 2026-11-24 : le taux de charges fixes se règle dans Paramétrage › Coût de revient : plus envoyé d'ici.
       overproductionPct: Number(form!.overproductionPct) || 0,
       // G1-05 : la majoration et les étapes bloquantes ne s'éditent plus ici (un seul écran
       // d'édition : Paramètres › Production). Elles ne sont donc plus envoyées.
@@ -82,10 +82,8 @@ export default function ProductionSettingsPage() {
           <section className="ds-panel" aria-label="Coût de revient">
             <h2 className="ds-subhead" style={{ padding: '14px 20px 0' }}>Coût de revient</h2>
             <div style={{ padding: '2px 20px 6px' }}>
-            <Row label="Taux de charges fixes" hint="Appliqué au coût matière dans le coût de revient (ex. 40 %).">
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <input type="number" step="0.1" min="0" className="ds-input" aria-label="Taux de charges fixes (%)" value={form.chargesFixesPct} onChange={e => set('chargesFixesPct', e.target.value)} style={inp} /> %
-              </div>
+            <Row label="Paramétrage du coût" hint="Mode de calcul, taux de charges fixes, centres de coûts, charges, personnel, clés, équipements et outils.">
+              <Link to="/production/cout-de-revient" className="odoo-btn-secondary ds-btn-sm"><ExternalLink size={13} aria-hidden="true" /> Ouvrir</Link>
             </Row>
             <Row label="Majoration du prix de vente" hint="Multiplicateur appliqué au prix de vente conseillé. Se règle dans Paramètres › Production › Majoration.">
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>

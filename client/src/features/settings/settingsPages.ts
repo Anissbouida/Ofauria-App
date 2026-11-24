@@ -107,7 +107,7 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
     fields: ['Devis clients', 'Relances clients et contrôle du crédit'] },
 
   { key: 'production', group: 'Achats, stock et production', auditTable: 'module_parameters', modules: ['production'], labelKey: 'production', section: 'production', label: 'Production', icon: Factory,
-    description: 'Ateliers, charges fixes, étapes, arrondi des prix et majoration', keywords: 'atelier ateliers chef boulanger patissier membres categories cout charges loyer energie arrondi prix majoration approvisionnement',
+    description: 'Ateliers, étapes, arrondi des prix et majoration (le coût de revient : dans la Production)', keywords: 'atelier ateliers chef boulanger patissier membres categories cout charges loyer energie arrondi prix majoration approvisionnement',
     fields: ['Ateliers', 'Majoration globale', 'Majoration par catégorie'] },
   { key: 'purchasing', group: 'Achats, stock et production', auditTable: 'module_parameters', modules: ['purchasing'], section: 'business', label: 'Achats et réception', icon: Truck,
     description: 'Règles des bons de commande, réceptions et factures fournisseurs', keywords: 'achat bc fournisseur reception tolerance dlc lot facture caisse' },
