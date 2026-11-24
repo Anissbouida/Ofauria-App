@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from 'react';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Layers, Search, AlertTriangle, ChevronDown, ChevronRight, CornerDownRight, Camera, Box, GripVertical, HelpCircle, Copy, X } from 'lucide-react';
@@ -168,9 +168,11 @@ export interface FormatKpi {
   pertePct: number;
 }
 
-export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel, readOnly = false }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void;
+export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel, readOnly = false, extra }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void;
   /** Fiche d'un autre atelier (constat 106) : consultation et impression seulement. */
-  readOnly?: boolean }) {
+  readOnly?: boolean;
+  /** Sections ajoutées par la page sous la composition (substituts), avant la barre d'enregistrement. */
+  extra?: ReactNode }) {
   // M8-03 : terme du lot de fabrication selon le secteur (« fournée » en boulangerie).
   const PT = useProdTerms();
   const bLc = PT.batch.toLowerCase();
@@ -912,6 +914,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <PosLinkPanel recipeId={recipeId} formatId={data.format.id} format={data.format} />
             </div>
           )}
+
+          {extra}
 
           {/* Barre d'enregistrement collée en bas de l'onglet Composition. */}
           <div className="fx-savebar">

@@ -205,10 +205,10 @@ export default function NomenclaturePage() {
             <div className="fiche-tab" role="tabpanel">
               {tab === 'composition' && <>
                 <NomenclatureEditor recipeId={recipe.id} readOnly={readOnly} onFinance={setKpi}
-                  onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
-                <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-                  <SubstitutesPanel recipeId={recipe.id} />
-                </fieldset>
+                  onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })}
+                  extra={<fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+                    <SubstitutesPanel recipeId={recipe.id} />
+                  </fieldset>} />
               </>}
               {tab === 'fabrication' && <>
                 <RecipeRoutingPanel recipeId={recipe.id} recipeName={recipe.name} />
