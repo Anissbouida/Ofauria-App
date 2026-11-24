@@ -1088,7 +1088,8 @@ export const recipeRepository = {
   async getExplosion(recipeId: string) {
     const result = await db.query(
       `SELECT ingredient_id, ingredient_name, unit,
-              ROUND(total_qty, 3)  AS total_qty,
+              -- 6 décimales : arrondir à 3 en kg AVANT la conversion faisait 1,45 g de sel → « 1 g ».
+              ROUND(total_qty, 6)  AS total_qty,
               ROUND(rolled_cost, 4) AS rolled_cost
        FROM v_recipe_explosion_v2
        WHERE recipe_id = $1
