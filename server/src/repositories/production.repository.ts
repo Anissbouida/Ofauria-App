@@ -52,7 +52,7 @@ export const productionRepository = {
               -- Articles relancables (annules ou en liste d'attente) : pilote le bouton "Relancer"
               (SELECT COUNT(*) FROM production_plan_items
                 WHERE plan_id = pp.id AND (status = 'cancelled' OR waiting_status = 'waiting')) as relaunchable_count,
-              (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id) as dep_total,
+              (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id AND status <> 'cancelled') as dep_total,
               (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id AND status = 'fulfilled') as dep_fulfilled,
               pw.label AS target_role_label,
               pot.code AS order_type_code, pot.label AS order_type_label,
@@ -252,7 +252,7 @@ export const productionRepository = {
        FROM production_plan_dependencies ppd
        JOIN recipes r ON r.id = ppd.sub_recipe_id
        LEFT JOIN production_plans dp ON dp.id = ppd.dependency_plan_id
-       WHERE ppd.parent_plan_id = $1
+       WHERE ppd.parent_plan_id = $1 AND ppd.status <> 'cancelled'
        ORDER BY ppd.created_at`,
       [id]
     );
@@ -1701,7 +1701,7 @@ export const productionRepository = {
           // Le surplus d'arrondi (produit - toProduce) reste disponible.
           const parentDep = await client.query(
             `SELECT parent_plan_id, quantity_to_produce FROM production_plan_dependencies
-              WHERE dependency_plan_id = $1 AND sub_recipe_id = $2 LIMIT 1`,
+              WHERE dependency_plan_id = $1 AND sub_recipe_id = $2 AND status <> 'cancelled' LIMIT 1`,
             [planId, item.base_recipe_id]
           );
           const pdep = parentDep.rows[0];
@@ -2456,12 +2456,17 @@ export const productionRepository = {
       //    Audit 2026-11 C-02 : une dépendance annulée (retour en brouillon, annulation)
       //    n'est plus une détection en vigueur — elle est retirée et la détection rejouée,
       //    sinon le plan fils gardait l'ancienne quantité et la base restait exclue des besoins.
+      //    Une dépendance annulée dont le plan fils a été lancé ou produit est gardée : c'est
+      //    le lien qui dit pour quel plan cette base a été fabriquée (fiche du plan fils).
       await client.query(
-        `DELETE FROM production_plan_dependencies WHERE parent_plan_id = $1 AND status = 'cancelled'`,
+        `DELETE FROM production_plan_dependencies d
+          WHERE d.parent_plan_id = $1 AND d.status = 'cancelled'
+            AND (d.dependency_plan_id IS NULL
+                 OR EXISTS (SELECT 1 FROM production_plans c WHERE c.id = d.dependency_plan_id AND c.status = 'cancelled'))`,
         [planId]
       );
       const existingDeps = await client.query(
-        `SELECT COUNT(*) as cnt FROM production_plan_dependencies WHERE parent_plan_id = $1`,
+        `SELECT COUNT(*) as cnt FROM production_plan_dependencies WHERE parent_plan_id = $1 AND status <> 'cancelled'`,
         [planId]
       );
       if (parseInt(existingDeps.rows[0].cnt) > 0) {
@@ -2671,7 +2676,7 @@ export const productionRepository = {
        FROM production_plan_dependencies ppd
        JOIN recipes r ON r.id = ppd.sub_recipe_id
        LEFT JOIN production_plans dp ON dp.id = ppd.dependency_plan_id
-       WHERE ppd.parent_plan_id = $1
+       WHERE ppd.parent_plan_id = $1 AND ppd.status <> 'cancelled'
        ORDER BY ppd.created_at`,
       [planId]
     );

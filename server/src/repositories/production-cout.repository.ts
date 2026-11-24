@@ -214,6 +214,27 @@ export const productionCoutRepository = {
         total: parseFloat(r.total),
       });
     }
+    // Manques de stock valorisés (audit 2026-11 C-35, décision du 2026-11-24). Une production
+    // déclarée sans assez de matière passe (politique « autoriser et tracer ») : la sortie est
+    // bornée au disponible et le manque inscrit dans stock_anomalies. La matière a pourtant été
+    // utilisée — sans cette ligne, 3 kg de biscuit coûtaient 3,44 DH, la farine seule. Le manque
+    // est compté au coût courant de la matière, sur une ligne à part, nommée comme telle.
+    const shortfallResult = await db.query(
+      `SELECT a.item_id AS ingredient_id, i.name, SUM(a.shortfall_qty)::float8 AS qty,
+              COALESCE(i.unit_cost, 0)::float8 AS unit_cost
+         FROM stock_anomalies a
+         JOIN ingredients i ON i.id = a.item_id
+        WHERE a.item_kind = 'ingredient' AND a.origin_type = 'production_plan' AND a.origin_id = $1
+        GROUP BY a.item_id, i.name, i.unit_cost`, [planId]);
+    let coutManques = 0;
+    for (const r of shortfallResult.rows) {
+      const qty = Number(r.qty) || 0, unit = Number(r.unit_cost) || 0;
+      if (!(qty > 0)) continue;
+      const total = Math.round(qty * unit * 100) / 100;
+      coutManques += total;
+      detailMatieres.push({ ingredient_id: `manque:${r.ingredient_id}`, name: `${r.name} (manque de stock, coût courant)`,
+        qty, unit_cost: Math.round(unit * 10000) / 10000, total });
+    }
     // Semi-finis consommés (bases : pâte feuilletée, crème pâtissière…) : un lot vaut le coût de
     // production de son plan ÷ quantité produite ; plan non chiffré : coût de la fiche par unité
     // de rendement. Sans cela, un croissant ne portait que ses ingrédients directs.
@@ -556,6 +577,8 @@ export const productionCoutRepository = {
       detailSousTraitance, detailMachine, components: comps,
       coutPrevu, coutPrevuMixReel, ecartMix, ecartPct, chargesMethod: charges.method,
       detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges,
+      // Part des matières comptée sur des manques de stock (déjà incluse dans coutMatieres).
+      coutManques: Math.round(coutManques * 100) / 100,
       allocation,
     };
   },
@@ -730,7 +753,8 @@ export const productionCoutRepository = {
     // Prix : quantités réellement consommées × (prix du lot − prix de la fiche).
     // Matières achetées seulement : un semi-fini (« semi:<fiche> ») n'a pas de prix de fiche matière ;
     // son écart reste dans « quantités consommées ».
-    const purchased = c.detailMatieres.filter(d => !d.ingredient_id.startsWith('semi:'));
+    // Un manque valorisé (« manque:<matière> ») est compté au prix de la fiche : aucun écart de prix.
+    const purchased = c.detailMatieres.filter(d => !d.ingredient_id.startsWith('semi:') && !d.ingredient_id.startsWith('manque:'));
     const ids = purchased.map(d => d.ingredient_id);
     const fiche = ids.length ? (await db.query(`SELECT id, COALESCE(unit_cost, 0)::float8 AS u FROM ingredients WHERE id = ANY($1::uuid[])`, [ids])).rows : [];
     const prix = purchased.reduce((t, d) => t + d.qty * (d.unit_cost - (fiche.find(f => f.id === d.ingredient_id)?.u ?? d.unit_cost)), 0);

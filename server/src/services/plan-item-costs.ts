@@ -98,7 +98,8 @@ export async function planItemCosts(planId: string, input: PlanItemCostsInput): 
   const units = items.map(it => it.qty);
   const mat = items.map(() => 0);
   for (const m of input.detailMatieres) {
-    const w = needs.map(n => n.get(m.ingredient_id) ?? 0);
+    // Un manque valorisé (« manque:<matière> ») se répartit comme la matière elle-même.
+    const w = needs.map(n => n.get(m.ingredient_id.replace(/^manque:/, '')) ?? 0);
     const parts = spread(m.total, w.some(x => x > 0) ? w : (theoValue.some(x => x > 0) ? theoValue : units));
     parts.forEach((v, i) => { mat[i] += v; });
   }

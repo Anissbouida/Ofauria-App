@@ -157,7 +157,11 @@ export default function PlanDetailPage() {
   const activeBon = (bonsSortie as Record<string, any>[]).find((b: Record<string, any>) => b.status !== 'annule') as Record<string, any> | undefined;
 
   // Semi-fini plans don't need their own bon de sortie — ingredients are in the parent plan's BSI
-  const isSemiFini = plan?.dependency_of && (plan.dependency_of as Record<string, any>[]).length > 0;
+  // Le plan porte son propre indicateur : le lien avec le plan parent peut disparaître (parent
+  // relancé ou supprimé après la fabrication de la base) sans que ce plan cesse d'être une
+  // préparation de base — il affichait alors « Préparation bloquée : aucun besoin calculé ».
+  const isSemiFini = plan?.is_semi_finished_plan === true
+    || (plan?.dependency_of && (plan.dependency_of as Record<string, any>[]).length > 0);
 
   // Preparation BSI explicite (wizard etape 2) — l'utilisateur clique "Preparer le bon de sortie".
   // Le backend ne genere plus automatiquement lors de la confirmation, pour forcer la revue
@@ -1248,6 +1252,16 @@ export default function PlanDetailPage() {
     todos.push({ tone: 'info', icon: Scale, title: `Rendement non saisi pour ${rendementsMissing.length} article(s)`,
       text: `${rendementsMissing.map((it: Record<string, any>) => it.product_name as string).join(', ')} : le rendement n'a pas été saisi pendant la production, les pertes de ce plan ne sont pas connues.` });
   }
+  // Audit 2026-11 C-35 : matière utilisée sans être en stock. La production est passée, le manque
+  // est compté dans le coût réel au coût courant ; il reste à régulariser le stock.
+  const shortfallLines = ((coutReel?.detail_matieres ?? []) as { ingredient_id: string; name: string; total: number | string }[])
+    .filter(d => String(d.ingredient_id).startsWith('manque:'));
+  if (shortfallLines.length > 0) {
+    const total = shortfallLines.reduce((t, d) => t + num(d.total), 0);
+    todos.push({ tone: 'warning', icon: AlertTriangle, title: `Production déclarée avec ${shortfallLines.length} matière(s) manquante(s) en stock`,
+      text: `${shortfallLines.map(d => d.name.replace(/ \(manque de stock.*$/, '')).join(', ')} : ${fmtDh(total)} comptés dans le coût réel au coût courant. Stock à régulariser dans Stock › Anomalies.`,
+      action: <button className="odoo-btn-secondary" onClick={() => setPlanTab('couts')}><Coins size={13} /> Ouvrir les coûts</button> });
+  }
   if (plan.status === 'completed' && coutTotal == null) {
     todos.push({ tone: 'warning', icon: Coins, title: 'Coût réel non calculé',
       action: <button className="odoo-btn-secondary" onClick={() => setPlanTab('couts')}><Coins size={13} /> Ouvrir les coûts</button> });
@@ -1511,11 +1525,21 @@ export default function PlanDetailPage() {
       <div className="plan-body">
       <div className="plan-main">
 
+      {/* Audit 2026-11 C-35 : un plan de préparation de base n'a pas l'onglet Synthèse — le
+          manque de matière à la déclaration y est rappelé ici. */}
+      {isSemiFini && shortfallLines.length > 0 && (
+        <Alert tone="warning" icon={AlertTriangle}>
+          <strong>Production déclarée avec {shortfallLines.length} matière(s) manquante(s) en stock</strong> ·{' '}
+          {shortfallLines.map(d => d.name.replace(/ \(manque de stock.*$/, '')).join(', ')} :{' '}
+          {fmtDh(shortfallLines.reduce((t, d) => t + num(d.total), 0))} comptés dans le coût réel au coût courant. Stock à régulariser dans Stock › Anomalies.
+        </Alert>
+      )}
+
       {/* ══════════════ PLAN SEMI-FINI (2026-11-24, Design System) ══════════════ */}
       {/* Même gabarit que les autres plans : contenu dans la colonne principale, notes et
           journal à droite. Le plan parent est rappelé en bandeau, la préparation en panneau
           (besoin, stock, à produire, produit) avec les ingrédients à peser. */}
-      {isSemiFini && (() => {
+      {isSemiFini && ((plan.dependency_of as Record<string, any>[] | undefined)?.length ?? 0) > 0 && (() => {
         const deps = plan.dependency_of as Record<string, any>[];
         const dep = deps[0]; // dépendance principale
         const recipeName = dep.sub_recipe_name as string;

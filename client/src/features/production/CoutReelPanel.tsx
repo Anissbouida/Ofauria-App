@@ -456,7 +456,10 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
     ? <StatusTag tone="done" label="Favorable" />
     : <StatusTag tone="blocked" label="Défavorable" />);
 
-  const rawMaterials = cout.detail_matieres.filter(d => !String(d.ingredient_id).startsWith('semi:'));
+  // Manques de stock valorisés (« manque:<matière> ») : matière utilisée sans être en stock, comptée
+  // au coût courant. Groupe à part, pour que le gérant voie ce qui reste à régulariser.
+  const shortfalls = cout.detail_matieres.filter(d => String(d.ingredient_id).startsWith('manque:'));
+  const rawMaterials = cout.detail_matieres.filter(d => !String(d.ingredient_id).startsWith('semi:') && !String(d.ingredient_id).startsWith('manque:'));
   const semiFinished = cout.detail_matieres.filter(d => String(d.ingredient_id).startsWith('semi:'));
   const sumOf = (rows: { total: Money }[]) => rows.reduce((s, r) => s + toNum(r.total), 0);
 
@@ -812,7 +815,8 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 <th className="ds-num">Total ({sym})</th><th className="ds-num">% des matières</th>
               </tr></thead>
               <tbody>
-                {([['Matières premières', rawMaterials], ['Produits semi-finis', semiFinished]] as [string, CoutReel['detail_matieres']][])
+                {([['Matières premières', rawMaterials], ['Produits semi-finis', semiFinished],
+                   ['Manques de stock valorisés (à régulariser dans Stock › Anomalies)', shortfalls]] as [string, CoutReel['detail_matieres']][])
                   .filter(([, rows]) => rows.length > 0).flatMap(([label, rows]) => [
                     <tr key={label} className="ds-group">
                       <td colSpan={3}>{label}</td><td className="ds-num">{nf(sumOf(rows))}</td>

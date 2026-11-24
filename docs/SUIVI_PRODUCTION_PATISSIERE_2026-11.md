@@ -1,6 +1,6 @@
 # Suivi de l'intervention — production pâtissière, novembre 2026
 
-Suite de `AUDIT_PRODUCTION_PATISSIERE_2026-11.md`. Branche `claude/audit-pastry-production-module-c4e2b0`, trois commits (`de450a4b`, `a35f7a21`, puis le lot de clôture). Rien n'est fusionné sur `main`, rien n'est poussé, rien n'est déployé. La base de dev `ofauria_db` n'a pas été modifiée : la migration 662 n'y est pas appliquée.
+Suite de `AUDIT_PRODUCTION_PATISSIERE_2026-11.md`. Branche `claude/audit-pastry-production-module-c4e2b0`, quatre commits (`de450a4b`, `a35f7a21`, `01c8adf1`, puis le manque valorisé). Rien n'est fusionné sur `main`, rien n'est poussé, rien n'est déployé. La base de dev `ofauria_db` n'a pas été modifiée : la migration 662 n'y est pas appliquée.
 
 Trois états sont distingués partout :
 
@@ -25,6 +25,7 @@ Trois états sont distingués partout :
 | Réception de transfert | Rejouable : écart et perte réappliqués | C-12 | Refus d'un transfert déjà reçu | P1 | Fait, test automatique seulement | Test « C-12 » |
 | Duplication d'un format | Perdait emballage, rendement au kilo, poids | C-23 | Copie complète, règle de lot comprise | P2 | Fait, test automatique seulement | Test « C-23 » |
 | Colonne « Recettes » des formats | « Aucune » partout | C-25 | Compte les formats des fiches | P2 | Fait et testé | À l'écran : 7, 1, 2, 2, 1, 4, 4… |
+| Production déclarée sans assez de matière | Sortie bornée à zéro, coût réel sous-évalué (3,44 DH pour 3 kg de biscuit) | C-35 | Décision du 2026-11-24 : laisser passer et valoriser le manque au coût courant, en ligne à part ; alerte sur le plan | P1 | Fait et testé | Test « C-35 » ; à l'écran : coût réel 64,33 DH dont 53,94 DH de « Manques de stock valorisés », alerte sur la fiche du plan |
 | Mutualisation entre plans | Un plan fils par plan parent | C-06 | — | P1 | Proposé | — |
 | Date limite des lots de semi-finis | 0 lot daté sur 1 436 | C-10 | — | P1 | Proposé | — |
 | Besoins matière du MRP | Autre diviseur que le plan confirmé | C-11 | — | P1 | Proposé (non vérifié par exécution) | — |
@@ -39,13 +40,14 @@ Trois états sont distingués partout :
 
 ## 2. Constats ajoutés pendant la simulation
 
-Trouvés en utilisant les écrans sur la copie de travail, non corrigés.
+Trouvés en utilisant les écrans sur la copie de travail. C-35 a été corrigé après votre décision (« valoriser le manque ») ; les autres ne le sont pas, sauf mention.
 
 **C-35 · Production déclarée en rupture de matière : sortie bornée à zéro, coût réel sous-évalué** — P1 · vérifié
 - Plan de biscuit OF-2026-02442 : cacao, sucre, œufs et eau étaient à zéro. La déclaration a été acceptée (« Production enregistrée avec succès »), seule la farine est sortie. Coût réel : 3,44 DH pour 3 kg, la farine seule.
 - Les avertissements existent (`production_plans.warnings` : « Stock insuffisant : Cacao en poudre… ») mais passent en notification de cinq secondes ; le plan terminé ne les affiche pas.
 - Un plan de semi-fini n'a ni besoins ni bon de sortie : aucun contrôle de disponibilité avant la déclaration.
-- À décider : bloquer, ou laisser passer en valorisant le manque au coût courant et en l'affichant sur le plan.
+- **Corrigé le 2026-11-24.** La production passe toujours (politique « autoriser et tracer », inchangée ; « bloquer » reste réglable par type d'article). Le manque, déjà inscrit dans `stock_anomalies`, est compté dans le coût réel au coût courant de la matière, sur des lignes « manque de stock » regroupées à part dans Coûts › Consommations. La fiche du plan affiche une alerte avec le montant et renvoie vers Stock › Anomalies. Le stock reste borné à zéro : aucune écriture de stock négatif.
+- Limites : le coût courant est celui de la matière au moment du calcul, pas celui du jour de la production ; les plans déjà chiffrés ne changent qu'après « Recalculer » ; un manque d'emballage ou de semi-fini n'est pas valorisé ; aucun contrôle de disponibilité n'est ajouté avant la déclaration d'un plan de préparation de base.
 
 **C-36 · Aucune modification de quantité après confirmation depuis l'écran** — P2 · vérifié
 - Un plan « en attente d'ingrédients » ne propose que « Bon de sortie » et « Relancer le plan ». Le retour en brouillon n'existe que pour le statut « confirmé », réservé aux ordres sans bon de sortie. La relance recalcule mais ne permet pas de changer la quantité.
@@ -53,6 +55,7 @@ Trouvés en utilisant les écrans sur la copie de travail, non corrigés.
 **C-37 · Plan de semi-fini : deux quantités et un bon de sortie fantôme** — P3 · vérifié
 - L'en-tête affiche « Quantité prévue 3 », le détail « À produire 2,95 kg » et pèse les matières sur 2,95 kg.
 - La carte « Bon de sortie » reste sur « En génération » alors qu'aucun bon ne sera créé.
+- Corrigé en partie : un plan de base dont le plan parent a été relancé ou supprimé affichait « Préparation bloquée : aucun besoin calculé ». L'écran reconnaît maintenant le plan par son propre indicateur, et le lien avec le parent est gardé quand la base a déjà été lancée.
 
 **C-38 · Création d'ordre : libellé du bouton trompeur** — P3 · vérifié
 - « Ajouter 1 Cadre opéra 40x60 » ajoute une pièce, pas un cadre.
@@ -91,9 +94,9 @@ Trouvés en utilisant les écrans sur la copie de travail, non corrigés.
 |---|---|---|
 | Calcul des besoins (`recipe-composition.test.ts`) | 0 / 13 | 16 / 16 |
 | Dimensionnement (`batch-sizing.test.ts`) | — | 10 / 10 |
-| Lot 1 intégrité (`audit-patisserie-lot1.db.test.ts`) | — | 7 / 7 |
+| Lot 1 intégrité (`audit-patisserie-lot1.db.test.ts`) | — | 8 / 8 |
 | Lot 2 fournées (`audit-patisserie-lot2.db.test.ts`) | — | 8 / 8 |
-| Intégration production, fiches, commandes, bons de sortie (75 fichiers) | 44 / 44 sur les 9 fichiers de référence | 338 / 338 |
+| Intégration production, fiches, commandes, bons de sortie (75 fichiers) | 44 / 44 sur les 9 fichiers de référence | 340 / 340 (délai de test porté à 30 s : la base jetable a accumulé 1 440 fiches et la liste des fiches dépasse 5 s) |
 | Tests unitaires serveur (77 fichiers) | 370 réussis, 13 échecs, 17 fichiers non chargés faute de variables | 578 / 578 avec les variables de test |
 | Tests client du module production | — | 25 / 25 |
 | Types (`tsc`) serveur, client, partagé | Propre | Propre |
@@ -140,7 +143,7 @@ Non simulé à l'écran : pesée par le magasinier, acceptation du bon, déclara
 
 ## 7. Limites et suites recommandées
 
-1. **C-35** d'abord : une production acceptée sans matière fausse à la fois le stock et le coût. La décision (bloquer ou valoriser le manque) vous revient.
+1. **C-35** est traité côté coût. Reste le stock : les anomalies ouvertes (Stock › Anomalies) sont à régulariser, et un contrôle de disponibilité avant la déclaration d'une préparation de base éviterait de les créer.
 2. **Dates limites des semi-finis (C-10)** et **mutualisation entre plans (C-06)** : lot 4 du rapport.
 3. **MRP (C-11)** et **clôture sans bon (C-13)** : relevés par lecture, à confirmer par un test avant correction.
 4. La règle de lot n'est pas figée sur l'ordre au moment de la confirmation : elle est appliquée à la création et à la modification des lignes. Changer la règle d'un format ne modifie pas un ordre existant, mais sa relance ne réarrondit pas non plus.

@@ -21,6 +21,7 @@ describe.skipIf(!hasTestDb)('Audit pâtisserie — lot 1 intégrité', () => {
   let base: string;
   let prod: string;
   const planIds: string[] = [];
+  const extraPlanIds: string[] = [];
   const recipeIds: string[] = [];
   const productIds: string[] = [];
   const p = () => testPool();
@@ -101,7 +102,7 @@ describe.skipIf(!hasTestDb)('Audit pâtisserie — lot 1 intégrité', () => {
     }
     await p().query(`DELETE FROM production_cout_reel WHERE plan_id = ANY($1::uuid[])`, [planIds]).catch(() => undefined);
     await p().query(`DELETE FROM production_plans WHERE store_id = $1 AND is_semi_finished_plan = true`, [fx.storeId]).catch(() => undefined);
-    fx.ids.plans.push(...planIds);
+    fx.ids.plans.push(...planIds, ...extraPlanIds);
     fx.ids.recipes.push(...recipeIds);
     fx.ids.products.push(...productIds);
     if (fx) await cleanupFixtures(fx);
@@ -219,6 +220,53 @@ describe.skipIf(!hasTestDb)('Audit pâtisserie — lot 1 intégrité', () => {
 
     const cost = await p().query(`SELECT 1 FROM production_cout_reel WHERE plan_id = $1`, [planId]);
     expect(cost.rows.length).toBeGreaterThan(0);
+  });
+
+  it('C-35 : production déclarée sans assez de matière → le manque est compté dans le coût réel', async () => {
+    const { productionCoutRepository } = await import('../../repositories/production-cout.repository.js');
+    // Base au sucre (1 kg de sucre par kg), 2 kg de sucre en stock à 6 DH/kg ; besoin 5 kg.
+    const sucre = await createIngredient(fx, { name: 'Sucre a1', unit: 'kg', unitCost: 6 });
+    await createLot(fx, { ingredientId: sucre, lotNumber: 'SU1', pesage: 2, expiresInDays: 365, unitCost: 6 });
+    const base2 = (await p().query(
+      `INSERT INTO recipes (name, is_base, product_id, yield_quantity, yield_unit, mode_cout)
+       VALUES ($1, true, NULL, 1, 'kg', 'ratio_poids') RETURNING id`, [`Base sucre a1 ${RUN}`])).rows[0].id;
+    recipeIds.push(base2);
+    await setComposition(base2, { ingredients: [{ ingredientId: sucre, quantity: 1, unit: 'kg' }] });
+    const prod2 = (await p().query(
+      `INSERT INTO products (name, slug, price, sale_type, sale_unit) VALUES ($1, $2, 10, 'jour', 'unit') RETURNING id`,
+      [`Prod sucre a1 ${RUN}`, `prod-sucre-a1-${RUN}`])).rows[0].id;
+    productIds.push(prod2);
+    const rec2 = (await p().query(
+      `INSERT INTO recipes (name, is_base, product_id, yield_quantity, yield_unit, mode_cout, compo_par_piece)
+       VALUES ($1, false, $2, 1, 'unit', 'compose', true) RETURNING id`, [`Rec sucre a1 ${RUN}`, prod2])).rows[0].id;
+    recipeIds.push(rec2);
+    await p().query(`INSERT INTO recipe_components (recipe_id, source_recipe_id, quantite, unite, role) VALUES ($1, $2, 0.5, 'kg', 'base')`, [rec2, base2]);
+
+    const plan = await repos.productionRepository.create({
+      planDate: new Date().toISOString().slice(0, 10), type: 'daily', createdBy: fx.userId, storeId: fx.storeId,
+      items: [{ productId: prod2, plannedQuantity: 10 }],
+    });
+    extraPlanIds.push(plan.id); // hors planIds : les tests voisins lisent « le dernier plan »
+    await repos.productionRepository.confirm(plan.id, fx.userId);
+    const childId = (await p().query(
+      `SELECT dependency_plan_id FROM production_plan_dependencies WHERE parent_plan_id = $1 AND sub_recipe_id = $2`, [plan.id, base2])).rows[0].dependency_plan_id;
+    const item = (await p().query(`SELECT id FROM production_plan_items WHERE plan_id = $1`, [childId])).rows[0];
+    await repos.productionRepository.confirm(childId, fx.userId);
+    await repos.productionRepository.start(childId, fx.userId);
+    const res = await repos.productionRepository.produceItems(childId, [{ planItemId: item.id, actualQuantity: 5 }], fx.userId, fx.storeId);
+    expect(res.warnings.some(w => w.includes('Stock insuffisant'))).toBe(true);
+
+    const cost = await productionCoutRepository.computePlanCost(childId);
+    const manque = cost.detailMatieres.find(d => d.ingredient_id === `manque:${sucre}`);
+    expect(manque).toBeDefined();
+    expect(manque!.qty).toBeCloseTo(3, 3);          // 5 kg utilisés, 2 kg en stock
+    expect(manque!.total).toBeCloseTo(18, 2);       // 3 kg × 6 DH
+    expect(cost.coutManques).toBeCloseTo(18, 2);
+    expect(cost.coutMatieres).toBeCloseTo(30, 2);   // 5 kg × 6 DH, et non plus 12 DH
+    // Le stock reste borné à zéro : le manque est une anomalie ouverte, pas un stock négatif.
+    const inv = (await p().query(`SELECT current_quantity FROM inventory WHERE ingredient_id = $1 AND store_id = $2`, [sucre, fx.storeId])).rows[0];
+    expect(num(inv.current_quantity)).toBe(0);
+    await p().query(`DELETE FROM stock_anomalies WHERE origin_id = $1`, [childId]).catch(() => undefined);
   });
 
   it('C-12 : une réception de transfert ne se rejoue pas', async () => {
