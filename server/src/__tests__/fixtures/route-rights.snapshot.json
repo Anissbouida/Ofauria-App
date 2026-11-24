@@ -1479,6 +1479,14 @@
   "admin",
   "manager"
  ],
+ "GET /production-cout/analytique/couts-standard": [
+  "admin",
+  "manager"
+ ],
+ "GET /production-cout/analytique/couts-standard/:recipeId": [
+  "admin",
+  "manager"
+ ],
  "GET /production-cout/analytique/equipements": [
   "admin",
   "manager"
@@ -3836,6 +3844,10 @@
   "manager"
  ],
  "POST /production-cout/analytique/cloturer": [
+  "admin",
+  "manager"
+ ],
+ "POST /production-cout/analytique/couts-standard/:recipeId/valider": [
   "admin",
   "manager"
  ],

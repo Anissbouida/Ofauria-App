@@ -1,12 +1,12 @@
-import { money } from '../../utils/money';
+import { useActionPermissions } from '../../hooks/useActionPermissions';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import HistoryPanel from '../../components/audit/HistoryPanel';
 import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChefHat, Pencil, AlertTriangle, Lock, Copy } from 'lucide-react';
+import { ArrowLeft, ChefHat, Pencil, AlertTriangle, Lock, Copy, Calculator, ArrowRight } from 'lucide-react';
 import { Breadcrumb, EmptyState, ErrorState, KpiCard, KpiGrid, LoadingState, PageHeader, SectionHeader } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
 import RecipeDuplicateDialog from './RecipeDuplicateDialog';
@@ -23,12 +23,10 @@ import AlternativeOfPanel from './AlternativeOfPanel';
 import SubstitutesPanel from './SubstitutesPanel';
 import RecipeOutputsPanel from './RecipeOutputsPanel';
 import RecipeRoutingPanel from './RecipeRoutingPanel';
-import RecipeAnalyticCostPanel from './RecipeAnalyticCostPanel';
 import '../production/production.css';
 import '../projects/projects.css';
 import '../sales/sales.css';
 
-const dh = (v: number) => money(v);
 
 export default function NomenclaturePage() {
   const T = useProdTerms();
@@ -37,6 +35,10 @@ export default function NomenclaturePage() {
   const qc = useQueryClient();
   const { sectorLabel } = usePermissions();
   const [kpi, setKpi] = useState<FormatKpi | null>(null);
+  // Le coût n'est plus sur la fiche (2026-11-24) : un lien vers le coût standard de l'article,
+  // montré seulement au gérant (comptabilité analytique) : le labo ne voit ni coût ni marge.
+  const { can } = useActionPermissions();
+  const canSeeCost = can('production.production_cout.analytique');
   const [editIdentity, setEditIdentity] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
 
@@ -86,7 +88,10 @@ export default function NomenclaturePage() {
   const readOnly = r.can_edit === false;
   const readOnlyReason = readOnly ? `Fiche de l'atelier ${r.workshop_label ?? '?'} : vous n'en êtes pas membre, elle est en lecture seule.` : null;
 
-  const margeTone = kpi && kpi.margePct >= 50 ? 'green' as const : kpi && kpi.margePct >= 30 ? 'orange' as const : 'red' as const;
+  const allergensList = (recipe as { allergens?: string[] | null }).allergens || [];
+  const poidsTxt = (g: number | null) => g == null ? '—'
+    : g >= 1000 ? `${(g / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kg`
+    : `${g.toLocaleString('fr-FR', { maximumFractionDigits: g < 10 ? 1 : 0 })} g`;
   const usedBy = Array.isArray((recipe as { used_by?: { name?: string }[] }).used_by)
     ? [...new Set((recipe as { used_by: { name?: string }[] }).used_by.map((u) => u.name).filter(Boolean))] : [];
 
@@ -128,19 +133,6 @@ export default function NomenclaturePage() {
             Cette fiche n'a encore aucune ligne ({T.ingredientsLc} ou préparations de base) : son coût est inconnu et elle ne peut pas servir en production. Complète la composition ci-dessous.
           </StatusBanner>
         )}
-        {(() => {
-          // Coût de revient incomplet (constat 108, mig 621) : détail des trous.
-          const gaps = ((recipe as { cost_gaps?: { composant: string; motif: string; via: string | null }[] }).cost_gaps) ?? [];
-          if (!gaps.length) return null;
-          const motif: Record<string, string> = { sans_prix: 'sans prix', conversion: 'conversion d\'unité douteuse', preparation_vide: 'préparation sans composant' };
-          return (
-            <StatusBanner tone="warning" icon={AlertTriangle} title="Coût de revient incomplet">
-              Le coût affiché est plus bas ou faux tant que ces lignes ne sont pas réglées :{' '}
-              {gaps.map((g) => `${g.composant} (${motif[g.motif] ?? g.motif}${g.via ? `, via ${g.via}` : ''})`).join(' ; ')}.
-              {' '}Renseigne le prix (achat ou fiche {T.ingredientLc}), la densité, ou complète la préparation.
-            </StatusBanner>
-          );
-        })()}
         {readOnlyReason && (
           <StatusBanner tone="neutral" icon={Lock} title="Lecture seule">{readOnlyReason} Seuls ses membres, le gérant et l'administrateur la modifient.</StatusBanner>
         )}
@@ -157,22 +149,21 @@ export default function NomenclaturePage() {
             onClose={() => setEditIdentity(false)} />
         )}
 
-        {/* Indicateurs du format affiché. Les quatre tuiles doivent se recouper :
-            marge = (prix − coût de production) / prix. La tuile coût affiche donc le
-            coût de PRODUCTION (matière + MO + énergie + structure), avec le coût
-            matière en second plan — auparavant elle montrait la matière seule, ce qui
-            rendait la marge inexplicable pour qui refaisait le calcul.
-            Restent visibles en haut pendant l'édition de la composition. */}
+        {/* Indicateurs TECHNIQUES du format affiché (2026-11-24) : rendement, poids, perte,
+            allergènes. Ni coût, ni prix, ni marge : la fiche technique dit quoi et comment,
+            le coût se calcule à part (Production › Coûts standard), comme dans les ERP du
+            marché (nomenclature et gamme d'un côté, calcul du coût standard de l'autre). */}
         <div className="pd-sticky-kpis">
           <KpiGrid label="Indicateurs du format affiché">
             <KpiCard label={`Rendement ${kpi?.contenantNom ? `(${kpi.contenantNom})` : `(pièces par ${T.batch.toLowerCase()})`}`}
-              value={kpi ? (kpi.unite === 'kg' ? `${kpi.rendement.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg` : kpi.rendement) : '—'} />
-            <KpiCard label={`Coût de production par ${kpi?.unite ?? 'pièce'}`}
-              value={kpi ? dh(kpi.coutProd) : '—'}
-              sub={kpi ? `Matière ${dh(kpi.coutMatiere)} · avec main-d'œuvre, énergie et structure` : undefined} />
-            <KpiCard label={`Prix par ${kpi?.unite ?? 'pièce'}`} value={kpi ? dh(kpi.prix) : '—'} />
-            <KpiCard label="Marge" value={kpi ? `${kpi.margePct.toFixed(1)} %` : '—'}
-              tone={kpi ? margeTone : undefined} sub={kpi ? '(Prix − coût de production) / prix' : undefined} />
+              value={kpi ? (kpi.unite === 'kg' ? `${kpi.rendement.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg` : `${kpi.rendement} pièce${kpi.rendement > 1 ? 's' : ''}`) : '—'}
+              sub={`par ${T.batch.toLowerCase()}`} />
+            <KpiCard label={kpi?.unite === 'kg' ? 'Matière engagée par kg' : 'Poids brut par pièce'} value={kpi ? poidsTxt(kpi.poidsPieceG) : '—'}
+              sub="composants pesables, avant perte" />
+            <KpiCard label="Perte de fabrication" value={kpi ? `${kpi.pertePct.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %` : '—'}
+              sub="cuisson, parures et casse prévues" />
+            <KpiCard label="Allergènes" value={String(allergensList.length)}
+              sub={allergensList.length ? allergensList.map(allergenLabel).join(', ') : 'aucun déclaré'} />
           </KpiGrid>
         </div>
 
@@ -205,8 +196,23 @@ export default function NomenclaturePage() {
           <RecipeOutputsPanel recipeId={recipe.id} />
         </fieldset>
         <RecipeRoutingPanel recipeId={recipe.id} recipeName={recipe.name} />
-        {/* Lot E (mig 655-657) : coût de revient standard avec les charges des centres, prix conseillé. */}
-        <RecipeAnalyticCostPanel recipeId={recipe.id} />
+        {/* Le coût de l'article n'est plus calculé ici : lien vers son coût standard. */}
+        {canSeeCost && !(recipe as { is_base?: boolean }).is_base && (
+          <section className="ds-panel" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 360px', minWidth: 0, display: 'grid', gap: 4 }}>
+              <SectionHeader title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Calculator size={16} aria-hidden="true" /> Coût de l'article</span>} />
+              <span style={{ fontSize: 14, color: 'var(--ds-body)' }}>
+                Le coût ne fait pas partie de la fiche : il se calcule à part, à partir de ces quantités, des prix des lots et des charges des centres.
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--ds-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Lock size={12} aria-hidden="true" /> Ce cadre n'apparaît que pour le gérant : le labo ne voit ni coût ni marge.
+              </span>
+            </div>
+            <Link to={`/production/couts-standard/${recipe.id}`} className="odoo-btn-secondary">
+              Voir le coût standard <ArrowRight size={14} aria-hidden="true" />
+            </Link>
+          </section>
+        )}
         <CustomFieldsCard entity="recipe" id={recipe.id} />
         <HistoryPanel table="recipes" id={recipe.id} />
 

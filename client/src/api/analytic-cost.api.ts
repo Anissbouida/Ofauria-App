@@ -82,6 +82,32 @@ export interface StandardCost {
   cibleMarque: number; prixConseille: number | null;
 }
 
+/** Mig 661 : coût standard validé (coût de référence) d'un article. */
+export interface ValidatedStandardCost {
+  id: string; formatId: string | null; month: string; pieces: number | null;
+  matiere: number; emballage: number; mainOeuvre: number; appro: number; production: number; structure: number;
+  coutProduction: number; coutRevient: number; priceHt: number | null; tauxMarque: number | null;
+  recipeVersion: number | null; validatedAt: string; validatedBy: string | null; note: string | null;
+  status: 'validated' | 'replaced'; replacedAt: string | null;
+}
+export type StandardSituation = 'calculated' | 'validated' | 'stale';
+export interface StandardCostRow {
+  recipeId: string; name: string; category: string | null; productName: string | null;
+  formatId: string | null; formatLabel: string | null; pieces: number | null; month: string;
+  matiere: number; coutProduction: number; coutRevient: number; priceHt: number | null; tauxMarque: number | null;
+  labourMissing: boolean; warnings: string[]; validated: ValidatedStandardCost | null;
+  situation: StandardSituation; ecartPct: number | null; reason: string | null;
+}
+export interface StandardCostDetail extends StandardCost {
+  productId: string | null; unitKg: number; machineMinutes: number | null;
+  recipeName: string | null; recipeVersion: number | null;
+  costGaps: { composant: string; motif: string; via: string | null }[];
+  materials: { ingredientId: string; name: string; unit: string; qty: number; unitPrice: number | null; amount: number }[];
+  materialsNote: string | null;
+  validated: ValidatedStandardCost | null; history: ValidatedStandardCost[];
+  situation: StandardSituation; ecartPct: number | null; reason: string | null;
+}
+
 export interface Profitability {
   from: string; to: string; months: number;
   products: { product_id: string; name: string; family: string; qty_sold: number | null; ca_ht: number; qty_produced: number; by_weight: boolean; weight_unknown: boolean;
@@ -127,6 +153,12 @@ export const analyticCostApi = {
   reconciliation: (month: string): Promise<Reconciliation[]> => api.get(`${B}/rapprochement`, { params: { month } }).then(r => r.data.data),
   standard: (recipeId: string, formatId: string | null, marque: number): Promise<StandardCost> =>
     api.get(`${B}/fiche/${recipeId}`, { params: { formatId: formatId ?? undefined, marque } }).then(r => r.data.data),
+  standardCosts: (refresh = false): Promise<{ rows: StandardCostRow[]; computedAt: string }> =>
+    api.get(`${B}/couts-standard`, { params: refresh ? { refresh: 1 } : undefined }).then(r => r.data.data),
+  standardCostDetail: (recipeId: string, formatId: string | null, marque: number): Promise<StandardCostDetail> =>
+    api.get(`${B}/couts-standard/${recipeId}`, { params: { formatId: formatId ?? undefined, marque } }).then(r => r.data.data),
+  validateStandardCost: (recipeId: string, b: { formatId: string | null; note?: string | null }): Promise<{ id: string }> =>
+    api.post(`${B}/couts-standard/${recipeId}/valider`, b).then(r => r.data.data),
   profitability: (from: string, to: string): Promise<Profitability> => api.get(`${B}/rentabilite`, { params: { from, month: to } }).then(r => r.data.data),
   equipment: (month: string): Promise<Equipment> => api.get(`${B}/equipements`, { params: { month } }).then(r => r.data.data),
   updateAsset: (id: string, b: { costCenterId: string | null; productId: string | null; excluded: boolean }) => api.put(`${B}/immobilisations/${id}`, b).then(r => r.data.data),

@@ -1,8 +1,7 @@
-import { money, currencySymbol } from '../../utils/money';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Layers, Search, AlertTriangle, ChevronDown, ChevronRight, CornerDownRight, Camera, SlidersHorizontal, Box, GripVertical, HelpCircle, Copy, X, Printer } from 'lucide-react';
+import { Plus, Trash2, Save, Layers, Search, AlertTriangle, ChevronDown, ChevronRight, CornerDownRight, Camera, Box, GripVertical, HelpCircle, Copy, X, Printer } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import { contenantsApi } from '../../api/contenants.api';
 import { productsApi } from '../../api/products.api';
@@ -22,12 +21,7 @@ interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient' | 
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
 
 const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
-const COLS = '44px 150px minmax(0,1fr) 110px 64px 56px 96px 96px 32px';
-const ROLE_BAR: Record<string, string> = {
-  fond: 'var(--ds-cat-gold)', biscuit: 'var(--ds-cat-gold)', croustillant: 'var(--ds-cat-brown)', garniture: 'var(--ds-cat-purple)',
-  insert: 'var(--ds-cat-pink)', fruits: 'var(--ds-cat-olive)', nappage: 'var(--ds-cat-teal)', glacage: 'var(--ds-cat-blue)',
-  decor: 'var(--ds-cat-pink)', emballage: 'var(--ds-cat-slate)',
-};
+const COLS = '44px 150px minmax(0,1fr) 110px 64px 56px 32px';
 const MASS: Record<string, number> = { g: 1, kg: 1000, mg: 0.001 };
 const VOL: Record<string, number> = { ml: 1, cl: 10, dl: 100, l: 1000 };
 function conv(from: string, to: string): number {
@@ -44,7 +38,6 @@ const ROLE_COLOR: Record<string, string> = {
   nappage: 'bg-teal-100 text-teal-800', glacage: 'bg-blue-100 text-blue-800',
   decor: 'bg-pink-100 text-pink-800', emballage: 'bg-gray-100 text-gray-700',
 };
-const dh = (v: number | null | undefined) => (v == null ? '—' : money(v));
 const DIACRITICS = new RegExp('[\\u0300-\\u036f]', 'g');
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(DIACRITICS, '');
 let seq = 0;
@@ -60,8 +53,7 @@ const fmtRendement = (ft: { nb_par_defaut: number; rendement_unite?: 'unit' | 'k
 
 /** Champs editables hors lignes de composition — sert a la detection de modifications. */
 interface EditableFields {
-  rendement: string; parts: string; mult: string; tauxMO: string; moMin: string;
-  energie: string; structPct: string; perte: string; compoParPiece: boolean;
+  rendement: string; parts: string; perte: string; compoParPiece: boolean;
   /** Mig 613 : rendement en pièces (rendement) ou en kilos (rendementKg). */
   rendementUnite: 'unit' | 'kg'; rendementKg: string;
 }
@@ -111,21 +103,21 @@ function SourcePicker({ options, value, onPick }: {
           {recipes.map((o) => (
             <button key={`recipe:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
-              <span>{o.name}</span><span className="text-gray-400 shrink-0">{money(o.cost)}/{o.unit}</span>
+              <span>{o.name}</span><span className="text-gray-400 shrink-0">{o.unit}</span>
             </button>
           ))}
           {ingredients.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] text-gray-400">{terms.ingredients}</div>}
           {ingredients.map((o) => (
             <button key={`ingredient:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
-              <span>{o.name}</span><span className="text-gray-400 shrink-0">{money(o.cost)}/{o.unit}</span>
+              <span>{o.name}</span><span className="text-gray-400 shrink-0">{o.unit}</span>
             </button>
           ))}
           {packaging.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] text-gray-400">Emballages (par unité produite)</div>}
           {packaging.map((o) => (
             <button key={`packaging:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
-              <span>{o.name}</span><span className="text-gray-400 shrink-0">{money(o.cost)}/{o.unit}</span>
+              <span>{o.name}</span><span className="text-gray-400 shrink-0">{o.unit}</span>
             </button>
           ))}
           {filtered.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">Aucun résultat</div>}
@@ -138,10 +130,6 @@ function SourcePicker({ options, value, onPick }: {
 // --- Tree View : dépliage récursif (lecture seule) des sous-recettes imbriquées ---
 function ChildRow({ child, depth }: { child: RecipeChild; depth: number }) {
   const [open, setOpen] = useState(false);
-  const cost = child.cout_dh != null ? parseFloat(child.cout_dh) : null;
-  // Audit A7 : la sous-recette a plusieurs formats actifs, le coût affiché est
-  // celui du format par défaut (approximation si les BOM par format divergent).
-  const defaultFmt = child.costed_on_default_format === true;
   return (
     <>
       <div className="flex items-center gap-2 py-1 text-sm text-gray-600 border-t border-gray-50"
@@ -154,14 +142,7 @@ function ChildRow({ child, depth }: { child: RecipeChild; depth: number }) {
           <CornerDownRight size={13} className="text-gray-300 shrink-0" />
         )}
         <span className="flex-1 truncate">{child.name}</span>
-        {defaultFmt && (
-          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 shrink-0"
-            title="Cette recette a plusieurs formats actifs. Le coût affiché est celui du format par défaut (approximation si les compositions par format divergent).">
-            format défaut
-          </span>
-        )}
-        <span className="text-gray-400 shrink-0">{parseFloat(child.quantite)} {child.unite}</span>
-        <span className="w-24 text-right tabular-nums whitespace-nowrap shrink-0" style={{ marginRight: 52 }}>{dh(cost)}</span>
+        <span className="text-gray-400 shrink-0 tabular-nums" style={{ marginRight: 52 }}>{parseFloat(child.quantite)} {child.unite}</span>
       </div>
       {open && child.expandable && child.source_id && <SubTree recipeId={child.source_id} depth={depth + 1} />}
     </>
@@ -180,24 +161,19 @@ function SubTree({ recipeId, depth }: { recipeId: string; depth: number }) {
 }
 
 /**
- * KPI du format actif, remontes a la page parente pour le bandeau d'en-tete.
- *
- * `coutMatiere` et `coutProd` sont TOUS LES DEUX exposes volontairement : le
- * bandeau affichait auparavant le cout matiere sous le libelle « Coût / pièce »
- * a cote d'une marge calculee, elle, sur le cout de production (matiere + MO +
- * energie + structure). Les trois chiffres du bandeau ne se recoupaient donc pas
- * — (prix − cout) / prix ne retombait pas sur la marge affichee. La marge doit
- * rester alignee sur `coutProd`, seul cout comparable au prix de vente.
+ * Données techniques du format actif, remontées à la page parente pour ses indicateurs.
+ * 2026-11-24 : plus aucun coût ni prix — la fiche technique dit quoi et comment ; le coût
+ * se calcule à part (Production › Coûts standard), comme dans les ERP du marché.
  */
 export interface FormatKpi {
   contenantNom: string | null;
   rendement: number;
-  /** Mig 613 : unité du rendement et des montants unitaires (pièce ou kg). */
+  /** Mig 613 : unité du rendement (pièce ou kg). */
   unite: 'pièce' | 'kg';
-  coutMatiere: number;
-  coutProd: number;
-  prix: number;
-  margePct: number;
+  /** Poids brut des composants pesables, par pièce (ou par kg produit) ; null si non pesable. */
+  poidsPieceG: number | null;
+  /** Perte de fabrication (%), niveau recette. */
+  pertePct: number;
 }
 
 export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel, readOnly = false }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void;
@@ -232,16 +208,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const [newContenant, setNewContenant] = useState('');
   const [dupCompo, setDupCompo] = useState(false);
   const [copySrc, setCopySrc] = useState('');
-  // Leviers financiers (niveau recette)
-  const [mult, setMult] = useState('3');
-  const [tauxMO, setTauxMO] = useState('');
-  const [moMin, setMoMin] = useState('');
-  const [energie, setEnergie] = useState('');
-  const [structPct, setStructPct] = useState('');
   const [perte, setPerte] = useState('');
   const [showParts, setShowParts] = useState(false);
   const [compoParPiece, setCompoParPiece] = useState(false);
-  const [dureeEtapes, setDureeEtapes] = useState(0);
   // Rendement auquel correspondent les quantités saisies (constat 113) : sert à proposer
   // la mise à l'échelle quand le rendement change.
   const [scaleBase, setScaleBase] = useState('');
@@ -318,11 +287,6 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     const nextFields: EditableFields = {
       rendement: f.nb_par_defaut != null ? String(f.nb_par_defaut) : '',
       parts: f.nb_parts != null ? String(f.nb_parts) : '',
-      mult: f.margin_multiplier != null ? parseFloat(f.margin_multiplier).toString() : '3',
-      tauxMO: f.taux_main_oeuvre_dh_h != null ? parseFloat(f.taux_main_oeuvre_dh_h).toString() : '',
-      moMin: f.main_oeuvre_min != null ? String(f.main_oeuvre_min) : '',
-      energie: f.cout_energie_fournee != null ? parseFloat(f.cout_energie_fournee).toString() : '',
-      structPct: f.taux_frais_structure_pct != null ? parseFloat(f.taux_frais_structure_pct).toString() : '',
       perte: f.perte_standard_pct != null && parseFloat(f.perte_standard_pct) > 0 ? parseFloat(f.perte_standard_pct).toString() : '',
       compoParPiece: f.compo_par_piece === true,
       rendementUnite: f.rendement_unite === 'kg' ? 'kg' : 'unit',
@@ -335,21 +299,15 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     setRendementUnite(nextFields.rendementUnite);
     setRendementKg(nextFields.rendementKg);
     setParts(nextFields.parts);
-    setMult(nextFields.mult);
-    setTauxMO(nextFields.tauxMO);
-    setMoMin(nextFields.moMin);
-    setEnergie(nextFields.energie);
-    setStructPct(nextFields.structPct);
     setPerte(nextFields.perte);
     setCompoParPiece(nextFields.compoParPiece);
-    setDureeEtapes(f.duree_etapes_min != null ? parseFloat(f.duree_etapes_min) : 0);
     // Reference pour la detection de modifications non enregistrees : on la calcule
     // depuis les valeurs qu'on vient de poser, pas depuis le state (encore non commit).
     baselineRef.current = signature(nextRows, nextFields);
   }, [data]);
   useEffect(() => { applyData(); }, [applyData]);
 
-  const currentSig = signature(rows, { rendement, parts, mult, tauxMO, moMin, energie, structPct, perte, compoParPiece, rendementUnite, rendementKg });
+  const currentSig = signature(rows, { rendement, parts, perte, compoParPiece, rendementUnite, rendementKg });
   const isDirty = !!data && baselineRef.current !== '' && currentSig !== baselineRef.current;
 
   // Filet de securite navigateur (fermeture d'onglet / rechargement). La navigation
@@ -402,18 +360,6 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const addRow = (role = '') => setRows((rs) => [...rs, { key: newKey(), role, type: '', sourceId: '', quantite: '', unite: 'g' }]);
   const delRow = (key: string) => setRows((rs) => rs.filter((r) => r.key !== key));
 
-  const lineCost = (r: Row): number | null => {
-    const src = sourceMap[`${r.type}:${r.sourceId}`];
-    const q = parseFloat(r.quantite);
-    if (!src || !(q > 0)) return null;
-    // Perte par ligne (mig 265) : la matière consommée est majorée exactement
-    // comme côté serveur (v_recipe_component_cost / v_rcomp_cost, mig 340/408) →
-    // coût ÷ (1 − perte/100). Sans ça, le coût affiché par l'éditeur divergeait
-    // du cout_dh serveur dès qu'une ligne portait une perte.
-    const perte = parseFloat((r.pertePct ?? '').replace(',', '.'));
-    const perteFactor = Number.isFinite(perte) && perte > 0 && perte < 100 ? 1 - perte / 100 : 1;
-    return (q * conv(r.unite, src.unit) * src.cost) / perteFactor;
-  };
   const baseEquiv = (r: Row): { val: number; unit: string } | null => {
     const q = parseFloat(r.quantite); const u = r.unite.toLowerCase();
     if (!(q > 0)) return null;
@@ -465,11 +411,6 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     return true;
   };
   const badConversionCount = rows.filter(isBadConversion).length;
-  // Ingrédients sans prix (constat 108) : comptés 0 DH, le coût de revient est incomplet.
-  const noPriceNames = [...new Set(rows
-    .map((r) => (r.type === 'ingredient' && r.sourceId ? sourceMap[`ingredient:${r.sourceId}`] : null))
-    .filter((s): s is SourceOpt => !!s && !(Number(s.cost) > 0))
-    .map((s) => s.name))];
 
   // Saisie contrôlée (scénario 1, constat 107).
   //  - une ligne qui désigne un composant doit avoir une quantité > 0 : elle n'est plus
@@ -515,45 +456,17 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   // Sépare valeur et unité pour aligner la colonne unité dans la carte rendement.
   const splitW = (g: number): [string, string] => g <= 0 ? ['—', ''] : g >= 1000 ? [(g / 1000).toFixed(g >= 10000 ? 1 : 2), 'kg'] : [String(Math.round(g)), 'g'];
 
-  const coutMatiere = rows.reduce((s, r) => s + (lineCost(r) ?? 0), 0); // = fournée de ce format
-  const fin = useMemo(() => {
-    const matierePiece = compoParPiece ? coutMatiere : coutMatiere / rendementNum;
-    const dureeMin = moMin !== '' ? (np(moMin) ?? 0) : dureeEtapes;
-    const moFournee = (dureeMin / 60) * (np(tauxMO) ?? 0);
-    const moPiece = moFournee / rendementNum;
-    const energiePiece = (np(energie) ?? 0) / rendementNum;
-    const base = matierePiece + moPiece + energiePiece;
-    const structP = base * ((np(structPct) ?? 0) / 100);
-    const coutProd = base + structP;
-    const m = np(mult) ?? 3;
-    const prix = coutProd * m;
-    return {
-      matierePiece, moPiece, energiePiece, structP, coutProd, prix,
-      marge: prix - coutProd, margePct: prix > 0 ? (prix - coutProd) / prix * 100 : 0,
-      coutPart: coutProd / partsNum, prixPart: prix / partsNum,
-    };
-  }, [coutMatiere, compoParPiece, rendementNum, partsNum, moMin, dureeEtapes, tauxMO, energie, structPct, mult]);
-  const coutFournee = fin.coutProd * rendementNum;
-  // Seuils de marge alignes sur la liste des fiches et le bandeau KPI : la meme
-  // recette ne doit pas etre « verte » ici et « rouge » ailleurs.
-  const margeTileStyle = fin.margePct >= 50
-    ? { c: 'border-green-200 bg-green-50', t: 'text-green-700', vt: 'text-green-800' }
-    : fin.margePct >= 30
-      ? { c: 'border-amber-200 bg-amber-50', t: 'text-amber-700', vt: 'text-amber-800' }
-      : { c: 'border-red-200 bg-red-50', t: 'text-red-700', vt: 'text-red-800' };
-
-  // Remonte la finance du format actif au parent (en-tête du modal — Lot 4).
+  // Remonte les données techniques du format actif au parent (indicateurs de la fiche).
+  const poidsPieceG = poidsBrutG > 0 ? (compoParPiece ? poidsBrutG : poidsBrutG / rendementNum) : null;
   const onFinanceRef = useRef(onFinance);
   onFinanceRef.current = onFinance;
   useEffect(() => {
     if (!data?.format) return;
     onFinanceRef.current?.({
       contenantNom: data.format.contenant_nom,
-      rendement: rendementNum, unite: uniteTxt,
-      coutMatiere: fin.matierePiece, coutProd: fin.coutProd,
-      prix: fin.prix, margePct: fin.margePct,
+      rendement: rendementNum, unite: uniteTxt, poidsPieceG, pertePct: perteNum,
     });
-  }, [data?.format, rendementNum, uniteTxt, fin.matierePiece, fin.coutProd, fin.prix, fin.margePct]);
+  }, [data?.format, rendementNum, uniteTxt, poidsPieceG, perteNum]);
   useEffect(() => () => onFinanceRef.current?.(null), []);
 
   /**
@@ -646,29 +559,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         perteStandardPct: np(perte) ?? 0,
       });
       versionRef.current = saved?.format?.version ?? versionRef.current;
-      // Paramètres financiers : réservés au gérant (recipes.finance). Un refus (403) ne
-      // fait pas échouer l'enregistrement : la composition est déjà enregistrée
-      // (constat 21 du scénario 1 : le chef voyait « Accès interdit »).
-      try {
-        await recipesApi.saveFinance(recipeId, {
-          marginMultiplier: np(mult) ?? 3,
-          tauxMainOeuvreDhH: np(tauxMO),
-          mainOeuvreMin: moMin !== '' ? parseInt(moMin) : null,
-          coutEnergieFournee: np(energie),
-          tauxFraisStructurePct: np(structPct),
-          perteStandardPct: np(perte),
-          compoParPiece,
-        });
-        return { financeSaved: true };
-      } catch (e) {
-        if ((e as { response?: { status?: number } })?.response?.status === 403) return { financeSaved: false };
-        throw e;
-      }
     },
-    onSuccess: (res) => {
-      notify.success(res?.financeSaved === false
-        ? 'Composition enregistrée (paramètres financiers réservés au gérant, non modifiés)'
-        : 'Composition enregistrée');
+    onSuccess: () => {
+      notify.success('Composition enregistrée');
       qc.invalidateQueries({ queryKey: ['format-components', recipeId] });
       qc.invalidateQueries({ queryKey: ['recipe-formats', recipeId] });
       qc.invalidateQueries({ queryKey: ['recipe', recipeId] });
@@ -732,14 +625,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     const badConv = isBadConversion(r);
     const badQty = isBadQty(r);
     const dup = isDup(r);
-    // Ingrédient sans prix (constat 108) : il compte pour 0, le coût est incomplet.
-    const noPrice = !!src && src.type === 'ingredient' && !(Number(src.cost) > 0);
     const canExpand = r.type === 'recipe' && !!r.sourceId;
     const isOpen = !!expanded[r.key];
     const roleCls = ROLE_COLOR[r.role] || 'bg-gray-100 text-gray-500';
-    const cost = lineCost(r);
-    const share = coutMatiere > 0 && cost != null ? (cost / coutMatiere) * 100 : null;
-    const barColor = ROLE_BAR[r.role] || 'var(--ds-cat-slate)';
     // L'équivalent n'est affiché que s'il apporte une info (1050 g → 1.05 kg) :
     // « ≈ 80 g » sous une saisie de 80 g n'était que du bruit.
     const eqBig = !!eq && eq.val >= 1000;
@@ -773,7 +661,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             <SourcePicker options={sourceOpts} value={src ?? null}
               onPick={(o) => setRow(r.key, { type: o.type, sourceId: o.id, unite: o.unit === 'unit' ? r.unite : o.unit })} />
             {dup && <div className="text-[10px] mt-0.5 text-amber-700"><AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />Saisi sur plusieurs lignes</div>}
-            {noPrice && <div className="text-[10px] mt-0.5 text-amber-700" title="Compté à zéro : le coût de revient est incomplet"><AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />Sans prix : coût incomplet</div>}
+            {badConv && (
+              <div className="text-[10px] mt-0.5 text-amber-700">
+                <AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />
+                {src ? `Conversion ${r.unite} → ${src.unit} non fiable` : "Conversion d'unité non fiable"}
+              </div>
+            )}
           </div>
           <div>
             <input type="number" step="any" min="0"
@@ -807,31 +700,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           <div>
             <input type="number" step="any" min="0" max="99"
               aria-label="Perte de la ligne en pourcentage"
-              title="Perte sur cette ligne (%) : majore la matière consommée et le coût (mig 265)"
+              title="Perte sur cette ligne (%) : majore la matière consommée (mig 265)"
               className="ds-input sm" style={{ textAlign: 'right' }}
               value={r.pertePct ?? ''} onChange={(e) => setRow(r.key, { pertePct: e.target.value })} placeholder="0" />
-          </div>
-          <div className="pt-1.5" title={src ? (src.type === 'recipe' ? 'Recette de base' : 'Matière première') : undefined}>
-            {share != null && (
-              <div className="flex items-center gap-1.5">
-                <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.min(100, share))}%`, background: barColor, opacity: 0.7 }} />
-                </div>
-                <span className="w-8 text-right text-xs tabular-nums text-gray-500">{Math.round(share)}%</span>
-              </div>
-            )}
-          </div>
-          <div className="text-right text-sm tabular-nums font-medium pt-1.5 inline-flex items-center justify-end gap-1">
-            {badConv && (
-              <AlertTriangle size={12} className="text-amber-500 shrink-0"
-                aria-label="conversion d'unité douteuse">
-                <title>
-                  {src ? `Conversion ${r.unite} → ${src.unit} non fiable (fallback ×1). Coût potentiellement faux.`
-                       : "Conversion d'unité non fiable."}
-                </title>
-              </AlertTriangle>
-            )}
-            <span className={badConv ? 'text-amber-700' : 'text-gray-700'}>{dh(lineCost(r))}</span>
           </div>
           <div className="flex justify-center pt-1">
             <button type="button" onClick={() => delRow(r.key)} className="text-gray-300 hover:text-red-500 transition-colors" aria-label="Supprimer"><Trash2 size={15} /></button>
@@ -858,7 +729,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           const bad = (ft.bad_conversions_count ?? 0) > 0;
           return (
           <button key={ft.id} type="button" onClick={() => switchFormat(ft.id)}
-            title={bad ? `${ft.bad_conversions_count} composant(s) avec conversion d'unité douteuse — coût peu fiable` : undefined}
+            title={bad ? `${ft.bad_conversions_count} composant(s) avec conversion d'unité douteuse — quantités à vérifier` : undefined}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${ft.id === formatId ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
             <Box size={13} /> {ft.contenant_nom || 'Format'} <span className={ft.id === formatId ? 'text-primary-50' : 'text-gray-400'}>{fmtRendement(ft)}</span>
             {ft.is_default && <span className={`text-[10px] ${ft.id === formatId ? 'text-primary-50' : 'text-gray-400'}`}>(défaut)</span>}
@@ -993,7 +864,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   <span className={`${lbl} gap-1`}>
                     Quantités saisies
                     <span className="inline-flex cursor-help"
-                      title={'Par fournée : quantités pour tout le lot (cadre/plaque découpé) → coût/pièce = total ÷ rendement.\nPar pièce : quantités pour une seule unité (entremets individuel…) → coût/pièce = la somme.\n\nCe mode se choisit à la création de la fiche ; pour le corriger, modifie l’identité de la fiche (✎).'}>
+                      title={'Par fournée : quantités pour tout le lot (cadre/plaque découpé), à diviser par le rendement.\nPar pièce : quantités pour une seule unité (entremets individuel…).\n\nCe mode se choisit à la création de la fiche ; pour le corriger, modifie l’identité de la fiche (✎).'}>
                       <HelpCircle size={12} className="text-gray-400" />
                     </span>
                   </span>
@@ -1028,7 +899,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 <AlertTriangle size={15} className="shrink-0" />
                 <span>
                   <strong>{badConversionCount} conversion{badConversionCount > 1 ? 's' : ''} d'unité douteuse{badConversionCount > 1 ? 's' : ''}</strong>
-                  {' — '}le coût affiché est peut-être faux. Choisis une unité de la même famille que la source (g/kg/mg entre elles, ml/cl/dl/l entre elles), ou renseigne la densité sur la fiche {PT.ingredientLc} pour un croisement poids ↔ volume.
+                  {' — '}les besoins en matière sont peut-être faux. Choisis une unité de la même famille que la source (g/kg/mg entre elles, ml/cl/dl/l entre elles), ou renseigne la densité sur la fiche {PT.ingredientLc} pour un croisement poids ↔ volume.
                 </span>
               </div>
             )}
@@ -1044,15 +915,6 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               </div>
             )}
 
-            {noPriceNames.length > 0 && (
-              <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-[13px] text-amber-800">
-                <AlertTriangle size={15} className="shrink-0" />
-                <span>
-                  <strong>Coût incomplet</strong> — {noPriceNames.join(', ')} {noPriceNames.length > 1 ? "n'ont" : "n'a"} pas de prix et {noPriceNames.length > 1 ? 'comptent' : 'compte'} pour zéro : le coût de revient ci-dessous est trop bas. Renseigne le prix (achat ou fiche {PT.ingredientLc}).
-                </span>
-              </div>
-            )}
-
             {badQtyRows.length > 0 && (
               <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-[13px] text-red-700">
                 <AlertTriangle size={15} className="shrink-0" />
@@ -1065,7 +927,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 <AlertTriangle size={15} className="shrink-0" />
                 <span>
                   <strong>{dupKeys.map((k) => `${sourceMap[k]?.name ?? 'composant'} (${dupCounts[k]} lignes)`).join(', ')}</strong>
-                  {' — '}saisi plusieurs fois. Les lignes s'ajoutent dans le coût et les besoins ; regroupe-les en une seule, sauf si c'est voulu (ajout en deux temps).
+                  {' — '}saisi plusieurs fois. Les lignes s'ajoutent dans les besoins ; regroupe-les en une seule, sauf si c'est voulu (ajout en deux temps).
                 </span>
               </div>
             )}
@@ -1078,8 +940,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-lg text-[11px] font-medium text-gray-500" style={{ gridTemplateColumns: COLS, minWidth: 910 }}>
                 <span /><span>Rôle</span><span>Composant</span>
                 <span className="text-right">{compoParPiece ? 'Qté / pièce' : `Qté / ${bLc}`}</span><span>Unité</span>
-                <span className="text-right" title="Perte sur la ligne (%) : majore la matière et le coût">Perte</span>
-                <span>% coût</span><span className="text-right">Coût</span><span />
+                <span className="text-right" title="Perte sur la ligne (%) : majore la matière consommée">Perte</span>
+                <span />
               </div>
               {rows.map(renderRow)}
               {rows.length === 0 && (
@@ -1092,8 +954,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                     <span /><span />
                     <span className="text-gray-600">Total {compoParPiece ? 'pièce' : bLc}</span>
                     <span className="text-right">{tv}</span><span className="text-xs font-normal text-gray-400">{tu}</span>
-                    <span />
-                    <span className="text-right">{dh(coutMatiere)}</span><span />
+                    <span /><span />
                   </div>
                 );
               })()}
@@ -1125,88 +986,28 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             </div>
           </div>
 
-          {/* ===================== COÛT & PRIX ===================== */}
-          <div className="ds-panel pd-section" style={{ margin: 0 }}>
-            <div className="pd-section-head"><SlidersHorizontal size={13} /> Coût &amp; prix de vente</div>
-            <div className="p-3">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {[
-                  { id: 'fin-mo', lbl: "Main d'œuvre", sfx: `${currencySymbol()}/h`, val: tauxMO, set: setTauxMO, ph: 'ex 30', step: 'any' },
-                  { id: 'fin-temps', lbl: `Temps / ${bLc}`, sfx: 'min', val: moMin, set: setMoMin, ph: dureeEtapes > 0 ? `actif ${dureeEtapes}` : 'ex 90', step: '1',
-                    // Constat 110 : vide = temps ACTIF des étapes (hors pointage, apprêt, cuisson, refroidissement).
-                    title: 'Temps de main-d\'œuvre par fournée. Vide : temps actif des étapes, hors temps d\'attente (pointage, apprêt, cuisson, refroidissement).' },
-                  { id: 'fin-energie', lbl: 'Énergie', sfx: `${currencySymbol()}/four.`, val: energie, set: setEnergie, ph: 'ex 15', step: 'any' },
-                  { id: 'fin-structure', lbl: 'Structure', sfx: '%', val: structPct, set: setStructPct, ph: 'ex 15', step: 'any' },
-                  { id: 'fin-mult', lbl: 'Multiplicateur', sfx: '×', val: mult, set: setMult, ph: 'ex 3', step: 'any' },
-                ].map((fld) => (
-                  <label key={fld.lbl} className="block" htmlFor={fld.id} title={(fld as { title?: string }).title}>
-                    <span className="ds-field-label">{fld.lbl}</span>
-                    <span className="mt-1 flex items-center gap-1 rounded-md border border-gray-200 bg-white pr-2 focus-within:ring-2 focus-within:ring-primary-200 focus-within:border-primary-400">
-                      <input id={fld.id} type="number" step={fld.step} min="0" value={fld.val} onChange={(e) => fld.set(e.target.value)}
-                        className="h-9 w-full px-2 bg-transparent rounded-md text-sm text-right tabular-nums focus:outline-none" placeholder={fld.ph} />
-                      <span className="text-[11px] text-gray-400 shrink-0">{fld.sfx}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-              {/* Décomposition du prix, lue de gauche à droite : composantes du coût,
-                  somme, multiplicateur, prix. Les chiffres de décision sont aussi
-                  rappelés dans le bandeau KPI du haut de page. */}
-              <div className="mt-3 flex items-center gap-x-2 gap-y-1 flex-wrap px-3 py-2 rounded-md border border-gray-200 bg-gray-50 text-[13px] tabular-nums text-gray-600">
-                <span className="text-[11px] text-gray-400">{enKg ? 'Au kilo' : 'Par pièce'}</span>
-                <span>Matière <strong>{dh(fin.matierePiece)}</strong></span>
-                <span className="text-gray-400">+</span>
-                <span>MO + énergie <strong>{dh(fin.moPiece + fin.energiePiece)}</strong></span>
-                <span className="text-gray-400">+</span>
-                <span>Structure <strong>{dh(fin.structP)}</strong></span>
-                <span className="text-gray-400">=</span>
-                <span>Coût production <strong className="text-gray-900">{dh(fin.coutProd)}</strong></span>
-                <span className="text-gray-400">× {np(mult) ?? 3}</span>
-                <span className="text-gray-400">=</span>
-                <span>Prix vente HT <strong className="text-primary-700">{dh(fin.prix)}</strong></span>
-                <span className={`ml-auto px-2 py-0.5 rounded-md border font-medium ${margeTileStyle.c} ${margeTileStyle.vt}`}>
-                  Marge {dh(fin.marge)} ({Math.round(fin.margePct)}%)
-                </span>
-              </div>
-
-              {partsNum > 1 && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
-                  <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2.5">
-                    <div className="text-[11px] text-teal-700">Coût / part ({partsNum} parts)</div>
-                    <div className="text-base font-medium tabular-nums mt-0.5 text-teal-800">{dh(fin.coutPart)}</div>
-                  </div>
-                  <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2.5">
-                    <div className="text-[11px] text-teal-700">Prix / part</div>
-                    <div className="text-base font-medium tabular-nums mt-0.5 text-teal-800">{dh(fin.prixPart)}</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
           {/* ===================== VENTE AU POS ===================== */}
-          {/* Mig 263, audit A1 : lien vers le produit vendu au POS + écart de prix. */}
+          {/* Mig 263 : produit vendu au point de vente pour ce format (sans prix : la fiche
+              technique ne porte ni coût ni prix, 2026-11-24). */}
           {data?.format && (
             <div className="ds-panel pd-section" style={{ margin: 0 }}>
               <div className="pd-section-head"><Tag size={13} /> Vente au point de vente</div>
-              <PosLinkPanel recipeId={recipeId} formatId={data.format.id}
-                format={data.format} priceCalc={fin.prix} />
+              <PosLinkPanel recipeId={recipeId} formatId={data.format.id} format={data.format} />
             </div>
           )}
 
           {/* Barre d'actions collante : Enregistrer reste à portée quel que soit le
-              défilement (la page est longue : format, composition, coût, POS). */}
+              défilement (la page est longue : format, composition, point de vente). */}
           <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 flex-wrap px-3 py-2 bg-white border border-gray-200 rounded-md"
             style={{ boxShadow: '0 -2px 6px rgba(0,0,0,0.08)' }}>
             <p className="text-xs text-gray-400">
               Format <strong>{f.contenant_nom}</strong> · saisie <strong>{compoParPiece ? 'par pièce' : `par ${bLc}`}</strong>
-              {!compoParPiece && <> (coût/{uniteTxt} = total ÷ {enKg ? `${rendementNum.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg` : rendementNum})</>}.
-              Coût/{bLc} : <strong>{dh(coutFournee)}</strong>.
+              {!compoParPiece && <> pour {enKg ? `${rendementNum.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} kg` : `${rendementNum} ${uniteTxt}${rendementNum > 1 ? 's' : ''}`}</>}.
             </p>
             <div className="inline-flex items-center gap-2">
               {isDirty && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700"
-                  title="Les chiffres ci-dessus sont recalculés en direct, mais rien n'est encore enregistré.">
+                  title="Rien n'est encore enregistré.">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                   Modifications non enregistrées
                 </span>
@@ -1224,7 +1025,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               ) : (
               <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !isDirty}
                 className="odoo-btn-primary inline-flex items-center gap-1"
-                title={isDirty ? 'Enregistrer la composition et les paramètres financiers' : 'Aucune modification à enregistrer'}>
+                title={isDirty ? 'Enregistrer la composition' : 'Aucune modification à enregistrer'}>
                 <Save size={15} /> {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
               </button>
               )}
@@ -1237,31 +1038,23 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
 }
 
 /**
- * Attribution du produit vendu au POS pour un format, et confrontation du prix
- * théorique (calcul coût × marge) au prix réellement pratiqué (mig 263, audit A1).
- *
- * L'ECART EST INFORMATIF : la vue ne change PAS le prix POS ni le prix calculé.
- * L'utilisateur voit la divergence, décide s'il rehausse le prix, revoit la
- * marge, ou tolère l'écart. C'est la première marche vers l'unification vente-
- * production ; l'automatisme viendra plus tard, après validation humaine.
+ * Attribution du produit vendu au POS pour un format (mig 263). La comparaison prix
+ * calculé / prix pratiqué a quitté la fiche (2026-11-24) : elle vit dans le coût standard
+ * de l'article (Production › Coûts standard), avec le prix conseillé.
  *
  * Un produit ne peut être lié qu'à UN SEUL format actif (contrainte unique
  * partielle mig 263). Un doublon renvoie une 409 avec message explicite.
  */
 function PosLinkPanel({
-  recipeId, formatId, format, priceCalc,
+  recipeId, formatId, format,
 }: {
   recipeId: string;
   formatId: string;
   format: FormatComponentsData['format'];
-  priceCalc: number;
 }) {
   const qc = useQueryClient();
   const posProductId = format.pos_product_id ?? null;
-  const posPrice = format.pos_price != null ? parseFloat(format.pos_price) : null;
   const source = format.pos_price_source ?? 'none';
-  const gap = posPrice != null && priceCalc > 0 ? posPrice - priceCalc : null;
-  const gapPct = gap != null && priceCalc > 0 ? (gap / priceCalc) * 100 : null;
 
   const { data: products = [] } = useQuery<{ id: string; name: string; price: string | number }[]>({
     queryKey: ['products-lite', recipeId],
@@ -1285,15 +1078,6 @@ function PosLinkPanel({
     onError: (err: unknown) => notify.error(extractErr(err)),
   });
 
-  const strong = gap != null && (Math.abs(gap) >= 2 || (gapPct != null && Math.abs(gapPct) >= 5));
-  const gapColor = gap == null ? 'text-gray-400'
-    : Math.abs(gap) < 0.01 ? 'text-emerald-700'
-    : gap > 0 ? (strong ? 'text-emerald-700' : 'text-emerald-600')
-    : (strong ? 'text-red-700' : 'text-red-600');
-  const gapBg = gap == null || Math.abs(gap) < 0.01 ? 'bg-gray-50 border-gray-200'
-    : gap > 0 ? 'bg-emerald-50 border-emerald-200'
-    : 'bg-red-50 border-red-200';
-
   return (
     <div className="p-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -1311,7 +1095,7 @@ function PosLinkPanel({
                 onChange={setChoice}
                 options={products.map((p) => ({
                   id: String(p.id),
-                  label: `${p.name} · ${money(parseFloat(String(p.price ?? 0)))}`,
+                  label: p.name,
                 }))}
               />
               <button type="button" disabled={linkMut.isPending}
@@ -1341,26 +1125,6 @@ function PosLinkPanel({
           )}
         </div>
       </div>
-      {posPrice != null && (
-        <div className={`mt-3 grid grid-cols-3 gap-2 rounded-md border px-3 py-2 text-sm ${gapBg}`}>
-          <div>
-            <div className="text-[11px] text-gray-500">Prix calculé</div>
-            <div className="tabular-nums font-medium text-gray-800">{money(priceCalc)}</div>
-          </div>
-          <div>
-            <div className="text-[11px] text-gray-500">Prix POS</div>
-            <div className="tabular-nums font-medium text-gray-800">{money(posPrice)}</div>
-          </div>
-          <div>
-            <div className="text-[11px] text-gray-500">Écart</div>
-            <div className={`tabular-nums font-semibold ${gapColor}`}>
-              {gap == null ? '—'
-                : Math.abs(gap!) < 0.01 ? `${money(0)} · 0 %`
-                : `${gap! > 0 ? '+' : ''}${money(gap!)} · ${gapPct! > 0 ? '+' : ''}${gapPct!.toFixed(1)} %`}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

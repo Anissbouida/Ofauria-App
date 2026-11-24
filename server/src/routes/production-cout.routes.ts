@@ -9,6 +9,7 @@ import { validate, validateUuidParams } from '../middleware/validate.middleware.
 import { emptyBody } from '../validators/common.validator.js';
 import { analyticCostRepository, AnalyticError } from '../repositories/analytic-cost.repository.js';
 import { standardCost, suggestedPrice } from '../services/cost-engine.js';
+import { standardCostRepository } from '../repositories/standard-cost.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import type { Response } from 'express';
 import { createEquipementBody, updateEquipementBody, recordTempsTravailBody, recordEquipementUsageBody } from '../validators/production-flow.validator.js';
@@ -143,6 +144,16 @@ router.get('/analytique/fiche/:recipeId', authenticate, validateUuidParams('reci
     const marque = Number.isFinite(target) && target > 0 && target < 95 ? target : 30;
     return { ...s, cibleMarque: marque, prixConseille: suggestedPrice(s, marque) };
   }));
+// Mig 661 : coûts standard des articles — le coût sort de la fiche technique. Réservés au gérant
+// (comptabilité analytique), comme l'analyse des coûts : marges et prix n'ont pas à être vus du labo.
+const optGuid = (v: unknown) => (typeof v === 'string' && z.string().guid().safeParse(v).success ? v : null);
+router.get('/analytique/couts-standard', authenticate, can(A),
+  run(async (req) => standardCostRepository.list(store(req), { refresh: req.query.refresh === '1' })));
+router.get('/analytique/couts-standard/:recipeId', authenticate, validateUuidParams('recipeId'), can(A),
+  run(async (req) => standardCostRepository.detail(req.params.recipeId as string, optGuid(req.query.formatId), store(req), Number(req.query.marque))));
+router.post('/analytique/couts-standard/:recipeId/valider', authenticate, validateUuidParams('recipeId'), can(A),
+  validate(z.object({ formatId: z.string().guid().nullable().optional(), note: z.string().trim().max(500).nullable().optional() })),
+  run(async (req) => standardCostRepository.validate(req.params.recipeId as string, req.body.formatId ?? null, store(req), req.user!.userId, req.body.note || null), 201));
 router.get('/analytique/rentabilite', authenticate, can(A), run(async (req) => {
   const to = monthOf(req);
   const from = typeof req.query.from === 'string' && MONTH.test(req.query.from) && req.query.from <= to ? req.query.from : to;

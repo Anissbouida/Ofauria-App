@@ -39,6 +39,8 @@ import ProductionLayout from './features/production/ProductionLayout';
 import WorkCentersPage from './features/production/WorkCentersPage';
 import AnalyticCostPage from './features/production/AnalyticCostPage';
 import CostSettingsPage from './features/production/CostSettingsPage';
+import StandardCostsPage from './features/production/StandardCostsPage';
+import StandardCostDetailPage from './features/production/StandardCostDetailPage';
 import DisassemblyPage from './features/production/DisassemblyPage';
 import MrpPage from './features/production/MrpPage';
 import AtelierPage from './features/production/AtelierPage';
@@ -147,6 +149,8 @@ export default function App() {
                 <Route path="/production/work-centers" element={<WorkCentersPage />} />
                 <Route path="/production/analyse-couts" element={<AnalyticCostPage />} />
                 <Route path="/production/cout-de-revient" element={<CostSettingsPage />} />
+                {/* Mig 661 : coût standard des articles, sorti de la fiche technique. */}
+                <Route path="/production/couts-standard" element={<StandardCostsPage />} />
                 <Route path="/production/disassembly" element={<DisassemblyPage />} />
                 <Route path="/production/mrp" element={<MrpPage />} />
                 <Route path="/production/atelier" element={<AtelierPage />} />
@@ -154,6 +158,7 @@ export default function App() {
               </Route>
               {/* Étape 10f : poste opérateur tactile plein écran. */}
               <Route path="/production/poste" element={<OperatorStationPage />} />
+              <Route path="/production/couts-standard/:recipeId" element={<StandardCostDetailPage />} />
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
               <Route path="/boutique" element={<JourneeBoutiquePage />} />

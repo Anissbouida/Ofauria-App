@@ -1,11 +1,12 @@
 import { Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Factory, TrendingUp, Thermometer, Package, ChefHat, Wallet, Cog, ClipboardList, Hammer, SlidersHorizontal, Recycle, Calculator } from 'lucide-react';
+import { LayoutDashboard, Factory, TrendingUp, Thermometer, Package, ChefHat, Wallet, Cog, ClipboardList, Hammer, SlidersHorizontal, Recycle, Calculator, Receipt } from 'lucide-react';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
+import { useActionPermissions } from '../../hooks/useActionPermissions';
 import { usePermissions } from '../../context/PermissionsContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 
-type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | 'haccp' | 'replenishment' | 'costs' | 'analytic' | 'recipes' | 'cost-settings' | 'workcenters' | 'settings' | 'disassembly';
+type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | 'haccp' | 'replenishment' | 'costs' | 'standard-costs' | 'analytic' | 'recipes' | 'cost-settings' | 'workcenters' | 'settings' | 'disassembly';
 
 /**
  * Module Production : ses écrans sont des pages distinctes (plans, tableau de bord,
@@ -18,6 +19,7 @@ export default function ProductionLayout() {
   const { user } = useAuth();
   const { hasModule, hasFeature, sectorLabel, canEdit } = usePermissions();
   const { pathname } = useLocation();
+  const { can } = useActionPermissions();
   // Prévisions et HACCP : droit Production ET rôle chef/gérant/admin, même règle que le
   // lanceur (navigation.ts) et que les routes serveur.
   // Étape 3 multi-industries : le droit de modifier la production, plus la liste des rôles boulangers.
@@ -36,6 +38,8 @@ export default function ProductionLayout() {
     // Demandes de réassort boutique -> labo (ex-tuile « Besoins » du menu principal).
     { key: 'replenishment', label: 'Demandes boutique', icon: Package, section: 'operations', href: '/replenishment', hidden: !hasModule('replenishment') },
     { key: 'costs', label: 'Coûts', icon: Wallet, section: 'reports', href: '/production/costs', hidden: !hasModule('reports') },
+    // Mig 661 : coût standard de chaque article (sorti de la fiche technique) — gérant (comptabilité analytique).
+    { key: 'standard-costs', label: 'Coûts standard', icon: Receipt, section: 'reports', href: '/production/couts-standard', hidden: !hasModule('production') || !can('production.production_cout.analytique') },
     // Mig 655 : comptabilité analytique (centres, charges, personnel, sous-activité) — gérant.
     { key: 'analytic', label: 'Analyse des coûts', icon: Calculator, section: 'reports', href: '/production/analyse-couts', hidden: !hasModule('production') || !canEdit('production') },
     { key: 'recipes', label: sectorLabel('recipes', 'Fiches techniques'), icon: ChefHat, section: 'setup', href: '/recipes', hidden: !hasModule('recipes') },

@@ -1,4 +1,3 @@
-import { money, currencySymbol } from '../../utils/money';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -61,7 +60,7 @@ export default function RecipesPage() {
   // Étape 10 (10b) : colonnes de la liste des fiches masquées par la définition d'écran.
   const recipesScreen = useScreenDefinition('recipes.list');
   const shownCols = new Set(applyScreenDefinition('recipes.list', 'columns',
-    ['name', 'type', 'format', 'yield', 'loss', 'net', 'cost', 'unit_cost', 'used_by', 'margin'], recipesScreen));
+    ['name', 'type', 'format', 'yield', 'loss', 'net', 'used_by'], recipesScreen));
   const show = (key: string) => shownCols.has(key);
   // M8-03 : termes du secteur (défaut = boulangerie).
   const T = {
@@ -70,7 +69,6 @@ export default function RecipesPage() {
     base: sectorLabel('base_prep', 'Préparation de base'),
     formatsTab: sectorLabel('formats_tab', 'Formats de production'),
     yield: sectorLabel('yield', 'Rendement'),
-    batchCost: sectorLabel('batch_cost', 'Coût fournée'),
     searchRecipes: sectorLabel('search_recipes', 'Rechercher une recette ou un produit...'),
     searchBase: sectorLabel('search_base_preps', 'Rechercher une préparation de base...'),
   };
@@ -129,7 +127,7 @@ export default function RecipesPage() {
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir(key === 'total_cost' || key === 'cost_per_unit' || key === 'margin' || key === 'yield_quantity' ? 'desc' : 'asc'); }
+    else { setSortKey(key); setSortDir(key === 'yield_quantity' ? 'desc' : 'asc'); }
   };
 
   const deleteMutation = useMutation({
@@ -188,8 +186,8 @@ export default function RecipesPage() {
   });
 
   /** L'onglet Bases et l'onglet Produits partagent le tableau mais pas les colonnes :
-      perte et rendement net n'ont de sens que pour une préparation, marge que pour
-      un produit. */
+      perte, rendement net et « utilisée par » n'ont de sens que pour une préparation.
+      Aucun coût ni marge ici (2026-11-24) : ils vivent dans Production › Coûts standard. */
   const isBaseTab = activeTab === 'base';
 
   const filtered = recipes.filter((r: Record<string, any>) => {
@@ -200,11 +198,6 @@ export default function RecipesPage() {
     return matchSearch && matchTab && matchCategory;
   });
 
-  // Constat 123 : même coût matière par pièce que l'affichage (source unique fn_recipe_cost).
-  const unitMaterial = (x: Record<string, any>) => x.cout_matiere_piece != null
-    ? parseFloat(String(x.cout_matiere_piece))
-    : parseFloat((x.total_cost as string) || '0') / ((x.yield_quantity as number) || 1);
-
   const sortedFiltered = useMemo(() => {
     const arr = [...filtered];
     arr.sort((a: Record<string, any>, b: Record<string, any>) => {
@@ -214,7 +207,6 @@ export default function RecipesPage() {
         case 'is_base': cmp = (a.is_base === b.is_base ? 0 : a.is_base ? -1 : 1); break;
         case 'contenant_nom': cmp = ((a.contenant_nom as string) || '').localeCompare((b.contenant_nom as string) || ''); break;
         case 'yield_quantity': cmp = ((a.yield_quantity as number) || 0) - ((b.yield_quantity as number) || 0); break;
-        case 'total_cost': cmp = parseFloat((a.total_cost as string) || '0') - parseFloat((b.total_cost as string) || '0'); break;
         case 'perte': cmp = parseFloat((a.perte_standard_pct as string) || '0') - parseFloat((b.perte_standard_pct as string) || '0'); break;
         case 'net': {
           const nA = parseFloat((a.total_weight_kg as string) || '0') * (1 - (parseFloat((a.perte_standard_pct as string) || '0') / 100));
@@ -222,26 +214,6 @@ export default function RecipesPage() {
           cmp = nA - nB; break;
         }
         case 'utilisee_par': cmp = (parseInt((a.utilisee_par as string) || '0') || 0) - (parseInt((b.utilisee_par as string) || '0') || 0); break;
-        case 'cost_per_unit': {
-          // Même normalisation que l'affichage : une base se trie au kg net,
-          // sinon le tri classerait des DH/g face à des DH/kg.
-          const perKg = (x: Record<string, any>) => {
-            const net = parseFloat((x.total_weight_kg as string) || '0') * (1 - (parseFloat((x.perte_standard_pct as string) || '0') / 100));
-            return net > 0 ? parseFloat((x.total_cost as string) || '0') / net : 0;
-          };
-          const cA = a.is_base ? perKg(a) : unitMaterial(a);
-          const cB = b.is_base ? perKg(b) : unitMaterial(b);
-          cmp = cA - cB; break;
-        }
-        case 'margin': {
-          const prA = parseFloat((a.product_price as string) || '0');
-          const cpuA = unitMaterial(a);
-          const mA = prA > 0 ? (prA - cpuA) / prA * 100 : 0;
-          const prB = parseFloat((b.product_price as string) || '0');
-          const cpuB = unitMaterial(b);
-          const mB = prB > 0 ? (prB - cpuB) / prB * 100 : 0;
-          cmp = mA - mB; break;
-        }
         default: cmp = 0;
       }
       return sortDir === 'asc' ? cmp : -cmp;
@@ -376,7 +348,7 @@ export default function RecipesPage() {
 
   return (
     <SalesPageShell icon={ChefHat} parent="Production › Paramétrage" title={shellTitle} list
-      summary="Recettes des produits finis, préparations de base et formats de production, avec leur coût matière."
+      summary="Recettes des produits finis, préparations de base et formats de production : quantités, rendements et pertes."
       actions={<>
         {/* Import/export xlsx — admin uniquement, pas sur l'onglet Contenants */}
         {activeTab !== 'contenants' && isAdmin && (
@@ -460,18 +432,9 @@ export default function RecipesPage() {
           <div className="odoo-kanban-grid">
             {sortedFiltered.map((r: Record<string, any>) => {
               const yieldQty = r.yield_quantity as number || 1;
-              // Constat 123 : matière par pièce lue à la source unique (fn_recipe_cost) quand elle
-              // existe ; la fournée s'en déduit pour une composition saisie par pièce.
-              const sourcePiece = !r.is_base && r.cout_matiere_piece != null ? parseFloat(String(r.cout_matiere_piece)) : null;
+              const isComposeCard = r.mode_cout === 'compose';
               const gridRendement = parseInt(String(r.rendement ?? '')) || Math.round(yieldQty) || 1;
-              const totalCost = sourcePiece != null && r.compo_par_piece ? sourcePiece * gridRendement : parseFloat(r.total_cost as string || '0');
-              const costPerUnit = sourcePiece ?? totalCost / yieldQty;
-              // Fallback : pas de produit lie → calcule prix attendu via margin_multiplier
-              const productPrice = parseFloat(r.product_price as string || '0');
-              const rMargin = parseFloat(String(r.margin_multiplier ?? '0'));
-              const price = productPrice > 0 ? productPrice : (rMargin > 0 ? costPerUnit * rMargin : 0);
-              const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
-              const cardStatus = !r.is_base && price > 0 ? (margin >= 50 ? 'ok' : margin >= 30 ? 'warning' : 'danger') : 'ok';
+              const cardStatus = r.compo_vide ? 'danger' : (!r.is_base && r.rendement_a_definir) ? 'warning' : 'ok';
 
               return (
                 <div key={r.id as string}
@@ -498,14 +461,9 @@ export default function RecipesPage() {
                   </div>
                   <div className="odoo-kanban-card-stock">
                     <span className="odoo-kanban-card-stock-value" style={{ color: 'var(--ds-accent)' }}>
-                      {totalCost.toFixed(2)}
+                      {isComposeCard ? gridRendement : yieldQty}
                     </span>
-                    <span className="odoo-kanban-card-stock-unit">{currencySymbol()} coût matière</span>
-                  </div>
-                  <div className="odoo-kanban-card-split">
-                    <span>{T.yield} <strong>{yieldQty} {r.yield_unit as string || 'u.'}</strong></span>
-                    <span style={{ color: 'var(--ds-muted)' }}>·</span>
-                    <span>Coût matière par unité <strong>{money(costPerUnit)}</strong></span>
+                    <span className="odoo-kanban-card-stock-unit">{isComposeCard ? 'pièces' : (r.yield_unit as string || 'u.')} · {T.yield.toLowerCase()}</span>
                   </div>
                   <div className="odoo-kanban-card-footer">
                     <span>
@@ -515,10 +473,8 @@ export default function RecipesPage() {
                         </span>
                       )}
                     </span>
-                    {!r.is_base && price > 0 && (
-                      <StatusTag tone={margin >= 50 ? 'done' : margin >= 30 ? 'todo' : 'blocked'} label={`Marge matière ${margin.toFixed(0)} %`}
-                        title="Marge sur coût matière — hors main d'œuvre, énergie et frais de structure." />
-                    )}
+                    {r.compo_vide ? <StatusTag tone="blocked" label="Composition vide" />
+                      : !r.is_base && r.rendement_a_definir ? <StatusTag tone="todo" label="Rendement à définir" /> : null}
                   </div>
                 </div>
               );
@@ -563,9 +519,8 @@ export default function RecipesPage() {
                     style={{ cursor: 'pointer', verticalAlign: 'middle' }} />
                 </th>
                 <SortHeader label={sectorLabel("recipe", "Recette")} sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                {/* Onglet Bases : « Type » ne dit rien (tout est Base) et « Marge »
-                    est vide (une préparation ne se vend pas). On rend ces deux
-                    colonnes à ce qui manque vraiment — la perte et le net. */}
+                {/* Onglet Bases : « Type » ne dit rien (tout est Base) : la place va à ce qui
+                    manque vraiment — la perte, le net et les fiches qui l'utilisent. */}
                 {!isBaseTab && show('type') && <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
                 {show('format') && <SortHeader label="Format" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
                 {show('yield') && <SortHeader label={isBaseTab ? `${T.yield} brut` : T.yield} sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />}
@@ -577,22 +532,9 @@ export default function RecipesPage() {
                       title="Poids brut moins la perte de transformation." />}
                   </>
                 )}
-                {/* Ces colonnes viennent de v_recipe_total_cost = matière seule
-                    (ingrédients + emballages + sous-recettes). Main d'œuvre, énergie et
-                    frais de structure ne sont ajoutés que dans l'éditeur de composition.
-                    Les libellés le disent, sinon la marge d'ici contredit celle de là-bas. */}
-                {show('cost') && <SortHeader label={`${isBaseTab ? T.batchCost : 'Coût matière'} (${currencySymbol()})`} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
-                  title={`${ingredients}, emballages et préparations de base. Hors main d'œuvre, énergie et frais de structure.`} />}
-                {show('unit_cost') && <SortHeader label={isBaseTab ? `Coût par kg net (${currencySymbol()}/kg)` : `Coût matière par unité (${currencySymbol()})`} sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
-                  title={isBaseTab
-                    ? "Coût de la fournée rapporté au kilo réellement utilisable. Normalisé au kg pour que deux préparations soient comparables, quelle que soit l'unité de leur rendement."
-                    : 'Coût matière rapporté à une unité produite.'} />}
-                {!show(isBaseTab ? 'used_by' : 'margin') ? null : isBaseTab ? (
+                {isBaseTab && show('used_by') && (
                   <SortHeader label="Utilisée par" sortKey="utilisee_par" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                     title="Nombre de recettes qui consomment cette préparation. À zéro, la fiche n'est utilisée nulle part." />
-                ) : (
-                  <SortHeader label="Marge matière" sortKey="margin" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
-                    title="Marge sur coût matière — majorée par rapport à la marge réelle, qui déduit aussi main d'œuvre, énergie et structure (voir l'éditeur de composition)." />
                 )}
                 <th className="ds-actions"><span className="sr-only">Actions</span></th>
               </tr>
@@ -601,35 +543,16 @@ export default function RecipesPage() {
               {sortedFiltered.map((r: Record<string, any>) => {
                 const isComposeRow = r.mode_cout === 'compose';
                 const yieldQty = r.yield_quantity as number || 1;
-                // Composé : coût/pièce = coût total ÷ rendement (format) ; sinon legacy ÷ yield.
+                // Composé : rendement du format ; sinon rendement de la recette.
                 const rendement = parseInt(String(r.rendement ?? '')) || (isComposeRow ? Math.round(yieldQty) : yieldQty) || 1;
-                // Constat 123 : matière par pièce de la source unique (fn_recipe_cost) ; en saisie par
-                // pièce, le coût « fournée » vaut pièce × rendement (et non l'inverse).
-                const sourcePiece = !r.is_base && r.cout_matiere_piece != null ? parseFloat(String(r.cout_matiere_piece)) : null;
-                const totalCost = sourcePiece != null && r.compo_par_piece ? sourcePiece * rendement : parseFloat(r.total_cost as string || '0');
-                // Base : le coût est ramené au kilo NET. Diviser par le rendement
-                // tel quel donnait DH/g pour une fiche en grammes et DH/kg pour sa
-                // voisine en kilos — deux lignes du même tableau à un facteur 1000.
-                // On passe par le poids réel des ingrédients, pas par le rendement
-                // saisi, puis on retire la perte de transformation.
+                // Base : poids réel des ingrédients moins la perte de transformation.
                 const perteBase = parseFloat(String(r.perte_standard_pct ?? '0')) || 0;
                 const utiliseePar = parseInt(String(r.utilisee_par ?? '0')) || 0;
                 const poidsKg = parseFloat(String(r.total_weight_kg ?? '0')) || 0;
                 const poidsNetKg = poidsKg * (1 - perteBase / 100);
-                const costPerUnit = r.is_base
-                  ? (poidsNetKg > 0 ? totalCost / poidsNetKg : 0)
-                  : sourcePiece ?? (isComposeRow ? totalCost / Math.max(1, rendement) : totalCost / yieldQty);
-                const productPrice = parseFloat(r.product_price as string || '0');
-                const rMargin = parseFloat(String(r.margin_multiplier ?? '0'));
-                // Composé : prix conseillé théorique = coût/pièce × multiplicateur.
-                const price = isComposeRow
-                  ? (rMargin > 0 ? costPerUnit * rMargin : 0)
-                  : (productPrice > 0 ? productPrice : (rMargin > 0 ? costPerUnit * rMargin : 0));
-                const margin = price > 0 ? ((price - costPerUnit) / price * 100) : 0;
                 // Indicateur d'ÉTAT (santé donnée) : vide → rouge, rendement à définir → ambre, sinon vert.
                 // Composition vide : signalée aussi sur une préparation de base (constat 107).
                 const dotTitle = r.compo_vide ? 'Fiche incomplète : aucun composant'
-                  : r.cout_incomplet ? `Coût de revient incomplet : ${ingredientLc} sans prix, conversion douteuse ou préparation vide (détail sur la fiche)`
                   : r.is_base ? T.base
                   : r.rendement_a_definir ? 'Rendement à définir (contenant non assigné)'
                   : 'OK';
@@ -654,7 +577,6 @@ export default function RecipesPage() {
                         )}
                         {/* L'état de la donnée n'est pas porté par la seule pastille : libellé visible. */}
                         {r.compo_vide && <StatusTag tone="blocked" label="Composition vide" title={dotTitle} />}
-                        {!r.compo_vide && r.cout_incomplet && <StatusTag tone="todo" label="Coût incomplet" title={dotTitle} />}
                         {!r.is_base && !r.compo_vide && r.rendement_a_definir && <StatusTag tone="todo" label="Rendement à définir" title={dotTitle} />}
                       </span>
                     </td>
@@ -682,16 +604,10 @@ export default function RecipesPage() {
                         </td>}
                       </>
                     )}
-                    {show('cost') && <td className="ds-num ds-strong">{totalCost.toFixed(2)}</td>}
-                    {show('unit_cost') && <td className="ds-num">{costPerUnit.toFixed(2)}</td>}
-                    {show(isBaseTab ? 'used_by' : 'margin') && <td className="ds-num">
-                      {isBaseTab ? (
-                        utiliseePar > 0
-                          ? <span title={`${utiliseePar} recette(s) consomment cette préparation`}>{utiliseePar}</span>
-                          : <span title="Aucune recette n’utilise cette préparation">—</span>
-                      ) : (!r.is_base && price > 0 ? (
-                        <StatusTag tone={margin >= 50 ? 'done' : margin >= 30 ? 'todo' : 'blocked'} label={`${margin.toFixed(0)} %`} />
-                      ) : '—')}
+                    {isBaseTab && show('used_by') && <td className="ds-num">
+                      {utiliseePar > 0
+                        ? <span title={`${utiliseePar} recette(s) consomment cette préparation`}>{utiliseePar}</span>
+                        : <span title="Aucune recette n’utilise cette préparation">—</span>}
                     </td>}
                     {/* Une seule entrée vers la fiche, des deux côtés : « Voir » et
                         « Modifier » menaient au même écran depuis que la préparation

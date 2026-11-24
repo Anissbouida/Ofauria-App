@@ -77,7 +77,8 @@ sur son inducteur, activité réelle) · coûts variables · coûts directs · c
   motivée, journal d'audit.
 - **Lot D — réel comptable** (mig 659) : comptes de classe 6 par charge, rapprochement du mois.
 - **Lot E — coût standard et prix conseillé** : mêmes charges que le réel ; écart réel / standard
-  décomposé (prix, quantités, MO, charges, autres) ; panneau dans la fiche technique.
+  décomposé (prix, quantités, MO, charges, autres). Le panneau de la fiche technique a été
+  retiré le 2026-11-24 (voir « Coûts standard des articles »).
 - **Lot F — rentabilité** : marge par produit et famille sur les ventes réelles, seuil de
   rentabilité, sous-activité sur 12 mois, simulation volume / prix.
 - **Amortissements et outillage** (mig 660) : registre des immobilisations (dotation du mois) et
@@ -85,6 +86,28 @@ sur son inducteur, activité réelle) · coûts variables · coûts directs · c
   nature.
 - **Semi-finis** : un lot de base vaut le coût de production de son plan ; le plan qui le consomme
   l'intègre à ses matières.
+
+## Coûts standard des articles (2026-11-24, mig 661)
+
+Le coût ne fait plus partie de la fiche technique, comme dans les ERP du marché : la nomenclature
+et la gamme disent quoi et comment, le calcul du coût standard dit combien.
+
+- **Fiche technique** : quantités, rendement, poids, perte, allergènes, mode opératoire. Plus de
+  coût, de prix, de marge, de frais indirects ni de multiplicateur (ni sur la fiche, ni dans la
+  liste des fiches). Le gérant y voit seulement un lien « Voir le coût standard ».
+- **Production › Rapports › Coûts standard** (`/production/couts-standard`) : tous les articles,
+  calculés avec `standardCost` (mêmes charges que le coût réel), situation « calculé, à valider »,
+  « validé » ou « à recalculer » (fiche modifiée depuis la validation, ou écart de plus de 0,5 %).
+- **Coût standard d'un article** (`/production/couts-standard/:recipeId`) : du coût matière au
+  coût de revient poste par poste, par pièce ou par fournée ; détail des matières (nomenclature
+  dépliée, ramenée au total du moteur) ; prix conseillé en simulation ; validation.
+- **Validation** (`standard_costs`) : le calcul du jour est figé (snapshot) et devient le coût de
+  référence ; l'ancien passe « remplacé » et reste dans l'historique. Journal d'audit branché.
+- **Droits** : liste, détail et validation demandent `production.production_cout.analytique`
+  (gérant, administrateur) — le labo ne voit ni coût ni marge.
+- Les champs `taux_main_oeuvre_dh_h`, `cout_energie_fournee`, `taux_frais_structure_pct` et
+  `margin_multiplier` des fiches ne sont plus saisis ; les colonnes restent pour l'historique et le
+  mode de calcul forfaitaire.
 
 ## Pas encore couvert
 
