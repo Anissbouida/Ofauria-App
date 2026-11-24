@@ -349,7 +349,7 @@ export const orderRepository = {
                       cancellation_reason = 'Commande annulée'
                 WHERE plan_id = $1 AND status = 'pending'`, [pl.id]);
             await client.query(`UPDATE production_plans SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [pl.id]);
-            await releaseSemiFinishedReservations(client, pl.id, pl.store_id, 'Liberee (commande annulee)');
+            await releaseSemiFinishedReservations(client, pl.id, pl.store_id, 'Liberee (commande annulee)', { cancelChildPlans: true });
           } else {
             warnings.push(`Plan de production du ${pl.plan_date.split('-').reverse().join('/')} déjà lancé : à arrêter par la production`);
           }

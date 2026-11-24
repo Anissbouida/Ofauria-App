@@ -499,7 +499,7 @@ export const productionRepository = {
       // double comptage). Une base sans dependance (detection non lancee / plan
       // manuel non detecte) reste developpee : le parent consomme ses matieres.
       const depRes = await client.query(
-        `SELECT sub_recipe_id FROM production_plan_dependencies WHERE parent_plan_id = $1`,
+        `SELECT sub_recipe_id FROM production_plan_dependencies WHERE parent_plan_id = $1 AND status <> 'cancelled'`,
         [planId]
       );
       const baseDepSet = new Set<string>(depRes.rows.map((r) => r.sub_recipe_id as string));
@@ -709,8 +709,8 @@ export const productionRepository = {
    *   - supprime le BSI (status 'genere') et ses lignes
    *   - supprime production_ingredient_needs (sera recree au prochain confirm)
    *   - status plan -> 'draft', confirmed_at -> NULL
-   *  Les production_plan_dependencies (semi-finis) restent : le prochain
-   *  confirm les re-evaluera.
+   *   - rend les semi-finis reserves et annule les plans fils non lances ; le
+   *     prochain confirm refait la detection.
    */
   async revertToDraft(planId: string, userId?: string) {
     return withTransaction(async () => {
@@ -774,6 +774,12 @@ export const productionRepository = {
 
       // 5) Supprime les besoins en ingredients (recalcules au prochain confirm)
       await client.query(`DELETE FROM production_ingredient_needs WHERE plan_id = $1`, [planId]);
+
+      // 5 bis) Semi-finis (audit 2026-11 C-02) : les quantités réservées sont rendues, les
+      //    plans fils non lancés annulés ; la prochaine confirmation refait la détection
+      //    sur les quantités du moment.
+      const planStore = await client.query(`SELECT store_id FROM production_plans WHERE id = $1`, [planId]);
+      await releaseSemiFinishedReservations(client, planId, planStore.rows[0]?.store_id ?? null, 'Liberee (retour en brouillon)', { cancelChildPlans: true });
 
       // 6) Plan -> draft, confirmed_at -> NULL, warnings nettoye
       await transitionPlan(client, planId, 'draft', { extraSet: 'confirmed_at = NULL, warnings = NULL' });
@@ -893,6 +899,12 @@ export const productionRepository = {
       //    de production_ingredient_needs et de signaler ce qui manque encore
       //    (non bloquant — le magasinier tranchera au prelevement).
       if (recomputeNeeds) {
+        // Audit 2026-11 C-02 : tout est recalculé, les semi-finis aussi. Les réservations
+        // sont rendues et les plans fils non lancés annulés ; confirm(), après COMMIT,
+        // refait la détection sur les quantités du moment (avant, le plan fils gardait
+        // l'ancienne quantité et la base restait exclue des besoins du parent).
+        await releaseSemiFinishedReservations(client, planId, plan.store_id ?? null, 'Liberee (relance du plan)', { cancelChildPlans: true });
+
         // Annulation logique (mig 300) : on garde le bon pour l'audit.
         const bsiToCancel = await client.query(
           `SELECT id FROM production_bons_sortie WHERE plan_id = $1 AND status = 'genere'`,
@@ -941,7 +953,8 @@ export const productionRepository = {
          WHERE ppd.parent_plan_id = $1 AND ppd.status = 'cancelled'`,
         [planId],
       );
-      if (cancelledDeps.rows.length > 0) {
+      // Avec recalcul, la détection est rejouée à la reconfirmation : rien à signaler.
+      if (cancelledDeps.rows.length > 0 && !recomputeNeeds) {
         const names = cancelledDeps.rows.map((r: Record<string, unknown>) => r.name as string).join(', ');
         warnings.push(`Semi-finis liberes a l'annulation (${names}) — verifiez leur stock avant de produire.`);
       }
@@ -1095,6 +1108,19 @@ export const productionRepository = {
       if (!planLock.rows[0]) throw new Error('Plan introuvable');
       if (planLock.rows[0].status !== 'in_progress') {
         throw new Error(`Le plan est en statut "${planLock.rows[0].status}" : il doit etre en cours pour etre termine.`);
+      }
+
+      // Audit 2026-11 C-03 : la suite ne traite que les lignes rattachées à un produit du
+      // catalogue. Une ligne de préparation de base (plan de semi-fini) passait « produite »
+      // sans entrée en stock, sans sortie de matière et sans lever la dépendance du parent.
+      // Sa production se déclare article par article (même écran que le reste).
+      const baseLines = await client.query(
+        `SELECT COUNT(*)::int AS n FROM production_plan_items
+          WHERE plan_id = $1 AND product_id IS NULL AND status IN ('pending', 'in_progress') AND id = ANY($2)`,
+        [planId, actualItems.filter(i => i.actualQuantity > 0).map(i => i.planItemId)]
+      );
+      if (baseLines.rows[0].n > 0) {
+        throw new Error('Ce plan contient une préparation de base : déclarez sa production avant de terminer le plan.');
       }
 
       // Articles qui passent en 'produced' PAR CET APPEL. Ceux deja produits via
@@ -1463,7 +1489,7 @@ export const productionRepository = {
       const fulfilledSubRecipes = new Set<string>();
       const depsResult = await client.query(
         `SELECT sub_recipe_id FROM production_plan_dependencies
-         WHERE parent_plan_id = $1`,
+         WHERE parent_plan_id = $1 AND status <> 'cancelled'`,
         [planId]
       );
       for (const dep of depsResult.rows) {
@@ -2004,9 +2030,13 @@ export const productionRepository = {
       // Magasin du transfert : c'est la que le stock produit a ete incremente a la
       // production, donc la qu'un ecart de reception doit etre corrige.
       const transferHeader = await client.query(
-        `SELECT plan_id, store_id FROM production_transfers WHERE id = $1 FOR UPDATE`, [transferId]
+        `SELECT plan_id, store_id, status FROM production_transfers WHERE id = $1 FOR UPDATE`, [transferId]
       );
       if (!transferHeader.rows[0]) throw new Error('Transfert introuvable');
+      // Audit 2026-11 C-12 : une réception rejouée réappliquait l'écart de stock et la perte.
+      if (transferHeader.rows[0].status !== 'transferred') {
+        throw new Error('Ce transfert a déjà été réceptionné.');
+      }
       const transferStoreId: string | null = transferHeader.rows[0].store_id ?? null;
       const transferPlanId: string = transferHeader.rows[0].plan_id;
 
@@ -2401,7 +2431,15 @@ export const productionRepository = {
   },
 
   async remove(planId: string) {
-    await db.query('DELETE FROM production_plans WHERE id = $1', [planId]);
+    // Audit 2026-11 C-02 : un brouillon peut encore détenir des semi-finis réservés
+    // (plans confirmés avant le correctif du retour en brouillon) — rendus avant suppression.
+    return withTransaction(async () => {
+      const client = await db.getClient();
+      const plan = await client.query(`SELECT store_id FROM production_plans WHERE id = $1 FOR UPDATE`, [planId]);
+      if (!plan.rows[0]) return;
+      await releaseSemiFinishedReservations(client, planId, plan.rows[0].store_id ?? null, 'Liberee (plan supprime)', { cancelChildPlans: true });
+      await client.query('DELETE FROM production_plans WHERE id = $1', [planId]);
+    });
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2424,6 +2462,13 @@ export const productionRepository = {
       await client.query('BEGIN');
 
       // 0. Guard: skip if detection already ran for this plan
+      //    Audit 2026-11 C-02 : une dépendance annulée (retour en brouillon, annulation)
+      //    n'est plus une détection en vigueur — elle est retirée et la détection rejouée,
+      //    sinon le plan fils gardait l'ancienne quantité et la base restait exclue des besoins.
+      await client.query(
+        `DELETE FROM production_plan_dependencies WHERE parent_plan_id = $1 AND status = 'cancelled'`,
+        [planId]
+      );
       const existingDeps = await client.query(
         `SELECT COUNT(*) as cnt FROM production_plan_dependencies WHERE parent_plan_id = $1`,
         [planId]
@@ -2676,29 +2721,21 @@ export async function releaseSemiFinishedReservations(
   planId: string,
   storeId: string | null,
   reason: string,
+  opts: { cancelChildPlans?: boolean } = {},
 ): Promise<void> {
+  // Audit 2026-11 C-02 : toute dépendance encore active est libérée, pas seulement celles
+  // « couvertes par le stock ». Une dépendance en attente du plan fils peut porter une part
+  // prise sur le stock : elle restait bloquée à vie.
   const depsResult = await client.query(
-    `SELECT id, sub_recipe_id, quantity_from_stock
+    `SELECT id, sub_recipe_id, quantity_from_stock, dependency_plan_id
      FROM production_plan_dependencies
-     WHERE parent_plan_id = $1 AND status = 'fulfilled' AND quantity_from_stock > 0`,
+     WHERE parent_plan_id = $1 AND status <> 'cancelled'`,
     [planId],
   );
   for (const dep of depsResult.rows) {
-    const qty = parseFloat(dep.quantity_from_stock);
-    if (qty <= 0) continue;
-
-    await client.query(
-      `UPDATE semi_finished_stock
-       SET quantity_available = quantity_available + $1, updated_at = NOW()
-       WHERE recipe_id = $2 AND (store_id = $3 OR $3 IS NULL)`,
-      [qty, dep.sub_recipe_id, storeId],
-    );
-    await client.query(
-      `INSERT INTO semi_finished_transactions (recipe_id, store_id, type, quantity_change, production_plan_id, notes)
-       VALUES ($1, $2, 'release', $3, $4, $5)`,
-      [dep.sub_recipe_id, storeId || '00000000-0000-0000-0000-000000000000', qty, planId, reason],
-    );
-    // Restitue la quantite aux lots d'ou elle venait (mig 300).
+    // Ce que le plan détient réellement : les lots qu'il a pris (réservation sur stock +
+    // part du plan fils imputée au parent à sa production, F-044). Sans trace de lot
+    // (données antérieures à la mig 300), on retombe sur la quantité réservée.
     const usage = await client.query(
       `SELECT u.id, u.semi_finished_lot_id, u.quantity
          FROM semi_finished_lot_usage u
@@ -2707,22 +2744,69 @@ export async function releaseSemiFinishedReservations(
         FOR UPDATE OF u`,
       [planId, dep.sub_recipe_id],
     );
-    for (const u of usage.rows) {
+    const fromLots = usage.rows.reduce((s: number, u: Record<string, unknown>) => s + parseFloat(u.quantity as string), 0);
+    const qty = usage.rows.length > 0 ? fromLots : parseFloat(dep.quantity_from_stock);
+
+    if (qty > 0) {
       await client.query(
-        `UPDATE semi_finished_lots
-            SET quantity_remaining = quantity_remaining + $1,
-                status = CASE WHEN status = 'depleted' THEN 'active' ELSE status END
-          WHERE id = $2`,
-        [parseFloat(u.quantity), u.semi_finished_lot_id],
+        `UPDATE semi_finished_stock
+         SET quantity_available = quantity_available + $1, updated_at = NOW()
+         WHERE recipe_id = $2 AND (store_id = $3 OR $3 IS NULL)`,
+        [qty, dep.sub_recipe_id, storeId],
       );
-      await client.query(`UPDATE semi_finished_lot_usage SET released_at = NOW() WHERE id = $1`, [u.id]);
+      await client.query(
+        `INSERT INTO semi_finished_transactions (recipe_id, store_id, type, quantity_change, production_plan_id, notes)
+         VALUES ($1, $2, 'release', $3, $4, $5)`,
+        [dep.sub_recipe_id, storeId || '00000000-0000-0000-0000-000000000000', qty, planId, reason],
+      );
+      // Restitue la quantite aux lots d'ou elle venait (mig 300).
+      for (const u of usage.rows) {
+        await client.query(
+          `UPDATE semi_finished_lots
+              SET quantity_remaining = quantity_remaining + $1,
+                  status = CASE WHEN status = 'depleted' THEN 'active' ELSE status END
+            WHERE id = $2`,
+          [parseFloat(u.quantity), u.semi_finished_lot_id],
+        );
+        await client.query(`UPDATE semi_finished_lot_usage SET released_at = NOW() WHERE id = $1`, [u.id]);
+      }
     }
+
     await client.query(
       `UPDATE production_plan_dependencies
        SET status = 'cancelled', quantity_from_stock = 0
        WHERE id = $1`,
       [dep.id],
     );
+
+    // Plan fils créé pour ce seul besoin et pas encore lancé : il n'a plus de raison d'être
+    // quand le parent repart de zéro (retour en brouillon, suppression, commande annulée).
+    // Un plan fils démarré ou produit est laissé tel quel (sa base reste en stock) ; un plan
+    // fils qui sert encore un autre parent aussi. Pas à l'annulation d'articles : le plan
+    // peut être relancé sans recalcul, il a alors encore besoin de sa base.
+    if (opts.cancelChildPlans && dep.dependency_plan_id) {
+      const child = await client.query(
+        `SELECT pp.status,
+                EXISTS (SELECT 1 FROM production_plan_items i WHERE i.plan_id = pp.id AND i.status IN ('in_progress', 'produced')) AS started,
+                EXISTS (SELECT 1 FROM production_plan_dependencies d
+                         WHERE d.dependency_plan_id = pp.id AND d.status <> 'cancelled') AS still_needed
+           FROM production_plans pp
+          WHERE pp.id = $1 AND pp.is_semi_finished_plan = true
+          FOR UPDATE OF pp`,
+        [dep.dependency_plan_id],
+      );
+      const c = child.rows[0];
+      if (c && !c.started && !c.still_needed && ['draft', 'confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(c.status)) {
+        await client.query(
+          `UPDATE production_plan_items SET status = 'cancelled', waiting_status = NULL, cancelled_at = NOW(), cancellation_reason = $2
+            WHERE plan_id = $1 AND status = 'pending'`,
+          [dep.dependency_plan_id, reason],
+        );
+        await transitionPlan(client, dep.dependency_plan_id, 'cancelled', {
+          extraSet: 'cancelled_at = NOW(), cancellation_reason = $2', params: [reason], reason,
+        });
+      }
+    }
   }
 }
 

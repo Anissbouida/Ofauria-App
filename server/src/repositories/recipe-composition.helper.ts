@@ -29,6 +29,10 @@ export interface CompositionIngredient {
    *  (ex: recette en kg, lait stocke en l, densite_kg_l NULL) : qtyPerBatch est
    *  alors la valeur brute, l'appelant doit remonter un warning. */
   conversionUncertain: boolean;
+  /** True si aucune conversion n'existe entre l'unité saisie et l'unité de stock
+   *  (ex. : « 3 unit » d'une matière stockée au kilo, sans poids de pièce) : le besoin
+   *  n'est pas chiffrable, qtyPerBatch vaut 0 et l'appelant remonte un avertissement. */
+  conversionImpossible: boolean;
 }
 
 export interface CompositionSubRecipe {
@@ -43,6 +47,8 @@ export interface CompositionSubRecipe {
   netQtyPerBatch: number;
   /** Quantite a produire (brut de perte_standard_pct) pour obtenir netQtyPerBatch. */
   grossQtyPerBatch: number;
+  /** True si l'unité saisie ne se convertit pas dans l'unité de rendement de la base. */
+  conversionImpossible: boolean;
 }
 
 export interface RecipeComposition {
@@ -134,25 +140,34 @@ export async function getCompositionForNeeds(
       }
       return {
         recipeId, recipeName: rec.name, mode: 'compose', source, batchDivisor,
-        ingredients: rows.filter(r => r.source_ingredient_id).map(r => ({
-          ingredientId: r.source_ingredient_id,
-          name: r.ingredient_name,
-          unit: r.ingredient_unit,
-          qtyPerBatch: parseFloat(r.qty_ing_base),
-          qtyEntered: parseFloat(r.qty_entered),
-          unitEntered: r.unit_entered,
-          conversionUncertain: r.conv_incertaine === true,
-        })),
-        subRecipes: rows.filter(r => r.source_recipe_id).map(r => ({
-          subRecipeId: r.source_recipe_id,
-          name: r.sub_name,
-          isBase: r.sub_is_base === true,
-          isPhantom: r.sub_is_phantom === true,
-          yieldUnit: r.sub_yield_unit || 'unit',
-          yieldQuantity: parseFloat(r.sub_yield_quantity) > 0 ? parseFloat(r.sub_yield_quantity) : 1,
-          netQtyPerBatch: parseFloat(r.qty_sub_net),
-          grossQtyPerBatch: parseFloat(r.qty_sub_gross),
-        })),
+        ingredients: rows.filter(r => r.source_ingredient_id).map(r => {
+          const q = ingredientQty(r);
+          return {
+            ingredientId: r.source_ingredient_id,
+            name: r.ingredient_name,
+            unit: r.ingredient_unit,
+            qtyPerBatch: q ?? 0,
+            qtyEntered: parseFloat(r.qty_entered),
+            unitEntered: r.unit_entered,
+            conversionUncertain: r.conv_incertaine === true,
+            conversionImpossible: q === null,
+          };
+        }),
+        subRecipes: rows.filter(r => r.source_recipe_id).map(r => {
+          const net = num(r.qty_sub_net);
+          const gross = num(r.qty_sub_gross);
+          return {
+            subRecipeId: r.source_recipe_id,
+            name: r.sub_name,
+            isBase: r.sub_is_base === true,
+            isPhantom: r.sub_is_phantom === true,
+            yieldUnit: r.sub_yield_unit || 'unit',
+            yieldQuantity: parseFloat(r.sub_yield_quantity) > 0 ? parseFloat(r.sub_yield_quantity) : 1,
+            netQtyPerBatch: net ?? 0,
+            grossQtyPerBatch: gross ?? net ?? 0,
+            conversionImpossible: net === null,
+          };
+        }),
         isEmpty: false,
       };
     }
@@ -167,6 +182,39 @@ export async function getCompositionForNeeds(
   };
 }
 
+/** Nombre fini, ou null : fn_convert_factor renvoie NULL quand aucune conversion n'existe. */
+function num(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : null;
+}
+
+const MASS_KG: Record<string, number> = { mg: 1e-6, g: 1e-3, kg: 1 };
+const VOLUME_L: Record<string, number> = { ml: 1e-3, cl: 1e-2, dl: 1e-1, l: 1 };
+
+/**
+ * Quantité d'une ligne matière dans l'unité de stock, ou null si elle n'est pas chiffrable.
+ *
+ * Audit 2026-11 C-09 : la conversion SQL renvoie NULL quand elle n'existe pas ; le
+ * `parseFloat(null)` qui suivait donnait NaN, propagé jusqu'aux besoins et au bon de sortie.
+ * Poids ↔ volume sans densité : 1 kg = 1 l, la même convention que l'éditeur de fiche
+ * (l'avertissement « densité manquante » est déjà remonté). Tout autre cas : null.
+ */
+function ingredientQty(r: Record<string, unknown>): number | null {
+  const direct = num(r.qty_ing_base);
+  if (direct !== null) return direct;
+  const from = String(r.unit_entered ?? '').toLowerCase();
+  const to = String(r.ingredient_unit ?? '').toLowerCase();
+  const entered = num(r.qty_entered);
+  if (entered === null) return null;
+  const k = from in MASS_KG && to in VOLUME_L ? MASS_KG[from] / VOLUME_L[to]
+    : from in VOLUME_L && to in MASS_KG ? VOLUME_L[from] / MASS_KG[to]
+    : null;
+  if (k === null) return null;
+  const loss = Math.min(Math.max(num(r.perte_pct) ?? 0, 0), 99.99);
+  return (entered * k) / (1 - loss / 100);
+}
+
 function componentQuery(table: string, keyColumn: string): string {
   // Mig 265 : perte_pct ligne majore la quantite BRUTE consommee (qty_saisie
   // = net, qty_brute = net / (1 - perte/100)). Meme regle que la perte
@@ -175,7 +223,7 @@ function componentQuery(table: string, keyColumn: string): string {
   return `
     SELECT c.source_recipe_id, c.source_ingredient_id,
            ing.name AS ingredient_name, ing.unit AS ingredient_unit,
-           c.quantite AS qty_entered, c.unite AS unit_entered,
+           c.quantite AS qty_entered, c.unite AS unit_entered, c.perte_pct,
            (c.quantite * fn_convert_factor(c.unite, ing.unit::text, 'ingredient', ing.id))
              / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0) AS qty_ing_base,
            (((lower(c.unite) IN ('mg','g','kg') AND lower(ing.unit::text) IN ('ml','cl','dl','l'))
@@ -236,6 +284,15 @@ async function walk(
   warnedIngredients: Set<string>
 ): Promise<void> {
   for (const ing of comp.ingredients) {
+    if (ing.conversionImpossible) {
+      if (opts.warnings && !warnedIngredients.has(ing.ingredientId)) {
+        warnedIngredients.add(ing.ingredientId);
+        opts.warnings.push(
+          `Besoin non calculé pour "${ing.name}" dans "${comp.recipeName}" : aucune conversion entre ${ing.unitEntered} (fiche) et ${ing.unit} (stock). Renseigner la conversion de l'article ou saisir la ligne dans l'unité de stock.`
+        );
+      }
+      continue;
+    }
     if (ing.conversionUncertain && opts.warnings && !warnedIngredients.has(ing.ingredientId)) {
       warnedIngredients.add(ing.ingredientId);
       opts.warnings.push(
@@ -246,6 +303,14 @@ async function walk(
   }
   for (const sub of comp.subRecipes) {
     if (opts.skipSubRecipe && opts.skipSubRecipe(sub.subRecipeId)) continue;
+    if (sub.conversionImpossible) {
+      if (opts.warnings) {
+        opts.warnings.push(
+          `Besoin non calculé pour la préparation "${sub.name}" dans "${comp.recipeName}" : l'unité saisie ne se convertit pas en ${sub.yieldUnit} (unité de rendement de la préparation).`
+        );
+      }
+      continue;
+    }
     if (path.includes(sub.subRecipeId)) {
       if (opts.warnings) {
         opts.warnings.push(`Cycle de composition detecte (${comp.recipeName} -> ${sub.name}) : branche ignoree pour les besoins.`);

@@ -9,6 +9,7 @@ import { db, withTransaction } from '../config/database.js';
 import { productionRepository } from '../repositories/production.repository.js';
 import { declareProductLoss } from './product-loss.service.js';
 import { productSerialRepository } from '../repositories/product-serial.repository.js';
+import { finalizeCompletedPlan } from './production-closing.js';
 
 type ProduceItem = Parameters<typeof productionRepository.produceItems>[1][number];
 
@@ -21,6 +22,14 @@ export interface ProductionDeclaration {
 }
 
 export async function declareProduction(planId: string, input: ProductionDeclaration, actor: { userId: string; storeId?: string }) {
+  const result = await declareInTransaction(planId, input, actor);
+  // Audit 2026-11 C-01 : le dernier article déclaré termine le plan — c'est le chemin
+  // normal de clôture, et il ne chiffrait rien. Après validation de la transaction.
+  if (result.autoCompleted) await finalizeCompletedPlan(planId, actor.userId);
+  return result;
+}
+
+async function declareInTransaction(planId: string, input: ProductionDeclaration, actor: { userId: string; storeId?: string }) {
   return withTransaction(async () => {
     const result = await productionRepository.produceItems(planId, input.items, actor.userId, actor.storeId, input.producedAt);
     // M9 : numéros de série des articles suivis par série, dans la même transaction.

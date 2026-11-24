@@ -13,7 +13,7 @@ interface StubData {
   recipes: Record<string, any>;
   components: Record<string, any[]>;        // recipe_components par recipe_id
   formatComponents: Record<string, any[]>;  // recipe_format_components par format_id
-  formats: Record<string, { recipe_id: string; nb_par_defaut: number }>;
+  formats: Record<string, { recipe_id: string; nb_par_defaut: number; rendement_kg?: number | null }>;
   legacyIngredients: Record<string, any[]>; // recipe_ingredients par recipe_id
   legacySubs: Record<string, any[]>;        // recipe_sub_recipes par recipe_id
 }
@@ -22,13 +22,14 @@ function makeClient(data: StubData) {
   return {
     query: async (text: string, params: unknown[] = []) => {
       const id = params[0] as string;
-      if (text.includes('FROM recipes r WHERE r.id = $1')) {
+      // La requête de fiche joint le format par défaut (rendement au kilo, mig 613).
+      if (text.includes('FROM recipes r') && text.includes('WHERE r.id = $1')) {
         const r = data.recipes[id];
         return { rows: r ? [r] : [] };
       }
       if (text.includes('FROM recipe_formats WHERE id = $1 AND recipe_id = $2')) {
         const f = data.formats[id];
-        return { rows: f && f.recipe_id === params[1] ? [{ nb_par_defaut: f.nb_par_defaut }] : [] };
+        return { rows: f && f.recipe_id === params[1] ? [{ nb_par_defaut: f.nb_par_defaut, rendement_kg: f.rendement_kg ?? null }] : [] };
       }
       if (text.includes('FROM recipe_format_components')) {
         return { rows: data.formatComponents[id] || [] };
@@ -295,5 +296,57 @@ describe('collectIngredientNeedsForUnits — garde-fous', () => {
 
     const withoutSkip = await needsFor(client, 'parent', 1);
     expect(withoutSkip.acc.get('lait')).toBeCloseTo(2);
+  });
+});
+
+// Audit 2026-11 C-09 : fn_convert_factor renvoie NULL quand aucune conversion n'existe.
+describe('collectIngredientNeedsForUnits — conversion absente', () => {
+  const noConv = (ingredientId: string, qty: number, from: string, to: string, incertaine: boolean) => ({
+    source_recipe_id: null, source_ingredient_id: ingredientId,
+    ingredient_name: ingredientId, ingredient_unit: to,
+    qty_entered: String(qty), unit_entered: from, perte_pct: null,
+    qty_ing_base: null, conv_incertaine: incertaine,
+    sub_name: null, sub_is_base: null, sub_yield_unit: null, sub_yield_quantity: null, qty_sub_net: null, qty_sub_gross: null,
+  });
+
+  it('pièces → kilo sans conversion : besoin non chiffré, avertissement nommé, jamais NaN', async () => {
+    const client = makeClient({
+      recipes: { r1: composeRecipe('r1', 'Tarte', { compo_par_piece: true }) },
+      components: { r1: [noConv('oeufs', 3, 'unit', 'kg', false), ingComponent('sucre', 0.2)] },
+      formatComponents: {}, formats: {}, legacyIngredients: {}, legacySubs: {},
+    });
+    const { acc, warnings } = await needsFor(client, 'r1', 10);
+    expect(acc.has('oeufs')).toBe(false);
+    expect(acc.get('sucre')).toBeCloseTo(2);
+    expect([...acc.values()].every(Number.isFinite)).toBe(true);
+    expect(warnings.some(w => w.includes('Besoin non calculé') && w.includes('oeufs'))).toBe(true);
+  });
+
+  it('poids → volume sans densité : 1 kg = 1 l, comme l\'éditeur de fiche', async () => {
+    const client = makeClient({
+      recipes: { r1: composeRecipe('r1', 'Flan', { compo_par_piece: true }) },
+      components: { r1: [noConv('lait', 500, 'g', 'l', true)] },
+      formatComponents: {}, formats: {}, legacyIngredients: {}, legacySubs: {},
+    });
+    const { acc, warnings } = await needsFor(client, 'r1', 4);
+    expect(acc.get('lait')).toBeCloseTo(2); // 4 × 0,5 l
+    expect(warnings.some(w => w.includes('densité'))).toBe(true);
+  });
+
+  it('préparation saisie dans une unité non convertible : branche ignorée avec avertissement', async () => {
+    const client = makeClient({
+      recipes: {
+        r1: composeRecipe('r1', 'Éclair', { compo_par_piece: true }),
+        b1: composeRecipe('b1', 'Crème', { yield_quantity: '2', yield_unit: 'kg' }),
+      },
+      components: {
+        r1: [{ ...subComponent('b1', 0, 0, 2), qty_sub_net: null, qty_sub_gross: null }],
+        b1: [ingComponent('lait', 1)],
+      },
+      formatComponents: {}, formats: {}, legacyIngredients: {}, legacySubs: {},
+    });
+    const { acc, warnings } = await needsFor(client, 'r1', 10);
+    expect(acc.size).toBe(0);
+    expect(warnings.some(w => w.includes('Besoin non calculé pour la préparation'))).toBe(true);
   });
 });

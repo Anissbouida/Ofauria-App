@@ -22,7 +22,7 @@ import { processRefs } from '../services/process-referentials.js';
 import { declareProduction, listPlanObservations } from '../services/production-declaration.js';
 import { logger } from '../utils/logger.js';
 import { ApprovalPendingError, gateApproval, planApprovalValues } from '../services/production-approvals.js';
-import { postProductionEntry } from '../services/production-ledger.js';
+import { finalizeCompletedPlan } from '../services/production-closing.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
@@ -860,13 +860,8 @@ export const productionController = {
       });
     }
 
-    try {
-      await productionCoutRepository.calculateAndSave(req.params.id, req.user!.userId);
-      // Étape 9 : écriture de production en inventaire permanent (politique éteinte par défaut).
-      await postProductionEntry(req.params.id, req.user!.userId);
-    } catch (err) {
-      logger.error({ err: err }, 'Auto-calculate cost failed (non-blocking):');
-    }
+    // Coût réel + écriture de production : même suite que la clôture automatique (C-01).
+    await finalizeCompletedPlan(req.params.id, req.user!.userId);
 
     res.json({ success: true, data: updated, warnings });
   },
