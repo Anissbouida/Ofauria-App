@@ -259,6 +259,9 @@ export const recipeController = {
           nbParts: f.nb_parts === null ? null : Number(f.nb_parts),
           quantiteParFormat: num(f.quantite_par_format),
           quantiteParFormatUnite: (f.quantite_par_format_unite as string) || 'g',
+          // Poids d'une pièce : la composition vaut une pièce (saisie par pièce) ou la fournée.
+          poidsPieceG: enKg || !(num(f.poids_compo_g) > 0) ? null
+            : (r.compo_par_piece === true ? num(f.poids_compo_g) : num(f.poids_compo_g) / nbPieces),
           coutFormatDh: coutLancement,
           coutUnitaireDh: coutPiece,
           coutCompletUnitaireDh: isCompose ? null : numOrNull(f.cout_unitaire_complet),
@@ -291,6 +294,7 @@ export const recipeController = {
         yieldQuantity: num(r.yield_quantity),
         yieldUnit: (r.yield_unit as string) || 'unit',
         perteStandardPct: num(r.perte_standard_pct),
+        compoParPiece: r.compo_par_piece === true,
         totalCostDh: numOrNull(r.total_cost),
         productName: (r.product_name as string) || null,
         instructions: (r.instructions as string) || null,
@@ -309,7 +313,7 @@ export const recipeController = {
             name: string; yieldQuantity: number; yieldUnit: string;
             perteStandardPct: number; coutFourneeDh: number | null;
             besoinNet: number | null; facteur: number | null;
-            ingredients: Array<{ name: string; quantity: number; unit: string; coutDh: number | null }>;
+            ingredients: Array<{ name: string; quantity: number; unit: string; coutDh: number | null; qtyYieldUnit: number | null }>;
           }>();
           for (const row of data.bases) {
             const id = String(row.base_id);
@@ -340,6 +344,7 @@ export const recipeController = {
                 quantity: num(row.quantity),
                 unit: (row.unit as string) || 'g',
                 coutDh: numOrNull(row.cout_dh),
+                qtyYieldUnit: numOrNull(row.qty_yield_unit),
               });
             }
           }

@@ -32,7 +32,7 @@ export const recipeFicheRepository = {
   async findForFiche(recipeId: string, formatId?: string | null): Promise<FicheRow | null> {
     const recipe = await db.query(
       `SELECT r.id, r.name, r.is_base, r.mode_cout, r.yield_quantity, r.yield_unit,
-              r.perte_standard_pct, r.instructions, r.etapes, r.margin_multiplier,
+              r.perte_standard_pct, r.instructions, r.etapes, r.margin_multiplier, r.compo_par_piece,
               rc.label AS category_label,
               p.name AS product_name,
               vtc.total_cost
@@ -55,6 +55,14 @@ export const recipeFicheRepository = {
               rf.quantite_par_format, rf.quantite_par_format_unite,
               rf.margin_multiplier_override, rf.prix_vente_unitaire_override,
               pc.nom AS contenant_nom,
+              -- Poids brut de la composition (masses et volumes ramenés en g/ml, comme
+              -- l'éditeur ; pièces et emballages exclus). quantite_par_format, lu avant, est
+              -- un champ de l'ancien modèle (1 g par défaut) : « Poids/pièce 1 g ».
+              (SELECT SUM(c.quantite * CASE lower(c.unite)
+                        WHEN 'mg' THEN 0.001 WHEN 'g' THEN 1 WHEN 'kg' THEN 1000
+                        WHEN 'ml' THEN 1 WHEN 'cl' THEN 10 WHEN 'dl' THEN 100 WHEN 'l' THEN 1000 ELSE 0 END)
+                 FROM recipe_format_components c
+                WHERE c.format_id = rf.id AND c.source_packaging_id IS NULL) AS poids_compo_g,
               vcc.cout_compose_dh,
               -- Coût par pièce via la fonction de coût UNIQUE (mig 409) au lieu de
               -- v_recipe_format_cost (prorata-poids) : matière des vrais composants du
@@ -112,6 +120,9 @@ export const recipeFicheRepository = {
               ing.name         AS ingredient_name,
               bc.quantite      AS quantity,
               bc.unite         AS unit,
+              -- Même quantité dans l'unité de rendement de la préparation : le total à mettre
+              -- en œuvre additionnait g, kg et l tels quels (1,45 g de sel compté 1,45 kg).
+              bc.quantite * fn_convert_factor(bc.unite::text, br.yield_unit::text, 'ingredient', ing.id) AS qty_yield_unit,
               bc.quantite
                 * COALESCE(ing.unit_cost, 0)
                 * fn_convert_factor(bc.unite::text, ing.unit::text, 'ingredient', ing.id)
@@ -124,10 +135,15 @@ export const recipeFicheRepository = {
          -- quantite : 450 g a poser dans le cadre avec 5 % de casse, c'est
          -- 474 g a sortir du labo.
          LEFT JOIN LATERAL (
+           -- Composition saisie par pièce : la ligne vaut pour une pièce, le format en
+           -- fait nb_par_defaut (120 g de pâte × 30 pizzas = 3,6 kg, pas 0,12 kg).
            SELECT SUM(
                     c.quantite
                     * fn_convert_factor(c.unite::text, br.yield_unit::text, NULL, NULL)
                     / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0)
+                    * CASE WHEN (SELECT pr.compo_par_piece FROM recipes pr WHERE pr.id = $1) IS TRUE
+                                AND COALESCE(rf2.rendement_unite, 'unit') <> 'kg'
+                           THEN GREATEST(COALESCE(rf2.nb_par_defaut, 1), 1) ELSE 1 END
                   ) AS besoin_net
              FROM recipe_format_components c
              JOIN recipe_formats rf2 ON rf2.id = c.format_id

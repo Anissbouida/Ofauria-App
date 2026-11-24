@@ -61,6 +61,8 @@ export interface FicheFormat {
   /** Cout complet (matiere + MO + energie + structure + emballage) par piece. */
   coutCompletUnitaireDh: number | null;
   prixVenteUnitaireDh: number | null;
+  /** Poids brut d'une pièce (composition en g/ml). null = format au kilo ou sans masse. */
+  poidsPieceG?: number | null;
   components: FicheComponent[];
 }
 
@@ -69,6 +71,8 @@ export interface FicheIngredient {
   quantity: number;
   unit: string;
   coutDh: number | null;
+  /** Quantité dans l'unité de rendement de la préparation (total à mettre en œuvre). */
+  qtyYieldUnit?: number | null;
 }
 
 /** Une preparation de base citee par la nomenclature, avec sa propre recette. */
@@ -104,6 +108,8 @@ export interface FicheData {
   yieldQuantity: number;
   yieldUnit: string;
   perteStandardPct: number;
+  /** Composition saisie pour UNE pièce (sinon pour la fournée du format). */
+  compoParPiece?: boolean;
   totalCostDh: number | null;
   productName: string | null;
   instructions: string | null;
@@ -290,9 +296,15 @@ function n(val: number | null, dec = 2): string {
 
 /** Quantite : on garde l'unite SAISIE, jamais convertie (420 g reste 420 g). */
 function qty(v: number, unit: string): string {
-  const dec = Number.isInteger(v) ? 0 : 2;
-  return `${n(v, dec)} ${unit}`;
+  // Décimales selon la grandeur : 3,6 ml d'huile sortait « 0,00 l ».
+  const a = Math.abs(v);
+  const dec = Number.isInteger(v) ? 0 : a >= 100 ? 1 : a >= 1 ? 2 : 3;
+  const s = v.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: dec }).replace(/[\u00A0\u202F\u2009]/g, ' ');
+  return `${s} ${unit}`;
 }
+/** Poids d'une pièce en g, ou « — ». */
+const poidsTxt = (g: number | null | undefined) =>
+  g == null || !(g > 0) ? '\u2014' : g >= 1000 ? qty(g / 1000, 'kg') : qty(Math.round(g * 10) / 10, 'g');
 
 /** Mig 613 : format au kilo → rendement en kg, montants unitaires au kilo. */
 const isKg = (f: FicheFormat) => f.rendementUnite === 'kg' && (f.rendementKg ?? 0) > 0;
@@ -386,7 +398,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
       ['FORMAT', seul.contenantNom || 'Sans contenant'],
       ['RENDEMENT', rendementTxt(seul)],
       ['PERTE', data.perteStandardPct > 0 ? `${n(data.perteStandardPct, 1)} %` : '—'],
-      [`POIDS / ${uniteTxt(seul).toUpperCase()}`, qty(seul.quantiteParFormat, seul.quantiteParFormatUnite)],
+      [`POIDS / ${uniteTxt(seul).toUpperCase()}`, poidsTxt(seul.poidsPieceG)],
     ]
     : [
       ['RENDEMENT BRUT', qty(data.yieldQuantity, data.yieldUnit)],
@@ -442,7 +454,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
       const values = [
         nom,
         isKg(f) ? rendementTxt(f) : String(f.nbParDefaut),
-        qty(f.quantiteParFormat, f.quantiteParFormatUnite),
+        poidsTxt(f.poidsPieceG),
       ];
       let x = M;
       values.forEach((v, i) => {
@@ -500,17 +512,31 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
   if (formatsAvecBom.length > 0) {
     sectionTitle('Nomenclature par format');
 
-    const cCols = [
-      { w: 90, label: 'Nature', align: 'left' as const },
-      { w: 265, label: 'Composant', align: 'left' as const },
-      { w: 95, label: 'Quantité', align: 'right' as const },
-      { w: 65, label: 'Perte', align: 'right' as const },
-    ];
-
     for (const f of formatsAvecBom) {
+      // Quantité saisie (par pièce ou par fournée) + la même sur l'autre base, comme l'éditeur :
+      // « 120 g » sous « Plaque 30 pièces » se lisait comme la quantité de la plaque.
+      const parPiece = data.compoParPiece === true;
+      const autre = !isKg(f) && f.nbParDefaut > 1;
+      const cCols = autre
+        ? [
+          { w: 85, label: 'Nature', align: 'left' as const },
+          { w: 215, label: 'Composant', align: 'left' as const },
+          { w: 85, label: parPiece ? 'Par pièce' : `Pour ${f.nbParDefaut} pièces`, align: 'right' as const },
+          { w: 85, label: parPiece ? `Pour ${f.nbParDefaut} pièces` : 'Par pièce', align: 'right' as const },
+          { w: 45, label: 'Perte', align: 'right' as const },
+        ]
+        : [
+          { w: 90, label: 'Nature', align: 'left' as const },
+          { w: 265, label: 'Composant', align: 'left' as const },
+          { w: 95, label: isKg(f) ? `Pour ${rendementTxt(f)}` : 'Quantité', align: 'right' as const },
+          { w: 65, label: 'Perte', align: 'right' as const },
+        ];
       ensure(60);
       doc.font('Helvetica-Bold').fontSize(9).fillColor(BROWN);
       txt(`${f.contenantNom || 'Format sans contenant'} — ${rendementTxt(f)}`, M, y);
+      doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
+      txt(parPiece ? 'quantités saisies par pièce' : `quantités saisies pour ${isKg(f) ? 'la fournée' : rendementTxt(f)}`,
+        M, y + 1, { width: CW, align: 'right' });
       y += 15;
 
       const drawBomHead = () => {
@@ -527,16 +553,18 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
         doc.rect(M, y, CW, 16).lineWidth(0.4).stroke(BORDER);
         // Une conversion d'unite impossible fausse la quantité à sortir : on le signale sur
         // la ligne plutot que de laisser lire un chiffre faux (cf. mig 260).
+        const saisie = c.conversionOk ? qty(c.quantite, c.unite) : `${qty(c.quantite, c.unite)}  (!)`;
         const vals = [
           // Nature déduite de la source (mig 634/636), plus le code de rôle brut (« semi_fini »).
           c.sourceType === 'recipe' ? 'Préparation de base' : c.sourceType === 'packaging' ? 'Emballage' : 'Ingrédient',
           c.sourceName,
-          c.conversionOk ? qty(c.quantite, c.unite) : `${qty(c.quantite, c.unite)}  (!)`,
+          saisie,
+          ...(autre ? [qty(parPiece ? c.quantite * f.nbParDefaut : c.quantite / f.nbParDefaut, c.unite)] : []),
           c.pertePct > 0 ? `${n(c.pertePct, 1)} %` : '—',
         ];
         let x = M;
         vals.forEach((v, i) => {
-          doc.font('Helvetica').fontSize(8).fillColor(!c.conversionOk && i === 2 ? '#B42318' : TEXT_DARK);
+          doc.font('Helvetica').fontSize(8).fillColor(!c.conversionOk && i === 2 ? '#B42318' : autre && i === 3 ? TEXT_MUTED : TEXT_DARK);
           txt(v, x + 4, y + 4.5, { width: cCols[i].w - 8, align: cCols[i].align });
           x += cCols[i].w;
         });
@@ -626,7 +654,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
         const vals = facteur !== null && avecBesoin
           ? [ing.name, qty(ing.quantity * facteur, ing.unit), qty(ing.quantity, ing.unit)]
           : [ing.name, qty(ing.quantity, ing.unit)];
-        if (facteur !== null) totalMis += ing.quantity * facteur;
+        if (facteur !== null && ing.qtyYieldUnit != null) totalMis += ing.qtyYieldUnit * facteur;
         let x = M;
         vals.forEach((v, i) => {
           // La colonne « fournée std » est une reference, pas une consigne :
