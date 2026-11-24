@@ -8,13 +8,14 @@
  *   1,4 fournée au lieu de 2,41, et la production n'a sorti du stock que 58 % des matières.
  *
  * CE QUE FAIT LA CORRECTION
- *   Pour chaque plan semi-fini produit dont la recette est au kilo, recalcule les sorties
- *   comme la production les fait aujourd'hui (même helper, version de nomenclature en vigueur
- *   à la date du plan, bases servies par un plan fils sautées), les compare aux sorties
- *   enregistrées (inventory_transactions type 'production' du plan) et sort le complément :
- *   inventaire, mouvement 'production' rattaché au plan, lots en FEFO — les mêmes gestes que
- *   la production. Le mouvement porte la mention CORRECTION_NOTE : un plan déjà corrigé est
- *   ignoré (rejouable sans double sortie).
+ *   Pour chaque plan semi-fini produit dont la recette est au kilo, part des sorties
+ *   ENREGISTRÉES (inventory_transactions type 'production' du plan) — qui valent exactement
+ *   l'ancien calcul — et les porte au bon diviseur : attendu = sorti × nb_par_defaut ÷
+ *   rendement_kg. On ne recalcule pas depuis la fiche actuelle : des fiches ont été complétées
+ *   depuis (eau ajoutée…), et le complément mêlerait le défaut du diviseur à ces changements.
+ *   Le complément sort comme à la production : inventaire, mouvement 'production' rattaché au
+ *   plan, lots en FEFO. Le mouvement porte la mention CORRECTION_NOTE : un plan déjà corrigé
+ *   est ignoré (rejouable sans double sortie).
  *
  * LIMITES
  *   - les lots consommés sont ceux disponibles AUJOURD'HUI (FEFO), pas ceux du jour du plan ;
@@ -24,8 +25,6 @@
  *     et les bases qu'ils emploient étaient déjà comptées sur leur rendement kilo.
  */
 import type { PoolClient } from 'pg';
-import { collectIngredientNeedsForUnits } from '../repositories/recipe-composition.helper.js';
-import { bomVersionRepository } from '../repositories/bom-version.repository.js';
 import { ingredientLotRepository } from '../repositories/ingredient-lot.repository.js';
 
 export const CORRECTION_NOTE = 'Correction rendement kilo (mig 613)';
@@ -68,53 +67,34 @@ async function candidates(client: Q) {
                      (SELECT t.consumption_mode FROM production_order_types t WHERE t.id = pp.order_type_id), '') <> 'manuel'
         AND NOT EXISTS (SELECT 1 FROM inventory_transactions it
                          WHERE it.production_plan_id = pp.id AND it.note LIKE $1)
+        -- Une seule ligne produite : les sorties du plan sont toutes celles de cette recette.
+        AND (SELECT count(*) FROM production_plan_items x WHERE x.plan_id = pp.id AND x.actual_quantity > 0) = 1
       GROUP BY pp.id, ppi.base_recipe_id, ppi.format_id, r.name, r.yield_unit, f.nb_par_defaut, f.rendement_kg
       ORDER BY pp.plan_date, pp.of_number`, [`${CORRECTION_NOTE}%`])).rows;
 }
 
-/**
- * Calcule les compléments à sortir, sans rien écrire (transaction annulée : le rejeu des
- * versions de nomenclature passe par des points de sauvegarde).
- */
+/** Calcule les compléments à sortir, sans rien écrire. */
 export async function planKgYieldCorrections(client: PoolClient): Promise<KgCorrectionPlan[]> {
   const out: KgCorrectionPlan[] = [];
-  await client.query('BEGIN');
-  try {
-    for (const c of await candidates(client)) {
-      // Comme la production : les bases ayant une dépendance sur ce plan sont servies ailleurs.
-      const skip = new Set((await client.query(
-        `SELECT sub_recipe_id FROM production_plan_dependencies WHERE parent_plan_id = $1`, [c.plan_id])).rows
-        .map(r => r.sub_recipe_id as string));
-      const expected = new Map<string, number>();
-      const run = () => collectIngredientNeedsForUnits(client as never, c.recipe_id, Number(c.produced),
-        (id, q) => expected.set(id, (expected.get(id) ?? 0) + q),
-        { formatId: c.format_id ?? null, skipSubRecipe: id => skip.has(id) });
-      await bomVersionRepository.withVersionsInForce(client, [c.recipe_id], c.plan_date, run);
-
-      const recorded = new Map<string, number>((await client.query(
-        `SELECT ingredient_id, -SUM(quantity_change)::numeric AS q FROM inventory_transactions
-          WHERE production_plan_id = $1 AND type = 'production' GROUP BY ingredient_id`, [c.plan_id])).rows
-        .map(r => [r.ingredient_id as string, Number(r.q)]));
-      const ids = [...expected.keys()];
-      if (!ids.length) continue;
-      const info = new Map((await client.query(
-        `SELECT i.id, i.name, i.unit, COALESCE(i.unit_cost, 0) AS unit_cost,
-                COALESCE((SELECT SUM(inv.current_quantity) FROM inventory inv
-                           WHERE inv.ingredient_id = i.id AND ($2::uuid IS NULL OR inv.store_id = $2)), 0) AS stock
-           FROM ingredients i WHERE i.id = ANY($1::uuid[])`, [ids, c.store_id])).rows.map(r => [r.id, r]));
-      const lines: KgCorrectionLine[] = ids.map(id => {
-        const exp = r3(expected.get(id) ?? 0); const rec = r3(recorded.get(id) ?? 0);
-        const i = info.get(id);
-        return { ingredientId: id, ingredientName: i?.name ?? id, unit: i?.unit ?? '', recorded: rec, expected: exp,
-          delta: r3(exp - rec), stock: Number(i?.stock ?? 0), unitCost: Number(i?.unit_cost ?? 0) };
-      }).filter(l => l.delta > EPS).sort((a, b) => a.ingredientName.localeCompare(b.ingredientName, 'fr'));
-      if (!lines.length) continue;
-      out.push({ planId: c.plan_id, ofNumber: c.of_number, planDate: c.plan_date, storeId: c.store_id,
-        recipeId: c.recipe_id, recipeName: c.recipe_name, producedQty: Number(c.produced), yieldUnit: c.yield_unit ?? 'kg',
-        divisorOld: Number(c.nb_par_defaut), divisorNew: Number(c.rendement_kg), lines });
-    }
-  } finally {
-    await client.query('ROLLBACK').catch(() => undefined);
+  for (const c of await candidates(client)) {
+    const ratio = Number(c.nb_par_defaut) / Number(c.rendement_kg);
+    const recorded = (await client.query(
+      `SELECT it.ingredient_id, i.name, i.unit, COALESCE(i.unit_cost, 0) AS unit_cost,
+              -SUM(it.quantity_change)::numeric AS q,
+              COALESCE((SELECT SUM(inv.current_quantity) FROM inventory inv
+                         WHERE inv.ingredient_id = it.ingredient_id AND ($2::uuid IS NULL OR inv.store_id = $2)), 0) AS stock
+         FROM inventory_transactions it JOIN ingredients i ON i.id = it.ingredient_id
+        WHERE it.production_plan_id = $1 AND it.type = 'production'
+        GROUP BY it.ingredient_id, i.name, i.unit, i.unit_cost`, [c.plan_id, c.store_id])).rows;
+    const lines: KgCorrectionLine[] = recorded.map(r => {
+      const rec = r3(Number(r.q)); const exp = r3(Number(r.q) * ratio);
+      return { ingredientId: r.ingredient_id, ingredientName: r.name, unit: r.unit ?? '', recorded: rec, expected: exp,
+        delta: r3(exp - rec), stock: Number(r.stock), unitCost: Number(r.unit_cost) };
+    }).filter(l => l.delta > EPS).sort((a, b) => a.ingredientName.localeCompare(b.ingredientName, 'fr'));
+    if (!lines.length) continue;
+    out.push({ planId: c.plan_id, ofNumber: c.of_number, planDate: c.plan_date, storeId: c.store_id,
+      recipeId: c.recipe_id, recipeName: c.recipe_name, producedQty: Number(c.produced), yieldUnit: c.yield_unit ?? 'kg',
+      divisorOld: Number(c.nb_par_defaut), divisorNew: Number(c.rendement_kg), lines });
   }
   return out;
 }
