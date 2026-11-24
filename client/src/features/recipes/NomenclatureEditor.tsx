@@ -25,6 +25,8 @@ const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
 // Colonnes : poignée, nature, composant, quantité saisie, unité, quantité convertie
 // (fournée ↔ pièce, calculée), perte, retrait.
 const COLS = '52px 132px minmax(0,1fr) 108px 80px 120px 72px 36px';
+/** Sans la quantité convertie (rendement en kg : pas de « par pièce »). */
+const COLS_SANS_CONVERSION = '52px 132px minmax(0,1fr) 108px 80px 72px 36px';
 /** Quantité calculée affichée dans l'unité saisie (420 g reste en g) : 2 décimales, 3 sous 1. */
 const fmtQty = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: Math.abs(v) < 1 ? 3 : 2 });
 const MASS: Record<string, number> = { g: 1, kg: 1000, mg: 0.001 };
@@ -453,6 +455,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   // Quantité vue sur l'autre base : saisie par pièce → pour toute la fournée (× rendement) ;
   // saisie par fournée → pour une pièce (÷ rendement). Sans objet pour un rendement en kg.
   const showOther = !enKg && rendementNum > 0;
+  const cols = showOther ? COLS : COLS_SANS_CONVERSION;
   const otherLabel = compoParPiece ? `${PT.batch} ×${rendementNum}` : 'Par pièce';
   const otherQty = (q: string) => {
     const v = parseFloat(q.replace(',', '.'));
@@ -632,7 +635,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       ? `${eqBig ? (eq.val / 1000).toFixed(2) : Math.round(eq.val)} ${eqUnit}` : null;
     return (
       <div key={r.key} onDragOver={(e) => e.preventDefault()} onDrop={() => onDropRow(r.key)}>
-        <div className={`fx-row${dragKey === r.key ? ' drag' : ''}`} style={{ gridTemplateColumns: COLS }}>
+        <div className={`fx-row${dragKey === r.key ? ' drag' : ''}`} style={{ gridTemplateColumns: cols }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 2, paddingTop: 6 }}>
             <span draggable onDragStart={() => setDragKey(r.key)} onDragEnd={() => setDragKey(null)}
               className="fx-grip" title="Glisser pour réordonner">
@@ -687,8 +690,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             {extraUnits.map((u) => <option key={u.code} value={u.code} title={u.label}>{u.code}</option>)}
             {![...UNITES, ...extraUnits.map(u => u.code)].includes(r.unite) && <option value={r.unite}>{r.unite}</option>}
           </select>
-          {(() => {
-            const o = showOther ? otherQty(r.quantite) : null;
+          {showOther && (() => {
+            const o = otherQty(r.quantite);
             return (
               <div className="fx-ro" style={{ justifyContent: 'flex-end', color: o == null ? 'var(--ds-muted)' : undefined }}
                 title={compoParPiece ? `Quantité pour toute la ${bLc} : quantité par pièce × ${rendementNum}` : `Quantité pour une pièce : quantité par ${bLc} ÷ ${rendementNum}`}>
@@ -909,10 +912,10 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
 
             {/* Défilement horizontal sur écran étroit : les colonnes fixes gardent la grille lisible. */}
             <div className="fx-grid">
-              <div className="fx-row fx-th" style={{ gridTemplateColumns: COLS }}>
+              <div className="fx-row fx-th" style={{ gridTemplateColumns: cols }}>
                 <span /><span>Nature</span><span>Composant</span>
                 <span style={{ textAlign: 'right' }}>{compoParPiece ? 'Quantité / pièce' : `Quantité / ${bLc}`}</span><span>Unité</span>
-                <span style={{ textAlign: 'right' }} title="Calculé depuis la quantité saisie et le rendement du format">{showOther ? otherLabel : ''}</span>
+                {showOther && <span style={{ textAlign: 'right' }} title="Calculé depuis la quantité saisie et le rendement du format">{otherLabel}</span>}
                 <span style={{ textAlign: 'right' }} title="Perte sur la ligne : majore la matière consommée">Perte (%)</span>
                 <span />
               </div>
@@ -924,11 +927,11 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 const [tv, tu] = splitW(poidsBrutG);
                 const [ov, ou] = splitW(compoParPiece ? poidsBrutG * rendementNum : poidsBrutG / rendementNum);
                 return (
-                  <div className="fx-row fx-total" style={{ gridTemplateColumns: COLS }}>
+                  <div className="fx-row fx-total" style={{ gridTemplateColumns: cols }}>
                     <span /><span />
                     <span>Total {compoParPiece ? 'par pièce' : `par ${bLc}`}</span>
                     <span style={{ textAlign: 'right' }}>{tv}</span><span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>{tu}</span>
-                    <span style={{ textAlign: 'right', paddingRight: 10 }}>{showOther ? <>{ov} <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>{ou}</span></> : null}</span>
+                    {showOther && <span style={{ textAlign: 'right', paddingRight: 10 }}>{ov} <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>{ou}</span></span>}
                     <span /><span />
                   </div>
                 );
