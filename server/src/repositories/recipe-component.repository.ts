@@ -621,36 +621,54 @@ export const recipeComponentRepository = {
     try {
       await client.query('BEGIN');
       const src = await client.query(
-        `SELECT nb_par_defaut, nb_parts, cout_emballage_unitaire
+        `SELECT nb_par_defaut, nb_parts, cout_emballage_unitaire,
+                rendement_unite, rendement_kg, lot_rule, lot_min, lot_max,
+                poids_cru_qty, poids_cru_unit_id, poids_cuit_qty, poids_cuit_unit_id
          FROM recipe_formats WHERE id = $1 AND recipe_id = $2`,
         [fromFormatId, recipeId]
       );
       if (src.rows.length === 0) { await client.query('ROLLBACK'); return null; }
       const s = src.rows[0];
       // Upsert : réactive un format existant (inactif) pour ce contenant, sinon en crée un.
+      // Audit 2026-11 C-23 : la copie perdait le rendement au kilo (le format redevenait
+      // « pièces »), les poids cru / cuit et la règle de lot.
       const ins = await client.query(
         `INSERT INTO recipe_formats
            (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite,
-            nb_par_defaut, cout_emballage_unitaire, nb_parts, is_default, ordre, is_active, updated_by)
+            nb_par_defaut, cout_emballage_unitaire, nb_parts, is_default, ordre, is_active, updated_by,
+            rendement_unite, rendement_kg, lot_rule, lot_min, lot_max,
+            poids_cru_qty, poids_cru_unit_id, poids_cuit_qty, poids_cuit_unit_id)
          VALUES ($1, $2, 1, 'g', $3, $4, $5, false,
-                 COALESCE((SELECT MAX(ordre)+1 FROM recipe_formats WHERE recipe_id=$1), 0), true, $6)
+                 COALESCE((SELECT MAX(ordre)+1 FROM recipe_formats WHERE recipe_id=$1), 0), true, $6,
+                 $7, $8, $9, $10, $11, $12, $13, $14, $15)
          ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
            is_active = true,
            nb_par_defaut = EXCLUDED.nb_par_defaut,
            nb_parts = EXCLUDED.nb_parts,
            cout_emballage_unitaire = EXCLUDED.cout_emballage_unitaire,
+           rendement_unite = EXCLUDED.rendement_unite,
+           rendement_kg = EXCLUDED.rendement_kg,
+           lot_rule = EXCLUDED.lot_rule,
+           lot_min = EXCLUDED.lot_min,
+           lot_max = EXCLUDED.lot_max,
+           poids_cru_qty = EXCLUDED.poids_cru_qty,
+           poids_cru_unit_id = EXCLUDED.poids_cru_unit_id,
+           poids_cuit_qty = EXCLUDED.poids_cuit_qty,
+           poids_cuit_unit_id = EXCLUDED.poids_cuit_unit_id,
            updated_by = COALESCE(EXCLUDED.updated_by, recipe_formats.updated_by),
            updated_at = NOW()
          RETURNING id`,
-        [recipeId, contenantId, s.nb_par_defaut, s.cout_emballage_unitaire, s.nb_parts, userId ?? null]
+        [recipeId, contenantId, s.nb_par_defaut, s.cout_emballage_unitaire, s.nb_parts, userId ?? null,
+         s.rendement_unite, s.rendement_kg, s.lot_rule, s.lot_min, s.lot_max,
+         s.poids_cru_qty, s.poids_cru_unit_id, s.poids_cuit_qty, s.poids_cuit_unit_id]
       );
       const newId = ins.rows[0].id;
       // Remplace la BOM cible par celle de la source.
       await client.query(`DELETE FROM recipe_format_components WHERE format_id = $1`, [newId]);
       await client.query(
         `INSERT INTO recipe_format_components
-           (format_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, perte_pct, updated_by)
-         SELECT $1, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, perte_pct, $3
+           (format_id, role, source_recipe_id, source_ingredient_id, source_packaging_id, quantite, unite, ordre, perte_pct, pct, updated_by)
+         SELECT $1, role, source_recipe_id, source_ingredient_id, source_packaging_id, quantite, unite, ordre, perte_pct, pct, $3
          FROM recipe_format_components WHERE format_id = $2`,
         [newId, fromFormatId, userId ?? null]
       );

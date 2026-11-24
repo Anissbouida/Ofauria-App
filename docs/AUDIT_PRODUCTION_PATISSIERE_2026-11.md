@@ -287,3 +287,7 @@ besoin d'un composant = quantité par fournée × fournées        (proportionne
 ## 8. Suivi de l'intervention
 
 Voir `SUIVI_PRODUCTION_PATISSIERE_2026-11.md` : matrice avant / après, modifications réalisées, résultats de tests, limites résiduelles.
+
+Constats ajoutés pendant la simulation à l'écran (détail dans le document de suivi, § 2) : C-35 production déclarée en rupture de matière, coût réel sous-évalué (P1) ; C-36 aucune modification de quantité après confirmation depuis l'écran (P2) ; C-37 plan de semi-fini à deux quantités et bon de sortie fantôme (P3) ; C-38 libellé trompeur du bouton d'ajout (P3).
+
+État au 2026-11-24 : lots 1, 2 et 3 réalisés (C-01, 02, 03, 04, 05, 07, 08, 09, 12, 23, 25) ; lots 4 à 7 proposés.

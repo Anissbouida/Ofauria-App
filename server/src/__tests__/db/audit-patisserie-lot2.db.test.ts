@@ -158,6 +158,29 @@ describe.skipIf(!hasTestDb)('Audit pâtisserie — lot 2 fournées entières', (
     expect(res.lotAdjustments).toHaveLength(1);
   });
 
+  it('C-23 : dupliquer un format garde le rendement au kilo et la règle de lot', async () => {
+    const { recipeComponentRepository } = await import('../../repositories/recipe-component.repository.js');
+    const src = (await p().query(
+      `UPDATE recipe_formats SET lot_min = 1, lot_max = 4 WHERE recipe_id = $1 AND is_default RETURNING id`, [creme])).rows[0].id;
+    const contenant = (await p().query(
+      `INSERT INTO production_contenants (nom, type_production, unite_lancement, quantite_theorique)
+       VALUES ($1, 1, 'kg_pate', 10) RETURNING id`, [`Cuve a2 ${RUN}`])).rows[0].id;
+    const copy = await recipeComponentRepository.duplicateFormat(creme, src, contenant, fx.userId);
+    expect(copy).not.toBeNull();
+    const f = (await p().query(
+      `SELECT rendement_unite, rendement_kg, lot_rule, lot_min, lot_max,
+              (SELECT count(*)::int FROM recipe_format_components c WHERE c.format_id = rf.id) AS lignes
+         FROM recipe_formats rf WHERE recipe_id = $1 AND contenant_id = $2`, [creme, contenant])).rows[0];
+    expect(f.rendement_unite).toBe('kg');           // avant : redevenait « unit »
+    expect(num(f.rendement_kg)).toBeCloseTo(2.9, 3);
+    expect(f.lot_rule).toBe('entier');
+    expect(num(f.lot_min)).toBe(1);
+    expect(num(f.lot_max)).toBe(4);
+    expect(f.lignes).toBe(1);
+    await p().query(`UPDATE recipe_formats SET lot_min = NULL, lot_max = NULL WHERE recipe_id = $1`, [creme]);
+    await p().query(`UPDATE recipe_formats SET is_active = false WHERE recipe_id = $1 AND contenant_id = $2`, [creme, contenant]);
+  });
+
   it('maximum de fournées dépassé : la quantité n\'est pas écrêtée, l\'ajustement le signale', async () => {
     await p().query(`UPDATE recipe_formats SET lot_max = 2 WHERE id = $1`, [operaFormat]);
     const plan = await newPlan(130);
