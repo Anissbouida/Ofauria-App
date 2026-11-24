@@ -26,7 +26,9 @@ const etapeSchema = z.object({
 
 export const createContenantSchema = z.object({
   nom: z.string().min(1, 'Le nom est requis').max(200),
-  type_production: z.number().int().min(1).max(5),
+  // Le type vient du référentiel « Types de production » (contrôlé par le contrôleur) :
+  // plus de borne en dur à 5, qui rendait inutilisable tout type ajouté (audit 2026-11 C-07).
+  type_production: z.number().int().min(1).max(9999),
   unite_lancement: z.string().min(1).max(30).default('unit'),
   quantite_theorique: z.number().positive('La quantite doit etre positive'),
   pertes_fixes: z.number().min(0).default(0),

@@ -10,6 +10,7 @@ export * from './constants/production-cut.js';
 export * from './constants/routing-time.js';
 export * from './constants/production-screens.js';
 export * from './constants/production-contenant.js';
+export * from './constants/batch-sizing.js';
 export * from './constants/modules.js';
 export * from './constants/module-activation.js';
 export * from './constants/capabilities.js';

@@ -67,6 +67,10 @@ export interface FormatComponentsData {
     /** Mig 613 : rendement en pièces (nb_par_defaut) ou en kilos (rendement_kg). */
     rendement_unite?: 'unit' | 'kg';
     rendement_kg?: string | null;
+    /** Mig 662 : règle de lot (fournées entières ou partielles), mini / maxi de fournées par ordre. */
+    lot_rule?: 'partiel' | 'entier';
+    lot_min?: string | null;
+    lot_max?: string | null;
     nb_parts: number | null;
     poids_cru_g: string | null;
     poids_cuit_g: string | null;

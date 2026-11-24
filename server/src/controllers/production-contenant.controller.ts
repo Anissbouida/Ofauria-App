@@ -4,6 +4,24 @@ import { productionContenantRepository } from '../repositories/production-conten
 import { bulkIdsSchema, createContenantSchema, updateContenantSchema, upsertProfileSchema } from '../validators/production-contenant.validator.js';
 import { unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
 
+/**
+ * Type de production et unité de lancement : valeurs actives du référentiel (audit 2026-11
+ * C-07). Une valeur déjà posée sur le format reste acceptée même désactivée depuis : le
+ * contrôle porte sur ce que l'utilisateur choisit, pas sur l'historique.
+ */
+async function unknownFormatRefs(data: { type_production?: number; unite_lancement?: string }): Promise<string | null> {
+  if (data.type_production != null) {
+    const bad = await unknownCodes('production_types', [String(data.type_production)]);
+    if (bad.length) return unknownCodeMessage('Type de production', bad);
+  }
+  // 'unit' : valeur par défaut historique de la colonne, hors référentiel.
+  if (data.unite_lancement != null && data.unite_lancement !== 'unit') {
+    const bad = await unknownCodes('production_launch_units', [data.unite_lancement]);
+    if (bad.length) return unknownCodeMessage('Unité de lancement', bad);
+  }
+  return null;
+}
+
 export const productionContenantController = {
   // ───────── CONTENANTS ─────────
 
@@ -32,6 +50,8 @@ export const productionContenantController = {
     }
     const badCreate = await unknownCodes('production_step_types', (parsed.data.etapes_defaut ?? []).map(e => e.type));
     if (badCreate.length) { res.status(400).json({ success: false, error: { message: unknownCodeMessage("Type d'étape", badCreate) } }); return; }
+    const badRef = await unknownFormatRefs(parsed.data);
+    if (badRef) { res.status(400).json({ success: false, error: { message: badRef } }); return; }
     const contenant = await productionContenantRepository.createContenant(parsed.data);
     res.status(201).json({ success: true, data: contenant });
   },
@@ -44,6 +64,8 @@ export const productionContenantController = {
     }
     const badUpdate = await unknownCodes('production_step_types', (parsed.data.etapes_defaut ?? []).map(e => e.type));
     if (badUpdate.length) { res.status(400).json({ success: false, error: { message: unknownCodeMessage("Type d'étape", badUpdate) } }); return; }
+    const badRefUpdate = await unknownFormatRefs(parsed.data);
+    if (badRefUpdate) { res.status(400).json({ success: false, error: { message: badRefUpdate } }); return; }
     const contenant = await productionContenantRepository.updateContenant(req.params.id, parsed.data);
     if (!contenant) {
       res.status(404).json({ success: false, error: { message: 'Contenant introuvable' } });

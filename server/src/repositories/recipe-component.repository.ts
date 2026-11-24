@@ -31,6 +31,10 @@ export interface ReplacePayload {
   /** Mig 613 : unité du rendement (absent = inchangée) et rendement en kilos. */
   rendementUnite?: 'unit' | 'kg';
   rendementKg?: number | null;
+  /** Mig 662 : règle de lot (absente = inchangée), mini / maxi de fournées (absent = inchangé, null = aucun). */
+  lotRule?: 'partiel' | 'entier';
+  lotMin?: number | null;
+  lotMax?: number | null;
   /** Perte à la cuisson (recipes.perte_standard_pct), donnée technique saisie par le chef. */
   perteStandardPct?: number | null;
 }
@@ -158,6 +162,7 @@ export const recipeComponentRepository = {
     const fmt = await db.query(
       `SELECT f.id, f.recipe_id, f.contenant_id, f.nb_par_defaut, f.nb_parts,
               f.rendement_unite, f.rendement_kg,
+              f.lot_rule, f.lot_min, f.lot_max,
               -- Jeton de version (microsecondes, en texte : un Date JS perdrait la précision) :
               -- deux sessions sur la même fiche ne s'écrasent plus en silence (constat 114).
               (extract(epoch FROM f.updated_at) * 1000000)::bigint::text AS version,
@@ -319,6 +324,10 @@ export const recipeComponentRepository = {
              rendement_kg    = CASE WHEN COALESCE($9, rendement_unite) = 'kg'
                                     THEN COALESCE($10::numeric, rendement_kg)
                                     ELSE rendement_kg END,
+             -- Mig 662 : règle absente = inchangée ; mini / maxi absents = inchangés.
+             lot_rule = COALESCE($11, lot_rule),
+             lot_min  = CASE WHEN $12::boolean THEN $13::numeric ELSE lot_min END,
+             lot_max  = CASE WHEN $14::boolean THEN $15::numeric ELSE lot_max END,
              poids_cru_unit_id  = CASE WHEN $4::numeric IS NULL THEN poids_cru_unit_id ELSE ${unitIdSql('$7')} END,
              poids_cru_qty      = COALESCE($4::numeric, poids_cru_qty),
              poids_cuit_unit_id = CASE WHEN $5::numeric IS NULL THEN poids_cuit_unit_id ELSE ${unitIdSql('$8')} END,
@@ -327,7 +336,8 @@ export const recipeComponentRepository = {
              updated_at    = NOW()
          WHERE id = $1`,
         [formatId, data.nbParDefaut ?? null, data.nbParts ?? null, cru?.qty ?? null, cuit?.qty ?? null, userId ?? null,
-         cru?.unit ?? 'g', cuit?.unit ?? 'g', data.rendementUnite ?? null, data.rendementKg ?? null]
+         cru?.unit ?? 'g', cuit?.unit ?? 'g', data.rendementUnite ?? null, data.rendementKg ?? null,
+         data.lotRule ?? null, data.lotMin !== undefined, data.lotMin ?? null, data.lotMax !== undefined, data.lotMax ?? null]
       );
 
       // Perte à la cuisson : niveau recette, enregistrée avec la composition (absente =
@@ -546,6 +556,7 @@ export const recipeComponentRepository = {
     const r = await db.query(
       `SELECT f.id, f.contenant_id, f.nb_par_defaut, f.nb_parts, f.is_default, f.ordre,
               f.rendement_unite, f.rendement_kg,
+              f.lot_rule, f.lot_min, f.lot_max,
               f.cout_emballage_unitaire,
               pc.nom AS contenant_nom,
               (SELECT count(*) FROM recipe_format_components c WHERE c.format_id = f.id) AS nb_composants,

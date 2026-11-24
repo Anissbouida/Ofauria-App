@@ -8,7 +8,9 @@ import { db } from '../config/database.js';
  * Éditables dans Paramètres › Référentiels ; cache court (une modification y est
  * visible en moins de 30 s).
  */
-export type ProcessRefTable = 'production_step_types' | 'production_equipment_types' | 'process_reading_params' | 'scrap_reasons';
+export type ProcessRefTable = 'production_step_types' | 'production_equipment_types' | 'process_reading_params' | 'scrap_reasons'
+  // Audit 2026-11 C-07 : référentiels des formats de production (mig 167, 634), créés mais jamais lus.
+  | 'production_types' | 'production_launch_units' | 'type_decoupe';
 
 export type ProcessRefEntry = { code: string; label: string; color: string | null; isActive: boolean; metadata: Record<string, unknown> };
 
@@ -19,7 +21,8 @@ async function load(): Promise<Map<string, ProcessRefEntry[]>> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.byTable;
   const { rows } = await db.query(
     `SELECT table_id, code, label, color, is_active, metadata FROM ref_entries
-      WHERE table_id IN ('production_step_types', 'production_equipment_types', 'process_reading_params', 'scrap_reasons')
+      WHERE table_id IN ('production_step_types', 'production_equipment_types', 'process_reading_params', 'scrap_reasons',
+                         'production_types', 'production_launch_units', 'type_decoupe')
         AND code IS NOT NULL
       ORDER BY display_order, label`);
   const byTable = new Map<string, ProcessRefEntry[]>();

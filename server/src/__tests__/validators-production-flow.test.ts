@@ -56,7 +56,10 @@ describe('Schémas production (plan pilote, étape 2)', () => {
     ok(S.createContenantBody, format);
     ok(S.updateContenantBody, { nom: 'Cadre 60x40 bis' });
     ko(S.createContenantBody, { ...format, quantite_theorique: 0 });
-    ko(S.createContenantBody, { ...format, type_production: 9 });
+    // Le type vient du référentiel « Types de production » : le schéma ne borne plus à 5
+    // (un type ajouté par l'administrateur était inutilisable), le contrôleur vérifie le code.
+    ok(S.createContenantBody, { ...format, type_production: 9 });
+    ko(S.createContenantBody, { ...format, type_production: 0 });
     ok(S.bulkContenantIdsBody, { ids: [ID] });
     ko(S.bulkContenantIdsBody, { ids: [] });
     ok(S.upsertProfileBody, {

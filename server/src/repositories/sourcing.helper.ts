@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { productionRepository } from './production.repository.js';
 import { roundQty } from '../utils/quantity.js';
+import { formatYieldPerBatch } from '@ofauria/shared';
 
 /**
  * Helper de sourcing partage entre approvisionnement (DRA) et commande client.
@@ -136,6 +137,29 @@ export async function computeSourcingAndCreatePlan(
   const kindMap: Record<string, string> = {};
   for (const row of kindResult.rows) kindMap[row.id] = (row.item_kind as string) || 'manufactured';
 
+  // 3 bis) Règle de lot du format (mig 662, audit 2026-11 C-04). Le profil ci-dessus lit
+  //    recipes.contenant_id, que plus aucune fiche ne renseigne : l'arrondi au contenant ne
+  //    se déclenchait jamais. La règle « fournées entières » du format lié au produit (ou du
+  //    format par défaut de sa fiche) prime ; son rendement validé par le chef est la cible.
+  const lotResult = await client.query(
+    `SELECT DISTINCT ON (pid) pid, contenant_id, nb_par_defaut, rendement_unite, rendement_kg
+       FROM (
+         SELECT COALESCE(rf.product_id, r.product_id) AS pid, rf.contenant_id, rf.nb_par_defaut,
+                rf.rendement_unite, rf.rendement_kg, (rf.product_id IS NOT NULL) AS direct, rf.ordre
+           FROM recipe_formats rf
+           JOIN recipes r ON r.id = rf.recipe_id
+          WHERE rf.is_active = true AND r.archived_at IS NULL AND rf.lot_rule = 'entier'
+            AND (rf.product_id = ANY($1) OR (r.product_id = ANY($1) AND rf.is_default))
+       ) f
+      WHERE pid = ANY($1)
+      ORDER BY pid, direct DESC, ordre`,
+    [productIds]
+  );
+  for (const row of lotResult.rows) {
+    const y = formatYieldPerBatch(row);
+    if (y > 0) profileMap[row.pid] = { contenantId: row.contenant_id, quantiteNetteCible: y, quantiteTheorique: y };
+  }
+
   // 4) Calcul de sourcing par ligne
   const resultItems: SourcingResultItem[] = [];
   const productionNeeded: {
@@ -269,8 +293,9 @@ export async function computeSourcingAndCreatePlan(
       await client.query(
         `INSERT INTO production_plan_items
            (plan_id, product_id, planned_quantity, contenant_id, nb_contenants,
-            quantite_nette_cible, quantite_brute_totale, qty_from_frigo, surplus_frigo, order_item_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            quantite_nette_cible, quantite_brute_totale, qty_from_frigo, surplus_frigo, order_item_id,
+            requested_quantity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           productionPlanId, pi.productId, effectiveQty,
           pi.contenantId || null, pi.nbContenants || null,
@@ -278,6 +303,8 @@ export async function computeSourcingAndCreatePlan(
           pi.qtyFromFrigo || 0, pi.surplusFrigo || 0,
           // M2-08 : la ligne de commande servie (contexte commande seulement).
           linkColumn === 'order_id' ? pi.itemId : null,
+          // Mig 662 : quantité demandée quand la fabrication a été arrondie à la fournée.
+          (pi.surplusFrigo || 0) > 0 ? roundQty(effectiveQty - pi.surplusFrigo) : null,
         ]
       );
       // Lier la ligne resultat au plan

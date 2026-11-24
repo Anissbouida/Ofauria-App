@@ -105,7 +105,10 @@ export const productionApi = {
   saveWorkshop: (code: string, data: WorkshopInput): Promise<{ workshops: Workshop[] }> =>
     api.put(`/production/workshops/${code}`, data).then(r => r.data.data),
   /** Référentiels du procédé (mig 513), éditables dans Paramètres › Référentiels. */
-  processReferentials: (): Promise<{ stepTypes: ProcessRefEntry[]; equipmentTypes: ProcessRefEntry[]; readingParams: ProcessRefEntry[] }> =>
+  processReferentials: (): Promise<{
+    stepTypes: ProcessRefEntry[]; equipmentTypes: ProcessRefEntry[]; readingParams: ProcessRefEntry[];
+    productionTypes?: ProcessRefEntry[]; launchUnits?: ProcessRefEntry[]; cutTypes?: ProcessRefEntry[];
+  }> =>
     api.get('/production/process-referentials').then(r => r.data.data),
   list: (params?: Record<string, string>) => api.get('/production', { params }).then(r => r.data),
   /** MRP — besoins nets de production du jour (plan directeur). */
@@ -253,6 +256,11 @@ export function useProcessRefs() {
     stepTypes: steps.filter(s => s.isActive),
     readingParams: params.filter(p => p.isActive),
     equipmentTypes: (data?.equipmentTypes ?? []).filter(e => e.isActive),
+    // Référentiels des formats de production (mig 167, 634) : tous, actifs ou non — l'écran
+    // filtre les actifs pour la saisie et garde le libellé d'une valeur désactivée.
+    productionTypes: data?.productionTypes ?? [],
+    launchUnits: data?.launchUnits ?? [],
+    cutTypes: data?.cutTypes ?? [],
     stepLabel: (code?: string | null) => (code ? step(code)?.label ?? code : ''),
     stepColor: (code?: string | null) => step(code)?.color ?? step('autre')?.color ?? '#9ca3af',
     isCcp: (code?: string | null) => step(code)?.metadata.ccp === true,

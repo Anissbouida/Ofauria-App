@@ -8,6 +8,7 @@ import { BulkBar, DataPanel, EmptyState, LoadingState, NoResultState, SearchBar,
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { contenantsApi, type BulkResult } from '../../api/contenants.api';
 import { recipesApi } from '../../api/recipes.api';
+import { useProcessRefs } from '../../api/production.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import WeightQtyInput from '../../components/ui/WeightQtyInput';
@@ -60,13 +61,39 @@ interface LinkedRecipe {
   etapes: { ordre: number; nom: string }[];
 }
 
-const TYPE_LABELS = TYPE_PRODUCTION_LABELS;
-
 const TYPE_ICONS: Record<number, string> = {
-  1: '🍰', 2: '🎂', 3: '🧁', 4: '🥖', 5: '🥐',
+  1: '🍰', 2: '🎂', 3: '🧁', 4: '🥖', 5: '🥐', 6: '📦',
 };
+const typeIcon = (type: number) => TYPE_ICONS[type] ?? '🧾';
 
-const UNITE_OPTIONS = UNITE_LANCEMENT_OPTIONS;
+/**
+ * Types de production, unités de lancement et types de découpe : lus du référentiel éditable
+ * (Paramètres › Référentiels, mig 167 et 634). Audit 2026-11 C-07 : l'écran affichait une
+ * liste recopiée en dur (5 types sans accents) ; un type ou une unité ajouté par
+ * l'administrateur n'apparaissait nulle part. Les constantes partagées ne servent plus que
+ * de repli tant que le référentiel n'est pas chargé.
+ */
+function useFormatRefs() {
+  const refs = useProcessRefs();
+  return useMemo(() => {
+    const types = refs.productionTypes.length > 0
+      ? refs.productionTypes.map(t => ({ code: Number(t.code), label: t.label, isActive: t.isActive })).filter(t => Number.isFinite(t.code))
+      : Object.entries(TYPE_PRODUCTION_LABELS).map(([k, v]) => ({ code: Number(k), label: v, isActive: true }));
+    const units = refs.launchUnits.length > 0
+      ? refs.launchUnits.map(u => ({ value: u.code, label: u.label, isActive: u.isActive, mode: (u.metadata.mode === 'poids' ? 'poids' : 'pieces') as 'poids' | 'pieces' }))
+      : UNITE_LANCEMENT_OPTIONS.map(o => ({ ...o, isActive: true }));
+    const cuts = refs.cutTypes.length > 0
+      ? refs.cutTypes.map(c => ({ value: c.code, label: c.label, isActive: c.isActive }))
+      : [];
+    const modes = Object.fromEntries(units.map(u => [u.value, u.mode]));
+    const typeLabels: Record<number, string> = Object.fromEntries(types.map(t => [t.code, t.label]));
+    return {
+      types, units, cuts, typeLabels,
+      activeTypes: types.filter(t => t.isActive),
+      modeOf: (unit: string) => getModeCalcul(unit, modes),
+    };
+  }, [refs.productionTypes, refs.launchUnits, refs.cutTypes]);
+}
 
 // ─── Main Page ───
 
@@ -106,6 +133,7 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
   creating?: boolean;
   onCreatingChange?: (v: boolean) => void;
 } = {}) {
+  const fmtRefs = useFormatRefs();
   const queryClient = useQueryClient();
   const confirmDialog = useConfirm();
   const [showInactive, setShowInactive] = useState(false);
@@ -139,10 +167,18 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
   // Group recipes by contenant_id
   const recipesByContenant = useMemo(() => {
     const map: Record<string, LinkedRecipe[]> = {};
+    // Audit 2026-11 C-25 : le lien fiche ↔ contenant vit dans les formats de la fiche
+    // (recipe_formats). L'ancienne colonne recipes.contenant_id n'est plus renseignée : la
+    // colonne « Recettes » affichait « Aucune » pour tous les formats, même utilisés.
     for (const r of allRecipes) {
-      if (r.contenant_id) {
-        if (!map[r.contenant_id]) map[r.contenant_id] = [];
-        map[r.contenant_id].push({
+      const ids = new Set<string>();
+      if (r.contenant_id) ids.add(r.contenant_id);
+      for (const f of ((r.formats as { contenant_id?: string | null }[] | undefined) ?? [])) {
+        if (f.contenant_id) ids.add(f.contenant_id);
+      }
+      for (const cid of ids) {
+        if (!map[cid]) map[cid] = [];
+        map[cid].push({
           id: r.id, name: r.name, is_base: r.is_base,
           product_name: r.product_name || null,
           etapes: r.etapes || [],
@@ -156,7 +192,7 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
     if (typeFilter && c.type_production !== typeFilter) return false;
     if (search) {
       const q = search.toLowerCase();
-      return c.nom.toLowerCase().includes(q) || TYPE_LABELS[c.type_production]?.toLowerCase().includes(q);
+      return c.nom.toLowerCase().includes(q) || fmtRefs.typeLabels[c.type_production]?.toLowerCase().includes(q);
     }
     return true;
   });
@@ -281,17 +317,17 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
         label="Filtrer par type"
         value={typeFilter ? String(typeFilter) : ''}
         onChange={k => setTypeFilter(k && Number(k) !== typeFilter ? Number(k) : 0)}
-        chips={[1, 2, 3, 4, 5].map(type => ({
-          key: String(type),
-          label: `${TYPE_ICONS[type]} ${TYPE_LABELS[type]}`,
-          count: contenants.filter(c => c.type_production === type && c.is_active).length,
+        chips={fmtRefs.activeTypes.map(t => ({
+          key: String(t.code),
+          label: `${typeIcon(t.code)} ${t.label}`,
+          count: contenants.filter(c => c.type_production === t.code && c.is_active).length,
         }))} />
 
       {/* ══════ BARRE D'OUTILS — même gabarit que les deux autres onglets ══════ */}
       <Toolbar>
         <SearchBar value={search} onChange={setSearch} placeholder="Rechercher un format" />
         <SearchSelect
-          options={Object.entries(TYPE_LABELS).map(([k, v]) => ({ id: k, label: `${TYPE_ICONS[Number(k)]} ${v}` }))}
+          options={fmtRefs.activeTypes.map(t => ({ id: String(t.code), label: `${typeIcon(t.code)} ${t.label}` }))}
           value={typeFilter ? String(typeFilter) : ''}
           onChange={id => setTypeFilter(id ? Number(id) : 0)}
           placeholder="Tous les types"
@@ -396,7 +432,8 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelec
   onEdit: () => void;
   onDeactivate: () => void;
 }) {
-  const mode = getModeCalcul(c.unite_lancement);
+  const fmtRefs = useFormatRefs();
+  const mode = fmtRefs.modeOf(c.unite_lancement);
   const unite = mode === 'poids' ? 'kg' : 'pcs';
   const dotLabel = !c.is_active ? 'Format inactif'
     : linkedRecipes.length === 0 ? 'Aucune recette n’utilise ce format'
@@ -419,11 +456,11 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelec
         <td>
           <span className="ds-strong" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {expanded ? <ChevronUp size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} /> : <ChevronDown size={13} aria-hidden="true" style={{ color: 'var(--ds-muted)' }} />}
-            <span aria-hidden="true">{TYPE_ICONS[c.type_production]}</span>
+            <span aria-hidden="true">{typeIcon(c.type_production)}</span>
             {c.nom}
           </span>
         </td>
-        <td>{TYPE_LABELS[c.type_production]}</td>
+        <td>{fmtRefs.typeLabels[c.type_production] ?? `Type ${c.type_production}`}</td>
         <td>{c.unite_lancement}</td>
         <td>{mode === 'poids' ? 'Poids' : 'Pièces'}</td>
         <td className="ds-num">{num(c.quantite_theorique)}</td>
@@ -527,7 +564,8 @@ function ContenantForm({ contenant, onClose, onSaved }: {
   const [poids, setPoids] = useState<{ qty: number; unit: WeightUnit }>(
     () => readWeight(contenant?.poids_qty, contenant?.poids_unit, contenant?.poids_kg, 'kg') ?? { qty: 0, unit: 'kg' });
 
-  const mode = getModeCalcul(uniteLancement);
+  const fmtRefs = useFormatRefs();
+  const mode = fmtRefs.modeOf(uniteLancement);
   const modeLabels = MODE_LABELS[mode];
   const netCible = (parseFloat(quantiteTheorique) || 0) - (parseFloat(pertesFixes) || 0);
 
@@ -592,15 +630,16 @@ function ContenantForm({ contenant, onClose, onSaved }: {
             <div>
               <label className={LABEL}>Type de production</label>
               <select value={typeProduction} onChange={e => setTypeProduction(Number(e.target.value))} className={FIELD}>
-                {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{TYPE_ICONS[Number(k)]} {v}</option>
+                {/* Valeurs actives du référentiel, plus celle déjà posée si elle a été désactivée. */}
+                {fmtRefs.types.filter(t => t.isActive || t.code === typeProduction).map(t => (
+                  <option key={t.code} value={t.code}>{typeIcon(t.code)} {t.label}</option>
                 ))}
               </select>
             </div>
             <div>
               <label className={LABEL}>Unité de lancement</label>
               <select value={uniteLancement} onChange={e => setUniteLancement(e.target.value)} className={FIELD}>
-                {UNITE_OPTIONS.map(o => (
+                {fmtRefs.units.filter(o => o.isActive || o.value === uniteLancement).map(o => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
@@ -704,11 +743,9 @@ function ContenantForm({ contenant, onClose, onSaved }: {
                 <label className={LABEL}>Type de découpe</label>
                 <select value={typeDecoupe} onChange={e => setTypeDecoupe(e.target.value)} className={FIELD}>
                   <option value="">Non spécifié</option>
-                  <option value="sans_decoupe">Sans découpe</option>
-                  <option value="damier">Damier (grille régulière)</option>
-                  <option value="bande">Bande (tranches)</option>
-                  <option value="triangle">Triangle (parts)</option>
-                  <option value="forme_libre">Forme libre (emporte-pièce)</option>
+                  {fmtRefs.cuts.filter(c => c.isActive || c.value === typeDecoupe).map(c => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
                 </select>
               </div>
               <div>

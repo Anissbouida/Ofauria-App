@@ -41,6 +41,10 @@ export const replaceComponentsSchema = z.object({
   // Mig 613 : rendement en pièces (nbParDefaut) OU en kilos (rendementKg, décimal).
   rendementUnite: z.enum(['unit', 'kg']).optional(),
   rendementKg: z.number().positive('Le rendement en kg doit être supérieur à 0').nullable().optional(),
+  // Mig 662 : règle de lot (absente = inchangée) ; mini / maxi en nombre de fournées (null = aucun).
+  lotRule: z.enum(['partiel', 'entier']).optional(),
+  lotMin: z.number().positive('Le minimum de fournées doit être supérieur à 0').max(9999).nullable().optional(),
+  lotMax: z.number().positive('Le maximum de fournées doit être supérieur à 0').max(9999).nullable().optional(),
   // Perte à la cuisson / de fabrication (recipes.perte_standard_pct) : donnée technique de
   // la fiche, enregistrée avec la composition (droit des chefs) et plus seulement avec les
   // paramètres financiers (réservés au gérant) — scénario 1, constat 38.
@@ -48,6 +52,9 @@ export const replaceComponentsSchema = z.object({
 }).refine(
   (d) => d.rendementUnite !== 'kg' || (d.rendementKg != null && d.rendementKg > 0),
   { message: 'Saisis le rendement en kg de la fournée.', path: ['rendementKg'] }
+).refine(
+  (d) => d.lotMin == null || d.lotMax == null || d.lotMax >= d.lotMin,
+  { message: 'Le maximum de fournées doit être au moins égal au minimum.', path: ['lotMax'] }
 );
 
 // PATCH leviers financiers saisissables (frais indirects + multiplicateur de vente).

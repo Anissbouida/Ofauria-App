@@ -920,7 +920,13 @@ export default function PlanDetailPage() {
                     )}
                     {item.nb_contenants && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
-                        <span className="odoo-tag odoo-tag-grey"><Layers size={9} /> {item.nb_contenants as number}× {item.contenant_nom as string || 'format'}</span>
+                        <span className="odoo-tag odoo-tag-grey"><Layers size={9} /> {item.nb_contenants as number}× {(item.contenant_nom || item.format_nom) as string || 'fournée'}</span>
+                        {/* Mig 662 : quantité arrondie à la fournée — demande d'origine et excédent prévu. */}
+                        {item.requested_quantity != null && (
+                          <span className="odoo-tag odoo-tag-orange" title="La quantité demandée a été arrondie à la fournée entière supérieure">
+                            Demandé {parseFloat(String(item.requested_quantity))} · excédent +{Math.round((parseFloat(String(item.planned_quantity)) - parseFloat(String(item.requested_quantity))) * 1000) / 1000}
+                          </span>
+                        )}
                         {(item.qty_from_frigo as number) > 0 && (
                           <span className="odoo-tag odoo-tag-blue"><Flame size={9} /> Frigo −{item.qty_from_frigo as number}</span>
                         )}

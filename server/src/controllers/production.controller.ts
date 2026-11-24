@@ -90,10 +90,11 @@ export const productionController = {
 
   /** Référentiels du procédé (mig 513), lisibles par tous les écrans de production. */
   async processReferentials(_req: AuthRequest, res: Response) {
-    const [stepTypes, equipmentTypes, readingParams] = await Promise.all([
+    const [stepTypes, equipmentTypes, readingParams, productionTypes, launchUnits, cutTypes] = await Promise.all([
       processRefs('production_step_types'), processRefs('production_equipment_types'), processRefs('process_reading_params'),
+      processRefs('production_types'), processRefs('production_launch_units'), processRefs('type_decoupe'),
     ]);
-    res.json({ success: true, data: { stepTypes, equipmentTypes, readingParams } });
+    res.json({ success: true, data: { stepTypes, equipmentTypes, readingParams, productionTypes, launchUnits, cutTypes } });
   },
 
   /** Crée ou modifie un atelier : libellé, catégories fabriquées, membres (rôles / utilisateurs). */
@@ -401,9 +402,10 @@ export const productionController = {
       res.status(409).json({ success: false, error: { message: 'Seuls les brouillons peuvent être modifiés' } });
       return;
     }
-    await productionRepository.updateItems(req.params.id, req.body.items);
+    const { lotAdjustments } = await productionRepository.updateItems(req.params.id, req.body.items);
     const updated = await productionRepository.findById(req.params.id);
-    res.json({ success: true, data: updated });
+    // Mig 662 : lignes arrondies à la fournée (demandé → prévu), pour que l'écran le dise.
+    res.json({ success: true, data: updated, lotAdjustments });
   },
 
   async confirm(req: AuthRequest, res: Response) {

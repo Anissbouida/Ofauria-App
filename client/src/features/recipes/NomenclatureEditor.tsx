@@ -56,6 +56,8 @@ interface EditableFields {
   rendement: string; parts: string; perte: string; compoParPiece: boolean;
   /** Mig 613 : rendement en pièces (rendement) ou en kilos (rendementKg). */
   rendementUnite: 'unit' | 'kg'; rendementKg: string;
+  /** Mig 662 : règle de lot et bornes de fournées par ordre. */
+  lotRule: 'partiel' | 'entier'; lotMin: string; lotMax: string;
 }
 /** Empreinte stable de l'etat editable (lignes + champs), comparee a la reference. */
 function signature(rows: Row[], f: EditableFields): string {
@@ -201,6 +203,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const [rendement, setRendement] = useState('');
   const [rendementUnite, setRendementUnite] = useState<'unit' | 'kg'>('unit');
   const [rendementKg, setRendementKg] = useState('');
+  const [lotRule, setLotRule] = useState<'partiel' | 'entier'>('partiel');
+  const [lotMin, setLotMin] = useState('');
+  const [lotMax, setLotMax] = useState('');
   const [parts, setParts] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [dragKey, setDragKey] = useState<string | null>(null);
@@ -294,6 +299,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       compoParPiece: f.compo_par_piece === true,
       rendementUnite: f.rendement_unite === 'kg' ? 'kg' : 'unit',
       rendementKg: f.rendement_kg != null ? parseFloat(f.rendement_kg).toString() : '',
+      lotRule: f.lot_rule === 'entier' ? 'entier' : 'partiel',
+      lotMin: f.lot_min != null ? parseFloat(f.lot_min).toString() : '',
+      lotMax: f.lot_max != null ? parseFloat(f.lot_max).toString() : '',
     };
     setRows(nextRows);
     setShowParts((f.nb_parts ?? 1) > 1);
@@ -301,6 +309,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     setScaleBase(nextFields.rendement);
     setRendementUnite(nextFields.rendementUnite);
     setRendementKg(nextFields.rendementKg);
+    setLotRule(nextFields.lotRule);
+    setLotMin(nextFields.lotMin);
+    setLotMax(nextFields.lotMax);
     setParts(nextFields.parts);
     setPerte(nextFields.perte);
     setCompoParPiece(nextFields.compoParPiece);
@@ -310,7 +321,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   }, [data]);
   useEffect(() => { applyData(); }, [applyData]);
 
-  const currentSig = signature(rows, { rendement, parts, perte, compoParPiece, rendementUnite, rendementKg });
+  const currentSig = signature(rows, { rendement, parts, perte, compoParPiece, rendementUnite, rendementKg, lotRule, lotMin, lotMax });
   const isDirty = !!data && baselineRef.current !== '' && currentSig !== baselineRef.current;
 
   // Filet de securite navigateur (fermeture d'onglet / rechargement). La navigation
@@ -554,6 +565,10 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         nbParts: parseInt(parts) || null,
         rendementUnite: enKg ? 'kg' : 'unit',
         rendementKg: enKg ? rendementKgNum : null,
+        // Mig 662 : règle de lot ; un champ vidé retire la borne.
+        lotRule,
+        lotMin: np(lotMin.replace(',', '.')),
+        lotMax: np(lotMax.replace(',', '.')),
         // Perte à la cuisson : donnée technique, enregistrée avec la composition (droit
         // des chefs) — constat 38 du scénario 1.
         perteStandardPct: np(perte) ?? 0,
@@ -806,6 +821,29 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                         <option value="kg">kg / {bLc}</option>
                       </select>
                     )}
+                  </span>
+                </div>
+                {/* Mig 662 : un cadre, une plaque ou une cuve ne se lance pas en fraction.
+                    « Entières » arrondit toute quantité planifiée à la fournée supérieure
+                    (130 pièces pour 48 par fournée → 3 fournées, 144 prévues, 14 d'excédent). */}
+                <div className="fx-field">
+                  <label htmlFor="fmt-lot-rule">{bLc.charAt(0).toUpperCase()}{bLc.slice(1)}s</label>
+                  <span className="fx-in">
+                    <select id="fmt-lot-rule" value={lotRule} onChange={(e) => setLotRule(e.target.value === 'entier' ? 'entier' : 'partiel')}
+                      title={`${bLc.charAt(0).toUpperCase()}${bLc.slice(1)}s entières : la quantité d'un ordre est arrondie à la ${bLc} supérieure, l'excédent est annoncé.\nPartielle autorisée : la quantité demandée est fabriquée telle quelle.`}>
+                      <option value="partiel">Partielles</option>
+                      <option value="entier">Entières</option>
+                    </select>
+                  </span>
+                </div>
+                <div className="fx-field">
+                  <span className="fx-label">Nombre par ordre</span>
+                  <span className="fx-in">
+                    <input aria-label={`Nombre minimal de ${bLc}s par ordre`} type="number" min="0" step="any" value={lotMin}
+                      onChange={(e) => setLotMin(e.target.value)} placeholder="mini" style={{ minWidth: 0 }} />
+                    <span className="fx-unit">à</span>
+                    <input aria-label={`Nombre maximal de ${bLc}s par ordre`} type="number" min="0" step="any" value={lotMax}
+                      onChange={(e) => setLotMax(e.target.value)} placeholder="maxi" style={{ minWidth: 0 }} />
                   </span>
                 </div>
                 <div className="fx-field">

@@ -103,7 +103,10 @@ export const recipeRepository = {
                   'quantite_par_format_unite', rf.quantite_par_format_unite,
                   'nb_par_defaut', rf.nb_par_defaut,
                   'rendement_unite', rf.rendement_unite,
-                  'rendement_kg', rf.rendement_kg
+                  'rendement_kg', rf.rendement_kg,
+                  'lot_rule', rf.lot_rule,
+                  'lot_min', rf.lot_min,
+                  'lot_max', rf.lot_max
                 ) ORDER BY rf.ordre, pcf.nom)
                 FROM recipe_formats rf
                 JOIN production_contenants pcf ON pcf.id = rf.contenant_id

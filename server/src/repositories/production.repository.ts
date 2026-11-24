@@ -12,7 +12,7 @@ import { productLotRepository } from './product-lot.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
 import { setActor, setReason, transitionPlan, transitionBon, withActor, PLAN_TRANSITIONS, type PlanStatus } from '../services/production-state.js';
 import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe-composition.helper.js';
-import { cutProducedQuantity } from '@ofauria/shared';
+import { cutProducedQuantity, sizeBatches, formatYieldPerBatch, type LotRule } from '@ofauria/shared';
 import { sectorRepository } from './sector.repository.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
 import { bomVersionRepository } from './bom-version.repository.js';
@@ -359,23 +359,18 @@ export const productionRepository = {
       const planId = planResult.rows[0].id;
 
       const productIds: string[] = [];
+      const lotAdjustments: LotAdjustment[] = [];
       for (const item of data.items) {
         // Mode multi-format : une ligne par format choisi
         if (item.formats && item.formats.length > 0) {
           for (const fmt of item.formats) {
-            await client.query(
-              `INSERT INTO production_plan_items (plan_id, product_id, format_id, planned_quantity, notes)
-               VALUES ($1, $2, $3, $4, $5)`,
-              [planId, item.productId, fmt.formatId, fmt.plannedQuantity, fmt.notes || item.notes || null]
-            );
+            const adj = await insertSizedPlanItem(client, planId, item.productId, fmt.formatId, fmt.plannedQuantity, fmt.notes || item.notes || null);
+            if (adj) lotAdjustments.push(adj);
           }
         } else {
           // Mode legacy : 1 ligne par (plan, product), format_id NULL
-          await client.query(
-            `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity, notes)
-             VALUES ($1, $2, $3, $4)`,
-            [planId, item.productId, item.plannedQuantity, item.notes || null]
-          );
+          const adj = await insertSizedPlanItem(client, planId, item.productId, null, item.plannedQuantity, item.notes || null);
+          if (adj) lotAdjustments.push(adj);
         }
         productIds.push(item.productId);
       }
@@ -394,7 +389,7 @@ export const productionRepository = {
         );
       }
 
-      return planResult.rows[0];
+      return { ...planResult.rows[0], lot_adjustments: lotAdjustments };
     });
   },
 
@@ -407,24 +402,20 @@ export const productionRepository = {
     return withTransaction(async () => {
       const client = await db.getClient();
       await client.query('DELETE FROM production_plan_items WHERE plan_id = $1', [planId]);
+      const lotAdjustments: LotAdjustment[] = [];
       for (const item of items) {
         if (item.formats && item.formats.length > 0) {
           for (const fmt of item.formats) {
-            await client.query(
-              `INSERT INTO production_plan_items (plan_id, product_id, format_id, planned_quantity, notes)
-               VALUES ($1, $2, $3, $4, $5)`,
-              [planId, item.productId, fmt.formatId, fmt.plannedQuantity, fmt.notes || item.notes || null]
-            );
+            const adj = await insertSizedPlanItem(client, planId, item.productId, fmt.formatId, fmt.plannedQuantity, fmt.notes || item.notes || null);
+            if (adj) lotAdjustments.push(adj);
           }
         } else {
-          await client.query(
-            `INSERT INTO production_plan_items (plan_id, product_id, planned_quantity, notes)
-             VALUES ($1, $2, $3, $4)`,
-            [planId, item.productId, item.plannedQuantity, item.notes || null]
-          );
+          const adj = await insertSizedPlanItem(client, planId, item.productId, null, item.plannedQuantity, item.notes || null);
+          if (adj) lotAdjustments.push(adj);
         }
       }
       await client.query(`UPDATE production_plans SET updated_at = NOW() WHERE id = $1`, [planId]);
+      return { lotAdjustments };
     });
   },
 
@@ -2632,11 +2623,24 @@ export const productionRepository = {
         const sfPlanId = sfPlanResult.rows[0].id;
         dependencyPlanIds.push(sfPlanId);
 
-        // Create plan item for the semi-finished product
+        // Create plan item for the semi-finished product.
+        // Audit 2026-11 C-05 : une base en fournées entières se lance à la fournée (7,2 kg de
+        // crème pour une fournée de 2,9 kg → 3 fournées, 8,7 kg), pas au kilo supérieur.
+        // Sans règle sur le format de la base : arrondi au kilo / à la pièce, comme avant.
+        // Le besoin est exprimé dans l'unité de rendement de la base : la règle ne s'applique
+        // que si le format parle la même unité (kilos avec kilos, pièces avec pièces).
+        const foundRule = await lotRuleFor(client, null, null, subRecipeId);
+        const baseRule = foundRule && foundRule.inKg === (foundRule.recipeYieldUnit === 'kg') ? foundRule : null;
+        const baseSized = baseRule
+          ? sizeBatches({ requested: toProduce, yieldPerBatch: baseRule.yieldPerBatch, rule: baseRule.rule, min: baseRule.min, max: baseRule.max })
+          : null;
         await client.query(
-          `INSERT INTO production_plan_items (plan_id, base_recipe_id, planned_quantity)
-           VALUES ($1, $2, $3)`,
-          [sfPlanId, subRecipeId, Math.ceil(toProduce)]
+          `INSERT INTO production_plan_items (plan_id, base_recipe_id, planned_quantity, nb_contenants, requested_quantity)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [sfPlanId, subRecipeId,
+           baseSized ? baseSized.planned : Math.ceil(toProduce),
+           baseSized && baseRule!.rule === 'entier' ? baseSized.batches : null,
+           baseSized?.adjusted ? toProduce : null]
         );
 
         // Record dependency
@@ -2808,6 +2812,74 @@ export async function releaseSemiFinishedReservations(
       }
     }
   }
+}
+
+/** Ligne d'ordre dont la quantité a été arrondie à la fournée (mig 662). */
+export interface LotAdjustment {
+  productId: string; formatId: string | null;
+  requested: number; planned: number; batches: number; surplus: number; overMax: boolean;
+}
+
+type SqlClient = { query: (q: string, p?: unknown[]) => Promise<{ rows: any[] }> };
+
+/**
+ * Règle de lot applicable à une ligne : le format choisi, sinon le format lié au produit,
+ * sinon le format par défaut de sa fiche. Null quand la fiche laisse la quantité libre
+ * (règle 'partiel' sans minimum) : rien ne change pour ces lignes.
+ */
+export async function lotRuleFor(client: SqlClient, productId: string | null, formatId: string | null, baseRecipeId: string | null = null) {
+  const r = await client.query(
+    `SELECT rf.id, rf.lot_rule, rf.lot_min, rf.lot_max, rf.nb_par_defaut, rf.rendement_unite, rf.rendement_kg,
+            r.yield_unit
+       FROM recipe_formats rf
+       JOIN recipes r ON r.id = rf.recipe_id
+      WHERE rf.is_active = true AND r.archived_at IS NULL
+        AND (rf.lot_rule = 'entier' OR rf.lot_min IS NOT NULL)
+        AND CASE
+              WHEN $2::uuid IS NOT NULL THEN rf.id = $2::uuid
+              WHEN $3::uuid IS NOT NULL THEN r.id = $3::uuid AND rf.is_default
+              ELSE rf.product_id = $1::uuid OR (r.product_id = $1::uuid AND rf.is_default)
+            END
+      ORDER BY (rf.product_id IS NOT DISTINCT FROM $1::uuid) DESC, rf.is_default DESC, rf.ordre
+      LIMIT 1`,
+    [productId, formatId, baseRecipeId]
+  );
+  const f = r.rows[0];
+  if (!f) return null;
+  const yieldPerBatch = formatYieldPerBatch(f);
+  if (!(yieldPerBatch > 0)) return null;
+  return {
+    formatId: f.id as string,
+    /** True si le rendement du format est en kilos (sinon en pièces). */
+    inKg: f.rendement_unite === 'kg' && parseFloat(f.rendement_kg) > 0,
+    recipeYieldUnit: String(f.yield_unit ?? 'unit').toLowerCase(),
+    yieldPerBatch,
+    rule: (f.lot_rule === 'entier' ? 'entier' : 'partiel') as LotRule,
+    min: f.lot_min != null ? parseFloat(f.lot_min) : null,
+    max: f.lot_max != null ? parseFloat(f.lot_max) : null,
+  };
+}
+
+/**
+ * Insère une ligne d'ordre en appliquant la règle de lot du format (audit 2026-11 C-04) :
+ * 130 tranches d'un cadre de 48 en fournées entières → 3 cadres, 144 prévues, 130 demandées.
+ * Sans règle, la ligne est insérée telle quelle (comportement d'avant).
+ */
+async function insertSizedPlanItem(
+  client: SqlClient, planId: string, productId: string, formatId: string | null, quantity: number, notes: string | null,
+): Promise<LotAdjustment | null> {
+  const rule = await lotRuleFor(client, productId, formatId);
+  const sized = rule ? sizeBatches({ requested: quantity, yieldPerBatch: rule.yieldPerBatch, rule: rule.rule, min: rule.min, max: rule.max }) : null;
+  const planned = sized ? sized.planned : quantity;
+  // nb_contenants est un entier : renseigné pour des fournées entières seulement.
+  const batches = sized && rule!.rule === 'entier' ? sized.batches : null;
+  await client.query(
+    `INSERT INTO production_plan_items (plan_id, product_id, format_id, planned_quantity, notes, nb_contenants, requested_quantity)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [planId, productId, formatId, planned, notes, batches, sized?.adjusted ? quantity : null]
+  );
+  if (!sized || (!sized.adjusted && !sized.overMax)) return null;
+  return { productId, formatId, requested: quantity, planned, batches: sized.batches, surplus: sized.surplus, overMax: sized.overMax };
 }
 
 /**

@@ -29,7 +29,7 @@ import { FilterChips, type FilterChip } from '../sales/ListTemplate';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { DataPanel, TableFooter, Toolbar, SearchBar, LoadingState, EmptyState, NoResultState, ErrorState, FormField, FormFooter, FormSection, Modal, Alert } from '../../components/ds';
 import { DataTable, type DataColumn } from '../../components/ds/DataTable';
-import { applyScreenDefinition } from '@ofauria/shared';
+import { applyScreenDefinition, sizeBatches, formatYieldPerBatch } from '@ofauria/shared';
 import { useScreenDefinition } from '../../hooks/useScreenDefinition';
 
 
@@ -454,7 +454,12 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
   });
   // Map productId → formats[] (vide si pas de formats sur la recette du produit)
   const productFormats = useMemo(() => {
-    const map: Record<string, { id: string; contenant_nom: string; nb_par_defaut: number }[]> = {};
+    const map: Record<string, {
+      id: string; contenant_nom: string; nb_par_defaut: number;
+      // Mig 662 : règle de lot du format, pour annoncer fournées et excédent avant la création.
+      rendement_unite?: string | null; rendement_kg?: string | null;
+      lot_rule?: string | null; lot_min?: string | null; lot_max?: string | null;
+    }[]> = {};
     (recipesData || []).forEach((r: Record<string, any>) => {
       const pid = r.product_id as string | undefined;
       if (!pid) return;
@@ -464,6 +469,11 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
           id: f.id as string,
           contenant_nom: f.contenant_nom as string,
           nb_par_defaut: f.nb_par_defaut as number,
+          rendement_unite: f.rendement_unite as string | null,
+          rendement_kg: f.rendement_kg as string | null,
+          lot_rule: f.lot_rule as string | null,
+          lot_min: f.lot_min as string | null,
+          lot_max: f.lot_max as string | null,
         }));
       }
     });
@@ -617,6 +627,13 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
       if (used.length) forecastApi.snapshot({ date: planDate, usedFor: 'plan', productIds: used }).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['production'] });
       notify.success(`${sectorLabel('production_plan', 'Plan de production')} créé`);
+      // Mig 662 : quantités arrondies à la fournée par le serveur — dites clairement.
+      const adj = (plan.lot_adjustments || []) as { requested: number; planned: number; batches: number; surplus: number }[];
+      if (adj.length > 0) {
+        notify.warning(adj.length === 1
+          ? `Quantité arrondie à la fournée : ${adj[0].requested} demandé → ${adj[0].planned} prévu (${adj[0].batches} fournées, +${adj[0].surplus}).`
+          : `${adj.length} lignes arrondies à la fournée entière : l'excédent figure sur chaque ligne du plan.`);
+      }
       onCreated(plan.id as string);
     },
   });
@@ -806,8 +823,16 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                         <div className="space-y-1.5">
                           {fmts.map((f) => {
                             const fq = (formatQtys[pid] || {})[f.id] || 0;
+                            // Mig 662 : le serveur arrondira à la fournée — on l'annonce ici, même calcul.
+                            const yieldPerBatch = formatYieldPerBatch(f);
+                            const sized = sizeBatches({
+                              requested: fq, yieldPerBatch, rule: f.lot_rule === 'entier' ? 'entier' : 'partiel',
+                              min: f.lot_min != null ? parseFloat(f.lot_min) : null, max: f.lot_max != null ? parseFloat(f.lot_max) : null,
+                            });
+                            const showLots = fq > 0 && yieldPerBatch > 0 && (f.lot_rule === 'entier' || sized.adjusted);
                             return (
-                              <div key={f.id} className="flex items-center justify-between gap-1 bg-white rounded-lg border border-amber-300 px-1.5 py-1">
+                              <div key={f.id}>
+                              <div className="flex items-center justify-between gap-1 bg-white rounded-lg border border-amber-300 px-1.5 py-1">
                                 <div className="flex-1 min-w-0">
                                   <div className="text-[11px] font-medium text-gray-700 truncate" title={f.contenant_nom}>
                                     {f.contenant_nom}
@@ -824,6 +849,15 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                                   className="w-7 h-7 flex items-center justify-center text-base font-bold text-amber-600 active:bg-amber-50 rounded">
                                   +
                                 </button>
+                              </div>
+                              {showLots && (
+                                <div className="text-[11px] px-1 pt-0.5" role="status"
+                                  style={{ color: sized.overMax ? 'var(--ds-danger)' : sized.adjusted ? 'var(--ds-warning, #b45309)' : 'var(--ds-muted)' }}>
+                                  {sized.batches} {sized.batches > 1 ? 'fournées' : 'fournée'}
+                                  {sized.adjusted && <> · <strong>{sized.planned}</strong> prévues (+{sized.surplus} d'excédent)</>}
+                                  {sized.overMax && <> · au-delà du maximum de {parseFloat(f.lot_max as string)} fournées</>}
+                                </div>
+                              )}
                               </div>
                             );
                           })}
