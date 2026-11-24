@@ -68,7 +68,7 @@
 .pd-cost-pick:hover { color: var(--ds-accent-ink); text-decoration: underline; }
 .pd-cost-pick:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 .pd-cost-meter { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.pd-cost-meter i { display: block; width: 64px; height: 8px; border-radius: 4px; background: var(--ds-hair); overflow: hidden; }
+.pd-cost-meter i { display: block; width: 40px; height: 8px; border-radius: 4px; background: var(--ds-hair); overflow: hidden; }
 .pd-cost-meter b { display: block; height: 100%; border-radius: 4px; background: var(--ds-success); }
 .pd-cost-lead { padding: 16px 20px 12px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--ds-body); }
 .pd-cost-lead > strong { font-size: 15px; font-weight: 600; color: var(--ds-ink); }
@@ -80,5 +80,9 @@
 .pd-cost .odoo-table td.pd-cost-base { font-size: 13px; color: var(--ds-muted); white-space: normal; }
 .pd-cost .odoo-table tr.ds-group td.pd-cost-base { font-weight: 400; }
 .pd-cost .odoo-table tr.pd-cost-sub td { color: var(--ds-muted); }
-.pd-cost .odoo-table tr.pd-cost-sub td:first-child { padding-left: 40px; }
+/* La règle .kl-apple force 12 px en !important sur les cellules : le pied et les sous-lignes suivent. */
+.pd-cost .odoo-table tr.pd-cost-sub td:first-child { padding-left: 40px !important; }
+.pd-cost .odoo-table tfoot td:first-child { padding-left: 12px !important; }
+.pd-cost .odoo-table tfoot td:last-child { padding-right: 12px !important; }
+.pd-cost .odoo-table.pd-cost-items td:first-child { white-space: normal; }
 .pd-cost .odoo-table tr.ds-muted td { color: var(--ds-muted); }

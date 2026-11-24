@@ -441,13 +441,13 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
     ...(analytic && da && (da.lines.length > 0 || da.direct.length > 0) ? [{ key: 'centres' as const, label: 'Centres de coûts' }]
       : !analytic && (cout.detail_charges_fixes || []).length > 0 ? [{ key: 'centres' as const, label: 'Frais généraux' }] : []),
     ...(analytic && da?.byNature ? [{ key: 'natures' as const, label: 'Natures de coûts' }] : []),
-    ...(cout.detail_matieres.length > 0 || (cout.detail_emballages?.length ?? 0) > 0 ? [{ key: 'conso' as const, label: 'Consommations matières' }] : []),
+    ...(cout.detail_matieres.length > 0 || (cout.detail_emballages?.length ?? 0) > 0 ? [{ key: 'conso' as const, label: 'Consommations' }] : []),
     ...(hasMo ? [{ key: 'mo' as const, label: "Main-d'œuvre" }] : []),
     ...(hasEquip ? [{ key: 'equip' as const, label: 'Énergie et machines' }] : []),
     ...((cout.detail_pertes || []).length > 0 ? [{ key: 'pertes' as const, label: 'Pertes' }] : []),
     ...((outputsCost?.length ?? 0) > 0 ? [{ key: 'sorties' as const, label: 'Sorties de coupe' }] : []),
     { key: 'cle' as const, label: 'Clé de répartition' },
-    ...((cout.methodes?.length ?? 0) > 0 ? [{ key: 'methodes' as const, label: 'Méthodes de valorisation' }] : []),
+    ...((cout.methodes?.length ?? 0) > 0 ? [{ key: 'methodes' as const, label: 'Méthodes' }] : []),
   ];
   const activeTab: AnalysisTab = tabs.some(t => t.key === tab) ? tab! : tabs[0].key;
 
@@ -497,7 +497,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
         {items.length > 0 ? (
           <>
             <div className="ds-scroll">
-              <table className="odoo-table">
+              <table className="odoo-table pd-cost-items">
                 <thead><tr>
                   <th>Article</th>
                   <th className="ds-num">Quantité</th>
