@@ -63,7 +63,9 @@ for i in $(seq 1 80); do
   if [[ $RC -eq 0 ]]; then
     break
   fi
-  FAILED=$(echo "$OUT" | grep -oE "❌ [0-9]+_[A-Za-z0-9_.-]+\.sql" | head -1 | sed 's/❌ //')
+  # « || true » : sans ligne ❌ (erreur de connexion, d'environnement…), grep échoue et,
+  # avec pipefail + errexit, le script s'arrêtait sans rien afficher (CI du 2026-11-11).
+  FAILED=$(echo "$OUT" | grep -oE "❌ [0-9]+_[A-Za-z0-9_.-]+\.sql" | head -1 | sed 's/❌ //' || true)
   if [[ -z "$FAILED" ]]; then
     echo "$OUT" | tail -20; echo "Echec sans migration identifiee"; exit 1
   fi

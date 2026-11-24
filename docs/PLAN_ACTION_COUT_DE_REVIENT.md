@@ -248,6 +248,10 @@ B. F dépend de C. D est indépendant.
 
 ## Phase 4 — Mise en production
 
+> Étapes 1 à 3 préparées le 2026-11-23 (mesure, sauvegarde locale, répétition des 148
+> migrations sur une copie de la production, CI corrigée) : procédure et résultats dans
+> `docs/DEPLOIEMENT_506_660.md`.
+
 1. Mesurer la production : mode de calcul actuel, charges saisies, nombre de plans chiffrés
    (lecture seule).
 2. Sauvegarde de la base de production.

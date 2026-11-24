@@ -30,6 +30,8 @@ Migrations en attente en production : la prod est à **505** ; voir `docs/MIGRAT
 (506-518 relues ; **512 à passer hors heures d'ouverture**). Les migrations 596 à 605 sont
 venues depuis (ventes hors ligne abandonnées, coût unifié, format de virement, commission carte,
 emplacements des produits finis) : mêmes règles, sauvegarde à la demande juste avant.
+**Mise à jour 2026-11-23** : la plage complète 506-660 a été répétée sur une copie de la
+production ; procédure à suivre : `docs/DEPLOIEMENT_506_660.md`.
 
 ---
 

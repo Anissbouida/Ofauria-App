@@ -14,7 +14,8 @@ jobs:
   test:
     name: Build & Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 30 min : les tests de base tournent un fichier à la fois (~5 min sur un Mac M, davantage sur un runner).
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -71,10 +72,20 @@ jobs:
           TEST_PG_PORT: '5432'
           JWT_SECRET: ci-only-test-secret-not-used-in-production-0123456789
 
-      - name: Run server tests
-        run: npm run test --workspace=server -- --run
-        # Tests unitaires (base simulée) + tests d'intégration contre le service Postgres
-        # ci-dessus (base kalum_test montée par test-db-setup.sh, TEST_DATABASE_URL défini).
+      - name: Run server unit tests
+        run: npm run test --workspace=server -- --run --exclude 'src/__tests__/db/**'
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-only-test-secret-not-used-in-production-0123456789
+          DATABASE_URL: postgres://postgres@localhost:5432/kalum_test
+          TEST_DATABASE_URL: postgres://postgres@localhost:5432/kalum_test
+
+      # Tests d'intégration contre le service Postgres ci-dessus (base kalum_test montée par
+      # test-db-setup.sh), UN FICHIER À LA FOIS (test:db = --no-file-parallelism) : plusieurs
+      # tests changent des réglages globaux (mode de calcul des charges, secteur, politiques,
+      # promotions) ; en parallèle sur la même base ils se perturbent (9 échecs sur PG 16 neuf).
+      - name: Run server DB tests
+        run: npm run test:db --workspace=server
         env:
           NODE_ENV: test
           JWT_SECRET: ci-only-test-secret-not-used-in-production-0123456789
