@@ -10,13 +10,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Calculator, RefreshCw, Save, Loader2, BarChart3 } from 'lucide-react';
 import SalesPageShell from '../sales/SalesPageShell';
-import { EmptyState, ErrorState, KpiCard, KpiGrid, LoadingState, Tabs, Toolbar } from '../../components/ds';
+import { EmptyState, ErrorState, KpiCard, KpiGrid, LoadingState, Segmented, Tabs, Toolbar } from '../../components/ds';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { money, currencySymbol } from '../../utils/money';
 import { useActionPermissions } from '../../hooks/useActionPermissions';
 import { analyticCostApi } from '../../api/analytic-cost.api';
 import { productionApi } from '../../api/production.api';
+import { settingsApi } from '../../api/settings.api';
 import ParametersPanel from '../settings/ParametersPanel';
 import { DirtyFormsProvider, SaveBar } from '../settings/DirtyForms';
 import { CentresTab, ChargesTab, EquipmentTab, KeysTab, PersonnelTab } from './AnalyticCostPage';
@@ -146,7 +147,7 @@ export default function CostSettingsPage() {
         <div className="pd-costset-main">
           {!meta.data ? <LoadingState /> : (
             <>
-              {section === 'methode' && <MethodSection analytic={analytic} />}
+              {section === 'methode' && <MethodSection analytic={analytic} method={method} />}
               {section === 'centres' && <CentresTab meta={meta.data} />}
               {section === 'charges' && <ChargesTab month={month} meta={meta.data} closed={closed} />}
               {section === 'cles' && <KeysTab />}
@@ -200,10 +201,22 @@ export default function CostSettingsPage() {
   );
 }
 
-/** Mode de calcul : paramètres du coût (repris de Paramètres › Production) et taux forfaitaire. */
-function MethodSection({ analytic }: { analytic: boolean }) {
+/**
+ * Mode de calcul. Le mode passe par l'API du coût (même droit que le reste de la page) ; les composantes
+ * et les écritures restent des paramètres de la société (droit Paramètres › Production) : ils ne
+ * s'affichent qu'à qui peut les voir.
+ */
+function MethodSection({ analytic, method }: { analytic: boolean; method: string | undefined }) {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ['production-settings'], queryFn: productionApi.getSettings });
+  const params = useQuery({ queryKey: ['business-parameters'], queryFn: settingsApi.parameters });
+  const paramKeys = ['production.cost_components', 'production.ledger_entries', ...(method === 'monthly' ? ['production.fixed_charges'] : [])];
+  const visibleParams = (params.data ?? []).filter(p => paramKeys.includes(p.key));
+  const setMethod = useMutation({
+    mutationFn: (m: 'rate' | 'analytic') => analyticCostApi.setMethod(m),
+    onSuccess: () => { notify.success('Mode de calcul enregistré'); qc.invalidateQueries({ queryKey: ['analytic'] }); qc.invalidateQueries({ queryKey: ['business-parameters'] }); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
   const [ratePct, setRatePct] = useState<string | null>(null);
   useEffect(() => {
     if (settings.data && ratePct === null) setRatePct(String(Math.round(Number(settings.data.production_charges_fixes_pct) * 1000) / 10));
@@ -216,7 +229,26 @@ function MethodSection({ analytic }: { analytic: boolean }) {
   return (
     <DirtyFormsProvider>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <ParametersPanel keys={['production.fixed_charges', 'production.cost_components', 'production.ledger_entries']} />
+        <section className="ds-panel" aria-label="Mode de calcul">
+          <div className="pd-section-head">Mode de calcul des frais généraux</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '14px 20px' }}>
+            <span style={{ flex: '1 1 280px', fontSize: 13, color: 'var(--ds-muted)' }}>
+              Moteur analytique : charges et personnel répartis par centre de coûts, imputés sur la capacité normale.
+              Taux sur les matières : un pourcentage du coût matière.
+              {method === 'monthly' && ' Mode actuel : charges mensuelles au prorata des matières (ancien).'}
+            </span>
+            <Segmented label="Mode de calcul" value={analytic ? 'analytic' : method === 'rate' ? 'rate' : ('' as 'analytic')}
+              onChange={m => { if (!setMethod.isPending) setMethod.mutate(m); }}
+              options={[{ key: 'analytic', label: 'Moteur analytique' }, { key: 'rate', label: 'Taux sur les matières' }]} />
+          </div>
+        </section>
+        {visibleParams.length > 0
+          ? <ParametersPanel keys={paramKeys} />
+          : params.isSuccess && (
+            <p className="ds-muted" style={{ margin: 0, fontSize: 13 }}>
+              Composantes du coût et écritures comptables de production : réservées aux utilisateurs qui ont accès à Paramètres › Production.
+            </p>
+          )}
         <section className="ds-panel" aria-label="Taux de charges fixes">
           <div className="pd-section-head">Taux de charges fixes
             <span className="pd-cost-note">{analytic ? 'Non utilisé : le moteur analytique est actif' : 'Mode « Taux sur les matières »'}</span>
