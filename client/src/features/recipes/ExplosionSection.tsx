@@ -1,7 +1,6 @@
-import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Layers, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Layers } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import { useProdTerms } from '../../hooks/useProdTerms';
 
@@ -9,8 +8,9 @@ import { EmptyState, LoadingState } from '../../components/ds';
 import '../production/production.css';
 /**
  * Explosion à plat (mig 400) : déplie la nomenclature sur tous les niveaux
- * (sous-recettes incluses) et cumule chaque ingrédient élémentaire avec sa
- * quantité et son coût roulés. Σ(coût roulé) = coût matière total de la recette.
+ * (sous-recettes incluses) et cumule chaque ingrédient élémentaire avec sa quantité.
+ * Quantités seulement (2026-11-24) : le coût de chaque ingrédient se lit dans le coût
+ * standard de l'article (Production › Coûts standard), plus sur la fiche technique.
  */
 export default function ExplosionSection({ recipeId }: { recipeId: string }) {
   const { ingredient, ingredients, ingredientsLc } = useProdTerms();
@@ -20,8 +20,8 @@ export default function ExplosionSection({ recipeId }: { recipeId: string }) {
     queryFn: () => recipesApi.explosion(recipeId),
     enabled: open,
   });
-  const dh = (n: number) => money(n);
-  const total = data?.total_cost ?? 0;
+  // Tri alphabétique : l'ordre par coût n'a plus de sens sans la colonne coût.
+  const lines = [...(data?.lines ?? [])].sort((a, b) => a.ingredient_name.localeCompare(b.ingredient_name, 'fr'));
 
   return (
     <div className="ds-panel pd-section" style={{ marginTop: 16 }}>
@@ -40,46 +40,32 @@ export default function ExplosionSection({ recipeId }: { recipeId: string }) {
           {isLoading && (
             <LoadingState bare />
           )}
-          {!isLoading && data && data.lines.length === 0 && (
+          {!isLoading && data && lines.length === 0 && (
             <EmptyState bare icon={Layers} title={`${ingredients} : aucune ligne`} text="Cette recette n'a pas encore de composition matière." />
           )}
-          {!isLoading && data && data.lines.length > 0 && (
+          {!isLoading && data && lines.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
               <table className="odoo-table">
                 <thead><tr>
                   <th>{ingredient}</th>
                   <th className="ds-num">Quantité totale</th>
-                  <th className="ds-num">Coût roulé</th>
-                  <th className="ds-num">Part (%)</th>
                 </tr></thead>
                 <tbody>
-                  {data.lines.map(l => (
+                  {lines.map(l => (
                     <tr key={l.ingredient_id}>
                       <td className="ds-strong">{l.ingredient_name}</td>
                       <td className="ds-num">
                         {l.total_qty.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {l.unit}
                       </td>
-                      <td className="ds-num">{dh(l.rolled_cost)}</td>
-                      <td className="ds-num" style={{ color: 'var(--ds-muted)' }}>
-                        {total > 0 ? (l.rolled_cost / total * 100).toFixed(1) : '—'}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot>
-                  <tr>
-                    <td>Total matière (roulé)</td>
-                    <td />
-                    <td className="ds-num">{dh(total)}</td>
-                    <td />
-                  </tr>
-                </tfoot>
               </table>
             </div>
           )}
           <p style={{ fontSize: '0.72rem', color: 'var(--ds-muted)', padding: '6px 2px 0' }}>
             Déplie la nomenclature sur tous les niveaux (sous-recettes incluses) et cumule
-            les {ingredientsLc} de base. Coût matière uniquement (hors emballage).
+            les {ingredientsLc} de base (hors emballage).
           </p>
         </div>
       )}

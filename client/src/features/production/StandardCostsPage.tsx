@@ -26,6 +26,11 @@ type Filter = '' | StandardSituation | 'labour';
 type SortKey = 'name' | 'matiere' | 'coutProduction' | 'coutRevient' | 'priceHt' | 'tauxMarque';
 
 const n2 = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const monthLabel = (m?: string) => {
+  if (!m) return '';
+  const [y, mo] = m.split('-').map(Number);
+  return new Date(y, (mo || 1) - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+};
 const pct = (v: number | null | undefined) => (v == null ? '—' : `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`);
 /** Seuil de taux de marque sous lequel un article est signalé (orange). */
 export const LOW_MARK = 30;
@@ -113,7 +118,7 @@ export default function StandardCostsPage() {
             text="Un article apparaît ici dès qu'une fiche technique est liée à un produit vendu." />
         ) : <>
           <KpiGrid label="Coûts standard">
-            <KpiCard label="Articles chiffrés" value={String(rows.length)} sub={`charges de ${rows[0]?.month ?? ''}`} />
+            <KpiCard label="Articles chiffrés" value={String(rows.length)} sub={`charges de ${monthLabel(rows[0]?.month)}`} />
             <KpiCard label="Coûts validés" value={String(counts.validated + counts.stale)}
               sub={counts.stale ? `dont ${counts.stale} à recalculer` : 'coûts de référence à jour'} tone={counts.stale ? 'orange' : undefined} />
             <KpiCard label="Sans gamme" value={String(counts.labour)} sub="main-d'œuvre directe non comptée" tone={counts.labour ? 'orange' : undefined} />
@@ -161,7 +166,7 @@ export default function StandardCostsPage() {
                           <span className="ds-strong">{r.name}</span>
                           {r.category && <span style={{ display: 'block', fontSize: 12, color: 'var(--ds-muted)' }}>{r.category}</span>}
                         </td>
-                        <td>{r.pieces ? `${r.pieces} pièce${r.pieces > 1 ? 's' : ''}` : '—'}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{r.pieces ? `${r.pieces} pièce${r.pieces > 1 ? 's' : ''}` : '—'}</td>
                         <td className="ds-num">{n2(r.matiere)}</td>
                         <td className="ds-num">{n2(r.coutProduction)}</td>
                         <td className="ds-num ds-strong">{n2(r.coutRevient)}</td>

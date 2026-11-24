@@ -1,5 +1,4 @@
 import PDFDocument from 'pdfkit';
-import { companyCurrency, currencySymbol } from './currency.js';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 
@@ -288,12 +287,6 @@ function n(val: number | null, dec = 2): string {
     .replace(/[\u00A0\u202F\u2009]/g, ' ');
 }
 
-/** Symbole de la devise de la société (M3-06), posé au début de chaque génération. */
-let CUR = currencySymbol();
-/** Montant : « — » seul quand la valeur est absente, pas « — DH ». */
-function dh(v: number | null): string {
-  return v === null || !Number.isFinite(v) ? '\u2014' : `${n(v)} ${CUR}`;
-}
 
 /** Quantite : on garde l'unite SAISIE, jamais convertie (420 g reste 420 g). */
 function qty(v: number, unit: string): string {
@@ -309,12 +302,8 @@ function rendementTxt(f: FicheFormat): string {
 function uniteTxt(f: FicheFormat): string {
   return isKg(f) ? 'kg' : 'pièce';
 }
-function rendementDiv(f: FicheFormat): number {
-  return isKg(f) ? (f.rendementKg as number) : f.nbParDefaut;
-}
 
 export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
-  CUR = (await companyCurrency()).symbol;
   const doc = new PDFDocument({
     size: 'A4',
     // bottom: 0 — le pied de page est ecrit a PH-35, sous la marge basse
@@ -375,7 +364,6 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
 
   const chips: string[] = [
     data.isBase ? 'Préparation de base' : 'Produit fini',
-    data.modeCout === 'compose' ? 'Coût : nomenclature' : 'Coût : prorata poids',
   ];
   if (data.categoryLabel) chips.push(data.categoryLabel);
   if (data.productName) chips.push(`Vendu comme : ${data.productName}`);
@@ -389,20 +377,21 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
   // 235,58 DH » (rendement de la recette et cout du format par defaut) au-dessus
   // d'un cadre bande a 18 pieces et 90,70 DH serait trompeur sur le papier que le
   // chef emmene au labo.
+  // 2026-11-24 : aucun coût ni prix sur la fiche imprimée — elle part au labo ; le coût de
+  // l'article se lit dans Production › Coûts standard (réservé au gérant).
   const seul = data.scopedToFormat && data.formats.length === 1 ? data.formats[0] : null;
   const netto = data.yieldQuantity * (1 - data.perteStandardPct / 100);
   const cells: Array<[string, string]> = seul
     ? [
       ['FORMAT', seul.contenantNom || 'Sans contenant'],
       ['RENDEMENT', rendementTxt(seul)],
-      ['COÛT LANCEMENT', dh(seul.coutFormatDh)],
-      [`COÛT / ${uniteTxt(seul).toUpperCase()}`, dh(seul.coutUnitaireDh)],
+      ['PERTE', data.perteStandardPct > 0 ? `${n(data.perteStandardPct, 1)} %` : '—'],
+      [`POIDS / ${uniteTxt(seul).toUpperCase()}`, qty(seul.quantiteParFormat, seul.quantiteParFormatUnite)],
     ]
     : [
       ['RENDEMENT BRUT', qty(data.yieldQuantity, data.yieldUnit)],
       ['PERTE TRANSFO.', data.perteStandardPct > 0 ? `${n(data.perteStandardPct, 1)} %` : '—'],
       ['RENDEMENT NET', qty(netto, data.yieldUnit)],
-      ['COÛT MATIÈRE', dh(data.totalCostDh)],
     ];
   const cw = CW / cells.length;
   const ch = 34;
@@ -427,13 +416,9 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     sectionTitle('Formats de production');
 
     const cols = [
-      { w: 150, label: 'Contenant', align: 'left' as const },
-      { w: 52, label: 'Pièces', align: 'right' as const },
-      { w: 66, label: 'Poids/pièce', align: 'right' as const },
-      { w: 74, label: 'Coût lancement', align: 'right' as const },
-      { w: 62, label: 'Coût/pièce', align: 'right' as const },
-      { w: 61, label: 'Coût complet', align: 'right' as const },
-      { w: 50, label: 'PV/pièce', align: 'right' as const },
+      { w: 295, label: 'Contenant', align: 'left' as const },
+      { w: 110, label: 'Pièces', align: 'right' as const },
+      { w: 110, label: 'Poids/pièce', align: 'right' as const },
     ];
 
     const drawFormatHead = () => {
@@ -458,10 +443,6 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
         nom,
         isKg(f) ? rendementTxt(f) : String(f.nbParDefaut),
         qty(f.quantiteParFormat, f.quantiteParFormatUnite),
-        dh(f.coutFormatDh),
-        dh(f.coutUnitaireDh),
-        dh(f.coutCompletUnitaireDh),
-        dh(f.prixVenteUnitaireDh),
       ];
       let x = M;
       values.forEach((v, i) => {
@@ -474,11 +455,12 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     }
     doc.font('Helvetica-Oblique').fontSize(6.5).fillColor(TEXT_MUTED);
     y += 4;
-    const legende = data.formats.some(f => f.isDefault)
-      ? '(defaut) = format par défaut   •   coût lancement = le cadre / la fournée entière'
-      : 'coût lancement = le cadre / la fournée entière';
-    txt(legende, M, y, { width: CW });
-    y += 16;
+    if (data.formats.some(f => f.isDefault)) {
+      txt('(defaut) = format par défaut', M, y, { width: CW });
+      y += 16;
+    } else {
+      y += 6;
+    }
   }
 
   // ════════ INGREDIENTS DIRECTS ════════
@@ -486,9 +468,8 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     sectionTitle('Ingrédients');
 
     const iCols = [
-      { w: 300, label: 'Ingrédient', align: 'left' as const },
-      { w: 110, label: 'Quantité', align: 'right' as const },
-      { w: 105, label: 'Coût', align: 'right' as const },
+      { w: 365, label: 'Ingrédient', align: 'left' as const },
+      { w: 150, label: 'Quantité', align: 'right' as const },
     ];
     const drawIngHead = () => {
       doc.rect(M, y, CW, 15).fill(BEIGE);
@@ -499,12 +480,10 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     };
     drawIngHead();
 
-    let totalIng = 0;
     for (const ing of data.ingredients) {
       if (y + 16 > BOTTOM) { doc.addPage(); y = M; drawIngHead(); }
       doc.rect(M, y, CW, 16).lineWidth(0.4).stroke(BORDER);
-      totalIng += ing.coutDh || 0;
-      const vals = [ing.name, qty(ing.quantity, ing.unit), dh(ing.coutDh)];
+      const vals = [ing.name, qty(ing.quantity, ing.unit)];
       let x = M;
       vals.forEach((v, i) => {
         doc.font('Helvetica').fontSize(8).fillColor(TEXT_DARK);
@@ -513,12 +492,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
       });
       y += 16;
     }
-    doc.rect(M, y, CW, 16).fill(BEIGE);
-    doc.font('Helvetica-Bold').fontSize(8).fillColor(BROWN);
-    txt('Total ingrédients', M + 4, y + 4.5);
-    txt(`${n(totalIng)} ${CUR}`, M + iCols[0].w + iCols[1].w + 4, y + 4.5,
-        { width: iCols[2].w - 8, align: 'right' });
-    y += 26;
+    y += 10;
   }
 
   // ════════ NOMENCLATURE PAR FORMAT ════════
@@ -527,11 +501,10 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     sectionTitle('Nomenclature par format');
 
     const cCols = [
-      { w: 74, label: 'Rôle', align: 'left' as const },
-      { w: 191, label: 'Composant', align: 'left' as const },
-      { w: 80, label: 'Quantité', align: 'right' as const },
-      { w: 55, label: 'Perte', align: 'right' as const },
-      { w: 115, label: 'Coût', align: 'right' as const },
+      { w: 90, label: 'Rôle', align: 'left' as const },
+      { w: 265, label: 'Composant', align: 'left' as const },
+      { w: 95, label: 'Quantité', align: 'right' as const },
+      { w: 65, label: 'Perte', align: 'right' as const },
     ];
 
     for (const f of formatsAvecBom) {
@@ -549,37 +522,27 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
       };
       drawBomHead();
 
-      let total = 0;
       for (const c of f.components) {
         if (y + 16 > BOTTOM) { doc.addPage(); y = M; drawBomHead(); }
         doc.rect(M, y, CW, 16).lineWidth(0.4).stroke(BORDER);
-        total += c.coutDh || 0;
-        // Une conversion d'unite impossible fausse le cout : on le signale sur
+        // Une conversion d'unite impossible fausse la quantité à sortir : on le signale sur
         // la ligne plutot que de laisser lire un chiffre faux (cf. mig 260).
-        const coutTxt = c.conversionOk ? dh(c.coutDh) : `${dh(c.coutDh)}  (!)`;
         const vals = [
           c.role || '—',
           c.sourceName + (c.sourceType === 'ingredient' ? '  (ingrédient)' : ''),
-          qty(c.quantite, c.unite),
+          c.conversionOk ? qty(c.quantite, c.unite) : `${qty(c.quantite, c.unite)}  (!)`,
           c.pertePct > 0 ? `${n(c.pertePct, 1)} %` : '—',
-          coutTxt,
         ];
         let x = M;
         vals.forEach((v, i) => {
-          doc.font('Helvetica').fontSize(8).fillColor(!c.conversionOk && i === 4 ? '#B42318' : TEXT_DARK);
+          doc.font('Helvetica').fontSize(8).fillColor(!c.conversionOk && i === 2 ? '#B42318' : TEXT_DARK);
           txt(v, x + 4, y + 4.5, { width: cCols[i].w - 8, align: cCols[i].align });
           x += cCols[i].w;
         });
         y += 16;
       }
 
-      doc.rect(M, y, CW, 16).fill(BEIGE);
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(BROWN);
-      txt('Total lancement', M + 4, y + 4.5);
-      const perPiece = rendementDiv(f) > 0 ? total / rendementDiv(f) : null;
-      txt(`${n(total)} ${CUR}   —   ${n(perPiece)} ${CUR} / ${uniteTxt(f)}`,
-          M + CW - cCols[4].w - 4, y + 4.5, { width: cCols[4].w, align: 'right' });
-      y += 24;
+      y += 8;
     }
   }
 
@@ -604,15 +567,13 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
       : `Pour les ${data.formats.length} formats`;
     const bCols = avecBesoin
       ? [
-        { w: 230, label: 'Ingrédient', align: 'left' as const },
-        { w: 105, label: libelleBesoin, align: 'right' as const },
-        { w: 90, label: 'Fournée std', align: 'right' as const },
-        { w: 90, label: 'Coût', align: 'right' as const },
+        { w: 265, label: 'Ingrédient', align: 'left' as const },
+        { w: 130, label: libelleBesoin, align: 'right' as const },
+        { w: 120, label: 'Fournée std', align: 'right' as const },
       ]
       : [
-        { w: 320, label: 'Ingrédient', align: 'left' as const },
-        { w: 100, label: 'Quantité', align: 'right' as const },
-        { w: 95, label: 'Coût', align: 'right' as const },
+        { w: 365, label: 'Ingrédient', align: 'left' as const },
+        { w: 150, label: 'Quantité', align: 'right' as const },
       ];
 
     for (const b of data.bases) {
@@ -622,10 +583,10 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
       txt(b.name, M, y, { width: CW - 300 });
       doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
       const meta = b.facteur !== null && b.besoinNet !== null
-        ? `${qty(b.besoinNet, b.yieldUnit)} nécessaires  =  ${n(b.facteur, 2)} fournée${b.facteur >= 2 ? 's' : ''}  •  ${dh((b.coutFourneeDh ?? 0) * b.facteur)}`
+        ? `${qty(b.besoinNet, b.yieldUnit)} nécessaires  =  ${n(b.facteur, 2)} fournée${b.facteur >= 2 ? 's' : ''}`
         : (b.perteStandardPct > 0
-          ? `${qty(b.yieldQuantity, b.yieldUnit)} brut  →  ${qty(net, b.yieldUnit)} net (perte ${n(b.perteStandardPct, 1)} %)  •  ${dh(b.coutFourneeDh)}`
-          : `${qty(b.yieldQuantity, b.yieldUnit)}  •  ${dh(b.coutFourneeDh)}`);
+          ? `${qty(b.yieldQuantity, b.yieldUnit)} brut  →  ${qty(net, b.yieldUnit)} net (perte ${n(b.perteStandardPct, 1)} %)`
+          : qty(b.yieldQuantity, b.yieldUnit));
       txt(meta, M, y + 1, { width: CW, align: 'right' });
       y += 11;
       // Rappel du rendement standard : c'est la reference dont sortent les
@@ -662,8 +623,8 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
         doc.rect(M, y, CW, 15).lineWidth(0.4).stroke(BORDER);
         const facteur = b.facteur;
         const vals = facteur !== null && avecBesoin
-          ? [ing.name, qty(ing.quantity * facteur, ing.unit), qty(ing.quantity, ing.unit), dh((ing.coutDh ?? 0) * facteur)]
-          : [ing.name, qty(ing.quantity, ing.unit), dh(ing.coutDh)];
+          ? [ing.name, qty(ing.quantity * facteur, ing.unit), qty(ing.quantity, ing.unit)]
+          : [ing.name, qty(ing.quantity, ing.unit)];
         if (facteur !== null) totalMis += ing.quantity * facteur;
         let x = M;
         vals.forEach((v, i) => {
