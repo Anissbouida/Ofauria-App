@@ -21,6 +21,10 @@ export interface ItemCost {
   prix_vente_ht_u: number | null;
   matieres: number; emballages: number; main_oeuvre: number; energie: number; machine: number; sous_traitance: number;
   charges_appro: number; charges_production: number; charges_structure: number; charges_directes: number;
+  /** Détail des charges de structure (somme = charges_structure). */
+  charges_administration: number; charges_distribution: number;
+  /** Part de chaque centre dans l'article : quantité d'inducteur de l'article × taux du centre. */
+  charges_centres: { code: string; name: string; level: string; driverLabel: string; quantity: number; rate: number; total: number }[];
   cout_production: number; cout_revient: number;
   cout_production_u: number | null; cout_revient_u: number | null;
   ventes_ht: number; marge: number; taux_marge: number | null; taux_marque: number | null;
@@ -122,12 +126,19 @@ export async function planItemCosts(planId: string, input: PlanItemCostsInput): 
     }
   };
   const appro = items.map(() => 0), prod = items.map(() => 0), struct = items.map(() => 0), direct = items.map(() => 0);
+  const adm = items.map(() => 0);
+  const centres: ItemCost['charges_centres'][] = items.map(() => []);
   for (const l of input.analytic.lines) {
     let w = items.map((_, i) => driverOf(l.driver, i));
     if (!w.some(x => x > 0)) w = units;
     const parts = spread(l.total, w);
     const bucket = l.level === 'approvisionnement' ? appro : l.level === 'production' ? prod : struct;
-    parts.forEach((v, i) => { bucket[i] += v; });
+    parts.forEach((v, i) => {
+      bucket[i] += v;
+      if (l.level === 'administration') adm[i] += v;
+      centres[i].push({ code: l.code, name: l.name, level: l.level, driverLabel: l.driverLabel,
+        quantity: Math.round(w[i] * 10000) / 10000, rate: Math.round((l.rateFixed + l.rateVariable) * 10000) / 10000, total: v });
+    });
   }
   for (const d of input.analytic.directLines) {
     const idx = items.map((it, i) => (it.product_id === d.productId ? i : -1)).filter(i => i >= 0);
@@ -148,6 +159,7 @@ export async function planItemCosts(planId: string, input: PlanItemCostsInput): 
       prix_vente_ht_u: it.price_ht > 0 ? Math.round(it.price_ht * 10000) / 10000 : null,
       matieres: r2(mat[i]), emballages: emb[i], main_oeuvre: mo[i], energie: ene[i], machine: mach[i], sous_traitance: fac[i],
       charges_appro: r2(appro[i]), charges_production: r2(prod[i]), charges_structure: r2(struct[i]), charges_directes: r2(direct[i]),
+      charges_administration: r2(adm[i]), charges_distribution: r2(struct[i] - adm[i]), charges_centres: centres[i],
       cout_production: production, cout_revient: revient,
       cout_production_u: it.qty > 0 ? Math.round(production / it.qty * 10000) / 10000 : null,
       cout_revient_u: it.qty > 0 ? Math.round(revient / it.qty * 10000) / 10000 : null,
