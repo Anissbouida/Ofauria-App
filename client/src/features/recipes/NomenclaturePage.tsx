@@ -203,13 +203,15 @@ export default function NomenclaturePage() {
               { key: 'versions', label: 'Versions' },
             ]} />
             <div className="fiche-tab" role="tabpanel">
-              {tab === 'composition' && <>
+              {/* L'éditeur reste monté (masqué) hors de son onglet : une saisie non enregistrée
+                  survit au changement d'onglet et les indicateurs du format restent renseignés. */}
+              <div hidden={tab !== 'composition'}>
                 <NomenclatureEditor recipeId={recipe.id} readOnly={readOnly} onFinance={setKpi}
                   onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })}
                   extra={<fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
                     <SubstitutesPanel recipeId={recipe.id} />
                   </fieldset>} />
-              </>}
+              </div>
               {tab === 'fabrication' && <>
                 <RecipeRoutingPanel recipeId={recipe.id} recipeName={recipe.name} />
                 {/* Mode opératoire : imprimé avec la fiche remise au labo. */}
