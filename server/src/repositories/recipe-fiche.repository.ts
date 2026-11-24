@@ -122,7 +122,13 @@ export const recipeFicheRepository = {
               bc.unite         AS unit,
               -- Même quantité dans l'unité de rendement de la préparation : le total à mettre
               -- en œuvre additionnait g, kg et l tels quels (1,45 g de sel compté 1,45 kg).
-              bc.quantite * fn_convert_factor(bc.unite::text, br.yield_unit::text, 'ingredient', ing.id) AS qty_yield_unit,
+              -- Sans densité (huile en l, rendement en kg), 1 ml compte pour 1 g comme dans l'éditeur.
+              bc.quantite * COALESCE(
+                fn_convert_factor(bc.unite::text, br.yield_unit::text, 'ingredient', ing.id),
+                (CASE lower(bc.unite) WHEN 'mg' THEN 0.001 WHEN 'g' THEN 1 WHEN 'kg' THEN 1000
+                   WHEN 'ml' THEN 1 WHEN 'cl' THEN 10 WHEN 'dl' THEN 100 WHEN 'l' THEN 1000 END)
+                / NULLIF(CASE lower(br.yield_unit) WHEN 'g' THEN 1 WHEN 'kg' THEN 1000
+                   WHEN 'ml' THEN 1 WHEN 'l' THEN 1000 END, 0)) AS qty_yield_unit,
               bc.quantite
                 * COALESCE(ing.unit_cost, 0)
                 * fn_convert_factor(bc.unite::text, ing.unit::text, 'ingredient', ing.id)
