@@ -1581,7 +1581,7 @@ export default function PlanDetailPage() {
               {recipeIngredients.length > 0 ? (
                 <>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '12px 16px 4px' }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)' }}><Scale size={12} aria-hidden="true" /> {T.ingredients} à peser</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ds-ink)', display: 'inline-flex', alignItems: 'center', gap: 6 }}><Scale size={12} aria-hidden="true" /> {T.ingredients} à peser</span>
                     <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>
                       {fq(qtyToProduce)} {yieldUnit} = {fq(multiplier, 2)} × la {T.recipeLc} ({fq(yieldQty)} {yieldUnit})
                     </span>
