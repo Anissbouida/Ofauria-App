@@ -381,7 +381,7 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
             <tbody>
               {shown.map(u => {
                 const store = storeName(u.storeId);
-                const others = storesOf(u).filter(id => id !== u.storeId).map(id => storeName(id)).filter(Boolean) as string[];
+                const storeNames = [store, ...storesOf(u).filter(id => id !== u.storeId).map(id => storeName(id))].filter(Boolean) as string[];
                 const name = fullName(u) || (u.email as string);
                 return (
                   <tr key={u.id} id={`user-row-${u.id}`} className={`ds-clickable${selected.has(u.id) ? ' ds-selected' : ''}`} onClick={() => onPreview(u)}>
@@ -403,7 +403,7 @@ function AccountsTab({ onEdit, onPreview, onReview }: {
                           <span key={rc} className={`kl-tag ${rc === u.role ? 'b' : 'x'}`} title={rc === u.role ? 'Rôle principal' : undefined}>{roleLabel(rc)}</span>
                         ))}
                       </div>
-                      <small className="usr-sub" title={others.length ? [store, ...others].join(', ') : undefined}>{store ? `${store}${others.length ? ` +${others.length}` : ''}` : (u.role === 'admin' ? 'Tous les établissements' : 'Sans établissement')}</small>
+                      <small className="usr-sub" title={storeNames.length > 1 ? storeNames.join(', ') : undefined}>{storeNames.length ? `${storeNames[0]}${storeNames.length > 1 ? ` +${storeNames.length - 1}` : ''}` : (u.role === 'admin' ? 'Tous les établissements' : 'Sans établissement')}</small>
                     </td>
                     <td><SecuritySignals u={u} /></td>
                     <td style={{ color: u.lastLoginAt ? undefined : 'var(--ds-muted)' }} title={u.lastLoginAt ? formatDateTime(u.lastLoginAt) : undefined}>

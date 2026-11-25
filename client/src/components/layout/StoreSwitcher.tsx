@@ -58,7 +58,7 @@ export default function StoreSwitcher() {
           className="absolute end-0 top-full mt-1 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-1 text-gray-800 z-50">
           <p className="px-4 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">{t('header.store')}</p>
           {data.stores.map(s => (
-            <button key={s.id} type="button" role="menuitemradio" aria-checked={s.id === active.id} onClick={() => void pick(s.id)}
+            <button key={s.id} type="button" role="menuitemradio" aria-checked={s.id === active.id} aria-label={s.isDefault ? `${s.name} (${t('header.storeDefault')})` : s.name} onClick={() => void pick(s.id)}
               className="w-full text-start px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2">
               <span className="w-4 shrink-0">{s.id === active.id && <Check size={14} className="text-emerald-600" />}</span>
               <span className="flex-1 truncate">{s.name}</span>

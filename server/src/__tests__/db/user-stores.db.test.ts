@@ -78,6 +78,9 @@ describe.skipIf(!hasTestDb)('Établissements par compte (refonte Utilisateurs, l
     const payload = JSON.parse(Buffer.from(ok.body.data.token.split('.')[1], 'base64url').toString());
     expect(payload.storeId).toBe(stores[0]);
     expect((await request(app).post('/auth/active-store').send({ storeId: stores[2] })).status).toBe(403);
+    // Identifiant non v4 (établissement d'origine 00000000-…-0001) : accepté par la validation, refusé car non rattaché.
+    const { activeStoreSchemaForTest } = await import('../../routes/auth.routes.js');
+    expect(activeStoreSchemaForTest.safeParse({ storeId: '00000000-0000-0000-0000-000000000001' }).success).toBe(true);
   });
 
   it('users.store_id écrit ailleurs reste l\'établissement par défaut', async () => {
