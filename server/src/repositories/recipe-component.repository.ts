@@ -434,7 +434,7 @@ export const recipeComponentRepository = {
     return { recipe: rec.rows[0], components: components.rows, finance: computeFinance(rec.rows[0]) };
   },
 
-  async updateIdentity(recipeId: string, data: { name: string; categoryId?: string | null; compoParPiece?: boolean; temperaturePateCibleC?: number | null; hydratationPct?: number | null; isPhantom?: boolean }) {
+  async updateIdentity(recipeId: string, data: { name: string; categoryId?: string | null; compoParPiece?: boolean; temperaturePateCibleC?: number | null; hydratationPct?: number | null; isPhantom?: boolean; conservationHeures?: number | null }) {
     // compo_par_piece (mode de saisie fournee/piece) et les parametres de pate
     // (mig 342) sont editables ici, au niveau fiche, hors du flux de composition.
     // COALESCE : non fourni => on ne touche pas a la valeur existante.
@@ -445,9 +445,12 @@ export const recipeComponentRepository = {
               hydratation_pct = COALESCE($6, hydratation_pct),
               -- M9 (mig 588) : fantôme réservé aux préparations de base.
               is_phantom = CASE WHEN $7::boolean IS NULL THEN is_phantom ELSE ($7::boolean AND is_base) END,
+              -- Mig 673 : absent = inchangé ; null = effacé.
+              conservation_heures = CASE WHEN $8::boolean THEN $9::integer ELSE conservation_heures END,
               updated_at = NOW() WHERE id = $1
-       RETURNING id, name, category_id, compo_par_piece, temperature_pate_cible_c, hydratation_pct, is_phantom`,
-      [recipeId, data.name.trim(), data.categoryId ?? null, data.compoParPiece ?? null, data.temperaturePateCibleC ?? null, data.hydratationPct ?? null, data.isPhantom ?? null]
+       RETURNING id, name, category_id, compo_par_piece, temperature_pate_cible_c, hydratation_pct, is_phantom, conservation_heures`,
+      [recipeId, data.name.trim(), data.categoryId ?? null, data.compoParPiece ?? null, data.temperaturePateCibleC ?? null, data.hydratationPct ?? null, data.isPhantom ?? null,
+       data.conservationHeures !== undefined, data.conservationHeures ?? null]
     );
     return r.rows[0] ?? null;
   },

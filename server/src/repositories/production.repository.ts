@@ -1691,8 +1691,10 @@ export const productionRepository = {
             const sfLotNumber = taken.rows[0].n > 0 ? `${sfLot}-${taken.rows[0].n + 1}` : sfLot;
             await client.query(
               `INSERT INTO semi_finished_lots
-                 (recipe_id, store_id, lot_number, production_plan_id, plan_item_id, quantity_produced, quantity_remaining, unit, produced_at, created_by)
-               VALUES ($1, $2, $3, $4, $5, $6, $6, $7, COALESCE($8::timestamptz, NOW()), $9)`,
+                 (recipe_id, store_id, lot_number, production_plan_id, plan_item_id, quantity_produced, quantity_remaining, unit, produced_at, created_by, expires_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $6, $7, COALESCE($8::timestamptz, NOW()), $9,
+                       -- Mig 673 : date limite = fabrication + durée de conservation de la fiche.
+                       COALESCE($8::timestamptz, NOW()) + (SELECT conservation_heures FROM recipes WHERE id = $1) * interval '1 hour')`,
               [item.base_recipe_id, effectiveStoreId, sfLotNumber, planId, item.id, item.actual_quantity, yieldUnit, producedAt || null, userId]
             );
           }
@@ -1710,14 +1712,19 @@ export const productionRepository = {
           // sinon la pate produite resterait en stock disponible alors que le
           // parent ne consomme plus les matieres de la base (BSI sans la base).
           // Le surplus d'arrondi (produit - toProduce) reste disponible.
-          const parentDep = await client.query(
+          // C-06 : un plan de préparation peut servir plusieurs plans parents ; chacun reçoit sa
+          // part, dans l'ordre de création, tant que la production la couvre.
+          const parentDeps = (await client.query(
             `SELECT parent_plan_id, quantity_to_produce, item_shares FROM production_plan_dependencies
-              WHERE dependency_plan_id = $1 AND sub_recipe_id = $2 AND status <> 'cancelled' LIMIT 1`,
+              WHERE dependency_plan_id = $1 AND sub_recipe_id = $2 AND status <> 'cancelled'
+              ORDER BY created_at`,
             [planId, item.base_recipe_id]
-          );
-          const pdep = parentDep.rows[0];
-          if (pdep && pdep.parent_plan_id) {
-            const consumeForParent = Math.min(parseFloat(item.actual_quantity), parseFloat(pdep.quantity_to_produce) || 0);
+          )).rows;
+          let producedLeft = parseFloat(item.actual_quantity);
+          for (const pdep of parentDeps) {
+            if (!pdep.parent_plan_id) continue;
+            const consumeForParent = Math.min(producedLeft, parseFloat(pdep.quantity_to_produce) || 0);
+            producedLeft -= consumeForParent;
             if (consumeForParent > 1e-9) {
               const sfBefore = await client.query(
                 `WITH cur AS (SELECT quantity_available FROM semi_finished_stock WHERE recipe_id = $2 AND store_id = $3)
@@ -2607,7 +2614,17 @@ export const productionRepository = {
            FOR UPDATE`,
           [subRecipeId, plan.store_id]
         );
-        const available = stockResult.rows[0] ? parseFloat(stockResult.rows[0].qty) : 0;
+        let available = stockResult.rows[0] ? parseFloat(stockResult.rows[0].qty) : 0;
+        // Mig 673 : quand la préparation a des lots, seuls les lots non périmés comptent (les lots
+        // font foi) ; un stock sans lot (données anciennes) reste compté tel quel.
+        const lotsAvail = (await client.query(
+          `SELECT COUNT(*)::int AS n,
+                  COALESCE(SUM(quantity_remaining) FILTER (
+                    WHERE COALESCE(dlc_effective, expires_at) IS NULL OR COALESCE(dlc_effective, expires_at) > NOW()), 0)::float8 AS q
+             FROM semi_finished_lots
+            WHERE recipe_id = $1 AND (store_id = $2 OR $2 IS NULL) AND status = 'active' AND quantity_remaining > 0`,
+          [subRecipeId, plan.store_id])).rows[0];
+        if (lotsAvail.n > 0) available = Math.min(available, Number(lotsAvail.q));
         const fromStock = Math.min(available, need.totalNeeded);
         // Mig 672 : besoin de chaque article en cette préparation (gardé sur la dépendance).
         const itemShares = need.usedBy.filter(u => u.planItemId && u.qty > 0).map(u => ({ itemId: u.planItemId as string, qty: u.qty }));
@@ -2649,6 +2666,27 @@ export const productionRepository = {
              VALUES ($1, NULL, $2, $3, $4, 0, 'fulfilled', $5::jsonb)`,
             [planId, subRecipeId, need.totalNeeded, fromStock, itemSharesJson]
           );
+          continue;
+        }
+
+        // 4 bis. Audit 2026-11 C-06 — mutualisation : un plan de cette préparation déjà prévu
+        //    le même jour, au même atelier et au même établissement, et encore en brouillon,
+        //    reçoit ce besoin au lieu d'un second plan (une crème pour tous les plans du jour).
+        const sharedChild = (await client.query(
+          `SELECT pp.id FROM production_plans pp
+             JOIN production_plan_items i ON i.plan_id = pp.id AND i.base_recipe_id = $3 AND i.status = 'pending'
+            WHERE pp.is_semi_finished_plan = true AND pp.status = 'draft'
+              AND pp.plan_date = $1 AND pp.store_id IS NOT DISTINCT FROM $2 AND pp.target_role IS NOT DISTINCT FROM $4
+              AND pp.id <> $5
+            ORDER BY pp.created_at LIMIT 1
+            FOR UPDATE OF pp`, [plan.plan_date, plan.store_id, subRecipeId, plan.target_role, planId])).rows[0];
+        if (sharedChild) {
+          await client.query(
+            `INSERT INTO production_plan_dependencies (parent_plan_id, dependency_plan_id, sub_recipe_id, quantity_needed, quantity_from_stock, quantity_to_produce, status, item_shares)
+             VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7::jsonb)`,
+            [planId, sharedChild.id, subRecipeId, need.totalNeeded, fromStock, toProduce, itemSharesJson]);
+          await resizeSharedChildPlan(client, sharedChild.id);
+          dependencyPlanIds.push(sharedChild.id);
           continue;
         }
 
@@ -2847,6 +2885,10 @@ export async function releaseSemiFinishedReservations(
         await transitionPlan(client, dep.dependency_plan_id, 'cancelled', {
           extraSet: 'cancelled_at = NOW(), cancellation_reason = $2', params: [reason], reason,
         });
+      } else if (c && !c.started && c.still_needed) {
+        // C-06 : plan de préparation partagé, encore utile à d'autres plans : il est ramené à
+        // leurs seuls besoins (tant qu'il est en brouillon).
+        await resizeSharedChildPlan(client, dep.dependency_plan_id);
       }
     }
   }
@@ -2863,6 +2905,8 @@ async function takeSemiFinishedLots(
   const lots = await client.query(
     `SELECT id, quantity_remaining FROM semi_finished_lots
       WHERE recipe_id = $1 AND (store_id = $2 OR $2 IS NULL) AND status = 'active' AND quantity_remaining > 0
+        -- Mig 673 : un lot dont la date limite est passée ne sert plus.
+        AND (COALESCE(dlc_effective, expires_at) IS NULL OR COALESCE(dlc_effective, expires_at) > NOW())
       ORDER BY COALESCE(dlc_effective, expires_at::timestamptz) ASC NULLS LAST, produced_at ASC
       FOR UPDATE`, [recipeId, storeId]);
   for (const lot of lots.rows) {
@@ -2879,6 +2923,29 @@ async function takeSemiFinishedLots(
     remaining -= take;
   }
   return qty - Math.max(remaining, 0);
+}
+
+/**
+ * Plan de préparation partagé (audit 2026-11 C-06) : sa quantité est la somme des besoins des
+ * plans parents qu'il sert encore, arrondie selon la règle de lot de la base. Seulement tant
+ * qu'il est en brouillon (ses besoins et son bon ne sont pas encore calculés).
+ */
+async function resizeSharedChildPlan(client: SqlClient, childPlanId: string): Promise<void> {
+  const child = (await client.query(
+    `SELECT pp.status, i.id AS item_id, i.base_recipe_id
+       FROM production_plans pp JOIN production_plan_items i ON i.plan_id = pp.id
+      WHERE pp.id = $1 AND pp.is_semi_finished_plan = true AND i.status = 'pending' LIMIT 1`, [childPlanId])).rows[0];
+  if (!child || child.status !== 'draft') return;
+  const sum = Number((await client.query(
+    `SELECT COALESCE(SUM(quantity_to_produce), 0)::float8 AS q FROM production_plan_dependencies
+      WHERE dependency_plan_id = $1 AND status = 'pending'`, [childPlanId])).rows[0].q);
+  if (!(sum > 0)) return;
+  const found = await lotRuleFor(client, null, null, child.base_recipe_id);
+  const rule = found && found.inKg === (found.recipeYieldUnit === 'kg') ? found : null;
+  const sized = rule ? sizeBatches({ requested: sum, yieldPerBatch: rule.yieldPerBatch, rule: rule.rule, min: rule.min, max: rule.max }) : null;
+  await client.query(
+    `UPDATE production_plan_items SET planned_quantity = $2, nb_contenants = $3, requested_quantity = $4 WHERE id = $1`,
+    [child.item_id, sized ? sized.planned : Math.ceil(sum), sized && rule!.rule === 'entier' ? sized.batches : null, sized?.adjusted ? sum : null]);
 }
 
 /** Parts d'articles d'une dépendance ({ligne: quantité}) au format de splitAcrossItems. */

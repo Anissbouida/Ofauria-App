@@ -15,7 +15,7 @@ import { FormField, FormFooter, Modal } from '../../components/ds';
  * formats, frais et étapes s'y saisissent ; les demander ici dans un second
  * formulaire donnait deux interfaces différentes pour une même fiche.
  */
-export interface RecipeIdentity { id: string; name: string; category_id?: string | null; is_base?: boolean; is_phantom?: boolean; compo_par_piece?: boolean; temperature_pate_cible_c?: number | null; hydratation_pct?: number | null }
+export interface RecipeIdentity { id: string; name: string; category_id?: string | null; is_base?: boolean; is_phantom?: boolean; compo_par_piece?: boolean; temperature_pate_cible_c?: number | null; hydratation_pct?: number | null; conservation_heures?: number | null }
 
 /**
  * Avec `recipe`, la même fenêtre sert à MODIFIER l'identité d'une fiche existante
@@ -36,6 +36,8 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
   const [name, setName] = useState(recipe?.name ?? '');
   // M9 (mig 588) : sous-ensemble fantôme — jamais stocké, composants tirés dans l'ordre parent.
   const [isPhantom, setIsPhantom] = useState<boolean>(!!recipe?.is_phantom);
+  // Mig 673 : conservation d'une préparation après fabrication (date limite de ses lots).
+  const [conservation, setConservation] = useState<string>(recipe?.conservation_heures != null ? String(recipe.conservation_heures) : '');
   const [categoryId, setCategoryId] = useState(recipe?.category_id ?? '');
   // Mode de saisie des quantités de composition, décidé ici une fois pour toutes :
   // par fournée (lot découpé) ou par pièce (unité). Modifiable ensuite via cette
@@ -78,6 +80,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
       temperaturePateCibleC: isBase ? numOrNull(tempPate) : undefined,
       hydratationPct: isBase ? numOrNull(hydr) : undefined,
       isPhantom: isBase ? isPhantom : undefined,
+      conservationHeures: isBase ? (numOrNull(conservation) != null ? Math.round(numOrNull(conservation)!) : null) : undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['recipes'] });
@@ -138,6 +141,17 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
                 </span>
               </span>
             </label>
+          )}
+
+          {isBase && !isPhantom && recipe && (
+            <FormField label="Conservation après fabrication" htmlFor="recipe-conservation"
+              hint="En heures : chaque lot fabriqué reçoit sa date limite (24 = un jour). Un lot périmé n'est plus réservé pour la production.">
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input id="recipe-conservation" className="ds-input" type="number" min="1" max="8760" step="1" inputMode="numeric"
+                  value={conservation} onChange={(e) => setConservation(e.target.value)} placeholder="Ex. : 48" style={{ maxWidth: 120 }} />
+                <span className="ds-field-hint">heures</span>
+              </span>
+            </FormField>
           )}
 
           <FormField label="Catégorie de production" hint="Sans catégorie, la fiche reste à classer.">

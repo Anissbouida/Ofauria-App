@@ -174,7 +174,8 @@ export default function NomenclaturePage() {
             is_phantom: (recipe as { is_phantom?: boolean }).is_phantom ?? false,
             compo_par_piece: compoParPiece,
             temperature_pate_cible_c: (recipe as { temperature_pate_cible_c?: number | null }).temperature_pate_cible_c ?? null,
-            hydratation_pct: (recipe as { hydratation_pct?: number | null }).hydratation_pct ?? null }}
+            hydratation_pct: (recipe as { hydratation_pct?: number | null }).hydratation_pct ?? null,
+            conservation_heures: (recipe as { conservation_heures?: number | null }).conservation_heures ?? null }}
             onClose={() => setEditIdentity(false)} />
         )}
 

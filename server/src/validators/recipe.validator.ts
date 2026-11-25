@@ -44,6 +44,8 @@ export const identitySchema = z.object({
   hydratationPct: z.number().min(0).max(200, 'Hydratation invalide (0-200 %)').nullable().optional(),
   /** M9 (mig 588) : sous-ensemble fantôme, jamais stocké (préparations de base seulement). */
   isPhantom: z.boolean().optional(),
+  /** Mig 673 : durée de conservation d'une préparation, en heures (null = non renseignée). */
+  conservationHeures: z.number().int().positive().max(8760, 'Conservation : un an au plus').nullable().optional(),
 });
 
 export const saveEtapesSchema = z.object({ etapes: z.array(etapeSchema.passthrough()) });

@@ -50,7 +50,7 @@ export const recipeRepository = {
     // formats : tableau JSON agrege via subquery pour les UI qui ont besoin de connaitre
     // les formats par recette (ex: ProductionPage — Phase B multi-format).
     const result = await db.query(
-      `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.product_id, r.contenant_id, r.instructions,
+      `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.conservation_heures, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
               r.piece_weight_qty, (SELECT code FROM ref_entries WHERE id = r.piece_weight_unit_id) AS piece_weight_unit,
               r.temperature_pate_cible_c, r.hydratation_pct,
@@ -154,7 +154,7 @@ export const recipeRepository = {
     // total_weight_kg : idem, calcule a la volee a partir des ingredients
     // (densite 1 pour les liquides, pieces ignorees).
     const recipeResult = await db.query(
-      `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.product_id, r.contenant_id, r.instructions,
+      `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.conservation_heures, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
               r.piece_weight_qty, (SELECT code FROM ref_entries WHERE id = r.piece_weight_unit_id) AS piece_weight_unit,
               r.temperature_pate_cible_c, r.hydratation_pct,
@@ -291,7 +291,7 @@ export const recipeRepository = {
   /** Find recipe by product ID (with ingredients & sub-recipes & packaging) */
   async findByProductId(productId: string) {
     const recipeResult = await db.query(
-      `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.product_id, r.contenant_id, r.instructions,
+      `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.conservation_heures, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
               r.piece_weight_qty, (SELECT code FROM ref_entries WHERE id = r.piece_weight_unit_id) AS piece_weight_unit,
               r.temperature_pate_cible_c, r.hydratation_pct,
