@@ -66,10 +66,13 @@ describe('Paramètres (settings.routes)', () => {
 });
 
 describe('Utilisateurs et rôles (users.routes)', () => {
-  it('compte : corps de UsersPage accepté, mot de passe requis à la création, PIN null = retiré', () => {
-    const body = { firstName: 'A', lastName: 'B', email: 'a@b.ma', roles: ['cashier'], primaryRole: 'cashier', storeId: null, employeeId: null, password: 'abcd', pinCode: '123456' };
+  it('compte : corps de UsersPage accepté, mot de passe fort requis à la création, PIN null = retiré', () => {
+    const body = { firstName: 'A', lastName: 'B', email: 'a@b.ma', roles: ['cashier'], primaryRole: 'cashier', storeId: null, employeeId: null, password: 'Kalum-Test-2026', pinCode: '123456' };
     ok(U.createUserSchema, body);
     ko(U.createUserSchema, { ...body, password: undefined });
+    ko(U.createUserSchema, { ...body, password: 'abcd' });
+    ok(U.updateUserSchema, { password: '' });
+    ko(U.updateUserSchema, { password: 'court' });
     ok(U.updateUserSchema, { isActive: false });
     ok(U.updateUserSchema, { pinCode: null });
     ko(U.updateUserSchema, { roles: 'cashier' });

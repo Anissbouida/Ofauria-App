@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { usersApi, rolesApi } from '../../api/users.api';
-import { categoriesApi } from '../../api/categories.api';
 import RolesPanel from './RolesPanel';
 import GovernancePanel from './GovernancePanel';
 import AccessReviewTab, { AccessReviewModal } from './AccessReviewPanel';
@@ -46,6 +45,8 @@ type UserRow = Record<string, any>;
 type UsersTab = 'users' | 'roles' | 'governance' | 'review';
 
 const normalize = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+/** Politique de mot de passe d'un nouveau compte (identique au serveur, auth.validator). */
+const strongPasswordOk = (p: string) => p.length >= 12 && p.length <= 128 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /[0-9]/.test(p) && /[^A-Za-z0-9]/.test(p);
 
 export default function UsersPage() {
   const [params, setParams] = useSearchParams();
@@ -350,8 +351,9 @@ function AccountsTab({ onEdit, policyOpen, onPolicyClose }: { onEdit: (u: UserRo
 
 function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const { user: me } = useAuth();
-  const { roles } = useRoleLabel();
+  const { roles, label: roleLabelOf } = useRoleLabel();
   const { data: stores = [] } = useQuery<UserRow[]>({ queryKey: ['stores'], queryFn: storesApi.list });
   // Lien espace employé : fiches salariées disponibles. currentLink = celle déjà
   // reliée à ce compte ; effEmployeeId reflète le lien actuel tant que l'admin
@@ -384,7 +386,8 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
 
   // G0-06 : tout nouveau PIN compte 6 à 10 chiffres.
   const pinInvalid = !!form.pinCode && !/^\d{6,10}$/.test(form.pinCode);
-  const passwordInvalid = !user && form.password.length < 4;
+  // Même politique que pour un nouveau compte (serveur : auth.validator) ; vide = inchangé en modification.
+  const passwordInvalid = (!user || !!form.password) && !strongPasswordOk(form.password);
   const invalid = !form.firstName.trim() || !form.lastName.trim() || !/^\S+@\S+\.\S+$/.test(form.email) || pinInvalid || passwordInvalid || roleCodes.length === 0;
 
   const save = useMutation({
@@ -410,6 +413,24 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
     onError: (err) => notify.error(errorMessage(err, 'Enregistrement refusé')),
   });
 
+  // Changement de rôle principal : le serveur efface les droits propres du compte (ils
+  // remplacent ceux du rôle) et ferme ses sessions. On le dit avant d'enregistrer.
+  const submit = async () => {
+    const oldPrimary = user?.role as string | undefined;
+    if (user && oldPrimary && primaryRole !== oldPrimary) {
+      const own = await usersApi.getPermissions(user.id as string).catch(() => []);
+      const hasOwn = Array.isArray(own) && own.length > 0;
+      const ok = await confirm(
+        `Le rôle principal passe de « ${roleLabelOf(oldPrimary)} » à « ${roleLabelOf(primaryRole)} ». La page d'accueil et le contrôle des écrans suivront le nouveau rôle.`
+        + (hasOwn ? ' Les droits propres de ce compte seront effacés : ceux de ses rôles s\'appliqueront.' : '')
+        + ' Ses sessions ouvertes seront fermées.',
+        { title: 'Changer le rôle principal ?', confirmLabel: 'Changer le rôle principal' },
+      );
+      if (!ok) return;
+    }
+    save.mutate();
+  };
+
   const roleChoices = roles.length
     ? roles.filter(r => (r.is_active && r.available !== false) || roleCodes.includes(r.code)).map(r => [r.code, r.label] as const)
     : Object.entries(ROLE_LABELS);
@@ -425,7 +446,7 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
       width={620} onClose={onClose} locked={save.isPending}
       footer={<>
         <button type="button" className="odoo-btn-secondary" onClick={onClose} disabled={save.isPending}>Annuler</button>
-        <SubmitButton pending={save.isPending} disabled={invalid} onClick={() => save.mutate()}>
+        <SubmitButton pending={save.isPending} disabled={invalid} onClick={() => void submit()}>
           {user ? 'Enregistrer' : 'Créer le compte'}
         </SubmitButton>
       </>}>
@@ -437,7 +458,7 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
         <input id="user-email" type="email" className="ds-input" value={form.email} onChange={e => set('email', e.target.value)} />
       </Field>
       <div className="ds-form-grid">
-        <Field label={user ? 'Nouveau mot de passe' : 'Mot de passe'} required={!user} hint={user ? 'Vide = inchangé' : (mustChangePassword ? 'Provisoire : à changer à la 1re connexion' : '4 caractères minimum')}>
+        <Field label={user ? 'Nouveau mot de passe' : 'Mot de passe'} required={!user} hint={form.password && passwordInvalid ? '12 caractères au moins, avec majuscule, minuscule, chiffre et caractère spécial' : user ? 'Vide = inchangé' : (mustChangePassword ? 'Provisoire : à changer à la 1re connexion' : '12 caractères au moins, avec majuscule, minuscule, chiffre et caractère spécial')}>
           <div style={{ display: 'flex', gap: 6 }}>
             <input id="user-password" type={showPassword ? 'text' : 'password'} className="ds-input" aria-invalid={!!(form.password && passwordInvalid) || undefined} autoComplete="new-password"
               style={showPassword ? { fontFamily: 'ui-monospace, monospace' } : undefined}
@@ -545,9 +566,6 @@ const ALIASES = (shared as unknown as { MODULE_ALIASES?: Partial<Record<string, 
 const ALL_MODULES = (Object.values(APP_MODULES) as AppModule[]).filter(m => !LEGACY.has(m));
 const ACTIONS = [['canView', 'Voir'], ['canCreate', 'Créer'], ['canEdit', 'Modifier'], ['canDelete', 'Supprimer']] as const;
 
-// Modules that support category_slugs config (for partial access)
-const CATEGORY_MODULES: AppModule[] = ['production'];
-
 // Sections du module Parametres (config.sections) : vide = toutes les sections.
 const SETTINGS_SECTION_KEYS = Object.keys(SETTINGS_SECTION_LABELS) as SettingsSection[];
 
@@ -563,15 +581,6 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
     queryFn: () => usersApi.getPermissions(userId),
   });
 
-  // Puces de categories du module Production : table dediee /categories (legere),
-  // au lieu de charger 500 produits entiers a chaque ouverture de la modale.
-  const { data: categories = [] } = useQuery({
-    queryKey: ['categories-list'],
-    queryFn: () => categoriesApi.list(),
-    staleTime: 5 * 60_000,
-    select: (rows: Record<string, any>[]) =>
-      rows.map(c => ({ slug: c.slug as string, name: c.name as string })).filter(c => c.slug && c.name),
-  });
 
   const [perms, setPerms] = useState<Record<AppModule, PermState> | null>(null);
   const [initialized, setInitialized] = useState(false);
@@ -686,10 +695,6 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
     setPerms({ ...perms, [mod]: { ...perms[mod], verbs } });
   };
   const verbsFor = (mod: AppModule) => (MODULE_VERBS[mod] ?? []) as BusinessVerb[];
-  const toggleCategorySlug = (mod: AppModule, slug: string) => {
-    const current = (perms?.[mod].config.category_slugs as string[]) || [];
-    setConfig(mod, { category_slugs: current.includes(slug) ? current.filter(s => s !== slug) : [...current, slug] });
-  };
   const toggleSettingsSection = (section: SettingsSection) => {
     const current = (perms?.settings.config.sections as SettingsSection[]) || [];
     setConfig('settings', { sections: current.includes(section) ? current.filter(s => s !== section) : [...current, section] });
@@ -737,7 +742,6 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
               {ALL_MODULES.filter(m => m !== 'users').map(mod => {
                 const p = perms[mod];
                 const sections = (p.config.sections as string[]) || [];
-                const slugs = (p.config.category_slugs as string[]) || [];
                 return [
                   <tr key={mod} style={{ opacity: p.canView ? 1 : 0.65 }}>
                     <td className={p.canView ? 'ds-strong' : undefined}>{MODULE_LABELS[mod] ?? mod}</td>
@@ -789,31 +793,6 @@ function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLab
                               <button key={sec} type="button" className="odoo-filter-chip" style={chip(sections.includes(sec))}
                                 aria-pressed={sections.includes(sec)} onClick={() => toggleSettingsSection(sec)}>
                                 {sections.includes(sec) && <Check size={11} />} {SETTINGS_SECTION_LABELS[sec]}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ),
-                  CATEGORY_MODULES.includes(mod) && p.canView && (
-                    <tr key={`${mod}-categories`}>
-                      <td colSpan={5} style={{ background: 'color-mix(in srgb, var(--ds-bg) 55%, var(--ds-card))' }}>
-                        <div style={{ display: 'grid', gap: 6, paddingLeft: 16 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, display: 'flex', gap: 8, alignItems: 'center' }}>
-                            Catégories autorisées {!slugs.length && <span style={{ fontWeight: 400, color: 'var(--ds-muted)' }}>— toutes (aucune restriction)</span>}
-                            <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }}>
-                              <button type="button" className="odoo-btn-secondary ds-btn-sm"
-                                onClick={() => setConfig(mod, { category_slugs: categories.map(c => c.slug) })}>Tout</button>
-                              <button type="button" className="odoo-btn-secondary ds-btn-sm"
-                                onClick={() => setConfig(mod, { category_slugs: [] })}>Effacer</button>
-                            </span>
-                          </span>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                            {categories.map(cat => (
-                              <button key={cat.slug} type="button" className="odoo-filter-chip" style={chip(slugs.includes(cat.slug))}
-                                aria-pressed={slugs.includes(cat.slug)} onClick={() => toggleCategorySlug(mod, cat.slug)}>
-                                {slugs.includes(cat.slug) && <Check size={11} />} {cat.name}
                               </button>
                             ))}
                           </div>

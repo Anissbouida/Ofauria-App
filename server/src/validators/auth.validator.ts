@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // OWASP A07-4 : politique de mot de passe pour NOUVEAUX comptes / reset.
 // Le login n'impose pas la politique (sinon les anciens comptes sont bloques).
-const strongPassword = z.string()
+export const strongPassword = z.string()
   .min(12, 'Minimum 12 caracteres')
   .max(128, 'Maximum 128 caracteres')
   .regex(/[A-Z]/, 'Au moins une majuscule')

@@ -26,9 +26,14 @@ export const roleRepository = {
       ? `(SELECT count(DISTINCT ur.user_id)::int FROM user_roles ur JOIN users u ON u.id = ur.user_id
             WHERE ur.role_code = r.code AND u.is_active)`
       : `(SELECT count(*)::int FROM users u WHERE u.role = r.code AND u.is_active)`;
+    // Comptes désactivés qui détiennent encore le rôle (rôle principal ou rôle secondaire).
+    const inactiveCount = (await this.userRolesExists())
+      ? `(SELECT count(DISTINCT u.id)::int FROM users u LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role_code = r.code
+            WHERE NOT u.is_active AND (u.role = r.code OR ur.role_code IS NOT NULL))`
+      : `(SELECT count(*)::int FROM users u WHERE u.role = r.code AND NOT u.is_active)`;
     const r = await db.query(
       `SELECT r.code, r.label, r.description, r.base_role, r.is_system, r.is_active, r.updated_at,
-              ${userCount} AS user_count,
+              ${userCount} AS user_count, ${inactiveCount} AS inactive_user_count,
               (SELECT count(*)::int FROM role_permissions p WHERE p.role_code = r.code AND p.can_view) AS module_count,
               -- Mig 699 : rôle propre à un autre secteur (Viennoiserie, Beldi…) : masqué des choix,
               -- sauf s'il a déjà des titulaires.

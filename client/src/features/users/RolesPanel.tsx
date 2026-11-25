@@ -25,24 +25,21 @@ import RoleActionMatrix from './RoleActionMatrix';
 // Clés historiques (fusion Stock) masquées ; constante absente de certaines versions de shared.
 const LEGACY = (shared as unknown as { LEGACY_MODULE_KEYS?: ReadonlySet<string> }).LEGACY_MODULE_KEYS ?? new Set<string>();
 const MODULES = (Object.values(APP_MODULES) as AppModule[]).filter(m => !LEGACY.has(m) && m !== 'users');
-// Libellés de secours ; ceux du secteur viennent de la table des rôles (mig 699 : « Boulanger »
-// devient « Opérateur de production » hors boulangerie, le code ne change pas).
-const BASE_ROLES: [string, string][] = [
-  ['manager', 'Gérant'], ['cashier', 'Caissier'], ['saleswoman', 'Vendeuse'], ['baker', 'Boulanger'],
-  ['pastry_chef', 'Pâtissier'], ['viennoiserie', 'Viennoiserie'], ['beldi_sale', 'Beldi & Salé'], ['magasinier', 'Magasinier'],
-];
+// Rôles de base : tous les rôles système actifs, sauf l'administrateur (mig 637). Libellés de
+// la table des rôles (mig 699 : « Boulanger » devient « Opérateur de production » hors
+// boulangerie, le code ne change pas).
 const ACTIONS = [['canView', 'Voir'], ['canCreate', 'Créer'], ['canEdit', 'Modifier'], ['canDelete', 'Supprimer']] as const;
 type Flag = typeof ACTIONS[number][0];
 
 function baseRoleLabel(roles: RoleRow[], code: string): string {
-  return roles.find(r => r.code === code && r.is_system)?.label ?? BASE_ROLES.find(b => b[0] === code)?.[1] ?? code;
+  return roles.find(r => r.code === code && r.is_system)?.label ?? code;
 }
 
 /** Rôles de base proposés : ceux du secteur (et celui déjà choisi). */
 function baseRoleChoices(roles: RoleRow[], current: string): [string, string][] {
-  return BASE_ROLES
-    .filter(([c]) => c === current || roles.find(r => r.code === c)?.available !== false)
-    .map(([c]) => [c, baseRoleLabel(roles, c)]);
+  return roles
+    .filter(r => r.is_system && r.code !== 'admin' && (r.code === current || (r.is_active !== false && r.available !== false)))
+    .map(r => [r.code, r.label] as [string, string]);
 }
 
 function errorMessage(err: unknown, fallback: string) {
@@ -300,7 +297,7 @@ function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={onDuplicate}>Dupliquer</button>
             <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => toggleActive.mutate()}>{role.is_active ? 'Désactiver' : 'Réactiver'}</button>
-            <button type="button" className="ds-btn-danger ds-btn-sm" disabled={role.user_count > 0} title={role.user_count > 0 ? 'Rôle attribué à des utilisateurs' : undefined}
+            <button type="button" className="ds-btn-danger ds-btn-sm" disabled={role.user_count + (role.inactive_user_count ?? 0) > 0} title={role.user_count + (role.inactive_user_count ?? 0) > 0 ? `Rôle encore attribué à ${role.user_count + (role.inactive_user_count ?? 0)} compte(s), désactivés compris` : undefined}
               onClick={async () => { if (await confirm(`Supprimer le rôle « ${role.label} » ?`, { title: 'Supprimer le rôle', danger: true, confirmLabel: 'Supprimer' })) remove.mutate(); }}>
               <Trash2 size={13} aria-hidden="true" /> Supprimer
             </button>

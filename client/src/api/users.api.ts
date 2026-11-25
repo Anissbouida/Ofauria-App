@@ -38,6 +38,8 @@ export interface RoleRow {
   is_active: boolean;
   /** Mig 699 : faux pour un rôle d'un autre secteur sans titulaire (masqué des choix). */
   available?: boolean;
+  /** Comptes désactivés qui détiennent encore le rôle (empêchent sa suppression). */
+  inactive_user_count?: number;
   user_count: number;
   module_count: number;
 }

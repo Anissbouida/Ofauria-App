@@ -6,7 +6,16 @@ import { normalizePermissions, permissionView } from '../services/permission-inp
 import { PERMISSIONS } from '@ofauria/shared';
 import { permissionsOfRole, permissionsOfUser, setRolePermissions } from '../services/permissions.js';
 
-const BASE_ROLES = ['manager', 'cashier', 'saleswoman', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale', 'magasinier'];
+/**
+ * Rôle de base valide : tout rôle système actif, sauf l'administrateur (mig 637 : le contrôle
+ * en base accepte déjà n'importe quel rôle système ; la liste figée de huit rôles de
+ * boulangerie est abandonnée).
+ */
+async function isValidBaseRole(code: string): Promise<boolean> {
+  if (!code || code === 'admin') return false;
+  const r = await roleRepository.find(code) as { is_system?: boolean; is_active?: boolean } | null;
+  return !!r?.is_system && r.is_active !== false;
+}
 
 const bad = (res: Response, message: string, status = 400) =>
   res.status(status).json({ success: false, error: { message } });
@@ -38,7 +47,7 @@ export const roleController = {
     const code = typeof req.body?.code === 'string' && req.body.code ? req.body.code : slug(label);
     if (!/^[a-z][a-z0-9_]{1,29}$/.test(code)) { bad(res, 'Code invalide : lettres minuscules, chiffres et _'); return; }
     const baseRole = String(req.body?.baseRole ?? '');
-    if (!BASE_ROLES.includes(baseRole)) { bad(res, 'Rôle de base invalide (administrateur exclu)'); return; }
+    if (!(await isValidBaseRole(baseRole))) { bad(res, 'Rôle de base invalide : choisissez un rôle système actif (administrateur exclu)'); return; }
     if (await roleRepository.find(code)) { bad(res, `Le code « ${code} » existe déjà`, 409); return; }
     const copyFrom = typeof req.body?.copyFrom === 'string' && req.body.copyFrom ? req.body.copyFrom : baseRole;
     if (!(await roleRepository.find(copyFrom))) { bad(res, 'Rôle à copier inconnu'); return; }
@@ -60,7 +69,7 @@ export const roleController = {
     if (req.body?.description !== undefined) data.description = String(req.body.description ?? '').trim().slice(0, 500) || null;
     if (!role.is_system) {
       if (req.body?.baseRole !== undefined) {
-        if (!BASE_ROLES.includes(String(req.body.baseRole))) { bad(res, 'Rôle de base invalide'); return; }
+        if (!(await isValidBaseRole(String(req.body.baseRole)))) { bad(res, 'Rôle de base invalide : choisissez un rôle système actif (administrateur exclu)'); return; }
         data.baseRole = String(req.body.baseRole);
       }
       if (req.body?.isActive !== undefined) data.isActive = !!req.body.isActive;
@@ -78,8 +87,14 @@ export const roleController = {
     const role = await roleRepository.find(req.params.code);
     if (!role) { bad(res, 'Rôle inconnu', 404); return; }
     if (role.is_system) { bad(res, 'Un rôle système ne se supprime pas'); return; }
-    const used = (await roleRepository.list()).find((r: Record<string, unknown>) => r.code === role.code)?.user_count ?? 0;
-    if (used > 0) { bad(res, `Rôle attribué à ${used} utilisateur(s) : désactivez-le ou changez leur rôle`, 409); return; }
+    // Comptes désactivés compris : ils gardent leur rôle (clé étrangère users.role) et
+    // la suppression échouerait en base.
+    const row = (await roleRepository.list()).find((r: Record<string, unknown>) => r.code === role.code);
+    const active = Number(row?.user_count ?? 0), inactive = Number(row?.inactive_user_count ?? 0);
+    if (active + inactive > 0) {
+      bad(res, `Rôle encore attribué à ${active + inactive} compte(s)${inactive ? ` dont ${inactive} désactivé(s)` : ''} : retirez-le de ces comptes ou désactivez le rôle`, 409);
+      return;
+    }
     await roleRepository.remove(role.code, req.user?.userId);
     invalidateRolesCache();
     res.json({ success: true, data: null });

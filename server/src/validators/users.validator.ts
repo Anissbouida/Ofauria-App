@@ -1,13 +1,15 @@
 import { z } from 'zod';
 import { uuid } from './common.validator.js';
 import { body, txt, numish, bool, strList, any } from './route-body.validator.js';
+import { strongPassword } from './auth.validator.js';
 
 /**
  * G0-07 — Utilisateurs, rôles et gouvernance (users.routes). user.controller, role.controller et
  * governance.controller gardent leurs contrôles (rôle assignable, séparation des tâches, PIN,
  * codes) ; ces schémas n'imposent que les types.
- * Volontairement NON imposé : la politique de mot de passe fort (auth.validator) à la création
- * par un administrateur — l'écran accepte aujourd'hui 4 caractères, c'est une décision métier.
+ * Mot de passe saisi par un administrateur (création ou nouveau mot de passe) : même politique que
+ * pour un nouveau compte (auth.validator : 12 caractères, majuscule, minuscule, chiffre, caractère
+ * spécial). Décision de la refonte Utilisateurs (2026-11-25) ; le générateur de l'écran la respecte.
  */
 
 const roleCodes = strList(50);
@@ -16,7 +18,7 @@ const pin = z.union([z.string().max(20), z.number()]).nullish();
 /* Création d'un compte — user.controller.create (le mot de passe est haché : il doit exister). */
 export const createUserSchema = body({
   email: z.string().trim().min(1, 'Email requis').max(255),
-  password: z.string().min(1, 'Mot de passe requis').max(128),
+  password: strongPassword,
   firstName: txt(100), lastName: txt(100),
   role: z.string().max(40).optional(), roles: roleCodes.optional(), primaryRole: z.string().max(40).nullish(),
   pinCode: pin, storeId: z.string().max(60).nullish(), employeeId: z.string().max(60).nullish(),
@@ -25,7 +27,7 @@ export const createUserSchema = body({
 /* Modification — user.controller.update (tout est facultatif ; PIN null = retiré). */
 export const updateUserSchema = body({
   email: z.string().trim().min(1).max(255).optional(),
-  password: z.string().max(128).nullish(),
+  password: z.union([z.literal(''), strongPassword]).nullish(),
   firstName: txt(100), lastName: txt(100),
   role: z.string().max(40).optional(), roles: roleCodes.optional(), primaryRole: z.string().max(40).nullish(),
   isActive: bool, pinCode: pin, storeId: z.string().max(60).nullish(), employeeId: z.string().max(60).nullish(),

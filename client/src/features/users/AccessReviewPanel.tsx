@@ -26,6 +26,10 @@ const flag = (on: boolean) => on
 const HISTORY_LABELS: Record<string, string> = {
   user_created: 'Compte créé', user_updated: 'Compte modifié', permission_changed: 'Droits propres modifiés',
   role_INSERT: 'Rôle ajouté', role_DELETE: 'Rôle retiré', role_UPDATE: 'Rôle modifié',
+  login_success: 'Connexion', login_failed: 'Échec de connexion', pin_login_success: 'Connexion par PIN', pin_login_failed: 'Échec du PIN',
+  logout: 'Déconnexion', account_locked: 'Compte verrouillé', account_unlocked: 'Compte déverrouillé', token_revoked: 'Sessions fermées',
+  mfa_reset: 'Double authentification réinitialisée', mfa_requirement_changed: 'Exigence de double authentification modifiée',
+  access_denied: 'Accès hors droits', user_deleted: 'Compte supprimé définitivement',
 };
 
 export function AccessReviewModal({ userId, name, onClose }: { userId: string; name: string; onClose: () => void }) {

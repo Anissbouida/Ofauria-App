@@ -83,8 +83,8 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
         </span>
         <SearchSelect value={previewUser} onChange={setPreviewUser} placeholder="Choisir un utilisateur" width={240}
           ariaLabel="Utilisateur à prévisualiser"
-          options={(users as { id: string; first_name: string; last_name: string; email: string; role: string }[])
-            .map(u => ({ id: u.id, label: `${u.first_name} ${u.last_name}`, sublabel: u.email, detail: u.role }))} />
+          options={(users as { id: string; firstName: string; lastName: string; email: string; role: string }[])
+            .map(u => ({ id: u.id, label: `${u.firstName} ${u.lastName}`.trim() || u.email, sublabel: u.email, detail: u.role }))} />
         {previewUser && preview && (
           <span style={{ fontSize: 13 }}><strong>{preview.keys.length}</strong> permission(s) sur {data.keys.length}</span>
         )}
