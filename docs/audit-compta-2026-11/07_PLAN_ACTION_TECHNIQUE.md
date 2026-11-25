@@ -6,7 +6,7 @@ Statut : **plan à valider**. Rien n'est commencé.
 
 ## Avancement au 25 novembre 2026 et écarts par rapport au plan
 
-Branche `claude/kalum-accounting-finance-module-a25fcb`, rebasée sur `main` (migrations 663 et 664 prises par d'autres sessions : les migrations de ce plan sont **665 à 669** (663 et 664 prises par des sessions production)). Rien n'est poussé sur `origin`, `main` n'est pas avancé et la base de dev `ofauria_db` n'est pas migrée.
+Branche `claude/kalum-accounting-finance-module-a25fcb`, rebasée sur `main` (migrations 663 et 664 prises par d'autres sessions : les migrations de ce plan sont **665 à 669** (lot A) et **679 à 682** (lot C) (663 et 664 prises par des sessions production)). Rien n'est poussé sur `origin`, `main` n'est pas avancé et la base de dev `ofauria_db` n'est pas migrée.
 
 | Étape | État | Écart par rapport au plan |
 |---|---|---|
@@ -21,7 +21,12 @@ Branche `claude/kalum-accounting-finance-module-a25fcb`, rebasée sur `main` (mi
 | 8 Redatage tracé | Livré | — |
 | 9 Tests manquants | **Partiel** | Faits : numérotation concurrente, chaîne altérée, verrou de période, invariant aléatoire. Restent : clôture d'exercice et à-nouveaux, fermeture de caisse → écriture, sécurité HTTP des routes |
 | 10 Surveillance | Livré | — |
-| 11 à 30 | Non commencés | Lots B (attend l'expert-comptable), C, D, E |
+| 19 Droits fins | Livré | Quinze droits fins (dix suppressions, cinq annulations) ; mig 679 recopie rôles et exceptions par utilisateur, aucun accès ne change. Côté écran, le filtre de rôle en dur d'`AccountingPage.tsx` (I-19) n'est pas encore remplacé par les droits |
+| 20 Rôle PostgreSQL | **Non fait, à votre demande** | Reste à planifier avec une répétition sur copie de la production |
+| 21 Approbation des OD | Livré | Type de pièce `journal_entry`, règle `od_montant_eleve` (50 000 DH) semée **désactivée** (mig 680) ; tant qu'elle ne l'est pas, rien ne change |
+| 22 RIB sous contrôle | Livré pour les fournisseurs | Règle `rib_change` **active** : le changement du RIB d'un fournisseur déjà pourvu d'un RIB part à approbation d'un administrateur (mig 681). Gel des paiements livré mais à 0 jour par défaut ; non testé de bout en bout. RIB des salariés non traité |
+| 23 SoD et audit | Livré | Audit sur cinq tables de paramétrage ; `purchasing.sod_mode` passe à `block_except_admin` **seulement sur une base sans aucune pièce d'achat** (mig 682), les installations qui travaillent déjà gardent `warn` avec un avertissement dans le bilan de santé. Droits fins aussi pour la SoD par rôle : non fait |
+| 11 à 18, 24 à 30 | Non commencés | Lot B (attend l'expert-comptable), lots D et E |
 
 ## Comment lire ce plan
 
