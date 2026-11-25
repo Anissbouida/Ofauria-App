@@ -15,7 +15,12 @@ import './configuration-wizard.css';
    (docs/personnalisation-multisectorielle/maquette/assistant-configuration.html),
    branchée sur les brouillons, la compilation et la publication réelles. */
 
-const errorText = (e: unknown) => (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Enregistrement impossible. Réessayez.';
+const errorText = (e: unknown) => {
+  const err = (e as { response?: { data?: { error?: { message?: string; details?: Record<string, string[]> } } } })?.response?.data?.error;
+  // Erreur de validation : nommer le champ refusé plutôt qu'un simple « Données invalides ».
+  const detail = err?.details && Object.entries(err.details)[0];
+  return detail ? `${err?.message ?? 'Données invalides'} : ${detail[0].replace(/^answers\./, '')} — ${detail[1].join(', ')}` : err?.message ?? 'Enregistrement impossible. Réessayez.';
+};
 const list = (v: unknown): string[] => Array.isArray(v) ? v : [];
 const text = (v: unknown): string => typeof v === 'string' ? v : '';
 const ACTIVE_MODULES = (ACTIVATABLE_MODULES as string[]).filter(m => !CORE_MODULES.has(m as AppModule));

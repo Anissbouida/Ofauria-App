@@ -66,7 +66,7 @@ const wizardDataKeys: Record<string, readonly string[]> = {
   operations: ['production','rhythm','stock','tracking','sales'], vocabulary: [...new Set([...['reserve_zone','ingredient','recipe','production_plan','production_plans','doc_bon_sortie','warehouse','order','operator','workshop','station'], ...VOCABULARY_KEYS.map(v => v.key)])],
   rules: ['recipe','materialIssue','quality','transfer'], interfaces: ['workspace','density'], finance: ['year','vat','analytics'], roles: ['selected'], data: ['demo','referentials'], review: [],
 };
-const wizardSave = z.object({ mode: wizardMode, current_step: wizardKey, revision: wizardRevision,
+export const wizardSave = z.object({ mode: wizardMode, current_step: wizardKey, revision: wizardRevision,
   answers: z.record(wizardKey, z.object({ reviewed: z.boolean().optional(), note: z.string().max(4000).optional(),
     data: z.record(z.string().max(100), z.union([z.string().max(200),z.boolean(),z.array(z.string().max(80)).max(100)])).optional() }).strict()) }).strict()
   .superRefine((input, ctx) => { for (const [step, answer] of Object.entries(input.answers)) for (const key of Object.keys(answer.data ?? {})) {
@@ -85,7 +85,8 @@ const wizardSave = z.object({ mode: wizardMode, current_step: wizardKey, revisio
     else if (!wizardDataKeys[step]?.includes(key)) ctx.addIssue({ code: 'custom', path: ['answers',step,'data',key], message: 'Champ inconnu pour cette étape' });
     else {
       const value = answer.data![key];
-      const array = key === 'selected' || (step === 'sector' && key === 'secondary');
+      // Listes : sélections, activités secondaires et capacités choisies à l'étape Modules.
+      const array = key === 'selected' || (step === 'sector' && key === 'secondary') || (step === 'modules' && key === 'features');
       const flag = step === 'rules' || (step === 'finance' && key === 'analytics') || (step === 'data' && (key === 'demo' || key === 'referentials'));
       if (array ? !Array.isArray(value) : flag ? typeof value !== 'boolean' : typeof value !== 'string') {
         ctx.addIssue({ code: 'custom', path: ['answers',step,'data',key], message: 'Type de donnée invalide' });
