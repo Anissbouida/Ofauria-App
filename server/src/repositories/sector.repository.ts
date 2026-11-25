@@ -253,6 +253,11 @@ async function syncOverrides(client: PoolClient, table: string, key: string, bef
 }
 
 export const sectorRepository = {
+  /** Lignée du secteur actif (secteur + parents) ; vide si la mig 698 est absente. */
+  async activeLineage(): Promise<string[]> {
+    try { return (await db.query(`SELECT fn_active_sector_lineage() AS l`)).rows[0]?.l ?? []; } catch { return []; }
+  },
+
   /** Tous les secteurs disponibles. */
   async list(): Promise<SectorPack[]> {
     const packs = [...(await allPacks()).values()];

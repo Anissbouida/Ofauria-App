@@ -3,6 +3,12 @@ import { auditedQuery } from '../utils/audit-context.js';
 
 /** Gouvernance : règles SoD, plafonds d'approbation, délégations (mig 336). */
 export const governanceRepository = {
+  /** Codes de rôle d'un compte : rôle principal + rôles attribués (garde SQL G3-07 : requête hors contrôleur). */
+  async roleCodesOfUser(userId: string): Promise<string[]> {
+    const r = await db.query(`SELECT role FROM users WHERE id = $1 UNION SELECT role_code FROM user_roles WHERE user_id = $1`, [userId]);
+    return r.rows.map(x => x.role as string).filter(Boolean);
+  },
+
   // ─── Séparation des tâches ──────────────────────────────────────────
   async listSodRules() {
     return (await db.query(

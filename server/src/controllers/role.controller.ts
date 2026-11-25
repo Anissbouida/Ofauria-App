@@ -7,7 +7,7 @@ import { PERMISSIONS } from '@ofauria/shared';
 import { permissionsOfRole, permissionsOfUser, setRolePermissions } from '../services/permissions.js';
 import { roleProfile } from '../services/role-profile.js';
 import { createRoleFromTemplate, roleTemplates } from '../services/wizard/role-templates.js';
-import { db, withTransaction } from '../config/database.js';
+import { withTransaction } from '../config/database.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
 
 const DEFS = PERMISSIONS as Record<string, unknown>;
@@ -57,8 +57,7 @@ export const roleController = {
    *  dont les modules requis sont actifs, et pas encore créés. */
   async templates(_req: AuthRequest, res: Response) {
     const [all, act] = await Promise.all([roleTemplates(), sectorRepository.activation()]);
-    let lineage: string[] = [];
-    try { lineage = (await db.query(`SELECT fn_active_sector_lineage() AS l`)).rows[0]?.l ?? []; } catch { /* mig 698 absente */ }
+    const lineage = await sectorRepository.activeLineage();
     const modules = new Set<string>([...act.modules] as string[]);
     const data = all
       .filter(t => !t.exists && (!t.sector_code || lineage.includes(t.sector_code)) && t.requires_modules.every(m => modules.has(m)))
