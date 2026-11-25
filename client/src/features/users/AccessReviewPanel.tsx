@@ -1,4 +1,5 @@
 import { currencySymbol } from '../../utils/money';
+import { FilterChips } from '../sales/ListTemplate';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { LoadingPanel, Segmented } from '../employees/ui';
 import { useState } from 'react';
@@ -109,9 +110,28 @@ export function AccessRightsView({ userId }: { userId: string }) {
 }
 
 /** Historique d'un compte : connexions et sécurité (auth_events) et changements de droits (journal). */
+const HISTORY_GROUPS: Record<'logins' | 'rights' | 'security' | 'denied', (kind: string) => boolean> = {
+  logins: k => /^(login_|pin_login_|logout|account_locked)/.test(k),
+  rights: k => /^(user_created|user_updated|permission_changed|role_)/.test(k),
+  security: k => /^(mfa_|token_revoked|account_unlocked|user_deleted)/.test(k),
+  denied: k => k === 'access_denied',
+};
+type HistoryGroup = '' | keyof typeof HISTORY_GROUPS;
+
 export function AccessHistoryView({ userId }: { userId: string }) {
-  const { data: history = [] } = useQuery({ queryKey: ['access-history', userId], queryFn: () => accessReviewApi.history(userId) });
+  const { data: all = [] } = useQuery({ queryKey: ['access-history', userId], queryFn: () => accessReviewApi.history(userId) });
+  const [group, setGroup] = useState<HistoryGroup>('');
+  const count = (g: keyof typeof HISTORY_GROUPS) => all.filter(h => HISTORY_GROUPS[g](h.kind)).length;
+  const history = group ? all.filter(h => HISTORY_GROUPS[group](h.kind)) : all;
   return (
+    <div style={{ display: 'grid', gap: 12 }}>
+        <FilterChips label="Type d'événement" value={group} onChange={k => setGroup(k as HistoryGroup)} chips={[
+          { key: '', label: 'Tout', count: all.length },
+          { key: 'logins', label: 'Connexions', count: count('logins') },
+          { key: 'rights', label: 'Droits', count: count('rights') },
+          { key: 'security', label: 'Sécurité', count: count('security') },
+          { key: 'denied', label: 'Accès hors droits', count: count('denied') },
+        ]} />
         <DataPanel>
           <table className="odoo-table">
             <thead><tr><th>Date</th><th>Événement</th><th>Par</th><th>Détail</th></tr></thead>
@@ -128,6 +148,7 @@ export function AccessHistoryView({ userId }: { userId: string }) {
             </tbody>
           </table>
         </DataPanel>
+    </div>
   );
 }
 
