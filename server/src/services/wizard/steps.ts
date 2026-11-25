@@ -8,18 +8,18 @@ export type WizardIssue = { step: string; severity: 'blocking' | 'warning' | 'in
 
 // Les étapes sont un catalogue, pas des opérations de configuration active.
 export const WIZARD_STEPS = [
-  { key: 'company', phase: 'Contexte', label: 'Entreprise', description: 'Identité, pays, devise et établissements.', advanced: false },
-  { key: 'sector', phase: 'Contexte', label: 'Secteurs d’activité', description: 'Profil principal et activités complémentaires.', advanced: false },
-  { key: 'specialties', phase: 'Contexte', label: 'Spécialités métiers', description: 'Métiers exercés et référentiels associés.', advanced: false },
-  { key: 'modules', phase: 'Personnalisation métier', label: 'Modules et fonctionnalités', description: 'Modules, capacités et dépendances.', advanced: false },
-  { key: 'operations', phase: 'Personnalisation métier', label: 'Modèle opérationnel', description: 'Flux, sites et organisation des opérations.', advanced: true },
-  { key: 'vocabulary', phase: 'Personnalisation métier', label: 'Vocabulaire métier', description: 'Terminologie utilisée dans les écrans et documents.', advanced: true },
-  { key: 'rules', phase: 'Personnalisation métier', label: 'Processus et règles', description: 'Validations, étapes et contrôles.', advanced: true },
-  { key: 'interfaces', phase: 'Personnalisation métier', label: 'Interfaces et navigation', description: 'Espaces de travail, menus et écrans.', advanced: true },
-  { key: 'finance', phase: 'Administration', label: 'Comptabilité et fiscalité', description: 'Référentiels, exercice et exigences réglementaires.', advanced: false },
-  { key: 'roles', phase: 'Administration', label: 'Rôles et autorisations', description: 'Responsabilités, périmètres et séparation des tâches.', advanced: false },
-  { key: 'data', phase: 'Administration', label: 'Données initiales', description: 'Référentiels et préparation des imports.', advanced: true },
-  { key: 'review', phase: 'Mise en service', label: 'Révision et activation', description: 'Récapitulatif avant simulation et publication.', advanced: false },
+  { key: 'company', phase: 'Votre entreprise', label: 'Entreprise', description: 'L\'identité qui figure sur vos documents, et les lieux où vous travaillez.', advanced: false },
+  { key: 'sector', phase: 'Votre métier', label: 'Secteur d\'activité', description: 'Choisissez le secteur principal. Kalum adapte les étapes suivantes à votre métier.', advanced: false },
+  { key: 'specialties', phase: 'Votre métier', label: 'Spécialités', description: 'Vous pouvez en combiner plusieurs. Chacune apporte ses ateliers, ses étapes et ses rôles.', advanced: false },
+  { key: 'modules', phase: 'Votre métier', label: 'Modules', description: 'Le préréglage vient du secteur et des spécialités ; vous l\'ajustez.', advanced: false },
+  { key: 'operations', phase: 'Votre fonctionnement', label: 'Modèle opérationnel', description: 'Comment votre entreprise produit, stocke et vend réellement.', advanced: true },
+  { key: 'vocabulary', phase: 'Votre fonctionnement', label: 'Vocabulaire', description: 'Les mots affichés dans les menus, les documents et les rapports. Les identifiants techniques ne changent pas.', advanced: false },
+  { key: 'rules', phase: 'Votre fonctionnement', label: 'Processus et règles', description: 'Les étapes obligatoires, les approbations et la numérotation.', advanced: true },
+  { key: 'interfaces', phase: 'Votre fonctionnement', label: 'Interfaces', description: 'L\'accueil, les raccourcis et les indicateurs de chaque rôle.', advanced: true },
+  { key: 'finance', phase: 'Mise en service', label: 'Comptabilité et fiscalité', description: 'Posées par le pays et le secteur ; les obligations légales ne se désactivent pas.', advanced: false },
+  { key: 'roles', phase: 'Mise en service', label: 'Rôles et accès', description: 'Les rôles proposés pour vos activités, chacun avec le moins de droits nécessaire.', advanced: false },
+  { key: 'data', phase: 'Mise en service', label: 'Données de départ', description: 'Importez vos fichiers ou partez des modèles du profil.', advanced: false },
+  { key: 'review', phase: 'Mise en service', label: 'Révision et activation', description: 'Vérifiez l\'ensemble avant d\'appliquer. Rien n\'a encore été modifié.', advanced: false },
 ] as const;
 
 export function visibleSteps(mode: WizardMode) {

@@ -7,21 +7,21 @@ import { createWizardSession, saveWizardSession, abandonWizardSession } from '..
 const draft = { id: 'draft', mode: 'advanced', current_step: 'company', answers: {}, revision: 0, status: 'draft' };
 describe('Assistant — registre et verrou optimiste', () => {
   beforeEach(() => vi.resetAllMocks());
-  it('12 étapes en avancé, 7 en rapide, révision toujours visible', () => {
+  it('12 étapes en avancé, 9 en rapide, révision toujours visible', () => {
     expect(visibleSteps('advanced')).toHaveLength(12);
-    expect(visibleSteps('quick')).toHaveLength(7);
-    expect(normalizeStep('quick', 'vocabulary')).toBe('finance');
+    expect(visibleSteps('quick')).toHaveLength(9);
+    expect(normalizeStep('quick', 'operations')).toBe('vocabulary');
     expect(normalizeStep('advanced', 'vocabulary')).toBe('vocabulary');
     expect(visibleSteps('quick').at(-1)?.key).toBe('review');
   });
   it('le changement de mode conserve les réponses des étapes masquées', async () => {
-    const answers = { company: { reviewed: true }, vocabulary: { note: 'Économat', reviewed: true } };
-    vi.mocked(db.query).mockResolvedValue({ rows: [{ ...draft, answers, mode: 'quick', current_step: 'finance', revision: 1 }] } as Awaited<ReturnType<typeof db.query>>);
-    const result = await saveWizardSession('draft', { mode: 'quick', current_step: 'vocabulary', revision: 0, answers }, 'user');
+    const answers = { company: { reviewed: true }, operations: { note: 'Sur stock', reviewed: true } };
+    vi.mocked(db.query).mockResolvedValue({ rows: [{ ...draft, answers, mode: 'quick', current_step: 'vocabulary', revision: 1 }] } as Awaited<ReturnType<typeof db.query>>);
+    const result = await saveWizardSession('draft', { mode: 'quick', current_step: 'operations', revision: 0, answers }, 'user');
     expect(result.answers).toEqual(answers);
-    expect(result.current_step).toBe('finance');
+    expect(result.current_step).toBe('vocabulary');
     expect(vi.mocked(db.query).mock.calls[0][1]).toEqual(expect.arrayContaining([JSON.stringify(answers), 0]));
-    expect(wizardIssues('quick', answers).some(i => i.step === 'vocabulary')).toBe(false);
+    expect(wizardIssues('quick', answers).some(i => i.step === 'operations')).toBe(false);
   });
   it('refuse la révision obsolète sans réessayer ni écraser', async () => {
     vi.mocked(db.query).mockResolvedValue({ rows: [] } as unknown as Awaited<ReturnType<typeof db.query>>);
