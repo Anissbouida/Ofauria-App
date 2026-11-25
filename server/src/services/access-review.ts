@@ -90,9 +90,11 @@ export async function accessHistory(userId: string): Promise<AccessHistoryEntry[
     `SELECT e.created_at, e.event_type, e.details, e.success,
             concat_ws(' ', a.first_name, a.last_name) AS actor
        FROM auth_events e LEFT JOIN users a ON a.id = e.user_id
+      -- Actions faites sur le compte (création, droits, sécurité) et événements du compte lui-même
+      -- (connexions, déconnexions, verrouillage) ; pas ce qu'il a fait sur d'autres comptes.
       WHERE e.target_user_id = $1
-        AND e.event_type IN ('user_created', 'user_updated', 'permission_changed')
-      ORDER BY e.created_at DESC LIMIT 100`, [userId])).rows;
+         OR (e.user_id = $1 AND (e.target_user_id IS NULL OR e.target_user_id = $1))
+      ORDER BY e.created_at DESC LIMIT 200`, [userId])).rows;
 
   // config_audit_log : affectations de rôle (trigger user_roles, subject_id = user_id).
   const hasAudit = (await db.query(`SELECT to_regclass('public.config_audit_log') AS t`)).rows[0].t;

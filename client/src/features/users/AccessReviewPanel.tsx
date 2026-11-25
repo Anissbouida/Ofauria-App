@@ -6,7 +6,7 @@ import { DataPanel, TableFooter, EmptyState, ErrorState, Modal } from '../../com
 import { useQuery } from '@tanstack/react-query';
 import { ScanSearch, ShieldAlert, Check, Minus, History, Lock } from 'lucide-react';
 import {
-  MODULE_LABELS, CAPABILITY_LABELS, DATA_SCOPE_LABELS, BUSINESS_VERB_LABELS, APPROVAL_DOCUMENT_LABELS,
+  MODULE_LABELS, LEGACY_MODULE_KEYS, CAPABILITY_LABELS, DATA_SCOPE_LABELS, BUSINESS_VERB_LABELS, APPROVAL_DOCUMENT_LABELS,
   type AppModule, type Capability, type DataScope, type BusinessVerb, type ApprovalDocumentType,
 } from '@ofauria/shared';
 import { accessReviewApi, rolesApi, type AccessOverviewRow } from '../../api/users.api';
@@ -39,6 +39,10 @@ export function AccessRightsView({ userId }: { userId: string }) {
     : data?.roles.find(r => r.code === code)?.label ?? code;
   if (isError) return <ErrorState bare error={error} title="La revue des accès n'a pas pu être chargée" onRetry={() => void refetch()} />;
   if (isLoading || !data) return <LoadingPanel />;
+  // Anciennes clés du module Stock (economat, pesage…) : déjà couvertes par « Stock », masquées
+  // comme dans les autres écrans de droits.
+  const hasStock = data.modules.some(m => m.module === 'stock');
+  const modules = data.modules.filter(m => !(hasStock && (LEGACY_MODULE_KEYS as ReadonlySet<string>).has(m.module)));
   return (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
@@ -70,7 +74,7 @@ export function AccessRightsView({ userId }: { userId: string }) {
                     <th>Portée</th><th>Actions métier</th><th>Accordé par</th>
                   </tr></thead>
                   <tbody>
-                    {data.modules.map(m => (
+                    {modules.map(m => (
                       <tr key={m.module}>
                         <td className="ds-strong">{moduleLabel(m.module)}</td>
                         <td style={{ textAlign: 'center' }}>{flag(m.canView)}</td>
@@ -82,7 +86,7 @@ export function AccessRightsView({ userId }: { userId: string }) {
                         <td style={{ fontSize: 12, color: 'var(--ds-muted)' }}>{m.grantedBy.map(roleName).join(', ')}</td>
                       </tr>
                     ))}
-                    {!data.modules.length && <tr><td colSpan={8} style={{ color: 'var(--ds-muted)' }}>Aucun accès.</td></tr>}
+                    {!modules.length && <tr><td colSpan={8} style={{ color: 'var(--ds-muted)' }}>Aucun accès.</td></tr>}
                   </tbody>
                 </table>
               </DataPanel>

@@ -189,7 +189,7 @@ export default function UsersOverview({ onOpenAccount, onGo }: {
                     <tr key={e.id}>
                       <td style={{ whiteSpace: 'nowrap' }}>{formatDateTime(e.created_at)}</td>
                       <td>{AUTH_EVENT_LABELS[e.event_type] ?? e.event_type}{!e.success && <> <StatusTag tone="blocked" label="Échec" /></>}</td>
-                      <td>{e.target_name ?? e.user_name ?? e.email ?? '—'}</td>
+                      <td>{e.target_name || e.user_name || e.email || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
