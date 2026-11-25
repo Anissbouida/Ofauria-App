@@ -135,3 +135,20 @@ Validation : suite serveur complète **642 tests réussis, 0 échec** (1 034 ign
 | Rôles de base | Les modèles réutilisent les rôles de base système existants | Archétypes neutres et remplacement de `ROLE_GROUPS` : non faits (risque sur les gardes de routes) |
 
 Validation : 648 tests serveur réussis, 0 échec ; 6 tests purs des modèles ; 2 tests PostgreSQL (catalogue, création bornée sans toucher les rôles existants) ; 18 tests base de l'assistant ; build client réussi.
+
+## Huitième incrément — 25 novembre 2026 : écran, profils, réglages, lots 3, 10, 12, 15
+
+| Élément | Réalisé (commits sur main) |
+|---|---|
+| Écran | Reproduction de la maquette validée (bef5a15b) puis contrôle des 12 étapes dans le volet navigateur ; brouillon rouvert après rechargement (`?brouillon=`) |
+| 13 profils | Mig 691 : 9 profils ajoutés (statut « nouveau », `in_wizard`), 47 spécialités, vocabulaire par profil ; icônes de la maquette |
+| Personnalisation des modules | Sous-options par module branchées sur les capacités (`app_features`), dépendances en cascade, garde-fou réglementaire conservé |
+| Modèle opérationnel et règles | Mig 692-694 : déclenchement de la production (MRP), parcours de production (fiche technique, bon de sortie, contrôle qualité, validation du transfert), alertes de stock bas, rythme (horizon + capacité), canal de vente (accueil), organisation du stock (achats au dépôt central) ; approbations via `approval_rules` ; remises maximales |
+| Lot 3 | Établissements préparés dans l'étape Entreprise et créés à l'activation |
+| Lot 10 | Périodicité de TVA (mig 695) appliquée à l'écran Comptabilité › TVA ; exercice et analytique affichés tels qu'ils sont (pas de saisie fictive) |
+| Lot 12 (partiel) | Référentiels du profil réellement chargés à l'activation ; nomenclature de démonstration du profil sur demande |
+| Lot 15 | Changement sensible soumis au moteur d'approbation (mig 696), activé par l'approbateur |
+| Premier démarrage | Accueil : l'assistant est proposé tant qu'aucune configuration n'est activée et qu'aucun article n'existe |
+| Recette | Les 7 scénarios de `wizard-industry-scenarios.db.test.ts` passent de bout en bout, activation comprise |
+
+Restent : lot 14 (versions et éditeur de profils), lot 2 (bascule des lectures sur le résolveur), données de démonstration isolées et purgeables, archétypes de rôles neutres. Après un changement de `shared/`, redémarrer le serveur Vite du checkout principal.
