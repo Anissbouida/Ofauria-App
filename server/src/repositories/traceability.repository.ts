@@ -142,7 +142,6 @@ export const traceabilityRepository = {
       set.add(r.plan_item_id);
       provenLines.set(r.plan_id, set);
     }
-    for (const p of unattributed) provenLines.delete(p);
     const planDepth = new Map<string, number>(direct.map(r => [r.plan_id, 0]));
     const semiLots: Record<string, any>[] = [];
     let frontier = [...planQty.keys()];
@@ -150,7 +149,7 @@ export const traceabilityRepository = {
       const { rows } = await db.query(
         `SELECT sl.id, sl.lot_number, sl.recipe_id, r.name AS recipe_name, sl.production_plan_id, sl.plan_item_id,
                 sl.quantity_produced::float, sl.quantity_remaining::float, sl.unit, sl.status, sl.store_id,
-                sl.expires_at, u.parent_plan_id, u.quantity::float AS used_qty
+                sl.expires_at, u.parent_plan_id, u.parent_plan_item_id, u.quantity::float AS used_qty
            FROM semi_finished_lots sl
            JOIN recipes r ON r.id = sl.recipe_id
            LEFT JOIN semi_finished_lot_usage u ON u.semi_finished_lot_id = sl.id
@@ -162,6 +161,15 @@ export const traceabilityRepository = {
         // Un semi-fini dont la recette ne contient pas l'ingrédient n'est pas un vecteur.
         if (!contaminated.has(r.recipe_id)) continue;
         if (!semiLots.some(s => s.id === r.id)) semiLots.push({ ...r, depth });
+        // Mig 672 : articles du plan parent servis par ce lot de préparation.
+        if (r.parent_plan_id) {
+          if (!r.parent_plan_item_id) unattributed.add(r.parent_plan_id);
+          else {
+            const set = provenLines.get(r.parent_plan_id) ?? new Set<string>();
+            set.add(r.parent_plan_item_id);
+            provenLines.set(r.parent_plan_id, set);
+          }
+        }
         if (r.parent_plan_id && !planDepth.has(r.parent_plan_id)) {
           planDepth.set(r.parent_plan_id, depth);
           next.push(r.parent_plan_id);
@@ -169,6 +177,7 @@ export const traceabilityRepository = {
       }
       frontier = next;
     }
+    for (const p of unattributed) provenLines.delete(p);
     const planIds = [...planDepth.keys()];
 
     const { rows: plans } = planIds.length ? await db.query(

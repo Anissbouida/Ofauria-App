@@ -171,7 +171,7 @@ Reprise : les plans à un seul article ont été rattachés (exact) ; les plans 
 
 Limites :
 - Au bon de sortie, la part de chaque article est calculée sur son besoin, pas pesée séparément : le coût d'une matière commune y reste théorique entre articles. Le gain est sur la traçabilité (un article qui n'utilise pas la matière n'est plus touché) et sur les productions sans bon de sortie, où la sortie est réellement faite article par article.
-- Les préparations de base consommées par un plan (semi-finis) restent rattachées au plan, réparties par les besoins.
+- ~~Les préparations de base consommées par un plan (semi-finis) restent rattachées au plan, réparties par les besoins.~~ Traité (§ 10).
 - ~~Le bon de sortie reste commun au plan : une matière manquante pour un article retient toujours le démarrage de tout le plan.~~ Traité (§ 9).
 
 ## 9. Matière manquante : seul l'article concerné attend (2026-11-24, mig 664)
@@ -187,3 +187,16 @@ Limites :
 | Écran | Liste d'attente : « Manque : Beurre 1 kg », statut « Matière manquante », boutons Restaurer / Produire sans / Annuler. |
 
 Validation : `manques-par-article.db.test.ts` (3 tests : attente de A pendant que B se produit, refus sans stock puis sortie pour A à l'arrivée du beurre, « produire sans », annulation).
+
+## 10. Préparations de base rattachées à l'article (2026-11-24, mig 672)
+
+| Étape | Comportement |
+|---|---|
+| Détection des préparations à la confirmation | Le besoin de chaque article en chaque préparation est gardé sur la dépendance (`item_shares`). |
+| Réservation sur le stock de préparations | Chaque lot pris est porté par les articles qui en ont besoin, au prorata (`semi_finished_lot_usage.parent_plan_item_id`). |
+| Plan fils produit, part imputée au parent | Même partage entre articles. |
+| Coût réel | La ligne « préparation » est mesurée par article. |
+| Traçabilité aval | Un lot de matière entré dans une préparation ne touche que les articles du plan parent qui ont consommé cette préparation. |
+
+Validation : `preparations-par-article.db.test.ts` (4 tests : A 0,5 kg/pièce et B 0,1 kg/pièce reçoivent 5 kg et 1 kg de crème, C sans crème rien ; coût ; traçabilité du lait).
+Reprise : plans parents à un seul article. Limite : le partage suit le besoin de chaque article ; une préparation n'est pas pesée séparément par article.

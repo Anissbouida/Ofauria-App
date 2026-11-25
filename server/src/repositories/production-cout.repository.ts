@@ -293,6 +293,16 @@ export const productionCoutRepository = {
           WHERE a.item_kind = 'ingredient' AND a.origin_type = 'production_plan' AND a.origin_id = $1 AND a.origin_line_id IS NOT NULL
           GROUP BY a.item_id, a.origin_line_id, i.unit_cost`, [planId])).rows;
       for (const r of shortRows) add(`manque:${r.item_id}`, r.origin_line_id, Number(r.total));
+      // Mig 672 : préparations de base consommées, au coût unitaire de la ligne « semi: ».
+      const semiRows = (await db.query(
+        `SELECT l.recipe_id, u.parent_plan_item_id, SUM(u.quantity)::float8 AS qty
+           FROM semi_finished_lot_usage u JOIN semi_finished_lots l ON l.id = u.semi_finished_lot_id
+          WHERE u.parent_plan_id = $1 AND u.released_at IS NULL AND u.parent_plan_item_id IS NOT NULL
+          GROUP BY 1, 2`, [planId])).rows;
+      for (const r of semiRows) {
+        const d = detailMatieres.find(x => x.ingredient_id === `semi:${r.recipe_id}`);
+        if (d) add(d.ingredient_id, r.parent_plan_item_id, Math.round(Number(r.qty) * d.unit_cost * 100) / 100);
+      }
     }
 
     // 1b. Emballages (G0-23) — sorties d'emballage rattachees au plan, qu'elles viennent

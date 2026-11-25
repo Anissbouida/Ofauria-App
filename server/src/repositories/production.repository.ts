@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { adjustProductStock } from './product-stock.helper.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
 import { ingredientLotRepository } from './ingredient-lot.repository.js';
-import { bonSortieRepository } from './bon-sortie.repository.js';
+import { bonSortieRepository, splitAcrossItems } from './bon-sortie.repository.js';
 import { productionOrderTypeRepository } from './production-order-type.repository.js';
 import { notificationRepository } from './notification.repository.js';
 import { getLocalNow } from '../utils/timezone.js';
@@ -1711,7 +1711,7 @@ export const productionRepository = {
           // parent ne consomme plus les matieres de la base (BSI sans la base).
           // Le surplus d'arrondi (produit - toProduce) reste disponible.
           const parentDep = await client.query(
-            `SELECT parent_plan_id, quantity_to_produce FROM production_plan_dependencies
+            `SELECT parent_plan_id, quantity_to_produce, item_shares FROM production_plan_dependencies
               WHERE dependency_plan_id = $1 AND sub_recipe_id = $2 AND status <> 'cancelled' LIMIT 1`,
             [planId, item.base_recipe_id]
           );
@@ -1730,29 +1730,10 @@ export const productionRepository = {
               await applyStockOut(client, { kind: 'semi_finished', itemId: item.base_recipe_id, storeId: effectiveStoreId,
                 requested: consumeForParent, available: sfBefore.rows[0]?.before ?? 0,
                 origin: { type: 'production_plan', id: planId }, userId, label: `Semi-fini (production ${item.product_name})` });
-              let remainingForParent = consumeForParent;
-              const sfLots = await client.query(
-                `SELECT id, quantity_remaining FROM semi_finished_lots
-                  WHERE recipe_id = $1 AND store_id = $2 AND status = 'active' AND quantity_remaining > 0
-                  ORDER BY COALESCE(dlc_effective, expires_at::timestamptz) ASC NULLS LAST, produced_at ASC
-                  FOR UPDATE`,
-                [item.base_recipe_id, effectiveStoreId]
-              );
-              for (const lot of sfLots.rows) {
-                if (remainingForParent <= 1e-9) break;
-                const take = Math.min(remainingForParent, parseFloat(lot.quantity_remaining));
-                await client.query(
-                  `UPDATE semi_finished_lots
-                      SET quantity_remaining = quantity_remaining - $1,
-                          status = CASE WHEN quantity_remaining - $1 <= 0.0005 THEN 'depleted' ELSE status END
-                    WHERE id = $2`,
-                  [take, lot.id]
-                );
-                await client.query(
-                  `INSERT INTO semi_finished_lot_usage (semi_finished_lot_id, parent_plan_id, quantity) VALUES ($1, $2, $3)`,
-                  [lot.id, pdep.parent_plan_id, take]
-                );
-                remainingForParent -= take;
+              // Mig 672 : la part imputée au parent est portée par ses articles, au prorata de
+              // leur besoin en cette préparation (posé à la détection).
+              for (const part of splitAcrossItems(consumeForParent, sharesOf(pdep.item_shares))) {
+                await takeSemiFinishedLots(client, item.base_recipe_id, effectiveStoreId, part.qty, pdep.parent_plan_id, part.itemId);
               }
               await client.query(
                 `INSERT INTO semi_finished_transactions (recipe_id, store_id, type, quantity_change, production_plan_id, performed_by, notes)
@@ -2628,6 +2609,9 @@ export const productionRepository = {
         );
         const available = stockResult.rows[0] ? parseFloat(stockResult.rows[0].qty) : 0;
         const fromStock = Math.min(available, need.totalNeeded);
+        // Mig 672 : besoin de chaque article en cette préparation (gardé sur la dépendance).
+        const itemShares = need.usedBy.filter(u => u.planItemId && u.qty > 0).map(u => ({ itemId: u.planItemId as string, qty: u.qty }));
+        const itemSharesJson = JSON.stringify(Object.fromEntries(itemShares.map(s => [s.itemId, Math.round(s.qty * 1e6) / 1e6])));
         const toProduce = Math.max(0, need.totalNeeded - fromStock);
 
         dependencySummary.push({
@@ -2652,38 +2636,18 @@ export const productionRepository = {
              `Reserve pour production: ${need.usedBy.map(u => u.productName).join(', ')}`]
           );
           // Quels lots de semi-fini partent dans ce plan (FEFO) — mig 300.
-          let remainingToTake = fromStock;
-          const sfLots = await client.query(
-            `SELECT id, quantity_remaining FROM semi_finished_lots
-              WHERE recipe_id = $1 AND (store_id = $2 OR $2 IS NULL) AND status = 'active' AND quantity_remaining > 0
-              ORDER BY COALESCE(dlc_effective, expires_at::timestamptz) ASC NULLS LAST, produced_at ASC
-              FOR UPDATE`,
-            [subRecipeId, plan.store_id]
-          );
-          for (const lot of sfLots.rows) {
-            if (remainingToTake <= 0) break;
-            const take = Math.min(remainingToTake, parseFloat(lot.quantity_remaining));
-            await client.query(
-              `UPDATE semi_finished_lots
-                  SET quantity_remaining = quantity_remaining - $1,
-                      status = CASE WHEN quantity_remaining - $1 <= 0 THEN 'depleted' ELSE status END
-                WHERE id = $2`,
-              [take, lot.id]
-            );
-            await client.query(
-              `INSERT INTO semi_finished_lot_usage (semi_finished_lot_id, parent_plan_id, quantity) VALUES ($1, $2, $3)`,
-              [lot.id, planId, take]
-            );
-            remainingToTake -= take;
+          // Mig 672 : réservation portée par les articles, au prorata de leur besoin.
+          for (const part of splitAcrossItems(fromStock, itemShares)) {
+            await takeSemiFinishedLots(client, subRecipeId, plan.store_id, part.qty, planId, part.itemId);
           }
         }
 
         if (toProduce <= 0) {
           // Fully covered by stock — record dependency as fulfilled
           await client.query(
-            `INSERT INTO production_plan_dependencies (parent_plan_id, dependency_plan_id, sub_recipe_id, quantity_needed, quantity_from_stock, quantity_to_produce, status)
-             VALUES ($1, NULL, $2, $3, $4, 0, 'fulfilled')`,
-            [planId, subRecipeId, need.totalNeeded, fromStock]
+            `INSERT INTO production_plan_dependencies (parent_plan_id, dependency_plan_id, sub_recipe_id, quantity_needed, quantity_from_stock, quantity_to_produce, status, item_shares)
+             VALUES ($1, NULL, $2, $3, $4, 0, 'fulfilled', $5::jsonb)`,
+            [planId, subRecipeId, need.totalNeeded, fromStock, itemSharesJson]
           );
           continue;
         }
@@ -2719,9 +2683,9 @@ export const productionRepository = {
 
         // Record dependency
         await client.query(
-          `INSERT INTO production_plan_dependencies (parent_plan_id, dependency_plan_id, sub_recipe_id, quantity_needed, quantity_from_stock, quantity_to_produce, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 'pending')`,
-          [planId, sfPlanId, subRecipeId, need.totalNeeded, fromStock, toProduce]
+          `INSERT INTO production_plan_dependencies (parent_plan_id, dependency_plan_id, sub_recipe_id, quantity_needed, quantity_from_stock, quantity_to_produce, status, item_shares)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7::jsonb)`,
+          [planId, sfPlanId, subRecipeId, need.totalNeeded, fromStock, toProduce, itemSharesJson]
         );
       }
 
@@ -2886,6 +2850,43 @@ export async function releaseSemiFinishedReservations(
       }
     }
   }
+}
+
+/**
+ * Prend `qty` de lots de préparation de base en FEFO pour un plan parent et, si connu, un de ses
+ * articles (mig 672). Retourne la quantité réellement prise (bornée aux lots actifs).
+ */
+async function takeSemiFinishedLots(
+  client: SqlClient, recipeId: string, storeId: string | null, qty: number, parentPlanId: string, parentItemId: string | null,
+): Promise<number> {
+  let remaining = qty;
+  const lots = await client.query(
+    `SELECT id, quantity_remaining FROM semi_finished_lots
+      WHERE recipe_id = $1 AND (store_id = $2 OR $2 IS NULL) AND status = 'active' AND quantity_remaining > 0
+      ORDER BY COALESCE(dlc_effective, expires_at::timestamptz) ASC NULLS LAST, produced_at ASC
+      FOR UPDATE`, [recipeId, storeId]);
+  for (const lot of lots.rows) {
+    if (remaining <= 1e-9) break;
+    const take = Math.min(remaining, parseFloat(lot.quantity_remaining));
+    await client.query(
+      `UPDATE semi_finished_lots
+          SET quantity_remaining = quantity_remaining - $1,
+              status = CASE WHEN quantity_remaining - $1 <= 0.0005 THEN 'depleted' ELSE status END
+        WHERE id = $2`, [take, lot.id]);
+    await client.query(
+      `INSERT INTO semi_finished_lot_usage (semi_finished_lot_id, parent_plan_id, quantity, parent_plan_item_id) VALUES ($1, $2, $3, $4)`,
+      [lot.id, parentPlanId, take, parentItemId]);
+    remaining -= take;
+  }
+  return qty - Math.max(remaining, 0);
+}
+
+/** Parts d'articles d'une dépendance ({ligne: quantité}) au format de splitAcrossItems. */
+function sharesOf(itemShares: unknown): { itemId: string; qty: number }[] | undefined {
+  if (!itemShares || typeof itemShares !== 'object') return undefined;
+  const list = Object.entries(itemShares as Record<string, unknown>)
+    .map(([itemId, q]) => ({ itemId, qty: Number(q) })).filter(x => x.qty > 0);
+  return list.length ? list : undefined;
 }
 
 /** Ligne d'ordre dont la quantité a été arrondie à la fournée (mig 662). */
