@@ -115,10 +115,23 @@ Validation : suite serveur complète **642 tests réussis, 0 échec** (1 034 ign
 ### Reste à faire (par ordre de valeur)
 
 1. Recette navigateur complète de l'assistant sur une base de démonstration (parcours rapide et avancé, publication, restauration).
-2. Lot 11 — modèles de rôles par secteur : création des rôles proposés à la publication, séparation des tâches.
+2. ~~Lot 11 — modèles de rôles par secteur~~ : livré (septième incrément). Restent les archétypes neutres de rôle de base et le remplacement de `ROLE_GROUPS`.
 3. Lot 3 — sites/établissements créés depuis l'assistant ; lot 10 — exercice et TVA appliqués (packs pays versionnés).
 4. Lot 12 — données de démonstration isolées et annulables.
 5. Lot 15 — approbation des changements sensibles avant publication ; lot 14 — versionnement et éditeur de profils.
 6. Lot 2 — bascule des lectures sur `resolveConfig` (projection `config_values`) ; lot 7 — extension du vocabulaire.
 7. Premier démarrage automatique de l'assistant sur une installation vierge.
 8. Les 7 scénarios de `wizard-industry-scenarios.db.test.ts` (actuellement « à faire »).
+
+## Septième incrément — lot 11 : rôles et autorisations
+
+| Élément | Réalisé | Limite |
+|---|---|---|
+| Données (mig 690) | `sector_role_templates` : 17 modèles (12 du socle — direction, comptable, achats, magasinier, caisse, commercial, production, opérateur, qualité, maintenance, projets, RH — et 5 sectoriels : vendeuse, pâtissier, planificateur, préparateur, responsable qualité). Droits par module (consulter/créer/modifier/supprimer), périmètre (ses dossiers, établissement, société), verbes métier (approuver, comptabiliser), modules requis. Déclencheur : un modèle ne peut jamais reposer sur le rôle administrateur | Pas d'éditeur des modèles (lot 14) |
+| Proposition | Modèles filtrés par secteurs retenus et leurs ascendants, spécialités et modules ; droits restreints aux modules retenus | — |
+| Séparation des tâches | Contrôle avec `evaluateSod` sur les règles actives : conflit critique = bloquant, sinon avertissement ; les modèles livrés n'en ont aucun (direction approuve et comptabilise sans saisir ; comptable et acheteur saisissent sans valider) | — |
+| Publication | Création des seuls rôles absents (`roles`, `role_permissions`) ; droits par action repris du rôle de base pour les modules accordés uniquement (consultation seule → clés `.view`) ; un rôle existant n'est jamais modifié ; propositions inconnues des anciens brouillons ignorées avec avertissement | Création additive : restaurer une version antérieure ne supprime pas les rôles créés |
+| Écran | Étape Rôles : tableau (case à cocher, accès par module, périmètre, état « Existe déjà / À créer / Non retenu », alertes de séparation des tâches) | Comptes utilisateurs toujours créés dans Utilisateurs |
+| Rôles de base | Les modèles réutilisent les rôles de base système existants | Archétypes neutres et remplacement de `ROLE_GROUPS` : non faits (risque sur les gardes de routes) |
+
+Validation : 648 tests serveur réussis, 0 échec ; 6 tests purs des modèles ; 2 tests PostgreSQL (catalogue, création bornée sans toucher les rôles existants) ; 18 tests base de l'assistant ; build client réussi.

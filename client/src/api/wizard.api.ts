@@ -15,8 +15,12 @@ export interface WizardCatalog {
   technicalSimulationAvailable?: boolean;
   parameters?: WizardParameter[];
   interfacePreferences?: {available:boolean;values:InterfacePreferences};
+  /** Lot 11 : modèles de rôles (mig 690) ; `sod` = conflits de séparation des tâches du modèle complet. */
+  roleTemplates?: { code:string; label:string; description:string|null; base_role:string; sector_code:string|null; specialization_code:string|null;
+    requires_modules:string[]; permissions:{module:string;rights:string;scope?:'own'|'store'|'all';verbs?:string[]}[]; home_route:string|null; exists:boolean;
+    sod:{code:string;label:string;severity:string}[] }[];
 }
-export interface WizardChangeSet { id: string; session_id: string; session_revision: number; status: string; operations: { step: string; data: WizardData; execution: 'sector_modules' | 'company_context' | 'vocabulary' | 'specializations' | 'parameters' | 'interface_preferences' | 'pending'; reason?: string }[]; issues: WizardSession['issues']; simulation?: { scope:string[]; rolledBack:boolean; pending:string[]; note:string; parameterImpact?:{key:string;before:Record<string,unknown>;value:Record<string,unknown>;step:string}[]; interfaceImpact?:{before:InterfacePreferences;after:InterfacePreferences} } | null }
+export interface WizardChangeSet { id: string; session_id: string; session_revision: number; status: string; operations: { step: string; data: WizardData; execution: 'sector_modules' | 'company_context' | 'vocabulary' | 'specializations' | 'parameters' | 'interface_preferences' | 'roles' | 'pending'; reason?: string }[]; issues: WizardSession['issues']; simulation?: { scope:string[]; rolledBack:boolean; pending:string[]; note:string; parameterImpact?:{key:string;before:Record<string,unknown>;value:Record<string,unknown>;step:string}[]; interfaceImpact?:{before:InterfacePreferences;after:InterfacePreferences} } | null }
 export interface WizardStep { key: string; phase: string; label: string; description: string; advanced: boolean }
 export interface WizardSession {
   id: string; kind: 'initial' | 'evolution' | 'upgrade'; status: string; mode: WizardMode;

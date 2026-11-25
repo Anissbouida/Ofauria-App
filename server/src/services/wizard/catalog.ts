@@ -7,9 +7,11 @@ import { db } from '../../config/database.js';
 import { validateLayerData, validateInterfaceData } from './layer-operations.js';
 import { readInterfacePreferences } from '../interface-preferences.js';
 import { wizardParameters, prepareParameterChanges } from './parameter-operations.js';
+import { roleTemplates, activeSodRules, roleTemplateIssues, templateRights, templateSod } from './role-templates.js';
 
 /** A live read-only catalogue. No starter, profile or module is applied here. */
 export async function wizardCatalog(includeLabels = true) {
+  const [templates, sodRules] = await Promise.all([roleTemplates(), activeSodRules()]);
   const [packs, specialties, country, currency, activation,company,parameters,interfacePreferences] = await Promise.all([
     sectorRepository.list(), specializationRepository.list(), countryPackRepository.activeCountry(), companyCurrency(), sectorRepository.activation(),
     db.query(`SELECT to_jsonb(c) AS data FROM company_settings c WHERE id=1`), wizardParameters(),readInterfacePreferences(),
@@ -18,7 +20,9 @@ export async function wizardCatalog(includeLabels = true) {
     status: p.status, lineage: p.lineage ?? [p.code], modules: p.modules, features: p.features ?? [],
     labels: includeLabels ? await (p.code === activation.sector.code ? sectorRepository.labels(p.code) : sectorRepository.sectorLabels(p.code)) : {} })));
   return {
-    profiles, parameters,interfacePreferences,
+    profiles, parameters,interfacePreferences, sodRules,
+    // Lot 11 : modèles de rôles ; `sod` = conflits du modèle complet (avant filtrage par modules).
+    roleTemplates: templates.map(t => ({ ...t, sod: templateSod(templateRights(t, t.permissions.map(p => p.module)), sodRules) })),
     specialties: specialties.map(s => ({ code: s.code, label: s.label, description: s.description, sector: s.sector_pack, enabled: s.enabled })),
     country, currency: currency.code, currentSector: activation.sector.code, currentSecondary:activation.sector.secondarySectors??[],
     modules: [...activation.modules],company:{name:company.rows[0]?.data?.legal_name??'',legalForm:company.rows[0]?.data?.legal_form??'',locale:company.rows[0]?.data?.default_locale??'fr',timezone:company.rows[0]?.data?.timezone??'Africa/Casablanca',size:company.rows[0]?.data?.company_size??''},
@@ -45,5 +49,6 @@ export function validateWizardCatalog(answers: WizardAnswers, catalog: Awaited<R
   issues.push(...validateLayerData(company,answers.vocabulary?.data));
   issues.push(...prepareParameterChanges(answers,catalog.parameters??[]).issues);
   issues.push(...validateInterfaceData(answers.interfaces?.data,answers.modules?.data?.selected,catalog.interfacePreferences?.available===true));
+  issues.push(...roleTemplateIssues(answers, catalog.roleTemplates ?? [], catalog.sodRules ?? [], new Set(packs.flatMap(p => p.lineage))));
   return issues;
 }

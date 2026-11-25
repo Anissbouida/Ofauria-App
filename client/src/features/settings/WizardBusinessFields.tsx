@@ -7,14 +7,19 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 const list = (v: unknown): string[] => Array.isArray(v) ? v : [];
 const text = (v: unknown): string => typeof v === 'string' ? v : '';
 const VOCAB = VOCABULARY_KEYS.filter(v => ['reserve_zone','ingredient','recipe','production_plan','production_plans','doc_bon_sortie'].includes(v.key));
-function proposedRoles(answers: WizardAnswers, catalog: WizardCatalog | undefined, company: string) {
-  const selected = new Set(list(draftData('modules', answers, catalog, company).selected));
-  const roles = ['Direction générale'];
-  const byModule: Partial<Record<AppModule,string>> = { accounting: 'Comptable', purchasing: 'Responsable achats', stock: 'Responsable stock', sales: 'Responsable commercial', pos: 'Caissier', employees: 'Responsable RH', production: 'Responsable production', controle: 'Responsable qualité', projects: 'Responsable projets', maintenance: 'Responsable maintenance' };
-  for (const [module,role] of Object.entries(byModule)) if (selected.has(module)) roles.push(role);
-  if (selected.has('production')) for (const s of catalog?.specialties ?? []) if (list(draftData('specialties', answers, catalog, company).selected).includes(s.code)) roles.push(`Responsable — ${s.label}`);
-  return [...new Set(roles)];
+/** Lot 11 : modèles de rôles adaptés aux secteurs (et ascendants), spécialités et modules du brouillon. */
+export function proposedRoleTemplates(answers: WizardAnswers, catalog: WizardCatalog | undefined, company: string) {
+  const primary = text(answers.sector?.data?.primary) || catalog?.currentSector || '';
+  const secondary = list(answers.sector?.data?.secondary ?? catalog?.currentSecondary);
+  const lineage = new Set((catalog?.profiles ?? []).filter(p => p.code === primary || secondary.includes(p.code)).flatMap(p => p.lineage));
+  const modules = list(draftData('modules', answers, catalog, company).selected);
+  const specialties = list(draftData('specialties', answers, catalog, company).selected);
+  return (catalog?.roleTemplates ?? []).filter(t => (!t.sector_code || lineage.has(t.sector_code))
+    && (!t.specialization_code || specialties.includes(t.specialization_code))
+    && t.requires_modules.every(m => modules.includes(m)));
 }
+const SCOPE_LABELS: Record<string, string> = { own: 'Ses dossiers', store: 'Son établissement', all: 'Toute la société' };
+const RIGHT_LABELS: Record<string, string> = { v: 'consulter', c: 'créer', e: 'modifier', d: 'supprimer' };
 export function draftData(step: string, answers: WizardAnswers, catalog: WizardCatalog | undefined, company: string): WizardData {
   const primary = text(answers.sector?.data?.primary) || catalog?.currentSector || '';
   const secondary = list(answers.sector?.data?.secondary ?? catalog?.currentSecondary).filter(c=>c!==primary);
@@ -26,7 +31,7 @@ export function draftData(step: string, answers: WizardAnswers, catalog: WizardC
   if (step === 'specialties') defaults = { selected: catalog?.specialties.filter(s => s.enabled && profiles.some(p => p.lineage.includes(s.sector))).map(s => s.code) ?? [] };
   if (step === 'modules') defaults = { selected: catalog && primary === catalog.currentSector && JSON.stringify([...secondary].sort())===JSON.stringify([...(catalog.currentSecondary??[])].sort()) ? catalog.modules : modules };
   if (step === 'vocabulary') defaults = Object.fromEntries(VOCAB.map(v => [v.key, profiles.find(p => p.code === primary)?.labels?.[v.key] ?? v.fallback]));
-  if (step === 'roles') defaults = { selected: proposedRoles(answers,catalog,company) };
+  if (step === 'roles') defaults = { selected: proposedRoleTemplates(answers,catalog,company).filter(t => !t.exists).map(t => t.code) };
   return { ...defaults, ...answers[step]?.data };
 }
 
@@ -78,7 +83,27 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
     return <><p className="wz-muted">Valeurs par défaut de la société. Chaque utilisateur peut personnaliser son accueil et sa densité sans modifier ses droits.</p>{!prefs?.available&&<div className="ds-alert warning">Préférences indisponibles sur cette installation.</div>}<div className="ds-form-grid"><label className="ds-field"><span>Espace de travail</span><select className="ds-input" value={workspace} disabled={disabled||!prefs?.available} onChange={e=>set('workspace',e.target.value)}>{WORKSPACES.map(w=><option key={w.value} value={w.value} disabled={!!w.module&&!mods.has(w.module)}>{w.label}{w.module&&!mods.has(w.module)?' — module inactif':''}</option>)}</select>{'workspace' in data&&<button type="button" className="odoo-btn-secondary" onClick={()=>unset('workspace')} disabled={disabled}>Annuler la modification</button>}</label><label className="ds-field"><span>Densité des tableaux</span><select className="ds-input" value={density} disabled={disabled||!prefs?.available} onChange={e=>set('density',e.target.value)}>{TABLE_DENSITIES.map(d=><option key={d.value} value={d.value}>{d.label}</option>)}</select>{'density' in data&&<button type="button" className="odoo-btn-secondary" onClick={()=>unset('density')} disabled={disabled}>Annuler la modification</button>}</label></div></>;
   }
   if (step === 'finance') return <><div className="ds-alert info">Les exigences réglementaires restent celles du référentiel en vigueur. Ces réponses ne changent aucune écriture.</div><div className="ds-form-grid">{input('year','Exercice envisagé')}{select('vat','Périodicité TVA envisagée',['Mensuelle','Trimestrielle'])}</div>{toggle('analytics','Comptabilité analytique')}</>;
-  if (step === 'roles') return <><p>Propositions selon les modules et spécialités retenus. Les droits et périmètres restent à définir et à valider ; aucun compte ni droit n’est créé ici.</p>{proposedRoles(answers,catalog,company).map(role => <ChoiceCard key={role} title={role} description="Rôle proposé · droits à valider" selected={list(data.selected).includes(role)} disabled={disabled} onClick={() => toggleItem('selected',role)}/>)}</>;
+  if (step === 'roles') {
+    const templates = proposedRoleTemplates(answers, catalog, company);
+    const modules = new Set(list(draftData('modules', answers, catalog, company).selected));
+    const chosen = list(data.selected);
+    const scopes = (perms: { scope?: string }[]) => [...new Set(perms.map(p => SCOPE_LABELS[p.scope ?? 'store']))].join(', ');
+    return <><p>Rôles proposés selon les secteurs, spécialités et modules retenus. À la publication, seuls les rôles absents sont créés, avec des droits limités aux modules retenus ; les rôles existants ne sont jamais modifiés. Les comptes utilisateurs se créent ensuite dans Utilisateurs.</p>
+      {!templates.length ? <div className="ds-alert info">Aucun modèle de rôle pour cette sélection.</div> :
+      <div className="ds-panel"><table className="odoo-table"><thead><tr><th style={{ width: 44 }} aria-label="Retenu"></th><th>Rôle</th><th>Accès</th><th style={{ width: 170 }}>Périmètre</th><th style={{ width: 120 }}>État</th></tr></thead><tbody>
+        {templates.map(t => {
+          const perms = t.permissions.filter(p => !(ACTIVATABLE_MODULES as string[]).includes(p.module) || CORE_MODULES.has(p.module as AppModule) || modules.has(p.module));
+          return <tr key={t.code}>
+            <td><input type="checkbox" aria-label={`Retenir ${t.label}`} checked={t.exists || chosen.includes(t.code)} disabled={disabled || t.exists} onChange={() => toggleItem('selected', t.code)}/></td>
+            <td><strong>{t.label}</strong><small className="wz-muted" style={{ display: 'block' }}>{t.description}</small>
+              {t.sod.map(v => <small key={v.code} className={`kl-tag ${v.severity === 'critical' ? 'r' : 'o'}`} style={{ display: 'inline-block', marginTop: 4 }}>Séparation des tâches : {v.label}</small>)}</td>
+            <td>{perms.map(p => <small key={p.module} style={{ display: 'block' }}>{MODULE_LABELS[p.module as AppModule] ?? p.module} : {p.rights.split('').map(r => RIGHT_LABELS[r]).filter(Boolean).join(', ')}{p.verbs?.length ? ` + ${p.verbs.map(v => v === 'approve' ? 'approuver' : v === 'post' ? 'comptabiliser' : v).join(', ')}` : ''}</small>)}</td>
+            <td>{scopes(perms)}</td>
+            <td><span className={`kl-tag ${t.exists ? 'x' : chosen.includes(t.code) ? 'b' : 'x'}`}>{t.exists ? 'Existe déjà' : chosen.includes(t.code) ? 'À créer' : 'Non retenu'}</span></td>
+          </tr>;
+        })}
+      </tbody></table></div>}</>;
+  }
   if (step === 'data') return <>{toggle('demo','Prévoir des données de démonstration isolées')}<p className="wz-muted">Aucun fichier ni donnée ne sera importé à ce stade.</p></>;
   return null;
 }
