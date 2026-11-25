@@ -47,7 +47,7 @@ export default function AcceptInvitationPage() {
   };
 
   return (
-    <div className="kl-ds odoo-scope min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
+    <div className="kl-ds min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--ds-bg)' }}>
       <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--ds-card)', display: 'grid', gap: 16 }}>
         <div>
           <h1 className="text-xl font-bold" style={{ color: 'var(--ds-accent)', margin: 0 }}>{settings.companyName || 'Kalum'}</h1>
@@ -58,7 +58,7 @@ export default function AcceptInvitationPage() {
           : data.status !== 'valid' ? (
             <>
               <div className="ds-alert warning">{data.message}</div>
-              <button type="button" className="odoo-btn-secondary" onClick={() => navigate('/login')}>Aller à la connexion</button>
+              <button type="button" className="btn-secondary w-full py-3" onClick={() => navigate('/login')}>Aller à la connexion</button>
             </>
           ) : (
             <form onSubmit={submit} style={{ display: 'grid', gap: 14 }}>
@@ -87,7 +87,7 @@ export default function AcceptInvitationPage() {
                 <input id="inv-confirm" className="ds-input" type={show ? 'text' : 'password'} autoComplete="new-password" value={confirm} onChange={e => setConfirm(e.target.value)} />
                 {confirm && !same && <span className="ds-field-hint" role="alert" style={{ color: 'var(--ds-danger)' }}>Les deux mots de passe diffèrent</span>}
               </div>
-              <button type="submit" className="odoo-btn-primary" disabled={busy || !allOk || !same || !confirm}>
+              <button type="submit" className="btn-primary w-full py-3" disabled={busy || !allOk || !same || !confirm}>
                 {busy ? 'Enregistrement…' : 'Enregistrer et me connecter'}
               </button>
               {data.expiresAt && (
