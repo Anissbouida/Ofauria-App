@@ -75,13 +75,20 @@ export const withholdingRepository = {
     const rows = await db.query(
       `SELECT w.code, w.label, w.legal_ref, w.echeance_jours,
               a.code AS account_code,
-              COALESCE(SUM(jel.credit), 0) AS total_retenu,
-              COALESCE(SUM(jel.debit), 0)  AS total_reverse,
-              COALESCE(SUM(jel.credit), 0) - COALESCE(SUM(jel.debit), 0) AS a_reverser
+              COALESCE(SUM(m.credit), 0) AS total_retenu,
+              COALESCE(SUM(m.debit), 0)  AS total_reverse,
+              COALESCE(SUM(m.credit), 0) - COALESCE(SUM(m.debit), 0) AS a_reverser
        FROM withholding_tax_types w
        JOIN accounts a ON a.id = w.account_id
-       LEFT JOIN journal_entry_lines jel ON jel.account_id = a.id
-       LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id AND ${where.join(' AND ')}
+       -- Plan compta, étape 6 (audit I-07) : le filtre (statut, période, magasin) s'applique aux
+       -- LIGNES retenues, dans la sous-requête. Placé dans le ON d'un LEFT JOIN sur l'écriture, il
+       -- ne filtrait rien : toutes les lignes du compte étaient comptées, brouillons et hors période compris.
+       LEFT JOIN (
+         SELECT jel.account_id, jel.debit, jel.credit
+           FROM journal_entry_lines jel
+           JOIN journal_entries je ON je.id = jel.journal_entry_id
+          WHERE ${where.join(' AND ')}
+       ) m ON m.account_id = a.id
        GROUP BY w.code, w.label, w.legal_ref, w.echeance_jours, a.code
        ORDER BY w.code`,
       values

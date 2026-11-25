@@ -62,7 +62,9 @@ export async function hrAnalytics(year: number, storeId?: string) {
          FROM journal_entry_lines l
          JOIN journal_entries je ON je.id = l.journal_entry_id
          JOIN accounts a ON a.id = l.account_id
-        WHERE a.code LIKE '71%' AND je.status = 'posted' AND EXTRACT(YEAR FROM je.entry_date) = $1
+        -- Un original extourné reste compté avec son extourne (convention de la mig 311) : filtrer 'posted' seul
+        -- compterait l'extourne sans l'original, donc une facture modifiée pèserait zéro.
+        WHERE a.code LIKE '71%' AND je.status IN ('posted', 'reversed') AND EXTRACT(YEAR FROM je.entry_date) = $1
           ${storeId ? 'AND (je.store_id = $2 OR je.store_id IS NULL)' : ''}
         GROUP BY 1`, p),
     loadLeaveConfig(),

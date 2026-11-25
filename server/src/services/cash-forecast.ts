@@ -61,7 +61,7 @@ async function accountBalance(prefixes: string[], side: 'debit' | 'credit', unti
   const r = await db.query(
     `SELECT COALESCE(SUM(${side === 'debit' ? 'l.debit - l.credit' : 'l.credit - l.debit'}), 0)::float8 AS b
        FROM journal_entry_lines l JOIN journal_entries e ON e.id = l.journal_entry_id JOIN accounts a ON a.id = l.account_id
-      WHERE e.status = 'posted' AND e.entry_date <= $2::date AND a.code LIKE ANY($1)`, [prefixes.map(p => `${p}%`), until]);
+      WHERE e.status IN ('posted', 'reversed') AND e.entry_date <= $2::date AND a.code LIKE ANY($1)`, [prefixes.map(p => `${p}%`), until]);
   return r2(r.rows[0].b);
 }
 
@@ -77,7 +77,7 @@ export async function cashForecast(opts: ForecastOptions = {}) {
   const accIds = await treasuryAccountIds();
   const opening = r2(Number((await db.query(
     `SELECT COALESCE(SUM(l.debit - l.credit), 0)::float8 AS b FROM journal_entry_lines l JOIN journal_entries e ON e.id = l.journal_entry_id
-      WHERE e.status = 'posted' AND e.entry_date < $2::date AND l.account_id = ANY($1)`, [accIds, from])).rows[0].b));
+      WHERE e.status IN ('posted', 'reversed') AND e.entry_date < $2::date AND l.account_id = ANY($1)`, [accIds, from])).rows[0].b));
 
   // Ventes au comptoir : moyenne par jour de la semaine sur les 8 dernières semaines (ventes payées,
   // non annulées). Une vente à crédit devient une créance : elle est comptée avec les factures.
