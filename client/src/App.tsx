@@ -61,6 +61,7 @@ import ProjectsPage from './features/projects/ProjectsPage';
 import ProjectDetailPage from './features/projects/ProjectDetailPage';
 import MaintenancePage from './features/maintenance/MaintenancePage';
 import UsersPage from './features/users/UsersPage';
+import UserRecordPage from './features/users/UserRecordPage';
 import SettingsPage from './features/settings/SettingsPage';
 import ConfigurationWizard from './features/settings/ConfigurationWizard';
 import AccountingPage from './features/accounting/AccountingPage';
@@ -173,6 +174,7 @@ export default function App() {
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/employees/:id" element={<EmployeeDetailPage />} />
               <Route path="/users" element={<UsersPage />} />
+              <Route path="/users/:id" element={<UserRecordPage />} />
               <Route path="/accounting" element={<AccountingPage />} />
               <Route path="/purchasing" element={<PurchasingPage />} />
               <Route path="/settings" element={<SettingsPage />} />

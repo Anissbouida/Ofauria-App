@@ -36,9 +36,9 @@ plusieurs commits autonomes qui compilent et passent les tests. Migrations numé
 
 ## Suivi
 
-- [ ] Lot 0
-- [ ] Lot 1
-- [ ] Lot 2
+- [x] Lot 0 — f435f45f
+- [x] Lot 1 — module à rubriques, vue d'ensemble, comptes
+- [x] Lot 2 — fiche en page `/users/:id` (connexions externes en lecture seule : elles se rattachent par l'e-mail à chaque connexion, « délier » n'aurait pas d'effet durable)
 - [ ] Lot 3
 - [ ] Lot 4
 - [ ] Lot 5

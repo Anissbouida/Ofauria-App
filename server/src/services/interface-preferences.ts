@@ -31,17 +31,17 @@ export async function readInterfacePreferences(userId?:string){
   return {available,...resolveInterfacePreferences(rows,userId)};
 }
 
-/** Seules les préférences propres au compte authentifié sont écrites. */
-export async function setPersonalInterfacePreferences(userId:string,patch:PreferencePatch){
+/** Préférences propres à un compte ; actorId = qui les écrit (l'administrateur depuis la fiche du compte). */
+export async function setPersonalInterfacePreferences(userId:string,patch:PreferencePatch,actorId:string=userId){
   return withTransaction(async()=>{
     if(!(await db.query(`SELECT to_regclass('public.config_values') IS NOT NULL AS ok`)).rows[0]?.ok)throw Object.assign(new Error('Préférences indisponibles sur cette installation.'),{statusCode:409});
-    await db.query(`SELECT set_config('app.user_id',$1,true)`,[userId]);
+    await db.query(`SELECT set_config('app.user_id',$1,true)`,[actorId]);
     for(const field of fields){
       const value=patch[field];if(value===undefined)continue;
       if(value===null){await db.query(`DELETE FROM config_values WHERE key=$1 AND scope_type='user' AND scope_id=$2`,[INTERFACE_KEYS[field],userId]);continue;}
       const normalized=normalizePreference(field,value);
       if(!normalized)throw Object.assign(new Error('Préférence invalide.'),{statusCode:400});
-      await db.query(`INSERT INTO config_values(key,scope_type,scope_id,value,updated_by) VALUES($1,'user',$2::text,$3::jsonb,$2::text::uuid) ON CONFLICT(key,scope_type,scope_id) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,updated_at=now()`,[INTERFACE_KEYS[field],userId,JSON.stringify(normalized)]);
+      await db.query(`INSERT INTO config_values(key,scope_type,scope_id,value,updated_by) VALUES($1,'user',$2::text,$3::jsonb,$4::text::uuid) ON CONFLICT(key,scope_type,scope_id) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,updated_at=now()`,[INTERFACE_KEYS[field],userId,JSON.stringify(normalized),actorId]);
     }
     return readInterfacePreferences(userId);
   });

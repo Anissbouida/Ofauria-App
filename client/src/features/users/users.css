@@ -38,3 +38,13 @@
 .usr-kv { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0; font-size: 14px; }
 .usr-kv dt { color: var(--ds-muted); }
 .usr-kv dd { margin: 0; color: var(--ds-ink); min-width: 0; }
+
+/* Fiche d'un compte : en-tête, contenu à gauche, résumé à droite (une colonne sous 1100 px). */
+.usr-record-head { display: flex; align-items: center; gap: var(--ds-s4); flex-wrap: wrap; margin-bottom: var(--ds-s4); }
+.usr-record-head h1 { margin: 0; font-size: var(--ds-t-page); font-weight: 700; letter-spacing: -.03em; color: var(--ds-ink); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.usr-record-head p { margin: 4px 0 0; color: var(--ds-muted); font-size: 15px; }
+.usr-record { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--ds-s4); align-items: start; margin-top: var(--ds-s4); }
+@media (max-width: 1100px) { .usr-record { grid-template-columns: minmax(0, 1fr); } }
+.usr-side { padding: 16px 18px; display: grid; gap: 12px; font-size: 13px; }
+.usr-side h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ds-ink); }
+.usr-pad { padding: 16px 20px; display: grid; gap: 12px; }

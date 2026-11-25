@@ -32,23 +32,14 @@ const HISTORY_LABELS: Record<string, string> = {
   access_denied: 'Accès hors droits', user_deleted: 'Compte supprimé définitivement',
 };
 
-export function AccessReviewModal({ userId, name, onClose }: { userId: string; name: string; onClose: () => void }) {
+/** Droits résolus d'un compte : rôles, conflits, droits par module et d'où ils viennent, plafonds. */
+export function AccessRightsView({ userId }: { userId: string }) {
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['access-review', userId], queryFn: () => accessReviewApi.review(userId) });
-  const { data: history = [] } = useQuery({ queryKey: ['access-history', userId], queryFn: () => accessReviewApi.history(userId) });
-  const [tab, setTab] = useState<'rights' | 'history'>('rights');
-
   const roleName = (code: string) => code === '__custom__' ? 'Droits propres'
     : data?.roles.find(r => r.code === code)?.label ?? code;
-
+  if (isError) return <ErrorState bare error={error} title="La revue des accès n'a pas pu être chargée" onRetry={() => void refetch()} />;
+  if (isLoading || !data) return <LoadingPanel />;
   return (
-    <Modal subtitle="Revue des accès" title={name} width={860} onClose={onClose}
-      footer={<button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>}>
-      <div>
-        <Segmented label="Vue de la revue" value={tab} onChange={setTab}
-          options={[{ key: 'rights', label: 'Droits résolus', icon: ScanSearch }, { key: 'history', label: 'Historique', icon: History }]} />
-      </div>
-
-      {isError ? <ErrorState bare error={error} title="La revue des accès n'a pas pu être chargée" onRetry={() => void refetch()} /> : isLoading || !data ? <LoadingPanel /> : tab === 'rights' ? (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: 'var(--ds-muted)' }}>Rôles :</span>
@@ -110,7 +101,13 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
             </>
           )}
         </div>
-      ) : (
+  );
+}
+
+/** Historique d'un compte : connexions et sécurité (auth_events) et changements de droits (journal). */
+export function AccessHistoryView({ userId }: { userId: string }) {
+  const { data: history = [] } = useQuery({ queryKey: ['access-history', userId], queryFn: () => accessReviewApi.history(userId) });
+  return (
         <DataPanel>
           <table className="odoo-table">
             <thead><tr><th>Date</th><th>Événement</th><th>Par</th><th>Détail</th></tr></thead>
@@ -127,7 +124,19 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
             </tbody>
           </table>
         </DataPanel>
-      )}
+  );
+}
+
+export function AccessReviewModal({ userId, name, onClose }: { userId: string; name: string; onClose: () => void }) {
+  const [tab, setTab] = useState<'rights' | 'history'>('rights');
+  return (
+    <Modal subtitle="Revue des accès" title={name} width={860} onClose={onClose}
+      footer={<button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>}>
+      <div>
+        <Segmented label="Vue de la revue" value={tab} onChange={setTab}
+          options={[{ key: 'rights', label: 'Droits résolus', icon: ScanSearch }, { key: 'history', label: 'Historique', icon: History }]} />
+      </div>
+      {tab === 'rights' ? <AccessRightsView userId={userId} /> : <AccessHistoryView userId={userId} />}
     </Modal>
   );
 }

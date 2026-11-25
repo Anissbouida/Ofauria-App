@@ -14,6 +14,10 @@ export const usersApi = {
   revokeSessions: (id: string) => api.post(`/users/${id}/revoke-sessions`, {}).then(r => r.data.data),
   setMustChangePassword: (id: string, value: boolean) => api.put(`/users/${id}/must-change-password`, { value }).then(r => r.data.data),
   /** Politique : rôles qui doivent activer la double authentification. */
+  /** Fiche d'un compte : rattachements (ateliers, essais, circuits, délégations, connexions externes) et préférences. */
+  profile: (id: string) => api.get(`/users/${id}/profile`).then(r => r.data.data as AccountProfile),
+  setPreferences: (id: string, data: { locale?: 'fr' | 'ar' | 'en' | null; workspace?: string | null }) =>
+    api.put(`/users/${id}/preferences`, data).then(r => r.data.data),
   mfaPolicy: () => api.get('/users/security/mfa-policy').then(r => r.data.data as { requiredRoles: string[] }),
   setMfaPolicy: (requiredRoles: string[]) => api.put('/users/security/mfa-policy', { requiredRoles }).then(r => r.data.data as { requiredRoles: string[] }),
   getPermissions: (id: string) => api.get(`/users/${id}/permissions`).then(r => r.data.data),
@@ -29,6 +33,15 @@ export const usersApi = {
 };
 
 /** Rôle (table roles, mig 330) : 9 rôles système + rôles créés. */
+export interface AccountProfile {
+  workshops: { code: string; label: string; via: 'user' | 'role'; roleCode: string | null }[];
+  pilots: { moduleKey: string; via: 'user' | 'role'; roleCode: string | null }[];
+  approvalSteps: { ruleCode: string; ruleLabel: string; docType: string; enabled: boolean; stepOrder: number; via: 'user' | 'role'; roleCode: string | null }[];
+  delegations: { id: string; kind: 'role' | 'approvals'; direction: 'given' | 'received'; otherName: string; roleCode: string | null; startsAt: string; endsAt: string; reason: string | null; active: boolean }[];
+  identities: { provider: string; email: string | null; lastLoginAt: string | null; createdAt: string }[];
+  preferences: { locale: 'fr' | 'ar' | 'en' | null; workspace: string | null; workspaceResolved: string; available: boolean };
+}
+
 export interface RoleRow {
   code: string;
   label: string;

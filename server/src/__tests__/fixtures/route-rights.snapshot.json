@@ -2556,9 +2556,6 @@
  "GET /settings/api-keys": null,
  "GET /settings/approval-rules": null,
  "GET /settings/assistant": null,
- "GET /settings/sectors/:code/versions": null,
- "GET /settings/sectors/:code/versions/compare": null,
- "GET /settings/sectors/versions": null,
  "GET /settings/assistant/:id/changeset": null,
  "GET /settings/assistant/:id/preview": null,
  "GET /settings/assistant/catalog": null,
@@ -2599,6 +2596,9 @@
  "GET /settings/screens/:key/resolved": null,
  "GET /settings/sector": null,
  "GET /settings/sector/starter": null,
+ "GET /settings/sectors/:code/versions": null,
+ "GET /settings/sectors/:code/versions/compare": null,
+ "GET /settings/sectors/versions": null,
  "GET /settings/setup": null,
  "GET /settings/specializations": null,
  "GET /settings/tax-codes": null,
@@ -2772,6 +2772,9 @@
   "admin"
  ],
  "GET /users/:id/permissions": [
+  "admin"
+ ],
+ "GET /users/:id/profile": [
   "admin"
  ],
  "GET /users/access-overview": [
@@ -5157,8 +5160,8 @@
   "manager"
  ],
  "PUT /params/:tableName/:id": null,
- "PUT /params/:tableName/:id/reactivate": null,
  "PUT /params/:tableName/:id/follow-sector": null,
+ "PUT /params/:tableName/:id/reactivate": null,
  "PUT /params/:tableName/:id/restore-label": null,
  "PUT /params/:tableName/reorder": null,
  "PUT /payment-runs/transfer-format/:treasuryAccountId": [
@@ -5495,6 +5498,7 @@
  "PUT /schedules/:id": null,
  "PUT /settings": null,
  "PUT /settings/approval-rules/:code": null,
+ "PUT /settings/assistant/:id": null,
  "PUT /settings/bank-accounts/:id": null,
  "PUT /settings/document-sequences/:docType": null,
  "PUT /settings/documents/:docType": null,
@@ -5508,7 +5512,6 @@
  "PUT /settings/production-documents/:key": null,
  "PUT /settings/screens/:key/draft": null,
  "PUT /settings/sector": null,
- "PUT /settings/assistant/:id": null,
  "PUT /settings/specializations/:code": null,
  "PUT /settings/tax-codes/:id": null,
  "PUT /settings/vocabulary/:key": null,
@@ -5549,6 +5552,9 @@
   "admin"
  ],
  "PUT /users/:id/permissions": [
+  "admin"
+ ],
+ "PUT /users/:id/preferences": [
   "admin"
  ],
  "PUT /users/me/interface-preferences": null,

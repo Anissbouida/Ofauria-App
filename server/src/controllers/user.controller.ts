@@ -16,6 +16,8 @@ import { normalizePermissions, permissionView } from '../services/permission-inp
 import { sodEnforcementMode, evaluateRoleCodesSod } from '../services/governance.js';
 import { logger } from '../utils/logger.js';
 import { mfaRepository } from '../repositories/mfa.repository.js';
+import { accountAttachments } from '../services/account-profile.js';
+import { readInterfacePreferences, setPersonalInterfacePreferences } from '../services/interface-preferences.js';
 
 type Guarded = 'deactivate' | 'delete' | 'demote';
 const GUARD_VERB: Record<Guarded, string> = { deactivate: 'désactiver', delete: 'supprimer', demote: 'retirer le rôle administrateur de' };
@@ -70,6 +72,7 @@ export const userController = {
         lockedUntil: lockedUntil && new Date(lockedUntil).getTime() > now ? lockedUntil : null,
         failedLoginCount: (u as { failed_login_count?: number }).failed_login_count ?? 0,
         lastLoginAt: lastLogins.get(u.id) ?? null,
+        locale: (u as { locale?: string | null }).locale ?? null,
       };
     });
     res.json({ success: true, data: safe });
@@ -452,6 +455,48 @@ export const userController = {
   /** Fiches salariés actives (sélecteur de lien espace employé). Admin. */
   async employeesForLink(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await userRepository.employeesForLink() });
+  },
+
+  /**
+   * Fiche d'un compte (refonte Utilisateurs, lot 2) : rattachements réglés dans les autres modules
+   * (ateliers, modules en essai, circuits d'approbation, délégations, connexions externes) et
+   * préférences (langue, espace de travail).
+   */
+  async profile(req: AuthRequest, res: Response) {
+    const user = await userRepository.findById(req.params.id);
+    if (!user) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
+    const [attachments, prefs] = await Promise.all([accountAttachments(user.id), readInterfacePreferences(user.id)]);
+    res.json({
+      success: true,
+      data: {
+        ...attachments,
+        preferences: {
+          locale: (user as { locale?: string | null }).locale ?? null,
+          workspace: prefs.personal.workspace ?? null,
+          workspaceResolved: prefs.values.workspace,
+          available: prefs.available,
+        },
+      },
+    });
+  },
+
+  /** Langue et espace de travail d'un compte, réglés par l'administrateur (null = valeur de la société). */
+  async setPreferences(req: AuthRequest, res: Response) {
+    const user = await userRepository.findById(req.params.id);
+    if (!user) { res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } }); return; }
+    const { locale, workspace } = req.body as { locale?: 'fr' | 'ar' | 'en' | null; workspace?: string | null };
+    const changed: string[] = [];
+    if (locale !== undefined) { await userRepository.setLocale(user.id, locale); changed.push('locale'); }
+    if (workspace !== undefined) { await setPersonalInterfacePreferences(user.id, { workspace }, req.user!.userId); changed.push('workspace'); }
+    if (changed.length) {
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'user_updated', userId: req.user?.userId, targetUserId: user.id, email: user.email, success: true,
+        details: { changed },
+      });
+    }
+    const prefs = await readInterfacePreferences(user.id);
+    const fresh = await userRepository.findById(user.id);
+    res.json({ success: true, data: { locale: (fresh as { locale?: string | null } | null)?.locale ?? null, workspace: prefs.personal.workspace ?? null, workspaceResolved: prefs.values.workspace } });
   },
 
   /** Return permissions for the currently authenticated user */

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usersApi, rolesApi, governanceApi } from '../../api/users.api';
 import RolesPanel from './RolesPanel';
 import { SodSection, ApprovalLimitsSection, DelegationsSection } from './GovernancePanel';
@@ -97,7 +97,10 @@ export default function UsersPage() {
     if (params.get('tab') === 'governance') { const n = new URLSearchParams(params); n.set('tab', 'controls'); setParams(n, { replace: true }); }
   }, [params, setParams]);
 
-  const [editing, setEditing] = useState<UserRow | 'new' | null>(null);
+  const navigate = useNavigate();
+  // Création : fenêtre ; un compte existant s'ouvre en page (fiche, lot 2).
+  const [editing, setEditing] = useState<'new' | null>(null);
+  const openRecord = (u: UserRow) => navigate(`/users/${u.id}`);
   const [preview, setPreview] = useState<UserRow | null>(null);
   const [reviewUser, setReviewUser] = useState<UserRow | null>(null);
   // Emplacement des actions de l'écran actif (ex. « Nouveau rôle »), à droite du fil d'Ariane.
@@ -120,7 +123,7 @@ export default function UsersPage() {
         <ModulePage title={current?.label} summary={current ? LEADS[current.key] : undefined}>
           <div className="odoo-scope usr-module" style={{ background: 'transparent' }}>
             {view === 'overview' && <UsersOverview onOpenAccount={setPreview} onGo={select} />}
-            {view === 'accounts' && <AccountsTab onEdit={setEditing} onPreview={setPreview} onReview={setReviewUser} />}
+            {view === 'accounts' && <AccountsTab onEdit={openRecord} onPreview={setPreview} onReview={setReviewUser} />}
             {view === 'review' && <AccessReviewTab />}
             {view === 'delegations' && <DelegationsSection />}
             {view === 'journal' && <LoginsView users={users} />}
@@ -143,10 +146,10 @@ export default function UsersPage() {
 
       {preview && (
         <AccountDrawer user={preview} selfId={me?.id} onClose={() => setPreview(null)}
-          onOpen={u => { setPreview(null); setEditing(u); }} onReview={u => setReviewUser(u)} />
+          onOpen={u => { setPreview(null); openRecord(u); }} onReview={u => setReviewUser(u)} />
       )}
       {reviewUser && <AccessReviewModal userId={reviewUser.id as string} name={fullName(reviewUser)} onClose={() => setReviewUser(null)} />}
-      {editing && <UserFormModal user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+      {editing && <UserFormModal user={null} onClose={() => setEditing(null)} />}
     </HrHeaderSlot.Provider>
   );
 }
@@ -663,7 +666,7 @@ const ACTIONS = [['canView', 'Voir'], ['canCreate', 'Créer'], ['canEdit', 'Modi
 // Sections du module Parametres (config.sections) : vide = toutes les sections.
 const SETTINGS_SECTION_KEYS = Object.keys(SETTINGS_SECTION_LABELS) as SettingsSection[];
 
-function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLabel: string; onClose: () => void }) {
+export function PermissionsModal({ user, roleLabel, onClose }: { user: UserRow; roleLabel: string; onClose: () => void }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const userId = user.id as string;

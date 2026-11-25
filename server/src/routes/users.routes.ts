@@ -15,6 +15,11 @@ import { approvalLimitSchema, createRoleSchema, createSodRuleSchema, createUserS
 
 /** G6-05 : langue de l'interface ; null = revenir au défaut de la société. */
 export const setLocaleSchema = z.object({ locale: z.enum(['fr', 'ar', 'en']).nullable() }).strict();
+/* Préférences d'un compte réglées par l'administrateur (null = valeur de la société). */
+const userPreferencesSchema = z.object({
+  locale: z.enum(['fr', 'ar', 'en']).nullable().optional(),
+  workspace: z.enum(['sector', 'direction', 'production', 'sales', 'accounting']).nullable().optional(),
+}).strict();
 const setActionPermissionsSchema = z.object({ keys: z.array(z.string().min(3).max(120)).max(2000) });
 /** Administration de la sécurité d'un compte (2FA exigée, changement de mot de passe imposé). */
 const requiredFlagSchema = z.object({ required: z.boolean() }).strict();
@@ -77,6 +82,9 @@ router.post('/:id/unlock', authenticate, validateUuidParams('id'), can('users.ed
 router.post('/:id/revoke-sessions', authenticate, validateUuidParams('id'), can('users.edit'), validate(emptySchema), asyncHandler(userController.revokeSessions));
 router.put('/:id/must-change-password', authenticate, validateUuidParams('id'), can('users.edit'), validate(valueFlagSchema), asyncHandler(userController.setMustChangePassword));
 router.delete('/:id/permanent', authenticate, validateUuidParams('id'), can('users.delete'), asyncHandler(userController.hardDelete));
+// Fiche du compte (refonte Utilisateurs, lot 2) : rattachements et préférences réglées par l'administrateur.
+router.get('/:id/profile', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(userController.profile));
+router.put('/:id/preferences', authenticate, validateUuidParams('id'), can('users.edit'), validate(userPreferencesSchema), asyncHandler(userController.setPreferences));
 
 // Profil de l'utilisateur connecté — aucune clé de droit : chacun règle sa propre langue (G6-05).
 router.put('/me/locale', authenticate, validate(setLocaleSchema), asyncHandler(userController.setMyLocale));
