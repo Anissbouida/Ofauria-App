@@ -101,7 +101,12 @@ export const passkeyController = {
       });
       if (!v.verified) throw new Error('non vérifiée');
       info = v.registrationInfo;
-    } catch {
+    } catch (err) {
+      // Raison exacte journalisée (origine, domaine, vérification de l'utilisateur…) pour le support.
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'passkey_failed', userId, success: false,
+        details: { step: 'register', reason: String((err as Error)?.message ?? err).slice(0, 300), origin: t.origin, rpId: t.rp },
+      });
       fail(res, 400, 'La passkey n\'a pas pu être vérifiée'); return;
     }
     if (!(await revokedTokenRepository.consume(t.jti, userId, t.exp))) { fail(res, 400, 'Demande déjà utilisée, recommencez'); return; }
@@ -183,8 +188,8 @@ export const passkeyController = {
       });
       if (!v.verified) throw new Error('non vérifiée');
       newCounter = v.authenticationInfo.newCounter;
-    } catch {
-      await authEventRepository.recordFromRequest(req, { eventType: 'passkey_failed', userId: user.id, email: user.email, success: false, details: { reason: 'bad_signature' } });
+    } catch (err) {
+      await authEventRepository.recordFromRequest(req, { eventType: 'passkey_failed', userId: user.id, email: user.email, success: false, details: { reason: 'bad_signature', error: String((err as Error)?.message ?? err).slice(0, 300) } });
       fail(res, 401, 'La passkey n\'a pas pu être vérifiée'); return;
     }
     if (!(await revokedTokenRepository.consume(t.jti, user.id, t.exp))) { fail(res, 401, 'Demande déjà utilisée, recommencez'); return; }

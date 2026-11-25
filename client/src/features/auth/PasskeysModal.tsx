@@ -18,8 +18,11 @@ export async function addPasskeyHere(): Promise<Passkey | null> {
     return p;
   } catch (e) {
     if (passkeyCancelled(e)) return null;
-    const name = (e as { name?: string })?.name;
-    notify.error(name === 'InvalidStateError' ? 'Cet appareil a déjà une passkey pour votre compte' : apiErrorMessage(e, 'Ajout de la passkey impossible'));
+    const err = e as { name?: string; message?: string; response?: unknown };
+    if (err?.name === 'InvalidStateError') notify.error('Cet appareil a déjà une passkey pour votre compte');
+    // Refus du navigateur ou de l'appareil (pas une réponse de Kalum) : son message exact, utile au support.
+    else if (!err?.response && err?.message) notify.error(`Ajout de la passkey impossible : ${err.message}`);
+    else notify.error(apiErrorMessage(e, 'Ajout de la passkey impossible'));
     return null;
   }
 }
