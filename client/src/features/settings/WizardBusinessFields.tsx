@@ -328,12 +328,20 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
         <div className="ds-scroll"><table className="odoo-table ds-dense" style={{ width: '100%' }}><thead><tr><th style={{ width: 36 }} aria-label="Retenu"></th><th>Rôle proposé</th><th>Accès principaux</th><th style={{ width: 160 }}>Périmètre</th><th style={{ width: 110 }}>État</th></tr></thead><tbody>
           {templates.map(t => {
             const perms = t.permissions.filter(p => !(ACTIVATABLE_MODULES as string[]).includes(p.module) || CORE_MODULES.has(p.module as AppModule) || modules.has(p.module));
-            const scopes = [...new Set(perms.map(p => SCOPE_LABELS[p.scope ?? 'store']))].join(', ');
+            // Périmètre du module principal du rôle (le premier déclaré), comme dans la maquette.
+            const scopes = SCOPE_LABELS[perms[0]?.scope ?? 'store'];
+            const byRights = new Map<string, string[]>();
+            for (const p of perms) {
+              const key = p.rights.split('').map(r => RIGHT_LABELS[r]).filter(Boolean).join(', ');
+              byRights.set(key, [...(byRights.get(key) ?? []), MODULE_LABELS[p.module as AppModule] ?? p.module]);
+            }
+            const verbs = perms.flatMap(p => (p.verbs ?? []).map(v => `${VERB_LABELS[v] ?? v} (${MODULE_LABELS[p.module as AppModule] ?? p.module})`));
             const on = t.exists || chosen.includes(t.code);
             return <tr key={t.code}>
               <td><input type="checkbox" aria-label={`Retenir ${t.label}`} checked={on} disabled={disabled || t.exists} onChange={() => toggleItem('selected', t.code)} /></td>
               <td className="ds-strong">{t.label}<div className="mq-sub">{t.description}</div>{t.sod.map(v => <div key={v.code} style={{ marginTop: 4 }}><Tag tone={v.severity === 'critical' ? 'r' : 'o'}>Séparation des tâches : {v.label}</Tag></div>)}</td>
-              <td>{perms.map(p => <div key={p.module}>{MODULE_LABELS[p.module as AppModule] ?? p.module} : {p.rights.split('').map(r => RIGHT_LABELS[r]).filter(Boolean).join(', ')}{p.verbs?.length ? ` + ${p.verbs.map(v => VERB_LABELS[v] ?? v).join(', ')}` : ''}</div>)}</td>
+              <td>{[...byRights].map(([rights, mods]) => <div key={rights}><span style={{ color: 'var(--ds-muted)' }}>{rights.charAt(0).toUpperCase() + rights.slice(1)} :</span> {mods.join(', ')}</div>)}
+                {verbs.length > 0 && <div><span style={{ color: 'var(--ds-muted)' }}>Valide :</span> {verbs.join(', ')}</div>}</td>
               <td>{scopes}</td>
               <td>{t.exists ? <Tag tone="x">Existe déjà</Tag> : on ? <Tag tone="b">À créer</Tag> : <Tag tone="x">Non retenu</Tag>}</td></tr>;
           })}</tbody></table></div>}
