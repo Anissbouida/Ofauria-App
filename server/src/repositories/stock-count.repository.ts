@@ -287,7 +287,9 @@ export const stockCountRepository = {
  * ligne sans stock non comptée vaut zéro). Inventaire tournant (lignes en stock non comptées) : rien.
  * Idempotent (persistEntry : une écriture par inventaire). Exportée pour la reprise des inventaires passés.
  */
-export async function postStockVariation(client: PoolClient, c: { id: string; number: string; store_id: string | null; count_date: string | Date | null }, userId: string | null) {
+export async function stockVariationEntry(
+  client: PoolClient, c: { id: string; number: string; store_id: string | null; count_date: string | Date | null }
+): Promise<{ entry: import('../services/journal-generator.service.js').GeneratedEntry; delta: number } | null> {
   const agg = (await client.query(
     `SELECT COUNT(*) FILTER (WHERE counted_qty IS NULL AND COALESCE(theoretical_at_start, 0) > 0)::int AS uncounted, COUNT(*)::int AS n,
             COALESCE(SUM(counted_qty * COALESCE(unit_cost, 0)), 0) AS value
@@ -301,16 +303,25 @@ export async function postStockVariation(client: PoolClient, c: { id: string; nu
         AND ($1::uuid IS NULL OR je.store_id = $1 OR je.store_id IS NULL)`, [c.store_id ?? null, date, c.id])).rows[0].v);
   const delta = round2(Number(agg.value) - booked);
   if (Math.abs(delta) < 0.01) return null;
-  const { postOrQueue } = await import('../services/ledger-posting.service.js');
-  const { persistEntry } = await import('../services/journal-generator.service.js');
   const stock = { account_code: '3121', label: `Stock matières à l'inventaire ${c.number}` };
   const variation = { account_code: '6124', label: 'Variation des stocks de matières' };
-  await postOrQueue(client, { kind: 'stock_count', id: c.id }, () => persistEntry(client, {
-    journal_code: 'OD', entry_date: date, description: `Variation de stock — inventaire ${c.number}`,
-    source_kind: 'stock_count', source_id: c.id, store_id: c.store_id ?? null,
-    lines: delta > 0
-      ? [{ ...stock, debit: delta, credit: 0 }, { ...variation, debit: 0, credit: delta }]
-      : [{ ...variation, debit: -delta, credit: 0 }, { ...stock, debit: 0, credit: -delta }],
-  }, { userId }));
-  return delta;
+  return {
+    delta,
+    entry: {
+      journal_code: 'OD', entry_date: date, description: `Variation de stock — inventaire ${c.number}`,
+      source_kind: 'stock_count', source_id: c.id, store_id: c.store_id ?? null,
+      lines: delta > 0
+        ? [{ ...stock, debit: delta, credit: 0 }, { ...variation, debit: 0, credit: delta }]
+        : [{ ...variation, debit: -delta, credit: 0 }, { ...stock, debit: 0, credit: -delta }],
+    },
+  };
+}
+
+export async function postStockVariation(client: PoolClient, c: { id: string; number: string; store_id: string | null; count_date: string | Date | null }, userId: string | null) {
+  const built = await stockVariationEntry(client, c);
+  if (!built) return null;
+  const { postOrQueue } = await import('../services/ledger-posting.service.js');
+  const { persistEntry } = await import('../services/journal-generator.service.js');
+  await postOrQueue(client, { kind: 'stock_count', id: c.id }, () => persistEntry(client, built.entry, { userId }));
+  return built.delta;
 }

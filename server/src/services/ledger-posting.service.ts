@@ -17,6 +17,25 @@ import {
 
 export type PostingMode = 'outbox' | 'strict';
 
+/**
+ * Cause d'un échec de comptabilisation, classée pour que l'écran propose la bonne correction
+ * (plan compta, étape 5). Un code porté par l'erreur elle-même prime ; sinon, lecture du message.
+ */
+export function classifyPostingError(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && /^[A-Z][A-Z_]{2,38}$/.test(code)) return code;
+  const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (m.includes('sans compte comptable') || m.includes('paramétrage comptable manquant') || m.includes('indéterminable')) return 'MISSING_ACCOUNT';
+  if (m.includes('période') || m.includes('periode') || m.includes('verrouill')) return 'PERIOD_CLOSED';
+  if (m.includes('prix')) return 'MISSING_PRICE';
+  if (m.includes('auxiliaire')) return 'MISSING_AUXILIARY';
+  return 'OTHER';
+}
+
+/** Délai avant le prochain rejeu automatique, selon le nombre d'essais : 15 min, 1 h, 6 h, puis 24 h. */
+const backoff = (attemptsExpr: string) =>
+  `make_interval(mins => CASE ${attemptsExpr} WHEN 1 THEN 15 WHEN 2 THEN 60 WHEN 3 THEN 360 ELSE 1440 END)`;
+
 export async function getPostingMode(client: PoolClient | typeof db = db): Promise<PostingMode> {
   const r = await client.query(`SELECT value->>'mode' AS mode FROM module_parameters WHERE key = 'ledger.posting_mode'`);
   return r.rows[0]?.mode === 'strict' ? 'strict' : 'outbox';
@@ -51,11 +70,14 @@ export async function postOrQueue(
       throw Object.assign(new Error(`Comptabilisation impossible : ${message}`), { statusCode: 409 });
     }
     await client.query(
-      `INSERT INTO ledger_outbox (source_kind, source_id, source_detail, status, last_error)
-       VALUES ($1, $2, $3, 'pending', $4)
+      `INSERT INTO ledger_outbox (source_kind, source_id, source_detail, status, last_error, error_code, next_attempt_at)
+       VALUES ($1, $2, $3, 'pending', $4, $5, now() + ${backoff('1')})
        ON CONFLICT (source_kind, source_id, source_detail)
-       DO UPDATE SET status = 'pending', attempts = ledger_outbox.attempts + 1, last_error = EXCLUDED.last_error, updated_at = now()`,
-      [source.kind, source.id, source.detail ?? '', message.slice(0, 2000)]);
+       DO UPDATE SET status = 'pending', attempts = ledger_outbox.attempts + 1, last_error = EXCLUDED.last_error,
+                     error_code = EXCLUDED.error_code, next_attempt_at = now() + ${backoff('ledger_outbox.attempts + 1')},
+                     notified_at = CASE WHEN ledger_outbox.status = 'posted' THEN NULL ELSE ledger_outbox.notified_at END,
+                     updated_at = now()`,
+      [source.kind, source.id, source.detail ?? '', message.slice(0, 2000), classifyPostingError(err)]);
     return false;
   }
 }
@@ -99,10 +121,14 @@ export async function postGoodsReceiptsForPo(client: PoolClient, purchaseOrderId
 }
 
 /** Rejoue la file d'attente : chaque pièce dans sa propre transaction. */
-export async function replayOutbox(userId: string, onlyId?: string) {
+export async function replayOutbox(userId: string, onlyId?: string, opts: { onlyDue?: boolean } = {}) {
+  // onlyDue : passage de la tâche planifiée, qui respecte le délai croissant entre essais ;
+  // sans lui (bouton manuel), tout ce qui est en attente est rejoué tout de suite.
   const items = await db.query(
     `SELECT id, source_kind, source_id, source_detail FROM ledger_outbox
-      WHERE status <> 'posted' ${onlyId ? 'AND id = $1' : ''} ORDER BY created_at`, onlyId ? [onlyId] : []);
+      WHERE status <> 'posted' ${onlyId ? 'AND id = $1' : ''}
+        ${opts.onlyDue ? 'AND (next_attempt_at IS NULL OR next_attempt_at <= now())' : ''}
+      ORDER BY created_at`, onlyId ? [onlyId] : []);
   const result = { replayed: 0, posted: 0, failed: 0, errors: [] as string[] };
   for (const it of items.rows as { id: string; source_kind: string; source_id: string; source_detail: string }[]) {
     result.replayed++;
@@ -128,6 +154,12 @@ export async function replayOutbox(userId: string, onlyId?: string) {
         const day = (await client.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d;
         const entry = await fromAdvanceForfeit(client, it.source_id, day);
         if (entry) await persistEntry(client, entry, { userId });
+      } else if (it.source_kind === 'stock_count') {
+        // Variation de stock d'un inventaire complet de matières (constat 133).
+        const { stockVariationEntry } = await import('../repositories/stock-count.repository.js');
+        const c = (await client.query(`SELECT id, number, store_id, count_date FROM stock_counts WHERE id = $1`, [it.source_id])).rows[0];
+        const built = c ? await stockVariationEntry(client, c) : null;
+        if (built) await persistEntry(client, built.entry, { userId });
       } else if (it.source_kind === 'production') {
         // Étape 9 multi-industries : écriture de production (inventaire permanent).
         const { writeProductionEntry } = await import('./production-ledger.js');
@@ -139,8 +171,10 @@ export async function replayOutbox(userId: string, onlyId?: string) {
     } catch (err) {
       await client.query('ROLLBACK');
       const message = err instanceof Error ? err.message : String(err);
-      await db.query(`UPDATE ledger_outbox SET attempts = attempts + 1, last_error = $2, updated_at = now() WHERE id = $1`,
-        [it.id, message.slice(0, 2000)]);
+      await db.query(
+        `UPDATE ledger_outbox SET attempts = attempts + 1, last_error = $2, error_code = $3,
+                next_attempt_at = now() + ${backoff('ledger_outbox.attempts + 1')}, updated_at = now() WHERE id = $1`,
+        [it.id, message.slice(0, 2000), classifyPostingError(err)]);
       result.failed++;
       if (result.errors.length < 10) result.errors.push(`${it.source_kind} ${it.source_id} : ${message}`);
     } finally {

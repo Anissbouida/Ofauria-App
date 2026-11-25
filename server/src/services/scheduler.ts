@@ -18,6 +18,8 @@ import { toOrderRepository } from '../repositories/to-order.repository.js';
 import { purchaseRequestRepository } from '../repositories/purchase-request.repository.js';
 import { webhookRepository } from '../repositories/webhook.repository.js';
 import { currencySymbol } from './currency.js';
+import { replayOutbox } from './ledger-posting.service.js';
+import { createNotification } from '../utils/notify.js';
 
 /**
  * Tâches planifiées (mig 364).
@@ -208,6 +210,35 @@ async function housekeeping(): Promise<JobResult> {
   const b = await db.query(`DELETE FROM email_outbox WHERE status = 'sent' AND sent_at < now() - interval '90 days'`);
   const n = (a.rowCount ?? 0) + (b.rowCount ?? 0);
   return { items: n, message: `${a.rowCount ?? 0} passage(s) et ${b.rowCount ?? 0} e-mail(s) supprimés` };
+}
+
+/**
+ * Rejeu des écritures en attente (plan compta, étape 5, audit C-07) : toutes les 15 minutes, chaque
+ * pièce enregistrée dont l'écriture a échoué est rejouée (délai croissant entre essais). Une pièce qui
+ * résiste à un premier rejeu est signalée UNE fois aux responsables : sa cause (compte manquant, période
+ * close…) demande une action humaine, et la clôture du mois reste bloquée tant qu'elle existe.
+ */
+async function ledgerOutboxReplay(): Promise<JobResult> {
+  const userId = await systemUserId();
+  const r = await replayOutbox(userId, undefined, { onlyDue: true });
+  const blocked = (await db.query(
+    `UPDATE ledger_outbox SET notified_at = now()
+      WHERE status <> 'posted' AND notified_at IS NULL AND attempts >= 2
+      RETURNING source_kind, error_code, last_error`)).rows as { source_kind: string; error_code: string | null; last_error: string | null }[];
+  if (blocked.length > 0) {
+    const causes = [...new Set(blocked.map(b => b.error_code ?? 'OTHER'))].join(', ');
+    for (const targetRole of ['manager', 'admin']) {
+      await createNotification({
+        targetRole, type: 'ledger_outbox', referenceType: 'ledger_outbox',
+        title: 'Écritures à comptabiliser',
+        message: `${blocked.length} pièce(s) enregistrée(s) sans écriture comptable (${causes}). Corrigez la cause : l'écriture se passera au prochain rejeu.`,
+      });
+    }
+  }
+  return {
+    items: r.posted,
+    message: `${r.posted} rejouée(s), ${r.failed} encore en attente${blocked.length ? ` · ${blocked.length} signalée(s)` : ''}`,
+  };
 }
 
 /** Partitions d'exercice du journal d'audit comptable (mig 436) : exercice courant et suivant. */
@@ -480,6 +511,7 @@ export const JOBS: Record<string, Handler> = {
   crm_activities_due: crmActivitiesDue,
   loyalty_expire: loyaltyExpireDue,
   ledger_seal: () => ledgerIntegrityRepository.sealAuto(),
+  ledger_outbox_replay: ledgerOutboxReplay,
   ledger_partitions: ledgerPartitions,
   monthly_invoicing: () => monthlyInvoicing(),
   depreciation_monthly: depreciationMonthly,
