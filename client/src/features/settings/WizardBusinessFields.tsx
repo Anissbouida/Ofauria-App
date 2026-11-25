@@ -14,6 +14,7 @@ import { Switch } from '../../components/ds/Switch';
 const list = (v: unknown): string[] => Array.isArray(v) ? v : [];
 const text = (v: unknown): string => typeof v === 'string' ? v : '';
 const VOCAB = VOCABULARY_KEYS.filter(v => ['reserve_zone','ingredient','recipe','production_plan','production_plans','doc_bon_sortie'].includes(v.key));
+const STORE_KIND_LABELS: Record<string, string> = { shop: 'Magasin', workshop: 'Site de production', warehouse: 'Dépôt', office: 'Bureau', mixed: 'Magasin et production' };
 const SCOPE_LABELS: Record<string, string> = { own: 'Ses dossiers', store: 'Son établissement', all: 'Toute la société' };
 const RIGHT_LABELS: Record<string, string> = { v: 'consulter', c: 'créer', e: 'modifier', d: 'supprimer' };
 const VERB_LABELS: Record<string, string> = { approve: 'approuver', post: 'comptabiliser' };
@@ -146,6 +147,8 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
 
   if (step === 'company') {
     const name = text(data.name);
+    // Établissements préparés (lot 3) : créés à l'activation.
+    const newStores = [...new Set(Object.keys(data).map(k => /^store:(\d{1,2}):/.exec(k)?.[1]).filter((x): x is string => !!x).map(Number))].sort((a, b) => a - b);
     return <>
       <fieldset className="ds-fieldset"><legend className="ds-subhead">Identité</legend><div className="ds-form-grid">
         {field('Raison sociale', <input className="ds-input" value={name} aria-invalid={!name.trim()} disabled={disabled} onChange={e => set('name', e.target.value)} />, name.trim() ? undefined : 'Saisissez la raison sociale.', true)}
@@ -158,12 +161,18 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
         {field('Nombre d’établissements', <input className="ds-input" type="number" min={1} value={text(data.sites)} disabled={disabled} onChange={e => set('sites', e.target.value)} />, 'Magasins, sites de production, dépôts. Ils se créent dans Paramètres › Établissements.')}
       </div></fieldset>
       <div><div className="ds-section-head" style={{ marginBottom: 8 }}><h2 style={{ fontSize: 14 }}>Établissements</h2><small>Magasins, sites de production, dépôts</small><span className="ds-grow" style={{ flex: 1 }} />
-        <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/settings?page=stores')}><Plus size={13} aria-hidden="true" /> Ajouter</button></div>
+        <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={disabled} onClick={() => { const next = Math.max(0, ...newStores) + 1; onChange({ ...data, [`store:${next}:name`]: '', [`store:${next}:kind`]: 'shop' }); }}><Plus size={13} aria-hidden="true" /> Ajouter</button></div>
         <div className="ds-scroll"><table className="odoo-table ds-dense" style={{ width: '100%' }}><thead><tr><th>Nom</th><th>Type</th><th>Adresse</th><th style={{ width: 110 }}>État</th></tr></thead><tbody>
           {(stores.data as { id: string; name: string; kind?: string; address?: string | null; is_active?: boolean }[] | undefined ?? []).map(s => <tr key={s.id}>
-            <td className="ds-strong">{s.name}</td><td>{({ shop: 'Magasin', workshop: 'Site de production', warehouse: 'Dépôt', office: 'Bureau', mixed: 'Magasin et production' } as Record<string, string>)[s.kind ?? ''] ?? s.kind ?? '—'}</td>
+            <td className="ds-strong">{s.name}</td><td>{STORE_KIND_LABELS[s.kind ?? ''] ?? s.kind ?? '—'}</td>
             <td>{s.address || '—'}</td><td>{s.is_active === false ? <Tag tone="x">Inactif</Tag> : <Tag tone="g">Actif</Tag>}</td></tr>)}
           {stores.isLoading && <tr><td colSpan={4} className="mq-sub">Chargement…</td></tr>}
+          {newStores.map(i => <tr key={`new-${i}`}>
+            <td><input className="ds-input sm" style={{ width: '100%' }} aria-label="Nom du nouvel établissement" placeholder="Nom" value={text(data[`store:${i}:name`])} disabled={disabled} onChange={e => set(`store:${i}:name`, e.target.value)} /></td>
+            <td><select className="ds-input sm" aria-label="Type" value={text(data[`store:${i}:kind`]) || 'shop'} disabled={disabled} onChange={e => set(`store:${i}:kind`, e.target.value)}>
+              {Object.entries(STORE_KIND_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></td>
+            <td><input className="ds-input sm" style={{ width: '100%' }} aria-label="Ville" placeholder="Ville" value={text(data[`store:${i}:city`])} disabled={disabled} onChange={e => set(`store:${i}:city`, e.target.value)} /></td>
+            <td><span className="wz-control"><Tag tone="b">À créer</Tag><button type="button" className="odoo-btn-link" disabled={disabled} onClick={() => { const n = { ...data }; for (const f of ['name', 'kind', 'city']) delete n[`store:${i}:${f}`]; onChange(n); }}>Retirer</button></span></td></tr>)}
         </tbody></table></div></div>
     </>;
   }

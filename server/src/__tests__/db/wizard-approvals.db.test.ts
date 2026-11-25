@@ -55,4 +55,20 @@ describe.skipIf(!hasTestDb)('Assistant — approbations et réglages des règles
     expect(issues).toEqual([expect.objectContaining({ step: 'operations', severity: 'blocking' })]);
     expect(operatingModelIssues({ operations: { data: { 'production.rhythm:mode': 'continuous', 'production.demand_source:mode': 'both' } } }, { parameters: [], centralStoreAvailable: true })).toEqual([]);
   });
+
+  it('établissements préparés : créés à la publication, doublon refusé', async () => {
+    const { withTransaction, db } = await import('../../config/database.js');
+    const { applyWizardStores, storeIssues, existingStoreNames } = await import('../../services/wizard/store-operations.js');
+    const existing = await existingStoreNames();
+    const answers = { company: { data: { 'store:1:name': 'Dépôt test assistant', 'store:1:kind': 'warehouse', 'store:1:city': 'Rabat' } } };
+    expect(storeIssues(answers, existing)).toEqual([]);
+    if (existing.length) expect(storeIssues({ company: { data: { 'store:1:name': existing[0], 'store:1:kind': 'shop' } } }, existing)[0]?.severity).toBe('blocking');
+    expect(storeIssues({ company: { data: { 'store:1:city': 'Fès' } } }, existing)[0]?.severity).toBe('blocking');
+    const rollback = new Error('rollback test');
+    await expect(withTransaction(async () => {
+      expect(await applyWizardStores(answers, fx.userId)).toEqual(['Dépôt test assistant']);
+      expect((await db.query(`SELECT kind, city FROM stores WHERE name = $1`, ['Dépôt test assistant'])).rows[0]).toEqual({ kind: 'warehouse', city: 'Rabat' });
+      throw rollback;
+    })).rejects.toBe(rollback);
+  }, 60000);
 });

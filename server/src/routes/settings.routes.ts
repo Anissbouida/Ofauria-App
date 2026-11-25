@@ -31,6 +31,7 @@ import { z } from 'zod';
 import { WIZARD_STEPS } from '../services/wizard/steps.js';
 import { wizardParameterField } from '../services/wizard/parameter-definitions.js';
 import { APPROVAL_KEY } from '../services/wizard/approval-operations.js';
+import { STORE_KEY } from '../services/wizard/store-operations.js';
 import { listWizardSessions, createWizardSession, saveWizardSession, abandonWizardSession, rebaseWizardSession } from '../services/wizard/sessions.js';
 import { wizardCatalog } from '../services/wizard/catalog.js';
 import { previewWizardSession } from '../services/wizard/preview.js';
@@ -72,6 +73,9 @@ const wizardSave = z.object({ mode: wizardMode, current_step: wizardKey, revisio
     if(param){
       const value=answer.data![key];
       if(param.field.type==='boolean'?typeof value!=='boolean':typeof value!=='string')ctx.addIssue({code:'custom',path:['answers',step,'data',key],message:'Type de paramètre invalide'});
+    }
+    else if (step === 'company' && STORE_KEY.test(key)) {
+      if (typeof answer.data![key] !== 'string') ctx.addIssue({ code: 'custom', path: ['answers',step,'data',key], message: 'Type de donnée invalide' });
     }
     else if (step === 'rules' && APPROVAL_KEY.test(key)) {
       const value = answer.data![key];
