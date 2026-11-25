@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Plus, ShieldAlert, ShieldCheck, Trash2, TriangleAlert, UserCog, CalendarPlus } from 'lucide-react';
 import {
-  APP_MODULES, MODULE_LABELS, CAPABILITY_LABELS, CAPABILITIES, APPROVAL_DOCUMENT_TYPES, APPROVAL_DOCUMENT_LABELS,
-  type AppModule, type Capability, type ApprovalDocumentType,
+  APP_MODULES, MODULE_LABELS, CAPABILITY_LABELS, CAPABILITIES, APPROVAL_DOCUMENT_TYPES, APPROVAL_DOCUMENT_LABELS, BUSINESS_VERB_LABELS,
+  type AppModule, type Capability, type ApprovalDocumentType, type BusinessVerb,
 } from '@ofauria/shared';
 import {
   governanceApi, rolesApi, usersApi, type SodRuleRow, type ApprovalLimitRow, type DelegationRow, type DocumentSodMode,
@@ -184,7 +184,7 @@ function SodTab() {
                 {rules.map(r => (
                   <tr key={r.code}>
                     <td className="ds-strong">{r.label}</td>
-                    <td>Cumul de rôles</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>Cumul de rôles</td>
                     <td>{moduleLabel(r.a_module)} · {CAPABILITY_LABELS[r.a_right as Capability] ?? r.a_right}</td>
                     <td>{moduleLabel(r.b_module)} · {CAPABILITY_LABELS[r.b_right as Capability] ?? r.b_right}</td>
                     <td>{severityTag(r.severity)}</td>
@@ -208,6 +208,8 @@ function SodTab() {
                     <td>{statusTag(r.is_active)}</td>
                     <td className="ds-actions">
                       <button type="button" className="odoo-btn-secondary ds-btn-sm" disabled={toggleDocRule.isPending} onClick={() => toggleDocRule.mutate(r)}>{r.is_active ? 'Désactiver' : 'Activer'}</button>
+                      {/* Pas de menu (règle livrée, non supprimable) : place gardée pour aligner les boutons. */}
+                      <span aria-hidden="true" style={{ display: 'inline-block', width: 32 }} />
                     </td>
                   </tr>
                 ))}
@@ -522,16 +524,16 @@ function DelegationModal({ onClose, onDone }: { onClose: () => void; onDone: () 
       <div style={{ display: 'grid', gap: 'var(--ds-s4)' }}>
         <div className="ds-form-grid">
           <FormField label="De" required>
-            <SearchSelect value={f.fromUserId} onChange={pickFrom} placeholder="Choisir…" size="md" ariaLabel="De"
+            <SearchSelect value={f.fromUserId} onChange={pickFrom} placeholder="Choisir…" size="md" width="100%" ariaLabel="De"
               options={active.map(u => ({ id: u.id as string, label: name(u) }))} />
           </FormField>
           <FormField label="Vers" required>
-            <SearchSelect value={f.toUserId} onChange={v => set('toUserId', v)} placeholder="Choisir…" size="md" ariaLabel="Vers"
+            <SearchSelect value={f.toUserId} onChange={v => set('toUserId', v)} placeholder="Choisir…" size="md" width="100%" ariaLabel="Vers"
               options={active.filter(u => u.id !== f.fromUserId).map(u => ({ id: u.id as string, label: name(u) }))} />
           </FormField>
         </div>
         <FormField label="Ce qui est délégué">
-          <div className="prj-views" role="group" aria-label="Ce qui est délégué" style={{ justifySelf: 'start' }}>
+          <div className="prj-views" role="group" aria-label="Ce qui est délégué" style={{ display: 'inline-flex', width: 'fit-content' }}>
             <button type="button" className={f.kind === 'role' ? 'active' : ''} aria-pressed={f.kind === 'role'} onClick={() => set('kind', 'role')}>Rôle complet</button>
             <button type="button" className={f.kind === 'approvals' ? 'active' : ''} aria-pressed={f.kind === 'approvals'} onClick={() => set('kind', 'approvals')}>Approbations seulement</button>
           </div>
@@ -613,12 +615,15 @@ function RightsTab() {
     ))) return;
     save.mutate(mode);
   };
-  const roleLabel = (c: string) => roles.find(r => r.code === c)?.label ?? c;
-  /** « GET /api/v1/stock/lots » → écran « Stock » et l'appel lui-même en petit. */
-  const screen = (route: string) => {
-    const path = route.replace(/^[A-Z]+\s+/, '').replace(/^\/api(\/v\d+)?/, '');
+  const roleLabel = (c: string | null) => (c ? roles.find(r => r.code === c)?.label ?? c : '—');
+  /** « GET /api/v1/stock/lots » → écran « Stock » ; un refus d'action métier n'a pas de route. */
+  const screen = (d: { route: string | null; verb?: string | null; module?: string | null }) => {
+    if (!d.route) return d.verb ? `${BUSINESS_VERB_LABELS[d.verb as BusinessVerb] ?? d.verb} · ${moduleLabel(d.module ?? '')}` : 'Action non précisée';
+    const path = d.route.replace(/^[A-Z]+\s+/, '').replace(/^\/api(\/v\d+)?/, '');
     return NAV_LABEL_BY_PATH[`/${path.split('/')[1] ?? ''}`] ?? path;
   };
+  const missing = (d: { route: string | null; verb?: string | null; module?: string | null; modules: string[] | null }) =>
+    (!d.route && d.verb ? `Action métier « ${BUSINESS_VERB_LABELS[d.verb as BusinessVerb] ?? d.verb} »` : (d.modules ?? []).map(m => moduleLabel(m)).join(', '));
 
   return (
     <>
@@ -635,10 +640,13 @@ function RightsTab() {
               <thead><tr><th>Écran ou action</th><th>Rôle</th><th>Droit manquant</th><th>Comptes</th><th className="ds-num">Appels (14 j)</th><th>Dernier appel</th></tr></thead>
               <tbody>
                 {denials.map(d => (
-                  <tr key={`${d.route}|${d.role_code}`}>
-                    <td><span className="ds-strong">{screen(d.route)}</span><span className="usr-sub" style={{ fontFamily: 'var(--ds-mono, monospace)' }}>{d.route}</span></td>
+                  <tr key={`${d.route}|${d.role_code}|${d.verb}|${d.module}`}>
+                    <td>
+                      <span className="ds-strong">{screen(d)}</span>
+                      {d.route ? <span className="usr-sub" style={{ fontFamily: 'var(--ds-mono, monospace)' }}>{d.route}</span> : <span className="usr-sub">Action métier</span>}
+                    </td>
                     <td>{roleLabel(d.role_code)}</td>
-                    <td>{(d.modules ?? []).map(m => moduleLabel(m)).join(', ') || muted('—')}</td>
+                    <td>{missing(d) || muted('—')}</td>
                     <td>{d.user_names}</td>
                     <td className="ds-num">{d.hits}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{new Date(d.last_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>

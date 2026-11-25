@@ -97,7 +97,9 @@ export interface RolePermission {
   config?: Record<string, unknown>;
 }
 export interface AccessDenial {
-  route: string; role_code: string; hits: number; users: number; user_names: string; last_at: string; modules: string[] | null;
+  /** null pour le refus d'une action métier (verb + module). */
+  route: string | null; role_code: string | null; verb?: string | null; module?: string | null;
+  hits: number; users: number; user_names: string; last_at: string; modules: string[] | null;
 }
 
 // ─── Gouvernance (mig 336) ──────────────────────────────────────────────

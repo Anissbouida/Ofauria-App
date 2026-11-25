@@ -59,7 +59,7 @@ const LEADS: Record<UsersView, string> = {
   journal: 'Connexions, échecs, verrouillages et actions de sécurité sur les comptes.',
   matrix: 'Permissions détaillées de chaque rôle, action par action.',
   roles: 'Ce que chaque fonction peut voir et faire dans Kalum.',
-  controls: 'Séparation des tâches, plafonds d\'approbation et contrôle des droits.',
+  controls: 'Séparation des tâches, plafonds d\'approbation, délégations et contrôle des droits.',
   security: 'Règles de connexion valables pour tous les comptes.',
   approvals: '',
 };

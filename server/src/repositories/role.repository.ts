@@ -198,13 +198,15 @@ export const roleRepository = {
   async denials(days: number) {
     const r = await db.query(
       `SELECT e.details->>'route' AS route, e.details->>'role' AS role_code,
+              -- Refus d'une action métier (kind « verb ») : pas de route, mais un verbe et un module.
+              e.details->>'verb' AS verb, e.details->>'module' AS module,
               count(*)::int AS hits, count(DISTINCT e.user_id)::int AS users, max(e.created_at) AS last_at,
               string_agg(DISTINCT concat_ws(' ', u.first_name, u.last_name), ', ') AS user_names,
               (array_agg(e.details->'modules'))[1] AS modules
          FROM auth_events e
          LEFT JOIN users u ON u.id = e.user_id
         WHERE e.event_type = 'access_denied' AND e.created_at >= now() - make_interval(days => $1)
-        GROUP BY 1, 2
+        GROUP BY 1, 2, 3, 4
         ORDER BY max(e.created_at) DESC
         LIMIT 200`,
       [days],
