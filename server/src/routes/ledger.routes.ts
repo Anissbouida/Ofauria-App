@@ -84,7 +84,7 @@ ledgerRouter.put('/accounts/:id', authenticate, can('accounting.accounts'), requ
 ledgerRouter.post('/accounts/:id/active', authenticate, can('accounting.active'), requireVerb('accounting', 'validate'), validateUuidParams('id'), validate(PF.activeFlagSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await chartOfAccountsRepository.setActive(req.params.id, Boolean((req.body as { active?: boolean }).active), accountActor(req)) });
 }));
-ledgerRouter.delete('/accounts/:id', authenticate, can('accounting.delete'), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.delete('/accounts/:id', authenticate, can('accounting.accounts.delete'), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await chartOfAccountsRepository.remove(req.params.id, accountActor(req)) });
 }));
 
@@ -213,7 +213,7 @@ ledgerRouter.post('/corporate-tax/:year/adjustments', authenticate, can('account
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
   res.status(201).json({ success: true, data: await corporateTaxRepository.addAdjustment(y, r.data, taxActor(req)) });
 }));
-ledgerRouter.delete('/corporate-tax/adjustments/:id', authenticate, can('accounting.delete'), requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.delete('/corporate-tax/adjustments/:id', authenticate, can('accounting.corporate_tax.adjustment_delete'), requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await corporateTaxRepository.removeAdjustment(req.params.id, taxActor(req)) });
 }));
 ledgerRouter.post('/corporate-tax/:year/payments', authenticate, can('accounting.payments'), requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -225,7 +225,7 @@ ledgerRouter.post('/corporate-tax/:year/payments', authenticate, can('accounting
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
   res.status(201).json({ success: true, data: await corporateTaxRepository.pay(y, r.data, taxActor(req)) });
 }));
-ledgerRouter.post('/corporate-tax/payments/:id/cancel', authenticate, can('accounting.cancel'), requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/corporate-tax/payments/:id/cancel', authenticate, can('accounting.corporate_tax.payment_cancel'), requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ reason: z.string().trim().min(3).max(500) }).safeParse(req.body);
   if (!r.success) { tplBad(res, 'Motif obligatoire (3 caractères au moins)'); return; }
   res.json({ success: true, data: await corporateTaxRepository.cancelPayment(req.params.id, r.data.reason, taxActor(req)) });
@@ -303,7 +303,7 @@ ledgerRouter.post('/bills/remittances/:id/settle', authenticate, can('accounting
   if (!r.success) { tplBad(res); return; }
   res.json({ success: true, data: await billPortfolioRepository.settleRemittance(req.params.id, { date: r.data.date, userId: req.user!.userId }) });
 }));
-ledgerRouter.post('/bills/remittances/:id/cancel', authenticate, can('accounting.cancel'), requireVerb('accounting', 'validate'), validateUuidParams('id'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/bills/remittances/:id/cancel', authenticate, can('accounting.bills.remittance_cancel'), requireVerb('accounting', 'validate'), validateUuidParams('id'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   await billPortfolioRepository.cancelRemittance(req.params.id, { userId: req.user!.userId });
   res.json({ success: true });
 }));
@@ -325,7 +325,7 @@ ledgerRouter.post('/consolidation/transfers', authenticate, can('accounting.tran
   if (!r.success) { tplBad(res); return; }
   res.status(201).json({ success: true, data: await consolidationRepository.transfer({ ...r.data, userId: req.user!.userId }) });
 }));
-ledgerRouter.post('/consolidation/transfers/:id/cancel', authenticate, can('accounting.cancel'), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/consolidation/transfers/:id/cancel', authenticate, can('accounting.consolidation.transfer_cancel'), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ reason: z.string().trim().min(3).max(300) }).safeParse(req.body);
   if (!r.success) { tplBad(res, 'Motif requis'); return; }
   await consolidationRepository.cancelTransfer(req.params.id, { userId: req.user!.userId, reason: r.data.reason });
@@ -341,7 +341,7 @@ ledgerRouter.post('/fx-revaluation/:year/book', authenticate, can('accounting.bo
   if (!r.success) { tplBad(res, 'Taux de clôture invalide'); return; }
   res.json({ success: true, data: await fxRevaluationRepository.book(y, r.data.rates, taxActor(req)) });
 }));
-ledgerRouter.post('/fx-revaluation/:year/cancel', authenticate, can('accounting.cancel'), requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.post('/fx-revaluation/:year/cancel', authenticate, can('accounting.fx_revaluation.cancel'), requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
   const r = z.object({ reason: z.string().trim().min(3).max(500) }).safeParse(req.body);
   if (!r.success) { tplBad(res, 'Motif obligatoire (3 caractères au moins)'); return; }
@@ -375,7 +375,7 @@ ledgerRouter.put('/revenue-families/:family', authenticate, can('accounting.reve
   if (!family) { res.status(400).json({ success: false, error: { message: 'Famille requise' } }); return; }
   res.json({ success: true, data: await familyRevenueAccountRepository.upsert(family, body.accountCode) });
 }));
-ledgerRouter.delete('/revenue-families/:family', authenticate, can('accounting.delete'), requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.delete('/revenue-families/:family', authenticate, can('accounting.revenue_families.delete'), requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   await familyRevenueAccountRepository.remove(String(req.params.family).trim());
   res.json({ success: true, data: null });
 }));
@@ -408,7 +408,7 @@ ledgerRouter.put('/entries/:id', authenticate, can('accounting.entries'), valida
   const input = parseManual(req, res); if (!input) return;
   res.json({ success: true, data: await manualEntryRepository.updateDraft(req.params.id, input, manualActor(req)) });
 }));
-ledgerRouter.delete('/entries/:id', authenticate, can('accounting.delete'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.delete('/entries/:id', authenticate, can('accounting.entries.draft_delete'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await manualEntryRepository.deleteDraft(req.params.id, manualActor(req)) });
 }));
 ledgerRouter.post('/entries/:id/post', authenticate, can('accounting.post'), requireVerb('accounting', 'post'), validateUuidParams('id'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -455,7 +455,7 @@ ledgerRouter.post('/lettrage', authenticate, can('accounting.lettrage'), require
   if (!r.success) { tplBad(res, 'Sélectionnez au moins deux lignes à lettrer'); return; }
   res.status(201).json({ success: true, data: await lettrageRepository.letter(r.data.lineIds, { userId: req.user!.userId }, { partial: r.data.partial }) });
 }));
-ledgerRouter.delete('/lettrage/:id', authenticate, can('accounting.delete'), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.delete('/lettrage/:id', authenticate, can('accounting.lettrage.undo'), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await lettrageRepository.unletter(req.params.id, { userId: req.user!.userId }) });
 }));
 
@@ -505,7 +505,7 @@ ledgerRouter.post('/entry-templates/:id/active', authenticate, can('accounting.a
   if (!out) { res.status(404).json({ success: false, error: { message: 'Modèle introuvable' } }); return; }
   res.json({ success: true, data: out });
 }));
-ledgerRouter.delete('/entry-templates/:id', authenticate, can('accounting.delete'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.delete('/entry-templates/:id', authenticate, can('accounting.entry_templates.delete'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   await tplRepo.remove(req.params.id);
   res.json({ success: true, data: null });
 }));
@@ -583,7 +583,7 @@ ledgerRouter.get('/cash-forecast/lines', authenticate, can('accounting.view'), a
 ledgerRouter.post('/cash-forecast/lines', authenticate, can('accounting.lines'), validate(forecastLineSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.status(201).json({ success: true, data: await cashForecastLines.create(req.body, req.user!.userId) });
 }));
-ledgerRouter.delete('/cash-forecast/lines/:id', authenticate, can('accounting.delete'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.delete('/cash-forecast/lines/:id', authenticate, can('accounting.cash_forecast.line_delete'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   await cashForecastLines.remove(req.params.id as string);
   res.json({ success: true, data: null });
 }));

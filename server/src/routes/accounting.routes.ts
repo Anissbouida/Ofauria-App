@@ -128,7 +128,7 @@ invoicesRouter.post('/from-order/:orderId', authenticate, can('accounting.from_o
 invoicesRouter.post('/merge', authenticate, can('accounting.merge'), validate(mergeInvoicesSchema), asyncHandler(invoiceController.merge));
 // Echelonnement d'une facture en N echeances (materiel achete a credit) — mig 258.
 invoicesRouter.post('/:id/schedule', authenticate, can('accounting.schedule'), validateUuidParams('id'), validate(PF.invoiceScheduleSchema), asyncHandler(paymentScheduleController.createInvoiceSchedule));
-invoicesRouter.post('/:id/cancel', authenticate, can('accounting.cancel'), validateUuidParams('id'), validate(PF.cancelInvoiceSchema), asyncHandler(invoiceController.cancel));
+invoicesRouter.post('/:id/cancel', authenticate, can('accounting.invoices.cancel'), validateUuidParams('id'), validate(PF.cancelInvoiceSchema), asyncHandler(invoiceController.cancel));
 // Avoirs clients (O2C L4, mig 450).
 invoicesRouter.get('/:id/credit-notes', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(invoiceController.creditNotes));
 invoicesRouter.post('/:id/credit-notes', authenticate, can('accounting.credit_notes'), validateUuidParams('id'), validate(PF.createCreditNoteSchema), asyncHandler(invoiceController.createCreditNote));
@@ -140,9 +140,9 @@ invoicesRouter.get('/:id/control', authenticate, can('accounting.view'), validat
 invoicesRouter.post('/:id/holds', authenticate, can('accounting.holds'), validateUuidParams('id'), validate(manualHoldSchema), asyncHandler(invoiceController.addHold));
 invoicesRouter.post('/holds/:holdId/release', authenticate, can('accounting.release'), validateUuidParams('holdId'), validate(reasonCodeSchema), asyncHandler(invoiceController.releaseHold));
 // DELETE /:id : suppression physique (admin + gerant). ?force=true cascade les paiements.
-invoicesRouter.delete('/:id', authenticate, can('accounting.delete'), validateUuidParams('id'), asyncHandler(invoiceController.remove));
+invoicesRouter.delete('/:id', authenticate, can('accounting.invoices.delete'), validateUuidParams('id'), asyncHandler(invoiceController.remove));
 invoicesRouter.post('/:id/attachment', authenticate, can('accounting.attachment'), validateUuidParams('id'), invoiceUpload.single('attachment'), validate(emptyBody), asyncHandler(invoiceController.uploadAttachment));
-invoicesRouter.delete('/:id/attachment', authenticate, can('accounting.delete'), validateUuidParams('id'), asyncHandler(invoiceController.removeAttachment));
+invoicesRouter.delete('/:id/attachment', authenticate, can('accounting.invoices.attachment_delete'), validateUuidParams('id'), asyncHandler(invoiceController.removeAttachment));
 invoicesRouter.get('/:id/download-docx', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(invoiceController.downloadDocx));
 invoicesRouter.get('/:id/download-pdf', authenticate, can('accounting.view'), validateUuidParams('id'), asyncHandler(invoiceController.downloadDocx));
 
@@ -190,4 +190,4 @@ paymentsRouter.post('/:id/unmark-cashed', authenticate, can('accounting.unmark_c
 // pour corriger erreurs de saisie : mauvais montant, faux N° cheque, doublon).
 // updatePaidAmount() est rejoue dans le delete() -> facture revient au bon statut.
 // Mig 310 : suppression réservée aux brouillons ; un paiement exécuté s'annule (POST /:id/void).
-paymentsRouter.delete('/:id', authenticate, can('accounting.delete'), validateUuidParams('id'), asyncHandler(paymentController.remove));
+paymentsRouter.delete('/:id', authenticate, can('accounting.payments.delete'), validateUuidParams('id'), asyncHandler(paymentController.remove));
