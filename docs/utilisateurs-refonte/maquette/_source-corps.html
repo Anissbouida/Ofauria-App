@@ -1,0 +1,1325 @@
+<style>
+  /* Habillage propre à la maquette (hors application) : bandeau de planches et notes. */
+  html, body { height: auto; margin: 0; }
+  .mq-bar { position: sticky; top: 0; z-index: 80; background: #1f2937; color: #fff; padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font: 13px/1.3 -apple-system, "Segoe UI", sans-serif; }
+  .mq-bar b { margin-right: 8px; }
+  .mq-bar button { background: #374151; color: #fff; border: 0; padding: 6px 12px; border-radius: 999px; cursor: pointer; font: inherit; }
+  .mq-bar button[aria-pressed=true] { background: #fff; color: #1f2937; font-weight: 600; }
+  .mq-note { margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; border: 1.5px dashed var(--ds-line); background: var(--ds-card); font-size: 14px; color: var(--ds-body); display: grid; gap: 6px; }
+  .mq-note strong { color: var(--ds-ink); }
+  .mq-note dl { margin: 0; display: grid; grid-template-columns: 90px 1fr; gap: 4px 12px; }
+  .mq-note dt { color: var(--ds-muted); } .mq-note dd { margin: 0; }
+  .mq-new { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--ds-accent); color: #fff; vertical-align: middle; line-height: 16px; }
+  .mq-plate { display: none; } .mq-plate.on { display: block; }
+  .mq-sub { font-weight: 400; color: var(--ds-muted); font-size: 13px; }
+  .mq-stack { display: grid; gap: 16px; }
+  .mq-pad { padding: 16px 20px; display: grid; gap: 12px; font-size: 14px; }
+
+  /* Briques d'écran (jetons --ds-* uniquement). */
+  .us-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .us-av { flex: none; width: 32px; height: 32px; border-radius: 999px; background: var(--ds-tint); color: var(--ds-accent-ink); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  .us-av.lg { width: 56px; height: 56px; font-size: 19px; }
+  .us-who b { display: block; color: var(--ds-ink); font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .us-who small { display: block; color: var(--ds-muted); font-size: 12.5px; white-space: nowrap; }
+  .us-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .us-sig { display: grid; gap: 2px; font-size: 13px; color: var(--ds-body); }
+  .us-sig > span { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .us-sig .g { color: var(--ds-success); } .us-sig .o { color: var(--ds-warning); } .us-sig .r { color: var(--ds-danger); } .us-sig .x { color: var(--ds-muted); }
+  .us-sig span span { display: inline-flex; }
+  .us-muted { color: var(--ds-muted); }
+  .us-row { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--ds-hair); flex-wrap: wrap; }
+  .us-row:last-child { border-bottom: 0; }
+  .us-row > div:first-child { flex: 1 1 280px; min-width: 0; }
+  .us-row b { font-size: 14px; font-weight: 600; color: var(--ds-ink); display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .us-row p { margin: 2px 0 0; font-size: 13px; color: var(--ds-muted); }
+  .us-row .us-ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .us-head { display: flex; align-items: center; gap: 10px; padding: 14px 20px 10px; flex-wrap: wrap; }
+  .us-head h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.02em; color: var(--ds-ink); }
+  .us-head small { font-size: 13px; color: var(--ds-muted); }
+  .us-record { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+  .us-side { padding: 16px 18px; display: grid; gap: 14px; font-size: 13px; }
+  .us-side h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ds-ink); }
+  .us-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 14px; }
+  .us-kv dt { color: var(--ds-muted); } .us-kv dd { margin: 0; color: var(--ds-ink); }
+  .us-title { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .us-title h1 { margin: 0; font-size: var(--ds-t-page); font-weight: 700; letter-spacing: -.03em; color: var(--ds-ink); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .us-title p { margin: 4px 0 0; color: var(--ds-muted); font-size: 15px; }
+  .us-tabbar { margin-bottom: 16px; }
+  .us-tab { display: none; } .us-tab.on { display: grid; gap: 16px; }
+  .us-pick { display: flex; gap: 8px; flex-wrap: wrap; }
+  .us-pick button { height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--ds-card); box-shadow: inset 0 0 0 1px var(--ds-sep); color: var(--ds-ink); font: inherit; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .us-pick button.on { background: var(--ds-tint); box-shadow: inset 0 0 0 1.5px var(--ds-accent); font-weight: 600; }
+  .us-pick button.on svg { color: var(--ds-accent-ink); }
+  .us-pick button:not(.on) svg { display: none; }
+  .us-lvl { display: inline-flex; background: var(--ds-bg); border-radius: 999px; padding: 2px; gap: 2px; }
+  .us-lvl button { height: 26px; padding: 0 10px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 12.5px; color: var(--ds-body); cursor: pointer; white-space: nowrap; }
+  .us-lvl button.on { background: var(--ds-card); color: var(--ds-ink); font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, .12); }
+  .us-verb { height: 24px; padding: 0 8px; border: 0; border-radius: 999px; font: inherit; font-size: 12px; background: var(--ds-card); box-shadow: inset 0 0 0 1px var(--ds-sep); color: var(--ds-body); cursor: pointer; margin: 0 2px 2px 0; }
+  .us-verb.on { background: var(--ds-tint); box-shadow: inset 0 0 0 1.5px var(--ds-accent); color: var(--ds-accent-ink); font-weight: 600; }
+  .us-verb:disabled { opacity: .45; cursor: not-allowed; }
+  tr.us-off td { color: var(--ds-muted); }
+  tr.us-off .us-lvl, tr.us-off .us-verb, tr.us-off select { opacity: .45; pointer-events: none; }
+  .us-steps { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--ds-hair); }
+  .us-steps button { height: 32px; padding: 0 12px; border: 0; border-radius: 999px; font: inherit; font-size: 13px; background: var(--ds-card); box-shadow: inset 0 0 0 1px var(--ds-sep); color: var(--ds-body); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .us-steps button.done { color: var(--ds-ink); } .us-steps button.done svg { color: var(--ds-success); }
+  .us-steps button.on { background: var(--ds-tint); box-shadow: inset 0 0 0 1.5px var(--ds-accent); color: var(--ds-ink); font-weight: 600; }
+  .us-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .us-card { text-align: left; border: 0; border-radius: 12px; background: var(--ds-card); box-shadow: inset 0 0 0 1px var(--ds-sep); padding: 12px 14px; display: grid; gap: 4px; align-content: start; cursor: pointer; font: inherit; color: var(--ds-body); position: relative; }
+  .us-card b { font-size: 14px; color: var(--ds-ink); font-weight: 600; padding-right: 22px; display: inline-flex; gap: 6px; align-items: center; }
+  .us-card small { font-size: 12.5px; color: var(--ds-muted); line-height: 1.35; }
+  .us-card.on { background: var(--ds-tint); box-shadow: inset 0 0 0 2px var(--ds-accent); }
+  .us-card .us-ck { position: absolute; top: 10px; right: 10px; color: var(--ds-accent); display: none; }
+  .us-card.on .us-ck { display: block; }
+  .us-card.dashed { box-shadow: none; border: 1.5px dashed var(--ds-line); }
+  .us-stage { position: relative; border-radius: 16px; background: color-mix(in srgb, #0f172a 45%, var(--ds-bg)); padding: 28px; display: flex; justify-content: center; }
+  .us-stage .ds-sheet { width: min(860px, 100%); border-radius: 16px; max-height: none; }
+  .us-drawer-stage { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 420px; border-radius: 16px; overflow: hidden; }
+  .us-drawer-stage .us-dim { background: color-mix(in srgb, #0f172a 35%, var(--ds-bg)); padding: 16px; }
+  .us-drawer-stage .us-dim .ds-panel { opacity: .55; }
+  .us-drawer-stage .ds-sheet { max-height: none; border-radius: 0; }
+  .us-prog { height: 6px; border-radius: 999px; background: var(--ds-hair); overflow: hidden; }
+  .us-prog span { display: block; height: 100%; background: var(--ds-accent); border-radius: 999px; }
+  .us-mode { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--ds-hair); font-size: 13px; color: var(--ds-muted); }
+  .us-mode b { color: var(--ds-ink); font-size: 14px; }
+  .us-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 1100px) { .us-record, .us-split { grid-template-columns: minmax(0, 1fr); } .us-drawer-stage { grid-template-columns: minmax(0, 1fr); } .us-drawer-stage .us-dim { display: none; } }
+  [hidden] { display: none !important; }
+  .us-av.off { background: var(--ds-hair); color: var(--ds-muted); }
+  .us-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; color: var(--ds-body); }
+  .us-stage.us-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+  .us-stage.us-grid .ds-sheet { width: auto; }
+  .us-check { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; color: var(--ds-body); }
+  .us-inline { display: flex; gap: 8px; align-items: center; }
+  @media (max-width: 1100px) { .us-stage.us-grid { grid-template-columns: minmax(0, 1fr); padding: 16px; } }
+  @media (max-width: 700px) { header.h-12 > .flex-1 > div { display: none; } header.h-12 > .flex-1 { flex: 1 1 0; } .module-shell > .odoo-control-bar { flex-wrap: wrap; row-gap: 8px; } #hd-actions { flex-wrap: wrap; } .us-lvl { flex-wrap: wrap; border-radius: 14px; } .us-ctl { min-width: 0; max-width: 100%; } .us-ctl select.ds-input { max-width: 100%; } .us-title .us-av.lg { width: 44px; height: 44px; font-size: 16px; } }
+</style>
+</head>
+<body class="bg-gray-100 kl-tw">
+
+<div class="mq-bar" role="group" aria-label="Planches de la maquette">
+  <b>Maquette — données d'exemple</b>
+  <button type="button" data-p="dash" aria-pressed="true">Vue d'ensemble</button>
+  <button type="button" data-p="comptes" aria-pressed="false">Comptes</button>
+  <button type="button" data-p="apercu" aria-pressed="false">Aperçu en tiroir</button>
+  <button type="button" data-p="fiche" aria-pressed="false">Fiche utilisateur</button>
+  <button type="button" data-p="nouveau" aria-pressed="false">Nouvel utilisateur</button>
+  <button type="button" data-p="roles" aria-pressed="false">Rôles</button>
+  <button type="button" data-p="role" aria-pressed="false">Fiche rôle</button>
+  <button type="button" data-p="controles" aria-pressed="false">Contrôles internes</button>
+  <button type="button" data-p="revue" aria-pressed="false">Revue des accès</button>
+  <button type="button" data-p="securite" aria-pressed="false">Sécurité et connexions</button>
+  <button type="button" data-p="fenetres" aria-pressed="false">Fenêtres et confirmations</button>
+</div>
+
+<header class="h-12 flex items-center px-4 shrink-0 z-40" style="background-color: var(--ds-accent); color: var(--theme-cta-text);">
+  <div class="flex items-center gap-2"><button class="p-1.5 rounded" type="button" aria-label="Applications"><span data-i="grid" data-s="20"></span></button><span class="text-base font-bold tracking-wide px-1">KALUM</span><span class="text-white/30 text-sm">/</span><span class="text-sm font-medium text-white/80">Utilisateurs</span></div>
+  <div class="flex-1 flex justify-center px-4"><div class="relative" style="width: min(420px, 38vw);"><div class="flex items-center gap-2 px-2.5 h-8 rounded-md" style="background: rgba(255, 255, 255, 0.18); color: var(--theme-cta-text);"><span data-i="search" data-s="15"></span><span class="text-sm" style="opacity:.8">Rechercher…</span></div></div></div>
+  <span class="text-sm font-medium" style="margin-left:12px">Administrateur</span>
+</header>
+
+<main class="kl-apple kl-ds">
+<div class="odoo-scope module-shell kl-apple">
+  <div class="odoo-control-bar">
+    <div class="odoo-breadcrumb" aria-label="Fil d'Ariane"><span>Administration</span><span class="odoo-breadcrumb-separator">›</span><span>Utilisateurs</span><span class="odoo-breadcrumb-separator">›</span><span class="odoo-breadcrumb-current">Vue d'ensemble</span></div>
+    <div style="flex:1"></div>
+    <div id="hd-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
+  </div>
+  <div class="module-shell-body">
+    <aside class="module-shell-nav" aria-label="Écrans du module Utilisateurs">
+      <nav class="module-shell-group" aria-label="Tableau de bord">
+        <button type="button" class="module-shell-item" data-p="dash"><span data-i="grid" data-s="15"></span> Vue d'ensemble</button>
+      </nav>
+      <nav class="module-shell-group" aria-label="Opérations">
+        <div class="module-shell-group-title">Opérations</div>
+        <button type="button" class="module-shell-item" data-p="comptes"><span data-i="users" data-s="15"></span> Comptes <span class="module-shell-badge">4</span></button>
+        <button type="button" class="module-shell-item" data-p="revue"><span data-i="scan" data-s="15"></span> Revue des accès <span class="module-shell-badge">4</span></button>
+        <button type="button" class="module-shell-item" data-p="controles" data-t="deleg"><span data-i="swap" data-s="15"></span> Délégations</button>
+      </nav>
+      <nav class="module-shell-group" aria-label="Rapports">
+        <div class="module-shell-group-title">Rapports</div>
+        <button type="button" class="module-shell-item" data-p="securite" data-t="journal"><span data-i="history" data-s="15"></span> Journal des connexions</button>
+        <button type="button" class="module-shell-item" data-p="roles" data-t="matrice"><span data-i="list" data-s="15"></span> Droits par rôle</button>
+      </nav>
+      <nav class="module-shell-group" aria-label="Paramétrage">
+        <div class="module-shell-group-title">Paramétrage</div>
+        <button type="button" class="module-shell-item" data-p="roles"><span data-i="shieldck" data-s="15"></span> Rôles</button>
+        <button type="button" class="module-shell-item" data-p="controles"><span data-i="scale" data-s="15"></span> Contrôles internes <span class="module-shell-badge">1</span></button>
+        <button type="button" class="module-shell-item" data-p="securite"><span data-i="lock" data-s="15"></span> Sécurité et connexions</button>
+        <button type="button" class="module-shell-item"><span data-i="check" data-s="15"></span> Circuits d'approbation <span data-i="ext" data-s="12" class="module-shell-external"></span></button>
+      </nav>
+    </aside>
+    <div class="module-shell-main">
+    <div class="kl-page">
+
+<!-- ═══════════ Planche : vue d'ensemble ═══════════ -->
+<section class="mq-plate on" id="p-dash" data-page="Vue d'ensemble">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Un écran unique à quatre vues (Comptes, Rôles et contrôle, Gouvernance, Revue). Les signaux de sécurité sont dispersés dans des tuiles et des menus.</dd>
+      <dt>Demain</dt><dd>Le module prend la coquille commune (Tableau de bord, Opérations, Rapports, Paramétrage) comme Achats ou Stock. L'accueil liste ce qui demande une action, avec un bouton par ligne.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle"><h1>Vue d'ensemble</h1><p>Comptes, droits et sécurité de votre société.</p></header>
+  <div class="mq-stack">
+    <section class="ds-kpis" aria-label="Indicateurs">
+      <button type="button" class="ds-kpi" data-p="comptes"><span class="ds-kpi-label"><span>Comptes actifs</span></span><span class="ds-kpi-value">11</span><span class="ds-kpi-sub">1 désactivé · 1 invitation en attente</span></button>
+      <button type="button" class="ds-kpi" data-p="comptes"><span class="ds-kpi-label"><span>Sécurité à traiter</span></span><span class="ds-kpi-value">4</span><span class="ds-kpi-sub orange">2FA, verrouillage, PIN, mot de passe</span></button>
+      <button type="button" class="ds-kpi" data-p="controles"><span class="ds-kpi-label"><span>Conflits de séparation des tâches</span></span><span class="ds-kpi-value">1</span><span class="ds-kpi-sub red">mode Observer : non bloqué</span></button>
+      <button type="button" class="ds-kpi" data-p="revue"><span class="ds-kpi-label"><span>Revue des accès</span></span><span class="ds-kpi-value">7 / 11</span><span class="ds-kpi-sub">échéance le 1 déc. 2026</span></button>
+    </section>
+
+    <section class="ds-panel" aria-label="À traiter">
+      <div class="us-head"><h2>À traiter</h2><small>8 points</small><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm" data-p="comptes">Tout voir dans Comptes</button></div>
+      <div class="ds-scroll"><table class="odoo-table">
+        <thead><tr><th>Situation</th><th>Compte ou rôle</th><th>Détail</th><th>Depuis</th><th class="ds-actions"></th></tr></thead>
+        <tbody>
+          <tr><td><span class="kl-tag r" data-tg="warn">Conflit de tâches</span></td><td class="ds-strong">Karim Idrissi</td><td>Crée les bons de commande et réceptionne la marchandise (Responsable des achats + Magasinier)</td><td>25 nov. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="fiche">Examiner</button></td></tr>
+          <tr><td><span class="kl-tag o" data-tg="lock">Verrouillé</span></td><td class="ds-strong">Hamza Tazi</td><td>5 échecs de connexion, déverrouillage automatique à 8 h 42</td><td>aujourd'hui</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Déverrouiller</button></td></tr>
+          <tr><td><span class="kl-tag o" data-tg="key">Mot de passe à changer</span></td><td class="ds-strong">Leila Kettani</td><td>Changement imposé le 24 nov. 2026, pas encore fait</td><td>24 nov. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Lever</button></td></tr>
+          <tr><td><span class="kl-tag o" data-tg="key">PIN à renouveler</span></td><td class="ds-strong">Nadia Chraibi</td><td>Code PIN de 4 chiffres, antérieur à la règle des 6 chiffres</td><td>2 sept. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Changer le PIN</button></td></tr>
+          <tr><td><span class="kl-tag o" data-tg="phone">2FA à configurer</span></td><td class="ds-strong">Karim Idrissi</td><td>Exigée par le rôle Responsable des achats, pas encore activée</td><td>12 nov. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Relancer</button></td></tr>
+          <tr><td><span class="kl-tag o" data-tg="clock">Délégation qui expire</span></td><td class="ds-strong">Omar Berrada</td><td>Rôle Gérant délégué par Youssef Alaoui, fin le 30 nov. 2026</td><td>dans 5 j</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="controles" data-t="deleg">Prolonger</button></td></tr>
+          <tr><td><span class="kl-tag x" data-tg="clock">Compte dormant</span></td><td class="ds-strong">Mehdi Sqalli</td><td>Aucune connexion depuis 74 jours</td><td>12 sept. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Désactiver</button></td></tr>
+          <tr><td><span class="kl-tag x" data-tg="shield">Rôle sans titulaire</span></td><td class="ds-strong">Contrôleur qualité</td><td>Créé par l'assistant de configuration, attribué à personne</td><td>24 nov. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="roles">Attribuer</button></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <div class="us-split">
+      <section class="ds-panel" aria-label="Comptes par rôle">
+        <div class="us-head"><h2>Comptes par rôle</h2><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm" data-p="roles">Rôles</button></div>
+        <div class="ds-scroll"><table class="odoo-table ds-dense">
+          <thead><tr><th>Rôle</th><th class="ds-num">Comptes</th><th>2FA</th></tr></thead>
+          <tbody>
+            <tr><td class="ds-strong">Gérant</td><td class="ds-num">1</td><td><span class="kl-tag g">Exigée</span></td></tr>
+            <tr><td class="ds-strong">Responsable des achats</td><td class="ds-num">1</td><td><span class="kl-tag g">Exigée</span></td></tr>
+            <tr><td class="ds-strong">Comptable</td><td class="ds-num">1</td><td><span class="kl-tag g">Exigée</span></td></tr>
+            <tr><td class="ds-strong">Vendeuse</td><td class="ds-num">2</td><td><span class="us-muted">Non exigée</span></td></tr>
+            <tr><td class="ds-strong">Opérateur de production</td><td class="ds-num">1</td><td><span class="us-muted">Non exigée</span></td></tr>
+          </tbody>
+        </table></div>
+      </section>
+      <section class="ds-panel" aria-label="Dernières modifications des accès">
+        <div class="us-head"><h2>Dernières modifications des accès</h2><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm" data-p="securite" data-t="journal">Journal</button></div>
+        <div class="ds-scroll"><table class="odoo-table ds-dense">
+          <thead><tr><th>Date</th><th>Modification</th><th>Par</th></tr></thead>
+          <tbody>
+            <tr><td>25 nov. 2026</td><td>Rôle Magasinier ajouté à Karim Idrissi</td><td>Youssef Alaoui</td></tr>
+            <tr><td>24 nov. 2026</td><td>Rôle Contrôleur qualité créé (modèle du secteur)</td><td>Assistant</td></tr>
+            <tr><td>23 nov. 2026</td><td>Délégation Gérant → Omar Berrada</td><td>Youssef Alaoui</td></tr>
+            <tr><td>22 nov. 2026</td><td>2FA réinitialisée pour Salma Bennani</td><td>Administrateur</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ Planche : comptes ═══════════ -->
+<section class="mq-plate" id="p-comptes" data-page="Comptes">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Clic sur une ligne = fenêtre de modification ; droits propres dans une 2ᵉ fenêtre ; sécurité dans le menu « ⋯ ». Un seul établissement par compte.</dd>
+      <dt>Demain</dt><dd>Clic = aperçu en tiroir, puis fiche complète en page. La pastille « À traiter » réunit les signaux de sécurité. Plusieurs établissements par compte <span class="mq-new">nouveau</span>.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle"><h1>Comptes</h1><p>Personnes qui se connectent à Kalum, leurs rôles et leur sécurité.</p></header>
+  <div class="mq-stack">
+    <div class="prj-chips" role="group" aria-label="Situation" id="users-chips">
+      <button type="button" class="prj-chip active" aria-pressed="true" data-view="active">Actifs <small>11</small></button>
+      <button type="button" class="prj-chip" aria-pressed="false" data-view="todo">À traiter <small>4</small></button>
+      <button type="button" class="prj-chip" aria-pressed="false" data-view="inv">Invitations en attente <small>1</small></button>
+      <button type="button" class="prj-chip" aria-pressed="false" data-view="off">Désactivés <small>1</small></button>
+      <button type="button" class="prj-chip" aria-pressed="false" data-view="all">Tous <small>12</small></button>
+    </div>
+    <div class="prj-toolbar">
+      <label class="prj-search"><span data-i="search" data-s="15" style="color:var(--ds-muted)"></span><input type="search" placeholder="Rechercher un nom, un e-mail, un rôle…" aria-label="Rechercher" id="users-q"></label>
+      <select class="ds-input sm" style="width:auto" aria-label="Rôle"><option>Tous les rôles</option></select>
+      <select class="ds-input sm" style="width:auto" aria-label="Établissement"><option>Tous les établissements</option></select>
+      <select class="ds-input sm" style="width:auto" aria-label="Sécurité"><option>Toute sécurité</option></select>
+      <span class="ds-grow"></span>
+      <div class="prj-views" role="group" aria-label="Affichage"><button type="button" class="active" aria-pressed="true">Tableau</button><button type="button" aria-pressed="false">Par rôle</button></div>
+    </div>
+    <section class="ds-panel" aria-label="Comptes">
+      <div class="ds-bulk" role="status" id="users-bulk"></div>
+      <div class="ds-scroll"><table class="odoo-table">
+        <thead><tr><th style="width:36px"><input type="checkbox" aria-label="Tout sélectionner"></th><th>Utilisateur</th><th>Rôles et établissements</th><th>Sécurité</th><th>Dernière connexion</th><th>Statut</th><th class="ds-actions"></th></tr></thead>
+        <tbody id="users-body"></tbody>
+      </table></div>
+      <div class="ds-foot"><span id="users-count"></span><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm"><span data-i="download" data-s="14"></span> Exporter</button></div>
+    </section>
+  </div>
+</section>
+
+<!-- ═══════════ Planche : aperçu en tiroir ═══════════ -->
+<section class="mq-plate" id="p-apercu" data-page="Comptes">
+  <div class="mq-note">
+    <strong>Aperçu sans quitter la liste</strong>
+    <dl><dt>Demain</dt><dd>Le tiroir (composant <code>Drawer</code>) montre l'essentiel et les actions rapides de sécurité. « Ouvrir la fiche » mène à la page complète.</dd></dl>
+  </div>
+  <div class="us-drawer-stage">
+    <div class="us-dim"><section class="ds-panel"><div class="ds-scroll"><table class="odoo-table"><thead><tr><th>Utilisateur</th><th>Rôles</th><th>Statut</th></tr></thead><tbody id="dim-body"></tbody></table></div></section></div>
+    <div class="kl-ds ds-sheet ds-drawer" role="dialog" aria-label="Aperçu du compte">
+      <header class="ds-sheet-head">
+        <div class="us-who" style="flex:1"><span class="us-av lg">KI</span><div><h2 class="ds-sheet-title">Karim Idrissi</h2><p class="ds-sheet-sub">karim.idrissi@exemple.ma · Magasin principal</p></div></div>
+        <button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button>
+      </header>
+      <div class="ds-sheet-body">
+        <div class="us-tags"><span class="kl-tag g" data-tg="check">Actif</span><span class="kl-tag o" data-tg="phone">2FA à configurer</span><span class="kl-tag r" data-tg="warn">Conflit de tâches</span></div>
+        <div class="ds-alert danger"><span data-i="warn" data-s="16"></span><span style="flex:1">Crée les bons de commande et les réceptionne. Règle « Acheteur ≠ réceptionnaire », mode Observer.</span></div>
+        <dl class="us-kv">
+          <dt>Rôles</dt><dd><span class="kl-tag b">Responsable des achats</span> <span class="kl-tag x">Magasinier</span></dd>
+          <dt>Portée</dt><dd>Son établissement</dd>
+          <dt>Plafond</dt><dd>Bons de commande jusqu'à 50 000 DH</dd>
+          <dt>Fiche salarié</dt><dd><button type="button" class="ds-crumb-link" style="color:var(--ds-accent-ink)">Karim Idrissi · Achats</button></dd>
+          <dt>Connexion</dt><dd>Aujourd'hui à 9 h 05 · Chrome sur Windows</dd>
+          <dt>Code PIN</dt><dd>Défini (6 chiffres)</dd>
+        </dl>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="odoo-btn-secondary ds-btn-sm">Relancer la 2FA</button>
+          <button type="button" class="odoo-btn-secondary ds-btn-sm">Voir ses droits</button>
+          <button type="button" class="odoo-btn-secondary ds-btn-sm">Fermer les sessions</button>
+        </div>
+      </div>
+      <div class="ds-sheet-foot"><button type="button" class="odoo-btn-secondary">Fermer</button><button type="button" class="odoo-btn-primary" data-p="fiche">Ouvrir la fiche</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ Planche : fiche utilisateur ═══════════ -->
+<section class="mq-plate" id="p-fiche" data-page="Karim Idrissi">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Fiche en fenêtre, droits propres dans une autre fenêtre qui remplacent tout le rôle, analyse des accès dans une 3ᵉ. Changer le rôle principal efface les droits propres sans prévenir.</dd>
+      <dt>Demain</dt><dd>Une page avec cinq onglets. Les réglages liés à la personne (ateliers, pilotes, plafonds, délégations, langue, connexion Google ou Microsoft) sont visibles ici. Les exceptions individuelles s'ajoutent au rôle au lieu de le remplacer.</dd>
+    </dl>
+  </div>
+  <div class="us-title">
+    <span class="us-av lg">KI</span>
+    <div style="flex:1 1 320px"><h1>Karim Idrissi <span class="kl-tag g" data-tg="check">Actif</span></h1><p>Responsable des achats · Magasin principal · compte créé le 3 oct. 2026</p></div>
+  </div>
+  <div class="ds-tabs us-tabbar" role="tablist" aria-label="Sections de la fiche" id="fiche-tabs">
+    <button type="button" role="tab" aria-selected="true" data-tab="f-profil">Profil</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="f-roles">Rôles et périmètre <small>2</small></button>
+    <button type="button" role="tab" aria-selected="false" data-tab="f-droits">Droits effectifs</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="f-secu">Sécurité <small>1</small></button>
+    <button type="button" role="tab" aria-selected="false" data-tab="f-histo">Historique</button>
+  </div>
+  <div class="us-record">
+    <div>
+      <!-- Profil -->
+      <div class="us-tab on" id="f-profil">
+        <section class="ds-panel"><div class="mq-pad">
+          <fieldset class="ds-fieldset"><legend>Identité</legend>
+            <div class="ds-form-grid">
+              <div class="ds-field"><label>Prénom<span class="ds-req"> *</span></label><input class="ds-input" value="Karim"></div>
+              <div class="ds-field"><label>Nom<span class="ds-req"> *</span></label><input class="ds-input" value="Idrissi"></div>
+              <div class="ds-field"><label>E-mail de connexion<span class="ds-req"> *</span></label><input class="ds-input" value="karim.idrissi@exemple.ma"><span class="ds-field-hint">Sert d'identifiant et reçoit les invitations.</span></div>
+              <div class="ds-field"><label>Fiche salarié</label><select class="ds-input"><option>Karim Idrissi · Achats · matricule 0042</option></select><span class="ds-field-hint">Le lien se voit aussi depuis Personnel <span class="mq-new">nouveau</span></span></div>
+            </div>
+          </fieldset>
+        </div></section>
+        <section class="ds-panel"><div class="mq-pad">
+          <fieldset class="ds-fieldset"><legend>Préférences <span class="mq-new">nouveau</span></legend>
+            <div class="ds-form-grid">
+              <div class="ds-field"><label>Langue de l'interface</label><select class="ds-input"><option>Langue de la société (français)</option><option>العربية</option><option>English</option></select><span class="ds-field-hint">Aujourd'hui modifiable par l'utilisateur seul.</span></div>
+              <div class="ds-field"><label>Espace de travail à l'ouverture</label><select class="ds-input"><option>Selon le rôle principal (Achats)</option><option>Direction</option><option>Production</option></select></div>
+            </div>
+          </fieldset>
+        </div></section>
+        <section class="ds-panel" aria-label="Connexion par un compte externe">
+          <div class="us-head"><h2>Connexion par un compte externe</h2><span class="mq-new">nouveau</span></div>
+          <div class="ds-scroll"><table class="odoo-table ds-dense">
+            <thead><tr><th>Fournisseur</th><th>Adresse</th><th>Dernière connexion</th><th class="ds-actions"></th></tr></thead>
+            <tbody><tr><td class="ds-strong">Google</td><td>karim.idrissi@exemple.ma</td><td>21 nov. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Délier</button></td></tr></tbody>
+          </table></div>
+        </section>
+      </div>
+
+      <!-- Rôles et périmètre -->
+      <div class="us-tab" id="f-roles">
+        <section class="ds-panel" aria-label="Rôles">
+          <div class="us-head"><h2>Rôles</h2><small>Le droit le plus large l'emporte.</small><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary ds-btn-sm"><span data-i="plus" data-s="13"></span> Ajouter un rôle</button></div>
+          <div class="ds-scroll"><table class="odoo-table">
+            <thead><tr><th>Rôle</th><th>Origine</th><th>Principal</th><th class="ds-num">Modules</th><th>2FA</th><th class="ds-actions"></th></tr></thead>
+            <tbody>
+              <tr><td class="ds-strong">Responsable des achats</td><td>Attribué le 3 oct. 2026</td><td><input type="radio" name="prim" checked aria-label="Rôle principal"></td><td class="ds-num">5</td><td><span class="kl-tag g">Exigée</span></td><td class="ds-actions"><button type="button" class="row-menu-trigger" aria-label="Autres actions"><span data-i="more" data-s="16"></span></button></td></tr>
+              <tr><td class="ds-strong">Magasinier</td><td>Attribué le 25 nov. 2026 par Youssef Alaoui</td><td><input type="radio" name="prim" aria-label="Rôle principal"></td><td class="ds-num">2</td><td><span class="us-muted">Non exigée</span></td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Retirer</button></td></tr>
+            </tbody>
+          </table></div>
+          <div class="mq-pad" style="padding-top:0"><div class="ds-alert warning"><span data-i="info" data-s="16"></span><span style="flex:1">Changer le rôle principal modifie la page d'accueil et le contrôle des droits. Une confirmation sera demandée ; les exceptions individuelles sont conservées.</span></div></div>
+        </section>
+        <section class="ds-panel"><div class="mq-pad">
+          <fieldset class="ds-fieldset"><legend>Périmètre</legend>
+            <div class="ds-field"><label>Établissements <span class="mq-new">nouveau</span></label>
+              <div class="us-pick"><button type="button" class="on"><span data-i="check" data-s="13"></span> Magasin principal · par défaut</button><button type="button" class="on"><span data-i="check" data-s="13"></span> Laboratoire central</button><button type="button"><span data-i="check" data-s="13"></span> Boutique Maârif</button></div>
+              <span class="ds-field-hint">La portée « Son établissement » couvre tous les établissements cochés.</span></div>
+            <div class="ds-form-grid">
+              <div class="ds-field"><label>Portée des données par défaut</label><select class="ds-input"><option>Son établissement</option><option>Ses enregistrements</option><option>Tous les établissements</option></select></div>
+              <div class="ds-field"><label>Plafond d'approbation</label><input class="ds-input" value="Bon de commande : 50 000 DH" readonly><span class="ds-field-hint">Vient du rôle Responsable des achats ; se règle dans Contrôles internes.</span></div>
+            </div>
+          </fieldset>
+        </div></section>
+        <section class="ds-panel" aria-label="Rattachements">
+          <div class="us-head"><h2>Rattachements</h2><small>Réglés dans d'autres modules, réunis ici pour lecture</small></div>
+          <div class="ds-scroll"><table class="odoo-table ds-dense">
+            <thead><tr><th>Élément</th><th>Valeur</th><th>Par</th><th class="ds-actions"></th></tr></thead>
+            <tbody>
+              <tr><td class="ds-strong">Atelier de production</td><td>Réception matières (membre)</td><td>rôle Magasinier</td><td class="ds-actions"><button type="button" class="ds-btn-ghost ds-btn-sm">Ateliers <span data-i="ext" data-s="12"></span></button></td></tr>
+              <tr><td class="ds-strong">Module en essai</td><td>Achats › Appels d'offres (pilote)</td><td>compte</td><td class="ds-actions"><button type="button" class="ds-btn-ghost ds-btn-sm">Modules <span data-i="ext" data-s="12"></span></button></td></tr>
+              <tr><td class="ds-strong">Circuit d'approbation</td><td>Approbateur des demandes d'achat &gt; 5 000 DH</td><td>rôle Responsable des achats</td><td class="ds-actions"><button type="button" class="ds-btn-ghost ds-btn-sm">Circuits <span data-i="ext" data-s="12"></span></button></td></tr>
+              <tr><td class="ds-strong">Délégation donnée</td><td>Approbations → Hamza Tazi, du 2 au 6 déc. 2026</td><td>compte</td><td class="ds-actions"><button type="button" class="ds-btn-ghost ds-btn-sm" data-p="controles" data-t="deleg">Délégations</button></td></tr>
+            </tbody>
+          </table></div>
+        </section>
+      </div>
+
+      <!-- Droits effectifs -->
+      <div class="us-tab" id="f-droits">
+        <section class="ds-panel" aria-label="Droits effectifs">
+          <div class="us-head"><h2>Droits effectifs</h2><small>Ce que Karim peut faire, et pourquoi</small><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary ds-btn-sm"><span data-i="eye" data-s="13"></span> Voir le menu comme lui</button><span class="mq-new">nouveau</span></div>
+          <div class="ds-scroll"><table class="odoo-table">
+            <thead><tr><th>Module</th><th>Niveau</th><th>Portée</th><th>Actions métier</th><th>Accordé par</th></tr></thead>
+            <tbody>
+              <tr><td class="ds-strong">Achats</td><td>Gestion</td><td>Son établissement</td><td>Approuver, Valider, Exporter, Imprimer</td><td><span class="kl-tag b">Resp. des achats</span></td></tr>
+              <tr><td class="ds-strong">Stock</td><td>Gestion</td><td>Son établissement</td><td>—</td><td><span class="kl-tag b">Resp. des achats</span> <span class="kl-tag x">Magasinier</span></td></tr>
+              <tr><td class="ds-strong">Demandes boutique</td><td>Saisie</td><td>Son établissement</td><td>Valider</td><td><span class="kl-tag x">Magasinier</span></td></tr>
+              <tr><td class="ds-strong">Comptabilité</td><td>Lecture</td><td>Tous les établissements</td><td>Exporter</td><td><span class="kl-tag o">Exception individuelle</span></td></tr>
+              <tr><td class="ds-strong">Rapports</td><td>Lecture</td><td>Son établissement</td><td>Exporter</td><td><span class="kl-tag b">Resp. des achats</span></td></tr>
+              <tr><td class="ds-strong">Paramètres</td><td>Lecture</td><td>—</td><td>Sections : Numérotation des pièces, Modèles de documents</td><td><span class="kl-tag o">Exception individuelle</span></td></tr>
+            </tbody>
+          </table></div>
+          <div class="ds-foot"><span>6 modules · 76 permissions détaillées sur 663</span><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm">Détail des permissions</button></div>
+        </section>
+        <section class="ds-panel" aria-label="Exceptions individuelles">
+          <div class="us-head"><h2>Exceptions individuelles</h2><span class="mq-new">nouveau</span><small>S'ajoutent aux rôles ou retirent un droit précis, avec un motif et une date de fin</small><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary ds-btn-sm"><span data-i="plus" data-s="13"></span> Ajouter une exception</button></div>
+          <div class="ds-scroll"><table class="odoo-table ds-dense">
+            <thead><tr><th>Droit</th><th>Effet</th><th>Motif</th><th>Jusqu'au</th><th class="ds-actions"></th></tr></thead>
+            <tbody>
+              <tr><td class="ds-strong">Comptabilité · consulter et exporter</td><td><span class="kl-tag g">Accordé</span></td><td>Rapprochement des factures fournisseurs</td><td>31 déc. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Retirer</button></td></tr>
+              <tr><td class="ds-strong">Paramètres · sections Numérotation des pièces et Modèles de documents</td><td><span class="kl-tag g">Accordé</span></td><td>Préparation des modèles de bons de commande</td><td>31 déc. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Retirer</button></td></tr>
+              <tr><td class="ds-strong">Achats · supprimer un bon de commande envoyé</td><td><span class="kl-tag r">Retiré</span></td><td>Séparation avec la réception</td><td>sans fin</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Retirer</button></td></tr>
+            </tbody>
+          </table></div>
+        </section>
+      </div>
+
+      <!-- Sécurité -->
+      <div class="us-tab" id="f-secu">
+        <section class="ds-panel" aria-label="Sécurité du compte">
+          <div class="us-head"><h2>Sécurité du compte</h2></div>
+          <div class="us-row"><div><b>Double authentification <span class="kl-tag o">À configurer</span></b><p>Exigée par le rôle Responsable des achats depuis le 12 nov. 2026.</p></div><div class="us-ctl"><button type="button" class="odoo-btn-secondary ds-btn-sm">Relancer par e-mail</button><span class="mq-new">nouveau</span><button type="button" class="odoo-btn-secondary ds-btn-sm">Réinitialiser</button></div></div>
+          <div class="us-row"><div><b>Exiger la double authentification pour ce compte</b><p>Déjà exigée par son rôle. À activer pour la garder s'il change de rôle.</p></div><div class="us-ctl"><button type="button" role="switch" aria-checked="false" class="odoo-toggle" aria-label="Exiger pour ce compte"><span class="odoo-toggle-knob"></span></button></div></div>
+          <div class="us-row"><div><b>Mot de passe</b><p>Modifié il y a 42 jours · aucun changement imposé.</p></div><div class="us-ctl"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="fenetres">Définir un nouveau mot de passe</button><button type="button" class="odoo-btn-secondary ds-btn-sm">Imposer un changement</button><button type="button" class="odoo-btn-secondary ds-btn-sm">Envoyer un lien</button><span class="mq-new">nouveau</span></div></div>
+          <div class="us-row"><div><b>Code PIN de caisse</b><p>Défini, 6 chiffres. Sert à la connexion rapide sur les postes partagés.</p></div><div class="us-ctl"><button type="button" class="odoo-btn-secondary ds-btn-sm">Changer</button><button type="button" class="odoo-btn-secondary ds-btn-sm">Retirer</button></div></div>
+          <div class="us-row"><div><b>Connexion</b><p>Aucun échec récent. Verrouillage après 5 échecs (réglé dans Sécurité et connexions).</p></div><div class="us-ctl"><span class="kl-tag g">Non verrouillé</span></div></div>
+        </section>
+        <section class="ds-panel" aria-label="Sessions et appareils">
+          <div class="us-head"><h2>Sessions et appareils</h2><span class="mq-new">nouveau</span><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary ds-btn-sm"><span data-i="logout" data-s="13"></span> Fermer toutes les sessions</button></div>
+          <div class="ds-scroll"><table class="odoo-table ds-dense">
+            <thead><tr><th>Appareil</th><th>Adresse IP</th><th>Ouverte le</th><th>Dernière activité</th><th class="ds-actions"></th></tr></thead>
+            <tbody>
+              <tr><td class="ds-strong">Chrome · Windows <span class="kl-tag b">cette session</span></td><td>196.200.14.7</td><td>25 nov. 2026</td><td>il y a 3 min</td><td class="ds-actions"></td></tr>
+              <tr><td class="ds-strong">Safari · iPhone</td><td>41.250.3.112</td><td>19 nov. 2026</td><td>hier</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Fermer</button></td></tr>
+            </tbody>
+          </table></div>
+        </section>
+        <section class="ds-panel" aria-label="Zone sensible">
+          <div class="us-head"><h2>Zone sensible</h2></div>
+          <div class="us-row"><div><b>Désactiver le compte</b><p>La personne ne peut plus se connecter ; son historique reste intact.</p></div><div class="us-ctl"><button type="button" class="ds-btn-danger ds-btn-sm">Désactiver</button></div></div>
+          <div class="us-row"><div><b>Supprimer définitivement</b><p>Impossible : ce compte a créé 38 pièces. Désactivez-le à la place.</p></div><div class="us-ctl"><button type="button" class="ds-btn-danger ds-btn-sm" disabled>Supprimer</button></div></div>
+        </section>
+      </div>
+
+      <!-- Historique -->
+      <div class="us-tab" id="f-histo">
+        <div class="prj-toolbar"><div class="prj-views" role="group" aria-label="Type d'événement"><button type="button" class="active">Tout</button><button type="button">Connexions</button><button type="button">Droits</button><button type="button">Sécurité</button></div></div>
+        <section class="ds-panel" aria-label="Historique du compte">
+          <div class="ds-scroll"><table class="odoo-table ds-dense">
+            <thead><tr><th>Date</th><th>Événement</th><th>Par</th><th>Détail</th></tr></thead>
+            <tbody>
+              <tr><td>25 nov. 2026 09:05</td><td>Connexion réussie</td><td>Karim Idrissi</td><td>Chrome · Windows · 196.200.14.7</td></tr>
+              <tr><td>25 nov. 2026 08:47</td><td>Rôle ajouté</td><td>Youssef Alaoui</td><td>Magasinier · conflit signalé (mode Observer)</td></tr>
+              <tr><td>19 nov. 2026 18:20</td><td>Exception accordée</td><td>Administrateur</td><td>Comptabilité · consulter et exporter, jusqu'au 31 déc.</td></tr>
+              <tr><td>12 nov. 2026 10:02</td><td>Double authentification exigée</td><td>Administrateur</td><td>Par la politique du rôle Responsable des achats</td></tr>
+              <tr><td>3 oct. 2026 14:11</td><td>Compte créé</td><td>Administrateur</td><td>Invitation envoyée, acceptée le 3 oct.</td></tr>
+            </tbody>
+          </table></div>
+        </section>
+      </div>
+    </div>
+
+    <aside class="ds-panel us-side" aria-label="Résumé">
+      <h3>Résumé</h3>
+      <dl class="us-kv">
+        <dt>Rôle principal</dt><dd>Responsable des achats</dd>
+        <dt>Autres rôles</dt><dd>Magasinier</dd>
+        <dt>Établissements</dt><dd>Magasin principal, Laboratoire central</dd>
+        <dt>Connexion</dt><dd>Aujourd'hui à 9 h 05</dd>
+        <dt>Revue</dt><dd>À examiner (4ᵉ trimestre)</dd>
+      </dl>
+      <h3>Signaux</h3>
+      <div class="ds-alert danger"><span data-i="warn" data-s="16"></span><span style="flex:1">Conflit « Acheteur ≠ réceptionnaire »</span></div>
+      <div class="ds-alert warning"><span data-i="phone" data-s="16"></span><span style="flex:1">Double authentification à configurer</span></div>
+      <h3>Fiche salarié</h3>
+      <div class="us-who"><span class="us-av">KI</span><div><b>Karim Idrissi</b><small>Achats · temps plein</small></div></div>
+    </aside>
+  </div>
+</section>
+
+<!-- ═══════════ Planche : nouvel utilisateur ═══════════ -->
+<section class="mq-plate" id="p-nouveau" data-page="Nouvel utilisateur">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Un formulaire unique ; mot de passe saisi par l'administrateur (4 caractères acceptés) ; aucun contrôle des conflits avant l'enregistrement.</dd>
+      <dt>Demain</dt><dd>Une fenêtre en cinq étapes, sans numéro. Les rôles proposés viennent du secteur. On vérifie les conflits et on montre un aperçu des accès avant de créer le compte. Le compte peut recevoir une invitation par e-mail <span class="mq-new">nouveau</span>.</dd>
+    </dl>
+  </div>
+  <div class="us-stage">
+    <div class="kl-ds ds-sheet ds-modal" role="dialog" aria-label="Nouvel utilisateur">
+      <header class="ds-sheet-head"><div style="flex:1"><h2 class="ds-sheet-title">Nouvel utilisateur</h2><p class="ds-sheet-sub" id="nw-sub"></p></div><button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button></header>
+      <nav class="us-steps" id="nw-steps" aria-label="Étapes"></nav>
+      <div class="ds-sheet-body" id="nw-body"></div>
+      <div class="ds-sheet-foot"><div class="ds-form-foot"><span class="ds-grow" id="nw-left"></span><button type="button" class="odoo-btn-secondary" id="nw-prev">Précédent</button><button type="button" class="odoo-btn-primary" id="nw-next">Suivant</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ Planche : rôles ═══════════ -->
+<section class="mq-plate" id="p-roles" data-page="Rôles">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Liste et éditeur sur le même écran ; rôle de base limité à 8 rôles de boulangerie ; libellé et description non modifiables ; matrice des 663 permissions à part, libellés en partie en anglais.</dd>
+      <dt>Demain</dt><dd>On voit d'où vient chaque rôle (système, personnalisé, modèle du secteur). La fiche rôle réunit niveau d'accès, portée, actions métier et permissions détaillées. Les modules inactifs sont masqués.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle"><h1>Rôles</h1><p>Ce que chaque fonction peut voir et faire dans Kalum.</p></header>
+  <div class="mq-stack">
+    <div class="prj-chips" role="group" aria-label="Origine">
+      <button type="button" class="prj-chip active" aria-pressed="true">Tous <small>11</small></button>
+      <button type="button" class="prj-chip">Système <small>5</small></button>
+      <button type="button" class="prj-chip">Personnalisés <small>3</small></button>
+      <button type="button" class="prj-chip">Modèles du secteur <small>3</small></button>
+      <button type="button" class="prj-chip empty">Désactivés <small>0</small></button>
+    </div>
+    <div class="prj-toolbar">
+      <label class="prj-search"><span data-i="search" data-s="15" style="color:var(--ds-muted)"></span><input type="search" placeholder="Rechercher un rôle…" aria-label="Rechercher un rôle"></label>
+      <span class="ds-grow"></span>
+      <div class="prj-views" role="group" aria-label="Affichage" id="roles-view"><button type="button" class="active" data-rv="list">Liste</button><button type="button" data-rv="cmp">Comparer</button></div>
+    </div>
+    <section class="ds-panel" aria-label="Rôles">
+      <div class="ds-scroll"><table class="odoo-table">
+        <thead><tr><th>Rôle</th><th>Origine</th><th>Rôle de base</th><th class="ds-num">Comptes</th><th class="ds-num">Modules</th><th>2FA</th><th>Statut</th><th class="ds-actions"></th></tr></thead>
+        <tbody id="roles-body"></tbody>
+      </table></div>
+      <div class="ds-foot"><span>11 rôles · 1 sans titulaire</span></div>
+    </section>
+    <section class="ds-panel" aria-label="Comparer des rôles" id="roles-cmp" hidden>
+      <div class="us-head"><h2>Comparer des rôles</h2><span class="mq-new">nouveau</span><small>Jusqu'à quatre rôles</small><span class="ds-grow"></span><div class="us-pick"><button type="button" class="on"><span data-i="check" data-s="13"></span> Gérant</button><button type="button" class="on"><span data-i="check" data-s="13"></span> Responsable des achats</button><button type="button" class="on"><span data-i="check" data-s="13"></span> Magasinier</button><button type="button" class="on"><span data-i="check" data-s="13"></span> Comptable</button><button type="button"><span data-i="check" data-s="13"></span> Vendeuse</button></div></div>
+      <div class="ds-scroll"><table class="odoo-table">
+        <thead><tr><th>Module</th><th>Gérant</th><th>Responsable des achats</th><th>Magasinier</th><th>Comptable</th></tr></thead>
+        <tbody>
+          <tr><td class="ds-strong">Achats</td><td>Complet</td><td>Gestion</td><td>Lecture</td><td>Lecture</td></tr>
+          <tr><td class="ds-strong">Stock</td><td>Complet</td><td>Gestion</td><td>Gestion</td><td>Lecture</td></tr>
+          <tr><td class="ds-strong">Demandes boutique</td><td>Complet</td><td>Lecture</td><td>Saisie</td><td><span class="us-muted">—</span></td></tr>
+          <tr><td class="ds-strong">Ventes</td><td>Complet</td><td><span class="us-muted">—</span></td><td><span class="us-muted">—</span></td><td>Lecture</td></tr>
+          <tr><td class="ds-strong">Comptabilité</td><td>Gestion</td><td><span class="us-muted">—</span></td><td><span class="us-muted">—</span></td><td>Complet</td></tr>
+          <tr><td class="ds-strong">Production</td><td>Gestion</td><td><span class="us-muted">—</span></td><td><span class="us-muted">—</span></td><td><span class="us-muted">—</span></td></tr>
+          <tr><td class="ds-strong">Rapports</td><td>Complet</td><td>Lecture</td><td><span class="us-muted">—</span></td><td>Gestion</td></tr>
+          <tr><td class="ds-strong">Paramètres</td><td>Lecture · 9 sections</td><td>Lecture · 2 sections</td><td><span class="us-muted">—</span></td><td>Lecture · TVA, Devises</td></tr>
+          <tr><td class="ds-strong">Utilisateurs</td><td>Gestion · ses établissements</td><td><span class="us-muted">—</span></td><td><span class="us-muted">—</span></td><td><span class="us-muted">—</span></td></tr>
+          <tr class="ds-group"><td colspan="5"><b>Contrôles</b></td></tr>
+          <tr><td class="ds-strong">Double authentification</td><td><span class="kl-tag g">Exigée</span></td><td><span class="kl-tag g">Exigée</span></td><td><span class="us-muted">Non exigée</span></td><td><span class="kl-tag g">Exigée</span></td></tr>
+          <tr><td class="ds-strong">Plafond bon de commande (DH)</td><td>200 000</td><td>50 000</td><td><span class="us-muted">—</span></td><td><span class="us-muted">—</span></td></tr>
+          <tr><td class="ds-strong">Incompatible avec</td><td><span class="us-muted">—</span></td><td>Magasinier, Comptable</td><td>Responsable des achats</td><td>Responsable des achats</td></tr>
+        </tbody>
+      </table></div>
+      <div class="ds-foot"><span>Les écarts entre rôles se lisent ligne par ligne.</span></div>
+    </section>
+  </div>
+</section>
+
+<!-- ═══════════ Planche : fiche rôle ═══════════ -->
+<section class="mq-plate" id="p-role" data-page="Responsable des achats">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Trois couches de droits à régler séparément : cases Voir/Créer/Modifier/Supprimer, actions métier, puis 663 permissions par action. Ateliers, écrans, 2FA et plafonds du rôle se règlent sur quatre autres pages.</dd>
+      <dt>Demain</dt><dd>Un niveau par module (Aucun, Lecture, Saisie, Gestion, Complet) qui coche les permissions détaillées ; le détail reste ajustable. Tout ce qui dépend du rôle est réuni dans sa fiche.</dd>
+    </dl>
+  </div>
+  <div class="us-title">
+    <div style="flex:1 1 320px"><h1>Responsable des achats <span class="kl-tag g">Modèle du secteur</span></h1><p>Achète, suit les fournisseurs et approuve dans son plafond · 1 compte · basé sur Gérant</p></div>
+  </div>
+  <div class="ds-tabs us-tabbar" role="tablist" aria-label="Sections du rôle" id="role-tabs">
+    <button type="button" role="tab" aria-selected="true" data-tab="r-acces">Accès par module</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="r-detail">Permissions détaillées <small>74</small></button>
+    <button type="button" role="tab" aria-selected="false" data-tab="r-membres">Membres <small>1</small></button>
+    <button type="button" role="tab" aria-selected="false" data-tab="r-ctrl">Contrôles et rattachements</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="r-ident">Identité</button>
+  </div>
+  <div class="us-tab on" id="r-acces">
+    <div class="prj-toolbar">
+      <label class="prj-search"><span data-i="search" data-s="15" style="color:var(--ds-muted)"></span><input type="search" placeholder="Rechercher un module…" aria-label="Rechercher un module"></label>
+      <label style="display:inline-flex;gap:8px;align-items:center;font-size:13px;color:var(--ds-body)"><button type="button" role="switch" aria-checked="true" class="odoo-toggle on" id="tg-inactive"><span class="odoo-toggle-knob"></span></button> Afficher les modules inactifs</label>
+      <span class="ds-grow"></span>
+      <span class="us-muted" style="font-size:13px">Effet sous 30 secondes pour les comptes connectés</span>
+    </div>
+    <section class="ds-panel" aria-label="Accès par module">
+      <div class="ds-scroll"><table class="odoo-table">
+        <thead><tr><th>Module</th><th>Niveau d'accès <span class="mq-new">nouveau</span></th><th>Portée des données</th><th>Actions métier ou sections</th><th class="ds-num">Permissions</th></tr></thead>
+        <tbody id="matrix-body"></tbody>
+      </table></div>
+      <div class="ds-form-foot"><span class="ds-grow" id="matrix-dirty"></span><button type="button" class="odoo-btn-secondary">Annuler</button><button type="button" class="odoo-btn-primary">Enregistrer les droits</button></div>
+    </section>
+    <div class="mq-note" style="margin:0"><strong>Les niveaux</strong><dl><dt>Lecture</dt><dd>voir les écrans et les pièces</dd><dt>Saisie</dt><dd>+ créer et modifier ses brouillons</dd><dt>Gestion</dt><dd>+ modifier, annuler, actions métier courantes</dd><dt>Complet</dt><dd>+ supprimer et tout le détail du module</dd></dl></div>
+  </div>
+  <div class="us-tab" id="r-detail">
+    <div class="prj-toolbar"><label class="prj-search"><span data-i="search" data-s="15" style="color:var(--ds-muted)"></span><input type="search" placeholder="Rechercher une permission…" aria-label="Rechercher une permission"></label><select class="ds-input sm" style="width:auto" aria-label="Module"><option>Achats</option></select><span class="ds-grow"></span><div class="prj-views"><button type="button" class="active">Toutes</button><button type="button">Écarts au niveau</button></div></div>
+    <section class="ds-panel" aria-label="Permissions détaillées">
+      <div class="ds-scroll"><table class="odoo-table ds-dense">
+        <thead><tr><th style="width:36px"></th><th>Permission</th><th>Comprise dans le niveau</th><th>État</th></tr></thead>
+        <tbody>
+          <tr class="ds-group"><td colspan="4"><b>Achats › Bons de commande</b> <span class="us-muted">· 8 sur 9</span></td></tr>
+          <tr><td><input type="checkbox" checked aria-label="Créer un bon de commande"></td><td>Créer un bon de commande</td><td>Saisie</td><td><span class="kl-tag g">Selon le niveau</span></td></tr>
+          <tr><td><input type="checkbox" checked aria-label="Envoyer au fournisseur"></td><td>Envoyer un bon de commande au fournisseur</td><td>Gestion</td><td><span class="kl-tag g">Selon le niveau</span></td></tr>
+          <tr><td><input type="checkbox" checked aria-label="Approuver"></td><td>Approuver un bon de commande dans son plafond</td><td>Gestion</td><td><span class="kl-tag g">Selon le niveau</span></td></tr>
+          <tr><td><input type="checkbox" aria-label="Supprimer"></td><td>Supprimer un bon de commande envoyé</td><td>Gestion</td><td><span class="kl-tag o">Retirée du niveau</span></td></tr>
+          <tr class="ds-group"><td colspan="4"><b>Achats › Factures fournisseurs</b> <span class="us-muted">· 4 sur 6</span></td></tr>
+          <tr><td><input type="checkbox" checked aria-label="Saisir"></td><td>Saisir une facture fournisseur</td><td>Saisie</td><td><span class="kl-tag g">Selon le niveau</span></td></tr>
+          <tr><td><input type="checkbox" aria-label="Comptabiliser"></td><td>Comptabiliser une facture</td><td>Complet</td><td><span class="kl-tag x">Hors du niveau</span></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+  </div>
+  <div class="us-tab" id="r-membres">
+    <section class="ds-panel" aria-label="Membres">
+      <div class="us-head"><h2>Comptes qui ont ce rôle</h2><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary ds-btn-sm"><span data-i="plus" data-s="13"></span> Attribuer à un compte</button></div>
+      <div class="ds-scroll"><table class="odoo-table">
+        <thead><tr><th>Compte</th><th>Comme</th><th>Depuis</th><th class="ds-actions"></th></tr></thead>
+        <tbody>
+          <tr><td><div class="us-who"><span class="us-av">KI</span><div><b>Karim Idrissi</b><small>Magasin principal</small></div></div></td><td>Rôle principal</td><td>3 oct. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="fiche">Ouvrir</button></td></tr>
+          <tr><td><div class="us-who"><span class="us-av">YA</span><div><b>Youssef Alaoui</b><small>Tous les établissements</small></div></div></td><td><span class="kl-tag o">Délégation programmée</span> du 2 au 6 déc.</td><td>—</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Ouvrir</button></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+  </div>
+  <div class="us-tab" id="r-ctrl">
+    <section class="ds-panel" aria-label="Contrôles du rôle">
+      <div class="us-head"><h2>Contrôles du rôle</h2></div>
+      <div class="us-row"><div><b>Double authentification exigée</b><p>Pour tous les comptes qui ont ce rôle.</p></div><div class="us-ctl"><button type="button" role="switch" aria-checked="true" class="odoo-toggle on" aria-label="Double authentification exigée"><span class="odoo-toggle-knob"></span></button></div></div>
+      <div class="us-row"><div><b>Modifier ce rôle demande une approbation <span class="mq-new">nouveau</span></b><p>Un second administrateur valide avant que les droits changent (circuit « Changement de configuration »).</p></div><div class="us-ctl"><button type="button" role="switch" aria-checked="true" class="odoo-toggle on" aria-label="Approbation des modifications"><span class="odoo-toggle-knob"></span></button></div></div>
+      <div class="us-row"><div><b>Plafonds d'approbation</b><p>Bon de commande 50 000 DH · Demande d'achat 20 000 DH</p></div><div class="us-ctl"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="controles" data-t="plaf">Modifier</button></div></div>
+      <div class="us-row"><div><b>Séparation des tâches</b><p>Incompatible avec Magasinier (réception) et Comptable (règlement). 1 compte en conflit.</p></div><div class="us-ctl"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="controles">Voir les règles</button></div></div>
+    </section>
+    <section class="ds-panel" aria-label="Rattachements du rôle">
+      <div class="us-head"><h2>Où ce rôle intervient</h2><small>Réglé dans les autres modules</small></div>
+      <div class="ds-scroll"><table class="odoo-table ds-dense">
+        <thead><tr><th>Élément</th><th>Valeur</th><th class="ds-actions"></th></tr></thead>
+        <tbody>
+          <tr><td class="ds-strong">Circuits d'approbation</td><td>Approbateur : demandes d'achat &gt; 5 000 DH, changement de RIB fournisseur</td><td class="ds-actions"><button type="button" class="ds-btn-ghost ds-btn-sm">Ouvrir <span data-i="ext" data-s="12"></span></button></td></tr>
+          <tr><td class="ds-strong">Ateliers de production</td><td><span class="us-muted">Aucun</span></td><td class="ds-actions"><button type="button" class="ds-btn-ghost ds-btn-sm">Ouvrir <span data-i="ext" data-s="12"></span></button></td></tr>
+          <tr><td class="ds-strong">Écrans personnalisés</td><td>Tableau de bord Achats (publié pour ce rôle)</td><td class="ds-actions"><button type="button" class="ds-btn-ghost ds-btn-sm">Ouvrir <span data-i="ext" data-s="12"></span></button></td></tr>
+          <tr><td class="ds-strong">Modules en essai</td><td>Achats › Appels d'offres</td><td class="ds-actions"><button type="button" class="ds-btn-ghost ds-btn-sm">Ouvrir <span data-i="ext" data-s="12"></span></button></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+  </div>
+  <div class="us-tab" id="r-ident">
+    <section class="ds-panel"><div class="mq-pad">
+      <fieldset class="ds-fieldset"><legend>Identité du rôle</legend>
+        <div class="ds-form-grid">
+          <div class="ds-field"><label>Libellé<span class="ds-req"> *</span></label><input class="ds-input" value="Responsable des achats"></div>
+          <div class="ds-field"><label>Rôle de base<span class="ds-req"> *</span></label><select class="ds-input"><option>Gérant</option><option>Magasinier</option><option>Opérateur de production</option><option>Responsable de production</option></select><span class="ds-field-hint">Tous les rôles système, et non plus les seuls rôles de boulangerie.</span></div>
+          <div class="ds-field"><label>Description</label><input class="ds-input" value="Achète, suit les fournisseurs et approuve dans son plafond"></div>
+          <div class="ds-field"><label>Page d'accueil</label><select class="ds-input"><option>Achats › Poste de travail</option></select><span class="ds-field-hint">Reprise du modèle du secteur <span class="mq-new">nouveau</span></span></div>
+        </div>
+      </fieldset>
+      <div class="ds-alert info"><span data-i="info" data-s="16"></span><span style="flex:1">Créé le 24 nov. 2026 par l'assistant de configuration à partir du modèle « Responsable des achats » (commun à tous les secteurs).</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="odoo-btn-secondary">Dupliquer</button><button type="button" class="odoo-btn-secondary">Désactiver</button><button type="button" class="ds-btn-danger" disabled title="1 compte a encore ce rôle">Supprimer</button></div>
+    </div></section>
+  </div>
+</section>
+
+<!-- ═══════════ Planche : contrôles internes ═══════════ -->
+<section class="mq-plate" id="p-controles" data-page="Contrôles internes">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Deux séparations des tâches (Utilisateurs › Gouvernance et Paramètres › Achats), chacune avec ses modes. Deux délégations (par l'administrateur, et par chacun dans Approbations). Des plafonds par rôle à côté des circuits d'approbation.</dd>
+      <dt>Demain</dt><dd>Un seul écran et le même choix de mode partout. Les règles sur les rôles et sur les pièces sont réunies, de même que les deux sortes de délégation. Une délégation peut commencer plus tard.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle"><h1>Contrôles internes</h1><p>Séparation des tâches, plafonds et délégations.</p></header>
+  <div class="mq-stack">
+    <div class="ds-tabs" role="tablist" aria-label="Contrôles" id="ctrl-tabs">
+      <button type="button" role="tab" aria-selected="true" data-tab="c-sod">Séparation des tâches <small>1</small></button>
+      <button type="button" role="tab" aria-selected="false" data-tab="c-plaf">Plafonds d'approbation</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="c-deleg">Délégations <small>2</small></button>
+      <button type="button" role="tab" aria-selected="false" data-tab="c-droits">Contrôle des droits</button>
+    </div>
+    <div class="us-tab on" id="c-sod">
+      <section class="ds-panel" aria-label="Mode de contrôle">
+        <div class="us-mode"><span><b>Cumul de rôles</b> · un compte réunit deux capacités incompatibles</span><span class="ds-grow"></span><div class="us-lvl" data-group="m1"><button type="button" class="on">Observer</button><button type="button">Bloquer</button><button type="button">Bloquer sauf administrateur</button><button type="button">Désactivé</button></div></div>
+        <div class="us-mode" style="border-bottom:0"><span><b>Pièces</b> · la même personne enchaîne deux étapes d'une pièce</span><span class="ds-grow"></span><div class="us-lvl" data-group="m2"><button type="button">Observer</button><button type="button">Bloquer</button><button type="button" class="on">Bloquer sauf administrateur</button><button type="button">Désactivé</button></div></div>
+      </section>
+      <section class="ds-panel" aria-label="Comptes en conflit">
+        <div class="us-head"><h2>Comptes en conflit</h2><small>1</small></div>
+        <div class="ds-scroll"><table class="odoo-table">
+          <thead><tr><th>Compte</th><th>Règle</th><th>Par les rôles</th><th>Sévérité</th><th class="ds-actions"></th></tr></thead>
+          <tbody><tr><td><div class="us-who"><span class="us-av">KI</span><div><b>Karim Idrissi</b><small>Magasin principal</small></div></div></td><td>Acheteur ≠ réceptionnaire</td><td><span class="kl-tag b">Resp. des achats</span> <span class="kl-tag x">Magasinier</span></td><td><span class="kl-tag r">Critique</span></td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="fiche">Retirer un rôle</button> <button type="button" class="row-menu-trigger" aria-label="Autres actions"><span data-i="more" data-s="16"></span></button></td></tr></tbody>
+        </table></div>
+      </section>
+      <section class="ds-panel" aria-label="Règles">
+        <div class="us-head"><h2>Règles</h2><small>5</small><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary ds-btn-sm"><span data-i="plus" data-s="13"></span> Nouvelle règle</button></div>
+        <div class="ds-scroll"><table class="odoo-table">
+          <thead><tr><th>Règle</th><th>Porte sur</th><th>Capacité A</th><th>Capacité B</th><th>Sévérité</th><th>Statut</th><th class="ds-actions"></th></tr></thead>
+          <tbody>
+            <tr><td class="ds-strong">Acheteur ≠ réceptionnaire</td><td>Cumul de rôles</td><td>Achats · Créer</td><td>Stock · Valider</td><td><span class="kl-tag r">Critique</span></td><td><span class="kl-tag g">Active</span></td><td class="ds-actions"><button type="button" class="row-menu-trigger" aria-label="Autres actions"><span data-i="more" data-s="16"></span></button></td></tr>
+            <tr><td class="ds-strong">Créer et approuver ses achats</td><td>Cumul de rôles</td><td>Achats · Créer</td><td>Achats · Approuver</td><td><span class="kl-tag o">Avertissement</span></td><td><span class="kl-tag g">Active</span></td><td class="ds-actions"><button type="button" class="row-menu-trigger" aria-label="Autres actions"><span data-i="more" data-s="16"></span></button></td></tr>
+            <tr><td class="ds-strong">Réception par un autre que l'acheteur</td><td>Pièce</td><td>Bon de commande · créé par</td><td>Réception · validée par</td><td><span class="kl-tag r">Critique</span></td><td><span class="kl-tag g">Active</span></td><td class="ds-actions"><button type="button" class="row-menu-trigger" aria-label="Autres actions"><span data-i="more" data-s="16"></span></button></td></tr>
+            <tr><td class="ds-strong">Facture saisie par un autre que le réceptionnaire</td><td>Pièce</td><td>Réception · validée par</td><td>Facture · saisie par</td><td><span class="kl-tag o">Avertissement</span></td><td><span class="kl-tag g">Active</span></td><td class="ds-actions"><button type="button" class="row-menu-trigger" aria-label="Autres actions"><span data-i="more" data-s="16"></span></button></td></tr>
+            <tr><td class="ds-strong">Paiement par un autre que le validateur</td><td>Pièce</td><td>Facture · validée par</td><td>Paiement · émis par</td><td><span class="kl-tag r">Critique</span></td><td><span class="kl-tag g">Active</span></td><td class="ds-actions"><button type="button" class="row-menu-trigger" aria-label="Autres actions"><span data-i="more" data-s="16"></span></button></td></tr>
+          </tbody>
+        </table></div>
+        <div class="ds-foot"><span>Dérogations accordées sur des pièces : 2 ce mois-ci, toutes motivées</span><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm">Voir les dérogations</button></div>
+      </section>
+    </div>
+    <div class="us-tab" id="c-plaf">
+      <section class="ds-panel" aria-label="Plafonds d'approbation">
+        <div class="us-head"><h2>Plafonds par rôle</h2><small>Au-delà, la pièce suit le circuit d'approbation</small><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary ds-btn-sm"><span data-i="plus" data-s="13"></span> Définir un plafond</button></div>
+        <div class="ds-scroll"><table class="odoo-table">
+          <thead><tr><th>Rôle</th><th>Type de pièce</th><th class="ds-num">Plafond (DH)</th><th>Au-delà</th><th class="ds-actions"></th></tr></thead>
+          <tbody>
+            <tr><td class="ds-strong">Responsable des achats</td><td>Bon de commande</td><td class="ds-num">50 000</td><td>Circuit « BC fournisseur » → Gérant</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Modifier</button></td></tr>
+            <tr><td class="ds-strong">Responsable des achats</td><td>Demande d'achat</td><td class="ds-num">20 000</td><td>Circuit « Demande d'achat » → Gérant</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Modifier</button></td></tr>
+            <tr><td class="ds-strong">Gérant</td><td>Campagne de paiement</td><td class="ds-num">200 000</td><td>Circuit « Campagne de paiement » → Administrateur</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Modifier</button></td></tr>
+          </tbody>
+        </table></div>
+        <div class="ds-foot"><span>Les types de pièce sont ceux des circuits d'approbation (14).</span><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm">Circuits d'approbation <span data-i="ext" data-s="12"></span></button></div>
+      </section>
+    </div>
+    <div class="us-tab" id="c-deleg">
+      <div class="prj-toolbar"><div class="prj-views"><button type="button" class="active">En cours et programmées</button><button type="button">Historique</button></div><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary"><span data-i="plus" data-s="13"></span> Nouvelle délégation</button></div>
+      <section class="ds-panel" aria-label="Délégations">
+        <div class="ds-scroll"><table class="odoo-table">
+          <thead><tr><th>De</th><th>Vers</th><th>Ce qui est délégué</th><th>Période</th><th>Motif</th><th>Statut</th><th class="ds-actions"></th></tr></thead>
+          <tbody>
+            <tr><td class="ds-strong">Youssef Alaoui</td><td class="ds-strong">Omar Berrada</td><td>Rôle complet · Gérant</td><td>23 → 30 nov. 2026</td><td>Congé</td><td><span class="kl-tag b">En cours</span></td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Prolonger</button> <button type="button" class="row-menu-trigger" aria-label="Autres actions"><span data-i="more" data-s="16"></span></button></td></tr>
+            <tr><td class="ds-strong">Karim Idrissi</td><td class="ds-strong">Hamza Tazi</td><td>Approbations seulement</td><td>2 → 6 déc. 2026</td><td>Salon professionnel</td><td><span class="kl-tag o">Programmée</span></td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Modifier</button> <button type="button" class="row-menu-trigger" aria-label="Autres actions"><span data-i="more" data-s="16"></span></button></td></tr>
+          </tbody>
+        </table></div>
+        <div class="ds-foot"><span>Une délégation « Approbations seulement » peut aussi être créée par la personne elle-même, depuis Approbations.</span></div>
+      </section>
+    </div>
+    <div class="us-tab" id="c-droits">
+      <section class="ds-panel" aria-label="Contrôle des droits">
+        <div class="us-mode"><span><b>Appels hors droits</b> · un écran ou une action utilisés sans le droit nécessaire</span><span class="ds-grow"></span><div class="us-lvl" data-group="m3"><button type="button" class="on">Observer</button><button type="button">Bloquer</button><button type="button">Désactivé</button></div></div>
+        <div class="ds-scroll"><table class="odoo-table ds-dense">
+          <thead><tr><th>Écran ou action</th><th>Rôle</th><th>Droit manquant</th><th class="ds-num">Comptes</th><th class="ds-num">Appels (14 j)</th><th>Dernier appel</th></tr></thead>
+          <tbody>
+            <tr><td>Stock › Inventaires</td><td>Vendeuse</td><td>Stock · Lecture</td><td class="ds-num">2</td><td class="ds-num">31</td><td>aujourd'hui</td></tr>
+            <tr><td>Rapports › Ventes par produit</td><td>Opérateur de production</td><td>Rapports · Lecture</td><td class="ds-num">1</td><td class="ds-num">4</td><td>22 nov. 2026</td></tr>
+          </tbody>
+        </table></div>
+        <div class="ds-foot"><span>À examiner avant de passer en mode Bloquer.</span></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ Planche : revue des accès ═══════════ -->
+<section class="mq-plate" id="p-revue" data-page="Revue des accès">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Un tableau à consulter, sans décision enregistrée ni échéance.</dd>
+      <dt>Demain</dt><dd>Une campagne par trimestre : chaque compte est confirmé ou corrigé, la décision est datée et signée. Le rapport sert aux audits. Les comptes dormants sont signalés <span class="mq-new">nouveau</span>.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle"><h1>Revue des accès</h1><p>Confirmer, compte par compte, que les droits accordés sont encore justifiés.</p></header>
+  <div class="mq-stack">
+    <section class="ds-panel"><div class="mq-pad">
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1 1 320px;display:grid;gap:6px">
+          <b style="font-size:17px;color:var(--ds-ink);display:flex;gap:8px;align-items:center;flex-wrap:wrap">Revue du 4ᵉ trimestre 2026 <span class="kl-tag b">En cours</span></b>
+          <span class="mq-sub">Ouverte le 15 nov. 2026 par Administrateur · échéance le 1 déc. 2026</span>
+          <div class="us-prog"><span style="width:64%"></span></div>
+          <span class="mq-sub">7 comptes confirmés sur 11</span>
+        </div>
+        <button type="button" class="odoo-btn-secondary"><span data-i="download" data-s="13"></span> Rapport de revue</button>
+        <button type="button" class="odoo-btn-primary" disabled>Clôturer la revue</button>
+      </div>
+    </div></section>
+    <div class="prj-chips" role="group" aria-label="Décision" id="revue-chips">
+      <button type="button" class="prj-chip active" aria-pressed="true" data-rv2="todo">À examiner <small>4</small></button>
+      <button type="button" class="prj-chip" aria-pressed="false" data-rv2="ok">Confirmés <small>7</small></button>
+      <button type="button" class="prj-chip empty" aria-pressed="false" data-rv2="fix">Corrigés <small>0</small></button>
+    </div>
+    <section class="ds-panel" aria-label="Comptes à examiner" id="rv-todo">
+      <div class="ds-scroll"><table class="odoo-table">
+        <thead><tr><th>Compte</th><th>Rôles</th><th class="ds-num">Exceptions</th><th>Signal</th><th>Dernière connexion</th><th class="ds-actions">Décision</th></tr></thead>
+        <tbody>
+          <tr><td><div class="us-who"><span class="us-av">KI</span><div><b>Karim Idrissi</b><small>Magasin principal</small></div></div></td><td><span class="kl-tag b">Resp. des achats</span> <span class="kl-tag x">Magasinier</span></td><td class="ds-num">2</td><td><span class="kl-tag r" data-tg="warn">Conflit de tâches</span></td><td>aujourd'hui</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="fiche">Corriger</button> <button type="button" class="row-menu-trigger" aria-label="Autres décisions"><span data-i="more" data-s="16"></span></button></td></tr>
+          <tr><td><div class="us-who"><span class="us-av">MS</span><div><b>Mehdi Sqalli</b><small>Tous les établissements</small></div></div></td><td><span class="kl-tag b">Commercial</span></td><td class="ds-num">0</td><td><span class="kl-tag x" data-tg="clock">Dormant (74 j)</span></td><td>12 sept. 2026</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Désactiver</button> <button type="button" class="row-menu-trigger" aria-label="Autres décisions"><span data-i="more" data-s="16"></span></button></td></tr>
+          <tr><td><div class="us-who"><span class="us-av">OB</span><div><b>Omar Berrada</b><small>Laboratoire central</small></div></div></td><td><span class="kl-tag b">Resp. de production</span> <span class="kl-tag x">Gérant (délégué)</span></td><td class="ds-num">0</td><td><span class="kl-tag o" data-tg="clock">Délégation en cours</span></td><td>aujourd'hui</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Confirmer</button> <button type="button" class="row-menu-trigger" aria-label="Autres décisions"><span data-i="more" data-s="16"></span></button></td></tr>
+          <tr><td><div class="us-who"><span class="us-av">SB</span><div><b>Salma Bennani</b><small>Tous les établissements</small></div></div></td><td><span class="kl-tag b">Comptable</span></td><td class="ds-num">1</td><td><span class="us-muted">—</span></td><td>hier</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm">Confirmer</button> <button type="button" class="row-menu-trigger" aria-label="Autres décisions"><span data-i="more" data-s="16"></span></button></td></tr>
+        </tbody>
+      </table></div>
+      <div class="ds-foot"><span>4 comptes à examiner</span><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm">Confirmer les comptes sans signal</button></div>
+    </section>
+    <section class="ds-panel" aria-label="Comptes confirmés" id="rv-ok" hidden>
+      <div class="ds-scroll"><table class="odoo-table ds-dense">
+        <thead><tr><th>Compte</th><th>Rôles</th><th>Décision</th><th>Par</th><th>Le</th></tr></thead>
+        <tbody>
+          <tr><td class="ds-strong">Administrateur</td><td>Administrateur</td><td><span class="kl-tag g">Confirmé</span></td><td>Youssef Alaoui</td><td>16 nov. 2026</td></tr>
+          <tr><td class="ds-strong">Youssef Alaoui</td><td>Gérant</td><td><span class="kl-tag g">Confirmé</span></td><td>Administrateur</td><td>15 nov. 2026</td></tr>
+          <tr><td class="ds-strong">Hamza Tazi</td><td>Magasinier</td><td><span class="kl-tag g">Confirmé</span></td><td>Administrateur</td><td>15 nov. 2026</td></tr>
+          <tr><td class="ds-strong">Nadia Chraibi</td><td>Caissier, Vendeuse</td><td><span class="kl-tag g">Confirmé</span></td><td>Youssef Alaoui</td><td>17 nov. 2026</td></tr>
+          <tr><td class="ds-strong">Imane Fassi</td><td>Vendeuse</td><td><span class="kl-tag g">Confirmé</span></td><td>Youssef Alaoui</td><td>17 nov. 2026</td></tr>
+          <tr><td class="ds-strong">Rachid Amrani</td><td>Opérateur de production, Boulanger</td><td><span class="kl-tag g">Confirmé</span></td><td>Omar Berrada</td><td>18 nov. 2026</td></tr>
+          <tr><td class="ds-strong">Leila Kettani</td><td>Pâtissier</td><td><span class="kl-tag g">Confirmé</span></td><td>Omar Berrada</td><td>18 nov. 2026</td></tr>
+        </tbody>
+      </table></div>
+      <div class="ds-foot"><span>Chaque décision est datée et signée, puis reprise dans le rapport de revue.</span></div>
+    </section>
+    <section class="ds-panel" aria-label="Comptes corrigés" id="rv-fix" hidden>
+      <div class="ds-state bare"><span data-i="list" data-s="28"></span><strong>Aucun compte corrigé pour l'instant</strong><p>Les comptes dont vous retirez un rôle, une exception ou un établissement pendant la revue apparaîtront ici.</p></div>
+    </section>
+  </div>
+</section>
+
+<!-- ═══════════ Planche : fenêtres et confirmations ═══════════ -->
+<section class="mq-plate" id="p-fenetres" data-page="Fenêtres et confirmations">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Certaines actions sensibles partent sans dire ce qu'elles déclenchent (le rôle principal efface les droits propres, les sessions sont fermées en silence). Les garde-fous ne se voient qu'au refus du serveur.</dd>
+      <dt>Demain</dt><dd>Chaque action sensible passe par une fenêtre du Design System (<code>Modal</code>, <code>ConfirmDialog</code>) qui dit ce qui va se passer. Les garde-fous sont visibles avant de cliquer, et les changements les plus sensibles demandent une approbation <span class="mq-new">nouveau</span>.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle"><h1>Fenêtres et confirmations</h1><p>Les fenêtres ouvertes depuis Comptes, Rôles et Contrôles internes.</p></header>
+  <div class="us-stage us-grid">
+
+    <div class="kl-ds ds-sheet ds-modal" role="dialog" aria-label="Changer le rôle principal">
+      <header class="ds-sheet-head"><div style="flex:1"><h2 class="ds-sheet-title">Changer le rôle principal ?</h2><p class="ds-sheet-sub">Karim Idrissi : Responsable des achats → Magasinier</p></div><button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button></header>
+      <div class="ds-sheet-body">
+        <ul class="us-list">
+          <li>Page d'accueil : Stock › Réception, au lieu d'Achats › Poste de travail.</li>
+          <li>Le contrôle des écrans se fera selon le rôle Magasinier.</li>
+          <li>Ses deux rôles restent attribués ; ses exceptions individuelles sont conservées.</li>
+          <li>Ses sessions ouvertes sont fermées : il devra se reconnecter.</li>
+        </ul>
+        <div class="ds-alert info"><span data-i="info" data-s="16"></span><span style="flex:1">Aujourd'hui, ce changement efface les droits propres du compte sans prévenir.</span></div>
+      </div>
+      <div class="ds-sheet-foot"><button type="button" class="odoo-btn-secondary">Annuler</button><button type="button" class="odoo-btn-primary">Changer le rôle principal</button></div>
+    </div>
+
+    <div class="kl-ds ds-sheet ds-modal" role="dialog" aria-label="Définir un nouveau mot de passe">
+      <header class="ds-sheet-head"><div style="flex:1"><h2 class="ds-sheet-title">Définir un nouveau mot de passe</h2><p class="ds-sheet-sub">Leila Kettani · leila.kettani@exemple.ma</p></div><button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button></header>
+      <div class="ds-sheet-body">
+        <div class="ds-field"><label for="np">Nouveau mot de passe<span class="ds-req"> *</span></label>
+          <div class="us-inline"><input id="np" class="ds-input" value="Vt7#qL2m!Rx9pD" aria-describedby="np-h"><button type="button" class="odoo-btn-secondary ds-btn-sm" title="Générer un mot de passe sûr"><span data-i="wand" data-s="13"></span> Générer</button><button type="button" class="ds-icon-btn" aria-label="Copier le mot de passe"><span data-i="copy" data-s="16"></span></button></div>
+          <span class="ds-field-hint" id="np-h">12 caractères au moins, selon la politique de sécurité.</span></div>
+        <label class="us-check"><input type="checkbox" checked> À changer à la prochaine connexion</label>
+        <div class="ds-alert info"><span data-i="info" data-s="16"></span><span style="flex:1">Ses sessions ouvertes seront fermées.</span></div>
+      </div>
+      <div class="ds-sheet-foot"><div class="ds-form-foot"><span class="ds-grow">Modifications non enregistrées</span><button type="button" class="odoo-btn-secondary">Annuler</button><button type="button" class="odoo-btn-primary">Enregistrer</button></div></div>
+    </div>
+
+    <div class="kl-ds ds-sheet ds-modal" role="dialog" aria-label="Désactiver le compte">
+      <header class="ds-sheet-head"><div style="flex:1"><h2 class="ds-sheet-title">Désactiver le compte de Mehdi Sqalli ?</h2><p class="ds-sheet-sub">Aucune connexion depuis 74 jours</p></div><button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button></header>
+      <div class="ds-sheet-body">
+        <p style="margin:0;font-size:14px">Mehdi ne pourra plus se connecter. Son historique, ses pièces et sa fiche salarié restent intacts ; vous pourrez le réactiver.</p>
+        <div class="ds-form-grid">
+          <div class="ds-field"><label for="mt">Motif<span class="ds-req"> *</span></label><select id="mt" class="ds-input"><option>Compte dormant</option><option>Départ de l'entreprise</option><option>Autre</option></select></div>
+          <div class="ds-field"><label for="mp">Précision</label><input id="mp" class="ds-input" placeholder="Facultatif"></div>
+        </div>
+        <div class="ds-alert warning"><span data-i="warn" data-s="16"></span><span style="flex:1">Suppression définitive impossible : ce compte a créé 12 pièces. La désactivation est la seule voie.</span></div>
+      </div>
+      <div class="ds-sheet-foot"><div class="ds-form-foot"><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary">Annuler</button><button type="button" class="ds-btn-danger solid">Désactiver</button></div></div>
+    </div>
+
+    <div class="kl-ds ds-sheet ds-modal" role="dialog" aria-label="Garde-fous">
+      <header class="ds-sheet-head"><div style="flex:1"><h2 class="ds-sheet-title">Administrateur <span class="kl-tag b">Vous</span></h2><p class="ds-sheet-sub">Ce qui reste bloqué sur ce compte, et pourquoi</p></div><button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button></header>
+      <div class="ds-sheet-body">
+        <div class="ds-alert danger"><span data-i="warn" data-s="16"></span><span style="flex:1">Vous êtes le seul administrateur actif. Nommez-en un second pour ne pas perdre l'accès.</span><button type="button" class="odoo-btn-secondary ds-btn-sm">Nommer un administrateur</button></div>
+        <dl class="us-kv">
+          <dt>Désactiver ou supprimer</dt><dd>Impossible sur votre propre compte</dd>
+          <dt>Retirer Administrateur</dt><dd>Impossible : dernier administrateur actif</dd>
+          <dt>Réinitialiser votre 2FA</dt><dd>À demander à un autre administrateur</dd>
+          <dt>Rôle Administrateur</dt><dd>Tous les droits ; sa fiche rôle est en lecture seule</dd>
+          <dt>Compte système</dt><dd>Masqué de la liste et protégé</dd>
+        </dl>
+      </div>
+      <div class="ds-sheet-foot"><button type="button" class="odoo-btn-secondary">Fermer</button></div>
+    </div>
+
+    <div class="kl-ds ds-sheet ds-modal" role="dialog" aria-label="Nouveau rôle">
+      <header class="ds-sheet-head"><div style="flex:1"><h2 class="ds-sheet-title">Nouveau rôle</h2><p class="ds-sheet-sub">Les droits se règlent ensuite dans la fiche du rôle.</p></div><button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button></header>
+      <div class="ds-sheet-body">
+        <div class="ds-field"><label for="rl">Libellé<span class="ds-req"> *</span></label><input id="rl" class="ds-input" value="Responsable boutique"></div>
+        <fieldset class="ds-fieldset"><legend>Partir de</legend>
+          <div class="us-cards">
+            <button type="button" class="us-card on"><span class="us-ck"><span data-i="check" data-s="16"></span></span><b>Un modèle du secteur</b><small>Commercial, Technicien maintenance, Chef de projet…</small></button>
+            <button type="button" class="us-card"><span class="us-ck"><span data-i="check" data-s="16"></span></span><b>Copier un rôle</b><small>Reprend tous ses droits, sauf Administrateur.</small></button>
+            <button type="button" class="us-card"><span class="us-ck"><span data-i="check" data-s="16"></span></span><b>Rôle vide</b><small>Aucun droit au départ.</small></button>
+          </div>
+        </fieldset>
+        <div class="ds-form-grid">
+          <div class="ds-field"><label for="rm">Modèle</label><select id="rm" class="ds-input"><option>Commercial (commun à tous les secteurs)</option></select></div>
+          <div class="ds-field"><label for="rb">Rôle de base<span class="ds-req"> *</span></label><select id="rb" class="ds-input"><option>Vendeuse</option><option>Gérant</option><option>Magasinier</option><option>Opérateur de production</option></select><span class="ds-field-hint">Tous les rôles système.</span></div>
+        </div>
+      </div>
+      <div class="ds-sheet-foot"><div class="ds-form-foot"><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary">Annuler</button><button type="button" class="odoo-btn-primary">Créer le rôle</button></div></div>
+    </div>
+
+    <div class="kl-ds ds-sheet ds-modal" role="dialog" aria-label="Nouvelle règle de séparation des tâches">
+      <header class="ds-sheet-head"><div style="flex:1"><h2 class="ds-sheet-title">Nouvelle règle de séparation des tâches</h2><p class="ds-sheet-sub">Deux capacités qu'une même personne ne doit pas réunir.</p></div><button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button></header>
+      <div class="ds-sheet-body">
+        <div class="ds-field"><label for="sl">Libellé<span class="ds-req"> *</span></label><input id="sl" class="ds-input" value="Saisir et payer une facture"></div>
+        <div class="ds-field"><label>Porte sur</label><div class="us-lvl" data-group="sf1"><button type="button" class="on">Cumul de rôles</button><button type="button">Étapes d'une pièce</button></div></div>
+        <div class="ds-form-grid">
+          <div class="ds-field"><label for="ca">Capacité A</label><div class="us-inline"><select id="ca" class="ds-input"><option>Achats</option></select><select class="ds-input" aria-label="Droit A"><option>Créer</option></select></div></div>
+          <div class="ds-field"><label for="cb">Capacité B</label><div class="us-inline"><select id="cb" class="ds-input"><option>Comptabilité</option></select><select class="ds-input" aria-label="Droit B"><option>Comptabiliser</option></select></div></div>
+        </div>
+        <div class="ds-field"><label>Sévérité</label><div class="us-lvl" data-group="sf2"><button type="button">Avertissement</button><button type="button" class="on">Critique</button></div></div>
+        <div class="ds-alert warning"><span data-i="warn" data-s="16"></span><span style="flex:1">Avec cette règle, 1 compte serait en conflit : Youssef Alaoui (Gérant).</span><span class="mq-new">nouveau</span></div>
+      </div>
+      <div class="ds-sheet-foot"><div class="ds-form-foot"><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary">Annuler</button><button type="button" class="odoo-btn-primary">Créer la règle</button></div></div>
+    </div>
+
+    <div class="kl-ds ds-sheet ds-modal" role="dialog" aria-label="Nouvelle délégation">
+      <header class="ds-sheet-head"><div style="flex:1"><h2 class="ds-sheet-title">Nouvelle délégation</h2><p class="ds-sheet-sub">Prend effet et s'arrête toute seule aux dates choisies.</p></div><button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button></header>
+      <div class="ds-sheet-body">
+        <div class="ds-form-grid">
+          <div class="ds-field"><label for="dd">De<span class="ds-req"> *</span></label><select id="dd" class="ds-input"><option>Karim Idrissi</option></select></div>
+          <div class="ds-field"><label for="dv">Vers<span class="ds-req"> *</span></label><select id="dv" class="ds-input"><option>Hamza Tazi</option></select></div>
+        </div>
+        <div class="ds-field"><label>Ce qui est délégué</label><div class="us-lvl" data-group="dl1"><button type="button">Rôle complet</button><button type="button" class="on">Approbations seulement</button></div></div>
+        <div class="ds-form-grid">
+          <div class="ds-field"><label for="d1">Du<span class="ds-req"> *</span></label><input id="d1" type="date" class="ds-input" value="2026-12-02"><span class="ds-field-hint">Peut commencer plus tard <span class="mq-new">nouveau</span></span></div>
+          <div class="ds-field"><label for="d2">Au<span class="ds-req"> *</span></label><input id="d2" type="date" class="ds-input" value="2026-12-06"></div>
+        </div>
+        <div class="ds-field"><label for="dm">Motif<span class="ds-req"> *</span></label><input id="dm" class="ds-input" value="Salon professionnel"></div>
+        <div class="ds-alert warning"><span data-i="warn" data-s="16"></span><span style="flex:1">En « Rôle complet », Hamza Tazi réunirait Magasinier et Responsable des achats : conflit « Acheteur ≠ réceptionnaire ».</span></div>
+      </div>
+      <div class="ds-sheet-foot"><div class="ds-form-foot"><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary">Annuler</button><button type="button" class="odoo-btn-primary">Créer la délégation</button></div></div>
+    </div>
+
+    <div class="kl-ds ds-sheet ds-modal" role="dialog" aria-label="Approbation requise">
+      <header class="ds-sheet-head"><div style="flex:1"><h2 class="ds-sheet-title">Attribuer le rôle Administrateur ?</h2><p class="ds-sheet-sub">Youssef Alaoui · changement sensible <span class="mq-new">nouveau</span></p></div><button type="button" class="ds-icon-btn" aria-label="Fermer"><span data-i="x" data-s="18"></span></button></header>
+      <div class="ds-sheet-body">
+        <div class="ds-alert warning"><span data-i="shield" data-s="16"></span><span style="flex:1">Ce changement ne prend effet qu'après validation par un second administrateur.</span></div>
+        <dl class="us-kv">
+          <dt>Demandé par</dt><dd>Administrateur (vous)</dd>
+          <dt>Validé par</dt><dd>Un autre administrateur ; à défaut, relance après 48 h</dd>
+          <dt>Circuit</dt><dd>Changement de configuration</dd>
+          <dt>Effet</dt><dd>Tous les droits ; double authentification exigée</dd>
+        </dl>
+        <div class="ds-field"><label for="am">Motif<span class="ds-req"> *</span></label><input id="am" class="ds-input" value="Second administrateur, pour ne plus dépendre d'un seul compte"></div>
+      </div>
+      <div class="ds-sheet-foot"><div class="ds-form-foot"><span class="ds-grow"></span><button type="button" class="odoo-btn-secondary">Annuler</button><button type="button" class="odoo-btn-primary">Demander l'approbation</button></div></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════ Planche : sécurité et connexions ═══════════ -->
+<section class="mq-plate" id="p-securite" data-page="Sécurité et connexions">
+  <div class="mq-note">
+    <strong>Ce qui change</strong>
+    <dl>
+      <dt>Aujourd'hui</dt><dd>Seule la 2FA par rôle se règle (fenêtre dans Comptes). Verrouillage (5 échecs, 15 min) et règles de mot de passe sont fixés dans le code. Le journal des connexions est dans Paramètres et plusieurs événements n'y ont pas de libellé.</dd>
+      <dt>Demain</dt><dd>Une page de politique de sécurité <span class="mq-new">nouveau</span>, et le journal des connexions dans le module avec tous ses événements nommés.</dd>
+    </dl>
+  </div>
+  <header class="kl-largetitle"><h1>Sécurité et connexions</h1><p>Règles de connexion valables pour tous les comptes.</p></header>
+  <div class="mq-stack">
+    <div class="ds-tabs" role="tablist" aria-label="Sécurité" id="sec-tabs">
+      <button type="button" role="tab" aria-selected="true" data-tab="s-pol">Politique</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="s-journal">Journal des connexions</button>
+    </div>
+    <div class="us-tab on" id="s-pol">
+      <section class="ds-panel" aria-label="Double authentification">
+        <div class="us-head"><h2>Double authentification</h2></div>
+        <div class="us-row"><div><b>Rôles qui doivent l'utiliser</b><p>S'ajoute à l'exigence posée compte par compte.</p></div><div class="us-pick"><button type="button" class="on"><span data-i="check" data-s="13"></span> Administrateur</button><button type="button" class="on"><span data-i="check" data-s="13"></span> Gérant</button><button type="button" class="on"><span data-i="check" data-s="13"></span> Comptable</button><button type="button" class="on"><span data-i="check" data-s="13"></span> Responsable des achats</button><button type="button"><span data-i="check" data-s="13"></span> Magasinier</button><button type="button"><span data-i="check" data-s="13"></span> Vendeuse</button></div></div>
+        <div class="us-row"><div><b>Délai pour la configurer <span class="mq-new">nouveau</span></b><p>Après ce délai, la connexion passe directement par la configuration.</p></div><div class="us-ctl"><select class="ds-input sm" style="width:auto" aria-label="Délai"><option>7 jours</option><option>Dès la prochaine connexion</option></select></div></div>
+      </section>
+      <section class="ds-panel" aria-label="Mot de passe et verrouillage">
+        <div class="us-head"><h2>Mot de passe et verrouillage</h2></div>
+        <div class="us-row"><div><b>Longueur minimale du mot de passe <span class="mq-new">nouveau</span></b><p>Fixée dans le code aujourd'hui, et non appliquée quand un administrateur saisit le mot de passe (4 caractères acceptés).</p></div><div class="us-ctl"><input class="ds-input sm" style="width:80px" value="12" aria-label="Caractères"> <span class="us-muted">caractères</span></div></div>
+        <div class="us-row"><div><b>Renouvellement <span class="mq-new">nouveau</span></b></div><div class="us-ctl"><div class="us-lvl" data-group="m4"><button type="button" class="on">Jamais</button><button type="button">90 jours</button><button type="button">180 jours</button></div></div></div>
+        <div class="us-row"><div><b>Verrouillage après des échecs <span class="mq-new">nouveau</span></b><p>Fixé dans le code aujourd'hui (5 échecs, 15 min). Le compte se déverrouille seul après la durée choisie.</p></div><div class="us-ctl"><input class="ds-input sm" style="width:64px" value="5" aria-label="Échecs"> <span class="us-muted">échecs, pendant</span> <input class="ds-input sm" style="width:64px" value="15" aria-label="Minutes"> <span class="us-muted">min</span></div></div>
+        <div class="us-row"><div><b>Code PIN de caisse</b><p>Les PIN plus courts sont signalés « à renouveler ».</p></div><div class="us-ctl"><select class="ds-input sm" style="width:auto" aria-label="Longueur du PIN"><option>6 chiffres minimum</option><option>4 chiffres minimum</option></select></div></div>
+      </section>
+      <section class="ds-panel" aria-label="Comptes et changements sensibles">
+        <div class="us-head"><h2>Comptes et changements sensibles</h2></div>
+        <div class="us-row"><div><b>Qui peut gérer des comptes <span class="mq-new">nouveau</span></b><p>Administration déléguée : créer, débloquer et désactiver les comptes de sa portée, sans pouvoir attribuer le rôle Administrateur ni modifier un autre gestionnaire.</p></div><div class="us-pick"><button type="button" class="on"><span data-i="check" data-s="13"></span> Gérant · ses établissements</button><button type="button"><span data-i="check" data-s="13"></span> Responsable de production · son atelier</button></div></div>
+        <div class="us-row"><div><b>Changements soumis à approbation <span class="mq-new">nouveau</span></b><p>Validés par un second administrateur avant d'agir (circuit « Changement de configuration », relance après 48 h).</p></div><div class="us-pick"><button type="button" class="on"><span data-i="check" data-s="13"></span> Attribuer le rôle Administrateur</button><button type="button" class="on"><span data-i="check" data-s="13"></span> Attribuer un rôle à 2FA exigée</button><button type="button" class="on"><span data-i="check" data-s="13"></span> Modifier les droits d'un rôle</button><button type="button"><span data-i="check" data-s="13"></span> Retirer la 2FA d'un rôle</button></div></div>
+        <div class="us-row"><div><b>Écran de connexion par code PIN <span class="mq-new">nouveau</span></b><p>Comptes proposés sur les postes partagés (caisse, pesée). Aujourd'hui : tous les comptes actifs qui ont un PIN.</p></div><div class="us-ctl"><select class="ds-input sm" style="width:auto" aria-label="Comptes proposés"><option>Comptes ayant un PIN, de l'établissement du poste</option><option>Tous les comptes ayant un PIN</option></select></div></div>
+        <div class="us-row"><div><b>Inscription libre</b><p>La création de compte sans administrateur, ouverte aujourd'hui par l'API sans aucun écran, est supprimée.</p></div><div class="us-ctl"><span class="kl-tag x">Désactivée</span></div></div>
+      </section>
+      <section class="ds-panel" aria-label="Sessions et connexion externe">
+        <div class="us-head"><h2>Sessions et connexion externe</h2></div>
+        <div class="us-row"><div><b>Déconnexion après inactivité <span class="mq-new">nouveau</span></b><p>Aujourd'hui, une durée de session fixe, réglée sur le serveur.</p></div><div class="us-ctl"><select class="ds-input sm" style="width:auto" aria-label="Inactivité"><option>8 heures</option><option>1 heure</option><option>24 heures</option></select></div></div>
+        <div class="us-row"><div><b>Connexion avec Google</b><p>Domaine autorisé : exemple.ma · réglé aujourd'hui sur le serveur, sans écran <span class="mq-new">nouveau</span></p></div><div class="us-ctl"><button type="button" role="switch" aria-checked="true" class="odoo-toggle on" aria-label="Google"><span class="odoo-toggle-knob"></span></button></div></div>
+        <div class="us-row"><div><b>Connexion avec Microsoft</b></div><div class="us-ctl"><button type="button" role="switch" aria-checked="false" class="odoo-toggle" aria-label="Microsoft"><span class="odoo-toggle-knob"></span></button></div></div>
+        <div class="ds-form-foot"><span class="ds-grow">Modifications non enregistrées</span><button type="button" class="odoo-btn-secondary">Annuler</button><button type="button" class="odoo-btn-primary">Enregistrer</button></div>
+      </section>
+    </div>
+    <div class="us-tab" id="s-journal">
+      <div class="prj-toolbar"><label class="prj-search"><span data-i="search" data-s="15" style="color:var(--ds-muted)"></span><input type="search" placeholder="Rechercher un compte, une adresse IP…" aria-label="Rechercher"></label><select class="ds-input sm" style="width:auto" aria-label="Événement"><option>Tous les événements</option></select><span class="ds-grow"></span><span class="ds-period"><input type="date" class="ds-input sm" style="width:150px" value="2026-11-18" aria-label="Début"> <span class="us-muted">au</span> <input type="date" class="ds-input sm" style="width:150px" value="2026-11-25" aria-label="Fin"></span></div>
+      <section class="ds-panel" aria-label="Journal des connexions">
+        <div class="ds-scroll"><table class="odoo-table ds-dense">
+          <thead><tr><th>Date</th><th>Compte</th><th>Événement</th><th>Adresse IP</th><th>Appareil</th><th>Résultat</th></tr></thead>
+          <tbody>
+            <tr><td>25 nov. 2026 09:05</td><td class="ds-strong">Karim Idrissi</td><td>Connexion par mot de passe</td><td>196.200.14.7</td><td>Chrome · Windows</td><td><span class="kl-tag g">Réussie</span></td></tr>
+            <tr><td>25 nov. 2026 08:27</td><td class="ds-strong">Hamza Tazi</td><td>Compte verrouillé</td><td>196.200.14.9</td><td>Caisse 2</td><td><span class="kl-tag r">5ᵉ échec</span></td></tr>
+            <tr><td>25 nov. 2026 07:58</td><td class="ds-strong">Nadia Chraibi</td><td>Connexion par code PIN</td><td>196.200.14.9</td><td>Caisse 1</td><td><span class="kl-tag g">Réussie</span></td></tr>
+            <tr><td>24 nov. 2026 19:12</td><td class="ds-strong">Administrateur</td><td>Sessions fermées pour Leila Kettani</td><td>196.200.14.2</td><td>Safari · macOS</td><td><span class="kl-tag g">Fait</span></td></tr>
+            <tr><td>22 nov. 2026 11:40</td><td class="ds-strong">Administrateur</td><td>Double authentification réinitialisée pour Salma Bennani</td><td>196.200.14.2</td><td>Safari · macOS</td><td><span class="kl-tag g">Fait</span></td></tr>
+            <tr><td>21 nov. 2026 08:03</td><td class="ds-strong">Karim Idrissi</td><td>Connexion avec Google</td><td>41.250.3.112</td><td>Safari · iPhone</td><td><span class="kl-tag g">Réussie</span></td></tr>
+          </tbody>
+        </table></div>
+        <div class="ds-foot"><span>1 à 6 sur 214</span><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm"><span data-i="download" data-s="14"></span> Exporter</button></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+    </div>
+    </div>
+  </div>
+</div>
+</main>
+
+<script>
+var I = {
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  done: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  dot: '<circle cx="12" cy="12" r="10"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  warn: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  grid: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+  shieldck: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  phone: '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+  scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="m16 16-1.9-1.9"/>',
+  scale: '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
+  swap: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
+  history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  list: '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+  ext: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+  key: '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
+  mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  ban: '<circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/>',
+  searchx: '<path d="m13.5 8.5-5 5"/><path d="m8.5 8.5 5 5"/><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+  unlock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
+  rotate: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  wand: '<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/>',
+  usercheck: '<path d="m16 11 2 2 4-4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>'
+};
+function ico(n, s) { s = s || 18; return '<svg xmlns="http://www.w3.org/2000/svg" width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (I[n] || I.dot) + '</svg>'; }
+function tag(c, l, i) { return '<span class="kl-tag ' + c + '">' + (i ? ico(i, 12) : '') + l + '</span>'; }
+function paint() {
+  document.querySelectorAll('[data-i]').forEach(function (e) { if (!e.firstChild) e.innerHTML = ico(e.dataset.i, +e.dataset.s || 18); });
+  document.querySelectorAll('[data-tg]').forEach(function (e) { if (!e.querySelector('svg')) e.insertAdjacentHTML('afterbegin', ico(e.dataset.tg, 12)); });
+}
+
+/* ── Comptes (données d'exemple) ──
+   [nom, e-mail, rôles, établissements, signaux sécurité, dernière connexion, statut, drapeaux]
+   drapeaux : me = votre compte, todo = à traiter, inv = invitation, off = désactivé, lock, pwd */
+var U = [
+  ['Administrateur', 'admin@exemple.ma', ['Administrateur'], 'Tous', [['g', 'phone', '2FA activée'], ['x', 'key', 'Sans PIN']], "Aujourd'hui 07:40", ['g', 'Actif'], 'me'],
+  ['Youssef Alaoui', 'youssef.alaoui@exemple.ma', ['Gérant'], 'Tous', [['g', 'phone', '2FA activée'], ['g', 'key', 'PIN défini']], "Aujourd'hui 08:12", ['g', 'Actif'], ''],
+  ['Karim Idrissi', 'karim.idrissi@exemple.ma', ['Responsable des achats', 'Magasinier'], 'Magasin principal +1', [['o', 'phone', '2FA à configurer'], ['g', 'key', 'PIN défini']], "Aujourd'hui 09:05", ['r', 'Conflit', 'warn'], 'todo'],
+  ['Salma Bennani', 'salma.bennani@exemple.ma', ['Comptable'], 'Tous', [['g', 'phone', '2FA activée'], ['x', 'key', 'Sans PIN']], 'Hier 17:40', ['g', 'Actif'], ''],
+  ['Omar Berrada', 'omar.berrada@exemple.ma', ['Responsable de production', 'Gérant (délégué)'], 'Laboratoire central', [['x', 'phone', '2FA non exigée'], ['g', 'key', 'PIN défini']], "Aujourd'hui 06:31", ['g', 'Actif'], ''],
+  ['Hamza Tazi', 'hamza.tazi@exemple.ma', ['Magasinier'], 'Magasin principal', [['x', 'phone', '2FA non exigée'], ['g', 'key', 'PIN défini']], "Aujourd'hui 08:27", ['o', 'Verrouillé', 'lock'], 'todo lock'],
+  ['Nadia Chraibi', 'nadia.chraibi@exemple.ma', ['Caissier', 'Vendeuse'], 'Boutique Maârif', [['x', 'phone', '2FA non exigée'], ['o', 'key', 'PIN à renouveler']], "Aujourd'hui 07:58", ['g', 'Actif'], 'todo'],
+  ['Imane Fassi', 'imane.fassi@exemple.ma', ['Vendeuse'], 'Boutique Maârif', [['x', 'phone', '2FA non exigée'], ['x', 'key', 'Sans PIN']], 'Jamais', ['o', 'Invitée', 'mail'], 'inv'],
+  ['Rachid Amrani', 'rachid.amrani@exemple.ma', ['Opérateur de production', 'Boulanger'], 'Laboratoire central', [['x', 'phone', '2FA non exigée'], ['g', 'key', 'PIN défini']], "Aujourd'hui 05:02", ['g', 'Actif'], ''],
+  ['Leila Kettani', 'leila.kettani@exemple.ma', ['Pâtissier'], 'Laboratoire central', [['x', 'phone', '2FA non exigée'], ['g', 'key', 'PIN défini'], ['o', 'key', 'Mot de passe à changer']], 'Hier 14:16', ['g', 'Actif'], 'todo pwd'],
+  ['Mehdi Sqalli', 'mehdi.sqalli@exemple.ma', ['Commercial'], 'Tous', [['x', 'phone', '2FA non exigée'], ['x', 'key', 'Sans PIN']], '12 sept. 2026', ['x', 'Dormant', 'clock'], ''],
+  ['Fatima Zahra Ouazzani', 'fatimazahra.ouazzani@exemple.ma', ['Vendeuse'], 'Boutique Maârif', [['x', 'phone', '2FA non exigée'], ['x', 'key', 'Sans PIN']], '2 oct. 2026', ['x', 'Désactivé', 'ban'], 'off']
+];
+function ini(n) { return n.split(' ').map(function (p) { return p[0]; }).slice(0, 2).join(''); }
+function has(u, f) { return (' ' + u[7] + ' ').indexOf(' ' + f + ' ') >= 0; }
+var CV = { view: 'active', q: '' };
+var VIEWS = {
+  active: function (u) { return !has(u, 'off'); },
+  todo: function (u) { return has(u, 'todo'); },
+  inv: function (u) { return has(u, 'inv'); },
+  off: function (u) { return has(u, 'off'); },
+  all: function () { return true; }
+};
+function norm(s) { return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+function drawUsers() {
+  var q = norm(CV.q.trim());
+  var rows = U.filter(function (u) { return VIEWS[CV.view](u) && (!q || norm(u[0] + ' ' + u[1] + ' ' + u[2].join(' ') + ' ' + u[3]).indexOf(q) >= 0); });
+  var body = document.getElementById('users-body');
+  var bulk = document.getElementById('users-bulk');
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="7" style="height:auto;padding:0"><div class="ds-state bare">' + ico('searchx', 28) + '<strong>Aucun résultat</strong><p>Aucun compte ne correspond aux filtres.</p><div class="ds-state-action"><button type="button" class="ds-btn-ghost ds-btn-sm" data-reset="1">Effacer les filtres</button></div></div></td></tr>';
+    bulk.hidden = true;
+    document.getElementById('users-count').textContent = 'Aucun compte affiché · 12 au total';
+    return;
+  }
+  var off = CV.view === 'off';
+  bulk.hidden = false;
+  bulk.innerHTML = off
+    ? '<b>1 compte sélectionné</b><button type="button" class="odoo-btn-secondary ds-btn-sm">' + ico('usercheck', 13) + ' Réactiver</button><button type="button" class="ds-btn-danger ds-btn-sm" data-p="fenetres">Supprimer définitivement</button><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm">Annuler la sélection</button>'
+    : '<b>2 comptes sélectionnés</b><button type="button" class="odoo-btn-secondary ds-btn-sm">Exiger la 2FA</button><button type="button" class="odoo-btn-secondary ds-btn-sm">Imposer un nouveau mot de passe</button><button type="button" class="odoo-btn-secondary ds-btn-sm">Ajouter un rôle</button><button type="button" class="odoo-btn-secondary ds-btn-sm">Fermer les sessions</button><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="fenetres">Désactiver</button><span class="ds-grow"></span><button type="button" class="ds-btn-ghost ds-btn-sm">Annuler la sélection</button>';
+  body.innerHTML = rows.map(function (u) {
+    var sel = off ? true : (u[0] === 'Karim Idrissi' || u[0] === 'Hamza Tazi');
+    var dead = has(u, 'off');
+    return '<tr class="ds-clickable' + (sel ? ' ds-selected' : '') + '" data-p="' + (dead ? '' : 'apercu') + '"><td><input type="checkbox" ' + (sel ? 'checked' : '') + ' aria-label="Sélectionner ' + u[0] + '" data-stop="1"></td>' +
+      '<td><div class="us-who"><span class="us-av' + (dead ? ' off' : '') + '">' + ini(u[0]) + '</span><div><b>' + u[0] + (has(u, 'me') ? ' ' + tag('b', 'Vous') : '') + '</b><small>' + u[1] + '</small></div></div></td>' +
+      '<td><div class="us-tags">' + u[2].map(function (r, k) { return tag(k ? 'x' : 'b', r); }).join('') + '</div><small class="us-muted" style="display:block;font-size:12.5px;margin-top:2px">' + (u[3] === 'Tous' ? 'Tous les établissements' : u[3].replace(' +1', ', Laboratoire central')) + '</small></td>' +
+      '<td><div class="us-sig">' + u[4].map(function (s) { return '<span><span class="' + s[0] + '">' + ico(s[1], 13) + '</span>' + s[2] + '</span>'; }).join('') + '</div></td>' +
+      '<td>' + u[5] + '</td><td style="white-space:nowrap">' + tag(u[6][0], u[6][1], u[6][2] || 'check') + '</td>' +
+      '<td class="ds-actions">' + (dead
+        ? '<button type="button" class="odoo-btn-secondary ds-btn-sm" data-stop="1">Réactiver</button>'
+        : '<button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="fiche">Ouvrir</button>') +
+      ' <button type="button" class="row-menu-trigger" aria-haspopup="menu" aria-expanded="false" aria-label="Autres actions pour ' + u[0] + '" data-menu="' + (dead ? 'account-off' : has(u, 'me') ? 'account-me' : has(u, 'lock') ? 'account-lock' : has(u, 'pwd') ? 'account-pwd' : 'account') + '">' + ico('more', 16) + '</button></td></tr>';
+  }).join('');
+  document.getElementById('users-count').textContent = rows.length + ' compte' + (rows.length > 1 ? 's' : '') + ' affiché' + (rows.length > 1 ? 's' : '') + ' · 12 au total';
+}
+drawUsers();
+document.getElementById('users-chips').addEventListener('click', function (e) {
+  var c = e.target.closest('[data-view]'); if (!c) return;
+  CV.view = c.dataset.view;
+  this.querySelectorAll('.prj-chip').forEach(function (x) { var on = x === c; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on); });
+  drawUsers();
+});
+document.getElementById('users-q').addEventListener('input', function () { CV.q = this.value; drawUsers(); });
+document.addEventListener('click', function (e) {
+  if (!e.target.closest('[data-reset]')) return;
+  CV.q = ''; document.getElementById('users-q').value = ''; CV.view = 'active';
+  document.querySelectorAll('#users-chips .prj-chip').forEach(function (x) { var on = x.dataset.view === 'active'; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on); });
+  drawUsers();
+});
+document.getElementById('dim-body').innerHTML = U.slice(1, 8).map(function (u) { return '<tr><td><div class="us-who"><span class="us-av">' + ini(u[0]) + '</span><div><b>' + u[0] + '</b><small>' + u[1] + '</small></div></div></td><td>' + tag('b', u[2][0]) + '</td><td>' + tag(u[6][0], u[6][1]) + '</td></tr>'; }).join('');
+
+/* ── Menus de ligne (RowMenu) : ouverts au clic sur « ⋯ » ── */
+var SEP = ['-'];
+var MENUS = {
+  account: [['Ouvrir la fiche', 'pencil', 'fiche'], ['Voir ses droits', 'eye'], SEP, ['Exiger la double authentification', 'phone'], ['Réinitialiser la double authentification', 'rotate'], ['Déverrouiller', 'unlock', '', 'non verrouillé'], ['Définir un nouveau mot de passe', 'key', 'fenetres'], ['Imposer un changement de mot de passe', 'key'], ['Fermer toutes les sessions', 'logout'], SEP, ['Désactiver', 'ban', 'fenetres', '', 1], ['Supprimer définitivement', 'trash', '', 'a un historique', 1]],
+  'account-lock': [['Ouvrir la fiche', 'pencil', 'fiche'], ['Voir ses droits', 'eye'], SEP, ['Déverrouiller', 'unlock'], ['Définir un nouveau mot de passe', 'key', 'fenetres'], ['Imposer un changement de mot de passe', 'key'], ['Fermer toutes les sessions', 'logout'], SEP, ['Désactiver', 'ban', 'fenetres', '', 1], ['Supprimer définitivement', 'trash', '', 'a un historique', 1]],
+  'account-pwd': [['Ouvrir la fiche', 'pencil', 'fiche'], ['Voir ses droits', 'eye'], SEP, ['Exiger la double authentification', 'phone'], ['Définir un nouveau mot de passe', 'key', 'fenetres'], ['Lever le changement de mot de passe', 'key'], ['Fermer toutes les sessions', 'logout'], SEP, ['Désactiver', 'ban', 'fenetres', '', 1]],
+  'account-me': [['Ouvrir la fiche', 'pencil', 'fenetres'], SEP, ['Réinitialiser la double authentification', 'rotate', '', 'autre administrateur'], ['Changer mon mot de passe', 'key'], ['Fermer mes autres sessions', 'logout'], SEP, ['Désactiver', 'ban', '', 'votre compte', 1], ['Supprimer définitivement', 'trash', '', 'votre compte', 1]],
+  'account-off': [['Ouvrir la fiche', 'pencil'], ['Réactiver', 'usercheck'], SEP, ['Supprimer définitivement', 'trash', 'fenetres', '', 1]],
+  role: [['Ouvrir', 'pencil', 'role'], ['Dupliquer', 'copy', 'fenetres'], ['Comparer avec…', 'list'], SEP, ['Désactiver', 'ban', '', 'encore attribué'], ['Supprimer', 'trash', '', 'encore attribué', 1]],
+  roleline: [['Définir comme rôle principal', 'check', 'fenetres'], ['Voir les droits de ce rôle', 'eye', 'role'], SEP, ['Retirer ce rôle', 'ban', '', '', 1]],
+  conflict: [['Ouvrir la fiche', 'pencil', 'fiche'], ['Accorder une dérogation motivée', 'pencil'], ['Voir la règle', 'eye']],
+  rule: [['Modifier', 'pencil', 'fenetres'], ['Désactiver', 'ban'], SEP, ['Supprimer', 'trash', '', '', 1]],
+  deleg: [['Modifier', 'pencil', 'fenetres'], ['Mettre fin maintenant', 'ban', '', '', 1]],
+  revue: [['Confirmer sans changement', 'check'], ['Corriger les accès', 'pencil', 'fiche'], ['Désactiver le compte', 'ban', 'fenetres', '', 1], SEP, ['Ajouter un commentaire', 'pencil']]
+};
+var MENU_BY_PLACE = { 'f-roles': 'roleline', 'c-sod': 'conflict', 'c-deleg': 'deleg', 'p-revue': 'revue', 'p-roles': 'role' };
+var menuEl = document.createElement('div');
+menuEl.className = 'row-menu-list'; menuEl.setAttribute('role', 'menu'); menuEl.hidden = true;
+document.body.appendChild(menuEl);
+function closeMenu() { menuEl.hidden = true; document.querySelectorAll('.row-menu-trigger[aria-expanded=true]').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); }); }
+function openMenu(btn) {
+  var key = btn.dataset.menu;
+  if (btn.closest('section[aria-label="Règles"]')) key = 'rule';
+  var el = btn; while (el && !key) { if (el.id && MENU_BY_PLACE[el.id]) key = MENU_BY_PLACE[el.id]; el = el.parentElement; }
+  var items = MENUS[key || 'account'];
+  menuEl.innerHTML = items.map(function (it) {
+    if (it === SEP) return '<div class="row-menu-sep" role="separator"></div>';
+    return '<button type="button" role="menuitem" class="row-menu-item' + (it[4] ? ' danger' : '') + '"' + (it[3] ? ' disabled' : '') + (it[2] ? ' data-p="' + it[2] + '"' : '') + '>' + ico(it[1], 14) + ' ' + it[0] + (it[3] ? '<span style="margin-left:auto;padding-left:16px;font-size:11.5px;color:var(--ds-muted)">' + it[3] + '</span>' : '') + '</button>';
+  }).join('');
+  var r = btn.getBoundingClientRect();
+  menuEl.style.top = ''; menuEl.style.bottom = '';
+  menuEl.style.right = (window.innerWidth - r.right) + 'px';
+  if (r.bottom + 340 > window.innerHeight) menuEl.style.bottom = (window.innerHeight - r.top + 4) + 'px'; else menuEl.style.top = (r.bottom + 4) + 'px';
+  menuEl.hidden = false; btn.setAttribute('aria-expanded', 'true');
+}
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.row-menu-trigger');
+  if (b) { e.stopPropagation(); var was = b.getAttribute('aria-expanded') === 'true'; closeMenu(); if (!was) openMenu(b); return; }
+  if (!e.target.closest('.row-menu-list')) closeMenu(); else if (e.target.closest('[data-p]')) setTimeout(closeMenu, 0);
+}, true);
+window.addEventListener('scroll', closeMenu, true);
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+
+/* ── Rôles ── */
+var R = [
+  ['Administrateur', 'Système', '—', 1, 'Tous', 1], ['Gérant', 'Système', '—', 1, 20, 1], ['Responsable des achats', 'Modèle du secteur', 'Gérant', 1, 5, 1],
+  ['Comptable', 'Modèle du secteur', 'Gérant', 1, 4, 1], ['Contrôleur qualité', 'Modèle du secteur', 'Gérant', 0, 3, 0],
+  ['Responsable de production', 'Personnalisé', 'Gérant', 1, 6, 0], ['Opérateur de production', 'Personnalisé', 'Boulanger', 1, 4, 0],
+  ['Magasinier', 'Système', '—', 2, 2, 0], ['Vendeuse', 'Système', '—', 2, 6, 0], ['Caissier', 'Système', '—', 1, 6, 0], ['Commercial', 'Personnalisé', 'Vendeuse', 1, 4, 0]
+];
+var ORIG = { 'Système': 'x', 'Personnalisé': 'b', 'Modèle du secteur': 'g' };
+document.getElementById('roles-body').innerHTML = R.map(function (r) {
+  return '<tr class="ds-clickable" data-p="role"><td class="ds-strong">' + r[0] + '</td><td>' + tag(ORIG[r[1]], r[1]) + '</td><td>' + r[2] + '</td><td class="ds-num">' + (r[3] ? r[3] : '<span style="color:var(--ds-warning);font-weight:600">0</span>') + '</td><td class="ds-num">' + r[4] + '</td><td>' + (r[5] ? tag('g', 'Exigée') : '<span class="us-muted">Non exigée</span>') + '</td><td>' + tag('g', 'Actif', 'check') + '</td><td class="ds-actions"><button type="button" class="odoo-btn-secondary ds-btn-sm" data-p="role">Ouvrir</button> <button type="button" class="row-menu-trigger" aria-label="Autres actions" data-stop="1">' + ico('more', 16) + '</button></td></tr>';
+}).join('');
+
+/* ── Accès par module du rôle ── */
+var LV = ['Aucun', 'Lecture', 'Saisie', 'Gestion', 'Complet'];
+var M = [
+  ['Achats', 'Achats et stock', 3, 'Son établissement', [['Approuver', 1], ['Valider', 1], ['Comptabiliser', 0], ['Exporter', 1], ['Imprimer', 1]], '41 / 90'],
+  ['Stock', 'Achats et stock', 3, 'Son établissement', [], '22 / 60'],
+  ['Demandes boutique', 'Achats et stock', 1, 'Son établissement', [['Approuver', 0], ['Valider', 0]], '3 / 12'],
+  ['Comptabilité', 'Finance', 0, 'Tous les établissements', [['Valider', 0], ['Comptabiliser', 0], ['Exporter', 0], ['Imprimer', 0], ['Clôturer', 0]], '0 / 136'],
+  ['Production', 'Fabrication', 0, 'Son établissement', [['Valider', 0], ['Clôturer', 0], ['Imprimer', 0]], '0 / 81'],
+  ['Maintenance', 'Fabrication', 0, 'Son établissement', [], '0 / 18', 1],
+  ['Rapports', 'Pilotage', 1, 'Son établissement', [['Exporter', 1], ['Imprimer', 0]], '8 / 14'],
+  ['Projets', 'Pilotage', 0, 'Son établissement', [], '0 / 22', 1],
+  ['Paramètres', 'Administration', 1, '', [], '6 / 40', 0, 'sections'],
+  ['Utilisateurs', 'Administration', 0, 'Son établissement', [], '0 / 11', 0, 'users']
+];
+var dirty = 0;
+function actCell(m) {
+  if (m[7] === 'sections') return m[2] ? '<span class="kl-tag b">Numérotation des pièces</span> <span class="kl-tag b">Modèles de documents</span> <button type="button" class="ds-btn-ghost ds-btn-sm">Choisir (2 sur 17)</button>' : '<span class="us-muted">—</span>';
+  if (m[7] === 'users') return '<span class="us-muted" style="font-size:12.5px">Gestion = gérer les comptes de sa portée, sans attribuer Administrateur</span> <span class="mq-new">nouveau</span>';
+  return m[4].length ? m[4].map(function (v) { return '<button type="button" class="us-verb' + (v[1] && m[2] ? ' on' : '') + '"' + (m[2] ? '' : ' disabled') + '>' + v[0] + '</button>'; }).join('') : '<span class="us-muted">—</span>';
+}
+function drawMatrix() {
+  var showOff = document.getElementById('tg-inactive').classList.contains('on'), last = '';
+  document.getElementById('matrix-body').innerHTML = M.map(function (m, idx) {
+    if (m[6] && !showOff) return '';
+    var head = m[1] !== last ? '<tr class="ds-group"><td colspan="5"><b>' + m[1] + '</b></td></tr>' : ''; last = m[1];
+    return head + '<tr class="' + (m[6] ? 'us-off' : '') + '"><td class="ds-strong">' + m[0] + (m[6] ? ' <span class="kl-tag x">module inactif</span>' : '') + '</td>' +
+      '<td><div class="us-lvl" role="group" aria-label="Niveau ' + m[0] + '">' + LV.map(function (l, k) { return '<button type="button" class="' + (k === m[2] ? 'on' : '') + '" data-lv="' + idx + ':' + k + '">' + l + '</button>'; }).join('') + '</div></td>' +
+      '<td>' + (m[2] && m[3] ? '<select class="ds-input sm" style="width:auto" aria-label="Portée ' + m[0] + '"><option>' + m[3] + '</option><option>Ses enregistrements</option><option>Tous les établissements</option></select>' : '<span class="us-muted">—</span>') + '</td>' +
+      '<td>' + actCell(m) + '</td>' +
+      '<td class="ds-num"><button type="button" class="ds-btn-ghost ds-btn-sm" data-rt="r-detail">' + m[5] + '</button></td></tr>';
+  }).join('');
+  document.getElementById('matrix-dirty').textContent = dirty ? 'Modifications non enregistrées' : '';
+}
+drawMatrix();
+
+function tab(group, id) {
+  document.getElementById(group).querySelectorAll('[role=tab]').forEach(function (b) {
+    var on = b.dataset.tab === id; b.setAttribute('aria-selected', on);
+    document.getElementById(b.dataset.tab).classList.toggle('on', on);
+  });
+}
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-lv]');
+  if (b) { var p = b.dataset.lv.split(':'); M[+p[0]][2] = +p[1]; dirty++; drawMatrix(); return; }
+  var v = e.target.closest('.us-verb'); if (v) { if (!v.disabled) v.classList.toggle('on'); return; }
+  var g = e.target.closest('.us-lvl[data-group] button'); if (g) { g.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === g); }); return; }
+  var pk = e.target.closest('.us-pick button'); if (pk) { pk.classList.toggle('on'); return; }
+  var tg = e.target.closest('.odoo-toggle'); if (tg) { tg.classList.toggle('on'); tg.setAttribute('aria-checked', tg.classList.contains('on')); if (tg.id === 'tg-inactive') drawMatrix(); return; }
+  var rt = e.target.closest('[data-rt]'); if (rt) { tab('role-tabs', rt.dataset.rt); return; }
+  var t = e.target.closest('[role=tab][data-tab]'); if (t) { tab(t.parentNode.id, t.dataset.tab); return; }
+  if (e.target.closest('[data-stop]')) return;
+  var n = e.target.closest('[data-p]'); if (n && n.dataset.p) { go(n.dataset.p, n.dataset.t); }
+});
+
+/* ── Navigation entre planches ── */
+var NEWU = '<button type="button" class="odoo-btn-primary" data-p="nouveau">' + ico('plus', 13) + ' Nouvel utilisateur</button>';
+var ACTIONS = {
+  dash: '<button type="button" class="odoo-btn-secondary">Exporter</button>' + NEWU,
+  comptes: '<button type="button" class="odoo-btn-secondary">Exporter</button>' + NEWU,
+  apercu: '<button type="button" class="odoo-btn-secondary">Exporter</button>' + NEWU,
+  fiche: '<button type="button" class="odoo-btn-secondary">Plus d\'actions ▾</button><button type="button" class="odoo-btn-primary">Enregistrer</button>',
+  roles: '<button type="button" class="odoo-btn-secondary">Exporter</button><button type="button" class="odoo-btn-primary">' + ico('plus', 13) + ' Nouveau rôle</button>',
+  role: '<button type="button" class="odoo-btn-secondary">Dupliquer</button><button type="button" class="odoo-btn-primary">Enregistrer</button>',
+  controles: '<button type="button" class="odoo-btn-secondary">Exporter</button>',
+  revue: '<button type="button" class="odoo-btn-secondary">Revues précédentes</button>',
+  securite: '<button type="button" class="odoo-btn-secondary">Exporter le journal</button>'
+};
+var CRUMB = { fiche: ['Comptes', 'Karim Idrissi'], apercu: ['Comptes'], nouveau: ['Comptes', 'Nouvel utilisateur'], role: ['Rôles', 'Responsable des achats'] };
+var NAVKEY = { apercu: 'comptes', fiche: 'comptes', nouveau: 'comptes', role: 'roles', fenetres: 'comptes' };
+CRUMB.fenetres = ['Comptes', 'Fenêtres et confirmations'];
+function go(p, t) {
+  if (t === 'matrice') { p = 'role'; }
+  document.querySelectorAll('.mq-plate').forEach(function (s) { s.classList.toggle('on', s.id === 'p-' + p); });
+  document.querySelectorAll('.mq-bar button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.p === p); });
+  var nk = NAVKEY[p] || p;
+  document.querySelectorAll('.module-shell-item').forEach(function (b) { b.classList.toggle('active', t ? (b.dataset.t === t) : (b.dataset.p === nk && !b.dataset.t)); });
+  var sec = document.getElementById('p-' + p), parts = CRUMB[p] || [sec.dataset.page];
+  if (t === 'deleg') parts = ['Délégations']; if (t === 'journal') parts = ['Journal des connexions']; if (t === 'matrice') parts = ['Droits par rôle', 'Responsable des achats'];
+  document.querySelector('.odoo-control-bar .odoo-breadcrumb').innerHTML = '<span>Administration</span><span class="odoo-breadcrumb-separator">›</span><span>Utilisateurs</span>' + parts.map(function (x, k) { return '<span class="odoo-breadcrumb-separator">›</span><span' + (k === parts.length - 1 ? ' class="odoo-breadcrumb-current"' : '') + '>' + x + '</span>'; }).join('');
+  document.getElementById('hd-actions').innerHTML = ACTIONS[p] || '';
+  if (p === 'controles') tab('ctrl-tabs', t === 'deleg' ? 'c-deleg' : t === 'plaf' ? 'c-plaf' : 'c-sod');
+  if (p === 'securite') tab('sec-tabs', t === 'journal' ? 's-journal' : 's-pol');
+  window.scrollTo(0, 0);
+  try { history.replaceState(null, '', '#' + p + (t ? ':' + t : '')); } catch (err) { /* aperçu sans historique */ }
+}
+
+/* ── Nouvel utilisateur : cinq étapes sans numéro ── */
+var NW = [
+  ['Identité', 'Qui est la personne et comment elle se connecte.'],
+  ['Rôles', 'Un ou plusieurs rôles ; le premier coché devient le rôle principal.'],
+  ['Périmètre', 'Établissements, portée des données et atelier.'],
+  ['Sécurité', 'Double authentification et code PIN.'],
+  ['Vérification', 'Contrôle avant création du compte.']
+], nw = 0;
+var NWB = [
+  '<div class="ds-form-grid"><div class="ds-field"><label>Prénom<span class="ds-req"> *</span></label><input class="ds-input" value="Soukaina"></div><div class="ds-field"><label>Nom<span class="ds-req"> *</span></label><input class="ds-input" value="El Amrani"></div>' +
+  '<div class="ds-field"><label>E-mail de connexion<span class="ds-req"> *</span></label><input class="ds-input" value="soukaina.elamrani@exemple.ma"></div><div class="ds-field"><label>Fiche salarié</label><select class="ds-input"><option>Soukaina El Amrani · Qualité (non liée)</option></select><span class="ds-field-hint">Proposée car le nom correspond.</span></div></div>' +
+  '<fieldset class="ds-fieldset"><legend>Premier accès</legend><div class="us-cards">' +
+  '<button type="button" class="us-card on"><span class="us-ck">' + ico('check', 16) + '</span><b>' + ico('mail', 15) + ' Envoyer une invitation</b><small>La personne choisit son mot de passe par un lien valable 72 h. Demande l\'envoi d\'e-mails, pas encore configuré en production.</small></button>' +
+  '<button type="button" class="us-card"><span class="us-ck">' + ico('check', 16) + '</span><b>' + ico('key', 15) + ' Mot de passe provisoire</b><small>Généré (12 caractères au moins), à changer à la première connexion.</small></button></div></fieldset>',
+  '<div class="prj-toolbar"><label class="prj-search"><span style="color:var(--ds-muted);display:inline-flex">' + ico('search', 15) + '</span><input type="search" placeholder="Rechercher un rôle…" aria-label="Rechercher un rôle"></label><span class="ds-grow"></span><span class="us-muted" style="font-size:13px">Proposés pour : boulangerie, pâtisserie et métiers de bouche</span></div>' +
+  '<div class="us-cards">' +
+  '<button type="button" class="us-card on"><span class="us-ck">' + ico('check', 16) + '</span><b>Contrôleur qualité</b><small>Contrôle & Qualité (gestion), Fiches techniques et Stock (lecture)</small><span class="us-tags">' + tag('g', 'Modèle du secteur') + tag('b', 'Principal') + '</span></button>' +
+  '<button type="button" class="us-card"><span class="us-ck">' + ico('check', 16) + '</span><b>Opérateur de production</b><small>Production (saisie), Fiches techniques (lecture)</small><span class="us-tags">' + tag('b', 'Personnalisé') + '</span></button>' +
+  '<button type="button" class="us-card"><span class="us-ck">' + ico('check', 16) + '</span><b>Magasinier</b><small>Stock (gestion), Demandes boutique</small><span class="us-tags">' + tag('x', 'Système') + '</span></button>' +
+  '<button type="button" class="us-card"><span class="us-ck">' + ico('check', 16) + '</span><b>Responsable de production</b><small>Production (complet), Fiches techniques, Stock</small><span class="us-tags">' + tag('b', 'Personnalisé') + '</span></button>' +
+  '<button type="button" class="us-card dashed"><b>' + ico('plus', 15) + ' Créer un rôle depuis un modèle</b><small>Technicien maintenance, Chef de projet… (modèles pas encore créés)</small></button></div>',
+  '<div class="ds-field"><label>Établissements</label><div class="us-pick"><button type="button" class="on">' + ico('check', 13) + ' Laboratoire central · par défaut</button><button type="button" class="on">' + ico('check', 13) + ' Magasin principal</button><button type="button">' + ico('check', 13) + ' Boutique Maârif</button></div></div>' +
+  '<div class="ds-form-grid"><div class="ds-field"><label>Portée des données</label><select class="ds-input"><option>Son établissement (selon le rôle)</option><option>Ses enregistrements</option><option>Tous les établissements</option></select></div><div class="ds-field"><label>Atelier de production</label><select class="ds-input"><option>Aucun</option><option>Viennoiserie</option><option>Pâtisserie</option></select><span class="ds-field-hint">Reçoit les plans et les demandes de cet atelier.</span></div></div>',
+  '<div class="us-row" style="padding:0 0 14px"><div><b>Double authentification</b><p>Non exigée par le rôle Contrôleur qualité.</p></div><div class="us-ctl"><button type="button" role="switch" aria-checked="false" class="odoo-toggle" aria-label="Exiger pour ce compte"><span class="odoo-toggle-knob"></span></button> <span class="us-muted" style="font-size:13px">Exiger pour ce compte</span></div></div>' +
+  '<div class="us-row" style="padding:14px 0 0"><div><b>Code PIN de caisse</b><p>Utile seulement sur les postes partagés (caisse, pesée).</p></div><div class="us-ctl"><input class="ds-input sm" style="width:140px" placeholder="6 chiffres" aria-label="Code PIN"></div></div>',
+  '<div class="ds-alert success">' + ico('done', 16) + '<span style="flex:1">Aucun conflit de séparation des tâches avec les rôles choisis.</span></div>' +
+  '<dl class="us-kv"><dt>Compte</dt><dd>Soukaina El Amrani · soukaina.elamrani@exemple.ma</dd><dt>Premier accès</dt><dd>Invitation par e-mail, valable 72 h</dd><dt>Rôles</dt><dd>Contrôleur qualité (principal)</dd><dt>Établissements</dt><dd>Laboratoire central (par défaut), Magasin principal</dd><dt>Sécurité</dt><dd>2FA non exigée · sans code PIN</dd><dt>Page d\'accueil</dt><dd>Contrôle & Qualité › Tableau de bord</dd></dl>' +
+  '<section class="ds-panel" style="box-shadow:inset 0 0 0 1px var(--ds-sep)"><div class="ds-scroll"><table class="odoo-table ds-dense"><thead><tr><th>Module</th><th>Niveau</th><th>Portée</th></tr></thead><tbody>' +
+  '<tr><td class="ds-strong">Contrôle & Qualité</td><td>Gestion</td><td>Son établissement</td></tr><tr><td class="ds-strong">Fiches techniques</td><td>Lecture</td><td>Tous les établissements</td></tr><tr><td class="ds-strong">Stock</td><td>Lecture</td><td>Son établissement</td></tr></tbody></table></div></section>'
+];
+function drawNw() {
+  document.getElementById('nw-steps').innerHTML = NW.map(function (s, k) { return '<button type="button" class="' + (k === nw ? 'on' : k < nw ? 'done' : '') + '" data-nw="' + k + '">' + (k < nw ? ico('check', 13) : '') + s[0] + '</button>'; }).join('');
+  document.getElementById('nw-sub').textContent = NW[nw][1];
+  document.getElementById('nw-body').innerHTML = NWB[nw];
+  document.getElementById('nw-prev').disabled = nw === 0;
+  document.getElementById('nw-next').textContent = nw === NW.length - 1 ? 'Créer et envoyer l\'invitation' : 'Suivant';
+  document.getElementById('nw-left').textContent = nw === 0 ? '' : 'Brouillon conservé si vous fermez';
+}
+drawNw();
+document.getElementById('nw-steps').addEventListener('click', function (e) { var b = e.target.closest('[data-nw]'); if (b) { nw = +b.dataset.nw; drawNw(); } });
+document.getElementById('nw-prev').addEventListener('click', function () { if (nw > 0) { nw--; drawNw(); } });
+document.getElementById('nw-next').addEventListener('click', function () { if (nw < NW.length - 1) { nw++; drawNw(); } });
+document.getElementById('nw-body').addEventListener('click', function (e) { var c = e.target.closest('.us-card'); if (c && !c.classList.contains('dashed')) { if (nw === 0) { c.parentNode.querySelectorAll('.us-card').forEach(function (x) { x.classList.remove('on'); }); c.classList.add('on'); } else c.classList.toggle('on'); } });
+
+document.getElementById('roles-view').addEventListener('click', function (e) {
+  var b = e.target.closest('[data-rv]'); if (!b) return;
+  this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('active', x === b); });
+  var cmp = b.dataset.rv === 'cmp';
+  document.getElementById('roles-cmp').hidden = !cmp;
+  document.getElementById('roles-body').closest('section').hidden = cmp;
+});
+document.getElementById('revue-chips').addEventListener('click', function (e) {
+  var c = e.target.closest('[data-rv2]'); if (!c) return;
+  this.querySelectorAll('.prj-chip').forEach(function (x) { var on = x === c; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on); });
+  ['todo', 'ok', 'fix'].forEach(function (k) { document.getElementById('rv-' + k).hidden = k !== c.dataset.rv2; });
+});
+paint();
+var h = (location.hash || '').slice(1).split(':');
+go(document.getElementById('p-' + h[0]) ? h[0] : 'dash', h[1]);
+</script>
+</body>
+</html>
