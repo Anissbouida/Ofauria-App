@@ -24,7 +24,7 @@ import { authorizeSettings } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateQuery, validateUuidParams } from '../middleware/validate.middleware.js';
 import {
-  createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
+  createPlanSchema, updateItemsSchema, itemIdsSchema, restoreItemsSchema, startItemsSchema, produceItemsSchema,
   completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
   createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, subcontractSetupSchema, subcontractShipSchema, disassemblySchema, screenSettingSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
 } from '../validators/production.validator.js';
@@ -186,7 +186,7 @@ router.post('/:id/start', authenticate, idempotent(), id, can('production.start'
 router.post('/:id/start-items', authenticate, idempotent(), id, can('production.start_items'), validate(startItemsSchema), asyncHandler(productionController.startItems));
 router.post('/:id/produce-items', authenticate, idempotent(), id, can('production.produce_items'), validate(produceItemsSchema), asyncHandler(productionController.produceItems));
 router.post('/:id/transfer-items', authenticate, idempotent(), id, can('production.transfer_items'), validate(itemIdsSchema), asyncHandler(productionController.transferItems));
-router.post('/:id/restore-items', authenticate, id, can('production.restore_items'), validate(itemIdsSchema), asyncHandler(productionController.restoreItems));
+router.post('/:id/restore-items', authenticate, id, can('production.restore_items'), validate(restoreItemsSchema), asyncHandler(productionController.restoreItems));
 router.post('/:id/needs/:ingredientId/request-verification', authenticate, validateUuidParams('id', 'ingredientId'), can('production.request_verification'), validate(requestStockVerificationSchema), asyncHandler(productionController.requestStockVerification));
 router.post('/:id/cancel-items', authenticate, id, can('production.cancel_items'), validate(cancelItemsSchema), asyncHandler(productionController.cancelItems));
 router.post('/:id/complete', authenticate, idempotent(), id, can('production.complete'), validate(completeSchema), asyncHandler(productionController.complete));

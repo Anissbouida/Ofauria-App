@@ -453,7 +453,9 @@ export default function PlanDetailPage() {
   });
 
   const restoreMutation = useMutation({
-    mutationFn: (itemIds: string[]) => productionApi.restoreItems(id!, itemIds),
+    mutationFn: (arg: string[] | { itemIds: string[]; waiveMissing: boolean }) => Array.isArray(arg)
+      ? productionApi.restoreItems(id!, arg)
+      : productionApi.restoreItems(id!, arg.itemIds, arg.waiveMissing),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['production', id] });
       queryClient.invalidateQueries({ queryKey: ['bon-sortie'] });
@@ -1872,7 +1874,8 @@ export default function PlanDetailPage() {
               <div className="odoo-alert warning">
                 <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
                 <span>
-                  Ces articles ne peuvent pas être produits : stock insuffisant.
+                  Ces articles attendent une matière que le bon de sortie n'a pas livrée ; les autres articles du plan se produisent normalement.
+                  « Restaurer » sort la matière manquante pour l'article dès qu'elle est en stock ; « Produire sans » le lance sans elle.
                   {plan.status === 'in_progress' && ' La production ne peut pas être terminée tant que des articles sont en attente.'}
                 </span>
               </div>
@@ -1888,19 +1891,38 @@ export default function PlanDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {waitingItems.map((item: Record<string, any>) => (
+                {waitingItems.map((item: Record<string, any>) => {
+                  // Mig 664 : matières non livrées par le bon pour cet article.
+                  const missing = ((item.shortages ?? []) as { name: string; unit: string; missing_qty: string | number; status: string }[])
+                    .filter(s => s.status === 'open');
+                  return (
                   <tr key={item.id as string} style={{ cursor: 'default' }}>
                     <td><span className="odoo-status-dot warning" /></td>
-                    <td style={{ fontWeight: 500 }}>{item.product_name as string}</td>
+                    <td style={{ fontWeight: 500 }}>
+                      {item.product_name as string}
+                      {missing.length > 0 && (
+                        <div style={{ fontWeight: 400, fontSize: 12, color: 'var(--ds-muted)', marginTop: 2 }}>
+                          Manque : {missing.map(s => `${s.name} ${Number(s.missing_qty).toLocaleString('fr-FR', { maximumFractionDigits: 3 })} ${s.unit}`).join(', ')}
+                        </div>
+                      )}
+                    </td>
                     <td className="ds-num">{item.planned_quantity as number}</td>
-                    <td><StatusTag tone="todo" label="En attente" /></td>
+                    <td><StatusTag tone="todo" label={missing.length > 0 ? 'Matière manquante' : 'En attente'} /></td>
                     <td className="ds-num">
                       {isChef && (
                         <span style={{ display: 'inline-flex', gap: 6 }}>
                           <button type="button" onClick={() => restoreMutation.mutate([item.id as string])} disabled={restoreMutation.isPending}
-                            className="odoo-btn-secondary ds-btn-sm">
+                            className="odoo-btn-secondary ds-btn-sm"
+                            title={missing.length > 0 ? 'Sort la matière manquante pour cet article (si elle est en stock) et le remet en production' : undefined}>
                             <RotateCcw size={11} /> Restaurer
                           </button>
+                          {missing.length > 0 && (
+                            <button type="button" onClick={() => restoreMutation.mutate({ itemIds: [item.id as string], waiveMissing: true })}
+                              disabled={restoreMutation.isPending} className="odoo-btn-secondary ds-btn-sm"
+                              title="Lance l'article sans la matière manquante (aucune sortie de stock pour elle)">
+                              Produire sans
+                            </button>
+                          )}
                           <button type="button"
                             onClick={() => cancelItemsMutation.mutate({ itemIds: [item.id as string], reason: 'Annule depuis la liste d\'attente' })}
                             disabled={cancelItemsMutation.isPending}
@@ -1911,7 +1933,8 @@ export default function PlanDetailPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {restoredItems.map((item: Record<string, any>) => (
                   <tr key={item.id as string} style={{ cursor: 'default' }}>
                     <td><span className="odoo-status-dot ok" /></td>

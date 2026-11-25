@@ -49,6 +49,12 @@ export const updateItemsSchema = z.object({
   }).passthrough()).min(1, 'Au moins un article'),
 });
 
+// Mig 664 : « produire sans » la matière non livrée par le bon.
+export const restoreItemsSchema = z.object({
+  itemIds: z.array(z.string().guid()).min(1, 'Aucun article sélectionné'),
+  waiveMissing: z.boolean().optional(),
+});
+
 export const itemIdsSchema = z.object({
   itemIds: z.array(uuid).min(1, 'Aucun article sélectionné'),
 });

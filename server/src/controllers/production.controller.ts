@@ -691,7 +691,8 @@ export const productionController = {
       return;
     }
     try {
-      const { warnings } = await productionRepository.restoreFromWaiting(req.params.id, itemIds);
+      const { warnings } = await productionRepository.restoreFromWaiting(req.params.id, itemIds,
+        { userId: req.user!.userId, waiveMissing: req.body.waiveMissing === true });
 
       // Auto-gestion du BSI : 3 cas a gerer apres restore
       //   1. BSI absent + besoins existent -> on le genere et on notifie le magasinier

@@ -136,6 +136,11 @@ export const productionRepository = {
                         'lot_number', pl2.lot_number) ORDER BY io.id), '[]'::jsonb)
                  FROM production_item_outputs io LEFT JOIN product_lots pl2 ON pl2.id = io.product_lot_id
                 WHERE io.plan_item_id = ppi.id) AS outputs,
+              -- Mig 664 : matières non livrées par le bon pour cet article (en attente ou levées).
+              (SELECT COALESCE(jsonb_agg(jsonb_build_object('ingredient_id', sh.ingredient_id, 'name', shi.name, 'unit', shi.unit,
+                        'missing_qty', sh.missing_qty, 'status', sh.status) ORDER BY shi.name), '[]'::jsonb)
+                 FROM production_item_shortages sh JOIN ingredients shi ON shi.id = sh.ingredient_id
+                WHERE sh.plan_item_id = ppi.id AND sh.status <> 'cancelled') AS shortages,
               -- M2-08 : la ligne de commande client servie.
               ord.order_number AS line_order_number, ord.id AS line_order_id,
               NULLIF(TRIM(CONCAT_WS(' ', ordc.first_name, ordc.last_name)), '') AS line_order_customer,
@@ -840,7 +845,10 @@ export const productionRepository = {
          LEFT JOIN products p ON p.id = ppi.product_id
          LEFT JOIN recipes br ON br.id = ppi.base_recipe_id
          WHERE ppi.plan_id = $1
-           AND (ppi.status = 'cancelled' OR ppi.waiting_status = 'waiting')${targetFilter}`,
+           AND (ppi.status = 'cancelled' OR ppi.waiting_status = 'waiting')${targetFilter}
+           -- Mig 664 : un article qui attend une matière non livrée se remet par « Restaurer »
+           -- (sortie de la matière) ou « Produire sans », pas par la relance.
+           AND NOT EXISTS (SELECT 1 FROM production_item_shortages sh WHERE sh.plan_item_id = ppi.id AND sh.status = 'open')`,
         targetParams,
       );
       const targetIds = targetsResult.rows.map((r: Record<string, unknown>) => r.id as string);
@@ -2218,14 +2226,15 @@ export const productionRepository = {
   },
 
   // ═══ Modification 2: Restore items from waiting list after restock ═══
-  async restoreFromWaiting(planId: string, itemIds: string[]) {
+  async restoreFromWaiting(planId: string, itemIds: string[], opts: { userId?: string | null; waiveMissing?: boolean } = {}) {
     const client = await db.getClient();
     const warnings: string[] = [];
     try {
       await client.query('BEGIN');
+      if (opts.userId) await setActor(client, opts.userId, 'Remise en production');
 
       // Get plan to verify status
-      const planResult = await client.query(`SELECT status FROM production_plans WHERE id = $1`, [planId]);
+      const planResult = await client.query(`SELECT status, store_id FROM production_plans WHERE id = $1`, [planId]);
       if (!planResult.rows[0] || !['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(planResult.rows[0].status)) {
         throw new Error('Le plan doit etre confirme ou en cours pour restaurer des articles');
       }
@@ -2248,6 +2257,57 @@ export const productionRepository = {
         );
         if (!itemResult.rows[0]) continue;
         const item = itemResult.rows[0];
+
+        // Mig 664 : matières non livrées par le bon pour CET article. Remis en production, la
+        // matière lui est sortie maintenant (tout ou rien, pour ne pas lancer un article à
+        // moitié servi) ; « produire sans » lève le manque sans sortie.
+        const shortages = (await client.query(
+          `SELECT s.id, s.ingredient_id, s.missing_qty::float8 AS qty, i.name, i.unit
+             FROM production_item_shortages s JOIN ingredients i ON i.id = s.ingredient_id
+            WHERE s.plan_item_id = $1 AND s.status = 'open' FOR UPDATE OF s`, [itemId])).rows;
+        if (shortages.length > 0) {
+          if (opts.waiveMissing) {
+            await client.query(
+              `UPDATE production_item_shortages SET status = 'waived', resolved_at = NOW(), resolved_by = $2
+                WHERE plan_item_id = $1 AND status = 'open'`, [itemId, opts.userId ?? null]);
+          } else {
+            const storeId = (planResult.rows[0].store_id as string | null) ?? null;
+            const stock = new Map<string, number>();
+            for (const s of shortages) {
+              // Lignes de stock verrouillées puis additionnées (FOR UPDATE refuse un agrégat).
+              const r = await client.query(
+                `SELECT current_quantity::float8 AS q FROM inventory
+                  WHERE ingredient_id = $1 AND ($2::uuid IS NULL OR store_id = $2) FOR UPDATE`, [s.ingredient_id, storeId]);
+              stock.set(s.id, r.rows.reduce((t: number, x: { q: number }) => t + Number(x.q), 0));
+            }
+            const lacking = shortages.filter(s => (stock.get(s.id) ?? 0) + 0.0005 < Number(s.qty));
+            if (lacking.length > 0) {
+              warnings.push(`"${item.product_name}" ne peut pas etre restaure — ingredients toujours insuffisants.`
+                + ` Manque : ${lacking.map(s => `${s.name} ${Number(s.qty).toLocaleString('fr-FR', { maximumFractionDigits: 3 })} ${s.unit}`).join(', ')}.`);
+              continue;
+            }
+            for (const s of shortages) {
+              const qty = Number(s.qty);
+              await client.query(
+                `UPDATE inventory SET current_quantity = GREATEST(current_quantity - $1, 0), updated_at = NOW()
+                  WHERE ingredient_id = $2 AND ($3::uuid IS NULL OR store_id = $3)`, [qty, s.ingredient_id, storeId]);
+              await client.query(
+                `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id, plan_item_id)
+                 VALUES ($1, 'production', $2, $3, $4, $5, $6, $7)`,
+                [s.ingredient_id, -qty, `Matière non livrée au bon, sortie à la remise en production : ${item.product_name}`,
+                 opts.userId ?? null, planId, storeId, itemId]);
+              await ingredientLotRepository.consumeFEFO(client, s.ingredient_id, qty, planId, storeId ?? undefined, itemId);
+              await client.query(
+                `UPDATE production_item_shortages SET status = 'issued', issued_qty = missing_qty, resolved_at = NOW(), resolved_by = $2
+                  WHERE id = $1`, [s.id, opts.userId ?? null]);
+            }
+          }
+          await client.query(`UPDATE production_plan_items SET waiting_status = 'restored' WHERE id = $1`, [itemId]);
+          await client.query(
+            `UPDATE production_plans SET warnings = array_remove(warnings, $2), updated_at = NOW() WHERE id = $1`,
+            [planId, `"${item.product_name}" mis en liste d'attente — ingredients insuffisants.`]);
+          continue;
+        }
 
         // Re-check ingredient availability for this product (SUM across all store rows)
         const needsResult = await client.query(
@@ -2331,6 +2391,12 @@ export const productionRepository = {
           [reason || 'Annule manuellement', itemId, planId]
         );
         if (result.rows[0]) cancelled.push(result.rows[0].id);
+      }
+      // Mig 664 : un article annulé n'attend plus sa matière.
+      if (cancelled.length > 0) {
+        await client.query(
+          `UPDATE production_item_shortages SET status = 'cancelled', resolved_at = NOW()
+            WHERE plan_item_id = ANY($1::uuid[]) AND status = 'open'`, [cancelled]);
       }
 
       // If no more active items remain on this plan, release any

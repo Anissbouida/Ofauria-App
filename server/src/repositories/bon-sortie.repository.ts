@@ -186,6 +186,46 @@ export function splitAcrossItems(qty: number, shares: { itemId: string; qty: num
   return out.filter(x => x.qty > 0);
 }
 
+/**
+ * Matières non livrées par le bon (mig 664) : la part du besoin de chaque article qui n'a pas
+ * été remise (ligne en rupture, ou pesée nettement inférieure au besoin) devient un manque de
+ * l'article. Les articles concernés passent en liste d'attente ; les autres démarrent. La
+ * matière leur sera sortie à la remise en production, ou levée par « produire sans ».
+ * Tolérance : un écart de pesée de moins de 2 % n'est pas un manque.
+ */
+async function recordItemShortages(client: PoolClient, bon: BonRow, shares: Map<string, { itemId: string; qty: number }[]>) {
+  const lines = (await client.query(
+    `SELECT bsl.id, bsl.ingredient_id, bsl.original_ingredient_id, bsl.status,
+            COALESCE(bsl.needed_quantity, 0)::float8 AS needed,
+            CASE WHEN bsl.status = 'rupture' THEN 0
+                 ELSE COALESCE(bsl.actual_quantity, bsl.allocated_quantity, 0) END::float8 AS delivered
+       FROM production_bons_sortie_lignes bsl
+      WHERE bsl.bon_id = $1 AND bsl.ingredient_id IS NOT NULL AND bsl.status <> 'annule'`, [bon.id])).rows;
+  const touched = new Set<string>();
+  for (const l of lines) {
+    const missing = Math.round((Number(l.needed) - Number(l.delivered)) * 10000) / 10000;
+    if (!(missing > 0.0005) || Number(l.delivered) >= Number(l.needed) * 0.98) continue;
+    for (const part of splitAcrossItems(missing, shares.get(l.original_ingredient_id ?? l.ingredient_id))) {
+      if (!part.itemId || !(part.qty > 0.0005)) continue;
+      await client.query(
+        `INSERT INTO production_item_shortages (plan_id, plan_item_id, ingredient_id, bon_ligne_id, missing_qty)
+         VALUES ($1, $2, $3, $4, $5)`, [bon.plan_id, part.itemId, l.ingredient_id, l.id, part.qty]);
+      touched.add(part.itemId);
+    }
+  }
+  if (touched.size === 0) return;
+  const waiting = (await client.query(
+    `UPDATE production_plan_items ppi SET waiting_status = 'waiting'
+       FROM products p
+      WHERE ppi.id = ANY($1::uuid[]) AND ppi.status = 'pending' AND p.id = ppi.product_id
+      RETURNING p.name`, [[...touched]])).rows.map(r => `"${r.name}" mis en liste d'attente — ingredients insuffisants.`);
+  if (waiting.length) {
+    await client.query(
+      `UPDATE production_plans SET warnings = COALESCE(warnings, '{}') || $2::text[], updated_at = NOW() WHERE id = $1`,
+      [bon.plan_id, waiting]);
+  }
+}
+
 /** Consomme physiquement les lignes du bon : lots pesage (ingredients) et stock
  *  emballages, avec mouvement trace. Appele une seule fois par bon, au passage en
  *  'prelevement'. Le bon est deja verrouille par l'appelant. */
@@ -288,6 +328,8 @@ async function consumeBonLines(client: PoolClient, bon: BonRow, userId: string) 
     }
   }
 
+  await recordItemShortages(client, bon, shares);
+
   // Lignes emballages : consommees ici, au meme moment que les ingredients.
   // Avant, elles etaient marquees prelevees sans jamais toucher au stock emballage.
   const pkLines = await client.query(
@@ -343,9 +385,12 @@ async function applyVerify(client: PoolClient, bonId: string, userId: string): P
 /** 'verifie' -> 'cloture'. */
 async function applyClose(client: PoolClient, bonId: string, userId: string): Promise<BonRow> {
   const bon = await transitionBon(client, bonId, 'cloture', { extraSet: 'closed_by = $2, closed_at = NOW()', params: [userId], reason: 'Ingredients livres' });
+  // Les articles qui attendaient le bon repartent, sauf ceux à qui une matière n'a pas été
+  // livrée (mig 664) : ils restent en attente jusqu'à la sortie de la matière ou « produire sans ».
   await client.query(
-    `UPDATE production_plan_items SET waiting_status = 'restored'
-      WHERE plan_id = $1 AND waiting_status = 'waiting'`,
+    `UPDATE production_plan_items ppi SET waiting_status = 'restored'
+      WHERE ppi.plan_id = $1 AND ppi.waiting_status = 'waiting'
+        AND NOT EXISTS (SELECT 1 FROM production_item_shortages sh WHERE sh.plan_item_id = ppi.id AND sh.status = 'open')`,
     [bon.plan_id]
   );
   return bon;

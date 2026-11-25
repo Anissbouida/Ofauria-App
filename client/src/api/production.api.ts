@@ -206,8 +206,9 @@ export const productionApi = {
   pendingTransfers: () => api.get('/production/transfers/pending').then(r => r.data.data),
   confirmTransferReception: (transferId: string, items: { itemId: string; qtyReceived: number; notes?: string }[]) =>
     api.post(`/production/transfers/${transferId}/receive`, { items }, intentHeaders(`/production/transfers/${transferId}/receive`, { items })).then(r => r.data),
-  restoreItems: (id: string, itemIds: string[]) =>
-    api.post(`/production/${id}/restore-items`, { itemIds }).then(r => r.data),
+  /** waiveMissing (mig 664) : « produire sans » la matière non livrée par le bon. */
+  restoreItems: (id: string, itemIds: string[], waiveMissing = false) =>
+    api.post(`/production/${id}/restore-items`, { itemIds, ...(waiveMissing ? { waiveMissing: true } : {}) }).then(r => r.data),
   requestStockVerification: (id: string, ingredientId: string, note?: string) =>
     api.post(`/production/${id}/needs/${ingredientId}/request-verification`, { note }).then(r => r.data.data),
   cancelItems: (id: string, itemIds: string[], reason?: string) =>

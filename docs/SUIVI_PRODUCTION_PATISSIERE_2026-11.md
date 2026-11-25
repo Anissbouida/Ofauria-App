@@ -172,4 +172,18 @@ Reprise : les plans à un seul article ont été rattachés (exact) ; les plans 
 Limites :
 - Au bon de sortie, la part de chaque article est calculée sur son besoin, pas pesée séparément : le coût d'une matière commune y reste théorique entre articles. Le gain est sur la traçabilité (un article qui n'utilise pas la matière n'est plus touché) et sur les productions sans bon de sortie, où la sortie est réellement faite article par article.
 - Les préparations de base consommées par un plan (semi-finis) restent rattachées au plan, réparties par les besoins.
-- Le bon de sortie reste commun au plan : une matière manquante pour un article retient toujours le démarrage de tout le plan.
+- ~~Le bon de sortie reste commun au plan : une matière manquante pour un article retient toujours le démarrage de tout le plan.~~ Traité (§ 9).
+
+## 9. Matière manquante : seul l'article concerné attend (2026-11-24, mig 664)
+
+| Étape | Comportement |
+|---|---|
+| Bon remis « avec manquants » et accepté par le chef | La part non livrée de chaque article (ligne en rupture, ou pesée inférieure de plus de 2 % au besoin) devient son manque (`production_item_shortages`). Ces articles passent en liste d'attente ; les autres démarrent et se produisent. |
+| Clôture du bon | Ne remet plus en production un article qui attend une matière. |
+| « Restaurer » | Sort la matière manquante pour l'article (stock, mouvement, lots, coût rattachés à l'article), tout ou rien ; refusé tant que le stock ne couvre pas, avec la liste de ce qui manque. |
+| « Produire sans » | Lève le manque sans sortie de matière ; l'article repart. |
+| Annuler l'article | Ferme son manque. |
+| Relance du plan | N'efface plus l'attente d'un article à qui une matière manque. |
+| Écran | Liste d'attente : « Manque : Beurre 1 kg », statut « Matière manquante », boutons Restaurer / Produire sans / Annuler. |
+
+Validation : `manques-par-article.db.test.ts` (3 tests : attente de A pendant que B se produit, refus sans stock puis sortie pour A à l'arrivée du beurre, « produire sans », annulation).
