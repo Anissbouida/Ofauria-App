@@ -128,6 +128,29 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
   },
   {
+    key: 'production.demand_source', domain: 'production', section: 'production',
+    label: 'Déclenchement de la production',
+    help: 'Ce qui crée le besoin de fabrication dans le plan directeur et les besoins nets. Sur stock : la prévision de vente seule. À la commande : les commandes clients seules. Hybride : les deux.',
+    fields: [{ name: 'mode', label: 'Déclenchement', type: 'enum', options: [
+      { value: 'forecast', label: 'Sur stock' }, { value: 'orders', label: 'À la commande' }, { value: 'both', label: 'Hybride' },
+    ] }],
+    defaults: { mode: 'both' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
+    key: 'production.flow', domain: 'production', section: 'production',
+    label: 'Parcours d\'une production',
+    help: 'Étapes obligatoires d\'un ordre. Fiche technique : un article sans fiche bloque la confirmation du plan. Bon de sortie : le démarrage attend la sortie des matières (types d\'ordre qui en prévoient un). Contrôle qualité : le transfert attend les contrôles prévus. Validation du transfert : la boutique confirme la réception ; sinon elle est enregistrée d\'office.',
+    fields: [
+      { name: 'recipe_required', label: 'Fiche technique obligatoire pour lancer', type: 'boolean' },
+      { name: 'material_issue_required', label: 'Bon de sortie des matières avant de démarrer', type: 'boolean' },
+      { name: 'quality_before_transfer', label: 'Contrôle qualité avant transfert', type: 'boolean' },
+      { name: 'transfer_reception', label: 'Validation du transfert par la boutique', type: 'boolean' },
+    ],
+    defaults: { recipe_required: false, material_issue_required: true, quality_before_transfer: true, transfer_reception: true },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'production.mrp_horizon', domain: 'production', section: 'production',
     label: 'Horizon du plan directeur',
     help: 'Nombre maximal de jours calculés par le plan directeur (besoins nets par jour).',
@@ -381,6 +404,14 @@ export const PARAMETERS: ParamDef[] = [
       { name: 'email', label: 'Envoyer aussi un e-mail aux responsables', type: 'boolean' },
     ],
     defaults: { days: [30, 7], email: false },
+    storage: { kind: 'module_parameters' },
+  },
+  {
+    key: 'stock.low_stock_alerts', domain: 'production', section: 'business',
+    label: 'Alertes de stock bas',
+    help: 'Signale les matières et produits sous leur seuil d\'alerte (listes, tableau de bord) et alimente les propositions d\'achat automatiques.',
+    fields: [{ name: 'enabled', label: 'Alertes de stock bas', type: 'boolean' }],
+    defaults: { enabled: true },
     storage: { kind: 'module_parameters' },
   },
   {

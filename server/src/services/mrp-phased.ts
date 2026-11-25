@@ -1,4 +1,5 @@
 import { db, withTransaction } from '../config/database.js';
+import { demandTerms } from './operating-rules.js';
 import { forecastRepository } from '../repositories/forecast.repository.js';
 import { masterScheduleRepository, mondayOf } from '../repositories/master-schedule.repository.js';
 import { getCompositionForNeeds } from '../repositories/recipe-composition.helper.js';
@@ -185,8 +186,10 @@ export async function loadMrpInput(storeId: string, from: string, horizon?: numb
   // prévision de ses jours, répartie selon le profil de la prévision de la semaine.
   const wkFrom = mondayOf(from);
   const wkTo = addDays(mondayOf(to), 6);
-  const fc = await forecastRepository.compute(storeId, wkFrom, wkTo, { withMarkup: true });
-  const mps = await masterScheduleRepository.entries(storeId, from, to);
+  // Déclenchement de la production (mig 692) : chaque terme de la demande peut être exclu.
+  const terms = await demandTerms();
+  const fc = terms.forecast ? await forecastRepository.compute(storeId, wkFrom, wkTo, { withMarkup: true }) : { rows: [] as { product_id: string; days: unknown }[] };
+  const mps = terms.forecast ? await masterScheduleRepository.entries(storeId, from, to) : new Map<string, Map<string, number>>();
   const fcBy = new Map<string, Record<string, number>>();
   for (const r of fc.rows) fcBy.set(r.product_id, Object.fromEntries(Object.entries(r.days as Record<string, { qty: number }>).map(([d, v]) => [d, Number(v?.qty ?? 0)])));
   for (const pid of new Set([...fcBy.keys(), ...mps.keys()])) {
@@ -210,7 +213,7 @@ export async function loadMrpInput(storeId: string, from: string, horizon?: numb
       WHERE o.status NOT IN ('completed', 'cancelled') AND (o.store_id = $1 OR o.store_id IS NULL)
         AND o.pickup_date::date BETWEEN $2::date AND $3::date
       GROUP BY 1, 2`, [storeId, from, to]);
-  for (const r of orders.rows) if (r.q > 0) addDemand(`p:${r.product_id}`, r.d, Number(r.q));
+  if (terms.orders) for (const r of orders.rows) if (r.q > 0) addDemand(`p:${r.product_id}`, r.d, Number(r.q));
 
   const productIds = [...new Set(Object.keys(demand).map(k => k.slice(2)))];
   if (!productIds.length) return { days, items: [], demand, receipts };

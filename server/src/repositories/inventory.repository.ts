@@ -1,4 +1,5 @@
 import { db, withTransaction } from '../config/database.js';
+import { lowStockAlertsEnabled } from '../services/operating-rules.js';
 import { recipeRepository } from './recipe.repository.js';
 import { capitalizeFirst } from '../utils/text.js';
 
@@ -63,6 +64,7 @@ export const inventoryRepository = {
   },
 
   async findAlerts(storeId?: string) {
+    if (!(await lowStockAlertsEnabled())) return []; // alertes de stock bas désactivées (mig 692)
     const storeFilter = storeId ? ' AND inv.store_id = $1' : '';
     const params = storeId ? [storeId] : [];
     const result = await db.query(

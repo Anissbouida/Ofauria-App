@@ -1,4 +1,5 @@
 import { productLabelRepository } from '../repositories/product-label.repository.js';
+import { lowStockAlertsEnabled } from '../services/operating-rules.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productRepository } from '../repositories/product.repository.js';
@@ -715,6 +716,7 @@ export const productController = {
   },
 
   async lowStock(req: AuthRequest, res: Response) {
+    if (!(await lowStockAlertsEnabled())) { res.json({ success: true, data: [] }); return; } // désactivées (mig 692)
     const storeId = req.user!.storeId;
     let result;
     if (storeId) {

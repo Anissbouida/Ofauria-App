@@ -95,6 +95,14 @@
 .wz-app .wz-foot .ds-grow { flex: 1; text-align: right; font-size: 13px; color: var(--ds-muted); }
 .wz-app .wz-foot .ds-grow.block { color: var(--ds-danger); font-weight: 600; }
 
+/* Parcours d'une production (étapes cliquables). */
+.wz-app .wz-flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
+.wz-app .wz-flow button { border: 0; border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 13px; background: var(--ds-bg); color: var(--ds-muted); box-shadow: inset 0 0 0 1px var(--ds-sep); cursor: pointer; display: grid; gap: 2px; text-align: left; min-width: 128px; }
+.wz-app .wz-flow button.on { background: var(--ds-tint); color: var(--ds-ink); box-shadow: inset 0 0 0 1.5px var(--ds-accent); font-weight: 600; }
+.wz-app .wz-flow button small { font-weight: 400; font-size: 12px; color: var(--ds-muted); }
+.wz-app .wz-flow button:disabled { cursor: default; }
+.wz-app .wz-flow .arrow { align-self: center; color: var(--ds-line); }
+
 /* Écran d'accueil (aucun brouillon ouvert). */
 .wz-app .wz-start { padding: 20px 24px; display: grid; gap: 16px; }
 

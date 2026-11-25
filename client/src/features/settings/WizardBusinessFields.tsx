@@ -265,14 +265,31 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
   if (step === 'operations' || step === 'rules') {
     const mods = new Set(list(draftData('modules', answers, catalog, company).selected) as AppModule[]);
     const params = (catalog?.parameters ?? []).filter(p => p.step === step && mods.has(p.module as AppModule));
-    const orphaned = Object.keys(data).filter(key => !params.some(p => p.fields.some(f => `${p.key}:${f.name}` === key)));
+    const orphaned = Object.keys(data).filter(key => !key.startsWith('approval:') && !params.some(p => p.fields.some(f => `${p.key}:${f.name}` === key)));
     const byModule = [...new Set(params.map(p => p.module))];
     return <>
       {orphaned.length > 0 && <Alert tone="warning" icon={<TriangleAlert size={16} />}>Choix antérieurs pour des modules retirés : {orphaned.map(key =>
         <span key={key} style={{ display: 'block' }}>{key} : {String(data[key])} <button type="button" className="odoo-btn-link" disabled={disabled} onClick={() => unset(key)}>Retirer du brouillon</button></span>)}</Alert>}
       {!params.length && <Alert tone="info">Aucun réglage proposé pour les modules retenus.</Alert>}
       {byModule.map(module => <div key={module}><h3 className="ds-subhead">{MODULE_LABELS[module as AppModule] ?? module}</h3>
-        {params.filter(p => p.module === module).flatMap(p => p.fields.map((f, fi) => {
+        {params.filter(p => p.module === module && p.key === 'production.flow' && p.value).map(p => {
+          // Parcours d'une production, comme la maquette : étapes cliquables, l'ordre toujours présent.
+          const val = (name: string) => { const id = `${p.key}:${name}`; return id in data ? data[id] === true : p.value?.[name] === true; };
+          const voc = draftData('vocabulary', answers, catalog, company);
+          const steps: { name: string | null; label: string; hint: string }[] = [
+            { name: 'recipe_required', label: text(voc.recipe) || 'Fiche technique', hint: 'pour lancer' },
+            { name: 'material_issue_required', label: text(voc.doc_bon_sortie) || 'Bon de sortie des matières', hint: 'avant de démarrer' },
+            { name: null, label: text(voc.production_plan) || 'Ordre de fabrication', hint: 'toujours présent' },
+            { name: 'quality_before_transfer', label: 'Contrôle qualité', hint: 'avant transfert' },
+            { name: 'transfer_reception', label: 'Validation du transfert', hint: 'réception par la boutique' },
+          ];
+          return <div key={p.key} style={{ display: 'grid', gap: 8, padding: '8px 0 4px' }}><b style={{ color: 'var(--ds-ink)' }}>Parcours d’une production {Object.keys(data).some(k => k.startsWith(`${p.key}:`)) && <Tag tone="o">Modifié</Tag>}</b>
+            <p className="mq-sub" style={{ margin: 0 }}>Cliquez une étape pour la rendre obligatoire ou facultative.</p>
+            <div className="wz-flow">{steps.map((s, i) => { const on = s.name ? val(s.name) : true;
+              return <span key={s.label} style={{ display: 'contents' }}>{i > 0 && <span className="arrow" aria-hidden="true">›</span>}
+                <button type="button" className={on ? 'on' : ''} aria-pressed={on} disabled={disabled || !s.name} onClick={() => s.name && set(`${p.key}:${s.name}`, !on)}>{s.label}<small>{s.name ? `${on ? 'obligatoire' : 'facultative'} · ${s.hint}` : s.hint}</small></button></span>; })}</div></div>;
+        })}
+        {params.filter(p => p.module === module && p.key !== 'production.flow').flatMap(p => p.fields.map((f, fi) => {
           const id = `${p.key}:${f.name}`, draft = id in data, value = draft ? data[id] : p.value?.[f.name], locked = disabled || !p.value;
           const title = <>{p.fields.length > 1 ? `${p.label} — ${f.label}` : p.label}{f.unit ? ` (${f.unit})` : ''} {draft && <Tag tone="o">Modifié</Tag>}</>;
           const control = !p.value ? <Tag tone="x">Indisponible</Tag>
@@ -282,6 +299,28 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
             : <input aria-label={f.label} className="ds-input" style={{ width: 140 }} type={['number','integer','percent'].includes(f.type) ? 'number' : 'text'} min={f.min} max={f.max} step={f.type === 'integer' ? 1 : 'any'} disabled={locked} value={Array.isArray(value) ? value.join(', ') : String(value ?? '')} onChange={e => set(id, e.target.value)} />;
           return <Row key={id} title={title} help={fi === 0 ? p.help : undefined}><span className="wz-control">{control}{draft && <button type="button" className="odoo-btn-link" disabled={disabled} onClick={() => unset(id)}>Annuler</button>}</span></Row>;
         }))}</div>)}
+      {step === 'rules' && <>
+        {(catalog?.approvalRules?.length ?? 0) > 0 && <div><h3 className="ds-subhead" style={{ marginBottom: 8 }}>Approbations</h3>
+          <div className="ds-scroll"><table className="odoo-table ds-dense" style={{ width: '100%' }}><thead><tr><th>Pièce</th><th style={{ width: 210 }}>Condition</th><th>Approbateur</th><th style={{ width: 60 }} aria-label="Active"></th></tr></thead><tbody>
+            {catalog!.approvalRules!.map(r => {
+              const ek = `approval:${r.code}:enabled`, vk = `approval:${r.code}:value`;
+              const on = ek in data ? data[ek] === true : r.enabled;
+              const value = vk in data ? text(data[vk]) : String(r.value);
+              const changed = ek in data || vk in data;
+              return <tr key={r.code}><td className="ds-strong">{r.label} {changed && <Tag tone="o">Modifié</Tag>}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{r.op === 'gte' ? 'à partir de' : 'au-delà de'} <input className="ds-input sm" style={{ width: 90, display: 'inline-block' }} inputMode="decimal" aria-label={`Seuil — ${r.label}`} value={value} disabled={disabled || !on} onChange={e => set(vk, e.target.value)} /> {r.unit}</td>
+                <td>{r.approver ?? '—'}</td>
+                <td><Switch label={r.label} checked={on} disabled={disabled} onChange={v => set(ek, v)} /></td></tr>;
+            })}
+          </tbody></table></div>
+          <p className="mq-sub" style={{ margin: '6px 0 0' }}>Approbateurs et circuits à plusieurs niveaux : <button type="button" className="odoo-btn-link" onClick={() => navigate('/settings?page=approvals')}>Circuits d’approbation</button>.</p></div>}
+        <div><h3 className="ds-subhead">Automatismes</h3>
+          <Row title={<>Numérotation des documents <Tag tone="o" lock>Réglementaire</Tag></>} help="Préfixe, année et compteur par type de pièce et par établissement ; sans rupture pour les factures.">
+            <button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/settings?page=numbering')}>Régler</button></Row>
+          <Row title="Comptabilisation automatique" help="Chaque pièce validée passe son écriture au grand livre.">
+            <Switch label="Comptabilisation automatique" checked disabled onChange={() => undefined} /></Row>
+        </div>
+      </>}
     </>;
   }
 

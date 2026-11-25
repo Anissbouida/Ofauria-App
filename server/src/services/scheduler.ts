@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { lowStockAlertsEnabled } from './operating-rules.js';
 import { reorderPointRepository } from '../repositories/reorder-point.repository.js';
 import { cycleCountJob } from '../repositories/abc-cycle-count.repository.js';
 import { logger } from '../utils/logger.js';
@@ -262,6 +263,7 @@ async function emailOutbox(): Promise<JobResult> {
  * puis soumet. Dédupliquées par insertProposal. Désactivée par défaut (mig 464).
  */
 async function purchaseSuggestions(): Promise<JobResult> {
+  if (!(await lowStockAlertsEnabled())) return { items: 0, message: 'Alertes de stock bas désactivées (paramètre)' };
   const { rows } = await toOrderRepository.board();
   let created = 0;
   for (const r of rows as Record<string, unknown>[]) {

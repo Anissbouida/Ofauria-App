@@ -1,4 +1,5 @@
 import { db, withTransaction } from '../config/database.js';
+import { productionFlow } from '../services/operating-rules.js';
 import { format } from 'date-fns';
 import { adjustProductStock } from './product-stock.helper.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
@@ -517,6 +518,8 @@ export const productionRepository = {
           const recipeResult = await recipeForItem(client, item);
           if (!recipeResult.rows[0]) {
             if (!(await isSemiFinishedPlanQ())) {
+              // Parcours de production (mig 692) : fiche technique obligatoire pour lancer.
+              if ((await productionFlow()).recipe_required) throw Object.assign(new Error(`Fiche technique obligatoire : « ${item.product_name} » n'en a pas. Créez-la ou retirez l'article du plan.`), { statusCode: 409 });
               warnings.push(`Le produit "${item.product_name}" n'a pas de recette, ignoré pour les besoins en ingrédients.`);
             }
             continue;
@@ -1982,7 +1985,9 @@ export const productionRepository = {
       // Étape 5 : décision historique observée ou remplacée par le moteur de parcours.
       let legacyQc: string | null = null;
       const ot = await productionOrderTypeRepository.forPlan(planId, client);
-      if (ot.requires_quality_check && await declaredStepsEnforced(planId, ot.code, client)) {
+      // Parcours de production (mig 692) : contrôle qualité avant transfert, désactivable.
+      const flow = await productionFlow();
+      if (flow.quality_before_transfer && ot.requires_quality_check && await declaredStepsEnforced(planId, ot.code, client)) {
         const qc = await client.query(
           `SELECT count(*) FILTER (WHERE status = 'a_faire')::int AS pending,
                   count(*) FILTER (WHERE status = 'faite' AND conformity IS NOT FALSE)::int AS ok,
@@ -1996,7 +2001,7 @@ export const productionRepository = {
               : 'Contrôle qualité obligatoire : aucun contrôle conforme enregistré sur cet ordre.';
         }
       }
-      if (!legacyQc) {
+      if (!legacyQc && flow.quality_before_transfer) {
         const open = await qualityControlPlanRepository.blockingOpen(client, 'avant_transfert', { planId, planItemIds: itemIds });
         if (open > 0) legacyQc = `Contrôle avant transfert : ${open} contrôle(s) bloquant(s) à faire ou non conforme(s).`;
       }
@@ -2029,6 +2034,13 @@ export const productionRepository = {
         );
       }
 
+      // Parcours de production (mig 692) : sans validation par la boutique, le transfert est
+      // réceptionné d'office pour la quantité transférée (même traitement que la caisse).
+      if (!flow.transfer_reception) {
+        const lines = await client.query(`SELECT id, transferred_quantity FROM production_transfer_items WHERE transfer_id = $1`, [transferId]);
+        await productionRepository.confirmTransferReception(transferId, lines.rows.map(l => ({ itemId: l.id as string, qtyReceived: Number(l.transferred_quantity) })), userId);
+        return { ...transferResult.rows[0], auto_received: true };
+      }
       return transferResult.rows[0];
     });
   },
@@ -3243,7 +3255,8 @@ async function legacyStartChecks(planId: string): Promise<void> {
       // Semi-finished plans don't have their own BSI, so skip this check for them
       // Type d'ordre sans bon de sortie (M2-03) : le démarrage n'attend pas de BSI clôturé.
       const orderType = await productionOrderTypeRepository.forPlan(planId);
-      if (!planInfo.rows[0].is_semi_finished_plan && orderType.requires_bon_sortie) {
+      // Parcours de production (mig 692) : bon de sortie obligatoire ou non pour démarrer.
+      if (!planInfo.rows[0].is_semi_finished_plan && orderType.requires_bon_sortie && (await productionFlow()).material_issue_required) {
         // Cas "plan sans ingredients" : aucun produit n'a de recette, donc rien a prelever.
         // On bypass la verification BSI (sinon impossible de demarrer un plan legitime).
         const needsResult = await db.query(

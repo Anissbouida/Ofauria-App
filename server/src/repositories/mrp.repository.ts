@@ -1,4 +1,5 @@
 import { policyNumber } from '../services/policies.js';
+import { demandTerms } from '../services/operating-rules.js';
 import { db, withTransaction } from '../config/database.js';
 import { forecastRepository } from './forecast.repository.js';
 import { productionRepository } from './production.repository.js';
@@ -30,6 +31,8 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
  */
 export const mrpRepository = {
   async netRequirements(storeId: string, date: string) {
+    // Déclenchement de la production (mig 692) : prévision, commandes ou les deux.
+    const terms = await demandTerms();
     const [fc, ordersRes, stockRes, plannedRes] = await Promise.all([
       // 1. Prévision de vente (demande walk-in) du jour, majorée (comme la fiche de besoin).
       forecastRepository.compute(storeId, date, date, { withMarkup: true }),
@@ -88,8 +91,8 @@ export const mrpRepository = {
       const m = meta.get(id);
       // known = l'id correspond à un vrai produit fini (prévision ou catalogue).
       const known = !!f || !!m;
-      const forecastQty = f?.qty ?? 0;
-      const orderQty = orders.get(id) ?? 0;
+      const forecastQty = terms.forecast ? f?.qty ?? 0 : 0;
+      const orderQty = terms.orders ? orders.get(id) ?? 0 : 0;
       // Stock négatif = artefact de saisie : plancher à 0 (ne gonfle pas le besoin).
       const onHand = Math.max(0, stock.get(id) ?? 0);
       const plannedQty = planned.get(id) ?? 0;
@@ -205,6 +208,7 @@ export const mrpRepository = {
    */
   async horizon(storeId: string, from: string, to: string) {
     const dates = datesBetween(from, to, await policyNumber('production.mrp_horizon', 'days', { storeId }));
+    const terms = await demandTerms();
     if (!dates.length) return { store_id: storeId, dates: [], rows: [], totals_by_date: {} };
     const last = dates[dates.length - 1];
     const key = (pid: string, d: string) => `${pid}|${d}`;
@@ -254,7 +258,7 @@ export const mrpRepository = {
       const days: Record<string, { demand: number; net: number }> = {};
       let anyDemandOrPlan = false;
       for (const d of dates) {
-        const demand = (f?.days.get(d) ?? 0) + (ordersMap.get(key(id, d)) ?? 0);
+        const demand = (terms.forecast ? f?.days.get(d) ?? 0 : 0) + (terms.orders ? ordersMap.get(key(id, d)) ?? 0 : 0);
         const planned = plannedMap.get(key(id, d)) ?? 0;
         if (demand > 0 || planned > 0) anyDemandOrPlan = true;
         const cover = Math.min(remainingStock, Math.max(0, demand - planned));

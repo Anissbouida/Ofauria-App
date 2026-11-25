@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { lowStockAlertsEnabled } from '../services/operating-rules.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
@@ -99,9 +100,9 @@ export const reportsController = {
       SELECT COUNT(*) as count FROM orders WHERE status IN ('pending', 'preparing')${storeFilter.replace('store_id', 'store_id')}
     `, storeValues);
 
-    const lowStock = await db.query(`
+    const lowStock = (await lowStockAlertsEnabled()) ? await db.query(`
       SELECT COUNT(*) as count FROM inventory WHERE current_quantity <= minimum_threshold${storeFilter}
-    `, storeValues);
+    `, storeValues) : { rows: [{ count: 0 }] };
 
     // Today's losses
     const todayLosses = await db.query(`

@@ -14,6 +14,10 @@ export type ExpenseRequiresPo = { enabled: boolean; threshold: number; currency:
 const DEFAULTS: Record<string, unknown> = {
   'purchasing.expense_requires_po': { enabled: false, threshold: 2000, get currency() { return baseCurrencyCode(); } } satisfies ExpenseRequiresPo,
   'sales.quotes': { validity_days: 30 },
+  // Modèle opérationnel et règles (mig 692) : défauts = comportement d'avant.
+  'production.demand_source': { mode: 'both' },
+  'production.flow': { recipe_required: false, material_issue_required: true, quality_before_transfer: true, transfer_reception: true },
+  'stock.low_stock_alerts': { enabled: true },
   'sales.dunning': { enabled: true, auto_send: false, min_amount: 50, credit_control: 'warn', auto_release: true },
   'sales.pos_stock': { mode: 'block' } satisfies PosStockRule,
   'sales.person_sizes': { sizes: [4, 6, 8, 10, 12, 16] },

@@ -18,6 +18,8 @@ export interface WizardCatalog {
   /** Personnalisation des modules : capacités du catalogue (app_features) et capacités actives. */
   capabilities?: { code: string; module: string; label: string; description: string | null; kind: 'fonction' | 'reglementaire'; requires: string[]; default_on: boolean }[];
   activeCapabilities?: string[];
+  /** Règles d'approbation à seuil simple (moteur d'approbation, mig 350). */
+  approvalRules?: { code: string; label: string; doc_type: string; enabled: boolean; op: string; field: string; value: number; unit: string; approver: string | null }[];
   /** Lot 11 : modèles de rôles (mig 690) ; `sod` = conflits de séparation des tâches du modèle complet. */
   roleTemplates?: { code:string; label:string; description:string|null; base_role:string; sector_code:string|null; specialization_code:string|null;
     requires_modules:string[]; permissions:{module:string;rights:string;scope?:'own'|'store'|'all';verbs?:string[]}[]; home_route:string|null; exists:boolean;

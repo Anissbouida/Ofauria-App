@@ -9,6 +9,7 @@ import { VOCABULARY_KEY_SET } from '@ofauria/shared';
 import { wizardParameterField } from './parameter-definitions.js';
 import { applyWizardParameters } from './parameter-operations.js';
 import { applyRoleTemplates } from './role-templates.js';
+import { applyWizardApprovals, APPROVAL_KEY } from './approval-operations.js';
 
 export type ChangeOperation = { step: string; data: WizardData; execution: 'sector_modules' | 'company_context' | 'vocabulary' | 'specializations' | 'parameters' | 'interface_preferences' | 'roles' | 'pending'; reason?: string };
 
@@ -22,7 +23,7 @@ export function compileChangeSet(answers: WizardAnswers): ChangeOperation[] {
     const scope = step.key === 'sector' || step.key === 'modules';
     const execution=scope?'sector_modules':step.key==='company'?'company_context':step.key==='vocabulary'?'vocabulary':step.key==='specialties'?'specializations':step.key==='interfaces'?'interface_preferences':step.key==='roles'?'roles':step.key==='operations'||step.key==='rules'?'parameters':'pending';
     const entries=Object.entries(data);
-    const supported=(k:string)=>scope||(step.key==='company'&&(COMPANY_FIELDS as readonly string[]).includes(k))||(step.key==='interfaces'&&(INTERFACE_FIELDS as readonly string[]).includes(k))||(step.key==='vocabulary'&&VOCABULARY_KEY_SET.has(k))||(step.key==='specialties'&&k==='selected'&&Array.isArray(data[k]))||(step.key==='roles'&&k==='selected'&&Array.isArray(data[k]))||!!wizardParameterField(step.key,k);
+    const supported=(k:string)=>scope||(step.key==='company'&&(COMPANY_FIELDS as readonly string[]).includes(k))||(step.key==='interfaces'&&(INTERFACE_FIELDS as readonly string[]).includes(k))||(step.key==='vocabulary'&&VOCABULARY_KEY_SET.has(k))||(step.key==='specialties'&&k==='selected'&&Array.isArray(data[k]))||(step.key==='roles'&&k==='selected'&&Array.isArray(data[k]))||(step.key==='rules'&&APPROVAL_KEY.test(k))||!!wizardParameterField(step.key,k);
     const ready=Object.fromEntries(entries.filter(([k])=>supported(k)));
     const pending=Object.fromEntries(entries.filter(([k,v])=>!supported(k)&&v!==''));
     if(Object.keys(ready).length) operations.push({step:step.key,data:ready,execution});
@@ -126,7 +127,8 @@ async function executeOperations(answers: WizardAnswers, actor: string, label: s
   }
   const parameterImpact = await applyWizardParameters(answers, actor);
   const roleImpact = await applyRoleTemplates(answers, actor);
-  return { impact: plan.diff, specialtyImpact, parameterImpact, interfaceImpact, roleImpact };
+  const approvalImpact = await applyWizardApprovals(answers, actor);
+  return { impact: plan.diff, specialtyImpact, parameterImpact, interfaceImpact, roleImpact, approvalImpact };
 }
 
 const scopeOf = (ops: ChangeOperation[]) => [...new Set(ops.filter(o => o.execution !== 'pending').map(o => o.step))];
