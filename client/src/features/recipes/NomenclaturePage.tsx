@@ -199,7 +199,9 @@ export default function NomenclaturePage() {
             <Tabs label="Contenu de la fiche" value={tab} onChange={go} tabs={[
               { key: 'composition', label: 'Composition' },
               { key: 'fabrication', label: 'Fabrication', count: nbEtapes || undefined },
-              { key: 'ingredients', label: `${T.ingredients} à plat` },
+              // Clé d'URL conservée (?onglet=ingredients) ; l'onglet montre ce que la production
+              // sort du stock (préparations de base, puis matières directes), plus une liste à plat.
+              { key: 'ingredients', label: 'Sorties de stock' },
               { key: 'versions', label: 'Versions' },
             ]} />
             <div className="fiche-tab" role="tabpanel">
