@@ -512,6 +512,7 @@ export const JOBS: Record<string, Handler> = {
   loyalty_expire: loyaltyExpireDue,
   ledger_seal: () => ledgerIntegrityRepository.sealAuto(),
   ledger_outbox_replay: ledgerOutboxReplay,
+  ledger_guards_check: () => ledgerIntegrityRepository.checkGuards(),
   ledger_partitions: ledgerPartitions,
   monthly_invoicing: () => monthlyInvoicing(),
   depreciation_monthly: depreciationMonthly,

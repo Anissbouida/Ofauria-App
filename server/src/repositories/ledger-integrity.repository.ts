@@ -9,6 +9,8 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
+import { createNotification } from '../utils/notify.js';
+import { logger } from '../utils/logger.js';
 
 /** Triggers dont dépend l'inaltérabilité, avec leur rôle lisible. */
 const GUARDS = [
@@ -26,7 +28,7 @@ type Queryable = PoolClient | typeof db;
 
 export type IntegrityActor = { userId: string | null; ip?: string | null };
 
-export type AuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay' | 'year_close' | 'fec_export';
+export type AuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay' | 'year_close' | 'fec_export' | 'redated' | 'guards_check';
 
 async function logEvent(
   client: Queryable,
@@ -111,6 +113,55 @@ export const ledgerIntegrityRepository = {
     const sealed = r.rows[0].n as number;
     if (sealed > 0) await logEvent(db, 'seal', { userId: null }, { sealed, head_seq: (await head()).seq, auto: true });
     return { items: sealed, message: sealed ? `${sealed} écriture(s) scellée(s)` : 'Rien à sceller' };
+  },
+
+  /**
+   * Surveillance planifiée des protections du grand livre (plan compta, étape 10, audit C-08).
+   * Trigger absent ou désactivé, session_replication_role forcé sur la base ou le rôle, chaîne
+   * d'empreintes rompue (vérifiée au plus toutes les 6 h : le recalcul porte sur toute la chaîne).
+   * Le résultat est tracé (événement guards_check) ; les responsables sont prévenus au PREMIER
+   * passage en anomalie, pas à chaque passage tant qu'elle dure.
+   */
+  async checkGuards() {
+    const guards = (await db.query(`SELECT table_name, trigger_name, enabled FROM fn_ledger_guards_status()`)).rows as
+      { table_name: string; trigger_name: string; enabled: boolean }[];
+    const disabled = guards.filter(g => !g.enabled).map(g => `${g.table_name}.${g.trigger_name}`);
+    const forced = (await db.query(
+      `SELECT 1 FROM pg_db_role_setting s, unnest(s.setconfig) AS c WHERE c LIKE 'session_replication_role=%' LIMIT 1`)).rows.length > 0;
+    const sessionRole = String((await db.query(`SELECT current_setting('session_replication_role') AS v`)).rows[0].v);
+    const lastVerify = (await db.query(
+      `SELECT at, (details->>'ok')::boolean AS ok FROM ledger_audit_log WHERE event = 'verify' ORDER BY id DESC LIMIT 1`)).rows[0] as { at: Date; ok: boolean } | undefined;
+    let chainOk = lastVerify ? lastVerify.ok : true;
+    let verified = false;
+    if (!lastVerify || Date.now() - new Date(lastVerify.at).getTime() > 6 * 3_600_000) {
+      chainOk = (await this.verify({ userId: null })).ok;
+      verified = true;
+    }
+    const ok = disabled.length === 0 && !forced && sessionRole === 'origin' && chainOk;
+    const previous = (await db.query(
+      `SELECT (details->>'ok')::boolean AS ok FROM ledger_audit_log WHERE event = 'guards_check' ORDER BY id DESC LIMIT 1`)).rows[0] as { ok: boolean } | undefined;
+    await logEvent(db, 'guards_check', { userId: null }, { ok, disabled, replication_role_forced: forced, session_replication_role: sessionRole, chain_ok: chainOk, verified });
+    if (!ok) {
+      const what = [
+        disabled.length ? `trigger(s) désactivé(s) : ${disabled.join(', ')}` : null,
+        forced || sessionRole !== 'origin' ? 'mode de réplication forcé (les triggers sont ignorés)' : null,
+        chainOk ? null : 'chaîne d\'empreintes rompue',
+      ].filter(Boolean).join(' ; ');
+      logger.error({ details: [what] }, '[ledger] protections du grand livre en anomalie');
+      if (!previous || previous.ok) {
+        for (const targetRole of ['manager', 'admin']) {
+          await createNotification({
+            targetRole, type: 'ledger_guards', referenceType: 'ledger_guards',
+            title: 'Grand livre : protections en anomalie',
+            message: `La surveillance du grand livre a relevé : ${what}. Les écritures ne sont plus protégées tant que ce n'est pas corrigé ; la clôture du mois est bloquée.`,
+          });
+        }
+      }
+    }
+    return {
+      items: disabled.length + (chainOk ? 0 : 1),
+      message: ok ? `Protections actives${verified ? ', chaîne vérifiée' : ''}` : `ANOMALIE : ${disabled.length} trigger(s) désactivé(s)${chainOk ? '' : ', chaîne rompue'}${forced ? ', réplication forcée' : ''}`,
+    };
   },
 
   /** Recalcule la chaîne et les ancres ; le résultat est tracé. */
