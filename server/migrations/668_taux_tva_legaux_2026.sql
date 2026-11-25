@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 667 — Plan d'action compta, étape 4 (audit C-02) : taux de TVA légaux datés
+-- 668 — Plan d'action compta, étape 4 (audit C-02) : taux de TVA légaux datés
 --
 --   Le paramètre `fiscalite.vat_rates` du pack pays valait [7, 10, 14, 20] depuis 2000, sans
 --   date de fin, alors que les taux de 7 % et 14 % sont résorbés par les lois de finances

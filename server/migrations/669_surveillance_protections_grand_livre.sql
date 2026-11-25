@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 668 — Plan d'action compta, étape 10 (audit C-08) : surveillance des protections du grand livre
+-- 669 — Plan d'action compta, étape 10 (audit C-08) : surveillance des protections du grand livre
 --
 --   L'inaltérabilité repose sur des triggers (équilibre, gel des écritures validées, verrou de
 --   période, audit) et sur la chaîne d'empreintes. Un trigger désactivé ne bloque plus rien et
@@ -17,7 +17,7 @@
 --   un rôle de connexion sans droit de propriété sur les tables (étape 20 du plan).
 --
 -- Rollback : DROP FUNCTION fn_ledger_guards_status() ; DELETE FROM scheduled_jobs WHERE key =
---   'ledger_guards_check' ; recréer fn_close_checklist_extra depuis la mig 664.
+--   'ledger_guards_check' ; recréer fn_close_checklist_extra depuis la mig 665.
 -- ═══════════════════════════════════════════════════════════════════════
 
 CREATE OR REPLACE FUNCTION fn_ledger_guards_status()
@@ -42,11 +42,11 @@ INSERT INTO scheduled_jobs (key, label, description, domain, interval_minutes, d
    'accounting', 15, 62)
 ON CONFLICT (key) DO NOTHING;
 
--- Contrôles de clôture supplémentaires (reprend la mig 664 et ajoute la surveillance).
+-- Contrôles de clôture supplémentaires (reprend la mig 665 et ajoute la surveillance).
 CREATE OR REPLACE FUNCTION fn_close_checklist_extra(p_period uuid)
 RETURNS TABLE (code text, label text, item_count bigint, amount numeric, blocking boolean) LANGUAGE sql STABLE AS $$
   WITH p AS (SELECT * FROM fiscal_periods WHERE id = p_period)
-  -- TVA collectée sur un compte sans taux : à classer avant de déclarer (mig 664).
+  -- TVA collectée sur un compte sans taux : à classer avant de déclarer (mig 665).
   SELECT 'vat_unclassified'::text, 'TVA collectée sur un compte sans taux (à classer)'::text,
          count(DISTINCT je.id), sum(l.credit - l.debit), true
     FROM journal_entry_lines l
@@ -57,7 +57,7 @@ RETURNS TABLE (code text, label text, item_count bigint, amount numeric, blockin
      AND je.entry_date BETWEEN p.start_date AND p.end_date
   HAVING COALESCE(sum(l.credit - l.debit), 0) <> 0
   UNION ALL
-  -- Protections du grand livre : la dernière surveillance a relevé une anomalie (mig 668).
+  -- Protections du grand livre : la dernière surveillance a relevé une anomalie (mig 669).
   SELECT 'ledger_guards'::text, 'Protections du grand livre en anomalie (triggers désactivés ou chaîne rompue)'::text,
          COALESCE(jsonb_array_length(g.details->'disabled'), 0)::bigint, NULL::numeric, true
     FROM (SELECT l.details FROM ledger_audit_log l WHERE l.event = 'guards_check' ORDER BY l.id DESC LIMIT 1) g

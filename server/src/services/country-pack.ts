@@ -47,7 +47,7 @@ export const MA_DEFAULTS: CountryParams = {
   'paie.holiday_worked_rate': 1,
   'paie.ot_annual_quota_hours': 100,
   'paie.seniority_brackets': DEFAULT_SENIORITY_BRACKETS,
-  // Taux en vigueur (CGI 2026 art. 99) ; les anciens taux 7 % et 14 % restent lisibles par date (mig 667).
+  // Taux en vigueur (CGI 2026 art. 99) ; les anciens taux 7 % et 14 % restent lisibles par date (mig 668).
   'fiscalite.vat_rates': [10, 20],
   'formats.rib_length': 24,
   'formats.ice_length': 15,

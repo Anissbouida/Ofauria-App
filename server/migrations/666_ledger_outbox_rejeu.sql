@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 665 — Plan d'action compta, étape 5 (audit C-07) : file d'écritures rejouée automatiquement
+-- 666 — Plan d'action compta, étape 5 (audit C-07) : file d'écritures rejouée automatiquement
 --
 --   Une pièce dont la comptabilisation échoue est enregistrée quand même (mode « outbox ») et
 --   inscrite dans ledger_outbox. Jusqu'ici, seul un bouton manuel rejouait la file : une cause

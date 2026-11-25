@@ -67,7 +67,7 @@ describe.skipIf(!hasTestDb)('Pack pays MA — zéro écart (G6-06)', () => {
     expect(await pack.countryParam('paie.holiday_worked_rate', '2026-03-01')).toBe(1);
     expect(await pack.countryParam('paie.ot_annual_quota_hours', '2026-03-01')).toBe(100);
     expect(await pack.countryParam('paie.seniority_brackets', '2026-03-01')).toEqual(engine.DEFAULT_SENIORITY_BRACKETS);
-    // Taux datés (mig 667) : 7 % et 14 % encore légaux avant 2026, résorbés ensuite.
+    // Taux datés (mig 668) : 7 % et 14 % encore légaux avant 2026, résorbés ensuite.
     expect(await pack.countryParam('fiscalite.vat_rates', '2025-03-01')).toEqual([7, 10, 14, 20]);
     expect(await pack.countryParam('fiscalite.vat_rates', '2026-03-01')).toEqual([10, 20]);
     // Toutes les clés du pack MA en base = valeurs intégrées (aucune divergence entre code et données).

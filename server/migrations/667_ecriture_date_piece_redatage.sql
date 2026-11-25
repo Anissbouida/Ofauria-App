@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 666 — Plan d'action compta, étapes 8 et 10 (audit C-11, C-08) : redatage tracé, surveillance
+-- 667 — Plan d'action compta, étapes 8 et 10 (audit C-11, C-08) : redatage tracé, surveillance
 --
 --   1. journal_entries.document_date : date de la PIÈCE d'origine. Quand la période de cette date
 --      est fermée, fn_accounting_date (mig 311) écrit l'écriture au premier jour de la première

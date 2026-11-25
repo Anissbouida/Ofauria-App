@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 664 — Plan d'action compta, étape 3 (audit C-02) : TVA par taux, comptes sans taux visibles
+-- 665 — Plan d'action compta, étape 3 (audit C-02) : TVA par taux, comptes sans taux visibles
 --
 --   1. 4455 (TVA facturée, compte générique) et 3455 (TVA récupérable, générique) portent
 --      désormais un sens de TVA : la déclaration les lit. Jusqu'ici tva_direction était NULL,
