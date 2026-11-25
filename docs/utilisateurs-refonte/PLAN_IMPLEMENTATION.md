@@ -17,8 +17,8 @@ est fixé au moment du commit, après vérification de `main`.
 | 2 | Fiche utilisateur en page `/users/:id` : Profil (langue réglable par l'administrateur, fiche salarié), Rôles et périmètre (rôle principal confirmé, rattachements en lecture), Droits effectifs, Sécurité (2FA par compte, mot de passe, PIN, connexions Google/Microsoft), Historique | oui | — |
 | 3 | Création en étapes (identité, rôles avec modèles du secteur, périmètre, sécurité, vérification des conflits) ; invitation par e-mail avec lien de 72 h | oui | 700 invitations |
 | 4 | Rôles : origine (système, personnalisé, modèle du secteur), fiche rôle en page (accès par module par niveau, permissions détaillées, membres, contrôles et rattachements, identité modifiable avec page d'accueil), comparaison, sections de Paramètres par rôle | oui | 703 roles.home_route |
-| 5 | Contrôles internes : séparation des tâches (cumul de rôles et pièces) avec un seul vocabulaire de mode, plafonds rattachés aux circuits, délégations réunies (rôle complet / approbations) avec date de début, contrôle des droits | oui | — |
-| 6 | Exceptions individuelles (accorder ou retirer une permission, motif, date de fin) qui s'ajoutent aux rôles | oui | 702 |
+| 5 | Contrôles internes : séparation des tâches (cumul de rôles et pièces) avec un seul vocabulaire de mode, plafonds rattachés aux circuits, délégations réunies (rôle complet / approbations) avec date de début, contrôle des droits | oui | 704 |
+| 6 | Exceptions individuelles (accorder ou retirer une permission, motif, date de fin) qui s'ajoutent aux rôles | oui | à numéroter |
 | 7 | Plusieurs établissements par compte, établissement par défaut, portée « Son établissement » sur l'ensemble | oui | 703 user_stores |
 | 8 | Sécurité et connexions : politique paramétrable (longueur du mot de passe, renouvellement, verrouillage, délai 2FA, inactivité, écran PIN), sessions et appareils, inscription libre supprimée | oui | 704 user_sessions |
 | 9 | Revue des accès en campagnes (décisions datées, rapport), comptes dormants | oui | 705 |
@@ -42,7 +42,7 @@ est fixé au moment du commit, après vérification de `main`.
 - [x] Lot 2 — fiche en page `/users/:id` (connexions externes en lecture seule : elles se rattachent par l'e-mail à chaque connexion, « délier » n'aurait pas d'effet durable)
 - [x] Lot 3 — création en étapes, invitation 72 h (mig 700), page publique `/invitation/:token`, contrôle des conflits avant création
 - [x] Lot 4 — contrôlé à l'écran le 2026-11-25 avec le lot 3 (assistant de création parcouru sans créer de compte) ; fiche rôle `/users/roles/:code` (niveaux Aucun → Complet qui règlent aussi les permissions détaillées, écarts au niveau, membres et attribution, 2FA du rôle, plafonds, séparation des tâches, rattachements, identité avec page d'accueil), comparaison de 2 à 4 rôles, nouveau rôle depuis un modèle / une copie / vide (mig 703 ; 701-702 pris par d'autres chantiers). Libellés des permissions encore en partie en anglais (référentiel `shared/src/constants/permissions.ts`), « modifier ce rôle demande une approbation » renvoyé au lot 10
-- [ ] Lot 5
+- [x] Lot 5 — Contrôles internes à quatre onglets, un vocabulaire de mode partout ; séparation des tâches sur les pièces réglée ici (mode Désactivé, mig 704) ; plafonds reliés aux circuits (seul le bon de commande applique un plafond : les autres types sont signalés « sans effet » et refusés à la création) ; délégations réunies (rôle complet / approbations, début futur, prolongation, historique, motif) ; cumul interdit refusé en mode Bloquer à la délégation. Écran non encore contrôlé
 - [ ] Lot 6
 - [ ] Lot 7
 - [ ] Lot 8
