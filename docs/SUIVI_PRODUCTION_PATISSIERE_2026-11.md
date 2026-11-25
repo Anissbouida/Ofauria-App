@@ -212,3 +212,14 @@ Reprise : plans parents à un seul article. Limite : le partage suit le besoin d
 | C-11 MRP | Besoins matière calculés par le moteur de la confirmation (format, composition par pièce, pertes) | non-régression MRP |
 
 Non faits : C-31 (détection récursive des préparations imbriquées), C-26 (gel complet de la configuration), lot 5 (empreintes, capacité des moules, géométrie de découpe, composant fixe par fournée), lot 7 (capacité des équipements, retour matière, séparation des tâches). Les durées de conservation des fiches de dev sont vides : à saisir par le chef.
+
+## 12. Lot 5 de l'audit (2026-11-24, mig 678)
+
+| Constat | Fait | Validation |
+|---|---|---|
+| C-17 Composant fixe | Ligne de matière « Fixe » (par fournée commencée) ou « Prop. » (proportionnelle) dans l'éditeur ; le calcul des besoins compte une ligne fixe par fournée commencée (2,5 fournées → 3 gousses) ; recopiée dans le miroir de composition | test unitaire `recipe-composition.test.ts` |
+| C-16 Empreintes, contenance | Nombre d'empreintes et contenance (kg, g, l, ml) sur le contenant | types, non-régression |
+| C-15 Découpe calculée | Portion (longueur × largeur) et bordure perdue : nombre de portions proposé, repris d'un clic ; le nombre validé reste celui du chef | types, non-régression |
+
+Migration renumérotée 678 : 674 à 677 sont pris par une autre session (configuration), encore non enregistrés dans le checkout principal.
+Restent : lot 7 (capacité des équipements, retour matière, séparation des tâches), C-26 (gel complet), C-31 (détection récursive).
