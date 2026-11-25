@@ -71,4 +71,38 @@ describe.skipIf(!hasTestDb)('Assistant — approbations et réglages des règles
       throw rollback;
     })).rejects.toBe(rollback);
   }, 60000);
+
+  it('changement sensible : en attente d’approbation, puis activé par l’approbateur', async () => {
+    const { withTransaction, db } = await import('../../config/database.js');
+    const sessions = await import('../../services/wizard/sessions.js');
+    const changes = await import('../../services/wizard/change-set.js');
+    const { sectorRepository } = await import('../../repositories/sector.repository.js');
+    const { ACTIVATABLE_MODULES, CORE_MODULES } = await import('@ofauria/shared');
+    sectorRepository.invalidate();
+    const before = await sectorRepository.activation();
+    const removable = [...before.modules].find(m => ['maintenance', 'projects', 'crm'].includes(m) && !CORE_MODULES.has(m as never));
+    expect(removable).toBeDefined();
+    const rollback = new Error('rollback test');
+    await expect(withTransaction(async () => {
+      // Séparation des tâches stricte : la demande d'un administrateur suit le circuit.
+      await db.query(`UPDATE module_parameters SET value = '{"mode":"block"}' WHERE key = 'purchasing.sod_mode'`);
+      const draft = await sessions.createWizardSession('evolution', 'quick', fx.userId);
+      const answers = { company: { reviewed: true, data: { name: 'Société test' } }, sector: { reviewed: true, data: { primary: before.sector.code, secondary: before.sector.secondarySectors ?? [] } },
+        specialties: { reviewed: true, data: { selected: [] } }, modules: { reviewed: true, data: { selected: [...before.modules].filter(m => m !== removable && (ACTIVATABLE_MODULES as string[]).includes(m)) } },
+        vocabulary: { reviewed: true }, finance: { reviewed: true }, roles: { reviewed: true }, data: { reviewed: true } };
+      const saved = await sessions.saveWizardSession(draft.id, { mode: 'quick', current_step: 'review', revision: draft.revision, answers: answers as never }, fx.userId);
+      const compiled = await changes.compileWizardSession(draft.id, saved.revision, fx.userId);
+      const pending = await changes.applyWizardChangeSet(draft.id, saved.revision, fx.userId);
+      expect(pending.status).toBe('pending_approval');
+      expect((await db.query(`SELECT status FROM approval_requests WHERE doc_type = 'config_change' AND doc_id = $1`, [compiled.id])).rows[0]?.status).toBe('pending');
+      sectorRepository.invalidate();
+      expect((await sectorRepository.activation()).modules.has(removable as never)).toBe(true);
+      await changes.applyApprovedChangeSet(compiled.id, fx.userId);
+      sectorRepository.invalidate();
+      expect((await sectorRepository.activation()).modules.has(removable as never)).toBe(false);
+      expect((await db.query(`SELECT status FROM config_change_sets WHERE id = $1`, [compiled.id])).rows[0].status).toBe('applied');
+      throw rollback;
+    })).rejects.toBe(rollback);
+    sectorRepository.invalidate();
+  }, 120000);
 });

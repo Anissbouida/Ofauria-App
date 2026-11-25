@@ -187,6 +187,15 @@ export const APPROVAL_DOC_TYPES = {
       lines: { label: 'Nombre de lignes en écart', kind: 'number' },
     },
   },
+  config_change: {
+    label: 'Changement de configuration',
+    effect: 'La configuration préparée dans l\'assistant est activée.',
+    fields: {
+      modules_removed: { label: 'Modules retirés', kind: 'number' },
+      capabilities_removed: { label: 'Capacités retirées', kind: 'number' },
+      sector_change: { label: 'Changement de secteur', kind: 'enum', options: [{ value: 'yes', label: 'Oui' }, { value: 'no', label: 'Non' }] },
+    },
+  },
 } as const satisfies Record<string, ApprovalDocTypeDef>;
 
 export type ApprovalDocType = keyof typeof APPROVAL_DOC_TYPES;

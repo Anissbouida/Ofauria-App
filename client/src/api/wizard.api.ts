@@ -46,5 +46,5 @@ export const wizardApi = {
   changeset: (id: string) => api.get(`/settings/assistant/${id}/changeset`).then(r => r.data.data as WizardChangeSet|null),
   simulate: (id: string, revision: number) => api.post(`/settings/assistant/${id}/simulate`,{revision}).then(r => r.data.data as WizardChangeSet),
   /** Publication réelle (lot 13) : une transaction, une version restaurable. */
-  apply: (id: string, revision: number) => api.post(`/settings/assistant/${id}/apply`,{revision}).then(r => r.data.data as WizardChangeSet & { published_version_id: string }),
+  apply: (id: string, revision: number) => api.post(`/settings/assistant/${id}/apply`,{revision}).then(r => r.data.data as WizardChangeSet & { published_version_id: string | null; approval?: { id: string } }),
 };

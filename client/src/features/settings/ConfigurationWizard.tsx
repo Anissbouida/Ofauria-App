@@ -68,6 +68,7 @@ export default function ConfigurationWizard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [published, setPublished] = useState<string | null>(null);
+  const [pendingApproval, setPendingApproval] = useState(false);
   const lock = useRef(false);
   const dirty = !!session && JSON.stringify(session.answers) !== JSON.stringify(answers);
   const onReview = session?.current_step === 'review';
@@ -136,6 +137,12 @@ export default function ConfigurationWizard() {
     if (!ok) return;
     await run(async () => {
       const result = await wizardApi.apply(r.target.id, r.target.revision);
+      if (result.status === 'pending_approval') {
+        // Changement sensible : soumis à l'approbation d'un administrateur, appliqué à son accord.
+        qc.setQueryData(['wizard-changeset', r.target.id, r.target.revision], result);
+        setPendingApproval(true);
+        return;
+      }
       setPublished(String(result.published_version_id ?? ''));
       close();
       void qc.invalidateQueries(); // menus, modules et libellés dépendent de la configuration publiée
@@ -255,6 +262,7 @@ export default function ConfigurationWizard() {
     {preview.data?.impact && <WizardImpact impact={preview.data.impact} />}
     {changeSet.data?.operations.some(o => o.execution === 'pending') && <Alert tone="info">Préparé dans le brouillon, sans effet à l’activation pour l’instant : {[...new Set(changeSet.data.operations.filter(o => o.execution === 'pending').map(o => stepLabel(o.step)))].join(', ')}.</Alert>}
     {changeSet.data?.simulation && <Alert tone="success" icon={<Check size={16} />}>{changeSet.data.simulation.note}</Alert>}
+    {(pendingApproval || changeSet.data?.status === 'pending_approval') && <Alert tone="info" action={<button type="button" className="odoo-btn-secondary ds-btn-sm" onClick={() => navigate('/approvals')}>Voir les approbations</button>}><strong>En attente d’approbation.</strong> Ce changement retire des modules ou des capacités, ou change de secteur : un administrateur doit l’approuver. Il sera activé à son accord ; un refus laisse le brouillon modifiable.</Alert>}
   </>;
 
   return <div className="wz-app">
@@ -320,7 +328,7 @@ export default function ConfigurationWizard() {
         {index > 0 && <button type="button" className="odoo-btn-secondary" disabled={busy} onClick={() => go(steps[index - 1].key)}><ArrowLeft size={14} aria-hidden="true" /> Précédent</button>}
         {last ? <>
           {catalog.data?.technicalSimulationAvailable && <button type="button" className="odoo-btn-secondary" disabled={busy || dirty} onClick={() => void simulate()}><Play size={13} aria-hidden="true" /> Simuler</button>}
-          <button type="button" className="odoo-btn-primary" disabled={busy || dirty || blockers.length > 0} onClick={() => void finish()}>Terminer et activer</button>
+          <button type="button" className="odoo-btn-primary" disabled={busy || dirty || blockers.length > 0 || pendingApproval || changeSet.data?.status === 'pending_approval'} onClick={() => void finish()}>Terminer et activer</button>
         </> : <button type="button" className="odoo-btn-primary" disabled={busy || !catalog.data} onClick={next}>Suivant <ArrowRight size={14} aria-hidden="true" /></button>}
       </div>
     </div>

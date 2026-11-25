@@ -9,6 +9,7 @@ import { VOCABULARY_KEY_SET } from '@ofauria/shared';
 import { wizardParameterField } from './parameter-definitions.js';
 import { applyWizardParameters } from './parameter-operations.js';
 import { applyRoleTemplates } from './role-templates.js';
+import { approvalService } from '../approval.service.js';
 import { loadSectorStarter } from '../sector-starter.service.js';
 import { applyWizardStores, STORE_KEY } from './store-operations.js';
 import { applyWizardApprovals, APPROVAL_KEY } from './approval-operations.js';
@@ -165,11 +166,27 @@ export async function simulateWizardChangeSet(id: string, revision: number, acto
  *  ensemble, puis une version « publication » est enregistrée. La version de référence
  *  du brouillon reste restaurable depuis l'historique des versions (retour arrière).
  *  Les réponses non raccordées (« pending ») restent dans le brouillon, sans effet. */
-export async function applyWizardChangeSet(id: string, revision: number, actor: string) {
+export async function applyWizardChangeSet(id: string, revision: number, actor: string, opts: { approved?: boolean } = {}) {
   try {
     return await withTransaction(async () => {
-      const { session, row, answers } = await lockForExecution(id, revision, ['compiled', 'simulated_partial']);
+      const { session, row, answers } = await lockForExecution(id, revision, opts.approved ? ['pending_approval'] : ['compiled', 'simulated_partial']);
       sectorRepository.invalidate();
+      // Lot 15 : un changement sensible (modules ou capacités retirés, secteur changé) passe
+      // par le moteur d'approbation ; il est appliqué quand l'approbation est accordée.
+      if (!opts.approved) {
+        const primary = answers.sector!.data!.primary as string;
+        const secondary = answers.sector?.data?.secondary;
+        const features = answers.modules?.data?.features;
+        const plan = await sectorRepository.planWizardSelection(primary, Array.isArray(secondary) ? secondary : [], answers.modules!.data!.selected as string[], Array.isArray(features) ? features : undefined);
+        const values = { modules_removed: plan.diff.modulesOff.length, capabilities_removed: plan.diff.featuresOff.length, sector_change: primary !== plan.current.sector.code ? 'yes' : 'no' };
+        if (values.modules_removed || values.capabilities_removed || values.sector_change === 'yes') {
+          const submitted = await approvalService.submit({ docType: 'config_change', docId: row.id, docLabel: `Configuration : ${plan.target.sector.label}`, values, requestedBy: actor });
+          if (submitted.outcome !== 'not_required') {
+            const pending = (await db.query(`UPDATE config_change_sets SET status = 'pending_approval', updated_at = now() WHERE id = $1 RETURNING *`, [row.id])).rows[0];
+            return { ...pending, approval: submitted.request };
+          }
+        }
+      }
       const outcome = await executeOperations(answers, actor, 'Assistant de configuration');
       sectorRepository.invalidate();
       // Version finale : capture aussi les spécialités et paramètres écrits après le commit.
@@ -184,4 +201,16 @@ export async function applyWizardChangeSet(id: string, revision: number, actor: 
       return applied;
     });
   } finally { sectorRepository.invalidate(); }
+}
+
+/** Approbation accordée (moteur d'approbation, type config_change) : le jeu est appliqué
+ *  par l'approbateur, avec les mêmes contrôles (référence inchangée, compilateur à jour). */
+export async function applyApprovedChangeSet(changeSetId: string, actor: string) {
+  const row = (await db.query(`SELECT session_id, session_revision FROM config_change_sets WHERE id = $1`, [changeSetId])).rows[0];
+  if (!row) throw new Error('Jeu de changements introuvable');
+  await applyWizardChangeSet(row.session_id, row.session_revision, actor, { approved: true });
+}
+/** Approbation refusée : le jeu est écarté ; le brouillon reste modifiable. */
+export async function rejectChangeSet(changeSetId: string) {
+  await db.query(`UPDATE config_change_sets SET status = 'obsolete', updated_at = now() WHERE id = $1 AND status = 'pending_approval'`, [changeSetId]);
 }

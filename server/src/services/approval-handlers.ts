@@ -9,6 +9,7 @@ import { openingInventoryCheckRepository } from '../repositories/opening-invento
 import { bomVersionRepository } from '../repositories/bom-version.repository.js';
 import { manualEntryRepository } from '../repositories/manual-entry.repository.js';
 import { bankDetailChangeRepository } from '../repositories/bank-detail-change.repository.js';
+import { applyApprovedChangeSet, rejectChangeSet } from './wizard/change-set.js';
 
 /**
  * Effets des approbations par type de pièce (lot 8). Importé une fois par
@@ -115,4 +116,11 @@ registerApprovalHandler('nonconformity', {
     const { qualityRepository } = await import('../repositories/quality.repository.js');
     await qualityRepository.updateNonConformity(request.doc_id, { status: 'closed' });
   },
+});
+
+// Lot 15 (assistant de configuration) : changement sensible approuvé → la configuration
+// préparée est activée par l'approbateur ; refusé → le jeu de changements est écarté.
+registerApprovalHandler('config_change', {
+  async onApproved(request, actorId) { await applyApprovedChangeSet(request.doc_id, actorId); },
+  async onRejected(request) { await rejectChangeSet(request.doc_id); },
 });
