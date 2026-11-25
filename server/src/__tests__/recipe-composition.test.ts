@@ -351,7 +351,7 @@ describe('collectIngredientNeedsForUnits — conversion absente', () => {
   });
 });
 
-// Mig 674 : composant fixe par fournée commencée.
+// Mig 678 : composant fixe par fournée commencée.
 describe('collectIngredientNeedsForUnits — composant fixe', () => {
   it('vanille fixe par fournée : 2,5 fournées → 3 gousses ; le lait suit la fraction', async () => {
     const client = makeClient({

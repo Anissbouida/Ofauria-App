@@ -60,7 +60,7 @@ export const productionContenantRepository = {
        data.longueur_cm ?? null, data.largeur_cm ?? null, data.profondeur_cm ?? null,
        data.diametre_cm ?? null, data.type_decoupe ?? null, data.nb_pieces_decoupe ?? null, poids.unit]
     );
-    // Mig 674 : empreintes, capacité, découpe.
+    // Mig 678 : empreintes, capacité, découpe.
     const extra = await db.query(
       `UPDATE production_contenants SET nb_empreintes = $2, capacite_qty = $3, capacite_unit = $4,
               portion_longueur_cm = $5, portion_largeur_cm = $6, bordure_cm = $7

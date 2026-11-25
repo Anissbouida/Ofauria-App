@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 674 — Formats : empreintes, capacité, découpe calculée, composant fixe (audit C-15/16/17)
+-- 678 — Formats : empreintes, capacité, découpe calculée, composant fixe (audit C-15/16/17)
 -- ═══════════════════════════════════════════════════════════════════════
 -- POURQUOI
 --   Les dimensions du contenant étaient saisies sans servir à rien ; aucun nombre d'empreintes
@@ -30,7 +30,7 @@ ALTER TABLE production_contenants
 ALTER TABLE recipe_format_components ADD COLUMN IF NOT EXISTS quantite_fixe boolean NOT NULL DEFAULT false;
 ALTER TABLE recipe_components ADD COLUMN IF NOT EXISTS quantite_fixe boolean NOT NULL DEFAULT false;
 
-COMMENT ON COLUMN recipe_format_components.quantite_fixe IS 'Quantité par fournée entière, non proportionnelle au nombre de pièces (mig 674)';
+COMMENT ON COLUMN recipe_format_components.quantite_fixe IS 'Quantité par fournée entière, non proportionnelle au nombre de pièces (mig 678)';
 
 CREATE OR REPLACE FUNCTION public.fn_sync_recipe_mirror(p_recipe_id uuid)
  RETURNS void

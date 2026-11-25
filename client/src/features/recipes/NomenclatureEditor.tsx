@@ -18,7 +18,7 @@ import { Alert, LoadingState } from '../../components/ds';
 import { StatusTag } from '../../components/ui/StatusTag';
 import '../production/production.css';
 interface SourceOpt { type: 'recipe' | 'ingredient' | 'packaging'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
-interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient' | 'packaging'; sourceId: string; quantite: string; unite: string; pertePct?: string; /** Mig 674 : quantité par fournée entière. */ fixe?: boolean; /** Étape 10c : part en % du lot de référence (mode pourcentage). */ pct?: string }
+interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient' | 'packaging'; sourceId: string; quantite: string; unite: string; pertePct?: string; /** Mig 678 : quantité par fournée entière. */ fixe?: boolean; /** Étape 10c : part en % du lot de référence (mode pourcentage). */ pct?: string }
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
 
 const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
@@ -722,7 +722,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             className="ds-input sm" style={{ textAlign: 'right' }}
             value={r.pertePct ?? ''} onChange={(e) => setRow(r.key, { pertePct: e.target.value })} placeholder="0" />
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
-            {/* Mig 674 : quantité par fournée commencée (vanille par cuve, décor par cadre). */}
+            {/* Mig 678 : quantité par fournée commencée (vanille par cuve, décor par cadre). */}
             {r.type === 'ingredient' && (
               <button type="button" onClick={() => setRow(r.key, { fixe: !r.fixe })} aria-pressed={r.fixe === true}
                 className="fx-icon" title={r.fixe ? 'Quantité fixe par fournée (cliquer pour la rendre proportionnelle)' : 'Proportionnelle au nombre de pièces (cliquer pour la fixer par fournée)'}

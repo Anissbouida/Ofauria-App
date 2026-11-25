@@ -33,7 +33,7 @@ export interface CompositionIngredient {
    *  (ex. : « 3 unit » d'une matière stockée au kilo, sans poids de pièce) : le besoin
    *  n'est pas chiffrable, qtyPerBatch vaut 0 et l'appelant remonte un avertissement. */
   conversionImpossible: boolean;
-  /** Mig 674 : quantité par fournée entière (vanille par cuve, décor par cadre), arrondie à
+  /** Mig 678 : quantité par fournée entière (vanille par cuve, décor par cadre), arrondie à
    *  la fournée supérieure au lieu de suivre la fraction de fournée. */
   fixed: boolean;
 }
@@ -303,7 +303,7 @@ async function walk(
         `Conversion poids/volume impossible pour "${ing.name}" (recette en ${ing.unitEntered}, stock en ${ing.unit}) : renseigner la masse volumique (densité) de l'ingrédient. Quantité prise telle quelle.`
       );
     }
-    // Mig 674 : composant fixe = par fournée commencée (2,3 fournées → 3 fois la quantité).
+    // Mig 678 : composant fixe = par fournée commencée (2,3 fournées → 3 fois la quantité).
     addNeed(ing.ingredientId, ing.qtyPerBatch * (ing.fixed ? Math.ceil(batches - 1e-9) : batches));
   }
   for (const sub of comp.subRecipes) {

@@ -562,7 +562,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
   const [diametreCm, setDiametreCm] = useState(contenant?.diametre_cm || '');
   const [typeDecoupe, setTypeDecoupe] = useState(contenant?.type_decoupe || '');
   const [nbPiecesDecoupe, setNbPiecesDecoupe] = useState(contenant?.nb_pieces_decoupe?.toString() || '');
-  // Mig 674 : empreintes, contenance, découpe calculée.
+  // Mig 678 : empreintes, contenance, découpe calculée.
   const [nbEmpreintes, setNbEmpreintes] = useState(contenant?.nb_empreintes?.toString() || '');
   const [capaciteQty, setCapaciteQty] = useState(contenant?.capacite_qty != null ? String(parseFloat(String(contenant.capacite_qty))) : '');
   const [capaciteUnit, setCapaciteUnit] = useState(contenant?.capacite_unit || 'kg');
@@ -770,7 +770,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
                   placeholder="20" className={`${FIELD} text-right tabular-nums`} />
               </div>
             </div>
-            {/* Mig 674 : découpe calculée — portion et bordure ; le chef garde la main sur le nombre retenu. */}
+            {/* Mig 678 : découpe calculée — portion et bordure ; le chef garde la main sur le nombre retenu. */}
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className={LABEL}>Portion — longueur (cm)</label>
