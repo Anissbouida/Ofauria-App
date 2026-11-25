@@ -616,6 +616,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'accounting.vat_periodicity', domain: 'accounting', section: 'business',
+    label: 'Périodicité de la déclaration de TVA',
+    help: 'Mensuelle ou trimestrielle selon le régime de l\'entreprise. L\'écran Comptabilité › TVA calcule la déclaration sur un mois ou sur un trimestre en conséquence. Les taux restent ceux du référentiel légal.',
+    fields: [{ name: 'mode', label: 'Périodicité', type: 'enum', options: [{ value: 'monthly', label: 'Mensuelle' }, { value: 'quarterly', label: 'Trimestrielle' }] }],
+    defaults: { mode: 'monthly' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'accounting.card_commission', domain: 'accounting', section: 'business',
     label: 'Commission sur paiement par carte',
     help: 'Retenue par le prestataire du terminal sur chaque transaction : à 2 %, une vente carte de 100 ¤ crédite 98 ¤ en banque. Appliquée au solde carte de la Caisse et aux écritures de vente (6147 Services bancaires).',

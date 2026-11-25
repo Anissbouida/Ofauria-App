@@ -1,3 +1,4 @@
+import { getParameter } from '../services/module-parameters.service.js';
 import { cashForecast, cashForecastLines } from '../services/cash-forecast.js';
 import { Router, type Response } from 'express';
 import { z } from 'zod';
@@ -594,6 +595,11 @@ ledgerRouter.put('/cash-forecast/threshold', authenticate, can('accounting.edit'
 
 // Declaration TVA (CA20 Maroc)
 ledgerRouter.get('/tva-declaration',  authenticate, can('accounting.view'), tvaDeclarationController.declaration);
+// Périodicité de la déclaration (mig 695) : l'écran TVA calcule sur un mois ou un trimestre.
+ledgerRouter.get('/tva-periodicity', authenticate, can('accounting.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
+  const v = await getParameter<{ mode?: string }>('accounting.vat_periodicity');
+  res.json({ success: true, data: { mode: v?.mode === 'quarterly' ? 'quarterly' : 'monthly' } });
+}));
 
 // Bilan (actif / passif)
 ledgerRouter.get('/balance-sheet',    authenticate, can('accounting.view'), balanceSheetController.balanceSheet);

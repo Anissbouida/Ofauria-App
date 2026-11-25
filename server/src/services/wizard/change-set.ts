@@ -23,7 +23,7 @@ export function compileChangeSet(answers: WizardAnswers): ChangeOperation[] {
     const data = answers[step.key]?.data;
     if (!data || !Object.keys(data).length) continue;
     const scope = step.key === 'sector' || step.key === 'modules';
-    const execution=scope?'sector_modules':step.key==='company'?'company_context':step.key==='vocabulary'?'vocabulary':step.key==='specialties'?'specializations':step.key==='interfaces'?'interface_preferences':step.key==='roles'?'roles':step.key==='data'?'data':step.key==='operations'||step.key==='rules'?'parameters':'pending';
+    const execution=scope?'sector_modules':step.key==='company'?'company_context':step.key==='vocabulary'?'vocabulary':step.key==='specialties'?'specializations':step.key==='interfaces'?'interface_preferences':step.key==='roles'?'roles':step.key==='data'?'data':step.key==='operations'||step.key==='rules'||step.key==='finance'?'parameters':'pending';
     const entries=Object.entries(data);
     const supported=(k:string)=>scope||(step.key==='company'&&(COMPANY_FIELDS as readonly string[]).includes(k))||(step.key==='interfaces'&&(INTERFACE_FIELDS as readonly string[]).includes(k))||(step.key==='vocabulary'&&VOCABULARY_KEY_SET.has(k))||(step.key==='specialties'&&k==='selected'&&Array.isArray(data[k]))||(step.key==='roles'&&k==='selected'&&Array.isArray(data[k]))||(step.key==='rules'&&APPROVAL_KEY.test(k))||(step.key==='data'&&(k==='referentials'||k==='demo'))||(step.key==='company'&&STORE_KEY.test(k))||!!wizardParameterField(step.key,k);
     const ready=Object.fromEntries(entries.filter(([k])=>supported(k)));

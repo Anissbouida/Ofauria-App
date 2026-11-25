@@ -404,8 +404,9 @@ export default function WizardBusinessFields({ step, answers, catalog, company, 
       <div>
         <Row title={<>Plan comptable <Tag tone="o" lock>Réglementaire</Tag></>} help="Plan comptable marocain (CGNC). Vous pouvez ajouter des sous-comptes, pas retirer les comptes du plan." />
         <Row title="Journaux" help={`Achats, ventes, banque, caisse${mods.has('employees') ? ', paie' : ''}, opérations diverses${mods.has('production') ? ', production' : ''}.`}><Tag tone="g">Créés par le profil</Tag></Row>
-        <Row title={<>TVA <Tag tone="o" lock>Réglementaire</Tag></>} help="Taux légaux datés. Régime de déclaration :">
-          <Segmented label="Régime de TVA" value={text(data.vat) || 'Mensuelle'} options={[{ value: 'Mensuelle', label: 'Mensuelle' }, { value: 'Trimestrielle', label: 'Trimestrielle' }]} disabled={disabled} onChange={v => set('vat', v)} /></Row>
+        <Row title={<>TVA <Tag tone="o" lock>Réglementaire</Tag></>} help="Taux légaux datés. Régime de déclaration : l’écran TVA calcule sur un mois ou sur un trimestre.">
+          {(() => { const p = catalog?.parameters?.find(x => x.key === 'accounting.vat_periodicity'); const id = 'accounting.vat_periodicity:mode';
+            return p?.value ? <span className="wz-control"><Segmented label="Régime de TVA" value={text(id in data ? data[id] : p.value.mode) || 'monthly'} options={[{ value: 'monthly', label: 'Mensuelle' }, { value: 'quarterly', label: 'Trimestrielle' }]} disabled={disabled} onChange={v => set(id, v)} />{id in data && <Tag tone="o">Modifié</Tag>}</span> : <Tag tone="x">Indisponible</Tag>; })()}</Row>
         <Row title="Exercice comptable" help="Période de l’exercice envisagée.">
           <input className="ds-input" style={{ width: 200 }} aria-label="Exercice comptable" placeholder="Janvier – décembre" value={text(data.year)} disabled={disabled} onChange={e => set('year', e.target.value)} /></Row>
         <Row title="Comptabilité analytique" help="Centres de coûts par établissement et par atelier.">

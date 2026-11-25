@@ -21,6 +21,7 @@ const DEFAULTS: Record<string, unknown> = {
   'production.rhythm': { mode: 'artisanal' },
   'sales.channel': { channel: 'multi' },
   'stock.organization': { mode: 'per_store' },
+  'accounting.vat_periodicity': { mode: 'monthly' },
   'sales.dunning': { enabled: true, auto_send: false, min_amount: 50, credit_control: 'warn', auto_release: true },
   'sales.pos_stock': { mode: 'block' } satisfies PosStockRule,
   'sales.person_sizes': { sizes: [4, 6, 8, 10, 12, 16] },

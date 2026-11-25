@@ -535,6 +535,8 @@ export interface TvaDeclaration {
 export const tvaDeclarationApi = {
   declaration: (startDate: string, endDate: string): Promise<TvaDeclaration> =>
     api.get('/ledger/tva-declaration', { params: { startDate, endDate } }).then(r => r.data.data),
+  /** Périodicité de la déclaration (mig 695) : mensuelle ou trimestrielle. */
+  periodicity: (): Promise<{ mode: 'monthly' | 'quarterly' }> => api.get('/ledger/tva-periodicity').then(r => r.data.data),
 };
 
 /* ═══ Impôt sur les sociétés (mig 430) ═══ */

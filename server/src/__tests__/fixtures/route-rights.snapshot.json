@@ -1271,6 +1271,10 @@
   "admin",
   "manager"
  ],
+ "GET /ledger/tva-periodicity": [
+  "admin",
+  "manager"
+ ],
  "GET /ledger/vat-deduction-statement": [
   "admin",
   "manager"

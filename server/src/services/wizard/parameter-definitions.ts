@@ -23,6 +23,7 @@ const selection = [
   ['rules','purchasing','purchasing.po_requires_request'],
   ['rules','pos','sales.closure'],
   ['rules','sales','sales.pricing'],
+  ['finance','accounting','accounting.vat_periodicity'],
 ] as const;
 
 /** Aide courte affichée dans l'assistant (une phrase, comme la maquette) ; l'aide
@@ -48,6 +49,7 @@ export const WIZARD_HELP: Record<string, string> = {
   'purchasing.po_requires_request': 'Exiger une demande d’achat avant d’envoyer un bon de commande.',
   'sales.closure': 'Demander l’inventaire des invendus à la fermeture de caisse.',
   'sales.pricing': 'Remise manuelle maximale accordée sans validation, par profil.',
+  'accounting.vat_periodicity': 'Régime de déclaration : l’écran TVA calcule sur un mois ou sur un trimestre.',
 };
 
 export const WIZARD_PARAMETERS = selection.map(([step,module,key])=>{

@@ -44,9 +44,15 @@ export default function TvaTab() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
 
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  // Périodicité (mig 695) : en trimestriel, la période couvre les trois mois du trimestre.
+  const { data: periodicity } = useQuery({ queryKey: ['tva-periodicity'], queryFn: tvaDeclarationApi.periodicity, staleTime: 60_000 });
+  const quarterly = periodicity?.mode === 'quarterly';
+  const firstMonth = quarterly ? Math.floor((month - 1) / 3) * 3 + 1 : month;
+  const lastMonth = quarterly ? firstMonth + 2 : month;
+  const periodLabel = quarterly ? `T${(firstMonth + 2) / 3}` : MONTH_NAMES[month - 1];
+  const startDate = `${year}-${String(firstMonth).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, lastMonth, 0).getDate();
+  const endDate = `${year}-${String(lastMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger-tva', startDate, endDate],
@@ -84,7 +90,7 @@ export default function TvaTab() {
       ['Total deductible', '', String(data.total_deductible.toFixed(2))],
       ['TVA DUE', '', String(data.tva_due.toFixed(2))],
     ];
-    exportCSV(`declaration_tva_${MONTH_NAMES[month - 1]}_${year}.csv`, ['COMPTE', 'LIBELLE', 'MONTANT'], rows);
+    exportCSV(`declaration_tva_${periodLabel}_${year}.csv`, ['COMPTE', 'LIBELLE', 'MONTANT'], rows);
   };
 
   const due = data?.tva_due ?? 0;
@@ -149,10 +155,10 @@ export default function TvaTab() {
 
       <Toolbar>
         <SearchSelect
-          options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
-          value={String(month)}
+          options={quarterly ? [1, 4, 7, 10].map((m, i) => ({ id: String(m), label: `${i + 1}${i ? 'e' : 'er'} trimestre` })) : MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
+          value={String(firstMonth)}
           onChange={id => id && setMonth(parseInt(id, 10))}
-          placeholder="Mois"
+          placeholder={quarterly ? 'Trimestre' : 'Mois'}
           width={150}
         />
         <SearchSelect
@@ -208,7 +214,7 @@ export default function TvaTab() {
           </DataPanel>
 
           <p style={{ fontSize: 13, color: 'var(--ds-muted)', margin: 0 }}>
-            Base de la déclaration mensuelle CA20. TVA collectée : écritures de la période. TVA déductible : factures fournisseurs
+            Base de la déclaration {quarterly ? 'trimestrielle' : 'mensuelle'} CA20. TVA collectée : écritures de la période. TVA déductible : factures fournisseurs
             dont le règlement complet est intervenu dans la période (le droit à déduction naît au paiement).
           </p>
 
