@@ -8,6 +8,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { settingAnchor } from './SettingsPrimitives';
 import { DataPanel, EmptyState, FormField, FormFooter, LoadingState, SectionHeader } from '../../components/ds';
+import { ribKeyValid } from '../../utils/rib';
 
 /**
  * Comptes bancaires de la société (audit Paramètres, lot 5, mig 331). Le RIB
@@ -49,6 +50,13 @@ export default function CompanyBankAccounts() {
     : { id: null, draft: { ...EMPTY, isDefault: accounts.length === 0 } });
 
   const ribDigits = editing?.draft.rib.replace(/\s/g, '') ?? '';
+  // Clé vérifiée dès le 24e chiffre ; on n'affiche pas la clé attendue pour ne
+  // pas inciter à corriger la clé au lieu du chiffre mal recopié.
+  const ribError = !ribDigits ? undefined
+    : !/^\d+$/.test(ribDigits) ? 'Le RIB ne doit contenir que des chiffres'
+    : ribDigits.length !== 24 ? `${ribDigits.length}/24 chiffres : le RIB doit compter 24 chiffres`
+    : !ribKeyValid(ribDigits) ? 'Clé de contrôle incorrecte : un chiffre est probablement mal recopié, vérifiez avec l\'attestation de RIB'
+    : undefined;
   const set = (k: keyof Draft, v: string | boolean) => setEditing(e => e && { ...e, draft: { ...e.draft, [k]: v } });
 
   return (
@@ -96,8 +104,8 @@ export default function CompanyBankAccounts() {
               <input id="bank-name" className="ds-input" value={editing.draft.bankName} onChange={e => set('bankName', e.target.value)} placeholder="Attijariwafa bank" maxLength={80} />
             </FormField>
             <FormField label="RIB (24 chiffres)" htmlFor="bank-rib" required
-              hint={`${ribDigits.length}/24 chiffres · la clé est vérifiée à l'enregistrement`}
-              error={ribDigits && ribDigits.length !== 24 ? `${ribDigits.length}/24 chiffres : le RIB doit compter 24 chiffres` : undefined}>
+              hint={ribDigits.length === 24 ? '24/24 chiffres · clé de contrôle correcte' : `${ribDigits.length}/24 chiffres`}
+              error={ribError}>
               <input id="bank-rib" className="ds-input" style={{ fontFamily: 'ui-monospace, monospace' }} value={editing.draft.rib} inputMode="numeric"
                 onChange={e => set('rib', e.target.value)} placeholder="000 000 0000000000000000 00" />
             </FormField>
@@ -122,7 +130,7 @@ export default function CompanyBankAccounts() {
             ))}
           </div>
           <FormFooter onCancel={() => setEditing(null)} busy={save.isPending}
-            disabled={ribDigits.length !== 24 || !editing.draft.label.trim() || !editing.draft.bankName.trim()}
+            disabled={ribDigits.length !== 24 || !!ribError || !editing.draft.label.trim() || !editing.draft.bankName.trim()}
             onSubmit={() => save.mutate()} />
         </section>
       )}
