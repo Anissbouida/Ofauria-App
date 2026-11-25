@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Wrench } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { useProcessRefs } from '../../api/production.api';
 import api from '../../api/client';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
@@ -50,7 +51,48 @@ function CapacityCell({ e }: { e: Row }) {
   );
 }
 
+/** Création d'un équipement (nom, type du référentiel, capacité facultative). Avant le lot 7
+ *  de l'audit, aucun écran ne permettait d'en créer : le registre restait vide. */
+function NewEquipmentForm({ onDone }: { onDone: () => void }) {
+  const qc = useQueryClient();
+  const { equipmentTypes } = useProcessRefs();
+  const [f, setF] = useState({ nom: '', type: '', cap: '', unit: 'plaque', cycles: '' });
+  const n = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')));
+  const capOk = (n(f.cap) === null && n(f.cycles) === null) || ((n(f.cap) ?? 0) > 0 && Number.isInteger(n(f.cycles)) && (n(f.cycles) ?? 0) > 0);
+  const save = useMutation({
+    mutationFn: () => api.post('/production-cout/equipements', {
+      nom: f.nom.trim(), type: f.type, cout_horaire: 0,
+      ...(n(f.cap) !== null ? { capacite_par_cycle: n(f.cap), capacite_unite: f.unit, cycles_par_jour: n(f.cycles) } : {}),
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['equipment-links'] }); notify.success('Équipement créé'); onDone(); },
+    onError: (e) => notify.error(apiErrorMessage(e)),
+  });
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--ds-border, #e5e7eb)', fontSize: 13 }}>
+      <input className="ds-input sm" style={{ width: 200 }} placeholder="Nom (Four à sole 1…)" value={f.nom} aria-label="Nom de l'équipement"
+        onChange={e => setF(x => ({ ...x, nom: e.target.value }))} />
+      <select className="ds-input sm" style={{ width: 'auto' }} value={f.type} aria-label="Type d'équipement" onChange={e => setF(x => ({ ...x, type: e.target.value }))}>
+        <option value="">Type…</option>
+        {equipmentTypes.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}
+      </select>
+      <span className="ds-muted">Capacité</span>
+      <input className="ds-input sm" style={{ width: 60, textAlign: 'right' }} inputMode="decimal" value={f.cap} aria-label="Capacité par cycle"
+        onChange={e => setF(x => ({ ...x, cap: e.target.value }))} />
+      <select className="ds-input sm" style={{ width: 'auto' }} value={f.unit} aria-label="Unité de capacité" onChange={e => setF(x => ({ ...x, unit: e.target.value }))}>
+        {UNITS.map(u => <option key={u.v} value={u.v}>{u.l}</option>)}
+      </select>
+      <span>×</span>
+      <input className="ds-input sm" style={{ width: 44, textAlign: 'right' }} inputMode="numeric" value={f.cycles} aria-label="Cycles par jour"
+        onChange={e => setF(x => ({ ...x, cycles: e.target.value }))} />
+      <span className="ds-muted">cycles / jour</span>
+      <button type="button" className="odoo-btn-primary" disabled={!f.nom.trim() || !f.type || !capOk || save.isPending} onClick={() => save.mutate()}>Créer</button>
+      <button type="button" className="odoo-btn-secondary" onClick={onDone}>Annuler</button>
+    </div>
+  );
+}
+
 export default function EquipmentLinksPanel({ workCenters }: { workCenters: { id: string; name: string; is_active: boolean }[] }) {
+  const [adding, setAdding] = useState(false);
   const qc = useQueryClient();
   const { data = [] } = useQuery({ queryKey: ['equipment-links'], queryFn: () => api.get('/routings/equipments').then(r => r.data.data as Row[]) });
   const link = useMutation({
@@ -59,14 +101,21 @@ export default function EquipmentLinksPanel({ workCenters }: { workCenters: { id
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['equipment-links'] }); notify.success('Lien enregistré'); },
     onError: (e) => notify.error(apiErrorMessage(e)),
   });
-  if (!data.length) return null;
   const centers = workCenters.filter(w => w.is_active).map(w => ({ id: w.id, label: w.name }));
 
   return (
     <section style={{ display: 'grid', gap: 12 }}>
-      <SectionHeader title="Équipements" note="Rattachement aux postes de travail et aux immobilisations ; capacité contrôlée à la confirmation des ordres" />
+      <SectionHeader title="Équipements" note="Rattachement aux postes de travail et aux immobilisations ; capacité contrôlée à la confirmation des ordres">
+        {!adding && <button type="button" className="odoo-btn-secondary" onClick={() => setAdding(true)}><Plus size={13} aria-hidden="true" /> Ajouter un équipement</button>}
+      </SectionHeader>
       <DataPanel label="Équipements" footer={<TableFooter note={`${data.length} équipement(s)`} />}>
-      <table className="odoo-table">
+      {adding && <NewEquipmentForm onDone={() => setAdding(false)} />}
+      {data.length === 0 && !adding && (
+        <p style={{ margin: 0, padding: '14px 16px', fontSize: 13, color: 'var(--ds-muted)' }}>
+          Aucun équipement. Déclarez le four, le batteur, le pétrin… avec leur capacité : les fiches s'y rattachent et chaque ordre est contrôlé à sa confirmation.
+        </p>
+      )}
+      {data.length > 0 && <table className="odoo-table">
         <thead><tr><th>Équipement</th><th>Poste de travail</th><th>Immobilisation</th><th>Capacité</th></tr></thead>
         <tbody>{data.map(e => (
           <tr key={e.id}>
@@ -92,7 +141,7 @@ export default function EquipmentLinksPanel({ workCenters }: { workCenters: { id
             <td><CapacityCell key={`${e.id}-${e.capacite_par_cycle}-${e.capacite_unite}-${e.cycles_par_jour}`} e={e} /></td>
           </tr>
         ))}</tbody>
-      </table>
+      </table>}
       </DataPanel>
     </section>
   );
