@@ -16,7 +16,7 @@ import { bomVersionRepository } from './bom-version.repository.js';
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
 export const productionConsumptionRepository = {
-  async manualIssue(planId: string, input: { ingredientId: string; quantity: number; note?: string | null }, userId: string) {
+  async manualIssue(planId: string, input: { ingredientId: string; quantity: number; note?: string | null; planItemId?: string | null }, userId: string) {
     return withTransaction(async () => {
       const plan = (await db.query(
         `SELECT pp.id, pp.store_id, pp.status, COALESCE(pp.exec_snapshot->'order_type'->>'consumption_mode', t.consumption_mode) AS consumption_mode FROM production_plans pp
@@ -28,21 +28,26 @@ export const productionConsumptionRepository = {
       try {
         const ing = (await client.query(`SELECT name FROM ingredients WHERE id = $1`, [input.ingredientId])).rows[0];
         if (!ing) throw new Error('Matière introuvable');
+        // Mig 663 : la ligne servie, choisie à la saisie ; ordre à un seul article : la sienne.
+        const lines = (await client.query(
+          `SELECT id FROM production_plan_items WHERE plan_id = $1 AND status <> 'cancelled'`, [planId])).rows as { id: string }[];
+        if (input.planItemId && !lines.some(l => l.id === input.planItemId)) throw new Error('Article introuvable sur cet ordre');
+        const planItemId = input.planItemId ?? (lines.length === 1 ? lines[0].id : null);
         const stock = (await client.query(
           `SELECT current_quantity FROM inventory WHERE ingredient_id = $1 AND ($2::uuid IS NULL OR store_id = $2) FOR UPDATE`,
           [input.ingredientId, plan.store_id])).rows[0];
         const available = stock ? Number(stock.current_quantity) : 0;
         await applyStockOut(client, { kind: 'ingredient', itemId: input.ingredientId, storeId: plan.store_id ?? null,
-          requested: input.quantity, available, origin: { type: 'production_plan', id: planId }, userId, label: `${ing.name} (sortie manuelle)` });
+          requested: input.quantity, available, origin: { type: 'production_plan', id: planId }, lineId: planItemId, userId, label: `${ing.name} (sortie manuelle)` });
         await client.query(
           `UPDATE inventory SET current_quantity = GREATEST(current_quantity - $1::numeric, 0), updated_at = NOW()
             WHERE ingredient_id = $2 AND ($3::uuid IS NULL OR store_id = $3)`, [input.quantity, input.ingredientId, plan.store_id]);
         const tx = (await client.query(
-          `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id)
-           VALUES ($1, 'production', $2, $3, $4, $5, $6) RETURNING id`,
-          [input.ingredientId, -input.quantity, input.note?.trim() || 'Sortie manuelle sur ordre', userId, planId, plan.store_id])).rows[0];
+          `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id, plan_item_id)
+           VALUES ($1, 'production', $2, $3, $4, $5, $6, $7) RETURNING id`,
+          [input.ingredientId, -input.quantity, input.note?.trim() || 'Sortie manuelle sur ordre', userId, planId, plan.store_id, planItemId])).rows[0];
         const lots = Math.min(input.quantity, available) > 0
-          ? await ingredientLotRepository.consumeFEFO(client, input.ingredientId, Math.min(input.quantity, available), planId, plan.store_id ?? undefined)
+          ? await ingredientLotRepository.consumeFEFO(client, input.ingredientId, Math.min(input.quantity, available), planId, plan.store_id ?? undefined, planItemId)
           : [];
         return { transaction_id: tx.id as string, lots };
       } finally { client.release(); }

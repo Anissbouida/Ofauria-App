@@ -33,7 +33,8 @@ export interface ItemCost {
 }
 
 export interface PlanItemCostsInput {
-  detailMatieres: { ingredient_id: string; total: number }[];
+  /** by_item : part mesurée sur les sorties rattachées à chaque article (mig 663). */
+  detailMatieres: { ingredient_id: string; total: number; by_item?: Record<string, number> }[];
   emballages: number; energie: number; sousTraitance: number;
   mo: { timedByItem: Map<string, number>; stdByItem: Map<string, number> };
   machineByItem: Map<string, number>;
@@ -98,9 +99,20 @@ export async function planItemCosts(planId: string, input: PlanItemCostsInput): 
   const units = items.map(it => it.qty);
   const mat = items.map(() => 0);
   for (const m of input.detailMatieres) {
+    // Mig 663 : d'abord ce que chaque article a réellement sorti (lots, sorties, manques
+    // rattachés à sa ligne) ; seul le reste non rattaché se répartit par les besoins.
+    let measured = 0;
+    if (m.by_item) {
+      items.forEach((it, i) => {
+        const v = r2(m.by_item![it.id] ?? 0);
+        if (v > 0) { mat[i] += v; measured += v; }
+      });
+    }
+    const rest = r2(m.total - measured);
+    if (Math.abs(rest) < 0.005) continue;
     // Un manque valorisé (« manque:<matière> ») se répartit comme la matière elle-même.
     const w = needs.map(n => n.get(m.ingredient_id.replace(/^manque:/, '')) ?? 0);
-    const parts = spread(m.total, w.some(x => x > 0) ? w : (theoValue.some(x => x > 0) ? theoValue : units));
+    const parts = spread(rest, w.some(x => x > 0) ? w : (theoValue.some(x => x > 0) ? theoValue : units));
     parts.forEach((v, i) => { mat[i] += v; });
   }
 

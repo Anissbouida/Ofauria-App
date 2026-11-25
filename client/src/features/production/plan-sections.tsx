@@ -62,14 +62,22 @@ export function PlanJournal({ events }: { events: ProductionPlanEvent[] }) {
 
 export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] }) {
   const T = useProdTerms();
-  const productionLotUsage = usage;
-  if (productionLotUsage.length === 0) return null;
+  if (usage.length === 0) return null;
+  // Mig 663 : les lots sont rattachés à l'article de l'ordre qui les a consommés. Un groupe
+  // par article ; les sorties anciennes non rattachées restent dans « Plan entier ».
+  const groups = new Map<string, Record<string, any>[]>();
+  for (const u of usage) {
+    const k = (u.item_name as string | null) ?? '';
+    groups.set(k, [...(groups.get(k) ?? []), u]);
+  }
+  const byArticle = groups.size > 1 || !groups.has('');
+  const lotCount = new Set(usage.map(u => u.ingredient_lot_id as string)).size;
   return (
     <div className="ds-panel pd-section">
       <div className="pd-section-head">
         <Layers size={12} /> Traçabilité des lots
         <span style={{ marginLeft: 4, color: 'var(--ds-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-          {(productionLotUsage as Record<string, any>[]).length} lot(s) utilisé(s) — {T.ingredientsLc}
+          {lotCount} lot(s) utilisé(s) — {T.ingredientsLc}{byArticle ? ', par article' : ''}
         </span>
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -87,31 +95,38 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
             </tr>
           </thead>
           <tbody>
-            {(productionLotUsage as Record<string, any>[]).map((usage, idx) => {
-              const expDate = usage.expiration_date ? new Date(usage.expiration_date as string) : null;
-              const isExpired = !!expDate && expDate < new Date();
-              return (
-                <tr key={idx} style={{ cursor: 'default' }}>
-                  <td><span className={`odoo-status-dot ${isExpired ? 'danger' : 'ok'}`} title={isExpired ? 'DLC dépassée' : 'DLC valide'} aria-label={isExpired ? 'DLC dépassée' : 'DLC valide'} role="img" /></td>
-                  <td style={{ fontWeight: 500 }}>{usage.ingredient_name as string}</td>
-                  {/* Lot interne = celui affiche sur le bon de sortie ; le lot fournisseur
-                      (etiquette du sac) n'est pas toujours saisi a la reception. */}
-                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(usage.lot_number as string) || '—'}</td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(usage.supplier_lot_number as string) || <span style={{ color: 'var(--ds-muted)', fontFamily: 'inherit' }}>non renseigné</span>}</td>
-                  <td style={{ color: 'var(--ds-muted)' }}>{usage.supplier_name ? String(usage.supplier_name) : '—'}</td>
-                  <td style={{ color: 'var(--ds-muted)' }}>{usage.received_at ? format(new Date(usage.received_at as string), 'dd/MM/yyyy') : '—'}</td>
-                  <td>
-                    {expDate
-                      ? (isExpired ? <StatusTag tone="late" label={`Expiré ${format(expDate, 'dd/MM/yyyy')}`} /> : <span style={{ color: 'var(--ds-muted)' }}>{format(expDate, 'dd/MM/yyyy')}</span>)
-                      : '—'}
-                  </td>
-                  <td className="ds-num">
-                    <strong>{parseFloat(usage.quantity_used as string).toFixed(2)}</strong>
-                    <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 2 }}>{(usage.ingredient_unit as string) || ''}</span>
-                  </td>
-                </tr>
-              );
-            })}
+            {[...groups.entries()].flatMap(([article, rows]) => [
+              ...(byArticle ? [
+                <tr key={`g-${article}`} className="ds-group">
+                  <td colSpan={8}>{article || 'Plan entier (sortie non rattachée à un article)'}</td>
+                </tr>,
+              ] : []),
+              ...rows.map((u, idx) => {
+                const expDate = u.expiration_date ? new Date(u.expiration_date as string) : null;
+                const isExpired = !!expDate && expDate < new Date();
+                return (
+                  <tr key={`${article}-${idx}`} style={{ cursor: 'default' }}>
+                    <td><span className={`odoo-status-dot ${isExpired ? 'danger' : 'ok'}`} title={isExpired ? 'DLC dépassée' : 'DLC valide'} aria-label={isExpired ? 'DLC dépassée' : 'DLC valide'} role="img" /></td>
+                    <td style={{ fontWeight: 500 }}>{u.ingredient_name as string}</td>
+                    {/* Lot interne = celui affiche sur le bon de sortie ; le lot fournisseur
+                        (etiquette du sac) n'est pas toujours saisi a la reception. */}
+                    <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(u.lot_number as string) || '—'}</td>
+                    <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(u.supplier_lot_number as string) || <span style={{ color: 'var(--ds-muted)', fontFamily: 'inherit' }}>non renseigné</span>}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{u.supplier_name ? String(u.supplier_name) : '—'}</td>
+                    <td style={{ color: 'var(--ds-muted)' }}>{u.received_at ? format(new Date(u.received_at as string), 'dd/MM/yyyy') : '—'}</td>
+                    <td>
+                      {expDate
+                        ? (isExpired ? <StatusTag tone="late" label={`Expiré ${format(expDate, 'dd/MM/yyyy')}`} /> : <span style={{ color: 'var(--ds-muted)' }}>{format(expDate, 'dd/MM/yyyy')}</span>)
+                        : '—'}
+                    </td>
+                    <td className="ds-num">
+                      <strong>{parseFloat(u.quantity_used as string).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}</strong>
+                      <span style={{ color: 'var(--ds-muted)', fontSize: '12px', marginLeft: 2 }}>{(u.ingredient_unit as string) || ''}</span>
+                    </td>
+                  </tr>
+                );
+              }),
+            ])}
           </tbody>
         </table>
       </div>

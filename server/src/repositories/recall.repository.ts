@@ -202,20 +202,26 @@ async function buildNode(
   if (visited.has(lotIdStr) || depth > MAX_RECYCLE_DEPTH) return node;
   visited.add(lotIdStr);
 
+  // Mig 663 : une ligne par plan, avec les lignes de plan qui ont consommé le lot. Quand toute
+  // la consommation du plan est rattachée à ses lignes, seules leurs fournées sont rappelées.
   const planRows = await db.query(
-    `SELECT plu.production_plan_id, plu.quantity_used,
+    `SELECT plu.production_plan_id, SUM(plu.quantity_used) AS quantity_used,
             pp.plan_date, pp.status AS plan_status, pp.type AS plan_type,
-            ing.name AS ingredient_name
+            MAX(ing.name) AS ingredient_name,
+            array_agg(DISTINCT plu.plan_item_id) FILTER (WHERE plu.plan_item_id IS NOT NULL) AS item_ids,
+            bool_or(plu.plan_item_id IS NULL) AS has_unattributed
      FROM production_lot_usage plu
      JOIN production_plans pp ON pp.id = plu.production_plan_id
      LEFT JOIN ingredients ing ON ing.id = plu.ingredient_id
      WHERE plu.ingredient_lot_id = $1
+     GROUP BY plu.production_plan_id, pp.plan_date, pp.status, pp.type
      ORDER BY pp.plan_date DESC`,
     [lotIdStr]
   );
 
   for (const pr of planRows.rows) {
-    const batches = await buildBatches(String(pr.production_plan_id), visited, depth);
+    const onlyItems = !pr.has_unattributed && Array.isArray(pr.item_ids) && pr.item_ids.length > 0 ? pr.item_ids as string[] : null;
+    const batches = await buildBatches(String(pr.production_plan_id), visited, depth, onlyItems);
     node.plans.push({
       productionPlanId: String(pr.production_plan_id),
       planDate: iso(pr.plan_date),
@@ -233,7 +239,9 @@ async function buildNode(
 async function buildBatches(
   planId: string,
   visited: Set<string>,
-  depth: number
+  depth: number,
+  /** Lignes de plan servies par le lot (mig 663) : seules leurs fournées. null = tout le plan. */
+  onlyItems: string[] | null = null
 ): Promise<RecallBatch[]> {
   const lotRows = await db.query(
     `SELECT pl.id, pl.product_id, pl.lot_number, pl.produced_at, pl.expires_at,
@@ -244,8 +252,9 @@ async function buildBatches(
      FROM product_lots pl
      LEFT JOIN products p ON p.id = pl.product_id
      WHERE pl.production_plan_id = $1
+       AND ($2::uuid[] IS NULL OR pl.plan_item_id IS NULL OR pl.plan_item_id = ANY($2::uuid[]))
      ORDER BY pl.produced_at`,
-    [planId]
+    [planId, onlyItems]
   );
 
   const batches: RecallBatch[] = [];

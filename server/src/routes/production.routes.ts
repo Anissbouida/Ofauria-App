@@ -6,6 +6,8 @@ const manualConsumptionSchema = z.object({
   ingredientId: z.string().guid(),
   quantity: z.number().finite().positive().max(1_000_000),
   note: z.string().trim().max(500).nullable().optional(),
+  // Mig 663 : article de l'ordre servi par cette sortie (facultatif pour un ordre à un article).
+  planItemId: z.string().guid().nullable().optional(),
 });
 import { productionController } from '../controllers/production.controller.js';
 import { printTemplateController } from '../controllers/print-template.controller.js';

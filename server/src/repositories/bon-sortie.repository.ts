@@ -150,6 +150,42 @@ async function moveEconomatToPesage(
 // ─── Etapes internes du prelevement, enchainees par acceptReception dans UNE
 //     transaction (pret -> prelevement -> verifie -> cloture). ───
 
+/**
+ * Part de chaque article du plan dans le besoin d'une matière (mig 663) : le bon de sortie
+ * regroupe les besoins de tous les articles par matière ; à la sortie, chaque lot consommé
+ * est rattaché aux articles qui en ont besoin, au prorata de leur besoin. Un article qui ne
+ * prévoit pas la matière n'en reçoit rien (il n'apparaîtra pas dans un rappel de ce lot).
+ */
+async function itemSharesByIngredient(client: PoolClient, planId: string): Promise<Map<string, { itemId: string; qty: number }[]>> {
+  const rows = (await client.query(
+    `SELECT ingredient_id, plan_item_id, SUM(needed_quantity)::float8 AS qty
+       FROM production_ingredient_needs
+      WHERE plan_id = $1 AND plan_item_id IS NOT NULL AND needed_quantity > 0
+      GROUP BY ingredient_id, plan_item_id`, [planId])).rows as { ingredient_id: string; plan_item_id: string; qty: number }[];
+  const map = new Map<string, { itemId: string; qty: number }[]>();
+  for (const r of rows) {
+    const list = map.get(r.ingredient_id) ?? [];
+    list.push({ itemId: r.plan_item_id, qty: Number(r.qty) });
+    map.set(r.ingredient_id, list);
+  }
+  return map;
+}
+
+/** Partage `qty` selon `shares` (somme exacte, au millième). Sans part connue : une part sans article. */
+export function splitAcrossItems(qty: number, shares: { itemId: string; qty: number }[] | undefined): { itemId: string | null; qty: number }[] {
+  const total = (shares ?? []).reduce((s, x) => s + Math.max(0, x.qty), 0);
+  if (!shares || shares.length === 0 || !(total > 0)) return [{ itemId: null, qty }];
+  if (shares.length === 1) return [{ itemId: shares[0].itemId, qty }];
+  const out = shares.map(s => ({ itemId: s.itemId as string | null, qty: Math.round(qty * Math.max(0, s.qty) / total * 1e6) / 1e6 }));
+  const diff = Math.round((qty - out.reduce((s, x) => s + x.qty, 0)) * 1e6) / 1e6;
+  if (diff !== 0) {
+    let big = 0;
+    for (let i = 1; i < out.length; i++) if (out[i].qty > out[big].qty) big = i;
+    out[big].qty = Math.round((out[big].qty + diff) * 1e6) / 1e6;
+  }
+  return out.filter(x => x.qty > 0);
+}
+
 /** Consomme physiquement les lignes du bon : lots pesage (ingredients) et stock
  *  emballages, avec mouvement trace. Appele une seule fois par bon, au passage en
  *  'prelevement'. Le bon est deja verrouille par l'appelant. */
@@ -168,8 +204,9 @@ async function consumeBonLines(client: PoolClient, bon: BonRow, userId: string) 
     [bon.id]
   );
 
+  const shares = await itemSharesByIngredient(client, bon.plan_id);
   const linesResult = await client.query(
-    `SELECT bsl.id, bsl.ingredient_id, bsl.unit, bsl.status,
+    `SELECT bsl.id, bsl.ingredient_id, bsl.original_ingredient_id, bsl.unit, bsl.status,
             bsl.allocated_quantity, bsl.actual_quantity, bsl.substitute_lot_id, bsl.ingredient_lot_id,
             ing.name AS ingredient_name
      FROM production_bons_sortie_lignes bsl
@@ -240,11 +277,14 @@ async function consumeBonLines(client: PoolClient, bon: BonRow, userId: string) 
       // Tracabilite lot -> production (mig 300) : c'est ce que lisent la
       // tracabilite avant/arriere et le cout reel FIFO. N'etait jamais ecrit sur
       // le chemin BSI avant.
-      await client.query(
-        `INSERT INTO production_lot_usage (production_plan_id, ingredient_lot_id, ingredient_id, quantity_used, bon_ligne_id, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [bon.plan_id, lotId, line.ingredient_id, qty, line.id, userId]
-      );
+      // Mig 663 : une ligne d'utilisation par article servi (substitut : parts de la matière d'origine).
+      for (const part of splitAcrossItems(qty, shares.get(line.original_ingredient_id ?? line.ingredient_id))) {
+        await client.query(
+          `INSERT INTO production_lot_usage (production_plan_id, ingredient_lot_id, ingredient_id, quantity_used, bon_ligne_id, created_by, plan_item_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [bon.plan_id, lotId, line.ingredient_id, part.qty, line.id, userId, part.itemId]
+        );
+      }
     }
   }
 

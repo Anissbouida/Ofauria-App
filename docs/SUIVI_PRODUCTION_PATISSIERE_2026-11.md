@@ -150,3 +150,26 @@ Non simulé à l'écran : pesée par le magasinier, acceptation du bon, déclara
 5. La règle de lot n'est pas lue par le MRP ni par les prévisions.
 6. `nb_contenants` est un entier : en fournée partielle, le nombre de fournées n'est pas enregistré sur la ligne.
 7. La base `kalum_audit` et les deux lanceurs `audit-server-3014` / `audit-client-4190` (fichier `.claude/launch.json` du worktree) sont des outils de vérification : à supprimer quand ils ne servent plus.
+
+
+---
+
+## 8. Sorties de matière par article (2026-11-24, mig 663)
+
+Décision : suivre les grands ERP (un ordre par article) sans retirer le « plan du jour » : le plan reste la vue de regroupement, chaque ligne porte ses propres besoins, sorties, lots et manques.
+
+| Sujet | Avant | Après | Validation |
+|---|---|---|---|
+| Besoins | Par produit | Par ligne de plan (`production_ingredient_needs.plan_item_id`) | Test « besoins enregistrés par ligne » |
+| Bon de sortie | Lot sorti rattaché au plan | Chaque lot sorti est porté par les lignes qui en ont besoin, au prorata de leur besoin ; un article qui ne prévoit pas la matière n'en reçoit rien | Test « bon de sortie » |
+| Déclaration, clôture, sortie manuelle, FEFO | Sorties rattachées au plan | Sorties et lots rattachés à la ligne ; manque de stock rattaché à la ligne (`stock_anomalies.origin_line_id`) | Tests existants + test « coût réel » |
+| Coût réel par article | Répartition par les besoins théoriques | Mesuré sur les sorties de la ligne ; seul le non-rattaché (sorties anciennes, semi-finis) est encore réparti | Test : beurre 80 DH entièrement dans l'article A, 0 dans B |
+| Traçabilité aval et rappel | Tout le plan touché | Seules les lignes qui ont consommé le lot ; les autres articles du plan sont signalés « non concernés » | Tests « traçabilité » et « rappel » |
+| Écran | Lots du plan en une liste | Lots groupés par article ; bandeau des articles non concernés dans la traçabilité | Vérifié à l'écran |
+
+Reprise : les plans à un seul article ont été rattachés (exact) ; les plans à plusieurs articles antérieurs restent au niveau du plan et gardent l'ancienne répartition.
+
+Limites :
+- Au bon de sortie, la part de chaque article est calculée sur son besoin, pas pesée séparément : le coût d'une matière commune y reste théorique entre articles. Le gain est sur la traçabilité (un article qui n'utilise pas la matière n'est plus touché) et sur les productions sans bon de sortie, où la sortie est réellement faite article par article.
+- Les préparations de base consommées par un plan (semi-finis) restent rattachées au plan, réparties par les besoins.
+- Le bon de sortie reste commun au plan : une matière manquante pour un article retient toujours le démarrage de tout le plan.

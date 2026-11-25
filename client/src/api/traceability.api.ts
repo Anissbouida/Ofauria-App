@@ -27,6 +27,8 @@ export type ForwardTrace = {
   plans: Array<{ id: string; plan_date: string; status: string; store_name: string | null; qty_used: number | null; depth: number }>;
   items: Array<{ id: string; plan_id: string; product_name: string | null; planned_quantity: number; actual_quantity: number | null; certainty: Certainty }>;
   semiLots: Array<{ id: string; lot_number: string; recipe_name: string; quantity_produced: number; quantity_remaining: number; unit: string; status: string; depth: number }>;
+  /** Mig 663 : articles des productions touchées qui n'ont pas consommé le lot. */
+  excludedItems?: Array<{ id: string; plan_id: string; product_name: string | null }>;
   productLots: ProductLotTrace[];
   byStore: Array<{ store_name: string; lots: number; sold: number; remaining: number; wasted: number }>;
   traceStart: string | null;

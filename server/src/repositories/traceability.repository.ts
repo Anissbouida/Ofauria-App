@@ -9,9 +9,12 @@ import { createNotification } from '../utils/notify.js';
  *   lot → plans qui l'ont consommé (production_lot_usage, au niveau du PLAN)
  *       → semi-finis produits dans ces plans puis consommés par d'autres plans
  *       → lignes de plan → lots produits finis → magasins, ventes, pertes, reste.
- * La consommation n'étant pas tracée par ligne de plan, la ligne est « certaine »
- * si sa recette contient l'ingrédient (directement ou via une base), « possible »
- * sinon : même production, composition non prouvée. Un rappel prend les deux.
+ * Mig 663 : quand toute la consommation du lot dans un plan est rattachée à ses lignes,
+ * seules ces lignes sont touchées (« certaine », consommation prouvée) ; les autres
+ * articles du même plan sont hors du périmètre. Sinon (sorties anciennes, semi-finis), la
+ * ligne est « certaine » si sa recette contient l'ingrédient (directement ou via une
+ * base), « possible » sinon : même production, composition non prouvée. Un rappel prend
+ * les deux.
  */
 
 export type Certainty = 'certain' | 'possible';
@@ -126,6 +129,20 @@ export const traceabilityRepository = {
       [ingredientLotId],
     );
     const planQty = new Map<string, number>(direct.map(r => [r.plan_id, r.qty]));
+    // Mig 663 : lignes qui ont consommé le lot, par plan ; un plan dont une sortie n'est pas
+    // rattachée à une ligne reste qualifié par la composition des recettes.
+    const { rows: byLine } = await db.query(
+      `SELECT production_plan_id AS plan_id, plan_item_id FROM production_lot_usage
+        WHERE ingredient_lot_id = $1 GROUP BY 1, 2`, [ingredientLotId]);
+    const provenLines = new Map<string, Set<string>>();
+    const unattributed = new Set<string>();
+    for (const r of byLine) {
+      if (!r.plan_item_id) { unattributed.add(r.plan_id); continue; }
+      const set = provenLines.get(r.plan_id) ?? new Set<string>();
+      set.add(r.plan_item_id);
+      provenLines.set(r.plan_id, set);
+    }
+    for (const p of unattributed) provenLines.delete(p);
     const planDepth = new Map<string, number>(direct.map(r => [r.plan_id, 0]));
     const semiLots: Record<string, any>[] = [];
     let frontier = [...planQty.keys()];
@@ -161,7 +178,7 @@ export const traceabilityRepository = {
       [planIds],
     ) : { rows: [] };
 
-    const { rows: items } = planIds.length ? await db.query(
+    const { rows: allItems } = planIds.length ? await db.query(
       `SELECT ppi.id, ppi.plan_id, ppi.product_id, p.name AS product_name, ppi.base_recipe_id,
               COALESCE(rp.id, ppi.base_recipe_id) AS recipe_id,
               ppi.planned_quantity, ppi.actual_quantity::float, ppi.status
@@ -171,11 +188,15 @@ export const traceabilityRepository = {
         WHERE ppi.plan_id = ANY($1::uuid[])`,
       [planIds],
     ) : { rows: [] };
-    const itemCertainty = new Map<string, Certainty>(items.map(i => [i.id, i.recipe_id && contaminated.has(i.recipe_id) ? 'certain' : 'possible']));
+    // Plan dont la consommation est rattachée aux lignes : seules les lignes servies restent.
+    const items = allItems.filter(i => !provenLines.has(i.plan_id) || provenLines.get(i.plan_id)!.has(i.id));
+    const excludedItems = new Set(allItems.filter(i => !items.includes(i)).map(i => i.id as string));
+    const itemCertainty = new Map<string, Certainty>(items.map(i => [i.id,
+      provenLines.get(i.plan_id)?.has(i.id) || (i.recipe_id && contaminated.has(i.recipe_id)) ? 'certain' : 'possible']));
 
-    const productLots = planIds.length
+    const productLots = (planIds.length
       ? await productLotsDetail(`pl.production_plan_id = ANY($1::uuid[])`, [planIds])
-      : [];
+      : []).filter(l => !(l.plan_item_id && excludedItems.has(l.plan_item_id)));
     // Lot sans ligne de plan (anciens lots) : certitude par la recette du produit.
     const productRecipe = new Map(items.filter(i => i.product_id).map(i => [i.product_id as string, i.recipe_id as string | null]));
     const lots = productLots.map(l => ({
@@ -197,6 +218,8 @@ export const traceabilityRepository = {
       lot,
       plans: plans.map(p => ({ ...p, qty_used: planQty.get(p.id) ?? null, depth: planDepth.get(p.id) ?? 0 })),
       items: items.map(i => ({ ...i, certainty: itemCertainty.get(i.id) })),
+      // Articles des plans touchés écartés : la consommation du lot est rattachée à d'autres lignes.
+      excludedItems: allItems.filter(i => excludedItems.has(i.id)).map(i => ({ id: i.id, plan_id: i.plan_id, product_name: i.product_name })),
       semiLots,
       productLots: lots,
       byStore: [...byStore.values()],

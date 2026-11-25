@@ -38,6 +38,8 @@ export interface StockOut {
   available: number;
   /** Document à l'origine de la sortie : type libre (production, livraison, perte…) et identifiant. */
   origin: { type: string; id?: string | null };
+  /** Ligne du document d'origine (ligne de plan pour une production) quand le manque lui est propre (mig 663). */
+  lineId?: string | null;
   userId?: string | null;
   label?: string | null;
   /** Sortie qui ne peut pas être refusée (mise au rebut d'un lot périmé…) : toujours tracée. */
@@ -59,10 +61,10 @@ export async function applyStockOut(client: Queryable, out: StockOut): Promise<{
   }
   await client.query(
     `INSERT INTO stock_anomalies (item_kind, item_id, lot_id, store_id, requested_qty, available_qty, shortfall_qty,
-                                  origin_type, origin_id, label, created_by)
-     VALUES ($1, $2, $3, $4, $5::numeric, $6::numeric, $7::numeric, $8, $9, $10, $11)`,
+                                  origin_type, origin_id, label, created_by, origin_line_id)
+     VALUES ($1, $2, $3, $4, $5::numeric, $6::numeric, $7::numeric, $8, $9, $10, $11, $12)`,
     [out.kind, out.itemId, out.lotId ?? null, out.storeId ?? null, requested, available, shortfall,
-     out.origin.type, out.origin.id ?? null, out.label ?? null, out.userId ?? null]);
+     out.origin.type, out.origin.id ?? null, out.label ?? null, out.userId ?? null, out.lineId ?? null]);
   // Le responsable de stock est prévenu ; une notification en échec ne bloque jamais la sortie.
   void createNotification({
     targetRole: 'magasinier', storeId: out.storeId ?? undefined, type: 'stock_anomaly',

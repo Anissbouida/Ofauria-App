@@ -117,12 +117,15 @@ export async function applyKgYieldCorrections(client: PoolClient, plans: KgCorre
           `UPDATE inventory SET current_quantity = GREATEST(current_quantity - $1, 0), updated_at = NOW()
             WHERE ingredient_id = $2${p.storeId ? ' AND store_id = $3' : ''}`, [l.delta, l.ingredientId, ...storeParams]);
         await client.query(
-          `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id)
-           VALUES ($1, 'production', $2, $3, $4, $5, $6)`,
+          `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id, plan_item_id)
+           VALUES ($1, 'production', $2, $3, $4, $5, $6, (SELECT id FROM production_plan_items WHERE plan_id = $5 AND status <> 'cancelled' ORDER BY id LIMIT 1))`,
           [l.ingredientId, -l.delta,
            `${CORRECTION_NOTE} — ${p.recipeName} ${p.producedQty} ${p.yieldUnit} : fournée de ${p.divisorNew} au lieu de ${p.divisorOld}`,
            userId, p.planId, p.storeId]);
-        if (available > 0) await ingredientLotRepository.consumeFEFO(client, l.ingredientId, available, p.planId, p.storeId ?? undefined);
+        if (available > 0) {
+          const line = (await client.query(`SELECT id FROM production_plan_items WHERE plan_id = $1 AND status <> 'cancelled' ORDER BY id LIMIT 1`, [p.planId])).rows[0];
+          await ingredientLotRepository.consumeFEFO(client, l.ingredientId, available, p.planId, p.storeId ?? undefined, line?.id ?? null);
+        }
       }
       await client.query('COMMIT');
     } catch (err) {

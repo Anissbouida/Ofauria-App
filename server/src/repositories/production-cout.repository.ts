@@ -198,7 +198,9 @@ export const productionCoutRepository = {
       [planId]
     );
 
-    const detailMatieres: { ingredient_id: string; name: string; qty: number; unit_cost: number; total: number }[] = [];
+    // by_item (mig 663) : part de la ligne mesurée sur les sorties de chaque article ; le reste
+    // (sorties anciennes non rattachées, semi-finis) se répartit par les besoins théoriques.
+    const detailMatieres: { ingredient_id: string; name: string; qty: number; unit_cost: number; total: number; by_item?: Record<string, number> }[] = [];
     for (const r of lotUsageResult.rows) {
       detailMatieres.push({
         ingredient_id: r.ingredient_id, name: r.name,
@@ -263,6 +265,35 @@ export const productionCoutRepository = {
         qty, unit_cost: Math.round(unit * 10000) / 10000, total });
     }
     const coutMatieres = detailMatieres.reduce((s, d) => s + d.total, 0);
+
+    // Mesure par article (mig 663) : lots, sorties sans lot et manques rattachés à une ligne.
+    {
+      const add = (key: string, itemId: string, v: number) => {
+        const d = detailMatieres.find(x => x.ingredient_id === key);
+        if (!d || !(v > 0)) return;
+        d.by_item = d.by_item ?? {};
+        d.by_item[itemId] = Math.round(((d.by_item[itemId] ?? 0) + v) * 10000) / 10000;
+      };
+      const lotRows = (await db.query(
+        `SELECT plu.ingredient_id, plu.plan_item_id,
+                SUM(plu.quantity_used * COALESCE(plu.unit_cost_at_use, il.unit_cost, 0))::float8 AS total
+           FROM production_lot_usage plu JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
+          WHERE plu.production_plan_id = $1 AND plu.plan_item_id IS NOT NULL
+          GROUP BY 1, 2`, [planId])).rows;
+      for (const r of lotRows) add(r.ingredient_id, r.plan_item_id, Number(r.total));
+      const txRows = (await db.query(
+        `SELECT it.ingredient_id, it.plan_item_id, (SUM(ABS(it.quantity_change)) * COALESCE(i.unit_cost, 0))::float8 AS total
+           FROM inventory_transactions it JOIN ingredients i ON i.id = it.ingredient_id
+          WHERE it.production_plan_id = $1 AND it.type = 'production' AND it.plan_item_id IS NOT NULL
+          GROUP BY it.ingredient_id, it.plan_item_id, i.unit_cost`, [planId])).rows;
+      for (const r of txRows) if (!lotCoveredIds.has(r.ingredient_id)) add(r.ingredient_id, r.plan_item_id, Number(r.total));
+      const shortRows = (await db.query(
+        `SELECT a.item_id, a.origin_line_id, (SUM(a.shortfall_qty) * COALESCE(i.unit_cost, 0))::float8 AS total
+           FROM stock_anomalies a JOIN ingredients i ON i.id = a.item_id
+          WHERE a.item_kind = 'ingredient' AND a.origin_type = 'production_plan' AND a.origin_id = $1 AND a.origin_line_id IS NOT NULL
+          GROUP BY a.item_id, a.origin_line_id, i.unit_cost`, [planId])).rows;
+      for (const r of shortRows) add(`manque:${r.item_id}`, r.origin_line_id, Number(r.total));
+    }
 
     // 1b. Emballages (G0-23) — sorties d'emballage rattachees au plan, qu'elles viennent
     // du bon de sortie (prelevement) ou de la declaration de production, au cout fige

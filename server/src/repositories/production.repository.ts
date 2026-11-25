@@ -474,7 +474,9 @@ export const productionRepository = {
       // quantites arrivent deja converties en unite de base de l'ingredient
       // pour que l'agregation et les consommateurs aval (BSI, FEFO) comparent
       // des kg avec des kg.
-      const needsMap = new Map<string, { ingredientId: string; productId: string; quantity: number }>();
+      // Mig 663 : un besoin par ligne de plan (et plus par produit) — deux formats d'un même
+      // produit, ou deux lignes, gardent chacun leurs besoins, puis leurs sorties et leur coût.
+      const needsMap = new Map<string, { ingredientId: string; productId: string; planItemId: string; quantity: number }>();
       let semiFlag: boolean | null = null;
       const isSemiFinishedPlanQ = async () => {
         if (semiFlag === null) {
@@ -514,13 +516,14 @@ export const productionRepository = {
             continue;
           }
           const productId = item.product_id as string;
+          const planItemId = item.id as string;
           await collectIngredientNeedsForUnits(
             client, recipeResult.rows[0].id, Number(item.planned_quantity),
             (ingredientId, qty) => {
-              const key = `${ingredientId}::${productId}`;
+              const key = `${ingredientId}::${planItemId}`;
               const existing = needsMap.get(key);
               if (existing) existing.quantity += qty;
-              else needsMap.set(key, { ingredientId, productId, quantity: qty });
+              else needsMap.set(key, { ingredientId, productId, planItemId, quantity: qty });
             },
             {
               formatId: item.format_id ?? recipeResult.rows[0].linked_format_id ?? null,
@@ -576,9 +579,9 @@ export const productionRepository = {
         if (nonStockeIds.has(entry.ingredientId)) continue;   // F-016 : eau & co. non stockes
         const available = availabilityMap.get(entry.ingredientId) || 0;
         await client.query(
-          `INSERT INTO production_ingredient_needs (plan_id, ingredient_id, needed_quantity, available_quantity, product_id)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [planId, entry.ingredientId, entry.quantity, available, entry.productId]
+          `INSERT INTO production_ingredient_needs (plan_id, ingredient_id, needed_quantity, available_quantity, product_id, plan_item_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [planId, entry.ingredientId, entry.quantity, available, entry.productId, entry.planItemId]
         );
       }
 
@@ -1193,7 +1196,7 @@ export const productionRepository = {
             warnings.push(`Stock insuffisant: ${ingName} — besoin ${consumption.toFixed(2)} ${ingUnit}, disponible ${currentStock.toFixed(2)} ${ingUnit}`);
             // G0-18 : le manque est refusé ou tracé selon stock.negative_policy, plus jamais silencieux.
             await applyStockOut(client, { kind: 'ingredient', itemId: ingredientId, storeId: storeId || null,
-              requested: consumption, available: currentStock, origin: { type: 'production_plan', id: planId }, userId,
+              requested: consumption, available: currentStock, origin: { type: 'production_plan', id: planId }, lineId: item.id, userId,
               label: `${ingName} (production ${item.product_name})` });
           }
 
@@ -1205,9 +1208,9 @@ export const productionRepository = {
           );
 
           await client.query(
-            `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id)
-             VALUES ($1, 'production', $2, $3, $4, $5, $6)`,
-            [ingredientId, -consumption, `Production: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null]
+            `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id, plan_item_id)
+             VALUES ($1, 'production', $2, $3, $4, $5, $6, $7)`,
+            [ingredientId, -consumption, `Production: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null, item.id]
           );
 
           // FEFO lot consumption for ONSSA traceability — consume only what's actually available
@@ -1216,7 +1219,7 @@ export const productionRepository = {
             // COMMIT final devenait un rollback silencieux.
             await client.query('SAVEPOINT fefo_consume');
             try {
-              await ingredientLotRepository.consumeFEFO(client, ingredientId, actualConsumption, planId, storeId);
+              await ingredientLotRepository.consumeFEFO(client, ingredientId, actualConsumption, planId, storeId, item.id);
               await client.query('RELEASE SAVEPOINT fefo_consume');
             } catch (fefoErr) {
               await client.query('ROLLBACK TO SAVEPOINT fefo_consume');
@@ -1579,7 +1582,7 @@ export const productionRepository = {
               warnings.push(`Stock insuffisant: ${ingName.rows[0]?.name} — disponible ${currentStock.toFixed(2)} ${ingName.rows[0]?.unit || ''}, requis ${consumption.toFixed(2)}`);
               // G0-18 : manque refusé ou tracé selon stock.negative_policy.
               await applyStockOut(client, { kind: 'ingredient', itemId: ingredientId, storeId: storeId || null,
-                requested: consumption, available: currentStock, origin: { type: 'production_plan', id: planId }, userId,
+                requested: consumption, available: currentStock, origin: { type: 'production_plan', id: planId }, lineId: item.id, userId,
                 label: `${ingName.rows[0]?.name ?? 'Ingrédient'} (production partielle ${item.product_name})` });
             }
 
@@ -1591,16 +1594,16 @@ export const productionRepository = {
                WHERE ingredient_id = $2${storeFilter}`, invParams
             );
             await client.query(
-              `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id)
-               VALUES ($1, 'production', $2, $3, $4, $5, $6)`,
-              [ingredientId, -actualConsumption, `Production partielle: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null]
+              `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, production_plan_id, store_id, plan_item_id)
+               VALUES ($1, 'production', $2, $3, $4, $5, $6, $7)`,
+              [ingredientId, -actualConsumption, `Production partielle: ${item.product_name} x${item.actual_quantity}`, userId, planId, storeId || null, item.id]
             );
             // Lots consommes FEFO -> production_lot_usage (tracabilite + cout FIFO),
             // comme dans complete(). Isole par SAVEPOINT.
             if (actualConsumption > 0) {
               await client.query('SAVEPOINT fefo_consume');
               try {
-                await ingredientLotRepository.consumeFEFO(client, ingredientId, actualConsumption, planId, storeId);
+                await ingredientLotRepository.consumeFEFO(client, ingredientId, actualConsumption, planId, storeId, item.id);
                 await client.query('RELEASE SAVEPOINT fefo_consume');
               } catch (fefoErr) {
                 await client.query('ROLLBACK TO SAVEPOINT fefo_consume');

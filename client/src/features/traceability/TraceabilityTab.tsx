@@ -48,7 +48,7 @@ const de = (w: string) => (/^[aeiouyhéèêàâîôû]/i.test(w) ? `d'${w}` : `d
 
 function CertaintyTag({ c }: { c?: Certainty }) {
   return c === 'certain'
-    ? <StatusTag tone="blocked" label="certain" title="La recette contient l'article du lot" />
+    ? <StatusTag tone="blocked" label="certain" title="Le lot a été sorti pour cet article, ou sa recette contient la matière" />
     : <StatusTag tone="todo" label="possible" title="Même production, composition non prouvée" />;
 }
 
@@ -245,6 +245,14 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
             ))}</tbody>
           </table>
         </Panel>
+      )}
+
+      {/* Mig 663 : articles d'une production touchée qui n'ont pas consommé ce lot (la sortie est
+          rattachée aux autres lignes) — hors du périmètre du rappel. */}
+      {(data.excludedItems?.length ?? 0) > 0 && (
+        <StatusBanner tone="info" icon={CheckCircle2} title={`${data.excludedItems!.length} article(s) des mêmes productions non concernés`}>
+          {data.excludedItems!.map(i => i.product_name ?? '—').join(', ')} : le lot a été sorti pour d'autres articles de la production, pas pour eux.
+        </StatusBanner>
       )}
 
       {data.semiLots.length > 0 && (

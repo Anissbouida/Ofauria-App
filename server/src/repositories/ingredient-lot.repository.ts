@@ -332,11 +332,16 @@ export const ingredientLotRepository = {
     const result = await db.query(
       `SELECT plu.*, pp.plan_date, pp.status as plan_status, pp.type as plan_type,
               ing.name as ingredient_name,
-              u.first_name || ' ' || u.last_name as created_by_name
+              u.first_name || ' ' || u.last_name as created_by_name,
+              -- Mig 663 : article de l'ordre servi par ce lot (NULL : sortie ancienne, plan entier).
+              COALESCE(ip.name, ir.name) AS item_name
        FROM production_lot_usage plu
        JOIN production_plans pp ON pp.id = plu.production_plan_id
        JOIN ingredients ing ON ing.id = plu.ingredient_id
        LEFT JOIN users u ON u.id = pp.created_by
+       LEFT JOIN production_plan_items ppi ON ppi.id = plu.plan_item_id
+       LEFT JOIN products ip ON ip.id = ppi.product_id
+       LEFT JOIN recipes ir ON ir.id = ppi.base_recipe_id
        WHERE plu.ingredient_lot_id = $1
        ORDER BY pp.plan_date DESC`,
       [lotId]
@@ -349,13 +354,18 @@ export const ingredientLotRepository = {
     const result = await db.query(
       `SELECT plu.*, il.lot_number, il.supplier_lot_number, il.expiration_date, il.received_at,
               ing.name as ingredient_name, ing.unit as ingredient_unit,
-              s.name as supplier_name
+              s.name as supplier_name,
+              -- Mig 663 : article de l'ordre servi par ce lot.
+              COALESCE(ip.name, ir.name) AS item_name
        FROM production_lot_usage plu
        JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
        JOIN ingredients ing ON ing.id = plu.ingredient_id
        LEFT JOIN suppliers s ON s.id = il.supplier_id
+       LEFT JOIN production_plan_items ppi ON ppi.id = plu.plan_item_id
+       LEFT JOIN products ip ON ip.id = ppi.product_id
+       LEFT JOIN recipes ir ON ir.id = ppi.base_recipe_id
        WHERE plu.production_plan_id = $1
-       ORDER BY ing.name`,
+       ORDER BY COALESCE(ip.name, ir.name) NULLS LAST, ing.name`,
       [productionPlanId]
     );
     return result.rows;
@@ -449,7 +459,9 @@ export const ingredientLotRepository = {
     ingredientId: string,
     quantityNeeded: number,
     productionPlanId: string,
-    storeId?: string
+    storeId?: string,
+    /** Ligne de plan servie (mig 663) : le lot consommé lui est rattaché. */
+    planItemId?: string | null
   ): Promise<{ lotId: string; quantityUsed: number }[]> {
     if (quantityNeeded <= 0) return [];
 
@@ -542,9 +554,9 @@ export const ingredientLotRepository = {
         `UPDATE ingredient_lots SET status = 'depleted' WHERE id = $1 AND economat_quantity = 0 AND pesage_quantity <= 0`, [lot.id]);
 
       await client.query(
-        `INSERT INTO production_lot_usage (production_plan_id, ingredient_lot_id, ingredient_id, quantity_used)
-         VALUES ($1, $2, $3, $4)`,
-        [productionPlanId, lot.id, ingredientId, take]
+        `INSERT INTO production_lot_usage (production_plan_id, ingredient_lot_id, ingredient_id, quantity_used, plan_item_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [productionPlanId, lot.id, ingredientId, take, planItemId ?? null]
       );
 
       consumed.push({ lotId: lot.id, quantityUsed: take });
