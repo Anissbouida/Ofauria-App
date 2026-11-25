@@ -1,3 +1,4 @@
+import { sectorVersionRepository } from '../repositories/sector-version.repository.js';
 import { VOCABULARY_KEYS } from '@ofauria/shared';
 import { Router } from 'express';
 import { auditTrailRepository } from '../repositories/audit-trail.repository.js';
@@ -270,6 +271,20 @@ router.post('/modules/import/preview', authenticate, jsonParser, authorizeSettin
 router.get('/modules/assistant', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.assistantStatus));
 router.post('/modules/assistant', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(configAssistantSchema), asyncHandler(companyController.suggestConfig));
 router.post('/sectors', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(createSectorSchema), asyncHandler(companyController.createSector));
+// Lot 14 : versions des profils industriels (créées par la base, mig 697) et comparaison.
+router.get('/sectors/versions', authenticate, authorizeSettings('company'), asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await sectorVersionRepository.summary() });
+}));
+router.get('/sectors/:code/versions', authenticate, authorizeSettings('company'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await sectorVersionRepository.list(String(req.params.code).slice(0, 40)) });
+}));
+router.get('/sectors/:code/versions/compare', authenticate, authorizeSettings('company'), asyncHandler(async (req, res) => {
+  const from = Number(req.query.from), to = Number(req.query.to);
+  if (!Number.isInteger(from) || !Number.isInteger(to)) { res.status(400).json({ success: false, error: { message: 'Versions à comparer invalides' } }); return; }
+  const result = await sectorVersionRepository.compare(String(req.params.code).slice(0, 40), from, to);
+  if (!result) { res.status(404).json({ success: false, error: { message: 'Version introuvable' } }); return; }
+  res.json({ success: true, data: result });
+}));
 router.delete('/sectors/:code', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.deleteSector));
 // Mise en route guidée (P9) : listes de tâches par module ; masquer = jusqu'à « Réafficher ».
 router.get('/modules/onboarding', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.moduleOnboarding));

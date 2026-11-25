@@ -12,6 +12,7 @@ import { useDirtyForm } from './DirtyForms';
 import RolloutDialog from './RolloutDialog';
 import VocabularyPanel from './VocabularyPanel';
 import ProfileStatusPanel from './ProfileStatusPanel';
+import ProfileVersionsSection from './ProfileVersionsSection';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
@@ -529,6 +530,7 @@ export default function SectorTab() {
           )}
         </SettingsSection>
       )}
+      <ProfileVersionsSection />
       <SettingsSection
         title="Historique des configurations"
         description="Chaque enregistrement crée une version. Restaurer une version la rend de nouveau courante, sans rien supprimer ; la restauration elle-même peut être annulée."
