@@ -5,7 +5,8 @@ Maquette validée le 2026-11-25 : `docs/utilisateurs-refonte/maquette/gestion-ut
 
 Règles : Design System Kalum (`docs/DESIGN_SYSTEM.md`), commit direct sur `main`, un lot = un ou
 plusieurs commits autonomes qui compilent et passent les tests. Migrations numérotées à partir de
-**700**.
+**700** ; d'autres chantiers prennent aussi des numéros (701, 702) : le numéro réel de chaque lot
+est fixé au moment du commit, après vérification de `main`.
 
 ## Lots
 
@@ -15,7 +16,7 @@ plusieurs commits autonomes qui compilent et passent les tests. Migrations numé
 | 1 | Coquille du module (Tableau de bord / Opérations / Rapports / Paramétrage), Vue d'ensemble « À traiter », Comptes : pastilles de situation, « Vous », établissement sous les rôles, aperçu en tiroir, Réactiver, journal des connexions dans le module | léger | — |
 | 2 | Fiche utilisateur en page `/users/:id` : Profil (langue réglable par l'administrateur, fiche salarié), Rôles et périmètre (rôle principal confirmé, rattachements en lecture), Droits effectifs, Sécurité (2FA par compte, mot de passe, PIN, connexions Google/Microsoft), Historique | oui | — |
 | 3 | Création en étapes (identité, rôles avec modèles du secteur, périmètre, sécurité, vérification des conflits) ; invitation par e-mail avec lien de 72 h | oui | 700 invitations |
-| 4 | Rôles : origine (système, personnalisé, modèle du secteur), fiche rôle en page (accès par module par niveau, permissions détaillées, membres, contrôles et rattachements, identité modifiable avec page d'accueil), comparaison, sections de Paramètres par rôle | oui | 701 roles.home_route |
+| 4 | Rôles : origine (système, personnalisé, modèle du secteur), fiche rôle en page (accès par module par niveau, permissions détaillées, membres, contrôles et rattachements, identité modifiable avec page d'accueil), comparaison, sections de Paramètres par rôle | oui | 703 roles.home_route |
 | 5 | Contrôles internes : séparation des tâches (cumul de rôles et pièces) avec un seul vocabulaire de mode, plafonds rattachés aux circuits, délégations réunies (rôle complet / approbations) avec date de début, contrôle des droits | oui | — |
 | 6 | Exceptions individuelles (accorder ou retirer une permission, motif, date de fin) qui s'ajoutent aux rôles | oui | 702 |
 | 7 | Plusieurs établissements par compte, établissement par défaut, portée « Son établissement » sur l'ensemble | oui | 703 user_stores |
@@ -40,7 +41,7 @@ plusieurs commits autonomes qui compilent et passent les tests. Migrations numé
 - [x] Lot 1 — module à rubriques, vue d'ensemble, comptes
 - [x] Lot 2 — fiche en page `/users/:id` (connexions externes en lecture seule : elles se rattachent par l'e-mail à chaque connexion, « délier » n'aurait pas d'effet durable)
 - [x] Lot 3 — création en étapes, invitation 72 h (mig 700), page publique `/invitation/:token`, contrôle des conflits avant création
-- [ ] Lot 4
+- [x] Lot 4 — fiche rôle `/users/roles/:code` (niveaux Aucun → Complet qui règlent aussi les permissions détaillées, écarts au niveau, membres et attribution, 2FA du rôle, plafonds, séparation des tâches, rattachements, identité avec page d'accueil), comparaison de 2 à 4 rôles, nouveau rôle depuis un modèle / une copie / vide (mig 703 ; 701-702 pris par d'autres chantiers). Libellés des permissions encore en partie en anglais (référentiel `shared/src/constants/permissions.ts`), « modifier ce rôle demande une approbation » renvoyé au lot 10
 - [ ] Lot 5
 - [ ] Lot 6
 - [ ] Lot 7
