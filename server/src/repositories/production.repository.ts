@@ -1164,6 +1164,13 @@ export const productionRepository = {
         [planId, newlyProducedIds]
       );
 
+      // Audit 2026-11 C-13 : une préparation de base servie par un plan fils ou réservée sur le
+      // stock (dépendance) est déjà payée en matières ailleurs ; sans ce filtre, la clôture
+      // d'un ordre sans bon de sortie ressortait ses matières une seconde fois.
+      const coveredBases = new Set<string>((await client.query(
+        `SELECT sub_recipe_id FROM production_plan_dependencies WHERE parent_plan_id = $1 AND status <> 'cancelled'`,
+        [planId])).rows.map(r => r.sub_recipe_id as string));
+
       for (const item of itemsResult.rows) {
         if (!item.actual_quantity || item.actual_quantity <= 0) continue;
         if (bsiAlreadyDeducted) continue;
@@ -1180,7 +1187,7 @@ export const productionRepository = {
         await bomVersionRepository.withVersionsInForce(client, [recipe.id], planDay, () => collectIngredientNeedsForUnits(
           client, recipe.id, item.actual_quantity,
           (ingredientId, qty) => ingredientNeeds.set(ingredientId, (ingredientNeeds.get(ingredientId) || 0) + qty),
-          { formatId: item.format_id ?? recipe.linked_format_id ?? null, warnings }
+          { formatId: item.format_id ?? recipe.linked_format_id ?? null, warnings, skipSubRecipe: (id) => coveredBases.has(id) }
         ));
 
         for (const [ingredientId, consumption] of ingredientNeeds) {

@@ -3,7 +3,7 @@ import { db, withTransaction } from '../config/database.js';
 import { forecastRepository } from './forecast.repository.js';
 import { productionRepository } from './production.repository.js';
 import { purchaseRequestRepository } from './purchase-request.repository.js';
-import { getCompositionForNeeds } from './recipe-composition.helper.js';
+import { getCompositionForNeeds, collectIngredientNeedsForUnits } from './recipe-composition.helper.js';
 import { workshopForCategorySlug, workshopLabel, workshopsOf } from '../services/workshops.js';
 
 const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -383,24 +383,32 @@ export const mrpRepository = {
     const demand = net.rows.filter(r => r.net_to_produce > 0).map(r => ({ product_id: r.product_id, qty: r.net_to_produce }));
     if (demand.length === 0) return { store_id: storeId, date, rows: [], totals: { ingredients: 0, to_order: 0, estimated_cost: 0 } };
 
-    const values = demand.map((_, i) => `($${i * 2 + 2}::uuid, $${i * 2 + 3}::numeric)`).join(', ');
-    const params: unknown[] = [storeId, ...demand.flatMap(d => [d.product_id, d.qty])];
-    const q = await db.query(
-      `WITH demand(product_id, qty) AS (VALUES ${values})
-       SELECT e.ingredient_id, e.ingredient_name, e.unit,
-              SUM(e.total_qty * (demand.qty / NULLIF(r.yield_quantity, 0)))::float AS needed,
+    // Audit 2026-11 C-11 : le même moteur de besoins que la confirmation d'un ordre (fiche
+    // active ou liée par un format, rendement du format, composition par pièce, pertes). Avant,
+    // la vue d'explosion était divisée par recipes.yield_quantity : une fiche par pièce dont le
+    // rendement valait 12 voyait ses achats divisés par 12.
+    const needs = new Map<string, number>();
+    for (const d of demand) {
+      const r = (await db.query(
+        `SELECT r.id, (SELECT rf.id FROM recipe_formats rf WHERE rf.recipe_id = r.id AND rf.product_id = $1 AND rf.is_active LIMIT 1) AS format_id
+           FROM recipes r
+          WHERE r.archived_at IS NULL AND (r.product_id = $1
+                OR r.id = (SELECT f.recipe_id FROM recipe_formats f WHERE f.product_id = $1 AND f.is_active LIMIT 1))
+          ORDER BY (r.product_id = $1) DESC LIMIT 1`, [d.product_id])).rows[0];
+      if (!r) continue;
+      await collectIngredientNeedsForUnits(db, r.id, Number(d.qty),
+        (ing, qty) => needs.set(ing, (needs.get(ing) ?? 0) + qty), { formatId: r.format_id ?? null });
+    }
+    const ids = [...needs.keys()];
+    const q = ids.length === 0 ? { rows: [] as Record<string, number | string>[] } : await db.query(
+      `SELECT ing.id AS ingredient_id, ing.name AS ingredient_name, ing.unit,
               COALESCE(inv.current_quantity, 0)::float AS on_hand,
               COALESCE(inv.minimum_threshold, 0)::float AS seuil,
               COALESCE(ing.unit_cost, 0)::float AS unit_cost
-       FROM demand
-       -- G0-27 : la fiche ACTIVE de l'article (une seule par produit, index unique ; les archivées sont écartées).
-       JOIN recipes r ON r.product_id = demand.product_id AND r.archived_at IS NULL
-       JOIN v_recipe_explosion_v2 e ON e.recipe_id = r.id
-       JOIN ingredients ing ON ing.id = e.ingredient_id
-       LEFT JOIN inventory inv ON inv.ingredient_id = e.ingredient_id AND inv.store_id = $1
-       GROUP BY e.ingredient_id, e.ingredient_name, e.unit, inv.current_quantity, inv.minimum_threshold, ing.unit_cost`,
-      params
-    );
+         FROM ingredients ing
+         LEFT JOIN inventory inv ON inv.ingredient_id = ing.id AND inv.store_id = $1
+        WHERE ing.id = ANY($2::uuid[]) AND COALESCE(ing.non_stocke, false) = false`, [storeId, ids]);
+    for (const row of q.rows) row.needed = needs.get(row.ingredient_id as string) ?? 0;
     const r3 = (n: number) => Math.round(n * 1000) / 1000;
     const rows = q.rows.map((x: Record<string, number | string>) => {
       const needed = Number(x.needed), onHand = Number(x.on_hand), seuil = Number(x.seuil), unitCost = Number(x.unit_cost);

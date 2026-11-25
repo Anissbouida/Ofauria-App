@@ -30,6 +30,12 @@ export async function writeProductionEntry(client: Client, planId: string, userI
   const row = await entryData(client, planId);
   if (!row || !(row.total > 0)) return null;
   const detail = `production:${planId}`;
+  // Audit 2026-11 C-14 : écriture rejouée par la file, ou deux clôtures simultanées — une
+  // seule écriture par plan. Verrou sur le plan, puis vérification dans la même transaction.
+  await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [detail]);
+  const already = await client.query(
+    `SELECT 1 FROM journal_entries WHERE source_detail = $1 AND status <> 'reversed' LIMIT 1`, [detail]);
+  if (already.rows.length > 0) return null;
   const label = `Production ${row.of_number ?? planId.slice(0, 8)}`;
   return postManualEntry(client, {
     journal: 'OD', date: row.d, label, detail, userId, storeId: row.store_id ?? null,
